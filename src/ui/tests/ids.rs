@@ -256,6 +256,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     let cold_popup_key = h.ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
+    h.engines.layout.forget_last_run();
     h.frame(&mut record);
     assert!(
         !h.engines.layout.scratch.counters.cache_hits().is_empty(),

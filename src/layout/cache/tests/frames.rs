@@ -49,6 +49,7 @@ fn assert_warm_rects_match_cold(
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
+    h.engines.layout.forget_last_run();
     let warm_nodes = h.frame_value(|ui| {
         let mut nodes = Vec::new();
         record(ui, &mut nodes);

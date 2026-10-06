@@ -26,6 +26,9 @@ pub(crate) struct LayerLayout {
     /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
     /// nodes that didn't shape text. Same length as `rect`.
     pub(crate) text_spans: Vec<Span>,
+    /// [`Self::rect_hash`], taken once the rects are final, so a run that
+    /// keeps its output keeps it too.
+    rect_hash: ContentHash,
 }
 
 impl LayerLayout {
@@ -39,6 +42,8 @@ impl LayerLayout {
             scroll_content,
             text_shapes,
             text_spans,
+            // Taken again by `hash_rects` once the rects are written.
+            rect_hash: _,
         } = self;
         rect.clear();
         rect.resize(n, Rect::ZERO);
@@ -61,10 +66,16 @@ impl LayerLayout {
     /// arrange shift retain a cascade built for the old rects. `Rect`
     /// is `Pod`, so the whole column hashes in one bulk write — the
     /// per-field form cost four hash rounds per rect instead of two.
-    pub(crate) fn rect_hash(&self) -> ContentHash {
+    pub(crate) const fn rect_hash(&self) -> ContentHash {
+        self.rect_hash
+    }
+
+    /// Take [`Self::rect_hash`] from the rects as they stand. Called by
+    /// `LayoutEngine::run` once a layer's rects are final.
+    pub(super) fn hash_rects(&mut self) {
         let mut h = Hasher::new();
         h.write_usize(self.rect.len());
         h.pod_slice(&self.rect);
-        ContentHash(h.finish())
+        self.rect_hash = ContentHash(h.finish());
     }
 }
