@@ -4,11 +4,11 @@
 use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
 /// Render-pipeline recipe. Threads the call-site fields each pipeline
-/// genuinely varies (label, shader, layout, vertex buffers, topology,
-/// color format, fragment entry, color writes, blend, optional
-/// depth-stencil) and lets [`Self::build`] fill in the rest with
-/// the project-wide defaults (single color target, no MSAA, no
-/// multiview, vertex entry = `"vs"`).
+/// genuinely varies (label, shader, layout, entry points, override
+/// constants, vertex buffers, topology, color format, color writes,
+/// blend, optional depth-stencil) and lets [`Self::build`] fill in the
+/// rest with the project-wide defaults (single color target, no MSAA, no
+/// multiview).
 ///
 /// `'a` is the lifetime of the references passed in; the returned
 /// [`wgpu::RenderPipeline`] retains its own internal references and
@@ -19,6 +19,9 @@ pub(crate) struct PipelineRecipe<'a> {
     pub(super) shader: &'a wgpu::ShaderModule,
     pub(super) layout: &'a wgpu::PipelineLayout,
     pub(super) vertex_entry: &'static str,
+    /// Values for the shader's `override` constants, by name, in both
+    /// stages. Empty for the module's defaults.
+    pub(super) constants: &'a [(&'a str, f64)],
     pub(super) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(super) topology: wgpu::PrimitiveTopology,
     pub(super) color_format: wgpu::TextureFormat,
@@ -31,8 +34,8 @@ pub(crate) struct PipelineRecipe<'a> {
 impl PipelineRecipe<'_> {
     /// Build the render pipeline this recipe describes. Sole source of
     /// truth for the descriptor fields each pipeline doesn't vary —
-    /// vertex entry, sample count, multiview mask. Every quad / mesh /
-    /// image / curve / text pipeline goes through here.
+    /// sample count, multiview mask. Every quad / mesh / image / curve /
+    /// text pipeline goes through here.
     pub(super) fn build(self, device: &wgpu::Device) -> wgpu::RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label),
@@ -40,13 +43,19 @@ impl PipelineRecipe<'_> {
             vertex: wgpu::VertexState {
                 module: self.shader,
                 entry_point: Some(self.vertex_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: self.constants,
+                    ..Default::default()
+                },
                 buffers: self.vertex_buffers,
             },
             fragment: Some(wgpu::FragmentState {
                 module: self.shader,
                 entry_point: Some(self.fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: self.constants,
+                    ..Default::default()
+                },
                 targets: &[Some(wgpu::ColorTargetState {
                     format: self.color_format,
                     blend: self.blend,

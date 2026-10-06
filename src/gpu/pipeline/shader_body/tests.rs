@@ -93,6 +93,7 @@ fn only_the_shadow_entry_reaches_the_blur_integral() {
         "arc_half",
         "cutout_box_coverage",
         "corner_cutout",
+        "shadow_coverage",
     ] {
         assert!(!reaches("fs").contains(heavy), "`fs` reaches `{heavy}`");
         assert!(

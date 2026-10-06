@@ -106,6 +106,7 @@ impl MeshPipeline {
                 shader: &self.shader,
                 vertex_entry: "vs",
                 fragment_entry: "fs",
+                constants: &[],
                 layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,

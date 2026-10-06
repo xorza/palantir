@@ -15,7 +15,8 @@
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
 //!   `OffscreenHost::frame` against an offscreen `wgpu::Texture` +
-//!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
+//!   `PollType::Wait`, on the desktop's present strategy (see
+//!   `bench_host`). Wall time covers the whole CPU + GPU pipeline;
 //!   dominated by GPU exec on large views. The per-frame `write_stats`
 //!   dump (upload counts, GPU pass timings) lives here since it's
 //!   inherently GPU.
@@ -39,6 +40,10 @@
 //!   surfaces so `available_q` busts the measure cache each iter.
 //! - **`frame/scrolling_*`** — fixed viewport, shifts a `Panel::transform`
 //!   each iter so only the cascade walk sees change.
+//! - **`frame/alternating_*`** — a scroll step and a counter tick in turn:
+//!   a full repaint, then a small partial one. On the desktop's present
+//!   strategy a full frame renders past the backbuffer, so it measures
+//!   what that costs the partial frame after it.
 //!
 //! After all selected arms run, each arm's criterion `time:` estimate
 //! (the slope it reports to stdout) is prepended to
@@ -144,8 +149,15 @@ fn gpu() -> &'static BenchGpu {
     gpu
 }
 
+/// A host on the desktop's present strategy: `retained_target` selects
+/// the `DirectAdaptive` the winit host runs, which never reads what the
+/// target held before. The default would measure the screenshot path,
+/// which also copies the whole backbuffer out on skip and full frames.
 fn bench_host(g: &BenchGpu) -> OffscreenHost {
-    g.offscreen_builder().collect_gpu_stats(true).build()
+    g.offscreen_builder()
+        .collect_gpu_stats(true)
+        .retained_target(true)
+        .build()
 }
 
 fn gpu_frame(
@@ -253,6 +265,30 @@ fn cpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     });
 }
 
+/// One step of the alternating arms: a scroll step on even frames, which
+/// repaints in full, and a counter tick on odd ones, which repaints one
+/// small rect. The sequence a hover over an animated region makes, and
+/// the one where a full frame's present path decides what the next
+/// partial frame costs.
+fn alternate(state: &mut FrameFixture, frame: &mut u32) {
+    if frame.is_multiple_of(2) {
+        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+    } else {
+        state.tick = state.tick.wrapping_add(1);
+    }
+    *frame = frame.wrapping_add(1);
+}
+
+fn cpu_alternating(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
+    assert_alternating_invariant(surface);
+    let mut frame = 0;
+    run_cpu_arm(group, "alternating_cpu", surface, move |h, state| {
+        alternate(state, &mut frame);
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
+    });
+}
+
 fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     let mut idx = 0usize;
     let pool = surface.pool.clone();
@@ -286,6 +322,29 @@ fn assert_partial_invariant(surface: &Surface) {
         FramePaint::Partial,
         "fixture's footer-status counter must produce a small damage rect",
     );
+}
+
+/// Pin the alternation before the timing loop, as
+/// [`assert_partial_invariant`] pins the partial arm: a scroll step must
+/// repaint in full and the tick after it must repaint partially, or the
+/// alternating arms measure something else.
+fn assert_alternating_invariant(surface: &Surface) {
+    let mut h = CpuHarness::new(surface);
+    let mut state = FrameFixture::default();
+    let mut frame = 0;
+    for _ in 0..4 {
+        alternate(&mut state, &mut frame);
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
+    }
+    for want in [FramePaint::Full, FramePaint::Partial] {
+        alternate(&mut state, &mut frame);
+        let report = h
+            .frontend
+            .harness
+            .at(h.start.elapsed())
+            .frame(|ui| state.render(BENCH_SCALE, ui));
+        assert_eq!(report.paint(), want, "the alternating arms' frame {frame}");
+    }
 }
 
 /// Shared GPU-arm scaffolding: build a fresh `OffscreenHost`, run 4
@@ -338,6 +397,18 @@ fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     run_gpu_arm(group, "scrolling_gpu", |host, state| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
+        gpu().wait();
+        black_box(&target);
+    });
+}
+
+fn gpu_alternating(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
+    let target = gpu().target("palantir.frame_bench.alternating", surface.size);
+    let scale = surface.scale;
+    let mut frame = 0;
+    run_gpu_arm(group, "alternating_gpu", move |host, state| {
+        alternate(state, &mut frame);
         gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
         gpu().wait();
         black_box(&target);
@@ -401,8 +472,12 @@ fn report_write_stats(surface: &Surface) {
                 || "  n/a   ".into(),
                 |d| format!("{:>5.2} ms", d.as_secs_f64() * 1e3),
             );
+            // TIMESTAMP_QUERY_INSIDE_ENCODERS, on a frame that copied out.
+            let copy_out = stats.last_copy_out().map_or_else(String::new, |d| {
+                format!("  copy_out: {:.2} ms", d.as_secs_f64() * 1e3)
+            });
             eprintln!(
-                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
+                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}{copy_out}",
                 s.texture_calls, s.texture_bytes,
             );
             // Per-kind attribution (TIMESTAMP_QUERY_INSIDE_PASSES) and
@@ -456,7 +531,7 @@ fn report_write_stats(surface: &Surface) {
 
 /// The workloads both halves run, in the order the results row lists
 /// them.
-const CATEGORIES: [&str; 4] = ["cached", "partial", "resizing", "scrolling"];
+const CATEGORIES: [&str; 5] = ["alternating", "cached", "partial", "resizing", "scrolling"];
 
 /// Arm ids criterion runs for a given mode, interleaved cpu/gpu per
 /// category. Used by the per-machine results writer to know which
@@ -488,6 +563,7 @@ fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
         return;
     }
     let mut group = run.group(c);
+    cpu_alternating(&mut group, surface);
     cpu_cached(&mut group, surface);
     cpu_partial(&mut group, surface);
     cpu_resizing(&mut group, surface);
@@ -503,6 +579,7 @@ fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
     }
     report_write_stats(surface);
     let mut group = run.group(c);
+    gpu_alternating(&mut group, surface);
     gpu_cached(&mut group, surface);
     gpu_partial(&mut group, surface);
     gpu_resizing(&mut group, surface);

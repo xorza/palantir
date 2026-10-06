@@ -3,7 +3,7 @@
 //! parties hold a `Clone` of the same `Rc<RefCell<_>>` handle so the
 //! reader sees the writer's latest publish without a global static.
 //!
-//! Four kinds of data, set independently as feature support permits:
+//! Five kinds of data, set independently as feature support permits:
 //!
 //! - **Whole-pass duration** ([`GpuPassStats::last_pass`]). Always
 //!   populated when `TIMESTAMP_QUERY` is on.
@@ -11,13 +11,16 @@
 //!   Populated when `TIMESTAMP_QUERY_INSIDE_PASSES` is on.
 //! - **Pipeline statistics** ([`GpuPassStats::last_pipeline_stats`]).
 //!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
+//! - **Copy-out duration** ([`GpuPassStats::last_copy_out`]). Populated
+//!   when `TIMESTAMP_QUERY_INSIDE_ENCODERS` is on and the frame copied its
+//!   backbuffer onto the target.
 //! - **Main-pass CPU record time**
 //!   ([`GpuPassStats::last_main_pass_cpu`]). The odd one out: host-side,
 //!   not device-side, so it needs no adapter feature and no opt-in and is
 //!   populated on every submitted frame.
 //!
 //! Two producers, both on the host thread: the backend's
-//! `GpuTimings::after_submit` publishes the three device-side values,
+//! `GpuTimings::after_submit` publishes the four device-side values,
 //! `WgpuBackend::run_main_pass` publishes the CPU one. Many readers (debug
 //! overlay, benches). `RefCell` is sufficient and panics on the
 //! caller-bug case of a concurrent borrow.
@@ -39,26 +42,28 @@ pub enum BatchKind {
     PreClear = 1,
     /// `RenderStep::MaskStamp` / `MaskClear` — stencil mask quads.
     Mask = 2,
-    /// `RenderStep::Quads` and `RenderStep::Shadows` — the quad pipeline
-    /// and its shadow twin.
+    /// `RenderStep::Quads` — the quad pipeline.
     Quads = 3,
+    /// `RenderStep::Shadows` — drop and inset shadows, through the quad
+    /// pipeline's shadow variant.
+    Shadows = 4,
     /// `RenderStep::Text` — text batches via the inlined text
     /// pipeline.
-    Text = 4,
+    Text = 5,
     /// `PaintTier::Mesh`'s replay — the mesh pipeline.
-    Mesh = 5,
+    Mesh = 6,
     /// `PaintTier::Image`'s replay — the image pipeline.
-    Image = 6,
+    Image = 7,
     /// `PaintTier::Curve`'s replay — the curve pipeline.
-    Curve = 7,
+    Curve = 8,
     /// `PaintTier::Icon`'s replay — the icon pipeline (the glyph shader
     /// over the icon atlas).
-    Icon = 8,
+    Icon = 9,
 }
 
 impl BatchKind {
     /// How many kinds there are.
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 10;
 
     /// Every kind, in discriminant order — the order a reporter lists
     /// them in.
@@ -67,6 +72,7 @@ impl BatchKind {
         Self::PreClear,
         Self::Mask,
         Self::Quads,
+        Self::Shadows,
         Self::Text,
         Self::Mesh,
         Self::Image,
@@ -86,6 +92,7 @@ impl BatchKind {
             Self::PreClear => "preclear",
             Self::Mask => "mask",
             Self::Quads => "quads",
+            Self::Shadows => "shadows",
             Self::Text => "text",
             Self::Mesh => "mesh",
             Self::Image => "image",
@@ -132,6 +139,7 @@ struct Inner {
     pass_ns: Option<u64>,
     kind_ns: [Option<u64>; BatchKind::COUNT],
     stats: Option<PipelineStats>,
+    copy_out_ns: Option<u64>,
     main_pass_cpu_ns: Option<u64>,
 }
 
@@ -164,6 +172,17 @@ impl GpuPassStats {
     /// `PIPELINE_STATISTICS_QUERY` is unavailable / disabled.
     pub fn last_pipeline_stats(&self) -> Option<PipelineStats> {
         self.inner.borrow().stats
+    }
+
+    /// The copy of the backbuffer onto the target after the main pass, in
+    /// the most recent frame that painted: a partial repaint on the
+    /// desktop's strategy, or every painted frame on a target that keeps
+    /// nothing. `None` when that frame copied nothing, or when
+    /// `TIMESTAMP_QUERY_INSIDE_ENCODERS` is unavailable / disabled. A frame
+    /// that repaints nothing is not measured, so it leaves the value as it
+    /// was, as it leaves [`Self::last_pass`].
+    pub fn last_copy_out(&self) -> Option<Duration> {
+        self.inner.borrow().copy_out_ns.map(Duration::from_nanos)
     }
 
     /// Host CPU time the most recent frame spent opening the main render
@@ -206,6 +225,12 @@ impl GpuPassStats {
     pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {
         self.inner.borrow_mut().stats = Some(stats);
     }
+
+    /// The measured frame's copy-out, or `None` when it copied nothing, so
+    /// a frame without a copy does not keep showing an earlier one.
+    pub(crate) fn record_copy_out_ns(&self, ns: Option<u64>) {
+        self.inner.borrow_mut().copy_out_ns = ns;
+    }
 }
 
 #[cfg(test)]
@@ -218,6 +243,7 @@ mod tests {
         assert_eq!(s.last_pass(), None);
         assert_eq!(s.last_kind(BatchKind::Quads), None);
         assert_eq!(s.last_pipeline_stats(), None);
+        assert_eq!(s.last_copy_out(), None);
         assert_eq!(s.last_main_pass_cpu(), None);
     }
 

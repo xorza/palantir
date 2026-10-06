@@ -91,6 +91,7 @@ impl ImagePipeline {
                 shader: &self.shader,
                 vertex_entry: "vs",
                 fragment_entry: "fs",
+                constants: &[],
                 layout: &self.pipeline_layout,
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
