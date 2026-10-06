@@ -532,22 +532,27 @@ mod tests {
     fn per_kind_publish_distinguishes_absent_zero_and_blank() {
         let sink = GpuPassStats::default();
 
-        // Frame 1: timestamps [1000, 1001, 5001] at 0.5 ns/tick:
-        //   pass  = floor((5001 - 1000) * 0.5) = 2000 ns
-        //   quads = floor((1001 - 1000) * 0.5) = 0 ns
-        //   text  = floor((5001 - 1001) * 0.5) = 2000 ns
+        // Frame 1: timestamps [1000, 1001, 3001, 5001] at 0.5 ns/tick:
+        //   pass    = floor((5001 - 1000) * 0.5) = 2000 ns
+        //   quads   = floor((1001 - 1000) * 0.5) = 0 ns
+        //   shadows = floor((3001 - 1001) * 0.5) = 1000 ns
+        //   text    = floor((5001 - 3001) * 0.5) = 1000 ns
         publish_timestamps(
-            &ts_bytes(&[1000, 1001, 5001]),
-            3,
-            &[BatchKind::Quads, BatchKind::Text],
+            &ts_bytes(&[1000, 1001, 3001, 5001]),
+            4,
+            &[BatchKind::Quads, BatchKind::Shadows, BatchKind::Text],
             0.5,
             &sink,
         );
         assert_eq!(sink.last_pass(), Some(Duration::from_micros(2)));
         assert_eq!(sink.last_kind(BatchKind::Quads), Some(Duration::ZERO));
         assert_eq!(
+            sink.last_kind(BatchKind::Shadows),
+            Some(Duration::from_micros(1))
+        );
+        assert_eq!(
             sink.last_kind(BatchKind::Text),
-            Some(Duration::from_micros(2))
+            Some(Duration::from_micros(1))
         );
         assert_eq!(sink.last_kind(BatchKind::Mesh), None);
 
