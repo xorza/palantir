@@ -81,20 +81,14 @@ impl RollupInputs {
         // node columns, which no paint-only change reaches.
         now.len() == last.len()
             && same_bytes(&tree.shapes.hashes, &self.shape_hashes)
-            && all_alike(&tree.panel_table, &self.panel_table, |a, b| {
-                a == b && a.transform.is_identity() == b.transform.is_identity()
-            })
+            && all_alike(&tree.panel_table, &self.panel_table, PartialEq::eq)
             && all_alike(&tree.chrome_table, &self.chrome_table, |a, b| {
                 a.hash == b.hash
             })
-            && all_alike(&tree.bounds_table, &self.bounds_table, |a, b| a == b)
-            && all_alike(&tree.grid_tracks, &self.grid_tracks, |a, b| a == b)
-            && all_alike(&tree.grid_defs, &self.grid_defs, |a, b| {
-                a.rows == b.rows && a.cols == b.cols
-            })
-            && all_alike(&tree.scrollbar_defs, &self.scrollbar_defs, |a, b| {
-                a.def == b.def && a.content == b.content
-            })
+            && all_alike(&tree.bounds_table, &self.bounds_table, PartialEq::eq)
+            && all_alike(&tree.grid_tracks, &self.grid_tracks, PartialEq::eq)
+            && all_alike(&tree.grid_defs, &self.grid_defs, PartialEq::eq)
+            && all_alike(&tree.scrollbar_defs, &self.scrollbar_defs, PartialEq::eq)
             && same_bytes(now.widget_id(), last.widget_id())
             && same_bytes(now.subtree_end(), last.subtree_end())
             && same_bytes(now.shape_span(), last.shape_span())

@@ -31,7 +31,7 @@ use crate::text::system::TextSystem;
 ///   Reset per layer by `LayoutScratch::resize_for`.
 /// - `text` — per-window text shaping and reuse slots.
 /// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
-/// - `offers` — what the last run offered each root, which with the
+/// - `last_roots` — how the last run laid each root out, which with the
 ///   snapshot decides whether its output is this run's.
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
@@ -44,15 +44,18 @@ pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     pub(crate) text: TextSystem,
     pub(crate) cache: MeasureCache,
-    offers: Vec<RootOffer>,
+    last_roots: Vec<RootRun>,
 }
 
-/// One root's offer in a run: its layer, and the exact extent it was
-/// measured against. Kept in paint order, one per root.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct RootOffer {
+/// One root as a run laid it out: its layer, the exact extent it was
+/// measured against, and the slot it was arranged into — outside its
+/// margin, where the root's own rect is inside it. Kept in paint order,
+/// one per root.
+#[derive(Clone, Copy, Debug)]
+struct RootRun {
     layer: Layer,
     available: Size,
+    slot: Rect,
 }
 
 impl LayoutEngine {
@@ -61,7 +64,7 @@ impl LayoutEngine {
             scratch: LayoutScratch::default(),
             text: TextSystem::new(shaper),
             cache: MeasureCache::default(),
-            offers: Vec::new(),
+            last_roots: Vec::new(),
         }
     }
 
@@ -72,35 +75,28 @@ impl LayoutEngine {
     /// last run laid out, as far as layout reads it: every run after the
     /// capture restores from it, and a run with a different subtree
     /// recaptures. What the snapshot keeps only quantized, each root's
-    /// offer, is compared exactly here, with its layer; an overlay root's
-    /// origin, which its placement resolves against the arranged size,
-    /// is checked against where the last run put it. Equal inputs give
-    /// an equal run: every step of it is a function of them.
-    fn keeps_last_run(&self, forest: &Forest, surface: Rect, out: &Layout) -> bool {
-        let mut offers = self.offers.iter();
+    /// offer, is compared exactly here, with its layer. An equal subtree
+    /// under an equal offer arranges to the slot size the last run did,
+    /// so the origin this run would place it at is the one its placement
+    /// resolves against that size, and the slot holds only if that is
+    /// where the last run put it. Equal inputs give an equal run: every
+    /// step of it is a function of them.
+    fn keeps_last_run(&self, forest: &Forest, surface: Rect) -> bool {
+        let mut last = self.last_roots.iter();
         for (layer, tree) in forest.trees.iter_paint_order() {
             for slot in &tree.roots {
-                let offer = RootOffer {
-                    layer,
-                    available: slot.available(layer, surface),
-                };
-                if offers.next() != Some(&offer) {
-                    return false;
-                }
-                let Some(&rect) = out[layer].rect.get(slot.first_node.idx()) else {
+                let Some(run) = last.next() else {
                     return false;
                 };
-                let origin = if layer == Layer::Main {
-                    surface.min
-                } else {
-                    slot.placement.origin(rect.size, surface)
-                };
-                if origin != rect.min {
+                if run.layer != layer
+                    || run.available != slot.available(layer, surface)
+                    || run.slot.min != slot.origin(layer, run.slot.size, surface)
+                {
                     return false;
                 }
             }
         }
-        offers.next().is_none()
+        last.next().is_none()
     }
 
     /// Grid's per-track intrinsic aggregator — a bump stack `Grid::intrinsic`
@@ -272,20 +268,14 @@ impl LayoutEngine {
             self.cache.forget_all();
         }
         self.scratch.cache_rebuild = !self.cache.matches_forest(forest, surface);
-        if !self.scratch.cache_rebuild && self.keeps_last_run(forest, surface, out) {
+        if !self.scratch.cache_rebuild && self.keeps_last_run(forest, surface) {
             self.scratch.counters.kept_last_run();
             return;
         }
         if self.scratch.cache_rebuild {
             self.cache.begin_frame();
         }
-        self.offers.clear();
-        for (layer, tree) in forest.trees.iter_paint_order() {
-            self.offers.extend(tree.roots.iter().map(|slot| RootOffer {
-                layer,
-                available: slot.available(layer, surface),
-            }));
-        }
+        self.last_roots.clear();
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             let layer_out = &mut out[layer];
@@ -295,44 +285,46 @@ impl LayoutEngine {
                 continue;
             }
             self.scratch.resize_for(tree);
-            {
+            for slot in &tree.roots {
                 let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
-                for slot in &tree.roots {
-                    let root = slot.first_node;
-                    let available = slot.available(layer, surface);
-                    // Two of the five passes, and the only ones a Tracy
-                    // capture couldn't tell apart — `PhaseSpan` already
-                    // splits them for the debug overlay, so the zones go
-                    // on the same boundaries rather than inventing new
-                    // ones. Per root, not per node: bounded by layer
-                    // count, so the zone budget stays flat.
-                    let measure_span = PhaseSpan::start();
-                    let measured = {
-                        tracy::zone!("Layout::measure");
-                        pass.measure(root, available)
-                    };
-                    pass.note_measure(measure_span);
-                    let root_layout = tree.records.layout()[root.idx()];
-                    let size = AxisPlacement::arrange_size(
-                        &root_layout,
-                        tree.bounds(root),
-                        Placed::of(measured.size, measured.floor),
-                        available,
-                    );
-                    // Overlay policies need the current measured body, not a
-                    // response rect retained from an earlier frame.
-                    let origin = if layer == Layer::Main {
-                        surface.min
-                    } else {
-                        slot.placement.origin(size, surface)
-                    };
-                    let arrange_span = PhaseSpan::start();
-                    {
-                        tracy::zone!("Layout::arrange");
-                        pass.arrange(root, Rect { min: origin, size });
-                    }
-                    pass.note_arrange(arrange_span);
+                let root = slot.first_node;
+                let available = slot.available(layer, surface);
+                // Two of the five passes, and the only ones a Tracy
+                // capture couldn't tell apart — `PhaseSpan` already
+                // splits them for the debug overlay, so the zones go
+                // on the same boundaries rather than inventing new
+                // ones. Per root, not per node: bounded by layer
+                // count, so the zone budget stays flat.
+                let measure_span = PhaseSpan::start();
+                let measured = {
+                    tracy::zone!("Layout::measure");
+                    pass.measure(root, available)
+                };
+                pass.note_measure(measure_span);
+                let root_layout = tree.records.layout()[root.idx()];
+                let size = AxisPlacement::arrange_size(
+                    &root_layout,
+                    tree.bounds(root),
+                    Placed::of(measured.size, measured.floor),
+                    available,
+                );
+                // Overlay policies need the current measured body, not a
+                // response rect retained from an earlier frame.
+                let arranged = Rect {
+                    min: slot.origin(layer, size, surface),
+                    size,
+                };
+                let arrange_span = PhaseSpan::start();
+                {
+                    tracy::zone!("Layout::arrange");
+                    pass.arrange(root, arranged);
                 }
+                pass.note_arrange(arrange_span);
+                self.last_roots.push(RootRun {
+                    layer,
+                    available,
+                    slot: arranged,
+                });
             }
             let capture_span = PhaseSpan::start();
             if self.scratch.cache_rebuild {
@@ -411,7 +403,7 @@ pub(crate) mod internals {
         /// the last run's output, for a test that drives the snapshot
         /// restore on a frame that changes nothing.
         pub(crate) fn forget_last_run(&mut self) {
-            self.offers.clear();
+            self.last_roots.clear();
         }
 
         /// Drop every cached intrinsic and zero the compute counter, so

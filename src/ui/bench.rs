@@ -7,10 +7,11 @@
 //!   wgpu device at all** (the same deviceless path as the allocation
 //!   suite's fixtures). Each iter runs record → measure → arrange →
 //!   cascade → damage, then encode + compose of what the frame planned,
-//!   and acks the present; nothing touches the GPU. This is the clean signal: no queue submit, no
-//!   `device.poll` ioctl, no per-size framebuffer reconfiguration. Going
-//!   through the offscreen renderer driver plus a poll charges every iter
-//!   driver work that profiles as NVIDIA / kernel self-time — ~20% on
+//!   and acks the present; nothing touches the GPU. This is the clean
+//!   signal: no queue submit, no `device.poll` ioctl, no per-size
+//!   framebuffer reconfiguration. Going through the offscreen renderer
+//!   driver plus a poll charges every iter driver work that profiles as
+//!   NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:

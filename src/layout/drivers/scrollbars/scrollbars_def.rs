@@ -105,7 +105,7 @@ impl ScrollbarsDef {
 ///
 /// Valid for exactly the pass that resolved it: the tree is rebuilt every
 /// pass, and every pass records the def again.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ResolvedScrollbarsDef {
     pub(crate) def: ScrollbarsDef,
     pub(crate) content: NodeId,
