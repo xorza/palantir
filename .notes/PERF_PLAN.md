@@ -14,21 +14,21 @@ experiment code is in the tree.
   (`DirectAdaptive`, see `benches/AGENTS.md`). On that strategy a skip
   frame copies nothing, so `cached_gpu` is the CPU frame alone, and
   `partial_gpu` is the damage paint plus one full copy-out (M1).
-- **CPU:** no single cause. Four internal changes recover an estimated
-  4–7.5 µs, which is short of the old README by 3–7 µs on `cached_cpu`.
-  C1b and the C5 investigations are where the rest must come from, and
-  neither has a measured gain yet.
+- **CPU:** no single cause. The largest item, folding the rollups at
+  `close_node` (C1), made the frame slower and was reverted. Three small
+  internal changes remain, estimated at 2–3.5 µs, so `cached_cpu` stays
+  above the old README unless the C5 investigations find more.
 
 | arm | old README | now (desktop strategy) | estimate |
 | --- | ---: | ---: | ---: |
-| `cached_cpu` | 130 µs | 140.3 µs | 134–137 µs |
-| `partial_cpu` | 145 µs | 155.2 µs | 148–151 µs |
-| `scrolling_cpu` | 201 µs | 203.7 µs | 196–199 µs |
-| `resizing_cpu` | 317 µs | 304.6 µs | 297–301 µs |
+| `cached_cpu` | 130 µs | 140.3 µs | 137–138 µs |
+| `partial_cpu` | 145 µs | 155.2 µs | 152–153 µs |
+| `scrolling_cpu` | 201 µs | 203.7 µs | 200–202 µs |
+| `resizing_cpu` | 317 µs | 304.6 µs | 301–303 µs |
 | `cached_gpu` | 1.12 ms | 0.131 ms | 0.125–0.128 ms |
 | `partial_gpu` | 1.37 ms | 1.64 ms | ≈ 1.6 ms |
-| `scrolling_gpu` | 4.25 ms | 4.86 ms | 3.5–3.9 ms |
-| `resizing_gpu` | 5.38 ms | 6.00 ms | 4.7–5.1 ms |
+| `scrolling_gpu` | 4.25 ms | 4.86 ms | ≈ 4.0 ms (grid in) |
+| `resizing_gpu` | 5.38 ms | 6.00 ms | ≈ 5.2 ms (grid in) |
 
 The old README GPU numbers were measured with `BackbufferCopy`, so they
 compare with the CPU columns only.
@@ -188,26 +188,23 @@ finished subtree hashes. All of these are final at the node's
 - Post-order also has every descendant done before its ancestor, which
   is what the `container_text.remove_range` step needs.
 
-**C1a.** Move the per-node body of `compute_rollups` into a function
-that `close_node` calls for the closing node, with the same code, so the
-hash streams stay the same. The one change is the cascade-static
-hasher: it folds in post-order, not in reverse pre-order. A node hash is
-compared only frame to frame, so any fixed order is correct.
-`post_record` keeps the sizing (`reset_for`, `container_text.grow`),
-which must then move to `pre_record` or grow per push. The columns are
-hot at close for the leaves, which are most nodes. Estimate −2 to
-−4 µs.
+**C1a was tried and failed.** The per-node body moved into a fold that
+`close_node` called, with a test that held every column to the old
+whole-tree pass. The columns matched, but `cached_cpu` rose from 139.5
+to 162.0 µs (+16%, ABBA in both directions). A profile showed the fold
+at about 32 µs inside `close_node` and an out-of-line `TreeItems::next`,
+against 16.6 µs for the whole-tree walk: per node, the fold pays the
+setup of seven column slices, a size check, and a `TreeItems` the
+compiler no longer inlines. The whole-tree walk over columns that are
+already in L2 is the efficient form, so the change was reverted.
 
-**C1b, only if C1a's profile shows the `TreeItems` walk as a large part
-of what is left:** stream the shape and child folds into hashers in
-`OpenFrame` at push and at child close. That is a second copy of the
-hash logic, so it needs a clear measured gain.
+**C1b is dropped too.** It streams the same hashes into `OpenFrame`
+during the record pass, which puts more work at the same per-node call
+sites that made C1a slower.
 
-**Tests.** Keep the old whole-tree `compute_rollups` in the test module
-as the reference, and compare every rollup column and `container_text`
-over the frame fixture and the random trees of the tree tests. The
-cascade-static hash differs by design, so its test checks that it
-changes exactly when an input the doc lists changes.
+What is left of `compute_rollups` is its own arithmetic: four hashers
+and the `TreeItems` interleave per node. A change there needs a profile
+of that loop alone (`perf annotate` of `post_record`) before a design.
 
 ### C2. Resolve input scopes only when their inputs change
 
@@ -265,14 +262,13 @@ Estimate −0.5 to −1 µs.
 
 ## Plan
 
-1. **C1a**, with the reference test. Decide on C1b from its profile.
-2. **C2, C3, C4**, measured as one group.
-3. **M1**: the alternating bench arm and the copy-out timestamp, then a
+1. **C2, C3, C4**, measured as one group.
+2. **M1**: the alternating bench arm and the copy-out timestamp, then a
    decision on the per-frame choice of path.
-4. **C5** profiles, written up here.
-5. **G3**, only if a profile shows the edge terms as a large part of the
+3. **C5** profiles, written up here.
+4. **G3**, only if a profile shows the edge terms as a large part of the
    remaining shadow cost.
-6. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
+5. README numbers from a full run, and `FRAME_BENCH_REGRESSION.md`
    updated with what each step recovered.
 
 ## Public API this plan touches
