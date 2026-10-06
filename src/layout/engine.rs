@@ -14,6 +14,7 @@ use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::text::interned_text::InternedText;
@@ -30,6 +31,8 @@ use crate::text::system::TextSystem;
 ///   Reset per layer by `LayoutScratch::resize_for`.
 /// - `text` — per-window text shaping and reuse slots.
 /// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
+/// - `offers` — what the last run offered each root, which with the
+///   snapshot decides whether its output is this run's.
 ///
 /// Per-frame *output* is **not** held here: `run` threads it through an
 /// `out: &mut Layout`, so the finalized layout is owned by the caller
@@ -41,6 +44,15 @@ pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     pub(crate) text: TextSystem,
     pub(crate) cache: MeasureCache,
+    offers: Vec<RootOffer>,
+}
+
+/// One root's offer in a run: its layer, and the exact extent it was
+/// measured against. Kept in paint order, one per root.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RootOffer {
+    layer: Layer,
+    available: Size,
 }
 
 impl LayoutEngine {
@@ -49,7 +61,46 @@ impl LayoutEngine {
             scratch: LayoutScratch::default(),
             text: TextSystem::new(shaper),
             cache: MeasureCache::default(),
+            offers: Vec::new(),
         }
+    }
+
+    /// Whether the last run's output is what this run would write, so
+    /// `out` stands as it is.
+    ///
+    /// The snapshot match proves every root's subtree is the one the
+    /// last run laid out, as far as layout reads it: every run after the
+    /// capture restores from it, and a run with a different subtree
+    /// recaptures. What the snapshot keeps only quantized, each root's
+    /// offer, is compared exactly here, with its layer; an overlay root's
+    /// origin, which its placement resolves against the arranged size,
+    /// is checked against where the last run put it. Equal inputs give
+    /// an equal run: every step of it is a function of them.
+    fn keeps_last_run(&self, forest: &Forest, surface: Rect, out: &Layout) -> bool {
+        let mut offers = self.offers.iter();
+        for (layer, tree) in forest.trees.iter_paint_order() {
+            for slot in &tree.roots {
+                let offer = RootOffer {
+                    layer,
+                    available: slot.available(layer, surface),
+                };
+                if offers.next() != Some(&offer) {
+                    return false;
+                }
+                let Some(&rect) = out[layer].rect.get(slot.first_node.idx()) else {
+                    return false;
+                };
+                let origin = if layer == Layer::Main {
+                    surface.min
+                } else {
+                    slot.placement.origin(rect.size, surface)
+                };
+                if origin != rect.min {
+                    return false;
+                }
+            }
+        }
+        offers.next().is_none()
     }
 
     /// Grid's per-track intrinsic aggregator — a bump stack `Grid::intrinsic`
@@ -221,14 +272,26 @@ impl LayoutEngine {
             self.cache.forget_all();
         }
         self.scratch.cache_rebuild = !self.cache.matches_forest(forest, surface);
+        if !self.scratch.cache_rebuild && self.keeps_last_run(forest, surface, out) {
+            self.scratch.counters.kept_last_run();
+            return;
+        }
         if self.scratch.cache_rebuild {
             self.cache.begin_frame();
+        }
+        self.offers.clear();
+        for (layer, tree) in forest.trees.iter_paint_order() {
+            self.offers.extend(tree.roots.iter().map(|slot| RootOffer {
+                layer,
+                available: slot.available(layer, surface),
+            }));
         }
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             let layer_out = &mut out[layer];
             layer_out.resize_for(tree);
             if tree.records.is_empty() {
+                layer_out.hash_rects();
                 continue;
             }
             self.scratch.resize_for(tree);
@@ -306,6 +369,7 @@ impl LayoutEngine {
                 let runs = TextShapeInput::on_container(tree, interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
             }
+            out[layer].hash_rects();
         }
         let finish_span = PhaseSpan::start();
         if self.scratch.cache_rebuild {
@@ -341,6 +405,13 @@ pub(crate) mod internals {
         ) -> f32 {
             let interned_text = forest.record_store.interned_text();
             self.intrinsic(&forest.trees[Layer::Main], node, axis, req, &interned_text)
+        }
+
+        /// Make the next run lay the forest out again rather than keep
+        /// the last run's output, for a test that drives the snapshot
+        /// restore on a frame that changes nothing.
+        pub(crate) fn forget_last_run(&mut self) {
+            self.offers.clear();
         }
 
         /// Drop every cached intrinsic and zero the compute counter, so

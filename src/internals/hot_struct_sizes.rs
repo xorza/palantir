@@ -110,7 +110,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
 /// carries a probe cell, so a release `Ui` can be smaller — see
 /// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
-const UI_SIZE: usize = 7240;
+const UI_SIZE: usize = 7288;
 
 /// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
 /// which is the only way this module compiles.
@@ -122,7 +122,7 @@ const UI_SIZE: usize = 7240;
 /// cell are zero-sized in a release build, which leaves a shipped
 /// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
 /// the production footprint.
-const FRAME_ENGINES_SIZE: usize = 2024;
+const FRAME_ENGINES_SIZE: usize = 2048;
 
 /// Single source of truth for the per-frame hot-struct inventory.
 /// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
