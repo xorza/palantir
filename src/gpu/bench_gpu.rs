@@ -31,7 +31,8 @@ pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Timing {
     /// Intersect in whatever of `TIMESTAMP_QUERY`,
-    /// `TIMESTAMP_QUERY_INSIDE_PASSES` and `PIPELINE_STATISTICS_QUERY`
+    /// `TIMESTAMP_QUERY_INSIDE_PASSES`, `TIMESTAMP_QUERY_INSIDE_ENCODERS` and
+    /// `PIPELINE_STATISTICS_QUERY`
     /// the adapter advertises, so instrumentation can publish
     /// whole-pass and per-batch durations. Missing bits degrade
     /// individually rather than failing the request.
@@ -129,11 +130,13 @@ impl BenchGpu {
     /// missing one silently empties a column.
     pub(crate) fn timing_summary(&self) -> String {
         format!(
-            "TIMESTAMP_QUERY={} INSIDE_PASSES={} PIPELINE_STATS={}",
+            "TIMESTAMP_QUERY={} INSIDE_PASSES={} INSIDE_ENCODERS={} PIPELINE_STATS={}",
             self.timing_features
                 .contains(wgpu::Features::TIMESTAMP_QUERY),
             self.timing_features
                 .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+            self.timing_features
+                .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),
             self.timing_features
                 .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
         )

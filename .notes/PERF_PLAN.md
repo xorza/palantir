@@ -136,9 +136,12 @@ them. So the gains are elsewhere:
   read 3.3 and 3.9 ms, against 4.0 and 5.2 ms for the same code when
   `cached_gpu`, which leaves the GPU idle, ran before them. Compare GPU
   numbers only between runs of the same arm set, in the same order.
-- **A timestamp around the copy-out** would separate the copy from the
-  GPU wake-up. It needs a new public `GpuPassStats` reading, so it waits
-  for a decision: see `PERF_PLAN_QUESTIONS.md`.
+- **The copy-out is timed:** `GpuPassStats::last_copy_out`, from a
+  timestamp pair around the copy, printed by `write_stats` as
+  `copy_out`. On the 680M a partial frame's copy-out takes 0.18–0.26 ms
+  and its damage pass 0.01–0.04 ms, so most of `partial_gpu`'s 1.5 ms is
+  neither: it is the submit, the wait and the GPU's wake from idle.
+  A smaller copy could save at most a fifth of a millisecond.
 
 ## CPU: where the time goes
 
@@ -258,10 +261,10 @@ shadow cost, and G3 is not done.
 
 ## Plan
 
-1. **M1, copy-out timestamp**: blocked on `PERF_PLAN_QUESTIONS.md`.
+Every item is done or closed with its measurement. Open for a later
+round: a concrete field for the `AnimatedLook` animation map (C5).
 
 
 ## Public API this plan touches
 
-Only M1's copy-out timing, if its question is answered with option 1: a
-new `GpuPassStats::last_copy_out`.
+- `GpuPassStats::last_copy_out` (M1), in.
