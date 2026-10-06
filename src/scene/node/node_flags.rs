@@ -5,7 +5,8 @@ use crate::input::sense::Sense;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::NoUninit)]
 pub(crate) struct NodeFlags {
     bits: u32,
 }

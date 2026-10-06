@@ -7,7 +7,8 @@
 //!
 //! - `cached`: warm-up frame primes the cache; subsequent iterations
 //!   hit at the highest stable subtree root every frame (in steady
-//!   state, the root itself).
+//!   state, the root itself). Each iteration forgets the last run first,
+//!   or the engine would keep its output and restore nothing.
 //! - `forced_miss`: warm-up primes the cache; each iteration clears
 //!   `FrameEngines::layout`'s cache before recording, so measure rebuilds from
 //!   scratch.
@@ -296,6 +297,7 @@ fn bench_cache_pair(
     {
         let mut h = make_ui();
         report_phases(&format!("{name}/cached"), || {
+            h.engines.layout.forget_last_run();
             let _ = h.frame(build);
             h.engines.layout.scratch.counters.phase_timings()
         });
@@ -304,6 +306,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
+            h.engines.layout.forget_last_run();
             black_box(h.frame(build));
         });
     });

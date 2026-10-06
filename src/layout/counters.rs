@@ -135,6 +135,9 @@ pub(crate) struct LayoutCounters {
     /// test that asserts only "warm rects equal cold rects" passes
     /// vacuously if the lookup never hit, so tests assert *where* it hit.
     cache_hits: TestOnly<Vec<WidgetId>>,
+    /// Runs that kept the last run's output whole. Accumulates, so a
+    /// test reads the delta across the frames it drives.
+    kept_runs: TestOnly<u32>,
     replays: ReplayCounters,
     /// Measure / arrange wall time this run.
     phase_timings: BenchOnly<PhaseTimings>,
@@ -192,6 +195,11 @@ impl LayoutCounters {
     }
 
     #[inline]
+    pub(crate) fn kept_last_run(&mut self) {
+        self.kept_runs.bump();
+    }
+
+    #[inline]
     pub(crate) fn cache_hit(&mut self, widget: WidgetId) {
         self.cache_hits.push(widget);
     }
@@ -238,6 +246,11 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn reset_intrinsic_computes(&mut self) {
             self.intrinsic_computes.reset();
+        }
+
+        #[cfg(test)]
+        pub(crate) const fn kept_runs(&self) -> u32 {
+            self.kept_runs.count()
         }
 
         #[cfg(test)]

@@ -6,6 +6,7 @@ use crate::common::span::Span;
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -16,7 +17,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 fn run_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
     run_frame_at(h, UVec2::new(200, 200), record);
@@ -26,6 +27,9 @@ fn run_frame_at(h: &mut UiHarness, size: UVec2, mut record: impl FnMut(&mut Ui))
     // The surface lives on the harness now, so a per-frame size has to be
     // applied — the whole point of these cases is that available changes.
     h.resize(size);
+    // These cases drive the snapshot restore, which a run that keeps the
+    // last output never reaches.
+    h.engines.layout.forget_last_run();
     h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -575,4 +579,55 @@ fn available_key_axis_invariants() {
         glam::IVec2::splat(i32::MAX),
     );
     assert_eq!(MeasureCache::available_key(Size::ZERO), glam::IVec2::ZERO);
+}
+
+/// A frame whose layout inputs all match the last run keeps that run's
+/// output whole: a recolour keeps it, and so does the frame after a
+/// change once the change has run. A resize offers the root another
+/// extent and a moved overlay resolves another origin, so each runs
+/// again — and the kept output is the one a run would have written. The
+/// popup's margin of 5 puts its rect at `(20, 30) + 5 = (25, 35)`, so the
+/// move to `(25, 35)` lands the new origin where the old rect sat, and
+/// must still run, to `(25, 35) + 5 = (30, 40)`.
+#[test]
+fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut color = RgbaF32::srgb(0.2, 0.4, 0.8);
+    let mut popup_at = Vec2::new(20.0, 30.0);
+    let kept = |h: &mut UiHarness, color: RgbaF32, popup_at: Vec2| {
+        let before = h.engines.layout.scratch.counters.kept_runs();
+        h.frame(|ui| {
+            build_wrapped_frame(ui, "a", 50.0, color);
+            ui.layer(Layer::Popup).fixed_at(popup_at).show(|ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("popup"))
+                    .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))
+                    .margin(5.0)
+                    .show(ui);
+            });
+        });
+        h.engines.layout.scratch.counters.kept_runs() - before
+    };
+    assert_eq!(kept(&mut h, color, popup_at), 0, "the first frame runs");
+    let rects = h.ui.layout(Layer::Main).rect.clone();
+    let popup = h.ui.layout(Layer::Popup).rect.clone();
+    assert_eq!(kept(&mut h, color, popup_at), 1, "an unchanged frame keeps");
+    color = RgbaF32::srgb(0.9, 0.4, 0.8);
+    assert_eq!(kept(&mut h, color, popup_at), 1, "a recolour keeps");
+    assert!(h.engines.layout.scratch.counters.cache_hits().is_empty());
+    assert_eq!(h.ui.layout(Layer::Main).rect, rects);
+    assert_eq!(h.ui.layout(Layer::Popup).rect, popup);
+
+    h.resize(UVec2::new(240, 200));
+    assert_eq!(kept(&mut h, color, popup_at), 0, "a resize runs");
+    assert_eq!(kept(&mut h, color, popup_at), 1, "and is kept after");
+
+    assert_eq!(popup[0], Rect::new(25.0, 35.0, 30.0, 10.0));
+    popup_at = Vec2::new(25.0, 35.0);
+    assert_eq!(kept(&mut h, color, popup_at), 0, "a moved overlay runs");
+    assert_eq!(
+        h.ui.layout(Layer::Popup).rect[0],
+        Rect::new(30.0, 40.0, 30.0, 10.0),
+    );
+    assert_eq!(kept(&mut h, color, popup_at), 1);
 }
