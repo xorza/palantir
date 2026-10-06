@@ -51,14 +51,14 @@ Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 
 | arm         | CPU pipeline | CPU + GPU frame |
 | ----------- | -----------: | --------------: |
-| `cached`    |        95 µs |          170 µs |
-| `partial`   |       103 µs |          252 µs |
-| `scrolling` |       148 µs |          371 µs |
-| `resizing`  |       246 µs |          578 µs |
+| `cached`    |        79 µs |           80 µs |
+| `partial`   |       113 µs |          296 µs |
+| `scrolling` |       149 µs |          414 µs |
+| `resizing`  |       227 µs |          572 µs |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured ~4.8 GHz,
-~100 µs/frame): **~2.03 M instructions retired**, **~480 K cycles**,
-**IPC ≈ 4.2**.
+Steady-state cost per frame on `frame/cached_cpu` (measured ~5.07 GHz,
+~79 µs/frame): **~1.72 M instructions retired**, **~403 K cycles**,
+**IPC ≈ 4.26**.
 
 AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
 
