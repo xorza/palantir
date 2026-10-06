@@ -130,7 +130,7 @@ impl hash::Hash for Track {
 }
 
 /// Spans into a `Tree`'s retained flat track arena plus the gaps for one Grid.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct GridDef {
     pub(crate) rows: Span,
     pub(crate) cols: Span,

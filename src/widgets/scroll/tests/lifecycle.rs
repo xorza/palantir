@@ -279,6 +279,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     let viewport_first = scroll_viewport(&h.ui, scroll_id);
     assert_eq!(after_first.h, 92.0);
 
+    h.engines.layout.forget_last_run();
     h.frame(build);
     let after_second = scroll_content(&h.ui, scroll_id);
     assert!(

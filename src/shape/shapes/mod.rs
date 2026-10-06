@@ -46,11 +46,6 @@ pub(crate) struct Shapes {
 }
 
 impl Shapes {
-    pub(crate) fn clear(&mut self) {
-        self.records.clear();
-        self.hashes.clear();
-    }
-
     /// Lower a user-facing [`Shape`](crate::widget::Shape) and append it to
     /// `records`: passthrough for rect/text, cubic promotion for beziers,
     /// span-stamping for the variable-length variants (polyline / mesh)

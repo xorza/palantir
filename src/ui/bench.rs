@@ -6,13 +6,14 @@
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
 //!   wgpu device at all** (the same deviceless path as the allocation
 //!   suite's fixtures). Each iter runs record → measure → arrange →
-//!   cascade → damage → encode + compose and acks the present; nothing
-//!   touches the GPU. This is the clean signal: no queue submit, no
-//!   `device.poll` ioctl, no per-size framebuffer reconfiguration. Going
-//!   through the offscreen renderer driver plus a poll charges every iter
-//!   driver work that profiles as NVIDIA / kernel self-time — ~20% on
-//!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
-//!   reallocations per size) — swamping the palantir cost being measured.
+//!   cascade → damage, then encode + compose of what the frame planned,
+//!   and acks the present; nothing touches the GPU. This is the clean
+//!   signal: no queue submit, no `device.poll` ioctl, no per-size
+//!   framebuffer reconfiguration. Going through the offscreen renderer
+//!   driver plus a poll charges every iter driver work that profiles as
+//!   NVIDIA / kernel self-time — ~20% on `cached_cpu` and ~50% on
+//!   `resizing_cpu` (multi-MB backbuffer reallocations per size) —
+//!   swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
 //!   `OffscreenHost::frame` against an offscreen `wgpu::Texture` +
 //!   `PollType::Wait`, on the desktop's present strategy (see
@@ -28,10 +29,8 @@
 //! The three arms are shared in spirit across both benches:
 //!
 //! - **`frame/cached_*`** — fixed viewport, MeasureCache hits, damage
-//!   resolves to `Skip` in steady state. The `_cpu` arm still runs a
-//!   full-tree encode + compose (a synthesized `Full` plan) so it
-//!   measures the same pipeline as the other arms rather than skipping
-//!   paint; see `CpuHarness::frame`.
+//!   resolves to `Skip` in steady state, so both arms paint nothing, as a
+//!   host does on a frame with nothing to repaint.
 //! - **`frame/partial_*`** — fixed viewport, mutates a single fixture
 //!   counter per iter so damage resolves to one small `Partial` rect
 //!   over an otherwise-static tree. Models the steady-state of an
@@ -201,20 +200,11 @@ impl CpuHarness {
     /// the next frame's `take_frame_plan` matches what the host would see
     /// after a real submit (lets `cached` settle into `Skip`).
     ///
-    /// Encode + compose run on **every** frame so all CPU arms measure
-    /// the same pipeline. A steady-state `cached` frame resolves damage
-    /// to `Skip` and so produces no render plan — in production the host
-    /// would present the prior backbuffer and skip the encoder. Here we
-    /// substitute a `Full` plan instead, so `cached_cpu` measures the
-    /// whole-tree encode + compose cost rather than strictly less work
-    /// than the other arms. `partial` keeps its small `Partial` region
-    /// (the partial-encode path is its real workload); the substitution
-    /// only kicks in when there's nothing to paint at all.
+    /// Encode + compose run on what the frame planned, as a host's do: a
+    /// frame whose damage is `Skip` paints nothing.
     fn frame(&mut self, record: impl FnMut(&mut Ui)) {
         self.frontend.harness.at(self.start.elapsed());
-        if self.frontend.frame(record).plan.is_none() {
-            self.frontend.paint_full();
-        }
+        self.frontend.frame(record);
     }
 }
 
@@ -239,6 +229,7 @@ fn run_cpu_arm<F>(
 }
 
 fn cpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
+    assert_cached_invariant(surface);
     run_cpu_arm(group, "cached_cpu", surface, |h, state| {
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
@@ -298,6 +289,28 @@ fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
         h.frontend.harness.resize(size);
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
+}
+
+/// Pin the Skip invariant before the timing loop, as
+/// [`assert_partial_invariant`] pins the partial arm: a steady frame of
+/// the still fixture must plan no paint, or the cached arms measure a
+/// repaint instead.
+fn assert_cached_invariant(surface: &Surface) {
+    let mut h = CpuHarness::new(surface);
+    let mut state = FrameFixture::default();
+    for _ in 0..2 {
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
+    }
+    let report = h
+        .frontend
+        .harness
+        .at(h.start.elapsed())
+        .frame(|ui| state.render(BENCH_SCALE, ui));
+    assert_eq!(
+        report.paint(),
+        FramePaint::Skip,
+        "a still fixture's steady frame must plan no paint",
+    );
 }
 
 /// Pin the Partial invariant before the timing loop: prime a deviceless

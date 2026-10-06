@@ -33,6 +33,12 @@ palantir's own backbuffer and copies all of it out. The default
 full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
 `benches/results` from before 2026-10-06 do not compare with later ones.
 
+**`cached_cpu` paints nothing, as `cached_gpu` does.** A still frame plans
+no paint, and the CPU harness encodes and composes only what a frame
+planned. Before 2026-10-06 it repainted the whole scene on such a frame,
+about 13 µs on the 6800U, so earlier `cached_cpu` rows do not compare with
+later ones.
+
 ## Measuring
 
 - **Pin the run, never the build.** `taskset` in front of `cargo` pins the

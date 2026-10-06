@@ -10,6 +10,7 @@ use crate::scene::node::node_flags::NodeFlags;
 use std::hash;
 use std::hash::Hash;
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LayoutCore {
     pub(crate) size: SizeSpec,
@@ -17,6 +18,15 @@ pub(crate) struct LayoutCore {
     pub(crate) margin: Spacing,
     pub(crate) meta: PackedLayoutMeta,
 }
+
+// SAFETY: `repr(C)` over four fields of plain integers — `SizeSpec`'s two
+// `u32`, two `Spacing`s of `u16` lanes, and `PackedLayoutMeta`'s `u32` —
+// whose sizes sum to the struct's, so no byte is padding.
+unsafe impl bytemuck::NoUninit for LayoutCore {}
+
+const _: () = assert!(
+    size_of::<LayoutCore>() == 2 * size_of::<u32>() + 2 * size_of::<Spacing>() + size_of::<u32>()
+);
 
 impl LayoutCore {
     pub(super) fn from_node(node: &Node) -> Self {

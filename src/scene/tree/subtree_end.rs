@@ -16,7 +16,7 @@ const SUBTREE_END_MASK: u32 = !SUBTREE_GRID_FLAG;
 /// accessor, so a new tree-walk can't forget the mask and silently read
 /// `real + 2^31` for grid subtrees.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::NoUninit)]
 pub(crate) struct SubtreeEnd(u32);
 
 impl SubtreeEnd {
