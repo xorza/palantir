@@ -175,10 +175,12 @@ impl GpuPassStats {
     }
 
     /// The copy of the backbuffer onto the target after the main pass, in
-    /// the most recent measured frame: a partial repaint on the desktop's
-    /// strategy, or every frame on a target that keeps nothing. `None` when
-    /// that frame copied nothing, or when `TIMESTAMP_QUERY_INSIDE_ENCODERS`
-    /// is unavailable / disabled.
+    /// the most recent frame that painted: a partial repaint on the
+    /// desktop's strategy, or every painted frame on a target that keeps
+    /// nothing. `None` when that frame copied nothing, or when
+    /// `TIMESTAMP_QUERY_INSIDE_ENCODERS` is unavailable / disabled. A frame
+    /// that repaints nothing is not measured, so it leaves the value as it
+    /// was, as it leaves [`Self::last_pass`].
     pub fn last_copy_out(&self) -> Option<Duration> {
         self.inner.borrow().copy_out_ns.map(Duration::from_nanos)
     }

@@ -516,10 +516,6 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
 /// Parse `count` resolved timestamps and publish pass + per-kind
 /// durations into `sink`. Split from [`consume_slot`] so the publish
 /// rules are testable without wgpu buffers.
-#[expect(
-    clippy::cast_sign_loss,
-    reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
-)]
 fn publish_timestamps(
     ts: &[u8],
     count: usize,
@@ -532,10 +528,7 @@ fn publish_timestamps(
     // a begin/end-only frame (blank window in per-batch mode) must
     // not leave the previous frame's per-kind values published.
     if count >= 2 {
-        let first = tick(ts, 0);
-        let last = tick(ts, count - 1);
-        let delta_ns = (last.saturating_sub(first) as f64 * f64::from(period_ns)) as u64;
-        sink.record_pass_ns(delta_ns);
+        sink.record_pass_ns(span_ns(ts, 0, count - 1, period_ns));
         sink.clear_kinds();
     }
     // Per-batch attribution when we collected midpoint marks.
@@ -543,10 +536,8 @@ fn publish_timestamps(
         let mut per_kind_ns = [0u64; BatchKind::COUNT];
         let mut seen = [false; BatchKind::COUNT];
         for i in 0..count - 1 {
-            let t0 = tick(ts, i);
-            let t1 = tick(ts, i + 1);
             let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
-            let seg_ns = (t1.saturating_sub(t0) as f64 * f64::from(period_ns)) as u64;
+            let seg_ns = span_ns(ts, i, i + 1, period_ns);
             seen[kind.idx()] = true;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
@@ -560,17 +551,21 @@ fn publish_timestamps(
 
 /// Publish the copy-out's duration from its two timestamps at
 /// [`COPY_OUT_INDEX`], or clear it when the frame copied nothing.
+fn publish_copy_out(ts: &[u8], copied_out: bool, period_ns: f32, sink: &GpuPassStats) {
+    let begin = COPY_OUT_INDEX as usize;
+    let ns = copied_out.then(|| span_ns(ts, begin, begin + 1, period_ns));
+    sink.record_copy_out_ns(ns);
+}
+
+/// Nanoseconds from timestamp `from` to timestamp `to` of a resolved
+/// query buffer, at `period_ns` per tick. A later write that resolved to
+/// an earlier tick reads as zero.
 #[expect(
     clippy::cast_sign_loss,
     reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
 )]
-fn publish_copy_out(ts: &[u8], copied_out: bool, period_ns: f32, sink: &GpuPassStats) {
-    let ns = copied_out.then(|| {
-        let begin = tick(ts, COPY_OUT_INDEX as usize);
-        let end = tick(ts, COPY_OUT_INDEX as usize + 1);
-        (end.saturating_sub(begin) as f64 * f64::from(period_ns)) as u64
-    });
-    sink.record_copy_out_ns(ns);
+fn span_ns(ts: &[u8], from: usize, to: usize, period_ns: f32) -> u64 {
+    (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(period_ns)) as u64
 }
 
 /// The `index`th 64-bit word of a resolved query buffer.
