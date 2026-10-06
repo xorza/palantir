@@ -52,8 +52,8 @@ pub(crate) const MEASURE_FRAMES: usize = 256;
 /// Every frame runs the whole CPU pipeline, through encode and compose
 /// on the deviceless frontend. The tree stands still, so its frames plan
 /// no paint after the first; each then repaints the whole scene anyway,
-/// as the frame bench's `cached_cpu` arm does, so the encoder and the
-/// composer see every node on every measured frame.
+/// so the encoder and the composer see every node on every measured
+/// frame.
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
