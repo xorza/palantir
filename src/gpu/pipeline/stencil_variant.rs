@@ -18,7 +18,7 @@ pub(crate) struct StencilVariant {
 }
 
 /// What one color-pipeline family varies: labels, shader, entry points,
-/// pipeline layout, vertex buffers, topology. Everything else
+/// override constants, pipeline layout, vertex buffers, topology. Everything else
 /// (`ColorWrites::ALL`, premultiplied blend) is fixed across the
 /// quad / mesh / image / curve / raster families and filled in by
 /// [`StencilVariant::build`].
@@ -40,6 +40,9 @@ pub(crate) struct ColorVariantSpec<'a> {
     /// reaches, so one module can hold a path its other entries leave out:
     /// quad's shadows, in `fs_shadow`, stay out of `fs`.
     pub(crate) fragment_entry: &'static str,
+    /// Values for the shader's `override` constants, by name. Empty for
+    /// the module's defaults.
+    pub(crate) constants: &'a [(&'a str, f64)],
     pub(crate) layout: &'a wgpu::PipelineLayout,
     pub(crate) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(crate) topology: wgpu::PrimitiveTopology,
@@ -60,6 +63,7 @@ impl StencilVariant {
                 shader: spec.shader,
                 layout: spec.layout,
                 vertex_entry: spec.vertex_entry,
+                constants: spec.constants,
                 vertex_buffers: spec.vertex_buffers,
                 topology: spec.topology,
                 color_format,

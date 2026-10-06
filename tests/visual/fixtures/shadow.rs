@@ -2,8 +2,10 @@
 
 use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
-use palantir::widget::Shape;
-use palantir::{Background, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke};
+use palantir::widget::{ShadowShape, Shape};
+use palantir::{
+    Background, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke,
+};
 use std::f64::consts::SQRT_2;
 
 use crate::goldens::{assert_same, assert_same_in, crop};
@@ -653,4 +655,204 @@ fn baked_cutout_tables_match_the_shaded_cutout() {
     });
     assert!(most <= 1, "a channel moved {most} levels");
     assert!(differing > 0, "no pixel read a table");
+}
+
+/// One shadow of the grid sweep: what it casts and how.
+#[derive(Clone, Copy, Debug)]
+struct GridCase {
+    inset: bool,
+    blur: f32,
+    corners: f32,
+    size: Vec2,
+    offset: Vec2,
+    spread: f32,
+}
+
+/// A shadow cell of the sweep, in logical px: wide enough for the largest
+/// blur's reach (`4σ`, 72 px at σ = 18) and offset on both sides.
+const GRID_CELL: f32 = 360.0;
+const GRID_COLUMNS: usize = 6;
+
+/// The cases the grid's cells must agree with the full form on: drop and
+/// inset over σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18 and radius
+/// 0, 4 and 30; then the boxes whose corner cells meet or overlap (`2·(r +
+/// reach)` is 25 px at σ = 2, r = 4), offsets past `reach`, spreads either
+/// way, and radii larger than their box.
+fn grid_cases() -> Vec<GridCase> {
+    let mut cases = Vec::new();
+    for inset in [false, true] {
+        for blur in [0.0, 0.2, 2.0, 18.0] {
+            for corners in [0.0, 4.0, 30.0] {
+                cases.push(GridCase {
+                    inset,
+                    blur,
+                    corners,
+                    size: Vec2::new(120.0, 90.0),
+                    offset: Vec2::new(3.0, 5.0),
+                    spread: if inset { 4.0 } else { 2.0 },
+                });
+            }
+        }
+    }
+    let base = GridCase {
+        inset: false,
+        blur: 2.0,
+        corners: 4.0,
+        size: Vec2::new(25.0, 25.0),
+        offset: Vec2::ZERO,
+        spread: 0.0,
+    };
+    for inset in [false, true] {
+        cases.extend([
+            GridCase { inset, ..base },
+            GridCase {
+                inset,
+                size: Vec2::new(24.0, 26.0),
+                ..base
+            },
+            GridCase {
+                inset,
+                blur: 18.0,
+                size: Vec2::new(10.0, 8.0),
+                ..base
+            },
+            GridCase {
+                inset,
+                size: Vec2::new(100.0, 70.0),
+                offset: Vec2::new(30.0, -20.0),
+                ..base
+            },
+            GridCase {
+                inset,
+                size: Vec2::new(100.0, 70.0),
+                spread: -4.0,
+                ..base
+            },
+            GridCase {
+                inset,
+                size: Vec2::new(100.0, 70.0),
+                spread: 6.0,
+                corners: 12.0,
+                ..base
+            },
+            GridCase {
+                inset,
+                blur: 8.0,
+                size: Vec2::new(40.0, 40.0),
+                corners: 30.0,
+                ..base
+            },
+        ]);
+    }
+    cases
+}
+
+/// The source rect of case `i`, centred in its cell.
+fn grid_case_rect(i: usize, case: GridCase) -> Rect {
+    let cell = Vec2::new((i % GRID_COLUMNS) as f32, (i / GRID_COLUMNS) as f32) * GRID_CELL;
+    let min = cell + (Vec2::splat(GRID_CELL) - case.size) * 0.5;
+    Rect::new(min.x, min.y, case.size.x, case.size.y)
+}
+
+fn grid_case_shape(case: GridCase, at: Rect) -> ShadowShape {
+    Shape::shadow(Shadow {
+        color: RgbaF32::srgba(0.1, 0.0, 0.3, 0.85),
+        offset: case.offset,
+        blur: case.blur,
+        spread: case.spread,
+        inset: case.inset,
+    })
+    .at(at)
+    .corners(case.corners)
+}
+
+/// The sweep, then two shadows seen through clips: a scissor across the
+/// edge cells of one, a rounded clip (the stencil path) over another.
+fn grid_sweep(ui: &mut palantir::Ui) {
+    let cases = grid_cases();
+    Panel::canvas()
+        .auto_id()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            for (i, &case) in cases.iter().enumerate() {
+                ui.add_shape(grid_case_shape(case, grid_case_rect(i, case)));
+            }
+            let clipped = GridCase {
+                inset: false,
+                blur: 18.0,
+                corners: 30.0,
+                size: Vec2::new(200.0, 120.0),
+                offset: Vec2::new(6.0, 10.0),
+                spread: 2.0,
+            };
+            let row = (cases.len().div_ceil(GRID_COLUMNS)) as f32 * GRID_CELL;
+            for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
+                Panel::canvas()
+                    .id_salt(("clip", rounded))
+                    .position((x + 40.0, row + 40.0))
+                    .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
+                    .background(Background {
+                        corners: Corners::all(if rounded { 40.0 } else { 0.0 }),
+                        ..Default::default()
+                    })
+                    .clip(if rounded {
+                        ClipMode::Rounded
+                    } else {
+                        ClipMode::Rect
+                    })
+                    .show(ui, |ui| {
+                        ui.add_shape(grid_case_shape(
+                            clipped,
+                            Rect::new(60.0, 50.0, clipped.size.x, clipped.size.y),
+                        ));
+                    });
+            }
+        });
+}
+
+/// A shadow drawn as its grid of cells is the shadow the one-cell full form
+/// draws, to one 8-bit level in every channel: the cells take the Gaussian
+/// past `reach` as zero, at most 3.2e-5 of coverage. A pixel shaded by two
+/// cells would blend twice, moving the purple well past a level, so the
+/// tolerance also proves each pixel is shaded once. Inside each drop
+/// shadow's source, where the grid draws no cell, the two are equal.
+#[test]
+fn a_shadow_grid_matches_the_full_form() {
+    let cases = grid_cases();
+    let rows = cases.len().div_ceil(GRID_COLUMNS) + 1;
+    let size = UVec2::new(
+        (GRID_COLUMNS as f32 * GRID_CELL) as u32,
+        (rows as f32 * GRID_CELL) as u32,
+    );
+    let mut grid = Harness::new();
+    let mut full = Harness::new();
+    full.host.disable_shadow_grid();
+    let [grid, full] = [&mut grid, &mut full]
+        .map(|harness| harness.size(size).clear(CLEAR).frame(grid_sweep).image);
+    let most = grid
+        .as_raw()
+        .iter()
+        .zip(full.as_raw())
+        .map(|(&a, &b)| a.abs_diff(b))
+        .max()
+        .unwrap();
+    assert!(most <= 1, "a channel moved {most} levels");
+    for (i, case) in cases.iter().enumerate().filter(|(_, case)| !case.inset) {
+        let source = grid_case_rect(i, *case);
+        let inset = case.corners + 2.0;
+        let (x0, y0) = ((source.min.x + inset) as u32, (source.min.y + inset) as u32);
+        let (x1, y1) = (
+            (source.min.x + source.size.w - inset) as u32,
+            (source.min.y + source.size.h - inset) as u32,
+        );
+        for y in y0..y1 {
+            for x in x0..x1 {
+                assert_eq!(
+                    grid.get_pixel(x, y),
+                    full.get_pixel(x, y),
+                    "case {i} {case:?}: pixel ({x}, {y}) inside the source",
+                );
+            }
+        }
+    }
 }
