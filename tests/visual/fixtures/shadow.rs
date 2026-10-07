@@ -602,7 +602,14 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
 
 /// A grid of shadows over the blurs and radii the corner cutout tables
 /// cover: drop shadows in the top four rows, inset ones below, each cell a
-/// 60 px source with some spread.
+/// 60 px source with some spread. Below it, at σ = 16, two shadows cross
+/// the viewport's edge with the corners on screen rounded 26, the grid's
+/// inset key, and those off it rounded to a key nothing else uses: 12 for
+/// the drop shadow, whose right corners' regions start at `905 − 12 − 64.5 =
+/// 828.5`, past x = 800, and 4 for the inset one, whose left corners' end
+/// at `−193 + 4 + 64.5 = −124.5`. Neither off-screen key gets a table, so
+/// both shadows draw through `fs_shadow_tables` with two corners it cuts
+/// nothing at.
 fn cutout_grid(ui: &mut palantir::Ui) {
     const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
     const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
@@ -629,6 +636,30 @@ fn cutout_grid(ui: &mut palantir::Ui) {
                     }
                 }
             }
+            for (inset, source, corners) in [
+                (
+                    false,
+                    Rect::new(600.0, 1680.0, 300.0, 60.0),
+                    Corners::new(24.0, 10.0, 10.0, 24.0),
+                ),
+                (
+                    true,
+                    Rect::new(-200.0, 1640.0, 300.0, 160.0),
+                    Corners::new(8.0, 30.0, 30.0, 8.0),
+                ),
+            ] {
+                ui.add_shape(
+                    Shape::shadow(Shadow {
+                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
+                        offset: Vec2::new(3.0, 5.0),
+                        blur: 16.0,
+                        spread: if inset { 4.0 } else { 2.0 },
+                        inset,
+                    })
+                    .at(source)
+                    .corners(corners),
+                );
+            }
         });
 }
 
@@ -636,10 +667,12 @@ fn cutout_grid(ui: &mut palantir::Ui) {
 /// 8-bit level in every channel: the tables err under 6e-4 of coverage
 /// against the shaded form's 0.0011, so the two can round apart by a level
 /// and no more. And they are in use: some pixel does round apart, which a
-/// frame that never read a table could not show.
+/// frame that never read a table could not show. The same holds for the two
+/// shadows past the viewport's edge, whose off-screen corners read no table
+/// and no shaded cutout either.
 #[test]
 fn baked_cutout_tables_match_the_shaded_cutout() {
-    let size = UVec2::new(800, 1600);
+    let size = UVec2::new(800, 1840);
     let mut baked = Harness::new();
     let mut shaded = Harness::new();
     shaded.host.disable_cutout_tables();

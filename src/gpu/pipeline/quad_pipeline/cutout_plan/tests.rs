@@ -1,5 +1,5 @@
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, CornerTables, CutoutPlan, fit_radii, spread_radius,
+    BakeTable, CornerTables, CutoutPlan, ShadowEntry, fit_radii, spread_radius,
 };
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -59,7 +59,9 @@ fn radius_rules_follow_the_shader() {
 /// share the key `(8, 16)`. `reach = 64.5`, and the side is
 /// `floor((8 + 129) · 10 / 16) + 2 = 87` texels, at cell `(0, 0)`. An
 /// inset shadow with the same key reuses the table, and so does a second
-/// drop shadow, so the frame bakes one.
+/// drop shadow, so the frame bakes one. Every shadow reads its corners from
+/// it, so each draws through the tables entry, and the quad between them,
+/// which is no shadow, through the general one.
 #[test]
 fn equal_corners_share_one_table() {
     let quads = [
@@ -87,32 +89,49 @@ fn equal_corners_share_one_table() {
             CornerTables([code; 4]),
         ],
     );
+    assert_eq!(
+        plan.entries(),
+        [
+            ShadowEntry::Tables,
+            ShadowEntry::General,
+            ShadowEntry::Tables,
+            ShadowEntry::Tables,
+        ],
+    );
 }
 
 /// A corner keeps the shaded cutout when its blur is below the cutout form,
 /// when it has no radius to cut, when its table would pass the side budget,
 /// and when baking is off. A frame with no shadow plans nothing at all.
+///
+/// Only a corner with a radius needs its table, so a shadow with no radius
+/// still draws through the tables entry, and the rest through the general
+/// one.
 #[test]
 fn corners_without_a_table_keep_the_shaded_cutout() {
     let none = CornerTables([CutoutPlan::NONE; 4]);
-    for (label, quad) in [
+    for (label, quad, entry) in [
         (
             "blur below the cutout form",
             shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, 0.2),
+            ShadowEntry::General,
         ),
         (
             "no radius",
             shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 0.0, 16.0),
+            ShadowEntry::Tables,
         ),
         // σ = 0.25 against a radius of 40: (40 + 3) · 40 + 2 = 1722 texels.
         (
             "past the side budget",
             shadow(FillKind::SHADOW_INSET, 400.0, 300.0, 40.0, 0.25),
+            ShadowEntry::General,
         ),
     ] {
         let plan = plan(&[quad]);
         assert!(plan.tables().is_empty(), "{label}");
         assert_eq!(plan.corners(), [none], "{label}");
+        assert_eq!(plan.entries(), [entry], "{label}");
     }
     let mut off = CutoutPlan::default();
     off.build(
@@ -122,7 +141,10 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
     );
     assert!(off.tables().is_empty());
     assert_eq!(off.corners(), [none], "baking off");
-    assert!(plan(&[Quad::default()]).corners().is_empty(), "no shadow");
+    assert_eq!(off.entries(), [ShadowEntry::General], "baking off");
+    let no_shadow = plan(&[Quad::default()]);
+    assert!(no_shadow.corners().is_empty(), "no shadow");
+    assert!(no_shadow.entries().is_empty(), "no shadow");
 }
 
 /// Tables pack tallest first along a shelf of cells, start a new shelf when
@@ -172,6 +194,10 @@ fn tables_pack_into_shelves_until_the_atlas_is_full() {
 /// shade cheaper and 54 do not: 13 shadows of 4 corners keep the shaded
 /// cutout, 14 get the table. A region the frame does not draw costs
 /// nothing to shade, so a shadow outside the damage adds nothing.
+///
+/// The entry follows the drawn corners: shaded ones draw through the general
+/// entry, and a shadow whose untabled corners the frame does not draw
+/// through the tables one, whether it draws none of them or some.
 #[test]
 fn a_table_is_baked_where_it_is_cheaper_than_shading() {
     let full = |region: Rect| region.size.w * region.size.h;
@@ -184,10 +210,18 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
             })
             .collect()
     };
-    for (n, baked) in [(13, false), (14, true)] {
+    for (n, baked, entry) in [
+        (13, false, ShadowEntry::General),
+        (14, true, ShadowEntry::Tables),
+    ] {
         let mut plan = CutoutPlan::default();
         plan.build(&shadows(n, 0.0), true, full);
         assert_eq!(plan.tables().len(), usize::from(baked), "{n} shadows");
+        assert!(
+            plan.entries().iter().all(|e| *e == entry),
+            "{n} shadows: {:?}",
+            plan.entries(),
+        );
     }
     // 13 shadows on screen and 1 off it: still not worth a table.
     let mut quads = shadows(13, 0.0);
@@ -206,4 +240,50 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
             .iter()
             .all(|corners| *corners == CornerTables([CutoutPlan::NONE; 4]))
     );
+    let mut want = vec![ShadowEntry::General; 13];
+    want.push(ShadowEntry::Tables);
+    assert_eq!(plan.entries(), want, "the one off screen draws nothing");
+    // Only the left half of the frame is drawn, to x = 60: the right
+    // corners' regions start at `100 − 8 − 8 − 8.5 = 75.5`, so none is
+    // drawn and the shaded left corners decide.
+    let mut plan = CutoutPlan::default();
+    plan.build(&shadows(1, 0.0), true, |region| {
+        region
+            .intersect(Rect::new(0.0, 0.0, 60.0, 100.0))
+            .map_or(0.0, full)
+    });
+    assert_eq!(plan.entries(), [ShadowEntry::General]);
+    // Only a band at x ≥ 80 is drawn: the left corners' regions end at
+    // `8 + 8 + 8.5 = 24.5`, so only the right corners are drawn, and 14
+    // shadows of two drawn corners each do not pay for a table either.
+    plan.build(&shadows(14, 0.0), true, |region| {
+        region
+            .intersect(Rect::new(80.0, 0.0, 20.0, 100.0))
+            .map_or(0.0, full)
+    });
+    assert!(plan.tables().is_empty());
+    assert!(plan.entries().iter().all(|e| *e == ShadowEntry::General));
+    // The top half drawn, to y = 50, over 28 shadows rounded 8 on top and 4
+    // below: 56 drawn top corners pay for the `(8, 2)` table, and the bottom
+    // ones, whose regions start at `92 − 4 − 8.5 = 79.5`, are not drawn, so
+    // their `(4, 2)` key gets none and every shadow still reads tables.
+    let quads: Vec<Quad> = shadows(28, 0.0)
+        .into_iter()
+        .map(|quad| Quad {
+            corners: Corners::new(8.0, 8.0, 4.0, 4.0),
+            ..quad
+        })
+        .collect();
+    plan.build(&quads, true, |region| {
+        region
+            .intersect(Rect::new(0.0, 0.0, 100.0, 50.0))
+            .map_or(0.0, full)
+    });
+    assert_eq!(plan.tables().len(), 1);
+    let code = plan.tables()[0].table;
+    assert_eq!(
+        plan.corners()[0],
+        CornerTables([code, code, CutoutPlan::NONE, CutoutPlan::NONE]),
+    );
+    assert!(plan.entries().iter().all(|e| *e == ShadowEntry::Tables));
 }

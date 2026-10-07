@@ -99,15 +99,17 @@ target directory.
 `benches/bench-perf.sh` (Linux) profiles the bench under the rules above,
 with `perf` on the other cores. Its header lists the options. It needs
 `sudo sysctl kernel.perf_event_paranoid=-1 kernel.nmi_watchdog=0`, and
-warns when either is missing.
+warns when either is missing. It builds the binary `cargo bench` builds,
+so a profile after a bench run, or a bench run after a profile, rebuilds
+nothing.
 
-| pass | Intel | AMD | output in `tmp/` |
-|---|---|---|---|
-| counters | `cpu_core/…/` events | `perf stat -d` | `palantir-perf-stat.txt` |
-| microarch | `-M TopdownL1` | `-M branch_prediction,tlb`¹ | `palantir-perf-micro.txt` |
-| callgraph | cycles, `dwarf,65528` or LBR | cycles, `dwarf,65528` | `palantir-perf.data`, `-report.txt` |
-| precise IP | `cycles/ppp` (PEBS) | `ibs_op//` (IBS) | `palantir-perf-ibs.data`, `-ibs.txt` |
-| data source | `perf mem -t load --ldlat=50` | `perf mem` | `palantir-perf-mem.data`, `-mem.txt` |
+| pass        | Intel                         | AMD                         | output in `tmp/`                     |
+| ----------- | ----------------------------- | --------------------------- | ------------------------------------ |
+| counters    | `cpu_core/…/` events          | `perf stat -d`              | `palantir-perf-stat.txt`             |
+| microarch   | `-M TopdownL1`                | `-M branch_prediction,tlb`¹ | `palantir-perf-micro.txt`            |
+| callgraph   | cycles, `dwarf,65528` or LBR  | cycles, `dwarf,65528`       | `palantir-perf.data`, `-report.txt`  |
+| precise IP  | `cycles/ppp` (PEBS)           | `ibs_op//` (IBS)            | `palantir-perf-ibs.data`, `-ibs.txt` |
+| data source | `perf mem -t load --ldlat=50` | `perf mem`                  | `palantir-perf-mem.data`, `-mem.txt` |
 
 ¹ `Pipeline_Util_Level1` where perf offers it (Zen4+).
 

@@ -113,6 +113,7 @@ use crate::gpu::pipeline::format_pipelines::PipelineSources;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::TextBackend;
@@ -803,10 +804,10 @@ impl WgpuBackend {
         enum Bound {
             None,
             QuadInstance,
-            /// The quad instances through the shadow pipeline: the same
-            /// buffer and bind group, another pipeline, and the cutout
-            /// tables beside them.
-            ShadowInstance,
+            /// The quad instances through a shadow pipeline: the same
+            /// buffer and bind group, another pipeline per entry, and the
+            /// cutout tables beside them.
+            ShadowInstance(ShadowEntry),
             Mesh,
             Image,
             Curve,
@@ -924,11 +925,23 @@ impl WgpuBackend {
             RenderStep::Shadows { range } => {
                 mark(pass, BatchKind::Shadows);
                 debug_marker::push(pass, "shadows");
-                rebind(&mut bound, Bound::ShadowInstance, pass, viewport, |pass| {
-                    self.quad
-                        .bind_shadows(pass, &fmt.quad.shadow, use_stencil, &self.gradient.bg);
-                });
-                self.quad.draw_shadows(pass, range);
+                for run in self.quad.shadow_runs(range) {
+                    rebind(
+                        &mut bound,
+                        Bound::ShadowInstance(run.entry),
+                        pass,
+                        viewport,
+                        |pass| {
+                            self.quad.bind_shadows(
+                                pass,
+                                fmt.quad.shadow(run.entry),
+                                use_stencil,
+                                &self.gradient.bg,
+                            );
+                        },
+                    );
+                    self.quad.draw_shadows(pass, run.instances);
+                }
                 debug_marker::pop(pass);
             }
             RenderStep::Text { batch } => {
