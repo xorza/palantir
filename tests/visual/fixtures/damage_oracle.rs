@@ -13,8 +13,8 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RgbaF32, Sizing,
-    Stroke, Text,
+    Background, Block, Brush, Configure, Image, ImageFit, ImageHandle, Layer, Panel,
+    RadialGradient, RgbaF32, Sizing, Stroke, Text,
 };
 
 use crate::goldens::assert_same;
@@ -49,9 +49,20 @@ impl Knobs {
 }
 
 fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
+    // Translucent and varying in both axes, so every damaged pixel blends a
+    // value of its own over the clear: a partial repaint over its pre-clear,
+    // a full one over its `LoadOp::Clear`.
+    let veil = RadialGradient::two_stop(
+        RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
+        RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
+    );
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
+        .background(Background {
+            fill: Brush::Radial(veil),
+            ..Default::default()
+        })
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()

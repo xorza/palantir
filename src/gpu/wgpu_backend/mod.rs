@@ -409,12 +409,12 @@ impl WgpuBackend {
 
         let overlay_count = self.upload_frame(&mut encoder, &submission, &repaint_scissors);
 
-        // Alpha forced to 1 — the clear is the frame's bottom paint layer.
+        let clear = clear.unpack();
         let clear_color = wgpu::Color {
             r: f64::from(clear.r),
             g: f64::from(clear.g),
             b: f64::from(clear.b),
-            a: 1.0,
+            a: f64::from(clear.a),
         };
         // Shared field borrow (the entry was built by `ensure_format`
         // above) — coexists with the `&self` pass methods.
