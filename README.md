@@ -251,7 +251,7 @@ Run the bundled
 for a tour of every widget:
 
 ```sh
-cargo run --release --example showcase
+cargo run --profile release-dev --example showcase
 ```
 
 Widget authoring lives in `palantir::widget`. The crate root is what an
