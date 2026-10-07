@@ -407,7 +407,7 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
-        let overlay_count = self.upload_frame(&mut encoder, &submission, &repaint_scissors);
+        let overlay_count = self.upload_frame(&mut encoder, &submission);
 
         let clear = clear.unpack();
         let clear_color = wgpu::Color {
@@ -498,18 +498,14 @@ impl WgpuBackend {
     /// texture and dynamic-buffer write the frame's passes will read,
     /// recorded onto `encoder` before any render pass opens. Returns the
     /// damage-overlay instance count for the post-copy overlay pass.
-    fn upload_frame(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        sub: &Submission<'_>,
-        scissors: &RepaintScissors,
-    ) -> u32 {
+    fn upload_frame(&mut self, encoder: &mut wgpu::CommandEncoder, sub: &Submission<'_>) -> u32 {
         let Submission {
             owner,
             targets,
             store,
             buffer,
             plan,
+            cutouts,
             debug_overlay,
         } = *sub;
         // All four read off the submission rather than carried beside
@@ -550,8 +546,7 @@ impl WgpuBackend {
             self.quad.upload_masks(&mut ctx, self.mask_plan.quads());
         }
 
-        self.quad
-            .upload(&mut ctx, &buffer.quads, scissors, buffer.display.physical);
+        self.quad.upload(&mut ctx, &buffer.quads, cutouts);
         self.mesh.upload(
             &mut ctx,
             MeshUpload {
@@ -1040,6 +1035,12 @@ impl WgpuBackend {
         );
     }
 
+    /// Whether this device bakes shadow cutout tables: what every window's
+    /// `CutoutPlan` is built with.
+    pub(crate) const fn bakes_cutouts(&self) -> bool {
+        self.quad.bakes_cutouts()
+    }
+
     /// The device every window's per-window attachment is built against,
     /// for a host to size its own [`Backbuffer`] and [`Stencil`].
     pub(crate) const fn device(&self) -> &wgpu::Device {
@@ -1165,12 +1166,6 @@ pub(crate) mod internals {
     use crate::gpu::wgpu_backend::WgpuBackend;
 
     impl WgpuBackend {
-        /// Shade every shadow corner's cutout from now on instead of baking
-        /// tables: the reference the tables are compared with.
-        pub(crate) const fn disable_cutout_tables(&mut self) {
-            self.quad.disable_cutout_tables();
-        }
-
         /// Draw every shadow as one cell of the full form instead of its
         /// grid: the reference the grid is compared with. Drops the built
         /// pipelines, so the next frame builds them with the reference.

@@ -132,6 +132,23 @@ const _: () = assert!(
 );
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::surface::viewport::{PartialScissors, RepaintScissors};
+    use crate::primitives::geometry::urect::URect;
+    use tinyvec::ArrayVec;
+
+    impl RepaintScissors {
+        /// A partial repaint inside `rects`, as `build_repaint_scissors`
+        /// would make one.
+        pub(crate) fn partial(rects: &[URect]) -> Self {
+            Self::Partial(PartialScissors::new(
+                rects.iter().copied().collect::<ArrayVec<_>>(),
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use crate::damage::Damage;
     use crate::damage::region::DamageRegion;

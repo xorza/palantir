@@ -98,6 +98,7 @@ impl HostCore {
     /// [`WindowDriver::builder`].
     pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
         WindowDriver::builder(token, &self.resources, self.pixel_snap)
+            .bake_cutouts(self.backend.bakes_cutouts())
     }
 
     /// Retire a closed window's render stream, freeing the `GpuView` targets
