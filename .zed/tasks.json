@@ -2,7 +2,7 @@
     {
         "label": "Run showcase",
         "command": "cargo",
-        "args": ["run", "--release", "--example", "showcase"],
+        "args": ["run", "--release-dev", "--example", "showcase"],
         "env": { "RUST_BACKTRACE": "1" },
         "cwd": "$ZED_WORKTREE_ROOT",
         "use_new_terminal": false,
