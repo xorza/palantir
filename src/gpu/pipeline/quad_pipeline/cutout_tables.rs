@@ -1,6 +1,7 @@
 //! The GPU half of the shadow cutout tables: the atlas they are baked into,
 //! the bake pass, and the per-instance stream `vs_shadow` reads beside the
-//! quads. The CPU half, which tables and where, is [`CutoutPlan`].
+//! quads. The CPU half, which tables and where, is [`CutoutPlan`], which
+//! each window keeps, since its census describes that window's frames.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
@@ -8,20 +9,15 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutPlan, ShadowEntry,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::surface::viewport::RepaintScissors;
-use crate::primitives::geometry::rect::Rect;
-use crate::renderer::quad::Quad;
-use glam::{UVec2, Vec2};
 use std::slice;
 
 /// The atlas, the bake pipeline and this frame's tables.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    plan: CutoutPlan,
-    /// Whether tables are baked at all. Off on GL, where `R32Float` is a
-    /// render target only with `EXT_color_buffer_float`: every corner
-    /// keeps the shaded cutout, and the atlas is a 1×1 stand-in the bind
-    /// group still needs.
+    /// Whether tables can be baked at all. Not on GL, where `R32Float` is a
+    /// render target only with `EXT_color_buffer_float`: every corner keeps
+    /// the shaded cutout, and the atlas is a 1×1 stand-in the bind group
+    /// still needs.
     bake: bool,
     atlas: wgpu::TextureView,
     layout: wgpu::BindGroupLayout,
@@ -29,6 +25,8 @@ pub(crate) struct CutoutTables {
     bake_pipeline: wgpu::RenderPipeline,
     tables: DynamicBuffer<BakeTable>,
     corners: DynamicBuffer<CornerTables>,
+    /// The uploaded plan's [`ShadowEntry`] per quad, beside `corners`.
+    entries: Vec<ShadowEntry>,
 }
 
 impl CutoutTables {
@@ -105,7 +103,6 @@ impl CutoutTables {
         }
         .build(device);
         Self {
-            plan: CutoutPlan::default(),
             bake,
             atlas,
             layout,
@@ -113,7 +110,14 @@ impl CutoutTables {
             bake_pipeline,
             tables: DynamicBuffer::vertex(device, "palantir.quad.cutouts.tables", 16),
             corners: DynamicBuffer::vertex(device, "palantir.quad.cutouts.corners", 256),
+            entries: Vec::new(),
         }
+    }
+
+    /// Whether this device can bake tables: what every window's
+    /// [`CutoutPlan`] is built with.
+    pub(crate) const fn bakes(&self) -> bool {
+        self.bake
     }
 
     /// Group 1 of the shadow pipeline: the atlas.
@@ -131,32 +135,13 @@ impl CutoutTables {
         }
     }
 
-    /// Plan this frame's tables for `quads`, given that the frame repaints
-    /// inside `scissors` of a `viewport` in physical pixels, upload them,
-    /// and bake them on `ctx`'s encoder, ahead of the pass that draws the
-    /// shadows.
-    pub(crate) fn prepare(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        quads: &[Quad],
-        scissors: &RepaintScissors,
-        viewport: UVec2,
-    ) {
-        let viewport = Rect::from_min_max(Vec2::ZERO, viewport.as_vec2());
-        self.plan.build(quads, self.bake, |region| match scissors {
-            RepaintScissors::Full => region
-                .intersect(viewport)
-                .map_or(0.0, |share| share.size.w * share.size.h),
-            // Scissors that overlap count the overlap twice, which can only
-            // tip a marginal key toward a table.
-            RepaintScissors::Partial(rects) => rects
-                .iter()
-                .filter_map(|rect| region.intersect(Rect::from(rect)))
-                .map(|share| share.size.w * share.size.h)
-                .sum(),
-        });
-        self.corners.upload_instances(ctx, self.plan.corners());
-        let tables = self.plan.tables();
+    /// Upload `plan`'s corner tables and bake its tables on `ctx`'s
+    /// encoder, ahead of the pass that draws the shadows.
+    pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, plan: &CutoutPlan) {
+        self.corners.upload_instances(ctx, plan.corners());
+        self.entries.clear();
+        self.entries.extend_from_slice(plan.entries());
+        let tables = plan.tables();
         if tables.is_empty() {
             return;
         }
@@ -167,10 +152,12 @@ impl CutoutTables {
                 view: &self.atlas,
                 depth_slice: None,
                 resolve_target: None,
-                // Every texel a table reads is baked this frame; the rest
-                // is never read, so it needs no clear.
+                // Every texel a repainted pixel reads is baked this frame;
+                // the rest is never read. So the pass keeps nothing: a load
+                // would read the whole atlas into tile memory, which on a
+                // tiler costs as much as a frame's shading.
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -186,7 +173,7 @@ impl CutoutTables {
 
     /// Each quad's [`ShadowEntry`] this frame, parallel to the quads.
     pub(crate) fn entries(&self) -> &[ShadowEntry] {
-        self.plan.entries()
+        &self.entries
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.
@@ -196,10 +183,12 @@ impl CutoutTables {
     }
 }
 
-const BAKE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
+const BAKE_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Uint32,
     1 => Float32,
     2 => Float32,
+    3 => Uint16x2,
+    4 => Uint16x2,
 ];
 
 const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![9 => Uint32x4];
@@ -211,17 +200,6 @@ const _: () = {
     assert!(BAKE_ATTRS[0].offset == offset_of!(BakeTable, table) as u64);
     assert!(BAKE_ATTRS[1].offset == offset_of!(BakeTable, r) as u64);
     assert!(BAKE_ATTRS[2].offset == offset_of!(BakeTable, sigma) as u64);
+    assert!(BAKE_ATTRS[3].offset == offset_of!(BakeTable, lo) as u64);
+    assert!(BAKE_ATTRS[4].offset == offset_of!(BakeTable, hi) as u64);
 };
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
-
-    impl CutoutTables {
-        /// Shade every corner's cutout from now on, as a backend without
-        /// tables does: the reference the baked tables are compared with.
-        pub(crate) const fn disable_baking(&mut self) {
-            self.bake = false;
-        }
-    }
-}

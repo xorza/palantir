@@ -10,7 +10,7 @@ use crate::display::Display;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
@@ -134,7 +134,7 @@ pub(crate) struct RenderBuffer {
     /// (or pre-clears, on partial frames) to this color instead of the
     /// plan's — pixel-identical output, minus the hidden underlay and the
     /// full-surface fragment load of the biggest quad in the frame.
-    pub(crate) clear_override: Option<RgbaF32>,
+    pub(crate) clear_override: Option<RgbaF16>,
     /// The display this buffer was composed for — the frame input every
     /// consumer of the buffer needs a piece of. `physical` is the
     /// backend's default scissor when a group has no clip, and

@@ -515,9 +515,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
 
     let vp = UVec2::new(200, 200);
     let bg = RgbaF32::srgb(0.14, 0.16, 0.22);
-    // The override rides a RgbaF16 lane; expected value is the f16
-    // round-trip of the input, not the input itself.
-    let folded = RgbaF16::from(bg).unpack();
+    let folded = RgbaF16::from(bg);
 
     // (case, builder, expected quad count, expected override)
     let cases: &[(&str, Build, usize, Option<RgbaF32>)] = &[
@@ -622,7 +620,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             *want_quads,
             "{name}: quad count after fold decision",
         );
-        let want = want_override.map(|c| RgbaF16::from(c).unpack());
+        let want = want_override.map(RgbaF16::from);
         assert_eq!(buf.clear_override, want, "{name}: clear_override");
     }
 
@@ -669,7 +667,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         &params(1.0, vp),
     );
 
-    let folded = RgbaF16::from(RgbaF32::srgb(1.0, 1.0, 1.0)).unpack();
+    let folded = RgbaF16::from(RgbaF32::srgb(1.0, 1.0, 1.0));
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
     // Underlay gone: only the post-cover quad + text survive, in one
     // unscissored group (the pre-cover clipped group was discarded).

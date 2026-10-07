@@ -1027,7 +1027,7 @@ impl ComposeSession<'_> {
             return false;
         }
         self.discard_composed();
-        self.out.clear_override = Some(p.fill.color.unpack());
+        self.out.clear_override = Some(p.fill.color);
         true
     }
 

@@ -2,6 +2,7 @@
 //! shader body, with the Rust-owned constants of both substituted in.
 
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
+use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::raster::raster_atlas::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
 };
@@ -77,6 +78,9 @@ impl ShaderBody {
                 ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
                 ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
                 ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+                ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
+                ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
+                ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
                 // `Pad` is not pinned: it is `apply_spread`'s fallback,
                 // which is also the right answer for a mode the shader
                 // does not know, so nothing there compares against it.
@@ -84,6 +88,7 @@ impl ShaderBody {
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
                 ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeom::REACH_SIGMAS),
                 ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
+                ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
                 ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
                 ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
                 ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
