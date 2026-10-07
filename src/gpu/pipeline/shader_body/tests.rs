@@ -76,15 +76,18 @@ fn every_pinned_shader_constant_is_read() {
 }
 
 /// The quad shader's `fs` never reaches the blurred-corner integral, and
-/// `fs_shadow` does.
+/// `fs_shadow` does. `fs_shadow_tables` reaches only the tabled form: no
+/// shaded cutout and no outline integral.
 ///
 /// A pipeline gets the registers and code of everything its entry
 /// reaches. With the integral reachable from `fs`, the pipeline of every
 /// quad — a plain rectangle too — carried 56 VGPRs and 50 KB of code on
 /// RDNA2 instead of 40 and 4 KB. The schedule routes shadows to
-/// `fs_shadow`, so nothing else needs the integral.
+/// `fs_shadow`, so nothing else needs the integral. On the Pi 5's V3D,
+/// `fs_shadow_tables` compiles to a seventh of the instructions of
+/// `fs_shadow`, which a shadow whose corners all read tables never runs.
 #[test]
-fn only_the_shadow_entry_reaches_the_blur_integral() {
+fn only_the_shadow_entries_reach_the_blur_integral() {
     let source = strip_comments(&ShaderBody::Quad.specialize());
     let reaches = |entry: &str| reachable_functions(&source, entry);
     for heavy in [
@@ -97,8 +100,19 @@ fn only_the_shadow_entry_reaches_the_blur_integral() {
     ] {
         assert!(!reaches("fs").contains(heavy), "`fs` reaches `{heavy}`");
         assert!(
+            !reaches("fs_shadow_tables").contains(heavy),
+            "`fs_shadow_tables` reaches `{heavy}`"
+        );
+        assert!(
             reaches("fs_shadow").contains(heavy),
             "`fs_shadow` lost `{heavy}`"
+        );
+    }
+    for tabled in ["tabled_coverage", "tabled_cutout", "cutout_lookup"] {
+        assert!(!reaches("fs").contains(tabled), "`fs` reaches `{tabled}`");
+        assert!(
+            reaches("fs_shadow_tables").contains(tabled),
+            "`fs_shadow_tables` lost `{tabled}`"
         );
     }
     assert!(

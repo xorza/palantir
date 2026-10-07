@@ -10,6 +10,7 @@ mod cutout_tables;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
@@ -28,9 +29,9 @@ use std::slice;
 
 /// Every quad pipeline one swapchain format needs.
 ///
-/// Four, not one: shadows draw through a fragment entry of their own, and
-/// the two mask variants write the stencil instead of colour, through a
-/// third. They are built together because they share a layout, and held
+/// Five, not one: shadows draw through two fragment entries of their own,
+/// and the two mask variants write the stencil instead of colour, through a
+/// fourth. They are built together because they share a layout, and held
 /// together because the schedule reaches for whichever the step calls for.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
@@ -40,12 +41,27 @@ pub(crate) struct QuadVariants {
     /// also read the baked corner cutouts ([`CutoutTables`]). Apart from
     /// `fs` so that the blur integral's registers and code stay out of
     /// every other quad's pipeline.
-    pub(crate) shadow: StencilVariant,
+    shadow_general: StencilVariant,
+    /// The shadows whose every drawn corner reads a table, through
+    /// `vs_shadow` and `fs_shadow_tables`. Apart from `shadow_general` for
+    /// the reason that one is apart from `fs`: the shaded cutout and the
+    /// outline integral stay out of it.
+    shadow_tables: StencilVariant,
     /// Deepens a rounded-clip chain by one level. See
     /// [`Stencil::stamp_state`].
     pub(crate) mask_stamp: wgpu::RenderPipeline,
     /// Resets a stamped chain. See [`Stencil::clear_state`].
     pub(crate) mask_clear: wgpu::RenderPipeline,
+}
+
+impl QuadVariants {
+    /// The shadow pipelines `entry` draws through.
+    pub(crate) const fn shadow(&self, entry: ShadowEntry) -> &StencilVariant {
+        match entry {
+            ShadowEntry::Tables => &self.shadow_tables,
+            ShadowEntry::General => &self.shadow_general,
+        }
+    }
 }
 
 /// Format-independent quad resources. The format-dependent render
@@ -268,6 +284,23 @@ impl QuadPipeline {
         };
         let shadow_buffers = [instance.clone(), Some(CutoutTables::corner_layout())];
         let shadow_constants = [("SHADOW_GRID", f64::from(u8::from(self.shadow_grid)))];
+        let shadow = |label, stencil_label, fragment_entry| {
+            StencilVariant::build(
+                device,
+                ColorVariantSpec {
+                    label,
+                    stencil_label,
+                    shader: &self.shader,
+                    vertex_entry: "vs_shadow",
+                    fragment_entry,
+                    constants: &shadow_constants,
+                    layout: &self.shadow_layout,
+                    vertex_buffers: &shadow_buffers,
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                },
+                format,
+            )
+        };
         QuadVariants {
             color: StencilVariant::build(
                 device,
@@ -284,20 +317,15 @@ impl QuadPipeline {
                 },
                 format,
             ),
-            shadow: StencilVariant::build(
-                device,
-                ColorVariantSpec {
-                    label: "palantir.quad.pipeline.shadow",
-                    stencil_label: "palantir.quad.pipeline.shadow.stencil_test",
-                    shader: &self.shader,
-                    vertex_entry: "vs_shadow",
-                    fragment_entry: "fs_shadow",
-                    constants: &shadow_constants,
-                    layout: &self.shadow_layout,
-                    vertex_buffers: &shadow_buffers,
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                },
-                format,
+            shadow_general: shadow(
+                "palantir.quad.pipeline.shadow",
+                "palantir.quad.pipeline.shadow.stencil_test",
+                "fs_shadow",
+            ),
+            shadow_tables: shadow(
+                "palantir.quad.pipeline.shadow_tables",
+                "palantir.quad.pipeline.shadow_tables.stencil_test",
+                "fs_shadow_tables",
             ),
             mask_stamp: mask("palantir.quad.pipeline.mask_stamp", Stencil::stamp_state()),
             mask_clear: mask("palantir.quad.pipeline.mask_clear", Stencil::clear_state()),
@@ -360,6 +388,18 @@ impl QuadPipeline {
         pass.draw(0..4, instances.into());
     }
 
+    /// The runs of `instances`, a shadow step's span of the uploaded quads,
+    /// that each draw through one [`ShadowEntry`], in paint order. Every
+    /// shadow draws through [`ShadowEntry::General`] in the one-cell
+    /// reference, whose form is that entry's alone.
+    pub(crate) fn shadow_runs(&self, instances: Span) -> ShadowRuns<'_> {
+        ShadowRuns {
+            entries: self.shadow_grid.then(|| self.cutouts.entries()),
+            next: instances.start,
+            end: instances.start + instances.len,
+        }
+    }
+
     /// [`Self::draw`] for shadows bound by [`Self::bind_shadows`]: each
     /// instance is the eight cells of its grid around the hole, two
     /// triangles each (`vs_shadow`).
@@ -368,6 +408,52 @@ impl QuadPipeline {
             return;
         }
         pass.draw(0..SHADOW_GRID_VERTICES, instances.into());
+    }
+}
+
+/// One run of [`QuadPipeline::shadow_runs`]: instances that draw through
+/// one entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ShadowRun {
+    pub(crate) entry: ShadowEntry,
+    pub(crate) instances: Span,
+}
+
+/// See [`QuadPipeline::shadow_runs`].
+#[derive(Debug)]
+pub(crate) struct ShadowRuns<'a> {
+    /// The plan's entry per quad, or `None` in the reference, where every
+    /// instance reads [`ShadowEntry::General`].
+    entries: Option<&'a [ShadowEntry]>,
+    next: u32,
+    end: u32,
+}
+
+impl ShadowRuns<'_> {
+    /// The plan holds an entry for every quad of the frame, so an instance
+    /// past its entries is a span from another frame: a panic, not a guess.
+    fn entry(&self, at: u32) -> ShadowEntry {
+        self.entries
+            .map_or(ShadowEntry::General, |entries| entries[at as usize])
+    }
+}
+
+impl Iterator for ShadowRuns<'_> {
+    type Item = ShadowRun;
+
+    fn next(&mut self) -> Option<ShadowRun> {
+        if self.next >= self.end {
+            return None;
+        }
+        let start = self.next;
+        let entry = self.entry(start);
+        while self.next < self.end && self.entry(self.next) == entry {
+            self.next += 1;
+        }
+        Some(ShadowRun {
+            entry,
+            instances: Span::new(start, self.next - start),
+        })
     }
 }
 
@@ -423,5 +509,54 @@ pub(crate) mod internals {
         pub(crate) const fn disable_shadow_grid(&mut self) {
             self.shadow_grid = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::span::Span;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
+    use crate::gpu::pipeline::quad_pipeline::{ShadowRun, ShadowRuns};
+
+    /// A step's span splits where the entry changes, in paint order, and
+    /// starts and ends where the span does, not where the entries do. In
+    /// the one-cell reference, which has no entries, the span is one run of
+    /// the general entry.
+    #[test]
+    fn shadow_runs_split_a_span_where_the_entry_changes() {
+        use ShadowEntry::{General, Tables};
+        let entries = [Tables, Tables, General, Tables, Tables, Tables, General];
+        let runs = |entries: Option<&[ShadowEntry]>, start: u32, len: u32| -> Vec<ShadowRun> {
+            ShadowRuns {
+                entries,
+                next: start,
+                end: start + len,
+            }
+            .collect()
+        };
+        let run = |entry, start, len| ShadowRun {
+            entry,
+            instances: Span::new(start, len),
+        };
+        assert_eq!(
+            runs(Some(&entries), 1, 5),
+            [run(Tables, 1, 1), run(General, 2, 1), run(Tables, 3, 3)],
+        );
+        assert_eq!(runs(Some(&entries), 3, 2), [run(Tables, 3, 2)]);
+        assert!(runs(Some(&entries), 2, 0).is_empty());
+        assert_eq!(runs(None, 4, 3), [run(General, 4, 3)]);
+    }
+
+    /// A span past the plan's entries comes from another frame's quads.
+    #[test]
+    #[should_panic(expected = "index out of bounds")]
+    fn a_span_past_the_plan_panics() {
+        let entries = [ShadowEntry::Tables; 2];
+        let _ = ShadowRuns {
+            entries: Some(&entries),
+            next: 1,
+            end: 3,
+        }
+        .count();
     }
 }

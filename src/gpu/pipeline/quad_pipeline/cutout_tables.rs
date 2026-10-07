@@ -4,7 +4,9 @@
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CornerTables, CutoutPlan};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
+    BakeTable, CornerTables, CutoutPlan, ShadowEntry,
+};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::rect::Rect;
@@ -180,6 +182,11 @@ impl CutoutTables {
         pass.set_pipeline(&self.bake_pipeline);
         pass.set_vertex_buffer(0, self.tables.buffer.slice(..));
         pass.draw(0..4, 0..tables.len() as u32);
+    }
+
+    /// Each quad's [`ShadowEntry`] this frame, parallel to the quads.
+    pub(crate) fn entries(&self) -> &[ShadowEntry] {
+        self.plan.entries()
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.

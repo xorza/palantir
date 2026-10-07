@@ -2,11 +2,11 @@
 //! the atlas each table goes.
 //!
 //! A blurred shadow's coverage from `CUTOUT_MIN_SIGMA` up is its sharp box
-//! less four corner cutouts (`fs_shadow` in `shader.wgsl`), and a cutout
-//! depends only on the corner's radius `r` and the blur `σ`. So a distinct
-//! `(r, σ)` among the frame's shadow corners can get one table, baked every
-//! frame by `fs_cutout_bake`, which a corner reads in place of the cutout's
-//! quadrature. Nothing survives the frame: no frame pays a sweep or a
+//! less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), and a
+//! cutout depends only on the corner's radius `r` and the blur `σ`. So a
+//! distinct `(r, σ)` among the frame's shadow corners can get one table,
+//! baked every frame by `fs_cutout_bake`, which a corner reads in place of
+//! the cutout's quadrature. Nothing survives the frame: no frame pays a sweep or a
 //! repack that another did not.
 //!
 //! **A table only where it is cheaper.** Shading a corner costs
@@ -18,6 +18,15 @@
 //! sliver. The drawn area is the corner's region inside its quad and the
 //! repaint, so it still counts the pixels a clip or the source's own
 //! interior spares: it can tip a marginal key toward a table, never away.
+//!
+//! **A shadow all of whose drawn corners read tables draws through
+//! `fs_shadow_tables`** ([`ShadowEntry`]), which holds no shaded cutout and
+//! no outline integral and so runs far cheaper on a tiler. Any other shadow
+//! draws through `fs_shadow`. The plan decides both from the one drawn area
+//! (`CutoutCorner::drawn_area`), so a table it skips is never one the
+//! cheaper entry needs. That makes the drawn area a bound and not only a
+//! cost: a region it reads as zero must hold no pixel the frame draws, or
+//! the cheaper entry leaves that pixel's corner uncut.
 //!
 //! The keys follow the shader's own arithmetic on the instance's `f16`
 //! lanes. A last-bit difference between this and the GPU's arithmetic only
@@ -53,12 +62,40 @@ impl CornerTables {
     const NONE: Self = Self([CutoutPlan::NONE; 4]);
 }
 
+/// The fragment entry that draws a shadow quad.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShadowEntry {
+    /// `fs_shadow_tables`: blurred from [`CutoutPlan::MIN_SIGMA`] up, and
+    /// every corner with a radius whose region the frame draws reads a
+    /// table.
+    Tables,
+    /// `fs_shadow`, which draws any shadow: one blurred below the cutout
+    /// form, one with a corner that shades its cutout, and the reference
+    /// every other form is compared with.
+    General,
+}
+
 /// One shadow corner as the plan sees it: the radius its cutout is cut
 /// with, and the screen region where the cutout is not zero.
 #[derive(Clone, Copy, Debug)]
 struct CutoutCorner {
     r: f32,
     region: Rect,
+}
+
+impl CutoutCorner {
+    /// The area of the pixels the frame draws whose cutout this corner
+    /// shades, inside its `shaded` quad, by `visible`: zero for a corner with
+    /// no radius. The quad's fragments are the only ones that shade the
+    /// cutout: an inset hole moved by its offset, or a corner's reach past
+    /// the quad, adds nothing. What a table pays for, and so what
+    /// `fs_shadow_tables` must find a table for.
+    fn drawn_area(&self, shaded: Rect, visible: impl Fn(Rect) -> f32) -> f32 {
+        if self.r <= 0.0 {
+            return 0.0;
+        }
+        self.region.intersect(shaded).map_or(0.0, visible)
+    }
 }
 
 /// The drawn area of the corners that share one key, summed once the keys
@@ -105,6 +142,8 @@ pub(crate) struct CutoutPlan {
     order: Vec<u32>,
     tables: Vec<BakeTable>,
     corners: Vec<CornerTables>,
+    /// [`ShadowEntry`] per quad, parallel to `corners`.
+    entries: Vec<ShadowEntry>,
 }
 
 impl CutoutPlan {
@@ -132,18 +171,21 @@ impl CutoutPlan {
 
     /// Plan the frame's tables for `quads`, given the area of a screen
     /// region the frame draws: its share of the viewport on a full repaint,
-    /// of the damage on a partial one. With `bake` off, every corner keeps
-    /// the shaded cutout.
+    /// of the damage on a partial one. `visible` may count a pixel twice,
+    /// never miss one: zero only for a region the frame draws nothing in.
+    /// With `bake` off, every corner keeps the shaded cutout.
     pub(crate) fn build(&mut self, quads: &[Quad], bake: bool, visible: impl Fn(Rect) -> f32) {
         self.keys.clear();
         self.codes.clear();
         self.tables.clear();
         self.corners.clear();
+        self.entries.clear();
         if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
             return;
         }
         if !bake {
             self.corners.resize(quads.len(), CornerTables::NONE);
+            self.entries.resize(quads.len(), ShadowEntry::General);
             return;
         }
         for quad in quads {
@@ -152,11 +194,8 @@ impl CutoutPlan {
             };
             let sigma = quad.fill_axis.lanes()[2];
             let shaded = quad.shaded_rect();
-            for corner in corners.iter().filter(|corner| corner.r > 0.0) {
-                // The quad's fragments are the only ones that shade the
-                // cutout: an inset hole moved by its offset, or a corner's
-                // reach past the quad, adds nothing.
-                let area = corner.region.intersect(shaded).map_or(0.0, &visible);
+            for corner in &corners {
+                let area = corner.drawn_area(shaded, &visible);
                 if area > 0.0 {
                     self.keys.push(KeyUse {
                         key: CutoutKey::new(corner.r, sigma),
@@ -179,19 +218,33 @@ impl CutoutPlan {
         self.keys.truncate(merged);
         self.pack();
         self.corners.reserve_exact(quads.len());
+        self.entries.reserve_exact(quads.len());
         for quad in quads {
             let Some(corners) = Self::cutout_corners(quad) else {
                 self.corners.push(CornerTables::NONE);
+                self.entries.push(ShadowEntry::General);
                 continue;
             };
             let sigma = quad.fill_axis.lanes()[2];
+            let shaded = quad.shaded_rect();
             // A corner the frame does not draw adds no area to its key, and
             // reads a table only when a drawn corner pays for one.
-            self.corners.push(CornerTables(corners.map(|corner| {
+            let codes = corners.map(|corner| {
                 self.keys
                     .binary_search_by_key(&CutoutKey::new(corner.r, sigma), |used| used.key)
                     .map_or(Self::NONE, |at| self.codes[at])
-            })));
+            });
+            // `fs_shadow_tables` cuts nothing at a corner with no table,
+            // which is its cutout only where no drawn pixel needs one.
+            let tabled = corners.iter().zip(codes).all(|(corner, code)| {
+                code != Self::NONE || corner.drawn_area(shaded, &visible) <= 0.0
+            });
+            self.corners.push(CornerTables(codes));
+            self.entries.push(if tabled {
+                ShadowEntry::Tables
+            } else {
+                ShadowEntry::General
+            });
         }
     }
 
@@ -204,6 +257,12 @@ impl CutoutPlan {
     /// quad is a shadow.
     pub(crate) fn corners(&self) -> &[CornerTables] {
         &self.corners
+    }
+
+    /// Each quad's [`ShadowEntry`], parallel to [`Self::corners`]. A quad
+    /// that is not a shadow reads [`ShadowEntry::General`].
+    pub(crate) fn entries(&self) -> &[ShadowEntry] {
+        &self.entries
     }
 
     /// A table's origin cell and side, as `cutout_origin` and
@@ -268,7 +327,7 @@ impl CutoutPlan {
         }
     }
 
-    /// A shadow quad's corners `(tl, tr, br, bl)` as `fs_shadow` cuts them
+    /// A shadow quad's corners `(tl, tr, br, bl)` as the shader cuts them
     /// out, or `None` for a quad that cuts none out: not a shadow, or
     /// blurred below [`Self::MIN_SIGMA`]. The radii follow the shader's
     /// arithmetic; a corner's region is its `r`×`r` square at the corner of
