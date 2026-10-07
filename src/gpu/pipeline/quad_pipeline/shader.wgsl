@@ -579,11 +579,16 @@ fn normal_cdf(v: f32) -> f32 {
     return 0.5 + 0.5 * erf_approx(v * SQRT_HALF);
 }
 
+// `normal_cdf` given `gauss = exp(−v²/2)`, which is both `erf`'s Gaussian at
+// `v / √2` and `φ(v)`'s, for a caller that also needs that density.
+fn normal_cdf_given(v: f32, gauss: f32) -> f32 {
+    return 0.5 + 0.5 * erf_given(v * SQRT_HALF, gauss);
+}
+
 // ∫ Φ from −∞ to `v`: `v·Φ(v) + φ(v)`.
 fn normal_cdf_integral(v: f32) -> f32 {
-    // `exp(−v²/2)` is both `erf`'s Gaussian at `v / √2` and `φ(v)`'s.
     let gauss = exp(-0.5 * v * v);
-    return v * (0.5 + 0.5 * erf_given(v * SQRT_HALF, gauss)) + INV_SQRT_TAU * gauss;
+    return v * normal_cdf_given(v, gauss) + INV_SQRT_TAU * gauss;
 }
 
 // The CDF at `u` of what one pixel sees of a blurred edge: a Gaussian of
@@ -623,7 +628,7 @@ fn filter_cdf_series(u: f32, sigma: f32) -> f32 {
     let v = u * inv;
     let h = AA_HALF_WIDTH * inv;
     let gauss = exp(-0.5 * v * v);
-    return 0.5 + 0.5 * erf_given(v * SQRT_HALF, gauss) - (h * h / 6.0) * v * INV_SQRT_TAU * gauss;
+    return normal_cdf_given(v, gauss) - (h * h / 6.0) * v * INV_SQRT_TAU * gauss;
 }
 
 // `filter_cdf` in the one form a tables entry was built with
