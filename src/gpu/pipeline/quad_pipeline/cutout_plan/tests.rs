@@ -88,8 +88,9 @@ fn radius_rules_follow_the_shader() {
 /// `floor((8 + 129) · 10 / 16) + 2 = 87` texels, at cell `(0, 0)`. An
 /// inset shadow with the same key reuses the table, and so does a second
 /// drop shadow, so the frame bakes one. Every shadow reads its corners from
-/// it, so each draws through the tables entry, and the quad between them,
-/// which is no shadow, through the general one.
+/// it, so each draws through the wide tables entry, σ = 16 being past
+/// [`CutoutPlan::SERIES_MIN_SIGMA`], and the quad between them, which is no
+/// shadow, through the general one.
 #[test]
 fn equal_corners_share_one_table() {
     let quads = [
@@ -120,12 +121,33 @@ fn equal_corners_share_one_table() {
     assert_eq!(
         plan.entries(),
         [
-            ShadowEntry::Tables,
+            ShadowEntry::TablesWide,
             ShadowEntry::General,
-            ShadowEntry::Tables,
-            ShadowEntry::Tables,
+            ShadowEntry::TablesWide,
+            ShadowEntry::TablesWide,
         ],
     );
+}
+
+/// A tabled shadow's entry follows its blur: below
+/// [`CutoutPlan::SERIES_MIN_SIGMA`] the edges take `filter_cdf`'s
+/// difference form, from it up the series. 8 shadows rounded 8 pay for
+/// their table on either side: at σ = 3.75 each shows `4 · 39²` px of its
+/// corners' regions, 73 008 nodes to shade against `106² · 24 = 269 664`
+/// to bake, and at σ = 4 `4 · 41²` px, 80 688 against `104² · 24 =
+/// 259 584`. So both keys are baked, and only the side of the threshold
+/// tells the two apart.
+#[test]
+fn the_tables_entry_follows_the_blur() {
+    let mut quads = Vec::new();
+    for sigma in [3.75, 4.0] {
+        quads.extend((0..8).map(|_| shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, sigma)));
+    }
+    let plan = plan(&quads);
+    assert_eq!(plan.tables().len(), 2);
+    let mut want = vec![ShadowEntry::Tables; 8];
+    want.extend([ShadowEntry::TablesWide; 8]);
+    assert_eq!(plan.entries(), want);
 }
 
 /// A corner keeps the shaded cutout when its blur is below the cutout form,
@@ -147,7 +169,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
         (
             "no radius",
             shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 0.0, 16.0),
-            ShadowEntry::Tables,
+            ShadowEntry::TablesWide,
         ),
         // σ = 0.25 against a radius of 40: (40 + 3) · 40 + 2 = 1722 texels.
         (

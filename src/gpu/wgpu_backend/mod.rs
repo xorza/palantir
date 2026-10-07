@@ -114,6 +114,7 @@ use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
+use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::TextBackend;
@@ -646,7 +647,7 @@ impl WgpuBackend {
         let mut pass = begin_load_pass(encoder, "palantir.renderer.dim.pass", color_view);
         self.debug.draw_dim(
             &mut pass,
-            fmt.quad.color.select(false),
+            fmt.quad.color(QuadForm::Solid).select(false),
             &self.gradient.bg,
             viewport,
         );
@@ -798,7 +799,8 @@ impl WgpuBackend {
         #[derive(Debug, PartialEq, Eq)]
         enum Bound {
             None,
-            QuadInstance,
+            /// The quad instances through the colour pipeline of a form.
+            QuadInstance(QuadForm),
             /// The quad instances through a shadow pipeline: the same
             /// buffer and bind group, another pipeline per entry, and the
             /// cutout tables beside them.
@@ -872,8 +874,12 @@ impl WgpuBackend {
                 // zero on the first PreClear of a partial pass,
                 // which lands the quad at garbage NDC and skips
                 // the damage-region clear.
-                self.quad
-                    .bind_clear(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
+                self.quad.bind_clear(
+                    pass,
+                    fmt.quad.color(QuadForm::Solid),
+                    use_stencil,
+                    &self.gradient.bg,
+                );
                 viewport.push_into(pass);
                 pass.draw(0..4, 0..1);
                 // Distinct vertex buffer (clear_buffer); next
@@ -910,11 +916,23 @@ impl WgpuBackend {
             RenderStep::Quads { range } => {
                 mark(pass, BatchKind::Quads);
                 debug_marker::push(pass, "quads");
-                rebind(&mut bound, Bound::QuadInstance, pass, viewport, |pass| {
-                    self.quad
-                        .bind(pass, &fmt.quad.color, use_stencil, &self.gradient.bg);
-                });
-                self.quad.draw(pass, range);
+                for run in self.quad.quad_runs(range) {
+                    rebind(
+                        &mut bound,
+                        Bound::QuadInstance(run.key),
+                        pass,
+                        viewport,
+                        |pass| {
+                            self.quad.bind(
+                                pass,
+                                fmt.quad.color(run.key),
+                                use_stencil,
+                                &self.gradient.bg,
+                            );
+                        },
+                    );
+                    self.quad.draw(pass, run.instances);
+                }
                 debug_marker::pop(pass);
             }
             RenderStep::Shadows { range } => {
@@ -923,13 +941,13 @@ impl WgpuBackend {
                 for run in self.quad.shadow_runs(range) {
                     rebind(
                         &mut bound,
-                        Bound::ShadowInstance(run.entry),
+                        Bound::ShadowInstance(run.key),
                         pass,
                         viewport,
                         |pass| {
                             self.quad.bind_shadows(
                                 pass,
-                                fmt.quad.shadow(run.entry),
+                                fmt.quad.shadow(run.key),
                                 use_stencil,
                                 &self.gradient.bg,
                             );
@@ -1028,7 +1046,7 @@ impl WgpuBackend {
         );
         self.debug.draw_overlays(
             &mut pass,
-            fmt.quad.color.select(false),
+            fmt.quad.color(QuadForm::Solid).select(false),
             &self.gradient.bg,
             viewport,
             count,

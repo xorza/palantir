@@ -80,10 +80,13 @@ impl CornerTables {
 /// The fragment entry that draws a shadow quad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ShadowEntry {
-    /// `fs_shadow_tables`: blurred from [`CutoutPlan::MIN_SIGMA`] up, and
-    /// every corner with a radius whose region the viewport shows reads a
-    /// table.
+    /// `fs_shadow_tables`: blurred from [`CutoutPlan::MIN_SIGMA`] to
+    /// [`CutoutPlan::SERIES_MIN_SIGMA`], and every corner with a radius
+    /// whose region the viewport shows reads a table.
     Tables,
+    /// [`Self::Tables`] blurred from [`CutoutPlan::SERIES_MIN_SIGMA`] up,
+    /// whose edges take `filter_cdf`'s series form.
+    TablesWide,
     /// `fs_shadow`, which draws any shadow: one blurred below the cutout
     /// form, one with a corner that shades its cutout, and the reference
     /// every other form is compared with.
@@ -216,6 +219,11 @@ impl CutoutPlan {
     /// twice [`Self::SHADED_NODES`], so a table errs a quarter of what the
     /// shaded form does.
     pub(crate) const BAKED_NODES: u32 = 24;
+    /// The σ from which `filter_cdf` takes its series form, more exact in
+    /// `f32` than the difference of the box's two ends from here up, and
+    /// cheaper. A shadow from here up draws through
+    /// [`ShadowEntry::TablesWide`].
+    pub(crate) const SERIES_MIN_SIGMA: f32 = 4.0;
     /// The largest table side, in texels. A key past it — a small σ against
     /// a large radius — keeps the shaded cutout.
     const MAX_SIDE: u32 = 256;
@@ -357,10 +365,12 @@ impl CutoutPlan {
                 }
             }
             self.corners.push(CornerTables(codes));
-            self.entries.push(if tabled {
-                ShadowEntry::Tables
-            } else {
+            self.entries.push(if !tabled {
                 ShadowEntry::General
+            } else if sigma >= Self::SERIES_MIN_SIGMA {
+                ShadowEntry::TablesWide
+            } else {
+                ShadowEntry::Tables
             });
         }
         for (at, used) in self.keys.iter().enumerate() {

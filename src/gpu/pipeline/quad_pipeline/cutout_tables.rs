@@ -153,9 +153,11 @@ impl CutoutTables {
                 depth_slice: None,
                 resolve_target: None,
                 // Every texel a table reads is baked this frame; the rest
-                // is never read, so it needs no clear.
+                // is never read. So the pass keeps nothing: a load would
+                // read the whole atlas into tile memory, which on a tiler
+                // costs as much as a frame's shading.
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
             })],

@@ -108,7 +108,14 @@ fn only_the_shadow_entries_reach_the_blur_integral() {
             "`fs_shadow` lost `{heavy}`"
         );
     }
-    for tabled in ["tabled_coverage", "tabled_cutout", "cutout_lookup"] {
+    for tabled in [
+        "tabled_coverage",
+        "tabled_cutout",
+        "cutout_lookup",
+        "tables_edge_cdf",
+        "filter_cdf_series",
+        "filter_cdf_difference",
+    ] {
         assert!(!reaches("fs").contains(tabled), "`fs` reaches `{tabled}`");
         assert!(
             reaches("fs_shadow_tables").contains(tabled),
