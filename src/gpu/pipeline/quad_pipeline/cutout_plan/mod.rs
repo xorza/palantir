@@ -114,6 +114,45 @@ struct CutoutCorner {
     sign: Vec2,
 }
 
+impl CutoutCorner {
+    /// The area of this corner's region inside its `shaded` quad that
+    /// `visible` counts: zero for a corner with no radius. The quad's
+    /// fragments are the only ones that shade the cutout: an inset hole
+    /// moved by its offset, or a corner's reach past the quad, adds nothing.
+    /// Counted over the viewport, what a table pays for, and so what
+    /// `fs_shadow_tables` must find a table for.
+    fn drawn_area(&self, shaded: Rect, visible: impl Fn(Rect) -> f32) -> f32 {
+        if self.r <= 0.0 {
+            return 0.0;
+        }
+        self.region.intersect(shaded).map_or(0.0, visible)
+    }
+
+    /// The texels of this corner's `side`-texel table at `σ` that the pixels
+    /// centred in `seen` read: `cutout_lookup` takes a pixel at `p` to
+    /// `t = (sign · (p − centre) + reach) · TEXELS_PER_SIGMA / σ`, and reads
+    /// the texel below `t` and the one past it on each axis. One texel more
+    /// on each side covers a last-bit difference from the GPU's arithmetic.
+    /// Clamped to the table, so empty where `seen` reads none of it.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a side is at most `MAX_SIDE`, exact in f32"
+    )]
+    fn texels(&self, seen: Rect, sigma: f32, side: u32) -> TexelSpan {
+        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+        let scale = CutoutPlan::TEXELS_PER_SIGMA / sigma;
+        let a = (seen.min - self.centre) * self.sign;
+        let b = (seen.max() - self.centre) * self.sign;
+        let side = Vec2::splat(side as f32);
+        let lo = ((a.min(b) + reach) * scale).floor() - 1.0;
+        let hi = ((a.max(b) + reach) * scale).floor() + 3.0;
+        TexelSpan {
+            lo: lo.clamp(Vec2::ZERO, side).as_uvec2(),
+            hi: hi.clamp(Vec2::ZERO, side).as_uvec2(),
+        }
+    }
+}
+
 /// The texels of one table a frame's repainted pixels read, from `lo` up to
 /// `hi` on each axis.
 #[derive(Clone, Copy, Debug)]
@@ -136,44 +175,6 @@ impl TexelSpan {
         Self {
             lo: self.lo.min(other.lo),
             hi: self.hi.max(other.hi),
-        }
-    }
-}
-
-impl CutoutCorner {
-    /// The area of this corner's region inside its `shaded` quad that
-    /// `visible` counts: zero for a corner with no radius. The quad's
-    /// fragments are the only ones that shade the cutout: an inset hole
-    /// moved by its offset, or a corner's reach past the quad, adds nothing.
-    /// Counted over the viewport, what a table pays for, and so what
-    /// `fs_shadow_tables` must find a table for.
-    fn drawn_area(&self, shaded: Rect, visible: impl Fn(Rect) -> f32) -> f32 {
-        if self.r <= 0.0 {
-            return 0.0;
-        }
-        self.region.intersect(shaded).map_or(0.0, visible)
-    }
-
-    /// The texels of this corner's `side`-texel table at `σ` that the pixels
-    /// centred in `seen` read: `cutout_lookup` takes a pixel at `p` to
-    /// `t = (sign · (p − centre) + reach) · TEXELS_PER_SIGMA / σ`, and reads
-    /// the texel below `t` and the one past it on each axis. One texel more
-    /// on each side covers a last-bit difference from the GPU's arithmetic.
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a side is at most `MAX_SIDE`, exact in f32"
-    )]
-    fn texels(&self, seen: Rect, sigma: f32, side: u32) -> TexelSpan {
-        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
-        let scale = CutoutPlan::TEXELS_PER_SIGMA / sigma;
-        let a = (seen.min - self.centre) * self.sign;
-        let b = (seen.max() - self.centre) * self.sign;
-        let side = Vec2::splat(side as f32);
-        let lo = ((a.min(b) + reach) * scale).floor() - 1.0;
-        let hi = ((a.max(b) + reach) * scale).floor() + 3.0;
-        TexelSpan {
-            lo: lo.clamp(Vec2::ZERO, side).as_uvec2(),
-            hi: hi.clamp(Vec2::ZERO, side).as_uvec2(),
         }
     }
 }
@@ -416,13 +417,16 @@ impl CutoutPlan {
                 match self.keys.binary_search_by_key(&key, |used| used.key) {
                     Ok(at) if self.codes[at] != Self::NONE => {
                         *code = self.codes[at];
-                        let Some(seen) = corner.region.intersect(shaded) else {
-                            continue;
-                        };
+                        // Every pixel the quad repaints, not only its corner's
+                        // region: past the region's outer edge, the bilinear
+                        // filter still reads the table's last two texels.
                         let side = Self::side(key);
                         for &rect in &self.repaint {
-                            if let Some(seen) = seen.intersect(rect) {
-                                let texels = corner.texels(seen, sigma, side);
+                            let Some(seen) = shaded.intersect(rect) else {
+                                continue;
+                            };
+                            let texels = corner.texels(seen, sigma, side);
+                            if !texels.is_empty() {
                                 self.spans[at] = self.spans[at].union(texels);
                             }
                         }
