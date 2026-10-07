@@ -10,8 +10,8 @@
 //! Every fixture is GPU-less and reads a strict zero; the ones in
 //! `fixtures/renderer.rs` encode and compose on a deviceless frontend.
 //! Only `gates/on_gpu.rs` takes a device, because only it asks what the
-//! driver costs. Its still-tree gate measures the adapter's floor in the
-//! same run and runs everywhere; the scale ramp reads a ceiling measured
+//! driver costs. Its still-tree gate measures the adapter's floor through
+//! the same target and runs everywhere; the scale ramp reads a ceiling measured
 //! on one adapter, so it is the one test CI skips. A new device-driven
 //! audit belongs in that module.
 //!

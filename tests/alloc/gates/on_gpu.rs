@@ -6,8 +6,9 @@
 //! accounts for none of it — `WGPU_VALIDATION=0` moves the count by zero.
 //!
 //! So neither gate reads a strict zero. The still-tree gate needs no
-//! number at all: it measures the adapter's floor on an empty scene in
-//! the same run and pins the tree to it, so CI runs it on every adapter.
+//! number at all: it measures the adapter's floor on an empty scene
+//! through the same target and pins the tree to it, so CI runs it on
+//! every adapter.
 //! The ramp's ceiling was measured on one adapter and does not transfer —
 //! widened to fit every driver it would let several hundred blocks a
 //! frame through unseen — so CI skips that one by name.
@@ -35,10 +36,13 @@ use crate::harness::{Audit, OffscreenTarget, Report};
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
 
-/// Offscreen frames of `scene` on a fresh target, warmed and measured
-/// with no ceiling — what they cost is the answer, not the test.
-fn device_frames(gpu: &HeadlessTestGpuLease, mut scene: impl FnMut(&mut Ui)) -> Report {
-    let mut target = OffscreenTarget::new(gpu, "palantir.alloc_gate.floor.target", RENDER_SURFACE);
+/// Offscreen frames of `scene` on `target`, warmed and measured with no
+/// ceiling — what they cost is the answer, not the test.
+fn device_frames(
+    gpu: &HeadlessTestGpuLease,
+    target: &mut OffscreenTarget,
+    mut scene: impl FnMut(&mut Ui),
+) -> Report {
     Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
@@ -48,12 +52,21 @@ fn device_frames(gpu: &HeadlessTestGpuLease, mut scene: impl FnMut(&mut Ui)) -> 
         })
 }
 
-/// The adapter's per-frame floor: an empty scene's modal count. Every
-/// submission allocates — a `CommandEncoder` Arc, a `CommandBuffer` Arc,
-/// the queue's in-flight `Vec` push, per-pass scratch from `wgpu_hal` —
-/// and the offscreen path submits its backbuffer copy on every frame.
-fn empty_floor(gpu: &HeadlessTestGpuLease) -> u64 {
-    let floor = device_frames(gpu, |_| {}).mode;
+/// The adapter's per-frame floor on `target`: an empty scene's modal
+/// count. Every submission allocates — a `CommandEncoder` Arc, a
+/// `CommandBuffer` Arc, the queue's in-flight `Vec` push, per-pass scratch
+/// from `wgpu_hal` — and the offscreen path submits its backbuffer copy on
+/// every frame.
+///
+/// The floor holds for `target` alone. The copy's command buffer grows its
+/// texture tracker to each texture's tracker index as it meets it, so what
+/// the copy allocates depends on where the device placed the backbuffer
+/// and the target among its live textures: on an Apple M5, an empty scene
+/// read 25 or 28 blocks a frame by how many unrelated textures were alive
+/// when its target was made. A floor is only comparable with frames drawn
+/// through the same target, whose backbuffer the host keeps.
+fn empty_floor(gpu: &HeadlessTestGpuLease, target: &mut OffscreenTarget) -> u64 {
+    let floor = device_frames(gpu, target, |_| {}).mode;
     // A floor that reads zero has stopped measuring, and only the number
     // says so.
     assert!(
@@ -65,8 +78,8 @@ fn empty_floor(gpu: &HeadlessTestGpuLease) -> u64 {
 }
 
 /// A still tree damages nothing, so its frames must cost the device what
-/// an empty scene's do, on the same adapter: whatever palantir does on
-/// the way to a skipped paint, it does without the heap.
+/// an empty scene's do through the same target: whatever palantir does
+/// on the way to a skipped paint, it does without the heap.
 ///
 /// Compared on the mode, not the worst frame. wgpu pools its command
 /// encoders and tracking vectors, and how often a call hits that pool
@@ -81,9 +94,16 @@ fn empty_floor(gpu: &HeadlessTestGpuLease) -> u64 {
 #[test]
 fn still_tree_frame_costs_the_empty_floor() {
     let gpu = isolated_headless_test_gpu();
-    let floor = empty_floor(&gpu);
+    let mut target = OffscreenTarget::new(
+        &gpu,
+        "palantir.alloc_gate.still_tree.target",
+        RENDER_SURFACE,
+    );
+    let floor = empty_floor(&gpu, &mut target);
     let mut state = FrameFixture::default();
-    let tree = device_frames(&gpu, |ui| state.render(RENDER_NODE_SCALE, ui));
+    let tree = device_frames(&gpu, &mut target, |ui| {
+        state.render(RENDER_NODE_SCALE, ui);
+    });
     assert_eq!(
         tree.mode, floor,
         "the still tree's frames over the empty floor"
@@ -167,7 +187,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     let mut state = FrameFixture::default();
     let mut zoom = 1.0f32;
 
-    let floor = empty_floor(&gpu);
+    let floor = empty_floor(&gpu, &mut target);
     let report = Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(RAMP_FRAMES)

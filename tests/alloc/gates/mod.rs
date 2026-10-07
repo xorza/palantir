@@ -10,7 +10,7 @@
 //! | gate | covers | budget |
 //! |---|---|---|
 //! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage → encode → compose over the frame bench's own tree, through real cosmic shaping, on a deviceless frontend | strict zero |
-//! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame`, wgpu submission included, over a still tree | an empty scene's cost on the same adapter |
+//! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame`, wgpu submission included, over a still tree | an empty scene's cost through the same target |
 //! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | a frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
 //!
 //! The two in [`on_gpu`] take a device, and what they count is partly
