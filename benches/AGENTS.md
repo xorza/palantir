@@ -33,6 +33,16 @@ palantir's own backbuffer and copies all of it out. The default
 full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
 `benches/results` from before 2026-10-06 do not compare with later ones.
 
+**The frame bench writes no timestamp inside a pass.** Its device is
+`Timing::PassOnly`, so the `write_stats` dump times the whole pass and
+gives no per-kind split, and the timed arms collect no GPU stats. Before
+2026-10-06 the timed arms wrote a timestamp at each batch-kind change
+inside the main pass. On a tiler such as the Pi 5's V3D, each one splits
+the pass, and a 1440p `scrolling_gpu` frame took 149 ms against 45 ms
+without them. Earlier `*_gpu` rows do not compare with later ones. The
+`image_pipeline` and `curve_pipeline` per-kind times have the same
+problem on a tiler.
+
 **`cached_cpu` paints nothing, as `cached_gpu` does.** A still frame plans
 no paint, and the CPU harness encodes and composes only what a frame
 planned. Before 2026-10-06 it repainted the whole scene on such a frame,
@@ -89,15 +99,17 @@ target directory.
 `benches/bench-perf.sh` (Linux) profiles the bench under the rules above,
 with `perf` on the other cores. Its header lists the options. It needs
 `sudo sysctl kernel.perf_event_paranoid=-1 kernel.nmi_watchdog=0`, and
-warns when either is missing.
+warns when either is missing. It builds the binary `cargo bench` builds,
+so a profile after a bench run, or a bench run after a profile, rebuilds
+nothing.
 
-| pass | Intel | AMD | output in `tmp/` |
-|---|---|---|---|
-| counters | `cpu_core/…/` events | `perf stat -d` | `palantir-perf-stat.txt` |
-| microarch | `-M TopdownL1` | `-M branch_prediction,tlb`¹ | `palantir-perf-micro.txt` |
-| callgraph | cycles, `dwarf,65528` or LBR | cycles, `dwarf,65528` | `palantir-perf.data`, `-report.txt` |
-| precise IP | `cycles/ppp` (PEBS) | `ibs_op//` (IBS) | `palantir-perf-ibs.data`, `-ibs.txt` |
-| data source | `perf mem -t load --ldlat=50` | `perf mem` | `palantir-perf-mem.data`, `-mem.txt` |
+| pass        | Intel                         | AMD                         | output in `tmp/`                     |
+| ----------- | ----------------------------- | --------------------------- | ------------------------------------ |
+| counters    | `cpu_core/…/` events          | `perf stat -d`              | `palantir-perf-stat.txt`             |
+| microarch   | `-M TopdownL1`                | `-M branch_prediction,tlb`¹ | `palantir-perf-micro.txt`            |
+| callgraph   | cycles, `dwarf,65528` or LBR  | cycles, `dwarf,65528`       | `palantir-perf.data`, `-report.txt`  |
+| precise IP  | `cycles/ppp` (PEBS)           | `ibs_op//` (IBS)            | `palantir-perf-ibs.data`, `-ibs.txt` |
+| data source | `perf mem -t load --ldlat=50` | `perf mem`                  | `palantir-perf-mem.data`, `-mem.txt` |
 
 ¹ `Pipeline_Util_Level1` where perf offers it (Zen4+).
 

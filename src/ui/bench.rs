@@ -72,7 +72,6 @@
 )]
 
 use crate::bench::{Arms, Fixture, Run};
-use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::gpu::resource::texture_region::counters::WriteStats;
 use crate::host::offscreen::OffscreenHost;
@@ -141,7 +140,7 @@ impl Surface {
 fn gpu() -> &'static BenchGpu {
     static ANNOUNCED: OnceLock<()> = OnceLock::new();
 
-    let gpu = BenchGpu::shared(Timing::Instrumented);
+    let gpu = BenchGpu::shared(Timing::PassOnly);
     ANNOUNCED.get_or_init(|| {
         eprintln!("[frame_bench] timing features: {}", gpu.timing_summary());
     });
@@ -152,9 +151,12 @@ fn gpu() -> &'static BenchGpu {
 /// the `DirectAdaptive` the winit host runs, which never reads what the
 /// target held before. The default would measure the screenshot path,
 /// which also copies the whole backbuffer out on skip and full frames.
-fn bench_host(g: &BenchGpu) -> OffscreenHost {
+///
+/// The timed arms collect no GPU stats, as the winit host does by
+/// default, so their wall time carries no query readback.
+fn bench_host(g: &BenchGpu, collect_gpu_stats: bool) -> OffscreenHost {
     g.offscreen_builder()
-        .collect_gpu_stats(true)
+        .collect_gpu_stats(collect_gpu_stats)
         .retained_target(true)
         .build()
 }
@@ -369,7 +371,7 @@ where
     F: FnMut(&mut OffscreenHost, &mut FrameFixture),
 {
     let g = gpu();
-    let mut host = bench_host(g);
+    let mut host = bench_host(g, false);
     host.ui().theme_mut().window_clear = WINDOW_CLEAR;
     let mut state = FrameFixture::default();
     for _ in 0..4 {
@@ -462,7 +464,7 @@ fn report_write_stats(surface: &Surface) {
         mut mutate: impl FnMut(&mut FrameFixture, usize),
     ) {
         let g = gpu();
-        let mut host = bench_host(g);
+        let mut host = bench_host(g, true);
         host.ui().theme_mut().window_clear = WINDOW_CLEAR;
         let mut state = FrameFixture::default();
         eprintln!("[write_stats] {label}:");
@@ -493,18 +495,6 @@ fn report_write_stats(surface: &Surface) {
                 "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}{copy_out}",
                 s.texture_calls, s.texture_bytes,
             );
-            // Per-kind attribution (TIMESTAMP_QUERY_INSIDE_PASSES) and
-            // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
-            // when at least one value resolved, so adapters that lack
-            // the feature stay quiet.
-            let per_kind: Vec<String> = BatchKind::ALL
-                .into_iter()
-                .filter_map(|k| stats.last_kind(k).map(|d| (k, d)))
-                .map(|(k, d)| format!("{}={:.2}", k.label(), d.as_secs_f64() * 1e3))
-                .collect();
-            if !per_kind.is_empty() {
-                eprintln!("           kinds: {}", per_kind.join(" "));
-            }
             if let Some(p) = stats.last_pipeline_stats() {
                 eprintln!(
                     "           pipeline: vs={} clip_in={} clip_out={} fs={}",
