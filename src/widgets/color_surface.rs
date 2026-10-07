@@ -1,5 +1,4 @@
-//! A CPU-built texture a colour widget paints itself with, and the rule that
-//! decides when to build it again.
+//! A CPU-built texture a colour widget paints with, and when to rebuild it.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::image::Image;
@@ -8,22 +7,10 @@ use crate::ui::Ui;
 use glam::UVec2;
 use std::num::NonZeroU32;
 
-/// One texture a colour widget owns, filled on the CPU and rewritten in
-/// place.
+/// One CPU-filled texture a colour widget owns and rewrites in place via [`ImageHandle::update`].
 ///
-/// The colour field and the two bars are all exact per texel, which no
-/// gradient and no vertex-coloured mesh can be: a gradient interpolates in
-/// linear light, and mesh vertex colour is eight bits *linear*, which crushes
-/// the darks. An image texture is `Rgba8UnormSrgb`, so eight bits land where
-/// the eye can use them.
-///
-/// Kept in widget state across frames, the CPU image included. A rebuild
-/// refills that image and hands it to [`ImageHandle::update`], reusing the
-/// CPU buffer and GPU texture.
-///
-/// `K` is everything the fill reads — the field's model and hue, a bar's
-/// paint — kept as itself and compared exactly, so two inputs share a
-/// texture only when they are one input.
+/// Exact per texel, which a gradient (linear-light interpolation) or vertex-coloured mesh (8-bit
+/// *linear*, crushing darks) cannot be. `K` is everything the fill reads, compared exactly.
 #[derive(Debug)]
 pub(crate) struct ColorSurface<K> {
     built: Option<Built<K>>,
@@ -36,25 +23,17 @@ struct Built<K> {
     key: K,
 }
 
-/// Smallest texture either axis is built at. Two texels still interpolate;
-/// one would flatten the axis.
+/// Smallest texture either axis is built at: two texels still interpolate.
 const MIN_TEXELS: u32 = 2;
 
-/// How far below the display's resolution a surface is built, by default.
-/// See [`ColorField::texel_size`](crate::ColorField::texel_size) for the
-/// measurement behind four.
+/// Default texel size: how far below display resolution a surface is built; see
+/// [`ColorField::texel_size`](crate::ColorField::texel_size) for the measurement behind four.
 pub(crate) const TEXEL_SIZE: u32 = 4;
 
-/// The largest texel size a colour widget takes.
 pub(crate) const MAX_TEXEL_SIZE: u32 = 16;
 
-/// Texel dimensions for a surface covering `size` logical px on the current
-/// display, one texel per `texel_size` physical px on each axis, held under the device's texture cap.
-///
-/// Total over every input: a size that is NaN, negative or absurd lands on
-/// the floor or the cap rather than reaching the registry, and a cap below
-/// the floor lowers the floor. The widgets take these numbers from
-/// application layout, so they cannot assert on them.
+/// Texel dimensions for a surface of `size` logical px at one texel per `texel_size` physical px, under
+/// the device cap. Total over every input (NaN, negative, absurd): it lands on the floor or cap.
 #[expect(
     clippy::cast_sign_loss,
     reason = "the saturating cast is the clamp: a negative or NaN size lands on zero, then on the floor"
@@ -70,7 +49,6 @@ pub(crate) fn texture_size(size: Size, texel_size: u32, ui: &Ui) -> UVec2 {
     UVec2::new(axis(size.w), axis(size.h))
 }
 
-/// Nothing registered yet: what a widget's state row starts as.
 impl<K> Default for ColorSurface<K> {
     fn default() -> Self {
         Self { built: None }
@@ -78,12 +56,8 @@ impl<K> Default for ColorSurface<K> {
 }
 
 impl<K: PartialEq> ColorSurface<K> {
-    /// The handle to paint with, filled again first when `size` or `key`
-    /// moved since the last call.
-    ///
-    /// `fill` writes every texel **sRGB-encoded**. A texel is an
-    /// [`SrgbaU8`](crate::SrgbaU8), so `.into()` from an `RgbaF32` is the
-    /// exact encode, and linear bytes cannot land there by mistake.
+    /// The handle to paint with, refilled first when `size` or `key` moved. `fill` writes every texel
+    /// **sRGB-encoded**: `.into()` from an `RgbaF32` is the exact encode.
     pub(crate) fn ensure(
         &mut self,
         ui: &Ui,
@@ -118,7 +92,6 @@ pub(crate) mod internals {
     use super::*;
 
     impl<K> ColorSurface<K> {
-        /// The texture's size, once built.
         pub(crate) fn built_size(&self) -> Option<UVec2> {
             self.built.as_ref().map(|built| built.image.size())
         }

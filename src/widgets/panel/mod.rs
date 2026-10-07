@@ -1,5 +1,4 @@
-//! The container widget — every stack, wrap and canvas layout an app
-//! reaches for, over the one node the layout drivers dispatch on.
+//! The container widget: every stack, wrap and canvas layout, over the one node layout drivers dispatch on.
 
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::background::Background;
@@ -11,19 +10,9 @@ use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
-/// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
-/// (selected via constructor) and optionally paints chrome (via
-/// [`Self::background`]) and/or installs a clip (via
-/// [`Configure::clip_rect`] / [`Configure::clip_rounded`]). Cards,
-/// rows, columns, and layered overlays all share this one type —
-/// `HStack::new()` / `VStack::new()` / `ZStack::new()` just preselect
-/// the layout.
-///
-/// Default chrome / clip is `None`, so a Panel without
-/// `.background(...)` / `.clip_*()` paints nothing and doesn't clip
-/// — pure layout. The `theme.panel_background` / `theme.panel_clip`
-/// fields supply a framework-wide fallback for any panel that didn't
-/// set its own.
+/// The container widget: an h-, v- or z-stack chosen by constructor, with
+/// optional chrome ([`Self::background`]) and clip. Both default to `None`;
+/// `theme.panel_background` and `theme.panel_clip` supply fallbacks.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Panel {
@@ -39,10 +28,8 @@ impl Panel {
         }
     }
 
-    /// Record the panel and its `body`.
+    /// Records the panel and its `body`.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        // The theme handle is cloned, not the chrome: an `Rc` bump lets
-        // the borrow outlive the `&mut Ui` the record below takes.
         let theme = Rc::clone(ui.theme());
         let widget = self.widget.default_clip(theme.panel_clip);
         let chrome = self.chrome.as_ref().or(theme.panel_background.as_ref());
@@ -61,45 +48,32 @@ impl Panel {
         Self::auto(Widget::vstack())
     }
 
-    /// Children in one line along `axis`: [`Self::hstack`] for
-    /// [`Axis::X`], [`Self::vstack`] for [`Axis::Y`]. For code that picks
-    /// the direction at run time.
+    /// Children in one line along `axis`, for a direction picked at run time.
     #[track_caller]
     pub fn stack(axis: Axis) -> Self {
         Self::auto(Widget::stack(axis))
     }
 
-    /// HStack with overflow wrap: children flow left-to-right; when the
-    /// next child wouldn't fit on the current row, wrap to a new row
-    /// below. `.gap(g)` spaces siblings within a row; `.line_gap(g)`
-    /// spaces rows. `.justify(...)` applies per row.
-    /// `Sizing::fill` on a child's main axis is treated as `Hug` for
-    /// now (no per-row leftover distribution); cross-axis Fill stretches
-    /// to row height.
+    /// HStack that wraps to a new row when the next child won't fit. `.gap(g)`
+    /// spaces siblings, `.line_gap(g)` rows. Main-axis `Sizing::fill` is treated as `Hug`.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
         Self::auto(Widget::wrap_hstack())
     }
 
-    /// VStack with overflow wrap: children flow top-to-bottom; when the
-    /// next child wouldn't fit in the current column, wrap to a new
-    /// column on the right. Symmetric to `wrap_hstack` — same code,
-    /// axes swapped.
+    /// VStack that wraps into new columns; `wrap_hstack` with axes swapped.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
         Self::auto(Widget::wrap_vstack())
     }
 
-    /// Layered children: each child placed at the parent's inner top-left,
-    /// sized per its own `Sizing`. Last sibling paints on top.
+    /// Layered children at the parent's inner top-left; the last paints on top.
     #[track_caller]
     pub fn zstack() -> Self {
         Self::auto(Widget::zstack())
     }
 
-    /// Children placed at their declared `Layout.position` (parent-inner
-    /// coords). Use per-child `.position(Vec2)`. Canvas hugs to the bounding
-    /// box of placed children.
+    /// Children at their `.position(Vec2)`; hugs the bounding box of the placed children.
     #[track_caller]
     pub fn canvas() -> Self {
         Self::auto(Widget::canvas())
@@ -107,11 +81,7 @@ impl Panel {
 }
 
 impl Panel {
-    /// Paint `background` as this widget's background.
-    ///
-    /// `None` is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme().panel_background` when unset. Pass
-    /// [`Background::NONE`] to suppress that fallback for this panel.
+    /// Paints `background`. Unset, the theme's `panel_background` fills in; [`Background::NONE`] suppresses that.
     ///
     /// # Panics
     ///
@@ -123,11 +93,8 @@ impl Panel {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paints `background` unless the caller set one, for a wrapper theming a
+    /// widget after the caller's setters; an explicit [`Self::background`] wins in either order.
     ///
     /// # Panics
     ///
@@ -155,8 +122,7 @@ pub(crate) mod internals {
     use crate::widgets::panel::Panel;
 
     impl Panel {
-        /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing
-        /// along `axis`.
+        /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing along `axis`.
         pub(crate) fn wrap_stack_on(axis: Axis) -> Self {
             match axis {
                 Axis::X => Self::wrap_hstack(),

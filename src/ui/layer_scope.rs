@@ -8,16 +8,8 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use glam::Vec2;
 
-/// A side layer being configured, terminated by [`Self::show`].
-///
-/// [`Self::fixed_at`] pins the body's top-left. [`Self::anchor`]
-/// resolves the origin from the body's measured size instead — that is
-/// what lets a popup flip above its anchor when it would not fit below,
-/// and it is why `Popup`, `ContextMenu` and `Tooltip` place themselves
-/// rather than taking a point from the caller. [`Self::max_size`] caps
-/// either one, so no setter here depends on the order the others ran in.
-/// Setting neither leaves the body at the surface origin with the whole
-/// surface available, which is what every full-surface layer wants.
+/// A side layer being configured, terminated by [`Self::show`]. With neither [`Self::fixed_at`] nor
+/// [`Self::anchor`], the body sits at the surface origin with the whole surface available.
 #[derive(Debug)]
 #[must_use = "a layer records nothing until `show`"]
 pub struct LayerScope<'a> {
@@ -35,12 +27,7 @@ impl<'a> LayerScope<'a> {
         }
     }
 
-    /// Pin the body's top-left at `point`, wherever that leaves it.
-    /// Without a [`Self::max_size`] the available extent runs from here
-    /// to the surface's bottom-right.
-    ///
-    /// [`Self::anchor`] is the other form, and the one an overlay
-    /// wants: it moves the body to keep it on screen.
+    /// Pins the body's top-left at `point`. [`Self::anchor`] instead keeps the body on screen.
     ///
     /// # Panics
     ///
@@ -51,21 +38,13 @@ impl<'a> LayerScope<'a> {
         self
     }
 
-    /// Resolve the body's origin from its measured size against
-    /// `anchor`, flipping or shifting it to fit the surface.
-    ///
-    /// The form every anchored overlay wants — a dropdown under its
-    /// trigger, a menu at the pointer, a tooltip beside the thing it
-    /// describes. Replaces an origin set by [`Self::fixed_at`] and keeps
-    /// a cap set by [`Self::max_size`].
+    /// Resolves the origin from the body's measured size against `anchor`, flipping or shifting to fit.
     pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.placement = self.placement.with_anchored(anchor);
         self
     }
 
-    /// Cap the available extent at `size`, still clamped to the surface
-    /// so an oversized cap can't bleed past the viewport. The root's own
-    /// `Sizing` (Hug / Fill / Fixed) governs the painted size within it.
+    /// Caps the available extent at `size`, still clamped to the surface.
     ///
     /// # Panics
     ///
@@ -79,12 +58,8 @@ impl<'a> LayerScope<'a> {
         self
     }
 
-    /// Record `body` into the layer and hand back its value.
-    ///
-    /// Forwarding the value is load-bearing, not a convenience: an
-    /// `input_scope` declared inside the body has to be read from inside
-    /// it too, which is how an overlay records its capture against the
-    /// layer it actually lives on.
+    /// Records `body` into the layer and returns its value: an `input_scope` declared inside the
+    /// body must be read from inside it.
     pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R {
         let Self {
             ui,

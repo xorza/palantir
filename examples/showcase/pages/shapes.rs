@@ -1,9 +1,6 @@
-//! Filled shape primitives: `Shape::Triangle` (SDF coverage AA, corner
-//! rounding via `SDF - radius`, inner-edge strokes), `Shape::Mesh` (raw
-//! per-vertex geometry, including a 5k-vertex stress grid exercising the
-//! alloc-free claim and the index-buffer growth path), and
-//! `Shape::windowed_rect` — the inverted-fill corner mask that stands in
-//! for rounded-corner clipping without a stencil pass.
+//! Filled shape primitives: triangles, meshes (including a 2 500-vertex stress grid) and
+//! `Shape::owner_windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
+//! stencil pass.
 
 use crate::support;
 use crate::support::{api, demo_cell, note, section, tiles};
@@ -64,18 +61,14 @@ const A: Vec2 = Vec2::new(20.0, 142.0);
 const B: Vec2 = Vec2::new(84.0, 24.0);
 const C: Vec2 = Vec2::new(148.0, 142.0);
 
-/// Sharp-cornered solid fill — the aliased case a `Mesh::filled_triangle`
-/// would give, now with crisp SDF coverage AA.
 fn sharp(ui: &mut Ui) {
     ui.add_shape(Shape::triangle(A, B, C).fill(support::A));
 }
 
-/// Rounded corners — `SDF - radius`, no extra geometry.
 fn rounded(ui: &mut Ui) {
     ui.add_shape(Shape::triangle(A, B, C).fill(support::C).radius(12.0_f32));
 }
 
-/// Fill + inner-edge stroke, rounded.
 fn stroked(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
@@ -85,7 +78,6 @@ fn stroked(ui: &mut Ui) {
     );
 }
 
-/// Stroke only (transparent fill) — a rounded triangular outline.
 fn outline(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(A, B, C)
@@ -94,8 +86,6 @@ fn outline(ui: &mut Ui) {
     );
 }
 
-/// A play triangle (▶) at three corner radii — the toolbar-glyph use
-/// case, from sharp to increasingly soft.
 fn radii(ui: &mut Ui) {
     for (i, r) in [0.0_f32, 4.0, 10.0].iter().enumerate() {
         let dy = i as f32 * 46.0;
@@ -111,14 +101,8 @@ fn radii(ui: &mut Ui) {
     }
 }
 
-/// Build a cell's geometry into a retained row once, then draw it from
-/// there every frame.
-///
-/// A fresh `Mesh` per frame allocates and re-hashes: `Mesh` memoizes its
-/// content hash, so a newly built one is always cold. The stress grid
-/// below is where that bites hardest — ~90 KB and 2 500 vertices a frame
-/// — but the rule holds at three vertices too, and one helper is what
-/// keeps every cell on it.
+/// Builds a cell's geometry into a retained row once: a fresh `Mesh` per frame allocates and re-hashes (it
+/// memoizes its content hash), worst for the stress grid but true at three vertices too.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
     ui.with_state::<Option<Mesh>, _>(id, |ui, m| {
@@ -140,9 +124,7 @@ fn mesh_triangle(ui: &mut Ui) {
     });
 }
 
-/// 5-pointed star sampled as a fan around the centroid. The star is
-/// concave, so fanning around the first point would clip — fanning
-/// around the centroid is correct here.
+/// 5-pointed star fanned around the centroid, since it is concave.
 fn polygon_star(ui: &mut Ui) {
     retained_mesh(ui, "star", |m| {
         let (cx, cy) = (84.0_f32, 84.0_f32);
@@ -168,7 +150,6 @@ fn polygon_star(ui: &mut Ui) {
     });
 }
 
-/// Per-vertex colours create a four-corner gradient across two triangles.
 fn gradient_quad(ui: &mut Ui) {
     retained_mesh(ui, "gradient-quad", |m| {
         let tl = m.vertex(Vec2::new(16.0, 16.0), support::E);
@@ -180,11 +161,7 @@ fn gradient_quad(ui: &mut Ui) {
     });
 }
 
-/// 2 500 verts / ~5 000 after triangle pairing. Exercises the alloc-free
-/// claim and the index-buffer growth path; renders as a teal wash since
-/// every vertex shares one colour. The grid is geometry, not state, so it
-/// rides [`retained_mesh`] like every other cell — at a scale where doing
-/// otherwise is measurable.
+/// 2 500 vertices, ~5 000 triangles: exercises the alloc-free claim and index-buffer growth.
 fn stress(ui: &mut Ui) {
     const SIDE: u32 = 50;
     const STEP: f32 = 3.0;
@@ -212,10 +189,8 @@ fn stress(ui: &mut Ui) {
     });
 }
 
-/// The headline use case: rounded-corner clipping without a stencil
-/// pass. The gradient "content" is a plain unclipped rect; the windowed
-/// rect on top fills the corner wedges with the tile background and
-/// strokes the boundary — visually a rounded-clipped card.
+/// The headline use: rounded-corner clipping without a stencil pass; the windowed rect fills the corner wedges
+/// with the tile background and strokes the boundary over a plain unclipped gradient.
 fn window_mask(ui: &mut Ui) {
     ui.add_shape(
         Shape::owner_rect().fill(
@@ -232,9 +207,7 @@ fn window_mask(ui: &mut Ui) {
     );
 }
 
-/// Translucent fill exposes the geometry: the fill covers only the
-/// corner wedges outside the rounded boundary, the stroke hugs the
-/// boundary's inner edge, and the window interior stays untouched.
+/// A translucent fill exposes the geometry: only the corner wedges outside the rounded boundary are covered.
 fn window_anatomy(ui: &mut Ui) {
     ui.add_shape(
         Shape::owner_windowed_rect()

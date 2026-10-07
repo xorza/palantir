@@ -1,5 +1,4 @@
-//! Reading a baked row back, and minting gradients that differ only where
-//! intended.
+//! Reading a baked row back, and minting gradients that differ only where intended.
 
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
@@ -11,9 +10,7 @@ pub(super) fn fresh_row() -> LutRowTexels {
     [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]
 }
 
-/// A gradient whose stops are distinct for every `i` below 2^24: `i`'s
-/// three low bytes are the first stop's colour. Only the stops key a row,
-/// so varying the geometry instead would silently reuse one.
+/// A gradient whose stops are distinct for every `i` below 2^24 (`i`'s three low bytes are the first stop's colour). Only stops key a row, so varying geometry would silently reuse one.
 pub(super) fn distinct_grad(i: u32) -> LinearGradient {
     assert!(i < 1 << 24, "{i} does not fit three colour bytes");
     let [r, g, b, _] = i.to_le_bytes();

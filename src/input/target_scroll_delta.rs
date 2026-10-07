@@ -3,9 +3,7 @@
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::primitives::identity::widget_id::WidgetId;
 
-/// Scroll accumulated this frame for one routed target. Held per
-/// scroll target so events arriving before a retarget stay with the
-/// widget that was under the pointer when they landed.
+/// Scroll accumulated this frame for one routed target, so events arriving before a retarget stay with the widget under the pointer when they landed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TargetScrollDelta {
     pub(crate) target: WidgetId,

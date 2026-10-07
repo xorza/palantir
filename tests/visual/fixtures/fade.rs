@@ -6,13 +6,7 @@ use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke};
 
 use crate::harness::Harness;
 
-/// White fading to transparent black across 200 px, over black, along
-/// every path that interpolates a colour: mesh vertices, a polyline's
-/// per-point colours, and a gradient's stops. Interpolated premultiplied,
-/// the midpoint is white at half alpha — 0.5 linear, sRGB 188. Straight,
-/// it was half-grey at half alpha, 0.25 linear, sRGB 137.
-///
-/// Each band runs x 0..200; pixel 99 sits at t = 99.5 / 200.
+/// White fading to transparent black across 200 px over black, on every colour-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-grey (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
 #[test]
 fn a_fade_to_transparent_keeps_its_colour_midway() {
     let mut mesh = Mesh::new();

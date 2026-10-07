@@ -1,67 +1,29 @@
 //! Where one pointer button sits in its press lifecycle on one widget.
 
-/// One pointer button's press lifecycle on a widget. The phases are
-/// mutually exclusive per frame, walked in order:
+/// One pointer button's press lifecycle on a widget, one phase per frame: `Idle` → `Down` (press edge) → `Held` → `Up` (release edge) → `Idle`.
 ///
-/// `Idle` → `Down` (press-edge frame) → `Held` (every following held
-/// frame) → `Up` (release-edge frame) → `Idle`.
+/// `Down`/`Held` follow the capture, not the rect: they keep reporting while the pointer drags off the widget, with no travel threshold.
 ///
-/// `Down`/`Held` are capture-based and rect-independent: they keep
-/// reporting while the pointer drags outside the widget's rect or off
-/// the surface entirely (no travel threshold — live from the first
-/// press frame). Drag-tracking widgets (text selection) ride that to
-/// keep following the pointer past their own bounds.
+/// Presses on the same widget within the double-click window and radius form a run; `Down { count }` is the position in it and a completing click carries it in `Up { click }`, so `Up { click: Some(2) }` is the double-click.
 ///
-/// Multi-press runs ride the phases: presses chain when they land on
-/// the same widget within the configured double-click time window and
-/// pointer radius; any break resets the run. `Down.count` is the press's
-/// position in its run (1 = single,
-/// 2 = double-press, 3+ = triple…), and a completing click carries the
-/// same number in `Up.click` — so `Up { click: Some(2) }` *is* the
-/// double-click, and the second click of a double still reads as a
-/// click (`clicked()` and `double_clicked()` both fire on it).
+/// Collapsed batches: press+release gives `Up` (the click outranks the lost press edge); release+re-press gives `Down` (the live capture outranks the release).
 ///
-/// Collapsed edge cases (one event batch, no frame between): a
-/// press+release collapses to `Up` (the completed click outranks the
-/// lost press edge); a release+re-press collapses to `Down` (the live
-/// capture outranks the stale release).
-///
-/// [`PointerEdge`](crate::PointerEdge) reports the same edges to a
-/// frame-wide observer, and is a second walk rather than a projection of
-/// this one for exactly the collapse above: a batch that presses,
-/// releases and presses again reports two edges there, where one phase
-/// can only be the live press.
+/// [`PointerEdge`](crate::PointerEdge) reports the same edges frame-wide as a second walk, not a projection of this one: a batch that presses, releases and presses again yields two edges there but one phase here.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ButtonPhase {
-    /// The button is not down on this widget, and no edge fired this
-    /// frame. The resting phase.
+    /// Not down on this widget; no edge this frame.
     #[default]
     Idle,
-    /// One-frame edge: the press landed this frame. `press` = its
-    /// position in the multi-press run. Rises on the press — clicks
-    /// fire on the release — so press-driven gestures (caret
-    /// placement, press-select-drag) react while the button is still
-    /// down.
+    /// One-frame edge: the press landed this frame. Rises on the press (clicks fire on release), so press-driven gestures react while the button is down.
     Down {
-        /// Position of this press in its multi-press run: 1 for a single
-        /// press, 2 for the second press of a double, 3+ for triple and up.
-        /// The same number [`Self::Up`]'s completing click carries, and
-        /// the one [`PointerEdge`](crate::PointerEdge) reports.
+        /// Position of this press in its multi-press run (1 single, 2 double, ...); the same number [`Self::Up`]'s click and [`PointerEdge`](crate::PointerEdge) report.
         count: u8,
     },
-    /// The press is latched on the widget (level, frames after the
-    /// press edge).
+    /// Latched on the widget: the frames after the press edge.
     Held,
-    /// One-frame edge: released this frame. `click` is `Some(n)` when
-    /// the release completed a click (press + release on the widget,
-    /// no drag latched), with `n` the click's position in its
-    /// multi-press run; `None` when a drag suppressed the click or
-    /// the release landed off the widget.
+    /// One-frame edge: released this frame.
     Up {
-        /// `Some(n)` when this release completed a click, `n` being the
-        /// click's position in its multi-press run — `Some(2)` *is* the
-        /// double-click. `None` when a drag ate the click or the release
-        /// landed outside the widget.
+        /// `Some(n)` when this release completed a click (press + release on the widget, no drag), `n` its position in the run; `None` when a drag ate it or the release landed off the widget.
         click: Option<u8>,
     },
 }

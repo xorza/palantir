@@ -1,12 +1,10 @@
-//! The encoded-glyph cache: rows aging out past the keep window, and a
-//! re-encoded row reclaiming its own block.
+//! The encoded-glyph cache: rows aging out past the keep window, and a re-encoded row reclaiming its own block.
 
 use super::*;
 use crate::common::counters::CounterSet;
 use crate::text::key::TextShapeKey;
 
-/// The scale rung is this fixture's only axis, so one run identity
-/// stands for the text across every row.
+/// The scale rung is this fixture's only axis, so one run identity stands for the text across every row.
 fn key(scale_q: u32) -> EncodedKey {
     EncodedKey {
         text: TextShapeKey::fixture(),
@@ -16,9 +14,7 @@ fn key(scale_q: u32) -> EncodedKey {
     }
 }
 
-/// Distinguishable glyph payload — `tag` reaches every field, so a
-/// block handed to the wrong row, or one read past the glyphs it
-/// actually holds, can't pass.
+/// Distinguishable glyph payload: `tag` reaches every field, so a misrouted or over-read block can't pass.
 fn glyph(tag: u32) -> EncodedGlyph {
     EncodedGlyph {
         instance: RasterQuad {
@@ -33,16 +29,14 @@ fn glyph(tag: u32) -> EncodedGlyph {
     }
 }
 
-/// Byte-exact comparison: `RasterQuad` is `Pod`, so this catches
-/// any field the copy dropped.
+/// Byte-exact comparison; `RasterQuad` is `Pod`, so any dropped field is caught.
 fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
     bytemuck::bytes_of(&a.instance) == bytemuck::bytes_of(&b.instance)
         && a.atlas_slot == b.atlas_slot
         && a.generation == b.generation
 }
 
-/// Push `glyphs` onto the arena and point `k` at them, as a
-/// re-encode of that run would.
+/// Push `glyphs` onto the arena and point `k` at them, as a re-encode would.
 fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
     for tag in tags {
         cache.stage(glyph(tag));
@@ -50,12 +44,7 @@ fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u3
     cache.settle(k, at, true);
 }
 
-/// Sweeping every frame makes the retention window exact: a row
-/// unused since frame `L` is kept while `L >= frame - KEEP` and dies
-/// on the first frame past that, i.e. at `L + KEEP + 1` — so its
-/// lifetime is exactly KEEP + 1 frames regardless of when it was
-/// last touched. Two offsets pin that the death frame tracks `L`
-/// rather than landing on some grid.
+/// Sweeping every frame makes retention exact: a row last used on frame `L` dies at `L + KEEP + 1`, whenever it was touched. Two offsets pin that the death frame tracks `L` rather than a grid.
 #[test]
 fn unused_rows_die_one_frame_past_the_keep_window() {
     for last_use in [0u64, 9] {
@@ -77,25 +66,10 @@ fn unused_rows_die_one_frame_past_the_keep_window() {
     }
 }
 
-/// The property that replaced compaction: a re-encoded row hands its
-/// old block straight back, and the next row of that size takes it,
-/// so the arena stops growing once every size class has been seen.
-///
-/// Hand-traced with a 10-glyph untouched row plus a 4-glyph run
-/// re-encoded every frame. `EncodedGlyph::GRANULE` is 4, so the 10-glyph row
-/// takes a 12-slot block and the 4-glyph run a 4-slot one: the arena
-/// reaches 16 slots on frame 1 and **never grows again**, because
-/// every later re-encode of the 4-glyph run frees a 4-slot block and
-/// immediately reclaims it.
-///
-/// The old append-only arena grew 14, 18, 22, 26 and then copied all
-/// 14 live glyphs on frame 5 to get back to 14. That copy is what
-/// this removes — and removes rather than spreads, so there is no
-/// frame anywhere in the sequence that pays more than any other.
+/// A re-encoded row hands its old block straight back and the next row of that size takes it, so the arena stops growing once every size class has been seen. Hand-traced: a 10-glyph row (12-slot block, `GRANULE` is 4) plus a 4-glyph run re-encoded every frame reach 16 slots on frame 1 and never grow again.
 #[test]
 fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     let mut cache = EncodedCache::default();
-    // Untouched row: 10 glyphs, well inside its keep window.
     insert(&mut cache, key(1), 1000..1010, 0);
     assert_eq!(
         cache.arena.slots.len(),
@@ -122,8 +96,6 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     );
     assert_eq!(cache.map.len(), 2, "neither row is past its keep window");
 
-    // Blocks never move, so the untouched row's span is still the one
-    // it was given and still holds its own glyphs byte-for-byte.
     let untouched = cache.map[&key(1)].span;
     let churned = cache.map[&key(2)].span;
     assert_eq!((untouched.start, untouched.len), (0, 10));
@@ -140,13 +112,10 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     }
 }
 
-/// Recycling is per size class, and a block is only ever handed to a
-/// row that fits it. Three lengths spanning three classes, freed and
-/// re-taken in a different order than they were allocated.
+/// Recycling is per size class; a block goes only to a row that fits it. Three lengths across three classes are freed and re-taken in a different order.
 #[test]
 fn blocks_recycle_only_within_their_size_class() {
     let mut cache = EncodedCache::default();
-    // 2 → class 0 (4 slots), 5 → class 1 (8), 9 → class 2 (12).
     for (i, len) in [2u32, 5, 9].into_iter().enumerate() {
         insert(&mut cache, key(i as u32), 0..len, 0);
     }
@@ -159,8 +128,6 @@ fn blocks_recycle_only_within_their_size_class() {
     }
     assert!(cache.map.is_empty());
 
-    // Re-insert in the reverse order: each must land back in the
-    // block of its own class, so the arena does not grow at all.
     let before = cache.arena.counters.counts();
     for (i, len) in [9u32, 5, 2].into_iter().enumerate() {
         insert(
@@ -194,10 +161,7 @@ fn blocks_recycle_only_within_their_size_class() {
     );
 }
 
-/// A row whose length lands mid-class shares a block with any other
-/// length in that class, and the slack past `span.len` belongs to
-/// nobody — so a shorter row reusing a longer row's block must not
-/// read the tail it did not write.
+/// A shorter row reusing a longer row's block must not read the slack past `span.len`, which belongs to nobody.
 #[test]
 fn a_shorter_row_reusing_a_block_exposes_only_its_own_glyphs() {
     let mut cache = EncodedCache::default();
@@ -206,7 +170,6 @@ fn a_shorter_row_reusing_a_block_exposes_only_its_own_glyphs() {
     for frame in 1..=ENCODED_CACHE_KEEP_FRAMES + 1 {
         cache.sweep(frame);
     }
-    // 1 glyph, same class — takes the same block, writes one slot.
     insert(&mut cache, key(2), 900..901, ENCODED_CACHE_KEEP_FRAMES + 1);
     let span = cache.map[&key(2)].span;
     assert_eq!(span.start, block.start, "same class, recycled block");
@@ -214,19 +177,11 @@ fn a_shorter_row_reusing_a_block_exposes_only_its_own_glyphs() {
     assert!(same(&cache.arena.slots[span.range()][0], &glyph(900)));
 }
 
-/// An incomplete encode leaves nothing behind: no map row for the
-/// key, and no dead glyphs on the arena. Both incomplete cases (a
-/// y-culled line, an atlas with no room) reach `settle` as the same
-/// `complete: false`, so one table covers them.
-///
-/// The negative half is the one that matters: caching a short run
-/// would replay its hole forever, since the key records neither the
-/// bounds nor the atlas occupancy that produced it.
+/// An incomplete encode (y-culled line, atlas full; both settle as `complete: false`) leaves no map row and no dead glyphs. Caching a short run would replay its hole forever, since the key records neither bounds nor atlas occupancy.
 #[test]
 fn only_complete_encodes_become_templates() {
     for (complete, expect_rows) in [(true, 1), (false, 0)] {
         let mut cache = EncodedCache::default();
-        // A prior run's template — must survive either outcome.
         insert(&mut cache, key(1), 100..103, 7);
         let arena_before = cache.arena.slots.len();
         for tag in 200..202 {
@@ -266,15 +221,7 @@ fn only_complete_encodes_become_templates() {
     }
 }
 
-/// The property the wheel exists for: a sweep costs what expires,
-/// not what is resident.
-///
-/// A steadily-drawn row refreshes `last_use` every frame and files
-/// nothing; its one outstanding ticket fires once a window, finds it
-/// live, and re-files. Filing on every touch instead would still
-/// expire correctly, but would hold `rows × KEEP` tickets and drain
-/// `rows` of them per frame — the whole-table walk this replaced,
-/// wearing a different hat.
+/// A sweep costs what expires, not what is resident. A steadily-drawn row files nothing; its one ticket fires once a window, finds it live, and re-files. Filing on every touch would hold `rows × KEEP` tickets.
 #[test]
 fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     const ROWS: u32 = 50;
@@ -307,8 +254,6 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
         "steady redraw allocates one block per row and never another",
     );
 
-    // And they still die once the redraw stops — the re-filing did
-    // not push the deadline out of reach.
     let last = ENCODED_CACHE_KEEP_FRAMES * 3;
     for frame in last + 1..=last + ENCODED_CACHE_KEEP_FRAMES + 1 {
         cache.sweep(frame);
@@ -321,26 +266,9 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     );
 }
 
-/// SizeSpec the problem a probation tier would solve, so the tier can
-/// be argued from a number instead of a hunch.
-///
-/// A zoom or resize drag re-keys every visible run every frame, and
-/// each of those keys is asked for exactly once — the gesture has
-/// moved on by the next frame. With one window and no demotion they
-/// nonetheless live the full `ENCODED_CACHE_KEEP_FRAMES`, so the
-/// resident population settles at `runs × (KEEP + 1)`: eight visible
-/// runs cost 968 rows and ~12k glyph templates for two seconds after
-/// the drag ends.
-///
-/// What it also shows is where the cost *isn't*. Every one of those
-/// rows is a single-use key, so its ticket fires once and expires —
-/// `refiles` stays zero and the sweep never re-walks them. The wheel
-/// already handles the drain, and the block allocator now handles
-/// the storage; what is left is the *population*, which is a
-/// retention question rather than a per-frame-cost one.
+/// Quantifies the problem a probation tier would solve: a drag asks for each re-keyed run once, yet each lives the full `ENCODED_CACHE_KEEP_FRAMES`, settling the population at `runs × (KEEP + 1)`. A retention question, not a per-frame cost.
 #[test]
 fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
-    // Run past the window so the population reaches steady state.
     const FRAMES: u64 = ENCODED_CACHE_KEEP_FRAMES * 2;
 
     const RUNS: u32 = 8;
@@ -351,7 +279,6 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
         churn.churn_frame();
     }
 
-    // Rows minted on frames `F - KEEP ..= F` are all still resident.
     let window = ENCODED_CACHE_KEEP_FRAMES as usize + 1;
     assert_eq!(
         churn.rows(),
@@ -364,8 +291,6 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
         counts.refiles, 0,
         "single-use keys are never re-filed — the drain is not the cost here",
     );
-    // Everything minted and no longer resident has expired — the
-    // population is bounded, just far above what the gesture uses.
     let minted = RUNS * FRAMES as u32;
     assert_eq!(counts.encodes, 0, "the fixture inserts below `encode_run`");
     assert_eq!(
@@ -379,19 +304,7 @@ fn a_gesture_frame_retains_a_full_keep_window_of_single_use_rows() {
     );
 }
 
-/// **The property the block allocator exists for.** Under a
-/// sustained gesture every frame mints `RUNS` rows and expires
-/// `RUNS` rows, so once the population saturates the arena has seen
-/// every block it will ever need and each frame's work is exactly:
-/// `RUNS` blocks off a free list, `RUNS` blocks back onto it. No
-/// frame in the steady state does anything another does not.
-///
-/// This is what replaced the compaction, so it is asserted as an
-/// absolute rather than a ratio: `allocs == 0` says the arena
-/// did not grow by a single slot, and the arena length holding
-/// constant says nothing was relocated. The old design could not
-/// state either — its arena grew every frame by construction and
-/// gave the space back in one 122-frame-periodic copy.
+/// **The property the block allocator exists for.** Under a sustained gesture each frame mints and expires `RUNS` rows, so once saturated it takes `RUNS` blocks off the free list and returns `RUNS`. Asserted as absolutes: `allocs == 0` and a constant arena length.
 #[test]
 fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     const MEASURED: u64 = ENCODED_CACHE_KEEP_FRAMES;
@@ -400,8 +313,6 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     const GLYPHS: u32 = 12;
     let mut churn = internals::ChurnBench::new(RUNS, GLYPHS);
 
-    // Warm past the keep window so every frame both mints and
-    // expires a full complement of rows.
     for _ in 0..ENCODED_CACHE_KEEP_FRAMES * 2 {
         churn.churn_frame();
     }
@@ -427,18 +338,11 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
         RUNS * MEASURED as u32,
         "and every row must take exactly one block",
     );
-    // The population itself is unchanged — this is a steady state,
-    // not a cache that quietly stopped retaining.
     assert_eq!(
         churn.rows(),
         RUNS as usize * (ENCODED_CACHE_KEEP_FRAMES as usize + 1),
     );
-    // Sized by the peak *concurrent* block count, which is one frame
-    // ahead of the resident row count: a frame encodes its rows
-    // before `end_frame` sweeps, so `KEEP + 1` frames of rows are
-    // live while frame `KEEP + 2`'s blocks are being taken. 12
-    // glyphs is exactly three granules, so beyond that this workload
-    // wastes nothing.
+    // Sized by peak concurrent blocks, one frame ahead of resident rows: a frame encodes before `end_frame` sweeps. 12 glyphs is three granules, so nothing is wasted.
     let window = ENCODED_CACHE_KEEP_FRAMES as usize + 1;
     assert_eq!(
         saturated_arena,
@@ -447,28 +351,9 @@ fn a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates() {
     );
 }
 
-/// What the arena is *actually* bounded by, which is not the working
-/// set: a block only ever returns to a row of its own size class, so a
-/// workload whose run lengths drift upward strands every class it leaves
-/// behind. The bound is the sum over classes of each one's peak
-/// concurrent block count, and nothing brings it back down.
+/// The arena is bounded not by the working set but by the sum over size classes of each one's peak concurrent block count: a block returns only to a row of its own class, so run lengths drifting upward strand every class left behind.
 ///
-/// Traced with one fresh key per frame carrying `16 × frame` glyphs — a
-/// run that grows, which is what a long unwrapped line being typed into
-/// produces. `16 × frame` is a multiple of `EncodedGlyph::GRANULE`, so each
-/// frame's block is exactly that many slots and each frame lands in a
-/// class of its own, never revisited:
-///
-/// ```text
-///   arena(F) = Σ 16f = 8·F·(F + 1)          quadratic in the longest run
-///   live(F)  = Σ 16f over the resident window     linear in it
-/// ```
-///
-/// So the divergence is real but slow, and the number that has to stay
-/// small is the *longest run ever encoded*, not the row count: wrapped
-/// text bounds it at a line's worth of glyphs, and at 12 glyphs a row
-/// (`a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates`)
-/// there is one class and nothing strands at all.
+/// Traced with one fresh key per frame carrying `16 × frame` glyphs (a long line being typed): each frame lands in a class of its own, never revisited. The arena is `8·F·(F + 1)`, quadratic in the longest run, while live slots are linear. So keep the longest run ever encoded small; wrapped text bounds it, and at 12 glyphs a row there is one class and nothing strands.
 #[test]
 fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
     let mut cache = EncodedCache::default();
@@ -487,20 +372,14 @@ fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
         "one block per frame, of 16·frame slots, never reclaimed",
     );
 
-    // The resident window is `KEEP + 1` rows — frames 70..=100 here —
-    // and it is what the arena *would* be bounded by if blocks were
-    // interchangeable. 42 160 against 80 800: the arena is 1.9x its
-    // working set after a hundred frames, and the ratio keeps climbing.
+    // Live 42 160 slots against an arena of 80 800 (1.9x) after a hundred frames, and the ratio climbs.
     let window = ENCODED_CACHE_KEEP_FRAMES + 1;
     assert_eq!(cache.map.len(), window as usize);
     let live: usize = cache.map.values().map(|e| e.span.len as usize).sum();
     assert_eq!(live, 16 * (70..=100).sum::<usize>());
     assert_eq!((live, cache.arena.slots.len()), (42_160, 80_800));
 
-    // Bounded, not merely slow-growing: a length that comes back through
-    // a class it already left takes the block parked there. Frame 5's
-    // 80-glyph block has been free since frame 36, and re-encoding one
-    // row at that length holds the arena flat.
+    // Bounded: a length returning to a class it left takes the parked block (frame 5's, free since frame 36).
     let before = cache.arena.counters.counts();
     for frame in 101u64..=110 {
         insert(&mut cache, key(9999), 0..80, frame);

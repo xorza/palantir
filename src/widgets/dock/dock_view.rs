@@ -1,5 +1,4 @@
-//! The dock widget: the split walk, one strip-over-content pane per
-//! group, and the drag-docking gesture.
+//! The dock widget: the split walk, one strip-over-content pane per group, and the drag-docking gesture.
 
 use crate::input::keyboard::key::Key;
 use crate::input::shortcut::Shortcut;
@@ -39,16 +38,9 @@ use crate::widgets::theme::dock::DockTheme;
 use crate::window::cursor_icon::CursorIcon;
 use std::rc::Rc;
 
-/// The docked pane tree: splits onto [`Splitter`]s, leaves as a
-/// [`TabStrip`] over a group-keyed content area, and the drag gesture
-/// that moves a tab between them.
+/// The docked pane tree: splits onto [`Splitter`]s, leaves as a [`TabStrip`] over a group-keyed content area, and the drag gesture that moves a tab.
 ///
-/// **Two calls, not one.** Palantir's record pass cannot see this
-/// frame's layout, so a widget that learned of a tab click mid-record
-/// would draw the pane the click replaced.
-/// [`Self::scan`] runs a phase earlier, the application applies
-/// what it emits, and only then does this walk run — so a switch draws
-/// on the frame it lands.
+/// **Two calls, not one.** Record cannot see this frame's layout, so a tab click learned mid-record would draw the pane it replaced. [`Self::scan`] runs a phase earlier, the application applies what it emits, then this walk runs.
 ///
 /// ```no_run
 /// # use palantir::{DockOperation, DockState, DockTabs, DockView, Ui};
@@ -67,8 +59,7 @@ use std::rc::Rc;
 /// # }
 /// ```
 ///
-/// [`Self::run`] does all of that in one call, for an application with
-/// no queue of its own to route the operations through.
+/// [`Self::run`] does all of that in one call, for an application with no operation queue.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct DockView<'a, T> {
@@ -81,11 +72,7 @@ pub struct DockView<'a, T> {
 }
 
 impl<'a, T: DockTab> DockView<'a, T> {
-    /// A view over `state`, emitting into `operations`.
-    ///
-    /// The widget never mutates the tree. Everything it decides arrives
-    /// as an operation, so an application can route dock changes through the
-    /// same queue as its own edits and keep them out of undo.
+    /// A view over `state`, emitting into `operations`. The widget never mutates the tree; every decision arrives as an operation.
     #[track_caller]
     pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self {
         Self {
@@ -100,8 +87,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         }
     }
 
-    /// Floor either pane's extent on the split axis at `px`, a *length*,
-    /// while a divider is dragged. Default `0.0`.
+    /// Floor either pane's extent on the split axis at `px`, a *length*, while a divider is dragged. Default `0.0`.
     ///
     /// # Panics
     ///
@@ -112,25 +98,19 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self
     }
 
-    /// What each pane's strip does with chips that do not fit. Default
-    /// [`TabOverflow::Scroll`].
+    /// What each pane's strip does with chips that do not fit. Default [`TabOverflow::Scroll`].
     pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `dock`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// The dividers read [`crate::Theme::splitter`] and every pane's strip
-    /// [`crate::Theme::tabs`], so this bundle covers the drag feedback
-    /// alone.
+    /// Per-instance override of [`crate::Theme`]'s `dock`: drag feedback only.
     pub fn style(mut self, s: impl Into<Option<&'a DockTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the pane tree, and the drag feedback over it.
+    /// Record the pane tree and the drag feedback over it.
     pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u> {
         let app_theme = Rc::clone(ui.theme());
         let theme = self.style.unwrap_or(&app_theme.dock);
@@ -164,12 +144,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
 }
 
 impl<T: DockTab> DockView<'_, T> {
-    /// Scan, apply, record, apply — the whole frame in one call, for an
-    /// application with no operation queue of its own.
-    ///
-    /// The two-call surface exists so dock operations can travel through an
-    /// application's own pipeline beside its other edits. An application
-    /// with no such pipeline pays one line here instead.
+    /// Scan, apply, record, apply: the whole frame in one call, for an application with no operation queue.
     pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D) {
         let id = DockView::dock_id(state);
         ui.with_state::<DockOpBuf<T>, _>(id, |ui, buf| {
@@ -187,29 +162,18 @@ impl<T: DockTab> DockView<'_, T> {
     }
 }
 
-/// The view facts a dock is addressed by — its ids, the scan that runs a
-/// phase before the record, and the content size a tab is handed — as
-/// associated functions over the [`DockState`] they read, which stays pure
-/// data.
 impl<T: DockTab> DockView<'_, T> {
     /// The id everything else this dock records derives from.
     pub fn dock_id(state: &DockState<T>) -> WidgetId {
         WidgetId::from_hash(("palantir.dock", state.seed()))
     }
 
-    /// A group's pane container — strip row and content together. The
-    /// rect the drop classification keys off.
+    /// A group's pane container (strip and content); the rect drops key off.
     pub fn pane_id(state: &DockState<T>, group: TabGroupId) -> WidgetId {
         Self::dock_id(state).with(("pane", group))
     }
 
-    /// A group's *content* area — the space below the strip that the
-    /// active tab's view fills.
-    ///
-    /// Keyed by the group rather than by the tab it happens to be
-    /// showing, which is the whole point: switching tabs leaves this
-    /// widget in place, so a view can be handed its arranged size on the
-    /// very pass it first records.
+    /// A group's content area, below the strip. Keyed by group, not tab, so a view is handed its size on the pass it first records.
     pub fn content_id(state: &DockState<T>, group: TabGroupId) -> WidgetId {
         Self::dock_id(state).with(("content", group))
     }
@@ -224,28 +188,15 @@ impl<T: DockTab> DockView<'_, T> {
         Self::dock_id(state).with(("splitter", path))
     }
 
-    /// The chip key a tab is drawn under — the one derivation, so the
-    /// strip and a caller polling last frame's responses ask the same
-    /// question.
+    /// The chip key a tab is drawn under; shared by the strip and callers polling responses.
     pub fn tab_key(tab: T) -> u64 {
         WidgetId::from_hash(tab).0
     }
 
-    /// Navigation-phase scan: focus follows a press into a pane, then
-    /// one pass over every strip's last-frame chip responses — close
-    /// clicks (which win over activation), activation clicks, and the
-    /// drag arming — then the in-flight drag's lifecycle.
+    /// Navigation-phase scan: focus follows a press into a pane, then chip responses (close beats activation, then drag arming), then the drag lifecycle.
     ///
-    /// **Run this before the record, and apply what it emits.** Palantir
-    /// cannot see this frame's layout during a record, so a widget that
-    /// learned of a tab click mid-record would draw the pane the click
-    /// replaced. Scanning a phase earlier settles the new arrangement
-    /// first, so a switch — or a committed drop — draws on the frame it
-    /// lands rather than the one after.
+    /// **Run before the record, and apply what it emits.**
     pub fn scan(ui: &mut Ui, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>) {
-        // Ahead of the chip pass: a read-only focus query that only ever
-        // moves `focused`, so it composes with an activation from the
-        // same scan rather than racing it.
         if let Some(group) = state
             .groups()
             .find(|g| g.id != state.focused() && ui.is_focus_within(Self::pane_id(state, g.id)))
@@ -286,7 +237,6 @@ impl<T: DockTab> DockView<'_, T> {
             Self::set_drag(state, ui, None);
             return;
         }
-        // The release edge fires on the chip that caught the press.
         let chip = TabStrip::chip_id(Self::strip_id(state, address.group), Self::tab_key(tab));
         if ui.response_for(chip).left.drag.stopped() {
             if let Some(target) = Self::drop_target(state, ui) {
@@ -299,7 +249,6 @@ impl<T: DockTab> DockView<'_, T> {
         }
     }
 
-    /// The tab a pointer is currently carrying, if any.
     fn drag(state: &DockState<T>, ui: &Ui) -> Option<T> {
         ui.state::<TabDrag<T>>(Self::dock_id(state))
             .and_then(|d| d.tab)
@@ -309,15 +258,7 @@ impl<T: DockTab> DockView<'_, T> {
         ui.with_state::<TabDrag<T>, _>(Self::dock_id(state), |_, s| s.tab = tab);
     }
 
-    /// The drop the pointer currently indicates: the pane whose rect
-    /// contains it, classified into a zone.
-    ///
-    /// Panes tile the dock without overlapping, so plain containment
-    /// against last frame's rects is exact. Deliberately *not* a hover
-    /// test: the hover resolves only to sensed widgets, and a pane's
-    /// content can be entirely inert — the pointer over it hovers
-    /// nothing, and the drop would go dark. `None` over a divider, the
-    /// chrome around the dock, or off-window; a release there cancels.
+    /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels.
     fn drop_target(state: &DockState<T>, ui: &mut Ui) -> Option<DropTarget> {
         let p = ui.pointer_pos()?;
         let (edge_fraction, caret_width) = {
@@ -335,9 +276,6 @@ impl<T: DockTab> DockView<'_, T> {
         let dock_id = Self::dock_id(state);
         ui.with_state::<ChipRects, _>(dock_id, |ui, buf| {
             buf.rects.clear();
-            // An upper bound, not a count — a tab that recorded no rect
-            // drops out — so `reserve`, and a no-op from the drag's
-            // second frame on.
             buf.rects.reserve(group.tabs.len());
             buf.rects.extend(group.tabs.iter().filter_map(|&tab| {
                 ui.response_for(TabStrip::chip_id(strip_id, Self::tab_key(tab)))
@@ -359,9 +297,7 @@ impl<T: DockTab> DockView<'_, T> {
         })
     }
 
-    /// The arranged size of a group's content area, `None` before its
-    /// first layout — the one frame in a group's life where a view has
-    /// to size itself.
+    /// The arranged size of a group's content area, `None` before its first layout.
     pub fn content_size(ui: &Ui, state: &DockState<T>, group: TabGroupId) -> Option<Size> {
         let size = ui
             .response_for(Self::content_id(state, group))
@@ -378,16 +314,12 @@ impl<T> Configure for DockView<'_, T> {
     }
 }
 
-/// The scratch [`DockView::run`] keeps between frames, so an application
-/// that never spells the operation vocabulary still allocates once rather than
-/// once a frame.
+/// Scratch [`DockView::run`] keeps between frames, so it allocates once rather than per frame.
 #[derive(Debug)]
 struct DockOpBuf<T> {
     operations: Vec<DockOperation<T>>,
 }
 
-/// Hand-written rather than derived: a derive would demand `T: Default`,
-/// and a tab key is an application enum with no meaningful default.
 impl<T> Default for DockOpBuf<T> {
     fn default() -> Self {
         Self {
@@ -396,17 +328,11 @@ impl<T> Default for DockOpBuf<T> {
     }
 }
 
-/// The chip rects one drop classification reads.
-///
-/// Kept on the dock's own state row rather than rebuilt per frame: a
-/// held drag asks for them on every pointer move.
 #[derive(Debug, Default)]
 struct ChipRects {
     rects: Vec<Rect>,
 }
 
-/// What the recursive walk carries — one value rather than six
-/// parameters, so the recursion keeps its arity.
 #[derive(Debug)]
 struct DockCtx<'c, T, D> {
     state: &'c DockState<T>,
@@ -414,13 +340,11 @@ struct DockCtx<'c, T, D> {
     tabs: &'c mut D,
     min_pane: f32,
     overflow: TabOverflow,
-    /// Borrowed from the `Rc<Theme>` clone `show` holds for its whole
-    /// body, so the theme outlives every reborrow of the `Ui` inside it.
+    /// Borrowed from the `Rc<Theme>` clone `show` holds, so the theme outlives every `Ui` reborrow.
     theme: &'c DockTheme,
 }
 
 impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
-    /// One node: a split onto a [`Splitter`], a leaf onto a pane.
     fn node(&mut self, ui: &mut Ui, idx: NodeIndex, path: DockPath) {
         let state = self.state;
         match state.node(idx) {
@@ -447,8 +371,6 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                         };
                         self.node(ui, child, child_path);
                     });
-                // The widget wrote the divider drag into `live`; the
-                // tree itself only changes through the recorded operation.
                 if hit.changed {
                     self.operations.push(DockOperation::SetRatio {
                         split: path,
@@ -459,22 +381,14 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         }
     }
 
-    /// One pane: the group's tab strip over its active tab's view.
     fn group(&mut self, ui: &mut Ui, group: &TabGroup<T>) {
         let state = self.state;
         Panel::vstack()
             .id(DockView::pane_id(state, group.id))
             .size((Sizing::FILL, Sizing::FILL))
-            // Focusable so a press anywhere in the pane that misses
-            // every inner focusable lands here — which is what the
-            // scan's focus query reads.
             .focusable(true)
             .show(ui, |ui| {
                 self.strip(ui, group);
-                // Last frame's arrangement, as every measurement during
-                // a record is — but of the *group's* content area, which
-                // outlives the tab in it. That is what lets a view first
-                // recording on this pass still be handed a size.
                 let size = DockView::content_size(ui, state, group.id);
                 let tab = group.active_tab();
                 let tabs = &mut *self.tabs;
@@ -485,7 +399,6 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             });
     }
 
-    /// One pane's strip, and the per-chip menu behind it.
     fn strip(&mut self, ui: &mut Ui, group: &TabGroup<T>) {
         let strip_id = DockView::strip_id(self.state, group.id);
         let focused = self.state.focused() == group.id;
@@ -511,17 +424,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 .show(ui);
             hit.keyed.or(hit.menu_picked)
         });
-        // Everything the scan a phase earlier could not see. A pointer
-        // click on a chip was already turned into an operation there, and
-        // pushing it again here would put the same operation in the queue
-        // twice — but that scan reads chip and close-button ids, and
-        // neither a keyboard move nor a popup entry has one.
-        //
-        // So a keyboard move lands one frame after the press, where a
-        // click lands on its own frame. That is inherent rather than a
-        // shortcut: the strip resolves an arrow against its own input
-        // scope, which only exists while it is recording, so there is
-        // nothing for the earlier phase to read.
+        // The scan sees only chip and close-button ids; keyboard moves and popup entries have none, so they land a frame later.
         if let Some(slot) = activated
             && let Some(&tab) = group.tabs.get(slot)
         {
@@ -556,13 +459,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         }
     }
 
-    /// The drag's tooltip-layer feedback: a wash over the region the
-    /// drop would occupy — the whole pane for a join, half for a split,
-    /// a caret between two chips for a strip insert — and a small ghost
-    /// chip trailing the pointer.
-    ///
-    /// Both sense nothing, so the overlay never intercepts the drag's
-    /// own hit-testing.
+    /// The drag's tooltip-layer feedback: a wash over the drop region and a ghost chip. Both sense nothing, so hit-testing is unaffected.
     fn drag_feedback(&mut self, ui: &mut Ui, tab: T) {
         let state = self.state;
         let dock = DockView::dock_id(state);

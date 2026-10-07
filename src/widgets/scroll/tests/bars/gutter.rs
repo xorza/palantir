@@ -12,8 +12,7 @@ use crate::widgets::scroll::tests::bars::support::{record_two_frames, theme, thu
 use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll_viewport};
 use glam::UVec2;
 
-/// Reservation: when content overflows on the V axis, the inner
-/// shrinks by exactly `theme.thickness + theme.gap` on the right.
+/// V-axis overflow shrinks the inner by `theme.thickness + theme.gap` on the right.
 #[test]
 fn vertical_overflow_reserves_bar_thickness_on_inner() {
     let surface = UVec2::new(400, 600);
@@ -38,7 +37,6 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
     );
 }
 
-/// User-set padding is preserved — bar reservation adds to it.
 #[test]
 fn user_padding_is_preserved_when_bar_reserves() {
     let surface = UVec2::new(400, 600);
@@ -63,9 +61,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
     );
 }
 
-/// Pin bar positioning: V bar's overlay rect sits flush with
-/// `outer.w - theme.thickness` (the reserved padding strip), NOT
-/// inside any user-set padding.
+/// The V bar's rect sits flush at `outer.w - theme.thickness`, not inside user padding.
 #[test]
 fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     let ui = record_two_frames(UVec2::new(400, 600), |ui| {
@@ -98,12 +94,7 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     }
 }
 
-/// Reservation is **constant** across the overflow toggle — the
-/// viewport stays at `outer - bar_w` whether or not content
-/// overflows. Keeping the viewport size stable prevents Hug
-/// ancestors (e.g. a `Popup` body) from shifting by `bar_w` when
-/// overflow first appears. Bar visibility (thumb + track drawn or
-/// not) still toggles with overflow; only the gutter stays.
+/// The reservation is constant across the overflow toggle, so Hug ancestors (e.g. a `Popup` body) don't shift; only bar visibility toggles.
 #[test]
 fn bar_reservation_stays_constant_across_overflow_toggle() {
     let surface = UVec2::new(400, 600);
@@ -139,12 +130,7 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
     );
 }
 
-/// `BarMode::Overlay`: no gutter is reserved. Viewport gets the
-/// full outer width regardless of content/overflow. The bar
-/// (when drawn) paints over the content's far-edge strip — same
-/// geometry as Reserved mode, but no space taken from the
-/// content area. Pinned with overflowing content so the bar
-/// would actually appear.
+/// `BarMode::Overlay` reserves no gutter; the bar paints over the content's far edge.
 #[test]
 fn overlay_mode_skips_gutter_reservation() {
     use crate::BarMode;

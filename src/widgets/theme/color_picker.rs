@@ -1,5 +1,5 @@
-//! What a colour picker wears: the surfaces it paints, the handle that rides
-//! them, and the checker behind anything translucent.
+//! What a colour picker wears: its surfaces, the handle, and the checker
+//! behind translucent colours.
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
@@ -12,19 +12,15 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 
-/// Visuals and geometry for [`crate::ColorPicker`] and the four widgets it
-/// arranges — [`crate::ColorField`], [`crate::ColorStrip`],
-/// [`crate::ColorSwatch`] and [`crate::ColorButton`]. One bundle, because the
-/// five are one control and a field styled apart from its own hue bar would
-/// only ever look broken.
+/// Visuals and geometry for [`crate::ColorPicker`] and its parts
+/// ([`crate::ColorField`], [`crate::ColorStrip`], [`crate::ColorSwatch`],
+/// [`crate::ColorButton`]); one bundle because they are one control.
 ///
-/// The field and the bars are sized here rather than by the layout. Both
-/// paint a CPU-built texture, and knowing the size at record time is what
-/// lets the first frame paint the right one.
+/// The field and bars are sized here, not by layout: they paint a CPU-built
+/// texture whose size must be known at record time.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ColorPickerTheme {
-    /// Saturation/value field width in logical px. Also the width of the
-    /// bars and of the panel's rows.
+    /// Saturation/value field width in logical px; also the bars' and rows' width.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub field_width: f32,
     /// Saturation/value field height in logical px.
@@ -45,11 +41,10 @@ pub struct ColorPickerTheme {
     /// Stroke width of each of the handle's two rings, in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub handle_width: f32,
-    /// Outer ring of every handle. Dark, and **not** a palette colour: a
-    /// handle sits on top of every colour the field can show, so one taken
-    /// from the palette disappears over half of them.
+    /// Outer ring of every handle. Dark and not a palette colour: a handle sits
+    /// over every colour the field shows.
     pub handle_outer: RgbaF32,
-    /// Inner ring of every handle. Light, for the same reason.
+    /// Inner ring of every handle.
     pub handle_inner: RgbaF32,
     /// Light square of the checker behind a translucent colour.
     pub checker_light: RgbaF32,
@@ -58,8 +53,7 @@ pub struct ColorPickerTheme {
     /// Side of one checker square in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
     pub checker_cell: f32,
-    /// Hairline around the chip and each swatch, so a white colour still
-    /// reads as a shape against a light panel.
+    /// Hairline around the chip and swatches, so white reads against a light panel.
     pub border: RgbaF32,
     /// Width of that hairline in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -68,55 +62,38 @@ pub struct ColorPickerTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
-    /// [`Palette::popup_panel`], the same as a menu's and a combo list's, so a
-    /// chip's popup beside a combo's list reads as one system.
+    /// [`Palette::popup_panel`], as for menus and combo lists.
     pub popup: Background,
-    /// Padding between that chrome and the panel inside it. Wider than
-    /// [`Self::gap`], so the panel reads as set in a card rather than as one
-    /// more of its own rows.
+    /// Padding inside the popup chrome; wider than [`Self::gap`] so the panel reads
+    /// as set in a card.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub popup_padding: Spacing,
-    /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in
-    /// the bundled monospace face.
+    /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in the
+    /// bundled monospace face, so digits don't shuffle as a number changes length
+    /// (the panel also pins their boxes to one width).
     ///
-    /// Monospace because the values sit under a drag: every digit advances
-    /// the same, so a number going from 99 to 100 does not shuffle the ones
-    /// beside it. The panel pins their boxes to one width for the same
-    /// reason, and the two together are what make a drag read as one number
-    /// changing rather than a row rearranging itself.
-    ///
-    /// Built from the stock bundle at [`Self::from_palette`], so an app that
-    /// restyles [`Theme::drag_value`](crate::Theme) does not move these with
-    /// it. Rebuild this field alongside it if that matters. The text names
-    /// only its face and size, so every other axis follows
-    /// [`Theme::text`](crate::Theme).
+    /// Built from the stock bundle at [`Self::from_palette`], so restyling
+    /// [`Theme::drag_value`](crate::Theme) doesn't move these. Only face and size
+    /// are named; other axes follow [`Theme::text`](crate::Theme).
     pub value: DragValueTheme,
-    /// What the hex field wears: [`Theme::text_edit`](crate::Theme) in the
-    /// same face, for the same reason.
+    /// What the hex field wears: [`Theme::text_edit`](crate::Theme) in the same face.
     pub hex: TextEditTheme,
-    /// The caption over each channel value.
+    /// The caption over each channel value. Over rather than beside: a
+    /// four-column row of a 208 px panel leaves about 35 px beside a label.
     ///
-    /// Over rather than beside: a four-column row of a 208 px panel leaves
-    /// about 35 px beside a label, which is two digits and a half. Above it,
-    /// the number gets the whole column.
-    ///
-    /// Text axes the caption sets over [`Theme::text`](crate::Theme).
+    /// Text axes set over [`Theme::text`](crate::Theme).
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub label: TextStyleOverrides,
 }
 
-/// Font size the channel values and the hex field are set at.
-///
-/// Smaller than the ambient style, because the panel is only as wide as its
-/// field: a quarter of 208 px is 47.5, and three digits of the 16 px default
-/// plus a chip's padding do not fit it.
+/// Font size of the channel values and hex field. Smaller than ambient: each
+/// of four columns is (208 - 3 gaps) / 4 = 47.5 px, too narrow for three digits
+/// of the 16 px default plus padding.
 const VALUE_FONT_PX: f32 = 13.0;
 
-/// Padding a value chip takes, so the column's width goes to the number.
 const VALUE_PADDING: f32 = 5.0;
 
-/// Put every state's text in the monospace face at the value size. The
-/// other axes stay whatever each look already overrides, or inherits.
+/// Put every state's text in the monospace face at the value size.
 fn mono_states(looks: &mut StatefulLook) {
     for look in [
         &mut looks.normal,
@@ -137,10 +114,9 @@ fn mono_edit(p: &Palette) -> TextEditTheme {
 }
 
 impl ColorPickerTheme {
-    /// Visit the two bundles that carry text — the channel values and the hex
-    /// field. Destructures the whole struct so a new field has to be
-    /// classified here before it compiles, which is the guarantee
-    /// [`Theme::scale_text`](crate::Theme::scale_text) rides on.
+    /// Visit the two text-bearing bundles. Destructures the whole struct so a new
+    /// field must be classified here, which [`Theme::scale_text`](crate::Theme::scale_text)
+    /// relies on.
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             value,
@@ -169,8 +145,7 @@ impl ColorPickerTheme {
         f(ThemeText::Overrides(label));
     }
 
-    /// The picker's geometry is fixed; only its handle and swatch colours
-    /// come from `p`.
+    /// Geometry is fixed; only handle and swatch colours come from `p`.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             field_width: 208.0,
@@ -190,9 +165,8 @@ impl ColorPickerTheme {
             gap: 6.0,
             popup: p.popup_panel(),
             popup_padding: Spacing::all(8.0),
-            // The editor derives from the chip, as `DragValueTheme`
-            // promises, so a value that becomes editable keeps its box and
-            // its text exactly where they were.
+            // The editor derives from the chip, as `DragValueTheme` promises, so an
+            // editable value keeps its box and text in place.
             value: {
                 let mut chip = DragValueTheme::from_palette(p).chip;
                 mono_states(&mut chip.looks);

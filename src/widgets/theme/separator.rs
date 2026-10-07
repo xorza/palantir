@@ -1,22 +1,12 @@
-//! What a divider rule wears. Its default margin depends on where the
-//! rule is used, so a menu's separator names its own.
+//! What a divider rule wears. The default margin depends on use, so a menu separator names its own.
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Separator`]: the thin divider rule between
-/// content. Builder overrides (`.color(...)` / `.thickness(...)` /
-/// `.margin(...)`) win; otherwise these defaults fill in, so a
-/// design-system theme restyles separators the same way it restyles
-/// every other widget.
+/// Visuals for [`crate::Separator`]. Builder overrides (`.color`, `.thickness`, `.margin`) win; these fill in otherwise.
 ///
-/// Also the bundle behind [`crate::MenuSeparator`], through
-/// [`crate::ContextMenuTheme::separator`]. A menu rule is the same
-/// object as an in-flow one wearing different values — it just spans a
-/// padded popup rather than a content column, which is what `margin`
-/// expresses — so the two share a type rather than the menu keeping a
-/// near-duplicate of this one.
+/// Also the bundle for [`crate::MenuSeparator`] via [`crate::ContextMenuTheme::separator`]: the same rule with different values.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SeparatorTheme {
     /// Rule color.
@@ -24,18 +14,13 @@ pub struct SeparatorTheme {
     /// Rule breadth in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub thickness: f32,
-    /// Breathing room around the rule, applied when the builder left
-    /// margin unset. `ZERO` for an in-flow rule; the menu slot opens a
-    /// vertical gutter instead — horizontal inset would leave a menu
-    /// rule visibly short of the labels it divides, since it already
-    /// spans only the panel's padded width.
+    /// Breathing room when the builder left margin unset. `ZERO` in flow; the menu slot uses a vertical gutter, since a horizontal inset would leave the rule short of the labels.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
     pub margin: Spacing,
 }
 
 impl SeparatorTheme {
-    /// A one-pixel rule in the palette's softest border colour, with no
-    /// margin of its own.
+    /// A one-pixel rule in the palette's softest border colour, no margin.
     pub const fn from_palette(p: &Palette) -> Self {
         Self {
             color: p.border_soft(),
@@ -44,8 +29,7 @@ impl SeparatorTheme {
         }
     }
 
-    /// The [`crate::MenuSeparator`] recipe: the same rule, held off the
-    /// rows above and below it.
+    /// The [`crate::MenuSeparator`] recipe: the same rule, held off the rows around it.
     pub fn menu_separator(p: &Palette) -> Self {
         Self {
             margin: Spacing::xy(0.0, 4.0),

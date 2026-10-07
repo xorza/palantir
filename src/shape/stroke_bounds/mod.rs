@@ -1,12 +1,10 @@
-//! Conservative bounding boxes for stroked geometry — how far a cap and a
-//! join can push a path's extent past the path itself.
+//! Conservative bounding boxes for stroked geometry: how far a cap and join push a path's extent.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::shape::style::{LineCap, LineJoin};
 use std::f32::consts;
 
-/// SVG-convention miter limit shared by CPU bounds, composition, and the
-/// specialized curve shader.
+/// SVG-convention miter limit shared by CPU bounds, composition and the curve shader.
 pub(crate) const MITER_LIMIT: f32 = 4.0;
 
 /// Conservative paint bound for a centerline AABB. `width` and `fringe` use

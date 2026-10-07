@@ -8,7 +8,6 @@ use crate::gpu::wgpu_backend::tests::support::{
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::render_buffer::RenderBuffer;
 
-/// `kinds` for the buffer's quads, in order.
 fn with_kinds(mut buffer: RenderBuffer, kinds: &[FillKind]) -> RenderBuffer {
     buffer.quads.resize(kinds.len(), buffer.quads[0]);
     for (quad, &kind) in buffer.quads.iter_mut().zip(kinds) {
@@ -17,7 +16,6 @@ fn with_kinds(mut buffer: RenderBuffer, kinds: &[FillKind]) -> RenderBuffer {
     buffer
 }
 
-/// The draws of `buffer`, without the scissor and stencil bookkeeping.
 fn draws(buffer: &RenderBuffer) -> Vec<RenderStep> {
     plain_steps(buffer)
         .into_iter()
@@ -28,17 +26,12 @@ fn draws(buffer: &RenderBuffer) -> Vec<RenderStep> {
 #[derive(Debug)]
 struct Case<'a> {
     label: &'static str,
-    /// The buffer's quads, in order.
     kinds: &'a [FillKind],
-    /// Each group's quad span.
     groups: &'a [Span],
     want: &'a [RenderStep],
 }
 
-/// A group's range splits into one run per pipeline, in paint order,
-/// wherever the shadow kind starts or stops, and both shadow kinds share
-/// a run. A range of one kind stays one draw, and runs never cross a
-/// group.
+/// A group's range splits into one run per pipeline wherever the shadow kind starts or stops; both shadow kinds share a run, and runs never cross a group.
 #[test]
 fn quad_ranges_split_where_the_shadow_kind_changes() {
     const SOLID: FillKind = FillKind::SOLID;
@@ -91,8 +84,7 @@ fn quad_ranges_split_where_the_shadow_kind_changes() {
     }
 }
 
-/// A group's text still follows all of its quad runs, shadows included,
-/// so a label stays above its own chrome's shadow.
+/// A group's text follows all its quad runs, so a label stays above its chrome's shadow.
 #[test]
 fn text_follows_every_run_of_its_group() {
     let buffer = with_kinds(

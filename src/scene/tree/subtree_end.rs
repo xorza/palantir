@@ -3,28 +3,16 @@
 const SUBTREE_GRID_FLAG: u32 = 1 << 31;
 const SUBTREE_END_MASK: u32 = !SUBTREE_GRID_FLAG;
 
-/// Exclusive pre-order subtree end with the "subtree (inclusive)
-/// contains a `LayoutMode::Grid` node" flag packed into the high bit.
-/// The low 31 bits hold the real end — arena will never approach
-/// 2^31 nodes. Packed alongside the end (rather than a separate
-/// `has_grid` bitset) so the `MeasureCache` grid-hug fast path tests
-/// one load against the same SoA column the caller already touches for
-/// the subtree bound.
-///
-/// Wrapping the raw word is load-bearing: [`Self::end`] and
-/// [`Self::has_grid`] are the *only* reads and there is no raw-`u32`
-/// accessor, so a new tree-walk can't forget the mask and silently read
-/// `real + 2^31` for grid subtrees.
+/// Exclusive pre-order subtree end, with a "subtree (inclusive) contains a `LayoutMode::Grid` node" flag in the
+/// high bit (the low 31 bits hold the end). Packed together so the `MeasureCache` grid-hug fast path tests one load;
+/// the raw word is wrapped so no tree-walk can forget the mask and read `real + 2^31`.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::NoUninit)]
 pub(crate) struct SubtreeEnd(u32);
 
 impl SubtreeEnd {
-    /// A just-opened node: end is `id + 1` (covers only itself); the
-    /// grid flag is set iff the node is itself a `LayoutMode::Grid`.
-    /// Descendants fold their ends in via [`Self::merge_child`] at
-    /// close. The debug assertion on the 31-bit ceiling catches a future
-    /// overflow before it corrupts the flag.
+    /// A just-opened node: end is `id + 1`; the grid flag is set iff the node is itself a Grid. Children fold in via
+    /// [`Self::merge_child`]; the debug assertion on the 31-bit ceiling catches overflow before it corrupts the flag.
     #[inline]
     pub(crate) fn new_open(id: u32, is_grid: bool) -> Self {
         debug_assert!(
@@ -39,38 +27,24 @@ impl SubtreeEnd {
         })
     }
 
-    /// Exclusive pre-order end, grid flag stripped.
     #[inline]
     pub(crate) const fn end(self) -> u32 {
         self.0 & SUBTREE_END_MASK
     }
 
-    /// Whether the node at pre-order index `i` has any children: its
-    /// subtree ends at the node after it exactly when it has none.
-    ///
-    /// Named here, on the entry the answer comes off, because the two
-    /// walks that ask hold different things — the cascade already has
-    /// this entry loaded for its own skip cursor, the damage walk has a
-    /// `&Tree` — and both spelled the comparison themselves.
-    /// [`Tree::has_children`](crate::scene::tree::Tree::has_children) is
-    /// the second entry point onto this one body.
+    /// Whether the node at pre-order index `i` has children: its subtree ends right after it exactly when it has none.
+    /// Shared by the cascade's skip cursor and [`Tree::has_children`](crate::scene::tree::Tree::has_children).
     #[inline]
     pub(crate) const fn has_children(self, i: usize) -> bool {
         self.end() as usize != i + 1
     }
 
-    /// `true` iff the subtree rooted here (inclusive) contains a
-    /// `LayoutMode::Grid` node.
     #[inline]
     pub(crate) const fn has_grid(self) -> bool {
         self.0 & SUBTREE_GRID_FLAG != 0
     }
 
-    /// Fold a just-closed child into this (parent) end: take the larger
-    /// pre-order end and union the grid flags. Bit-level: the low 31
-    /// bits are always ≤ `SUBTREE_END_MASK` so `.max` on the masked
-    /// words gives the right end; the high bit is the flag and
-    /// `(a | b) & FLAG` unions cleanly.
+    /// Folds a just-closed child into this (parent) end: the larger pre-order end, grid flags unioned.
     #[inline]
     pub(crate) const fn merge_child(&mut self, child: SubtreeEnd) {
         let (own, theirs) = (self.0 & SUBTREE_END_MASK, child.0 & SUBTREE_END_MASK);

@@ -1,7 +1,5 @@
-//! Gradients end to end: a frame authoring more distinct gradients than
-//! the LUT atlas holds still paints every one correctly, the linear,
-//! radial and conic shader paths match their goldens, and so does the
-//! showcase's gradients page.
+//! Gradients end to end: an overflowing LUT atlas, the linear, radial and
+//! conic shader paths, and the showcase gradients page.
 
 use glam::UVec2;
 use palantir::golden::image::RgbaImage;
@@ -18,8 +16,7 @@ use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 use crate::support;
 
-/// More distinct gradients than the atlas's 256 initial rows (255
-/// usable), so one frame forces it to grow. 20 × 16 swatches.
+/// More distinct gradients than the atlas's 256 initial rows, forcing growth.
 const COLS: u32 = 20;
 
 const ROWS: u32 = 16;
@@ -32,10 +29,8 @@ const VIEWPORT: UVec2 = UVec2::new(COLS * SWATCH, ROWS * SWATCH);
 
 const CLEAR: RgbaF32 = RgbaF32::BLACK;
 
-/// Stop colour for swatch `i`, written in linear light as `byte / 255`.
-/// Channels are spread far enough apart that neighbouring swatches stay
-/// distinguishable after the sRGB framebuffer encode, so sampling the
-/// wrong LUT row can't pass as rounding.
+/// Stop colour for swatch `i`, in linear light as `byte / 255`, spread wide
+/// enough that a wrong LUT row can't pass as rounding.
 fn swatch_color(i: u32) -> RgbaF32 {
     let lin = |byte: u32| byte as f32 / 255.0;
     RgbaF32::new(
@@ -46,12 +41,8 @@ fn swatch_color(i: u32) -> RgbaF32 {
     )
 }
 
-/// Each swatch is a two-stop gradient whose stops share one colour, so
-/// its whole LUT row bakes to that flat colour and the swatch paints
-/// it uniformly. Stops are the atlas key, so all `SWATCHES` gradients
-/// are distinct rows — and because a row is flat, reading the *wrong*
-/// row shows up as a neighbouring swatch's colour rather than a subtle
-/// interpolation shift.
+/// Each swatch's two stops share one colour, so its LUT row is flat and a
+/// wrong row shows as a neighbouring swatch's colour.
 fn render_swatches() -> RgbaImage {
     let mut harness = Harness::new();
     harness
@@ -79,23 +70,17 @@ fn render_swatches() -> RgbaImage {
         .image
 }
 
-/// 320 distinct gradients in one frame — past the 255 rows the atlas
-/// starts with, and every row is referenced by this frame's draws, so
-/// none can be evicted. The atlas must grow, the backend must resize
-/// its LUT texture, and the shaders must read the new height back
-/// (`textureDimensions`) instead of a height baked in at pipeline
-/// build.
+/// 320 gradients in one frame force the atlas to grow, the backend to resize
+/// its LUT, and the shaders to read the new height via `textureDimensions`.
 ///
-/// Asserted per swatch against its own expected sRGB value rather than
-/// by mutual distinctness: a permuted row assignment would satisfy
-/// "all 320 differ" while painting every swatch wrong.
+/// Asserted per swatch, since a permuted row assignment would still satisfy
+/// mutual distinctness.
 #[test]
 fn overflowing_gradient_atlas_paints_every_swatch() {
     let img = render_swatches();
     for i in 0..SWATCHES {
         let want = swatch_color(i).to_srgba_u8();
-        // Swatch centre — clear of the edge AA the composer leaves on
-        // the quad boundary.
+        // Clear of the edge AA on the quad boundary.
         let x = (i % COLS) * SWATCH + SWATCH / 2;
         let y = (i / COLS) * SWATCH + SWATCH / 2;
         let got = img.get_pixel(x, y).0;
@@ -104,10 +89,8 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
             got[1].abs_diff(want.g),
             got[2].abs_diff(want.b),
         ];
-        // The LUT stores linear `f16`, which resolves finer than an sRGB
-        // step, so only the encode's rounding is left; neighbouring
-        // swatches are ≥5 sRGB units apart, so this fails on any row
-        // mix-up.
+        // The LUT is `f16`, finer than an sRGB step, so only encode rounding
+        // remains; swatches are at least 5 sRGB units apart.
         assert!(
             delta.iter().all(|&d| d <= SRGB_ROUND_TRIP),
             "swatch {i} at ({x}, {y}): got {got:?}, want [{}, {}, {}, 255] (delta {delta:?})",
@@ -119,24 +102,18 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
     }
 }
 
-/// Golden record of the same scene: pins the composed grid so a future
-/// change to growth, row assignment, or LUT sampling shows up as a
-/// visible diff rather than only as a per-pixel assertion.
+/// Golden of the same scene.
 #[test]
 fn overflowing_gradient_atlas_matches_golden() {
     assert_matches_golden(GoldenName::OverflowingGradientAtlas, &render_swatches());
 }
 
-/// The LUT is sampled at texel centres: a ramp parameter `t` reads the
-/// point `t · 255` between texel centres, the inverse of how the bake
-/// placed them.
+/// The LUT is sampled at texel centres: parameter `t` reads the point
+/// `t * 255` between them.
 ///
-/// A hard stop from red to blue at 0.25 is stored at 64/255, so texel 64
-/// is red and texel 65 blue, and the filter blends them over one texel.
-/// Across a 1024 px rect, pixel 258 sits at `t = 258.5 / 1024`, which
-/// reads `255 · t − 64 = 0.373` of the way to blue: red 0.627 and blue
-/// 0.373 linear, sRGB 207 and 163. Sampled at `u = t`, it read
-/// `256 · t − 64.5 = 0.125`: sRGB 240 and 99.
+/// A hard stop at 0.25 is stored at 64/255. Pixel 258 of 1024 sits at
+/// `t = 258.5 / 1024`, `255 * t - 64 = 0.373` of the way to blue: red 0.627
+/// and blue 0.373 linear, sRGB 207 and 163.
 #[test]
 fn a_gradient_samples_its_lut_at_texel_centres() {
     use palantir::Stop;
@@ -165,17 +142,13 @@ fn a_gradient_samples_its_lut_at_texel_centres() {
     );
 }
 
-/// The showcase's gradients page itself, compiled from the example, so the
-/// golden pins what the showcase draws rather than a copy of it.
+/// The showcase's gradients page, compiled from the example.
 #[path = "../../../examples/showcase/pages/gradients.rs"]
 mod showcase_page;
 
-/// The showcase's gradients page as one golden: every linear, radial and
-/// conic tile, the spread modes and the interpolation spaces, through the
-/// composer, the atlas bake, the shader sample and the blend.
+/// The showcase's gradients page as one golden.
 #[test]
 fn showcase_gradients_page_matches_golden() {
-    // The column the showcase's shell gives a scrolling page.
     let img = Harness::new()
         .size(UVec2::new(560, 1180))
         .frame(|ui| {
@@ -188,12 +161,8 @@ fn showcase_gradients_page_matches_golden() {
     assert_matches_golden(GoldenName::ShowcaseGradientsPage, &img);
 }
 
-/// Pin the linear-gradient paint path end-to-end: composer registers
-/// the gradient with the LUT atlas, backend uploads the row, shader
-/// samples the LUT in the brush-slot branch. A vertical (π/2 angle)
-/// 2-stop gradient from a dark-navy to a brighter-blue gives a clear
-/// luminance ramp that's eyeballable in the golden and catches both
-/// the wiring and the shader sample position.
+/// Pins the linear-gradient paint path end to end with a vertical two-stop
+/// gradient.
 #[test]
 fn frame_linear_gradient_matches_golden() {
     let mut h = Harness::new();
@@ -224,11 +193,7 @@ fn frame_linear_gradient_matches_golden() {
     assert_matches_golden(GoldenName::FrameLinearGradient, &img);
 }
 
-/// Pin: `Shape::rect(rect).fill(LinearGradient::builder(...))` lowered
-/// through `Tree::add_shape` → `ShapeRecord::Rect { fill: Brush, .. }`
-/// paints correctly. Slice-2 step 6 unblocks this — prior
-/// to the widening, the lowering called `as_solid().expect(...)` and
-/// panicked on any non-solid brush.
+/// A rounded rect with a linear-gradient fill paints correctly.
 #[test]
 fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     let mut h = Harness::new();
@@ -255,11 +220,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     assert_matches_golden(GoldenName::AddShapeRoundedRectLinearGradient, &img);
 }
 
-/// Pins the radial + conic shader paths end-to-end. Two side-by-side
-/// frames: a centred radial (yellow core fading to navy) and a 4-stop
-/// conic colour wheel. Mismatch flags drift in `eval_fill`'s radial /
-/// conic branches, the atlas (stops, interpolation) keying, or the
-/// `fill_axis` payload packing.
+/// Pins the radial and conic shader paths with two side-by-side frames.
 #[test]
 fn radial_and_conic_gradient_matches_golden() {
     let mut h = Harness::new();

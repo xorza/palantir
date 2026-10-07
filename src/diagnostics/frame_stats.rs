@@ -1,5 +1,4 @@
-//! The opt-in frame-stats readout: the counters one frame publishes, and the
-//! `Layer::Debug` widget that draws them.
+//! The opt-in frame-stats readout: the counters one frame publishes and the `Layer::Debug` widget drawing them.
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::justify::Justify;
@@ -17,11 +16,7 @@ use crate::widgets::theme::text_style::TextStyle;
 use std::fmt;
 use std::time::Duration;
 
-/// One frame's diagnostic counters, as [`Ui::frame_stats`] snapshots them.
-///
-/// A snapshot rather than a borrow of the clock behind it: the readout
-/// records through `&mut Ui`, and no borrow taken off that `Ui` survives the
-/// widget calls that draw the label.
+/// One frame's diagnostic counters, as [`Ui::frame_stats`] snapshots them; a snapshot because the readout records through `&mut Ui`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameStats {
     pub(crate) frame_id: u64,
@@ -32,13 +27,7 @@ pub(crate) struct FrameStats {
     pub(crate) gpu: Option<Duration>,
 }
 
-/// The GPU-time segment of the readout, or nothing until timestamp readback
-/// yields a value — the first-frame readout must not reserve a misleading
-/// placeholder column.
-///
-/// A `Display` shim rather than a formatted `String`, so the whole readout
-/// reaches the arena through one [`Ui::fmt`] and the overlay costs no
-/// allocation per record pass.
+/// The GPU-time segment: empty until timestamp readback yields a value (no placeholder column on frame 1). A `Display` shim so the readout reaches the arena through one [`Ui::fmt`], allocation-free per pass.
 #[derive(Debug)]
 struct GpuSegment(Option<Duration>);
 
@@ -61,9 +50,7 @@ pub(crate) fn record(ui: &mut Ui) {
         gpu,
     } = ui.frame_stats();
     let gpu = GpuSegment(gpu);
-    // `settle/frame` reads as a ratio across a gesture: a sustained drag that
-    // still double-records advances both halves in lockstep, one that stops
-    // advances only the right.
+    // `settle/frame` reads as a ratio across a gesture: a double-recording drag advances both halves, one that stops advances only the right.
     let label = ui.fmt(format_args!(
         "f {render_frame_id} · {fps:>4.0} fps · settle {settle_frames}/{frame_id}{gpu}"
     ));
@@ -96,9 +83,7 @@ mod tests {
     use crate::diagnostics::frame_stats::GpuSegment;
     use std::time::Duration;
 
-    /// The GPU segment appends a separator and a two-decimal time padded
-    /// to five columns, and nothing at all when the device publishes no
-    /// pass time.
+    /// The GPU segment appends a separator and a two-decimal time padded to five columns, or nothing without a pass time.
     #[test]
     fn the_gpu_segment_formats_or_vanishes() {
         let ms = |micros| Some(Duration::from_micros(micros));

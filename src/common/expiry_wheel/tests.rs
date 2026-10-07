@@ -1,7 +1,6 @@
 use super::*;
 
-/// Keys alone, in fire order: most tests here pin *which* tickets
-/// fire, and serials have their own cases below.
+/// Keys alone, in fire order; serials have their own cases.
 fn fired(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<u32> {
     fired_with_serials(wheel, frame)
         .into_iter()
@@ -9,7 +8,6 @@ fn fired(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<u32> {
         .collect()
 }
 
-/// Each fired key with the serial it came back under, in fire order.
 fn fired_with_serials(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<(u32, TicketSeq)> {
     let mut out = Vec::new();
     wheel.retire(frame, |key, seq| {
@@ -19,8 +17,7 @@ fn fired_with_serials(wheel: &mut ExpiryWheel<u32>, frame: u64) -> Vec<(u32, Tic
     out
 }
 
-/// The wheel is a schedule, not a policy: a ticket comes back on its
-/// due frame, once, and only then.
+/// The wheel is a schedule, not a policy: a ticket comes back once, on its due frame.
 #[test]
 fn tickets_fire_on_their_due_frame_and_only_then() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
@@ -48,9 +45,7 @@ fn tickets_fire_on_their_due_frame_and_only_then() {
     assert!(fired(&mut wheel, 6).is_empty());
 }
 
-/// Every filing gets its own serial, and a ticket comes back under
-/// the one its `schedule` returned — the stamp an owner matches
-/// against to tell its live ticket from a supplanted one.
+/// Each filing gets its own serial, returned by `schedule`.
 #[test]
 fn a_ticket_comes_back_under_the_serial_it_was_filed_with() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
@@ -63,9 +58,7 @@ fn a_ticket_comes_back_under_the_serial_it_was_filed_with() {
     assert_eq!(seen, vec![(1, first), (2, second)]);
 }
 
-/// A re-file keeps the serial it fired under, so an owner stamps only
-/// where it decides something — at its own `schedule` — and never for
-/// a ticket the wheel put back on its behalf.
+/// A re-file keeps the serial it fired under, so an owner stamps only at its own `schedule`.
 #[test]
 fn a_refile_keeps_its_serial() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
@@ -83,9 +76,7 @@ fn a_refile_keeps_its_serial() {
     assert_eq!(seen, vec![(1, seq), (1, seq)], "one serial, two firings");
 }
 
-/// A clock that advances by more than one — two windows recording
-/// before one shared submit — must not step over the buckets in
-/// between.
+/// A clock advancing by more than one must not step over buckets.
 #[test]
 fn a_jumping_clock_drains_every_bucket_it_passed() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
@@ -104,15 +95,10 @@ fn a_jumping_clock_drains_every_bucket_it_passed() {
     );
 }
 
-/// A jump wider than the ring aliases every bucket, so everything is
-/// handed back — including tickets that were not really due. Callers
-/// re-file those, so the contract is "never a missed ticket", not
-/// "never an early one". Each comes back under its own serial, not its
-/// bucket's frame: the aliasing is why a frame is no identity.
+/// A jump wider than the ring aliases every bucket, so everything is handed back, even not-yet-due tickets (callers re-file); each keeps its own serial.
 #[test]
 fn a_jump_wider_than_the_ring_hands_back_everything() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-    // Horizon 8 rounds to 16 slots.
     let near = wheel.schedule(1, 2);
     let far = wheel.schedule(2, 9);
 
@@ -124,22 +110,16 @@ fn a_jump_wider_than_the_ring_hands_back_everything() {
         "both, though only one was due, under their true serials",
     );
 
-    // And the ring is genuinely empty afterwards — an early-drained
-    // ticket must not also be left behind to fire again.
     assert!(fired(&mut wheel, 200).is_empty());
 }
 
-/// The re-file pattern the owners run: fire early, find the entry
-/// still live, put it back. This is what lets an entry touched every
-/// frame file one ticket per horizon rather than one per frame.
+/// The owner re-file pattern: fire early, find the entry live, put it back.
 #[test]
 fn refiling_from_inside_a_drain_defers_without_extra_tickets() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
     wheel.schedule(7, 2);
 
-    // The owner "touches" the entry every frame, pushing its real
-    // deadline out — but files nothing until its ticket fires at 2,
-    // and then that one ticket covers the whole span to 6.
+    // The entry is touched every frame but files nothing until its ticket fires at 2; that ticket covers the span to 6.
     let mut fired_at = Vec::new();
     for frame in 1..=5 {
         wheel.retire(frame, |_, _| {
@@ -154,7 +134,6 @@ fn refiling_from_inside_a_drain_defers_without_extra_tickets() {
     );
     assert_eq!(wheel.pending(), 1, "and no duplicate left behind");
 
-    // Let it lapse: it fires at 6, is not re-filed, and is gone.
     assert_eq!(fired(&mut wheel, 6), vec![7]);
     assert!(
         fired(&mut wheel, 20).is_empty(),
@@ -162,19 +141,13 @@ fn refiling_from_inside_a_drain_defers_without_extra_tickets() {
     );
 }
 
-/// A ticket filed further out than the ring is wide must fire
-/// *early*, not alias its way into a bucket already drained and fire
-/// a whole ring late. The owner re-files it, so the only cost is one
-/// extra visit. The clamp moves the ticket's frame but not its serial.
+/// A ticket filed further out than the ring fires early instead of aliasing a drained bucket; the clamp moves the frame, not the serial.
 #[test]
 fn a_ticket_past_the_ring_fires_early_rather_than_late() {
-    // Horizon 8 rounds to 16 slots, so the furthest safe bucket is
-    // 15 frames out; 200 would alias frame 8 (200 % 16 == 8).
+    // Horizon 8 rounds to 16 slots, so 15 frames is the furthest safe bucket; 200 would alias frame 8.
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
     let clamped = wheel.schedule(1, 200);
 
-    // Walk the frames a naive `due & mask` would have fired on, plus
-    // the whole first ring, and pin that it came back inside it.
     let mut fired_at = None;
     for frame in 1..=15 {
         let fired = fired_with_serials(&mut wheel, frame);
@@ -198,8 +171,7 @@ fn clear_drops_every_outstanding_ticket() {
     assert!(fired(&mut wheel, 9).is_empty());
 }
 
-/// Horizon rounds up to a power of two, and the mask must index
-/// inside the ring for every frame a caller can reach.
+/// Horizon rounds up to a power of two.
 #[test]
 fn horizon_rounds_up_and_indexes_in_range() {
     for (horizon, slots) in [(1u64, 2usize), (3, 4), (8, 16), (120, 128), (121, 128)] {
@@ -216,15 +188,12 @@ fn horizon_rounds_up_and_indexes_in_range() {
             "horizon {horizon} must fit the schedule assert",
         );
     }
-    // The shaped-buffer cache's keep: 135 + 2 = 137, one spare → 138,
-    // rounded up → 256.
+    // The shaped-buffer cache's keep: 135 + 2 = 137, one spare → 138, rounded up → 256.
     assert_eq!(ExpiryWheel::<u32>::with_keep(135).buckets.len(), 256);
     assert_eq!(ExpiryWheel::<u32>::slots_for_keep(135), 256);
 }
 
-/// A full bucket grows every bucket to the next power of two of its
-/// load, floor 4: one ticket gives 4 everywhere, the fifth in the same
-/// bucket gives 8 everywhere, the empty buckets included.
+/// A full bucket grows every bucket to the next power of two of its load, floor 4.
 #[test]
 fn buckets_grow_together() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);

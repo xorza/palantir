@@ -1,13 +1,9 @@
-//! `DynamicBuffer` — a `wgpu::Buffer` plus power-of-two growth.
+//! `DynamicBuffer`: a `wgpu::Buffer` plus power-of-two growth. `upload_instances` grows the buffer
+//! when the slice exceeds capacity and writes to offset 0: through the staging belt, or straight into
+//! the new mapped buffer on a grow frame. No content-hash dedup: a belt memcpy is cheaper than FxHash
+//! of the same bytes, so gating by hash is net-negative.
 //!
-//! `buf.upload_instances(ctx, items)` grows the underlying buffer when
-//! the typed slice exceeds capacity, then schedules a belt-backed
-//! `copy_buffer_to_buffer` to offset 0. No content-hash deduplication:
-//! staging-belt memcpy is cheaper than FxHash of the same bytes, so
-//! gating by hash is always net-negative.
-//!
-//! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) plus
-//! the `text` backend's vbuf.
+//! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) and the `text` backend's vbuf.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use std::marker::PhantomData;
@@ -22,10 +18,9 @@ pub(crate) struct DynamicBuffer<T: bytemuck::Pod> {
 }
 
 impl<T: bytemuck::Pod> DynamicBuffer<T> {
-    /// Bytes per item, checked when a buffer of `T` is instantiated: a
-    /// zero-sized row holds nothing, and every upload's byte count is a
-    /// whole number of rows that the belt copy and the mapped write both
-    /// need in multiples of [`wgpu::COPY_BUFFER_ALIGNMENT`].
+    /// Bytes per item, checked when a buffer of `T` is instantiated: a zero-sized row holds nothing,
+    /// and the belt copy and mapped write both need whole rows in multiples of
+    /// [`wgpu::COPY_BUFFER_ALIGNMENT`].
     const ITEM_BYTES: usize = {
         let size = size_of::<T>();
         assert!(size != 0, "DynamicBuffer does not support zero-sized rows");
@@ -36,10 +31,8 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         size
     };
 
-    /// Construct a vertex/instance buffer for items of type `T`.
-    /// `VERTEX | COPY_DST` usage (the common case for the four
-    /// pipelines and the debug overlay). Item size comes from
-    /// [`Self::ITEM_BYTES`] so call sites don't repeat it.
+    /// A vertex/instance buffer for items of type `T`: `VERTEX | COPY_DST`, the common case for the
+    /// four pipelines and the debug overlay.
     pub(crate) fn vertex(
         device: &wgpu::Device,
         label: &'static str,
@@ -53,8 +46,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         )
     }
 
-    /// Construct an index buffer for items of type `T`.
-    /// `INDEX | COPY_DST` usage.
+    /// An index buffer for items of type `T`: `INDEX | COPY_DST`.
     pub(crate) fn index(
         device: &wgpu::Device,
         label: &'static str,
@@ -89,10 +81,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         }
     }
 
-    /// Grow if needed and write `items` to offset 0. On a grow frame the
-    /// new buffer is created `mapped_at_creation: true` and the bytes
-    /// are memcpy'd straight into the mapped range — no belt staging
-    /// copy and no `copy_buffer_to_buffer` is recorded.
+    /// Grows if needed and writes `items` to offset 0. On a grow frame the new buffer is created
+    /// `mapped_at_creation: true` and the bytes are memcpy'd straight into the mapped range, with no
+    /// belt staging copy or `copy_buffer_to_buffer`.
     fn upload(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
         let bytes = bytemuck::cast_slice(items);
         if self.grow_mapped(ctx.device, items.len()) {
@@ -107,10 +98,8 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         ctx.write(&self.buffer, 0, bytes);
     }
 
-    /// Upload a slice of `Pod` instances to offset 0 (no-op when empty).
-    /// The empty-guard + `cast_slice` + count are identical across every
-    /// instanced pipeline, so they live here rather than re-spelled per
-    /// pipeline.
+    /// Uploads a slice of `Pod` instances to offset 0 (no-op when empty). The empty guard, `cast_slice`
+    /// and count are identical across every instanced pipeline, so they live here.
     pub(crate) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
         if items.is_empty() {
             return;
@@ -118,11 +107,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         self.upload(ctx, items);
     }
 
-    /// Grow to fit `needed_len` items with the new buffer
-    /// `mapped_at_creation: true`. Returns `true` when the buffer was
-    /// recreated (caller must write into the mapped range then call
-    /// `unmap`); `false` when the existing buffer's capacity already
-    /// fit (caller takes the belt path).
+    /// Grows to fit `needed_len` items with the new buffer `mapped_at_creation: true`. Returns `true`
+    /// when recreated (the caller writes into the mapped range, then calls `unmap`), `false` when
+    /// capacity already fit (the caller takes the belt path).
     fn grow_mapped(&mut self, device: &wgpu::Device, needed_len: usize) -> bool {
         if needed_len <= self.capacity {
             return false;

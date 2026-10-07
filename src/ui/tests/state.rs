@@ -1,15 +1,11 @@
-//! Cross-frame state: the row a widget keeps, and the scope a subtree
-//! borrows it in.
+//! Cross-frame state rows and the scope that lends them.
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 
-/// The whole reason [`Ui::with_state`](crate::Ui::with_state) lends the row
-/// rather than borrowing it out of the `Ui`: the row is live *at the same
-/// time as* the `Ui`, so a subtree can read and write it around the widget
-/// calls it drives.
+/// `Ui::with_state` lends the row, live alongside the `Ui`.
 #[test]
 fn with_state_lends_a_row_across_widget_calls() {
     #[derive(Default, Debug, PartialEq)]
@@ -42,8 +38,7 @@ fn with_state_lends_a_row_across_widget_calls() {
     );
 }
 
-/// Restoring re-probes the store instead of holding a pointer across the
-/// body — rows of the same `T` inserted at other ids can reallocate it.
+/// Restoring re-probes the store rather than holding a pointer; other same-`T` rows can reallocate it.
 #[test]
 fn with_state_survives_the_body_growing_its_own_store() {
     let outer = WidgetId::from_hash("grow-outer");
@@ -51,8 +46,6 @@ fn with_state_survives_the_body_growing_its_own_store() {
     h.frame(|ui| {
         ui.with_state::<u32, _>(outer, |ui, value| {
             *value = 7;
-            // Enough same-`T` rows to force the dense store's `Vec` to
-            // reallocate while the outer row is out on loan.
             for i in 0..64u64 {
                 ui.with_state::<u32, _>(WidgetId::from_hash(("filler", i)), |_, s| *s = i as u32);
             }
@@ -61,8 +54,7 @@ fn with_state_survives_the_body_growing_its_own_store() {
     assert_eq!(h.ui.state::<u32>(outer), Some(&7));
 }
 
-/// Rows of different types nest, which is what lets a page scope sit
-/// inside an app scope.
+/// Rows of different types nest.
 #[test]
 fn with_state_scopes_nest_by_type() {
     #[derive(Default, Debug)]
@@ -86,8 +78,6 @@ fn with_state_scopes_nest_by_type() {
     assert_eq!(h.ui.state::<Page>(page_id).map(|p| p.0), Some(2));
 }
 
-/// The scope returns whatever the body returns, so a page can hand a
-/// decision back out without a captured cell.
 #[test]
 fn with_state_returns_the_body_value() {
     let id = WidgetId::from_hash("with-state-return");
@@ -102,10 +92,7 @@ fn with_state_returns_the_body_value() {
     assert_eq!(h.ui.state::<u32>(id), Some(&5));
 }
 
-/// A singleton is one value per type for the life of the `Ui`: absent
-/// until something stores it, `with_singleton` lends it across widget
-/// calls and puts back every write, and it outlives frames that record
-/// nothing for it — no id owns it, so no sweep reaches it.
+/// A singleton is one value per type for the `Ui`'s life, never swept as no id owns it.
 #[test]
 fn a_singleton_is_lent_across_widget_calls_and_kept() {
     #[derive(Default, Debug, PartialEq)]

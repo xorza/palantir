@@ -128,8 +128,7 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
     }
 
     let cases = [
-        // Old buffer "a" left caret byte 1. The longer replacement
-        // "é" keeps 1 in bounds but makes it an interior UTF-8 byte.
+        // Old buffer "a" left caret byte 1; the longer "é" keeps 1 in bounds but makes it an interior UTF-8 byte.
         ExternalReplacementCase {
             label: "backspace_after_longer_multibyte_replacement",
             replacement: "é",
@@ -158,8 +157,7 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
             expected_caret: 0,
             expected_selection: None,
         },
-        // Old ASCII "abc" and replacement "éx" are both three bytes.
-        // Both persisted anchors at byte 1 must repair before deletion.
+        // "abc" and "éx" are both three bytes; both persisted anchors at byte 1 must repair before deletion.
         ExternalReplacementCase {
             label: "selection_and_drag_anchor_after_same_length_replacement",
             replacement: "éx",
@@ -281,9 +279,7 @@ fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>)
     apply_editor_key(&mut Editor::new(s, state, false, max), press(Key::Char(c)));
 }
 
-/// The cap reaches the widget, not only the editor: through `show`,
-/// typed keys stop at `max_chars`, and a paste is truncated to what
-/// fits — "ab" capped at 5 takes "cd" typed, then one char of "xyz".
+/// The cap reaches the widget through `show`: typed keys stop at `max_chars` and a paste truncates to what fits ("ab" capped at 5 takes "cd" typed, then one char of "xyz").
 #[test]
 fn max_chars_caps_typing_and_paste_through_show() {
     let id = WidgetId::from_hash("capped");
@@ -331,8 +327,7 @@ fn max_chars_caps_typed_input() {
     assert_eq!(state.caret, 3);
     assert_eq!(state.char_count, Some(3));
 
-    // At the cap, inserting in the *middle* is rejected outright — it
-    // must not steal a slot by dropping some other char.
+    // At the cap, inserting in the middle is rejected outright, not stealing a slot by dropping another char.
     state.caret = 0;
     type_char(&mut s, &mut state, 'X', Some(3));
     assert_eq!(s, "abc", "insertion at the cap is dropped, not shifted");
@@ -346,8 +341,7 @@ fn max_chars_caps_typed_input() {
     assert_eq!(state.selection, None);
     assert_eq!(state.char_count, Some(3));
 
-    // No room at all — a cap of 0 — drops the insertion whole: the
-    // selection it would have replaced stays, text and range alike.
+    // A cap of 0 drops the insertion whole; the selection it would replace stays.
     let mut s = String::from("abc");
     let mut state = EditState {
         caret: 2,
@@ -359,8 +353,7 @@ fn max_chars_caps_typed_input() {
     assert_eq!((state.caret, state.selection), (2, Some(0)));
 }
 
-/// Ctrl+Home and Ctrl+End jump to the document's ends in a multi-line
-/// editor, where plain Home and End mean the visual line's.
+/// Ctrl+Home / Ctrl+End jump to the document ends in a multi-line editor, where plain Home / End mean the visual line's.
 #[test]
 fn ctrl_home_and_end_reach_the_document_ends() {
     let mut s = String::from("one\ntwo\nthree");
@@ -391,10 +384,7 @@ fn ctrl_home_and_end_reach_the_document_ends() {
     );
 }
 
-/// macOS's line chords — Cmd is `Modifiers::ctrl` there: Cmd+Right goes
-/// to the end of a single line, Cmd+Left to its start, and Cmd+Backspace
-/// deletes back to the line's start. Elsewhere Ctrl+Arrow is the word
-/// chord and Ctrl+Backspace deletes one grapheme.
+/// macOS line chords (Cmd is `Modifiers::ctrl`): Cmd+Right / Left go to line end / start, Cmd+Backspace deletes to line start. Elsewhere Ctrl+Arrow is the word chord and Ctrl+Backspace deletes one grapheme.
 #[test]
 fn line_chords_follow_the_platform() {
     let mut s = String::from("one two");
@@ -424,7 +414,7 @@ fn line_chords_follow_the_platform() {
 
 #[test]
 fn max_chars_counts_chars_not_bytes() {
-    // Multi-byte chars: the cap is 3 scalar values, not 3 bytes.
+    // Multi-byte chars: the cap is 3 scalar values, not bytes.
     let mut s = String::new();
     let mut state = EditState::default();
     for c in "éééé".chars() {

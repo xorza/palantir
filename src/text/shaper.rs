@@ -17,81 +17,40 @@ use crate::text::wrap::{WrapCommit, WrapFloor};
 use std::cell::{Cell, RefCell, RefMut};
 use std::rc::Rc;
 
-/// Shared, cloneable text shaper. Holds the measurer every window shapes
-/// through plus a test/internals-only `measure_calls` counter for
-/// cache-effectiveness tests. Per-window reuse slots live in the
-/// crate-internal `TextSystem`.
+/// Shared, cloneable text shaper: the measurer every window shapes through.
+/// Single-threaded (`Rc` inside); the `RefCell` only guards against re-entry.
+/// Cloning bumps a refcount.
 ///
-/// Single-threaded by design (`Rc` inside); access is sequential —
-/// measurement during layout, prepare/render during the wgpu frame —
-/// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump).
-/// `UiResources` retains the canonical handle; every recorder and the
-/// backend clone it and reach the same content cache.
-///
-/// Construct with [`Self::new`] / `Default` (bundled fonts only), or
-/// [`Self::with_fonts`] to say whether the machine's installed fonts
-/// come too. Test and internals builds additionally provide
-/// `Self::test_mono`, which is one of these over a deterministic
-/// measurement metric rather than a shaper of a second kind.
+/// Construct with [`Self::new`] / `Default` (bundled fonts only) or
+/// [`Self::with_fonts`]. Test and internals builds add `Self::test_mono`.
 #[derive(Clone, Debug)]
 pub struct TextShaper {
     shared: Rc<Shared>,
 }
 
-/// What every clone of a handle fronts.
-///
-/// The font epoch sits *beside* the `RefCell` rather than inside it
-/// because the renderer's encoded-run cache checks it before every batch,
-/// and an all-hit frame is contracted never to crack that borrow — the
-/// text backend's GPU suite holds an exclusive borrow across a prepare to
-/// prove exactly that. A `Cell` answers with no borrow at all.
+/// What every clone fronts. The font epoch sits beside the `RefCell` because the
+/// encoded-run cache checks it before every batch and an all-hit frame must never
+/// crack the borrow.
 #[derive(Debug)]
 struct Shared {
     inner: RefCell<ShaperInner>,
     font_epoch: Cell<u32>,
 }
 
-/// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
-/// Both [`crate::Ui`] (layout-time measurement) and
-/// [`crate::gpu::wgpu_backend::WgpuBackend`]
-/// (shaping during render) borrow this; the backend reaches the measurer
-/// through [`TextShaper::glyphs`] and reads its clock through
-/// [`TextShaper::frame`].
+/// Shared state behind the `Rc<RefCell<...>>` in [`TextShaper`], borrowed by
+/// [`crate::Ui`] (layout) and the wgpu backend (render).
 #[derive(Debug)]
 pub(super) struct ShaperInner {
-    /// The measurer, and the owner of the shared frame clock — see
-    /// [`CosmicMeasure::frame`].
-    ///
-    /// Held outright, not behind an `Option` or a metric enum. A shaper
-    /// always has a font system, `Self::mono` included: the mono
-    /// metric replaces the *arithmetic* two calls do, and every other
-    /// question a shaper answers — which faces exist, what a family
-    /// resolves to, what a glyph rasterizes to — is the database's, not
-    /// the metric's. Making the measurer optional put that distinction
-    /// on eight production call sites as an `expect` or an
-    /// `is_some_and`.
+    /// The measurer and owner of the shared frame clock ([`CosmicMeasure::frame`]).
+    /// Held outright: a shaper always has a font system, mono included.
     cosmic: CosmicMeasure,
-    /// Measure through the deterministic mono metric instead of shaping
-    /// — see [`crate::text::mono`], and [`TextShaper::test_mono`], which
-    /// is the only thing that sets it.
-    ///
-    /// A flag rather than a variant, because that is the whole of what
-    /// mono is: [`Self::root`] and [`Self::resolve`] answer from
-    /// arithmetic and mint no buffer. The database underneath is a real
-    /// one, so a mono shaper still loads fonts and still resolves
-    /// families; what it does not do is shape, which is why
-    /// `TextSystem` leaves its runs with no buffer key and the renderer
-    /// drops them.
+    /// Measure through the deterministic mono metric ([`crate::text::mono`]); only
+    /// [`TextShaper::test_mono`] sets it. [`Self::root`] and [`Self::resolve`] mint no
+    /// buffer, so the renderer drops mono runs.
     #[cfg(any(test, feature = "internals"))]
     mono: bool,
-    /// Total [`Self::tally_dispatch`] calls: `TextSystem` reuse misses
-    /// plus every bypass [`TextShaper::layout`] call —
-    /// which may still hit the cosmic buffer cache, so this counts
-    /// dispatches, not reshapes. Reuse-slot hits don't increment.
-    /// Read by tests pinning reshape-skip behaviour via
-    /// `TextShaper::measure_calls`; production builds carry neither
-    /// the field nor the write.
+    /// Total dispatches: `TextSystem` reuse misses plus every bypass
+    /// [`TextShaper::layout`] call (the cosmic cache may still hit). Test builds only.
     #[cfg(any(test, feature = "internals"))]
     measure_calls: u64,
 }
@@ -107,17 +66,11 @@ impl ShaperInner {
         }
     }
 
-    /// The measurer. Reached from [`TextProbe`] too, which holds this
-    /// borrow while it answers geometry queries.
     pub(super) const fn cosmic(&self) -> &CosmicMeasure {
         &self.cosmic
     }
 
-    /// Whether measurement takes the mono metric — see `Self::mono`.
-    /// A literal `false` in production, so the two tests that stay
-    /// compiled there — [`TextProbe::shaped`] and
-    /// [`TextShaper::shapes_buffers`] — fold away rather than reading a
-    /// field that could never be set.
+    /// Whether measurement takes the mono metric; a literal `false` in production.
     pub(super) const fn is_mono(&self) -> bool {
         #[cfg(any(test, feature = "internals"))]
         {
@@ -129,8 +82,8 @@ impl ShaperInner {
         }
     }
 
-    /// The run's **unbounded** shape. `floor` opts into the segment scan
-    /// behind [`TextRoot::intrinsic_min`].
+    /// The run's unbounded shape. `floor` opts into the segment scan behind
+    /// [`TextRoot::intrinsic_min`].
     pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         self.tally_dispatch();
         #[cfg(any(test, feature = "internals"))]
@@ -144,12 +97,7 @@ impl ShaperInner {
         self.cosmic.root(request, floor)
     }
 
-    /// The extent this run resolves to at the width its key commits.
-    ///
-    /// **The bounded half takes no `floor`**, which is what retires the
-    /// contract structural rather than asserted at two layers: a wrapping
-    /// floor belongs to the unbounded root, and there is no way to ask a
-    /// bounded resolve for one.
+    /// The extent at the width its key commits. The bounded half takes no `floor`.
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         self.tally_dispatch();
         #[cfg(any(test, feature = "internals"))]
@@ -163,9 +111,6 @@ impl ShaperInner {
         self.cosmic.resolve(request)
     }
 
-    /// Count one bypass-cache dispatch. Test builds only — cosmic may
-    /// still hit its shaped-buffer cache, so the counter tracks
-    /// dispatches, not reshapes.
     #[inline]
     const fn tally_dispatch(&mut self) {
         #[cfg(any(test, feature = "internals"))]
@@ -182,13 +127,8 @@ impl Default for TextShaper {
 }
 
 impl TextShaper {
-    /// Cosmic-backed shaper over the bundled faces alone. The shaper's
-    /// shaped-buffer cache is shared across all clones of this handle.
-    ///
-    /// [`FontScope::Bundled`] rather than `System`, because this is what
-    /// a standalone recorder, a golden test and a bench all reach for:
-    /// deterministic metrics, and no font directory to walk. A window
-    /// says otherwise through
+    /// Cosmic-backed shaper over the bundled faces alone: deterministic metrics, no
+    /// font directory walk. A window chooses otherwise through
     /// [`WinitHostBuilder::fonts`](crate::WinitHostBuilder::fonts).
     pub fn new() -> Self {
         Self::with_fonts(FontScope::Bundled)
@@ -199,9 +139,7 @@ impl TextShaper {
         Self::over(CosmicMeasure::new(scope))
     }
 
-    /// The shaper around a measurer somebody else built — what
-    /// `FontScan::join` hands back after the scan it ran on another
-    /// thread.
+    /// The shaper around a measurer built elsewhere (`FontScan::join`).
     pub(super) fn over(measure: CosmicMeasure) -> Self {
         Self {
             shared: Rc::new(Shared {
@@ -211,15 +149,13 @@ impl TextShaper {
         }
     }
 
-    /// Register every face in `source` and hand back the family of the
-    /// first — see [`Ui::load_font`](crate::Ui::load_font), which is how
-    /// an app reaches this.
+    /// Register every face in `source` and return the family of the first; see
+    /// [`Ui::load_font`](crate::Ui::load_font).
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] for an unreadable file,
-    /// [`FontLoadError::NoFaces`] for bytes that parse to no face,
-    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
+    /// [`FontLoadError::Io`] for an unreadable file, [`FontLoadError::NoFaces`] for
+    /// bytes with no face, [`FontLoadError::FamilyTableFull`] for a full family table.
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         let loaded = self
             .shared
@@ -241,50 +177,26 @@ impl TextShaper {
         self.shared.inner.borrow().cosmic.font_families()
     }
 
-    /// How many times [`Self::load_font`] has changed the database.
-    ///
-    /// **Every cache keyed on a resolved face owes this a comparison.** A
-    /// load changes which physical face a family resolves to, and a
-    /// [`TextShapeKey`] carries the family *index*, not the answer — so
-    /// the key of a run that used to fall back to
-    /// [`FontFamily::SANS`](crate::FontFamily::SANS) is byte-identical
-    /// before and after the face it names arrives. Nothing downstream
-    /// can notice on its own.
-    ///
-    /// Three caches read it, each clearing its own rows: the renderer's
-    /// encoded-run cache before it emits a batch
-    /// (`TextEncoder::sync_fonts`), and the reuse slots plus the layout
-    /// measure cache at the top of a layout run
-    /// (`TextSystem::sync_fonts`). The shaped buffers need no such check
-    /// — [`CosmicMeasure::load_font`] drops them where it stands, since
-    /// it is already holding the borrow.
+    /// How many times [`Self::load_font`] has changed the database. Every cache keyed
+    /// on a resolved face owes this a comparison: a load changes which face a family
+    /// resolves to, but a [`TextShapeKey`] carries only the family index. Read by the
+    /// encoded-run cache and by `TextSystem::sync_fonts`; shaped buffers are dropped by
+    /// [`CosmicMeasure::load_font`].
     pub(crate) fn font_epoch(&self) -> u32 {
         self.shared.font_epoch.get()
     }
 
-    /// Shape `run` once and lease its measurement + geometry queries.
-    /// The probe holds the shaper's exclusive borrow until dropped, so
-    /// its buffer-backed queries stay coherent with the measurement.
-    ///
-    /// The width is resolved here rather than by [`TextRun`] itself
-    /// because both steps need the run's *unbounded* root, which only a
-    /// shaping call produces — the same two steps, in the same order,
-    /// that `TextSystem::measure` applies before it binds. Doing them
-    /// anywhere else mints a key layout never shaped, and the caret then
-    /// answers against a buffer wrapped at a different width than the
-    /// one that was drawn.
+    /// Shape `run` once and lease its measurement and geometry queries; the probe
+    /// holds the exclusive borrow until dropped. The width is resolved here, as
+    /// `TextSystem::measure` does, because both steps need the unbounded root; doing
+    /// it elsewhere mints a key layout never shaped and the caret answers against a
+    /// buffer wrapped at another width.
     pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
         let mut inner = self.shared.inner.borrow_mut();
-        // The run's own, not the key's — see `TextProbe::halign`.
         let halign = run.align.halign();
         let Some(unbounded) = run.unbounded_request() else {
-            // One of the two crate edges a run with nothing to shape
-            // reaches (the other is `TextGlyphs`) — no bytes, or a face
-            // with no usable size. Nothing was shaped, so the block is
-            // empty and sits at its own origin, which is every answer the
-            // probe below can give. The key still carries the metrics it
-            // expresses them in, or no key at all where the face named
-            // none.
+            // Nothing to shape (no bytes, or a face with no usable size): the block is empty
+            // at its own origin.
             return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), halign, inner);
         };
         let (key, size) = match (run.wrap_width(), run.wrap.line_fit()) {
@@ -309,96 +221,54 @@ impl TextShaper {
         TextProbe::new(size, run.text, Some(key), halign, inner)
     }
 
-    /// The run's unbounded shape. `TextSystem` calls this on a reuse-slot
-    /// miss; the shaper's own content cache may still hit, so this is "no
-    /// reuse slot", not "reshape".
-    ///
-    /// `floor` opts into the segment scan behind
-    /// [`TextRoot::intrinsic_min`]; only `WrapWithOverflow` reads it, and
-    /// it dominates the cost of a shape, so everyone else leaves it off.
-    /// Passing [`WrapFloor::Scan`] for a root already shaped without one
-    /// backfills it from the resident buffer rather than reshaping.
+    /// The run's unbounded shape; `TextSystem` calls this on a reuse-slot miss. `floor`
+    /// opts into the segment scan behind [`TextRoot::intrinsic_min`] (only
+    /// `WrapWithOverflow` reads it; it dominates shape cost). [`WrapFloor::Scan`] on a
+    /// root shaped without one backfills from the resident buffer.
     pub(super) fn root(&self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         self.shared.inner.borrow_mut().root(request, floor)
     }
 
-    /// The extent this run resolves to at the width its key commits — the
-    /// bounded half of [`Self::root`], and the shape a renderer replays.
+    /// The extent at the width its key commits: the bounded half of [`Self::root`].
     pub(super) fn resolve(&self, request: TextShapeRequest<'_>) -> TextExtent {
         self.shared.inner.borrow_mut().resolve(request)
     }
 
-    /// Report that `key` is no longer reachable through the reuse slot
-    /// that owned it, so its buffer ages on the short window instead of
-    /// the long one. `TextSystem` is the only caller — it holds the
-    /// slot table that makes the distinction. Silent on a key no buffer
-    /// is resident under, which is every key under the mono metric.
+    /// Report that `key` is no longer reachable through the reuse slot that owned it,
+    /// so its buffer ages on the short window. Silent for a non-resident key (every
+    /// key under mono).
     pub(crate) fn supersede(&self, key: TextShapeKey) {
         self.shared.inner.borrow_mut().cosmic.supersede(key);
     }
 
-    /// Whether this shaper produces shaped buffers the renderer can replay.
-    /// False only under the `internals`-gated mono metric, whose runs name
-    /// no buffer key so the encoder drops them.
+    /// Whether this shaper produces buffers the renderer can replay; false under mono.
     pub(crate) fn shapes_buffers(&self) -> bool {
         !self.shared.inner.borrow().is_mono()
     }
 
-    /// Advance the shared frame clock and age out the shaped-buffer
-    /// cache — see [`CosmicMeasure::tick_frame`], which is where both
-    /// happen and which owns the clock.
-    ///
-    /// Layout and reuse entries may retain dropped keys because the
-    /// encoder reconstructs every emitted run. The tick lives here rather
-    /// than beside the backend's sweep so a headless `Ui` — and every
-    /// `TextSystem` test — ages text the same way a presenting window
-    /// does.
-    ///
-    /// **Every host frame owes this exactly once, including one that
-    /// records nothing.** `FrameRuntime::tick_text_clock` is the one
-    /// caller, and it runs on every frame of every window, so neither
-    /// plan can skip it and no host frame can pay it twice. Skipping it
-    /// does more than delay eviction: the glyph atlas only considers a
-    /// slot evictable while `last_use < current_frame`, so a stalled
-    /// clock leaves a full atlas unable to reclaim *anything* and every
-    /// insert starves until the clock moves. That surfaces as glyphs
-    /// missing from painted text with no path to recovery.
+    /// Advance the shared frame clock and age out the shaped-buffer cache (see
+    /// [`CosmicMeasure::tick_frame`]). Every host frame owes this exactly once, even
+    /// one that records nothing (`FrameRuntime::tick_text_clock`): a stalled clock
+    /// leaves a full glyph atlas unable to evict, so glyphs go missing.
     pub(crate) fn tick_frame(&self) {
         self.shared.inner.borrow_mut().cosmic.tick_frame();
     }
 
-    /// The current value of the shared frame clock — see
-    /// [`CosmicMeasure::frame`]. The renderer's glyph atlas and
-    /// encoded-run cache stamp and expire against this rather than
-    /// counting frames of their own, which is what keeps their retention
-    /// window and the shaped-buffer cache's measured in the same unit.
+    /// The shared frame clock ([`CosmicMeasure::frame`]); the glyph atlas and
+    /// encoded-run cache expire against it.
     pub(crate) fn frame(&self) -> u64 {
         self.shared.inner.borrow().cosmic.frame()
     }
 
-    /// Lay glyphs out and rasterize them directly: the exclusive render-side
-    /// lease, in palantir-native terms — [`PlacedGlyph`](crate::widget::PlacedGlyph)
-    /// placements and [`RasterImage`](crate::widget::RasterImage) bitmaps, with no
-    /// cosmic type in sight.
+    /// Lay glyphs out and rasterize them directly: the exclusive render-side lease,
+    /// in [`PlacedGlyph`](crate::widget::PlacedGlyph) and
+    /// [`RasterImage`](crate::widget::RasterImage) terms. Real glyphs under mono too.
     ///
-    /// Available under the mono metric too, and answers there in real
-    /// glyphs: the lease is the *database*'s, and only measurement is
-    /// mono. A mono run never reaches it through palantir's own text
-    /// backend — it names no buffer key, which the encoder drops — so
-    /// the two cannot disagree about one run.
-    ///
-    /// **The one lease, taken by both sides.** Palantir's own text backend
-    /// holds it for a batch of encoded-cache misses; a caller drawing its own
-    /// text — a [`GpuView`](crate::GpuView) labelling a 3D scene, say — holds
-    /// it for as long as it is laying out. Holding one across a call that
-    /// measures text — anything on [`Ui`](crate::Ui) that lays out a widget —
-    /// would ask this `RefCell` for a second borrow and panic, so a view takes
-    /// one inside its own paint and drops it there.
-    ///
-    /// Reached through [`GpuInitContext`](crate::GpuInitContext), which hands a view the
-    /// shaper the rest of the window is already drawing with — so a label in a
-    /// scene is in the same faces as the UI around it without anyone arranging
-    /// for that.
+    /// Palantir's text backend and a caller drawing its own text (a
+    /// [`GpuView`](crate::GpuView) labelling a 3D scene) take this one lease. Holding
+    /// it across anything on [`Ui`](crate::Ui) that measures text borrows the
+    /// `RefCell` twice and panics, so take it inside the view's paint and drop it
+    /// there. Reached through [`GpuInitContext`](crate::GpuInitContext).
     pub fn glyphs(&self) -> TextGlyphs<'_> {
         TextGlyphs::new(RefMut::map(self.shared.inner.borrow_mut(), |inner| {
             &mut inner.cosmic
@@ -422,17 +292,10 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
 
-    /// What the integration suites reach through `UiHarness`.
     impl TextShaper {
-        /// Deterministic mono-fallback shaper for tests and headless
-        /// tools: every glyph measures `font_size * 0.5` wide, so a
-        /// layout case states the width it expects as arithmetic rather
-        /// than as whatever the bundled face happens to advance to.
-        ///
-        /// Over the bundled database, like any other shaper: only
-        /// measurement is mono. A case that loads a font, asks which
-        /// families resolve, or lays glyphs out through [`Self::glyphs`]
-        /// gets the real answer.
+        /// Deterministic mono shaper for tests and headless tools: every glyph is
+        /// `font_size * 0.5` wide. Only measurement is mono; font loading, family
+        /// resolution and [`Self::glyphs`] are real.
         pub(crate) fn test_mono() -> Self {
             let shaper = Self::new();
             shaper.shared.inner.borrow_mut().mono = true;
@@ -442,24 +305,15 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl TextShaper {
-        /// Everything a layout probe can answer: the extent, and the key
-        /// of the buffer it shaped under — which is a [`ShapedText`], the
-        /// same pair layout carries out of `TextSystem::measure`, so it
-        /// is that rather than a second spelling of it.
-        ///
-        /// Deliberately not a [`TestMeasure`](crate::text::root::internals::TestMeasure):
-        /// the probe keeps only the
-        /// extent — the wrap floor and the line count are the root's — so
-        /// handing one back meant inventing two of its four fields, and a
-        /// test that read one was pinning the invention rather than the
-        /// shaper.
+        /// Everything a layout probe can answer: the extent and the key of the buffer it
+        /// shaped under ([`ShapedText`]). Not a
+        /// [`TestMeasure`](crate::text::root::internals::TestMeasure), which would
+        /// invent two of the probe's fields.
         pub(crate) fn measure(&self, text: &str, shape: TestShape) -> ShapedText {
             let mut shaped = self.probe_layout(text, shape, |probe| ShapedText {
                 extent: TextExtent::inked_within(probe.size()),
                 key: probe.shaped_key(),
             });
-            // The probe keeps no ink; the buffer it shaped is filed with
-            // it. A run that shaped no buffer read no outlines.
             if let Some(key) = shaped.key {
                 shaped.extent.ink = self
                     .shared
@@ -473,11 +327,7 @@ pub(crate) mod internals {
             shaped
         }
 
-        /// Describes the fixture as a [`TextRun`] rather than lowering it
-        /// straight to a request, because binding the width is now
-        /// `layout`'s job — going around it here would test a path no
-        /// caller takes. `TextWrap::Wrap` is the policy whose `line_fit`
-        /// is the `LineFit::Wrap` this used to pass.
+        /// Describes the fixture as a [`TextRun`] so width binding goes through `layout`.
         pub(crate) fn probe_layout<R>(
             &self,
             text: &str,
@@ -501,21 +351,18 @@ pub(crate) mod internals {
             self.probe_layout(text, shape, |probe| probe.byte_at(x, y))
         }
 
-        /// Hold the shaper's exclusive borrow for the caller's scope, so
-        /// the backend can prove an encoded-cache hit never reaches for
-        /// the shaper: anything that did would panic on the live borrow.
+        /// Hold the exclusive borrow for the caller's scope, proving an encoded-cache hit
+        /// never touches the shaper.
         pub(crate) fn hold_borrow(&self) -> ShaperLease<'_> {
             ShaperLease {
                 _inner: self.shared.inner.borrow_mut(),
             }
         }
 
-        /// Snapshot of the shaped-buffer cache's tallies.
         pub(crate) fn cache_counts(&self) -> CacheCounts {
             self.shared.inner.borrow().cosmic.cache_counts()
         }
 
-        /// Total cache-miss `measure` dispatches.
         pub(crate) fn measure_calls(&self) -> u64 {
             self.shared.inner.borrow().measure_calls
         }
@@ -524,35 +371,25 @@ pub(crate) mod internals {
             self.shared.inner.borrow().cosmic.shaped_run(key).is_some()
         }
 
-        /// Drop every shaped buffer now — see
-        /// [`CosmicMeasure::drop_all_buffers`].
         pub(crate) fn drop_cosmic_buffers(&self) {
             self.shared.inner.borrow_mut().cosmic.drop_all_buffers();
         }
     }
 
-    /// What the retention tests and the text benches drive.
     #[cfg(any(test, feature = "bench"))]
     impl TextShaper {
-        /// Shaped buffers currently resident.
         pub(crate) fn cosmic_cache_len(&self) -> usize {
             self.shared.inner.borrow().cosmic.cache_len()
         }
 
-        /// The lookup `TextEncoder::encode_run` performs on an
-        /// encoded-cache miss: restore the shaped buffer if it aged out,
-        /// and promote it onto the protected window if it is resident.
-        ///
-        /// Tests that model a *rendered* frame need this. Layout only
-        /// ever inserts, so without the render half a buffer is never
-        /// looked up and the protected window is unreachable — which is
-        /// exactly the asymmetry `PROBATION_KEEP_FRAMES` documents.
+        /// The lookup `TextEncoder::encode_run` performs on an encoded-cache miss:
+        /// restore an aged-out buffer, promote a resident one. Needed to model a rendered
+        /// frame; layout only inserts (`PROBATION_KEEP_FRAMES`).
         pub(crate) fn render_ensure(&self, request: TextShapeRequest<'_>) {
             self.shared.inner.borrow_mut().cosmic.ensure_buffer(request);
         }
     }
 
-    /// Live exclusive borrow minted by [`TextShaper::hold_borrow`].
     #[cfg(test)]
     #[derive(Debug)]
     pub(crate) struct ShaperLease<'a> {

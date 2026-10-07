@@ -8,13 +8,9 @@ use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
-/// Two sections, one open and one closed, so the arrow is captured at
-/// both ends of its turn and the body's indent is measurable against the
-/// header above it.
+/// Two sections, one open, one closed, capturing the arrow at both ends of its turn and the body's indent against the header.
 ///
-/// No settle loop past the second frame: the reveal snaps on a first
-/// open, so the golden would capture the same pixels either way — but a
-/// fixture that later gives its theme an `AnimationSpec` would need one.
+/// No settle loop past the second frame: the reveal snaps on first open; a theme with an `AnimationSpec` would need one.
 #[test]
 fn expander_open_and_closed_matches_golden() {
     fn scene(ui: &mut Ui) {

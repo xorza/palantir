@@ -15,16 +15,11 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::UVec2;
 
-// A face file the bundled scope has *not* already registered is what a
-// load case would rather have, and there is none — so the cases below
-// start from an empty database and introduce a bundled face to it.
+// No face file is unregistered by the bundled scope, so the load cases start
+// from an empty database and introduce a bundled face.
 
-/// A family no face answers to shapes in the bundled default, never in
-/// whatever the machine happens to have installed.
-///
-/// The look of an app must not depend on its host's font directory, so
-/// the fallback is a family this crate ships. `has_font` is how an
-/// app asks in advance rather than discovering it by eye.
+/// An unanswered family shapes in the bundled default, never in whatever the
+/// machine has installed; `has_font` lets an app ask in advance.
 #[test]
 fn an_unknown_family_resolves_to_the_bundled_default() {
     let mut c = CosmicMeasure::default();
@@ -45,14 +40,13 @@ fn an_unknown_family_resolves_to_the_bundled_default() {
     );
 }
 
-/// A load makes its family resolvable where it was not, and hands back
-/// the family of the first face it registered.
+/// A load makes its family resolvable and returns the family of the first face
+/// it registered.
 #[test]
 fn a_late_load_makes_its_family_resolvable() {
     let mut c = CosmicMeasure::with_no_fonts();
-    // `SANS` is the case availability cannot answer by asking what a
-    // family shapes under: it shapes under its own name either way,
-    // because it is what everything else falls back to.
+    // `SANS` can't be tested by what a family shapes under: it shapes under its own
+    // name either way, being the fallback.
     assert!(
         !c.has_font(FontFamily::SANS),
         "the fixture starts with no faces at all",
@@ -87,10 +81,9 @@ fn a_load_that_cannot_produce_a_face_says_which_way_it_failed() {
     );
 }
 
-/// The renderer's encoded-run cache holds templates rasterized from
-/// whatever face resolved when they were encoded, so a load has to be
-/// visible to it — through an epoch it can read without borrowing the
-/// shaper, which an all-hit frame must not do.
+/// The encoded-run cache holds templates rasterized from whichever face
+/// resolved, so a load must be visible to it through an epoch readable without
+/// borrowing the shaper.
 #[test]
 fn a_load_bumps_the_epoch_the_renderer_watches() {
     let shaper = TextShaper::new();
@@ -110,17 +103,12 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
     );
 }
 
-/// A load reaches the frame, and not the text caches alone.
-///
-/// Two facts, one event. `InputState::response_for` takes the entry
-/// rect from the cascade and the arranged rect from `Layout`, on the
-/// stated ground that the cascade is rebuilt whenever an arranged rect
-/// moves — so a load that moves one while the authored tree stands
-/// still has to reach the cascade key, or the frame answers two
-/// different arrangements to the same question. And the pixels owe the
-/// same: a glyph redrawn in a new face inside an unmoved rect is a
-/// change no per-widget diff can see, so the frame that carries the
-/// load repaints in full.
+/// A load reaches the frame, not only the text caches. Two facts: `response_for`
+/// takes the entry rect from the cascade and the arranged rect from `Layout`,
+/// assuming the cascade rebuilds whenever an arranged rect moves, so a load
+/// that moves one must reach the cascade key; and a glyph redrawn in a new face
+/// inside an unmoved rect is invisible to per-widget diffs, so the load frame
+/// repaints in full.
 #[test]
 fn a_load_reaches_the_cascade_and_the_screen() {
     let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
@@ -129,9 +117,8 @@ fn a_load_reaches_the_cascade_and_the_screen() {
         UVec2::new(400, 300),
     );
     h.ui.load_font(INTER).expect("the bundled Inter loads");
-    // `i` is where a proportional face and a fixed-advance one disagree
-    // most, and monospace is a family this database answers with Inter
-    // until the load below.
+    // `i` is where a proportional and a fixed-advance face disagree most; monospace
+    // resolves to Inter until the load below.
     let id = WidgetId::from_hash("label");
     let record = |ui: &mut Ui| {
         Text::new("iiiiiiii")
@@ -174,23 +161,17 @@ fn a_load_reaches_the_cascade_and_the_screen() {
     );
 }
 
-/// A load changes what a run measures to **without changing its key**,
-/// so the layout-side rows have to be told out of band.
-///
-/// A reuse row is addressed by `(WidgetId, ordinal)` and validated
-/// against a [`TextShapeKey`], which carries the family *index* — never
-/// the face that index resolves to. So a run that fell back to the
-/// bundled default keeps a byte-identical key once a face answering to
-/// its family arrives, every freshness check in `TextSystem` passes, and
-/// the row goes on reporting the width it measured before the load. The
-/// shaped buffers are already gone by then, so the renderer reshapes in
-/// the new face and paints it inside the old box.
+/// A load changes what a run measures to **without changing its key**, so
+/// layout-side rows must be told out of band. A reuse row is validated against a
+/// [`TextShapeKey`] carrying the family *index*, not the resolved face, so a run
+/// that fell back keeps a byte-identical key when a face arrives, every
+/// freshness check passes, and the row keeps its pre-load width while the
+/// renderer paints the new face in the old box.
 #[test]
 fn a_load_retires_the_reuse_rows_measured_before_it() {
-    // A database holding Inter alone, so the monospace family below is a
-    // real fallback before the load and itself after it. `i` is where the
-    // two disagree most: Inter gives it a narrow proportional advance,
-    // JetBrains Mono the same fixed advance as every other glyph.
+    // A database holding Inter alone, so monospace is a real fallback before the
+    // load and itself after. `i` differs most: narrow proportional in Inter, the
+    // same fixed advance as other glyphs in JetBrains Mono.
     let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
     shaper.load_font(INTER).expect("the bundled Inter loads");
     let mut text = TextSystem::new(shaper.clone());
@@ -233,13 +214,13 @@ fn a_load_retires_the_reuse_rows_measured_before_it() {
     );
 }
 
-/// Weight is an axis, not a pair: Inter is one variable file, and each
-/// step must instantiate a visibly different `wght`.
+/// Weight is an axis: Inter is one variable file, and each step must
+/// instantiate a visibly different `wght`.
 #[test]
 fn the_weight_axis_is_monotonic_on_a_variable_face() {
     let mut c = CosmicMeasure::default();
-    // A long run at a large size: an extent is ceiled to whole pixels, and
-    // one glyph of one weight step does not always cross a pixel.
+    // A long run at a large size: extents are ceiled, and one glyph of one weight
+    // step may not cross a pixel.
     let width = |c: &mut CosmicMeasure, weight| {
         c.measure(
             "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
@@ -258,9 +239,8 @@ fn the_weight_axis_is_monotonic_on_a_variable_face() {
     );
 }
 
-/// Italic is a separate axis from weight, and it reaches a different
-/// physical file — which only the PostScript name can show, since both
-/// files answer to the family name "Inter".
+/// Italic is a separate axis from weight and reaches a different physical file,
+/// shown only by PostScript name since both answer to "Inter".
 #[test]
 fn italic_reaches_the_italic_file_at_every_weight() {
     let mut c = CosmicMeasure::default();
@@ -290,12 +270,9 @@ fn italic_reaches_the_italic_file_at_every_weight() {
     }
 }
 
-/// The family index round-trips through the packed key untouched, over
-/// the whole range the field holds.
-///
-/// `u16::MAX` is past anything the name table has interned, which is the
-/// point: the key is a carrier, and the resolution that decides what an
-/// index *means* happens later, at `has_font`.
+/// The family index round-trips through the packed key untouched over the whole
+/// range. `u16::MAX` is past anything interned: the key is a carrier, and
+/// resolution happens later at `has_font`.
 #[test]
 fn the_key_carries_any_family_index() {
     for raw in [0, 1, 2, u16::MAX] {
@@ -313,8 +290,8 @@ fn the_key_carries_any_family_index() {
     }
 }
 
-/// Every axis the packed face word holds survives being written beside
-/// the others, including the two a committed width rewrites.
+/// Every axis in the packed face word survives being written beside the others,
+/// including the two a committed width rewrites.
 #[test]
 fn the_packed_face_word_keeps_every_axis_apart() {
     let face = GlyphFont {
@@ -342,9 +319,9 @@ fn the_packed_face_word_keeps_every_axis_apart() {
     );
 }
 
-/// A load reports which way it failed by what the file named: no names is
-/// no face, and names of which none fits the family table is a full
-/// table. The first name that fits is the load's family.
+/// A load reports its failure by what the file named: no names is no face; names
+/// none of which fit the family table is a full table. The first that fits is
+/// the load's family.
 #[test]
 fn a_load_names_its_family_or_why_it_has_none() {
     use crate::text::cosmic::first_family;

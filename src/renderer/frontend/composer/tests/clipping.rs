@@ -32,11 +32,7 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
 }
 
-/// Closing is the session's destructor, so a caller that just drops it
-/// still gets the trailing group and text batch. Nothing else surfaces
-/// the omission: the quad and text rows land in the buffer either way,
-/// and a backend given no group/batch covering them silently draws
-/// neither.
+/// Closing is the session's destructor, so dropping it still emits the trailing group and text batch; nothing else surfaces the omission.
 #[test]
 fn dropping_a_session_emits_the_trailing_group_and_batch() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
@@ -48,8 +44,7 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
         draw(&mut recorded, Rect::new(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, Rect::new(0.0, 20.0, 10.0, 10.0));
         recorded.replay(&mut session);
-        // The rows themselves are already in the buffer; only the
-        // group and batch that schedule them are still pending.
+        // Rows are buffered; only the group and batch that schedule them are pending.
         assert_eq!(session.out.quads.len(), 1);
         assert_eq!(session.out.texts.len(), 1);
         assert!(session.out.groups.is_empty());
@@ -114,12 +109,7 @@ fn compose_intersects_nested_clips() {
     assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (50, 50, 50, 50));
 }
 
-/// Every draw kind culls against the active clip the same way: a draw
-/// wholly outside it is dropped (the GPU would scissor it, but skipping
-/// the row saves the CPU work), and one that overlaps it at all is kept,
-/// since it could light a pixel. Under a 100 px clip each kind draws one
-/// rect inside, one at (200, 200) outside, and one straddling the clip's
-/// corner, so two rows of the kind survive.
+/// Every draw kind culls against the active clip alike: wholly outside is dropped, any overlap kept. Under a 100 px clip each kind draws one rect inside, one at (200, 200), and one straddling the corner, so two rows survive.
 #[test]
 fn cull_drops_only_draws_wholly_outside_the_active_clip() {
     #[derive(Debug)]
@@ -174,11 +164,7 @@ fn cull_without_active_clip_keeps_nonzero_viewport_bounds() {
 
 #[test]
 fn cull_handles_culled_text_then_quad_split() {
-    // The text-then-quad split rule lives in `GroupBuilder`. A culled
-    // text run must NOT flag `last_was_text`, otherwise the next quad
-    // would force a spurious group flush. Verify by drawing
-    // [text-out, rect-in, rect-in] under the same clip — they should
-    // share one group with both rects in it (no spurious split).
+    // A culled text run must not flag `last_was_text`, or the next quad forces a spurious group flush: [text-out, rect-in, rect-in] share one group.
     let buf = run(
         |b, _arena| {
             clip(b, Rect::new(0.0, 0.0, 100.0, 100.0));
@@ -211,13 +197,7 @@ fn compose_skips_groups_with_no_quads() {
     assert!(buf.groups.is_empty());
 }
 
-/// Composer plumbing for rounded clip: radius + rect ride on the
-/// emitted `DrawGroup` as a one-entry mask chain, scaled by DPR.
-/// Inheritance verified in the same fixture: a `Rect` clip pushed
-/// inside the `Rounded` parent must inherit the parent's chain so
-/// children stay stencil-tested against the active mask. Without
-/// inheritance, inner draws would land at `stencil_ref=0` over
-/// `stencil=1` pixels and disappear.
+/// Rounded clip rides on the emitted `DrawGroup` as a one-entry mask chain, scaled by DPR; a nested `Rect` clip inherits the chain, else inner draws land at `stencil_ref=0` over `stencil=1` and vanish.
 #[test]
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
@@ -225,8 +205,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
             clip_rounded(b, Rect::new(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
             // Tier 1: direct draw under the rounded clip.
             draw(b, Rect::new(20.0, 30.0, 40.0, 40.0));
-            // Tier 2: nest a plain rect clip — children of THIS clip
-            // must still inherit the rounded info from the ancestor.
+            // Tier 2: a nested plain rect clip must still inherit the rounded info.
             clip(b, Rect::new(30.0, 40.0, 40.0, 30.0));
             draw(b, Rect::new(35.0, 45.0, 10.0, 10.0));
             b.pop_clip();
@@ -253,9 +232,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     assert_eq!(outer_r.mask_rect.size, Size::new(200.0, 160.0));
     assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 
-    // Inheritance: inner Rect clip carries the SAME chain as the
-    // outer parent (span-identical — the mask geometry is the
-    // ancestor's, scissor is narrowed independently).
+    // Inheritance: the inner Rect clip carries the outer chain; scissor narrows independently.
     assert_eq!(
         inner.rounded_clips, outer.rounded_clips,
         "inner group inherits parent's mask chain verbatim"
@@ -264,12 +241,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
 }
 
-/// Nested rounded clips STACK: the child group's chain lists both
-/// masks in outer→inner order (the ancestor's corner cutouts keep
-/// clipping child content — a fresh single mask would paint the child
-/// square over them), and a rect clip nested below inherits the full
-/// depth-2 chain. Hand-computed at DPR 1: outer = (10,10,200,200) r8,
-/// inner = (20,20,100,100) r4.
+/// Nested rounded clips stack: the child chain lists both masks outer→inner (a single mask would paint the child square over the ancestor's cutouts); a nested rect clip inherits the depth-2 chain. DPR 1: outer (10,10,200,200) r8, inner (20,20,100,100) r4.
 #[test]
 fn push_clip_rounded_nested_builds_outer_inner_chain() {
     let buf = run(
@@ -338,9 +310,7 @@ fn rounded_clip_chain_rejects_stencil_depth_256() {
     );
 }
 
-/// Re-pushing the innermost rounded clip verbatim (same rect + radii)
-/// adds no chain depth and — like the redundant rect Push/Pop — is a
-/// full no-op: no batch split, no group flush.
+/// Re-pushing the innermost rounded clip verbatim adds no chain depth and is a full no-op: no batch split, no group flush.
 #[test]
 fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     let buf = run(
@@ -363,11 +333,7 @@ fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
     );
 }
 
-/// Regression: when a rounded clip partially leaves the viewport, the
-/// rasterizer scissor clamps to viewport bounds — but the mask SDF
-/// must keep seeing the rect's **true** edges. Otherwise corner
-/// curves "slide inward" into visible pixels, and rounded clipping
-/// bleeds inside the control while resizing the window.
+/// Regression: when a rounded clip partly leaves the viewport the scissor clamps, but the mask SDF must keep the rect's true edges, or corners slide inward.
 #[test]
 fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     let buf = run(
@@ -380,12 +346,10 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
     );
     let chain = &buf.rounded_clips[buf.groups[0].rounded_clips.range()];
     let r = chain[0];
-    // Mask rect keeps the off-screen origin (-50,-20) and full size
-    // (200,100) — the SDF needs the rect's full geometry.
+    // Mask rect keeps the off-screen origin (-50,-20) and full size (200,100).
     assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
     assert_eq!(r.mask_rect.size, Size::new(200.0, 100.0));
-    // Scissor clamps to viewport so the GPU rasterizer rejects
-    // off-screen pixels.
+    // Scissor clamps to the viewport.
     assert_eq!(buf.groups[0].scissor, Some(URect::new(0, 0, 120, 60)));
 }
 

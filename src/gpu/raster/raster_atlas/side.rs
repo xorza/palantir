@@ -1,5 +1,5 @@
-//! One per-content-type atlas texture: its allocator, its growth by
-//! doubling, and the old texture preserved across a grow.
+//! One per-content-type atlas texture: its allocator, growth by doubling, and
+//! the old texture preserved across a grow.
 
 use crate::primitives::paint::content_type::ContentType;
 use etagere::{BucketedAtlasAllocator, size2};
@@ -9,52 +9,33 @@ use std::mem;
 
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
-/// One per-content-type backing store, indexed by `ContentType as usize`.
-/// Owns its texture from first allocation through every doubling, so the
-/// atlas above it never names a `wgpu::Texture` directly.
+/// One per-content-type backing store, indexed by `ContentType as usize`; owns
+/// its texture through every doubling.
 pub(super) struct Side {
     pub(super) texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
     pub(super) size: u32,
-    /// Largest edge this side will ever reach — see
-    /// [`Side::growth_ceiling`].
-    ///
-    /// Resolved once at construction because its three inputs never
-    /// change, and [`RasterAtlas::allocate`](super::RasterAtlas) reads it
-    /// per entry it is asked to place: recomputing meant a `u64` divide
-    /// and an `isqrt` on every glyph and icon that missed the cache.
+    /// Largest edge this side will reach ([`Side::growth_ceiling`]), resolved once
+    /// because `RasterAtlas::allocate` reads it per entry and recomputing cost a
+    /// `u64` divide and an `isqrt` per cache miss.
     ceiling: u32,
-    /// The frame a full clock rotation over this side last came up
-    /// empty on, or `None` until one has.
+    /// The frame a full clock rotation over this side last came up empty on.
     ///
-    /// A rotation is O(slab), and `allocate` asks for a victim once for
-    /// every entry it cannot place — so a frame asking for more than the
-    /// ceiling holds pays that walk per starving entry, which is
-    /// quadratic in the slab. Every one of those walks is provably
-    /// wasted: a slot is eligible only while `last_use < current_frame`,
-    /// and `last_use` never moves *down* within a frame (`touch` and
-    /// `store` both stamp it with `current_frame`), so once a side has
-    /// been walked dry nothing can become evictable until the clock
-    /// advances. Remembering which frame that happened on turns the
-    /// second and every later miss into one comparison.
+    /// A rotation is O(slab) and `allocate` asks for a victim per entry it can't
+    /// place, so a frame needing more than the ceiling holds would pay it per
+    /// starving entry. Each walk is wasted: `last_use` never moves down within a
+    /// frame, so once walked dry nothing is evictable until the clock advances.
     pub(super) dry_frame: Option<u64>,
     pub(super) packer: BucketedAtlasAllocator,
-    /// On grow, the previous-frame texture is moved here so the
-    /// shared-encoder flush can record the copy alongside pending
-    /// glyph writes. `None` whenever there's no pending grow blit
-    /// for this side.
+    /// On grow, the previous-frame texture is moved here so the shared-encoder
+    /// flush can record the copy. `None` when no grow blit is pending.
     pub(super) pending_grow: Option<PendingGrow>,
-    /// GPU debug name for this side's texture, built once here.
-    ///
-    /// A grow replaces the texture and reuses the name, which is what
-    /// keeps the atlas's label stem from having to travel down to
-    /// [`Self::grow`] — and keeps the two sites from formatting it two
-    /// ways.
+    /// GPU debug name for this side's texture, built once so a grow reuses it.
     label: String,
 }
 
-/// Old texture + its size (= square edge length, == old.width ==
-/// old.height) preserved across the grow point. Consumed by
+/// Old texture and its size (square edge length) preserved across the grow
+/// point; consumed by
 /// [`RasterAtlas::flush_pending_uploads`](super::RasterAtlas).
 #[derive(Debug)]
 pub(super) struct PendingGrow {
@@ -94,11 +75,9 @@ impl Side {
         }
     }
 
-    /// Largest side length a `content` atlas will grow to: whichever of
-    /// the device maximum and the instance's byte budget binds first.
-    ///
-    /// Takes the device limit rather than reading it off a
-    /// `wgpu::Device`, so the arithmetic is testable without one.
+    /// Largest side length a `content` atlas will grow to: the device maximum or
+    /// the byte budget, whichever binds first. Takes the device limit so it is
+    /// testable without a `wgpu::Device`.
     pub(super) fn growth_ceiling(
         max_texture_dimension_2d: u32,
         content: ContentType,
@@ -108,30 +87,22 @@ impl Side {
         max_texture_dimension_2d.min(by_bytes)
     }
 
-    /// Whether a rect of `size` can be placed inside this side as it
-    /// stands. Exact rather than conservative, and that is what makes
-    /// it usable as a gate: the packer is configured with one column and
-    /// unit alignment, so its own reject is `w > edge || h > edge` and
-    /// this agrees with it texel for texel. A stricter test would refuse
-    /// entries the packer would have taken.
+    /// Whether a rect of `size` can be placed as the side stands. Exact, so it can
+    /// gate: the packer uses one column and unit alignment, so its reject is
+    /// `w > edge || h > edge`, matching this texel for texel.
     pub(super) const fn fits_now(&self, size: U16Vec2) -> bool {
         fits_edge(size, self.size)
     }
 
-    /// Whether a rect of `size` could *ever* be placed here — the
-    /// one question [`RasterAtlas::allocate`](super::RasterAtlas) has to
-    /// answer before it is allowed to evict anything, since freeing
-    /// rectangles cannot widen a texture.
+    /// Whether a rect of `size` could *ever* be placed here, asked before evicting
+    /// since freeing rectangles can't widen a texture.
     pub(super) const fn fits_ceiling(&self, size: U16Vec2) -> bool {
         fits_edge(size, self.ceiling)
     }
 
-    /// Double this side's texture, stashing the old one for the grow
-    /// blit. `false` at the ceiling, where the atlas holds its size by
-    /// recycling rectangles instead.
-    ///
-    /// etagere preserves rects on `packer.grow`, so the cache stays valid
-    /// — no re-rasterization, and no cached uv to invalidate.
+    /// Double this side's texture, stashing the old one for the grow blit. `false`
+    /// at the ceiling, where the atlas recycles rectangles. etagere preserves
+    /// rects on `packer.grow`, so no re-rasterization or uv invalidation.
     pub(super) fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
         if self.size >= self.ceiling {
             return false;
@@ -141,9 +112,7 @@ impl Side {
         let old_size = self.size;
         let old_texture = mem::replace(&mut self.texture, new_texture);
 
-        // If a previous grow this frame hasn't flushed yet, keep the
-        // oldest texture — that's the one holding live pixel data
-        // (the intermediate-size texture was never written into).
+        // A pending grow this frame keeps the oldest texture: it holds the live pixels.
         if self.pending_grow.is_none() {
             self.pending_grow = Some(PendingGrow {
                 old_texture,
@@ -160,8 +129,7 @@ impl Side {
     }
 }
 
-/// Whether a rect of `size` can be placed inside a square side of
-/// `edge` texels.
+/// Whether a rect of `size` fits inside a square side of `edge` texels.
 const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
     size.x as u32 <= edge && size.y as u32 <= edge
 }
@@ -190,11 +158,9 @@ fn make_texture(
     })
 }
 
-/// The texture format an atlas side stores `content` in.
-///
-/// Here rather than on [`ContentType`], which is primitives-layer vocabulary
-/// shared with the rasterizers: the choice of texel encoding is this module's,
-/// and naming a device format is the graphics layer's to do.
+/// The texture format an atlas side stores `content` in. Here rather than on
+/// [`ContentType`] (primitives-layer): naming a device format is the graphics
+/// layer's job.
 const fn texture_format(content: ContentType) -> wgpu::TextureFormat {
     match content {
         ContentType::Mask => wgpu::TextureFormat::R8Unorm,

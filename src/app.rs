@@ -1,25 +1,13 @@
-//! The hook a host calls once per window per frame, and the closure
-//! shorthand for an app that needs only the record half.
+//! The per-window, per-frame hook a host calls, and the closure shorthand for record-only apps.
 
 use crate::ui::Ui;
 use crate::window::window_token::WindowToken;
 
 /// Application lifecycle driven by a host for each window that records.
 pub trait App {
-    /// Run once before the first record pass of a fully recorded frame for
-    /// `window`. Use this for unconditional application mutation, queue drains,
-    /// task submission, telemetry, and other work that must not replay.
-    /// `ui` exposes the current frame's display, clock, and unsuppressed input,
-    /// but is read-only so this phase cannot accidentally emit widgets.
-    /// Paint-only animation frames reuse the retained tree and skip both app
-    /// hooks.
+    /// Runs once before the first record pass of a fully recorded frame, for work that must not replay. `ui` is read-only.
     fn update(&mut self, _window: WindowToken, _ui: &Ui) {}
 
-    /// Build the UI for `window`. This hook may replay for cold-start
-    /// warmup, action input, or `Ui::request_relayout`. Warmup and later passes
-    /// receive no action input, so effects strictly gated by a widget action
-    /// can run inline; unconditional external effects belong in
-    /// [`Self::update`]. Switch on `window` to drive different windows; open or
-    /// close further windows via [`Ui::open_window`] and [`Ui::close_window`].
+    /// Build the UI for `window`. May replay (warmup, action input, relayout) with no action input after the first pass, so unconditional effects belong in [`Self::update`].
     fn record(&mut self, window: WindowToken, ui: &mut Ui);
 }

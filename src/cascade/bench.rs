@@ -16,20 +16,13 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const ENTRY_COUNT: usize = 8192;
-/// Tile pitch for the hit fixture's disjoint rects, and how many fit a
-/// row. `TILE` leaves a 2 px gutter so a query can land between tiles.
+/// Tile pitch for the hit fixture's disjoint rects, and how many fit a row. `TILE` leaves a 2 px gutter.
 const TILE: f32 = 20.0;
 const TILES_PER_ROW: usize = 64;
-/// In a gutter: inside the tiled region's bounds but no rect contains
-/// it, so the scan runs to the end and finds nothing. The full-traversal
-/// case, and the one a spatial index would fix.
+/// In a gutter: no rect contains it, so the scan runs to the end (full traversal).
 const QUERY_MISS: Vec2 = Vec2::new(TILE - 1.0, TILE - 1.0);
 
-/// Inside the *last-pushed* interactive tile — the top of the paint
-/// order, so `hits_under`'s reverse scan matches on its first test.
-/// Pairs with [`QUERY_MISS`]: flat against density where the miss is
-/// linear, which is what makes the sweep a scan-length curve rather
-/// than two copies of the same number.
+/// Inside the last-pushed tile, top of paint order, so `hits_under`'s reverse scan matches first. Pairs with [`QUERY_MISS`] to give a scan-length curve.
 fn topmost_query(interactive_count: usize) -> Vec2 {
     let index = interactive_count.saturating_sub(1);
     let x = (index % TILES_PER_ROW) as f32 * TILE;
@@ -64,19 +57,9 @@ const DENSITIES: [Density; 4] = [
     },
 ];
 
-/// `density.percent` of [`ENTRY_COUNT`] rows are interactive, tiled into
-/// a disjoint grid.
+/// `density.percent` of [`ENTRY_COUNT`] rows are interactive, in a disjoint grid.
 ///
-/// **Disjoint is the whole point.** Rows carrying the same full-screen
-/// rect let `hits_under`'s reverse scan match the first row it tests and
-/// return — at every density, for every query. The group then reads
-/// 1-2 ns across the board and measures an early exit rather than the
-/// traversal it is named for. Only interactive rows reach
-/// `Cascade::hits` at all, so "inert rows above interactive ones"
-/// describes rows that are never there.
-///
-/// With tiles, a query lands in at most one, and the two `QUERY_*`
-/// constants pick how far the scan runs before it stops.
+/// Disjoint matters: identical full-screen rects let `hits_under`'s reverse scan exit on the first test at every density, measuring an early exit, not the traversal.
 fn fixture(density: Density) -> Cascade {
     let interactive_count = ENTRY_COUNT * density.percent / 100;
     let mut cascade = Cascade::default();
@@ -182,8 +165,7 @@ impl CascadeRunFixture {
     }
 }
 
-/// The key the frame builds before each run, built here per run too so
-/// the measured cost is what a frame pays.
+/// The key the frame builds before each run, built per run so the cost is what a frame pays.
 fn key_of(h: &UiHarness, display: Display) -> CascadeKey {
     CascadeKey::new(
         h.ui.forest(),
@@ -236,11 +218,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     for density in DENSITIES {
         let cascade = fixture(density);
         let interactive = ENTRY_COUNT * density.percent / 100;
-        // `topmost` exits on the first row tested and should stay flat
-        // across the sweep; `miss` traverses every row and should scale
-        // with it. The gap between the two curves is the scan cost a
-        // spatial index would remove — and the reason a single query
-        // could not measure this group.
+        // `topmost` exits on the first row and stays flat; `miss` traverses every row and scales. The gap is the scan cost a spatial index would remove.
         for (query_label, query) in [
             ("topmost", topmost_query(interactive)),
             ("miss", QUERY_MISS),

@@ -1,6 +1,5 @@
-//! The baked icon-set data: an icon's id, its per-icon definition, and the
-//! name-sorted table plus one SVG blob a set is read from. No SVG parser —
-//! the facts a definition carries are surveyed in `svg_facts`.
+//! The baked icon-set data: an icon's id, its definition, and the name-sorted table
+//! plus one SVG blob.
 
 use crate::common::span::Span;
 use crate::icons::error::IconTableError;
@@ -9,70 +8,49 @@ use glam::Vec2;
 use std::borrow::Cow;
 
 /// Index of one icon within its [`IconTable`]. A generated set emits a named
-/// constant per icon, so a call site says `icons::SAVE` rather than a number;
-/// a runtime-built one resolves through [`IconSet::by_name`](crate::IconSet::by_name).
+/// constant per icon (`icons::SAVE`); a runtime-built one resolves through
+/// [`IconSet::by_name`](crate::IconSet::by_name).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct IconId(pub u16);
 
-/// One baked icon: what it is called, the size it was drawn at, where its
-/// normalized SVG sits in the set's blob, and the two facts the renderer needs
-/// before it has parsed anything.
+/// One baked icon: its name, the size it was drawn at, where its normalized SVG
+/// sits in the set's blob, and two facts the renderer needs before parsing.
 #[derive(Clone, Debug)]
 pub struct IconDefinition {
-    /// Lowercase kebab-case, derived from the source filename. Unique within
-    /// a set, and the key [`IconSet::by_name`](crate::IconSet::by_name)
-    /// searches. Borrowed in a baked set, owned in one built at runtime, so
-    /// a set built from files leaks nothing.
+    /// Lowercase kebab-case, from the source filename; unique within a set and the
+    /// key [`IconSet::by_name`](crate::IconSet::by_name) searches.
     pub name: Cow<'static, str>,
-    /// The SVG's viewBox extent in logical px — the size the artwork was
-    /// designed at, and what to size a node to.
+    /// The SVG's viewBox extent in logical px.
     pub view_box: Vec2,
-    /// Byte range of this icon's SVG within its set's concatenated blob.
+    /// Byte range of this icon's SVG within its set's blob.
     pub svg: Span,
-    /// Every paint in the icon resolves to one colour (or `currentColor`), so
-    /// it rasterizes to a coverage mask and takes the shape's full tint. A
-    /// colour icon rasterizes to RGBA instead, where tint modulates alpha
-    /// alone.
+    /// Every paint resolves to one colour (or `currentColor`), so it rasterizes to
+    /// a coverage mask and takes the shape's full tint; a colour icon rasterizes to
+    /// RGBA, where tint modulates alpha only.
     pub tintable: bool,
-    /// The icon uses an SVG filter. Measured at 10-20x the raster cost of one
-    /// without, growing superlinearly with size, which is why these are
-    /// prewarmed at load rather than rasterized on the frame that first draws
-    /// them.
+    /// The icon uses an SVG filter (10-20x costlier to rasterize), so it is
+    /// prewarmed at load rather than on its first draw.
     pub filtered: bool,
 }
 
-/// An icon set: a name-sorted table plus every icon's SVG in one blob.
-///
-/// Two ways in, and the difference is only who owns the bytes. [`Self::baked`]
-/// borrows data compiled into the binary — a generated `const` — and copies
-/// nothing; [`Self::from_svgs`] builds one at runtime and owns its buffers.
-/// Both are held behind an `Rc` once loaded, so a set is shared rather than
-/// duplicated and nothing has to outlive the app to stay reachable.
-///
-/// Rasterization parses lazily either way — per icon, the first time that icon
-/// is drawn — so a set the session never draws from rasterizes nothing. What
-/// differs is the *table*: [`Self::baked`] arrives with one already built and
-/// so parses nothing at construction, while [`Self::from_svgs`] has to read
-/// each source to fill it.
-///
-/// The table is sorted by [`IconDefinition::name`], which is what lets
-/// [`IconSet::by_name`](crate::IconSet::by_name) binary-search it.
+/// An icon set: a name-sorted table (for
+/// [`IconSet::by_name`](crate::IconSet::by_name)'s binary search) plus every icon's
+/// SVG in one blob. [`Self::baked`] borrows data compiled into the binary and
+/// parses nothing; [`Self::from_svgs`] builds one at runtime, owns its buffers and
+/// reads each source to fill the table. Rasterization parses lazily per icon on
+/// first draw either way.
 #[derive(Debug)]
 pub struct IconTable {
     icons: Cow<'static, [IconDefinition]>,
-    /// Every icon's SVG, concatenated. Sliced by [`IconDefinition::svg`].
     svg: Cow<'static, [u8]>,
 }
 
 impl IconTable {
-    /// A set from data compiled into the binary — what a generated
-    /// `icons.rs` calls. Borrows both halves, so it allocates nothing and
-    /// parses nothing.
-    ///
-    /// `icons` must be sorted by [`IconDefinition::name`] and each entry's
-    /// [`IconDefinition::svg`] must span its own slice of `svg` — the two invariants
-    /// name lookup and per-icon slicing rest on. Whatever generates the table
-    /// owes them; [`Self::from_svgs`] establishes them itself.
+    /// A set from data compiled into the binary, as a generated `icons.rs` calls
+    /// it; borrows both halves and parses nothing. `icons` must be sorted by
+    /// [`IconDefinition::name`] and each entry's [`IconDefinition::svg`] must span
+    /// its own slice of `svg`; the generator owes this, [`Self::from_svgs`]
+    /// establishes it.
     pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
         Self {
             icons: Cow::Borrowed(icons),
@@ -81,34 +59,16 @@ impl IconTable {
     }
 
     /// Build a set from SVG sources at runtime, deriving each icon's viewBox,
-    /// tintability, and filter use from one parse of it.
-    ///
-    /// Owns its buffers, so nothing leaks and the set is freed with the last
-    /// [`IconSet`](crate::IconSet) holding it. It does pay a parse per icon,
-    /// which is why a set that ships with the app should come from
-    /// [`Self::baked`] instead.
-    ///
-    /// **That parse is paid twice for any icon the session goes on to draw**:
-    /// the tree read here is dropped once its three facts are off it, and
-    /// `IconRasterizer` parses the same bytes again to get pixels. Keeping this
-    /// one instead would mean an [`IconTable`] that holds `usvg::Tree`s — a
-    /// parser type in a data type, and one retained tree per icon in the set
-    /// rather than per icon actually drawn. At ~180 µs a parse, once, on the
-    /// path that already tells you to prefer [`Self::baked`], the memory and
-    /// the coupling cost more than the microseconds do.
-    ///
-    /// Entries are sorted by name, which is the order a baked set guarantees
-    /// and [`IconSet::by_name`](crate::IconSet::by_name) binary-searches — so
-    /// resolve ids by name rather than by the order they were passed in.
-    ///
-    /// A name is a `&'static str` or a `String`; an owned one is freed with
-    /// the set.
+    /// tintability and filter use from one parse. It pays a parse per icon, so a
+    /// shipped set should use [`Self::baked`]. **That parse is paid twice for any
+    /// icon later drawn** (`IconRasterizer` parses again); retaining the tree would
+    /// put a parser type in a data type, which costs more than ~180 µs once.
+    /// Entries are sorted by name, so resolve ids by name, not input order.
     ///
     /// # Errors
     ///
-    /// [`IconTableError`] when a source does not parse, when there are more
-    /// than 65 536 of them — the most an [`IconId`] can name — or when two
-    /// share a name.
+    /// [`IconTableError`] when a source does not parse, there are more than 65 536
+    /// (the most an [`IconId`] can name), or two share a name.
     pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(
         sources: impl IntoIterator<Item = (N, &'a str)>,
     ) -> Result<Self, IconTableError> {
@@ -151,9 +111,6 @@ impl IconTable {
         })
     }
 
-    /// The name-sorted table, for the two places that walk the whole set —
-    /// the prewarm pass and `by_name`. Everything else goes through an
-    /// [`IconId`].
     pub(crate) fn icons(&self) -> &[IconDefinition] {
         &self.icons
     }
@@ -162,9 +119,7 @@ impl IconTable {
     ///
     /// # Panics
     ///
-    /// Panics if `icon` is not from this set. Ids come from the generated
-    /// constants or from [`IconSet::by_name`](crate::IconSet::by_name), so an
-    /// out-of-range one means an id crossed between sets.
+    /// Panics if `icon` is not from this set: an id crossed sets.
     pub(crate) fn def(&self, icon: IconId) -> &IconDefinition {
         let icons = &self.icons;
         assert!(
@@ -176,7 +131,6 @@ impl IconTable {
         &icons[icon.0 as usize]
     }
 
-    /// This icon's normalized SVG bytes.
     pub(crate) fn svg_bytes(&self, icon: IconId) -> &[u8] {
         &self.svg[self.def(icon).svg.range()]
     }
@@ -188,9 +142,7 @@ mod tests {
     use crate::icons::internals::{BROKEN, ONE_COLOUR, TWO_COLOURS};
     use glam::Vec2;
 
-    /// The set-level invariants `from_svgs` guarantees: name order, which
-    /// `by_name`'s binary search rests on. What each icon is classified *as*
-    /// is `SvgFacts`' own test.
+    /// `from_svgs` sorts by name, which `by_name`'s binary search rests on.
     #[test]
     fn runtime_build_sorts_by_name() {
         let table = IconTable::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]).unwrap();
@@ -204,8 +156,7 @@ mod tests {
         assert!(table.icons()[0].tintable, "facts ride through to the def");
     }
 
-    /// Each icon's span must slice its own source back out of the shared blob
-    /// — an off-by-one here would rasterize the neighbouring icon.
+    /// Each icon's span must slice its own source out of the shared blob.
     #[test]
     fn spans_slice_each_icon_out_of_the_shared_blob() {
         let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]).unwrap();
@@ -213,13 +164,11 @@ mod tests {
         assert_eq!(table.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
     }
 
-    /// The smallest source that parses.
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;
 
-    /// Each flaw in the sources is its own error: a source that does not
-    /// parse names its icon, a set past what an [`IconId`] can name counts
-    /// its sources, and a shared name names itself. An owned name is
-    /// accepted beside a borrowed one, and nothing leaks either way.
+    /// Each flaw is its own error: an unparseable source names its icon, too many
+    /// sources report the count, a shared name names itself; an owned name is
+    /// accepted beside a borrowed one.
     #[test]
     fn flawed_sources_are_errors() {
         use crate::icons::error::IconTableError;

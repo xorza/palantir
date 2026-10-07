@@ -1,5 +1,4 @@
-//! Per-frame layout scratch: everything the measure and arrange passes
-//! build up and throw away, with its capacity kept across frames.
+//! Per-frame layout scratch for the measure and arrange passes, with capacity kept across frames.
 
 use crate::common::span::Span;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
@@ -16,144 +15,55 @@ use crate::scene::tree::Tree;
 use glam::Vec2;
 use std::ops;
 
-/// `LayoutScratch::arrange_src` entry for a node whose subtree measure did
-/// not restore from the cache — arrange must run the drivers for it.
-/// `u32::MAX` is unreachable as an arena index: the snapshot holds one row
-/// per node and a tree that large exhausts memory first.
+/// `LayoutScratch::arrange_src` entry for a node whose subtree measure did not restore from the cache, so arrange must run the drivers. `u32::MAX` cannot be an arena index.
 pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 
-/// Per-frame intermediate state: every field is reset / overwritten at
-/// the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run) and exists only for the duration of
-/// the layout pass. Capacity is retained across frames so steady state
-/// is alloc-free.
-///
-/// - `grid` — grid-driver scratch (per-depth track state, hug pool).
-/// - `wrap` — wrapstack flat per-depth line buffer.
-/// - `desired` — measure-pass output, read by arrange.
-/// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
-///   queries. Pure function of subtree; safe to
-///   memoize within a frame. Flat `Vec` indexed by node, four slots
-///   per node (one per `(axis, req)` combination). NaN means "not yet
-///   computed".
-/// - `available_q` — quantized offer per node, the key
-///   [`MeasureCache`](crate::layout::cache::MeasureCache) records a subtree under.
-/// - `arrange_src` — snapshot arena row of each node whose subtree
-///   measure was restored from the cache this frame.
-/// - `stack` — the stack's Fill and Hug share pools, same depth-shared
-///   shape as `wrap`.
-/// - `counters` — test-only observability for the run.
+/// Per-frame intermediate state, reset at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run). Capacity is retained so steady state is alloc-free.
 /// ## Cache-hit contract
 ///
-/// Fields split into three lifecycle categories:
+/// Fields fall into three lifecycle categories:
 ///
-/// 1. **Drained on measure exit** — `wrap.pool`, `stack`,
-///    `grid.depth_stack`, `grid.track_aggregator`.
-///    Driver stacks: pushed on enter, truncated on exit, so a
-///    [`MeasureCache`](crate::layout::cache::MeasureCache) hit that
-///    skips a subtree's measure is invisible to them — they were never
-///    going to carry state out. (`stack` and
-///    `grid.depth_stack` are used by arrange too, but rebuild their own
-///    state rather than reading measure's.)
+/// 1. **Drained on measure exit** — driver stacks, pushed on enter and truncated on exit, so a [`MeasureCache`](crate::layout::cache::MeasureCache) hit that skips a measure is invisible to them.
 ///
-/// 2. **Retained measure → arrange/record** — `desired`, `floor`,
-///    `LayerLayout::scroll_content`, and `grid.track_state`.
-///    `desired` is node-indexed and the cache transparently round-
-///    trips it through [`CachedSubtree::desired`]; `floor` rides
-///    [`CachedSubtree::floor`] the same way. Scroll content is
-///    likewise node-indexed and restored into the current layout
-///    result for the next record pass. `grid.track_state` is
-///    indexed per-grid (not per-node) so the cache hit path has to
-///    explicitly call [`Self::restore_after_cache_hit`] to splat
-///    [`CachedSubtree::tracks`] back into the live pool — without
-///    that, arrange reads zeros and every cell collapses to (0, 0).
+/// 2. **Retained measure → arrange/record** — `desired`, `floor`, `LayerLayout::scroll_content` and `grid.track_state`. The cache round-trips the node-indexed ones through [`CachedSubtree`]. `grid.track_state` is per-grid, so a hit must call [`Self::restore_after_cache_hit`] to splat [`CachedSubtree::tracks`] back, or every cell collapses to (0, 0).
 ///
-/// 3. **Node-indexed measure memos, round-tripped by the cache** —
-///    `intrinsics`, `available_q` and `stable_from`. Not
-///    stacks: `resize_for` fills them per node and nothing truncates
-///    them. They look drainable because arrange never queries them, but
-///    they *do* carry state out —
-///    [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree)
-///    reads them after arrange, so on a cache-hit subtree (whose slots
-///    measure never filled) they have to be splatted back by
-///    [`Self::restore_after_cache_hit`] first or the next snapshot records
-///    NaN for `intrinsics` and `INVALID_AVAILABLE` for `available_q` —
-///    which silently makes that subtree uncacheable from then on — and
-///    zeroes for the range a later hit hands its parent.
+/// 3. **Node-indexed measure memos** — `intrinsics`, `available_q`, `stable_from`. Nothing truncates them, and [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads them after arrange, so a hit subtree must splat them back or its snapshot is silently uncacheable.
 ///
-/// **Adding a new field to category (2)** takes three coordinated
-/// edits: a column in the whole-tree snapshot, a [`CachedSubtree`]
-/// field carrying it through the cache, and a restore branch inside
-/// [`Self::restore_after_cache_hit`]. All three are compiler-enforced —
-/// `capture_tree` and `restore_after_cache_hit` destructure
-/// exhaustively, and the `CachedSubtree` field is a struct literal — so a
-/// missed edit
-/// is a build error, not a silent arrange corruption. The reset
-/// functions (`NodeArenas::clear`, `LayerLayout::resize_for`, and the
-/// one below) destructure to buy the same thing for a field left
-/// un-reset. Behaviour is pinned per-driver by the fixtures in
-/// `src/layout/cache/tests/frames.rs`.
+/// **Adding a field to category (2)** takes a snapshot column, a [`CachedSubtree`] field and a restore branch in [`Self::restore_after_cache_hit`]; exhaustive destructuring enforces all three.
 ///
-/// `arrange_src` belongs to none of the three: it is frame-local, never
-/// captured or restored. Nor do `local` and `replay_origins`, which are
-/// arrange's: `local` is captured beside `LayerLayout::rect` and read back
-/// by a translated replay, and `replay_origins` is drained by every
-/// replay. Measure stamps it on every node of a subtree it
-/// short-circuited, with that node's row in the snapshot arena, and
-/// [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged)
-/// replays a node's subtree rects from there instead of re-running the
-/// drivers.
+/// `arrange_src` is frame-local and in none of the three; measure stamps it on each node of a short-circuited subtree, and [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged) replays rects from it. `local` rides beside `LayerLayout::rect`; `replay_origins` is drained per replay.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
-    /// Test-only observability for this run — see [`LayoutCounters`].
+    /// Test-only observability for this run; see [`LayoutCounters`].
     pub(crate) counters: LayoutCounters,
     pub(super) grid: GridContext,
     pub(super) wrap: WrapScratch,
     pub(super) stack: StackScratch,
     pub(super) desired: Vec<Size>,
-    /// Each node's measured floor, margin-inclusive — see
-    /// [`Measured`]. Arrange reads it
-    /// beside `desired`: what a node is placed at when its slot is
-    /// smaller than what it wants.
+    /// Each node's measured floor, margin-inclusive; see [`Measured`]. Arrange places a node at it when its slot is smaller than `desired`.
     pub(super) floor: Vec<Size>,
     /// Each node's [`Measured::stable_from`].
-    /// Read by no pass after measure; kept per node for the next capture.
+    /// Read by no pass after measure; kept for the next capture.
     pub(super) stable_from: Vec<Size>,
-    /// Each node's slot origin in its parent's inner box, as `arrange`
-    /// placed it — what `rect` is that origin plus one add of the
-    /// parent's own position. Captured beside `rect` so a translated
-    /// replay rebuilds it with the same adds.
+    /// Each node's slot origin in its parent's inner box; captured beside `rect` so a translated replay rebuilds it with the same adds.
     pub(super) local: Vec<Vec2>,
-    /// The inner-box origins of the nodes a translated replay is inside,
-    /// innermost last — frame-local, drained by every replay.
+    /// Inner-box origins of the nodes a translated replay is inside, innermost last. Drained by every replay.
     pub(super) replay_origins: Vec<ReplayOrigin>,
-    /// Snapshot arena row of each node whose subtree measure was restored
-    /// from the cache this frame — the hit root and every node under it —
-    /// or [`NO_ARRANGE_SRC`]. Written at the measure-hit site, read once
-    /// per node by `arrange`.
+    /// Snapshot arena row of each node whose subtree measure was restored from the cache this frame, or [`NO_ARRANGE_SRC`].
     pub(super) arrange_src: Vec<u32>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(super) available_q: Vec<AvailableKey>,
-    /// Whether this frame is rebuilding the measure snapshot rather than
-    /// reusing the previous one. Decided once at the top of
-    /// [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run) and
-    /// read by the capture and cache-restore paths — per-frame state, so
-    /// it lives here with the rest of the frame's scratch rather than on
-    /// the persistent engine.
+    /// Whether this frame rebuilds the measure snapshot rather than reusing the previous one. Decided at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run).
     pub(super) cache_rebuild: bool,
 }
 
 impl LayoutScratch {
-    /// Destructured so a field added to `LayoutScratch` cannot be left
-    /// un-reset here. The three driver stacks are reset by their own
-    /// drivers on enter/exit, so they are bound and ignored by name
-    /// rather than by `..` — that is still a decision the compiler makes
-    /// someone make.
+    /// Destructured so a new field cannot be left un-reset. The driver stacks reset themselves and are ignored by name.
     pub(super) fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
         let Self {
             counters: _,
-            // Decided by `LayoutEngine::run` before the layer loop this
-            // runs inside, so resetting it here would wipe the answer.
+            // Decided by `LayoutEngine::run` before the layer loop; resetting here would wipe it.
             cache_rebuild: _,
             grid,
             wrap: _,
@@ -171,8 +81,7 @@ impl LayoutScratch {
         desired.resize(n, Size::ZERO);
         floor.clear();
         floor.resize(n, Size::ZERO);
-        // A node measure never reaches, below a collapsed one, has no
-        // range to claim, so its row claims none.
+        // A node measure never reaches, below a collapsed one, claims no range.
         stable_from.clear();
         stable_from.resize(
             n,
@@ -189,20 +98,7 @@ impl LayoutScratch {
         grid.track_state.reset_for(tree);
     }
 
-    /// Splat every per-subtree side-state column carried by `arenas` back
-    /// into the live pools after a measure-cache hit. Owns the dispatch
-    /// over every retained category-(2) field: scroll content, text shapes
-    /// (appended to the live frame buffer with per-node spans rebased), and
-    /// per-grid hug arrays. Adding a new retained driver column adds one branch
-    /// here so the engine's cache-hit path stays a single call. On
-    /// `LayoutScratch` rather than on `LayoutEngine` because the caller holds
-    /// an immutable borrow of `engine.cache` via the cached-subtree handle —
-    /// taking `&mut self` here and `&mut LayerLayout` separately keeps those
-    /// borrows disjoint. Pinned by
-    /// `cache::tests::frames::cache_hit_preserves_grid_cell_rects`
-    /// and the per-driver `cache_hit_preserves_*_rects` fixtures.
-    /// `#[inline]`-marked because every cache hit takes this path and the
-    /// grid-free common path is a single bitset test.
+    /// Splat per-subtree columns (scroll content, text shapes, grid hug arrays) back into the live pools after a cache hit. Here, not on `LayoutEngine`, to keep borrows of `engine.cache` disjoint.
     #[inline]
     pub(super) fn restore_after_cache_hit(
         &mut self,
@@ -211,18 +107,7 @@ impl LayoutScratch {
         cached: &CachedSubtree<'_>,
         layer: &mut LayerLayout,
     ) {
-        // Destructured exhaustively — no `..` — so a new `CachedSubtree`
-        // column cannot be captured and then silently never restored. That
-        // is the failure `LayoutScratch`'s doc warns about in prose ("three
-        // coordinated edits … forgetting any one corrupts arrange
-        // silently"); `capture_tree` already destructures its input the
-        // same way, so this closes the other end.
-        //
-        // The three `_` bindings are the fields that are deliberately not
-        // this function's job: `root` and `nodes_base` describe the
-        // snapshot rather than being columns of it, and
-        // `desired` is restored by the measure-hit site itself
-        // (`LayoutPass::measure`) because it is what decides the hit.
+        // Destructured exhaustively so a new `CachedSubtree` column cannot go unrestored. The `_` bindings: `root` and `nodes_base` describe the snapshot, and `desired` is restored by the measure-hit site.
         let CachedSubtree {
             root: _,
             nodes_base: _,
@@ -239,9 +124,7 @@ impl LayoutScratch {
         } = cached;
 
         layer.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
-        // Append the snapshot's flat text-shape range to the live
-        // per-frame buffer, then rebase its subtree-local spans by
-        // `dest_start` into the per-node `text_spans` column.
+        // Append the snapshot's text-shape range to the live buffer, rebasing its spans by `dest_start`.
         let dest_start = layer.text_shapes.len() as u32;
         layer.text_shapes.extend_from_slice(text_shapes);
         for (i, snap_span) in text_spans.iter().copied().enumerate() {
@@ -254,8 +137,7 @@ impl LayoutScratch {
                 }
             };
         }
-        // Arrange reads the floor beside `desired`, so it is restored on
-        // every hit, not only for the next capture.
+        // Arrange reads the floor beside `desired`, so restore it on every hit.
         self.floor[subtree.clone()].copy_from_slice(floor);
         if self.cache_rebuild {
             for (dst, src) in self.intrinsics[subtree.clone()].iter_mut().zip(*intrinsics) {
@@ -268,9 +150,7 @@ impl LayoutScratch {
             self.available_q[subtree.clone()].copy_from_slice(available_q);
             self.stable_from[subtree.clone()].copy_from_slice(stable_from);
         }
-        // `grid.track_state` — gated on `Tree::subtree_has_grid` (one bit-test
-        // off the same `subtree_end` word the caller already read) so
-        // grid-free subtrees pay nothing.
+        // Gated on `Tree::subtree_has_grid` so grid-free subtrees pay nothing.
         if tree.subtree_has_grid(subtree.start) {
             self.grid.track_state.restore_subtree(tree, subtree, tracks);
         }

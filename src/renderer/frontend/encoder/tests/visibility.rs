@@ -15,17 +15,13 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
-    // Visible and disabled get the same effective screen rect; hidden is
-    // skipped by encoder but tracked by hit index. Clicks land on visible
-    // and are suppressed for both disabled (the response fold) and hidden
-    // (visibility cascade).
+    // Visible and disabled share a screen rect; hidden is skipped by the encoder but kept in the hit index. Clicks land on visible only.
     let v_color = RgbaF32::srgb(1.0, 0.0, 0.0);
     let d_color = RgbaF32::srgb(0.0, 1.0, 0.0);
     let h_color = RgbaF32::srgb(0.0, 0.0, 1.0);
     let xform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
 
     let surface = UVec2::new(400, 400);
-    // Whether V, D and H clicked this pass.
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
@@ -98,9 +94,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
     assert!(h.rect(h_id).is_some());
 
-    // A frame per gesture: one release slot per button, so three
-    // uninterrupted gestures would leave only the last one to read, and
-    // `D` absorbing its press is exactly what makes that visible.
+    // A frame per gesture: there is one release slot per button.
     let h_hit = h.rect(h_id).unwrap();
     for (target, expected, why) in [
         (v_hit, [true, false, false], "the visible widget clicks"),
@@ -138,13 +132,10 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             .inner
     });
     let cascade = &h.ui.cascade();
-    // Main is first in `Layer::PAINT_ORDER`, so its `entries_base` is 0
-    // and the node index doubles as the entry index.
+    // Main is first in `PAINT_ORDER`, so node index equals entry index.
     assert!(
         cascade.entries[child.idx()].disabled,
         "a disabled ancestor must flatten into the descendant's effective disabled",
     );
-    // A cascaded-off node is never pushed to `hits`, so it cannot be
-    // hit-tested — the behaviour the flattened flag exists to produce.
     assert!(cascade.hit_test(Vec2::splat(20.0), |_| true).is_none(),);
 }

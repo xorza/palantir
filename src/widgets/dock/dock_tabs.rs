@@ -1,5 +1,4 @@
-//! What the application answers about each tab, and the menu bundle one
-//! of those answers is handed.
+//! What the application answers about each tab, and the menu bundle handed to one answer.
 
 use crate::primitives::geometry::size::Size;
 
@@ -12,80 +11,49 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::tab_group::TabGroupId;
 use crate::widgets::tabs::tab_item::TabBadge;
 
-/// What a [`DockView`](crate::DockView) asks the application about each
-/// tab it is about to draw.
-///
-/// Two required methods and five defaulted ones. The two are exactly
-/// what a closure cannot carry — what a tab is called, and what it draws
-/// — and they are why the dock takes a trait where
-/// [`TabbedView`](crate::TabbedView) takes a value binding: six
-/// questions per tab do not fit in builder closures without boxing one
-/// per frame.
-///
-/// The dock stores only a key, so every one of these runs once per
-/// visible tab per frame. Keep them cheap: a match arm, a field read.
+/// What a [`DockView`](crate::DockView) asks the application about each tab it draws. A trait, since six questions per tab do not fit in closures without boxing per frame; each runs per visible tab per frame, so keep them cheap.
 pub trait DockTabs {
     /// The application's own tab key — a small `Copy` enum or index.
     type Tab: DockTab;
 
-    /// The chip's label. Intern through [`Ui::intern`] or
-    /// [`fmt!`](crate::fmt) — nothing here needs to own its text.
+    /// The chip's label; intern through [`Ui::intern`] or [`fmt!`](crate::fmt).
     fn title(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr;
 
-    /// The tab's body, recorded into the pane's content area.
-    ///
-    /// `size` is that area's arranged size, or `None` on the one frame
-    /// in a pane's life that has not been laid out yet. It is the
-    /// *group's* content area, which outlives the tab in it, so a view
-    /// that first records on this pass is still handed a size.
+    /// The tab's body, recorded into the pane's content area; `size` is its arranged size, `None` on the one frame before the pane's first layout.
     fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>);
 
-    /// Whether the chip carries a close button. The pinned tab is
-    /// refused by the model whatever this answers.
+    /// Whether the chip carries a close button; the pinned tab refuses it regardless.
     fn closable(&mut self, _tab: Self::Tab) -> bool {
         true
     }
 
-    /// Whether the chip may be dragged to another pane.
+    /// Whether `tab` can be dragged.
     fn draggable(&mut self, _tab: Self::Tab) -> bool {
         true
     }
 
-    /// The chip's status dot. Return [`TabBadge::Idle`] from every tab
-    /// kind that can *ever* show one, so the chip keeps its width when
-    /// the dot goes out.
+    /// The chip's status dot. Return [`TabBadge::Idle`] from every tab kind that can ever show one, so the chip keeps its width.
     fn badge(&mut self, _tab: Self::Tab) -> TabBadge {
         TabBadge::None
     }
 
-    /// Artwork drawn before the label.
+    /// Icon for `tab`.
     fn icon(&mut self, _tab: Self::Tab) -> Option<IconHandle> {
         None
     }
 
-    /// The chip's right-click menu. Records [`MenuItem`](crate::MenuItem)s
-    /// into the open menu; an empty body means the chip has no menu.
-    ///
-    /// The dock ships no default items, because the wording of a split
-    /// command belongs to the application, not to the widget.
+    /// The chip's right-click menu: records [`MenuItem`](crate::MenuItem)s into the open menu; empty means none.
     fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) {}
 }
 
-/// What [`DockTabs::tab_menu`] is handed: which chip was right-clicked,
-/// the pane it sits in, the sink its items push operations onto, and the handle
-/// that dismisses the menu.
-///
-/// A bundle rather than four parameters — `tab` and `group` are the two
-/// addresses a split operation is built from, and an item that reached for one
-/// without the other could not name its own drop.
+/// What [`DockTabs::tab_menu`] is handed: the right-clicked chip, its pane, the operation sink and the menu's dismiss handle.
 #[derive(Debug)]
 pub struct DockTabMenu<'a, T> {
-    /// The chip that was right-clicked.
+    /// The right-clicked tab.
     pub tab: T,
-    /// The pane that chip sits in.
+    /// Its pane.
     pub group: TabGroupId,
-    /// Where an item's operation goes. The application's own queue drains it,
-    /// or [`DockView::run`](crate::DockView::run) does.
+    /// Where an item's operation goes; drained by the application's queue or [`DockView::run`](crate::DockView::run).
     pub operations: &'a mut Vec<DockOperation<T>>,
     /// Pass to [`MenuItem::show`](crate::MenuItem::show).
     pub close: &'a CloseHandle,

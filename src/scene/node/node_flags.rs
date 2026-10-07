@@ -21,12 +21,9 @@ impl NodeFlags {
     const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
     /// Set when the node is *not* a Tab stop, so the zero default is one.
     const NOT_TAB_STOP: u32 = 1 << 18;
-    /// The axis whose arrows move focus between the stops inside the
-    /// node: `0` none, `1 + Axis`.
+    /// The axis whose arrows move focus between stops inside the node: `0` none, `1 + Axis`.
     const ARROW_SHIFT: u32 = 19;
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
-    /// How many low bits of [`Self::bits`] can be set — what a caller
-    /// packing the word beside others reserves for it.
     pub(crate) const WIDTH: u32 = (Self::SENSE_MASK
         | Self::DISABLED
         | Self::CLIP_MASK
@@ -36,12 +33,7 @@ impl NodeFlags {
         | Self::ARROW_MASK)
         .bit_width();
 
-    /// The whole bitset, for callers that fold it into a hash rather
-    /// than reading one field — [`LayoutCore::hash_with_flags`] mixes
-    /// these bits in with the packed layout metadata.
-    ///
-    /// [`LayoutCore::hash_with_flags`]:
-    ///     crate::scene::node::layout_core::LayoutCore::hash_with_flags
+    /// The whole bitset, for folding into a hash.
     #[inline]
     pub(crate) const fn bits(self) -> u32 {
         self.bits
@@ -77,10 +69,7 @@ impl NodeFlags {
         self.bits & Self::NOT_TAB_STOP == 0
     }
 
-    /// The key classes this node's input scope takes, or
-    /// [`KeyFilter::NONE`] when it declares no scope — the empty filter
-    /// doubles as "not a scope", which is what lets this ride spare bits
-    /// instead of costing a presence flag of its own.
+    /// The key classes this node's input scope takes; [`KeyFilter::NONE`] doubles as "not a scope", saving a presence flag.
     #[inline]
     pub(crate) const fn key_filter(self) -> KeyFilter {
         KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u8)

@@ -14,15 +14,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
 
-/// A fractional alpha survives the whole path: sampled by the encoder,
-/// folded by the sink's gate, and out in the payload's colour lane.
-///
-/// Hand-computed. The shape is opaque red and the animation lerps alpha
-/// `0.0` → `1.0` over one second on [`curves::linear`], so the frame at
-/// 500 ms encodes a fill alpha of `0.5`. Nothing before this could
-/// produce one — the two animations the crate shipped answered `0` or
-/// `1`, which is why the renderer half that carries a fraction had no
-/// test of its own.
+/// A fractional alpha survives the whole path (encoder sample, sink gate, payload colour lane): opaque red with alpha lerping `0.0` → `1.0` over one second on [`curves::linear`] encodes a fill alpha of `0.5` at 500 ms. The crate's other animations answered only `0` or `1`.
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
     let record = |ui: &mut Ui| {

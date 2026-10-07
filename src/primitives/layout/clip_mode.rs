@@ -1,11 +1,8 @@
-//! Whether a node clips its descendants, and at what cost: no clip, a
-//! scissor, or a rounded mask that needs the stencil.
+//! Whether a node clips its descendants: no clip, a scissor, or a rounded stencil mask.
 
 /// How a node clips its descendants' paint.
 ///
-/// `None` = no clip. `Rect` = axis-aligned scissor (the cheap, GPU-native
-/// path). `Rounded` = clip to the node's `Background.radius`; requires a
-/// stencil pass on the backend, so apps that never use it pay nothing.
+/// `Rounded` clips to the node's `Background.radius` and needs a backend stencil pass, so apps that never use it pay nothing.
 #[derive(
     Clone,
     Copy,

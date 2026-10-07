@@ -7,16 +7,9 @@ use cosmic_text::FontSystem;
 use std::thread;
 use std::thread::JoinHandle;
 
-/// A [`FontScope::build`] running off the main thread, joined for the
-/// [`TextShaper`] it produces.
+/// A [`FontScope::build`] running off the main thread, joined for the [`TextShaper`] it produces.
 ///
-/// [`FontScope::System`] walks every font directory the OS has — 14.8 ms
-/// for 774 faces on a warm disk cache here, and fontdb reports ~860 ms
-/// cold. A window has one other startup cost of that order, GPU init, and
-/// the two need nothing from each other. Started before the window is
-/// created and joined when the shared host state is built, the scan costs
-/// no wall time at all on a warm cache, and on a cold one the window
-/// appears when it finishes — which is what happened before this existed.
+/// [`FontScope::System`] walks every OS font directory (14.8 ms for 774 faces warm, ~860 ms cold per fontdb), overlapping GPU init; the window waits only on a cold cache.
 #[derive(Debug)]
 pub(crate) struct FontScan {
     handle: JoinHandle<FontSystem>,
@@ -31,12 +24,7 @@ impl FontScan {
         Self { handle }
     }
 
-    /// Block until the scan finishes and wrap what it built.
-    ///
-    /// A panic on the scan thread is re-raised here rather than swallowed
-    /// into a bundled fallback: a host that silently lost its system
-    /// fonts renders every non-Latin script as tofu, and that is not a
-    /// state to discover at runtime.
+    /// Block until the scan finishes. A scan-thread panic is re-raised, not swallowed into a bundled fallback, which would render non-Latin as tofu.
     pub(crate) fn join(self) -> TextShaper {
         let font_system = self.handle.join().expect("the font scan thread panicked");
         TextShaper::over(CosmicMeasure::over(font_system))
@@ -49,22 +37,14 @@ mod tests {
     use crate::text::font_scan::FontScan;
     use crate::text::font_scope::FontScope;
 
-    /// The scan thread hands back a shaper the main thread can use, with
-    /// the bundled families resolvable — the whole contract
-    /// `WinitRuntime::new` depends on, and the one that would otherwise
-    /// only be exercised by opening a window.
-    ///
-    /// `System` rather than `Bundled`, because the scan is the reason the
-    /// thread exists: a `Bundled` join would pass without ever proving
-    /// that a database built off-thread survives the move.
+    /// The scan thread hands back a usable shaper with bundled families resolvable (the contract `WinitRuntime::new` depends on). `System`, not `Bundled`, so it proves an off-thread database survives the move.
     #[test]
     fn a_scanned_shaper_arrives_usable() {
         let shaper = FontScan::spawn(FontScope::System).join();
         assert!(shaper.has_font(FontFamily::SANS));
         assert!(shaper.has_font(FontFamily::MONO));
         assert_eq!(shaper.font_epoch(), 0);
-        // At least the bundled pair: a host may have no fonts of its own,
-        // and the scan must still hand back a usable database.
+        // At least the bundled pair: a host may have no fonts of its own.
         assert!(
             shaper.font_families().len() >= 2,
             "a system scan keeps the bundled pair",

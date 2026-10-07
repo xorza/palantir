@@ -96,9 +96,7 @@ fn physical_keys_map_layout_independent_identities() {
     );
 }
 
-/// Each winit modifier on each platform: on macOS Cmd (Super) is the
-/// primary command bit and raw Control is `mac_ctrl`; elsewhere Control
-/// is the command bit and Super is `meta`.
+/// Each winit modifier per platform: macOS Cmd is the command bit and Control is `mac_ctrl`; elsewhere Control is.
 #[test]
 fn modifier_normalization_translates_each_bit() {
     let none = Modifiers::NONE;
@@ -157,11 +155,8 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
     ));
 }
 
-/// A pinch delta is a *displacement*, so the factor is `1 + delta`. This
-/// layer converts and nothing more — a delta of -1 or worse produces a
-/// factor no zoom can use, and refusing it is `InputEvent::is_valid`'s
-/// question, asked once at the ingress every other payload here goes
-/// through.
+/// A pinch delta is a displacement, so the factor is `1 + delta`; this layer only converts and ingress rejects
+/// factors no zoom can use (`InputEvent::is_valid`).
 #[test]
 fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
     let half = pinch(0.5);
@@ -184,19 +179,10 @@ fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
     }
 }
 
-/// The logical and physical tables must denote the same [`Key`] for
-/// every key winit names in both vocabularies.
-///
-/// `Shortcut::matches`'s non-Latin fallback consults `physical` alone,
-/// so a key that resolves on one side and not the other stops matching
-/// under a non-Latin layout — silently, and only for users of that
-/// layout. `shared_key!` makes them agree by construction; this pins it
-/// against someone hand-adding an arm to one side instead.
+/// The logical and physical key tables denote the same [`Key`]; `Shortcut::matches`' non-Latin fallback uses `physical`
+/// alone, so a one-sided arm would silently stop matching under a non-Latin layout.
 #[test]
 fn shared_keys_denote_the_same_key_on_both_sides() {
-    // Every name `shared_key!` lists — a subset would not catch an
-    // arm hand-added to one side outside the macro, which is the whole
-    // failure this guards.
     let cases: &[(NamedKey, KeyCode)] = &[
         (NamedKey::ArrowLeft, KeyCode::ArrowLeft),
         (NamedKey::ArrowRight, KeyCode::ArrowRight),
@@ -240,10 +226,8 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
     }
 }
 
-/// The recorder is told a logical position, and the host is handed back
-/// the physical one it came from — the number `Window::resync_pointer`
-/// re-divides when the scale moves, and the only pointer fact the
-/// division would otherwise destroy.
+/// The recorder gets a logical position and the host the physical one it came from (what `Window::resync_pointer`
+/// re-divides on scale changes).
 #[test]
 fn a_move_emits_logical_and_traces_physical() {
     let moved = cursor_moved(300.0, 120.0);
@@ -259,8 +243,7 @@ fn a_move_emits_logical_and_traces_physical() {
     assert_eq!(trace, PointerTrace::At(Vec2::new(300.0, 120.0)));
 }
 
-/// A departure is traced as one, so the host drops a position it must
-/// not restate, and every other event leaves the trace alone.
+/// A departure is traced as one, so the host drops a position it must not restate.
 #[test]
 fn a_departure_traces_gone_and_other_events_trace_nothing() {
     let left = WindowEvent::CursorLeft {
@@ -288,9 +271,7 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
     );
 }
 
-/// A synthetic press — winit's replay of a key still held when the
-/// window gains focus — is not input. A real press with the same key
-/// and text is.
+/// A synthetic press (winit's replay of a key held at window focus) is not input; a real press with the same key is.
 #[test]
 fn a_synthetic_press_is_dropped() {
     let logical = WinitKey::Named(NamedKey::Enter);
@@ -312,9 +293,7 @@ fn a_synthetic_press_is_dropped() {
     ));
 }
 
-/// Super is a command modifier everywhere and has no `Modifiers` bit
-/// off macOS, so text typed under it is cleared here. Without Super the
-/// same press keeps its text.
+/// Super has no `Modifiers` bit off macOS, so text typed under it is cleared; without Super it is kept.
 #[test]
 fn text_under_super_is_cleared() {
     let logical = WinitKey::Character("l".into());
@@ -335,8 +314,7 @@ fn text_under_super_is_cleared() {
     assert_eq!(text_of(ModifiersState::SHIFT).as_str(), "l");
 }
 
-/// Shift+wheel scrolls sideways on Windows and Linux, and only a purely
-/// vertical delta is moved; macOS sends the horizontal delta itself.
+/// Shift+wheel scrolls sideways on Windows and Linux (only a purely vertical delta moves); macOS sends it itself.
 #[test]
 fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
     let down = Vec2::new(0.0, 3.0);
@@ -358,9 +336,7 @@ fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
     }
 }
 
-/// Each IME event as the crate's: a preedit with its cursor ordered (the
-/// platform may report its ends either way), a commit, a disable as the
-/// empty preedit that ends a composition, and an enable as nothing.
+/// Each IME event as the crate's: preedit with ordered cursor, commit, disable as the empty preedit, enable as nothing.
 #[test]
 fn ime_events_translate_and_a_disable_ends_the_composition() {
     use winit::event::Ime;

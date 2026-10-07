@@ -1,5 +1,4 @@
-//! Hi-dpi (scale > 1.0) fixtures. Pixel-snap and sub-pixel positioning
-//! diverge from the 1.0-scale path here.
+//! Hi-dpi (scale > 1.0) fixtures, where pixel-snap and sub-pixel positioning diverge from scale 1.0.
 
 use glam::UVec2;
 use palantir::{
@@ -11,15 +10,7 @@ use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
-/// Complex multi-region scene at scale 2.0. Exercises:
-///   - header / sidebar / content / footer grid layout,
-///   - nested vstacks + hstacks with mixed sizing,
-///   - text at multiple sizes,
-///   - rounded-rect AA + strokes at sub-pixel positions (scale 2.0
-///     puts logical pixel edges on physical half-pixels),
-///   - the renderer's pixel_snap path under non-1.0 scale.
-///
-/// Physical 800×600 = logical 400×300 at scale 2.0.
+/// Complex multi-region scene at scale 2.0 (physical 800×600 = logical 400×300): header/sidebar/content/footer grid, nested stacks with mixed sizing, text at several sizes, rounded-rect AA and strokes on physical half-pixels, and the renderer's pixel_snap path.
 #[test]
 fn dashboard_matches_golden() {
     let mut h = Harness::new();
@@ -36,7 +27,6 @@ fn dashboard_matches_golden() {
                 .padding(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    // Header: title + action buttons, spans both columns.
                     Panel::hstack()
                         .id_salt("header")
                         .grid_cell(GridCell::at(0, 0).with_span(1, 2))
@@ -67,7 +57,6 @@ fn dashboard_matches_golden() {
                             Button::new().id_salt("btn-export").label("export").show(ui);
                         });
 
-                    // Sidebar: vertical stack of tinted nav items.
                     Panel::vstack()
                         .id_salt("sidebar")
                         .grid_cell((1, 0))
@@ -97,7 +86,6 @@ fn dashboard_matches_golden() {
                             }
                         });
 
-                    // Content: 2x2 grid of cards.
                     Grid::new()
                         .id_salt("cards")
                         .grid_cell((1, 1))
@@ -152,7 +140,6 @@ fn dashboard_matches_golden() {
                             }
                         });
 
-                    // Footer status bar.
                     Panel::hstack()
                         .id_salt("footer")
                         .grid_cell(GridCell::at(2, 0).with_span(1, 2))

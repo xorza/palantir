@@ -1,7 +1,4 @@
-//! The cascade walk: [`CascadeEngine`] and the scratch it carries.
-//!
-//! Mirrors `layout::engine` — the module root holds the retained
-//! product, this file holds the machinery that fills it.
+//! The cascade walk: [`CascadeEngine`] and its scratch. The module root holds the retained product, this file the machinery that fills it.
 
 use crate::cascade::Cascade;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
@@ -29,15 +26,11 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use std::hash::Hasher as _;
 
-/// What the walk derived for one node, handed to the walk's [`RowSink`].
 #[derive(Clone, Copy, Debug)]
 struct NodeRows {
     node: usize,
-    /// The walk's stack was empty: the node opens one of the tree's roots.
     root: bool,
-    /// Visible screen rect — see [`EntryRow::rect`].
     visible_rect: Rect,
-    /// The transform the node inherits — see [`EntryRow::transform`].
     transform: TranslateScale,
     disabled: bool,
     invisible: bool,
@@ -53,29 +46,17 @@ impl NodeRows {
     }
 }
 
-/// Where one tree's walk puts the per-node rows it derives.
-///
-/// A trait rather than an `Option` of the rebuild's tables, so each walk
-/// is monomorphized with the other's branches folded away: the rebuild
-/// carries no repair reads, and the repair no panic path on an absent
-/// sink.
+/// Where one tree's walk puts its per-node rows; a trait so each walk is monomorphized with the other's branches folded away.
 trait RowSink {
-    /// Whether the walk repairs a retained cascade in place. Only then
-    /// may it skip nodes, and must it bail on a paint span that changed
-    /// length.
+    /// Whether the walk repairs a retained cascade in place: only then may it skip nodes, and it must bail on a paint span that changed length.
     const INCREMENTAL: bool;
 
-    /// Whether a node whose own inputs held may be skipped with its whole
-    /// subtree. Sound only while every rect in the layer held too, since
-    /// a moved descendant shows in nothing its ancestor holds.
+    /// Whether a node whose own inputs held may be skipped with its subtree; sound only while every rect in the layer held.
     fn skips_clean_subtrees(&self) -> bool;
 
-    /// Take the rows of one node the walk recomputed.
     fn emit(&mut self, tree: &Tree, lc: &mut LayerCascade, rows: NodeRows);
 }
 
-/// The tables a full rebuild appends to, plus the layer it is walking —
-/// bundled because they are pushed to together and travel as one.
 #[derive(Debug)]
 struct TreeSink<'a> {
     entries: &'a mut Vec<EntryRow>,
@@ -85,7 +66,6 @@ struct TreeSink<'a> {
     roots: &'a mut Vec<RootRow>,
     arrow_groups: &'a mut Vec<ArrowGroupRow>,
     layer: Layer,
-    /// The root the walk is under, set as each one opens.
     root: WidgetId,
 }
 
@@ -106,25 +86,15 @@ impl RowSink for TreeSink<'_> {
             self.root = id;
             self.roots.push(RootRow { layer, id });
         }
-        // Names the keyboard half alone: the pointer half below keeps
-        // routing to a disabled row, and only `invisible` takes a node
-        // out of it.
+        // Names the keyboard half alone; only `invisible` removes a node from pointer routing.
         let keyboard_off = rows.disabled || rows.invisible;
-        // Disabling takes away what a widget may *do*, never what it
-        // occupies: it is still drawn, still under the pointer, and still
-        // in the way of everything it covers, so it keeps the sense it
-        // declared and goes on being routed to. Nothing comes back,
-        // because the response it reads has its interaction half
-        // cleared. Invisible is the other ruling — what is not drawn
-        // takes nothing.
+        // Disabling takes away what a widget may *do*, not what it occupies: it stays drawn and under the pointer, so it keeps its declared sense; the response it reads has its interaction half cleared.
         let sense = if rows.invisible {
             Sense::NONE
         } else {
             attrs.sense()
         };
-        // Focus is the exception: routing a press to a disabled widget
-        // absorbs it, but *focusing* one would put the keyboard somewhere
-        // that answers no key.
+        // Focus is the exception: focusing a disabled widget would put the keyboard where no key is answered.
         let focusable = !keyboard_off && attrs.is_focusable();
         if !keyboard_off && let Some(axis) = attrs.arrow_focus() {
             self.arrow_groups.push(ArrowGroupRow { id, axis });
@@ -149,8 +119,6 @@ impl RowSink for TreeSink<'_> {
         } else {
             LayerCascade::NO_HIT_ROW
         };
-        // A scope in a disabled or invisible subtree owns nothing, the
-        // same rule `focusable` follows: a key has nowhere to go there.
         let filter = if keyboard_off {
             KeyFilter::NONE
         } else {
@@ -163,14 +131,11 @@ impl RowSink for TreeSink<'_> {
     }
 }
 
-/// The rows a repair rewrites in place: one layer's block of
-/// [`Cascade::entries`] and the whole hit table. Every other table is
-/// structural, and the key that admitted the repair proved it unchanged.
+/// The rows a repair rewrites in place: one layer's block of [`Cascade::entries`] and the hit table; the key proved every other table unchanged.
 #[derive(Debug)]
 struct TreePatch<'a> {
     entries: &'a mut [EntryRow],
     hits: &'a mut [HitRow],
-    /// See [`RowSink::skips_clean_subtrees`].
     rects_kept: bool,
 }
 
@@ -181,9 +146,7 @@ impl RowSink for TreePatch<'_> {
         self.rects_kept
     }
 
-    /// Which rows exist, and every field but geometry, follows from the
-    /// structure the key held, so only the rect and the inherited
-    /// transform are rewritten.
+    /// Only the rect and inherited transform are rewritten.
     #[inline]
     fn emit(&mut self, _tree: &Tree, lc: &mut LayerCascade, rows: NodeRows) {
         self.entries[rows.node] = rows.entry();
@@ -194,10 +157,7 @@ impl RowSink for TreePatch<'_> {
     }
 }
 
-/// The four values a node hands its descendants, and the only inputs
-/// [`build_cascade_prefix`] hashes. Bundled because they travel together
-/// everywhere — down the stack, into the prefix, out of a frame — and two
-/// of the four are adjacent `bool`s that swap silently.
+/// The four values a node hands its descendants, the only inputs [`build_cascade_prefix`] hashes; bundled because two adjacent `bool`s swap silently.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CascadeContext {
     pub(super) transform: TranslateScale,
@@ -207,7 +167,6 @@ pub(super) struct CascadeContext {
 }
 
 impl CascadeContext {
-    /// What a layer root inherits: no transform, no clip, enabled, visible.
     pub(super) const ROOT: Self = Self {
         transform: TranslateScale::IDENTITY,
         clip: None,
@@ -220,20 +179,9 @@ impl CascadeContext {
 struct Frame {
     cascade: CascadeContext,
     subtree_end: u32,
-    /// Node index this frame represents — used to write back
-    /// `subtree_paint_rect` into `LayerCascade::subtree_paint_rects` when
-    /// this frame is popped (its subtree has been fully visited).
     node_idx: usize,
-    /// Running union of this node's own `paint_rect` and the
-    /// `subtree_paint_rect` of every descendant whose subtree has
-    /// already been folded in. Each pop unions this into the new
-    /// top frame so the rollup ripples upward to the root.
     subtree_paint_rect: Rect,
-    /// FxHasher state pre-populated with this frame's ancestor-derived
-    /// hash inputs (transform / clip / disabled / invisible). Cloned once
-    /// per descendant to seed `cascade_input` — descendants only fold in
-    /// their own `layout_rect`, avoiding a re-hash of the 32 B ancestor
-    /// prefix per node.
+    /// FxHasher state seeded with this frame's ancestor-derived inputs, cloned per descendant so the 32 B prefix isn't re-hashed.
     cascade_prefix: Hasher,
 }
 
@@ -241,14 +189,11 @@ struct Frame {
 pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
     paint_scratch: PaintArena,
-    /// Test/bench observability for this pass — see [`CascadeCounters`].
     pub(crate) counters: CascadeCounters,
 }
 
 impl CascadeEngine {
-    /// Bring the frozen cascade result up to `key`. An unchanged key
-    /// skips the run, an unchanged structure refreshes geometry and paint
-    /// in place, and anything else rebuilds.
+    /// Brings the frozen cascade up to `key`: unchanged key skips, unchanged structure refreshes in place, else rebuild.
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
@@ -289,12 +234,7 @@ impl CascadeEngine {
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
-                // Restarts at layer zero, over the layers this loop
-                // already repaired: `run_full` rebuilds one flat `entries`
-                // table whose per-layer bases it assigns as it walks, so
-                // there is no entry point part-way through. The repeat
-                // costs one extra paint repair, on a frame already
-                // committed to a full rebuild.
+                // Restarts at layer zero: `run_full` assigns per-layer bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
                 self.run_full(forest, layout, display, key, cascade);
                 return;
             }
@@ -302,8 +242,7 @@ impl CascadeEngine {
         cascade.key = Some(*key);
     }
 
-    /// Whether every retained structural table remains valid; the
-    /// incremental walk refreshes the rest.
+    /// Whether every retained structural table remains valid; the incremental walk refreshes the rest.
     fn can_update(
         &self,
         forest: &Forest,
@@ -314,9 +253,6 @@ impl CascadeEngine {
         if !built.keeps_structure(key) {
             return false;
         }
-        // The bases are a prefix sum over the per-layer counts, and the
-        // equal structure hashes fold each layer's nesting, so these
-        // only restate what the key already proved.
         debug_assert_eq!(cascade.entries.len(), forest.total_nodes());
         let mut entries_base = 0u32;
         for (layer, tree) in forest.trees.iter_paint_order() {
@@ -383,61 +319,28 @@ impl CascadeEngine {
             );
         }
 
-        // `SeenIds::pre_record` clears `curr` before a relayout pass can
-        // query the preceding pass's responses.
+        // `SeenIds::pre_record` clears `curr` before a relayout pass can query the preceding pass's responses.
         //
-        // Refilled rather than `clone_from`: `curr` and `prev` swap every
-        // frame, so the source alternates between two tables, and
-        // hashbrown's `clone_from` reallocates whenever their bucket
-        // counts differ — one widget-count spike would grow one of them
-        // for good and make every later full rebuild free and allocate.
-        // `clear` keeps this table's own capacity.
+        // Refilled, not `clone_from`: `curr` and `prev` swap every frame and hashbrown's `clone_from` reallocates when bucket counts differ.
         cascade.by_id.clear();
         cascade.by_id.extend(forest.ids.recorded());
         cascade.key = Some(*key);
     }
 }
 
-/// Finalize one stack frame: write the rolled-up
-/// `subtree_paint_rect` into the parallel `subtree_paint_rects` slot
-/// for the frame's node, then union upward into the now-top frame so
-/// the rollup ripples to the root. Called from both the per-node
-/// pop loop and the end-of-tree drain — identical logic, one source.
+/// Finalizes one stack frame: writes the rolled-up `subtree_paint_rect` and unions upward into the new top.
 #[inline]
 const fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: &Frame) {
     subtree_paint_rects[popped.node_idx] = popped.subtree_paint_rect;
     if let Some(parent) = stack.last_mut() {
-        // A subtree that paints nothing carries the `Rect::ZERO` seed;
-        // `union` treats it as identity, so it can't anchor the
-        // ancestor rollup at the origin.
         parent.subtree_paint_rect = parent.subtree_paint_rect.union(popped.subtree_paint_rect);
     }
 }
 
 impl CascadeEngine {
-    /// Walk one tree, writing the cascade columns for it.
+    /// Walks one tree, writing its cascade columns. Returns whether it *completed*; only the incremental path returns `false`, when a node's repaired paint span changes length and the caller must fully rebuild.
     ///
-    /// Returns whether the walk *completed*. Only the incremental path
-    /// can answer `false` — it bails when a node's repaired paint span
-    /// changes length, because the retained arena can no longer be
-    /// patched in place and the caller has to fall back to a full
-    /// rebuild. A full rebuild writes every column from scratch and has
-    /// nothing to bail on, so its caller asserts the `true`.
-    ///
-    /// **What the incremental walk recomputes.** A node whose
-    /// `cascade_input` — its inherited state and its own rect — and
-    /// whose subtree rollup both held keeps its rows. Any other node is
-    /// recomputed, and a node whose inherited transform or clip moved
-    /// hands every child a different prefix, so the change reaches
-    /// exactly the subtree under it. A clean node is skipped with its
-    /// whole subtree while the layer's rects held; once one moved, the
-    /// walk visits every node, because nothing an ancestor holds says
-    /// where.
-    ///
-    /// The comparison inherits `cascade_input`'s visual canonicalization:
-    /// a rect or transform that moved only between values within `EPS` of
-    /// zero reads as held, as it does to damage and to the key's own
-    /// hashes.
+    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree while the layer's rects held; once one moved, every node is visited. Movement within `EPS` of zero reads as held.
     fn run_tree<S: RowSink>(
         &mut self,
         tree: &Tree,
@@ -456,7 +359,6 @@ impl CascadeEngine {
 
         let mut i: u32 = 0;
         while i < n {
-            // Pop completed frames, rolling each up into its parent.
             while let Some(popped) = self.stack.pop_if(|top| i >= top.subtree_end) {
                 finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
             }
@@ -473,8 +375,6 @@ impl CascadeEngine {
             let invisible = parent.invisible || !layout_core.meta.visibility().is_visible();
 
             let layout_rect = layout.rect[iu];
-            // `.end()` strips the packed grid flag — downstream uses (walk
-            // cursor, leaf compare) need the clean pre-order end.
             let subtree_end = ends[iu].end();
             let has_children = ends[iu].has_children(iu);
             let cascade_input = finish_cascade_input(parent_prefix, layout_rect, invisible);
@@ -493,25 +393,13 @@ impl CascadeEngine {
 
             let screen_rect = parent.transform.apply_rect(layout_rect);
             let visible_rect = paint_rect::clip_screen(screen_rect, parent.clip);
-            // The transform descendants inherit *and* direct shapes paint
-            // under (the `Panel::transform` contract): `parent ∘
-            // self_anchored`. Computed once here — the probe is sparse and
-            // `compose` is 3×mul+3×add, so the `None` arm (most nodes have
-            // no transform) skips the compose entirely, the steady-state
-            // path. `compute_paint_rect` reuses this as its
-            // `shape_transform` rather than recomposing.
+            // The transform descendants inherit and direct shapes paint under (`Panel::transform`): `parent ∘ self_anchored`. The `None` arm skips the compose; `compute_paint_rect` reuses it.
             let desc_transform = match tree.anchored_transform(id, layout_rect) {
                 Some(t) => parent.transform.compose(t),
                 None => parent.transform,
             };
             let clips = attrs.clip_mode().is_clip();
-            // The encoder pushes the same inner box as the clip mask,
-            // **before** the body, so direct shapes and descendants both
-            // paint inside it. Clipping to it here is what makes per-shape
-            // damage rects and inherited child clips reflect what actually
-            // paints — otherwise a TextEdit's tall text shape (extent =
-            // full shaped buffer) reports damage well past the editor's
-            // rect on every scroll tick.
+            // The encoder pushes this inner box as the clip mask before the body; clipping here keeps shape damage and child clips matching what paints (else a TextEdit's tall text shape damages past the editor on every scroll).
             let shape_clip = if clips {
                 let mask_screen = parent
                     .transform
@@ -520,15 +408,8 @@ impl CascadeEngine {
             } else {
                 parent.clip
             };
-            // Invisible nodes never paint, so seeding their subtree
-            // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
-            // from inflating the ancestor's `subtree_paint_rect` (and
-            // killing the encoder's viewport / damage cull at that
-            // ancestor). Visibility is in `cascade_input` regardless, so
-            // damage tracking is unaffected.
+            // Invisible nodes never paint; a `Rect::ZERO` rollup seed keeps a hidden subtree from inflating the ancestor's `subtree_paint_rect` and defeating the cull.
             let subtree_seed = if clean {
-                // Held inputs, moved descendants: the rows stand, only
-                // the rollup above them is rebuilt.
                 lc.paint_rects[iu]
             } else {
                 let ctx = PaintRectCtx {
@@ -583,9 +464,6 @@ impl CascadeEngine {
             lc.subtree_paint_rects[iu] = subtree_seed;
 
             if has_children {
-                // Descendants inherit the deflated-mask clip — same value
-                // the direct shapes were clipped to above and the encoder
-                // pushes before the body.
                 let cascade = CascadeContext {
                     transform: desc_transform,
                     clip: shape_clip,
@@ -600,19 +478,12 @@ impl CascadeEngine {
                     cascade_prefix: build_cascade_prefix(cascade),
                 });
             } else if let Some(parent_frame) = self.stack.last_mut() {
-                // Leaf: no descendants, so no frame — its
-                // `subtree_paint_rects` slot already holds the seed written
-                // above; fold the seed straight into the parent accumulator
-                // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
-                // identity). Skips a per-leaf Frame push/pop and the 32 B
-                // prefix-hash work leaves could never hand to a child.
+                // Leaf: no frame; its slot holds the seed, folded into the parent. Skips a Frame push/pop and prefix hashing.
                 parent_frame.subtree_paint_rect =
                     parent_frame.subtree_paint_rect.union(subtree_seed);
             }
             i += 1;
         }
-        // Drain frames whose subtree extends to the end of the tree —
-        // they never hit the `< top.subtree_end` exit at the loop head.
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
@@ -620,21 +491,9 @@ impl CascadeEngine {
     }
 }
 
-/// The node's paint rows and extent, or an empty span when nothing in
-/// this node can reach the surface.
+/// The node's paint rows and extent, or an empty span when nothing here can reach the surface.
 ///
-/// The flag is the cascaded reading, not the node's own: a subtree under
-/// a non-`Visible` ancestor paints nothing, so computing its extents
-/// buys rows no pass ever reads — the encoder stops at the ancestor, and
-/// `subtree_paint_rect` seeds such a subtree at zero either way. Damage
-/// reads the emptied span as a rows→rowless transition and clears the
-/// pixels the subtree held, which is the same answer it reached before
-/// through every descendant's `cascade_input` flipping at once.
-///
-/// `Tree::container_text` drops a subtree on the same reading, so the
-/// two walks agree on which nodes own shaped runs — the pairing
-/// [`TextRuns`](crate::layout::text::text_runs::TextRuns) makes between a text
-/// record and its `ShapedText` depends on that.
+/// The flag is the cascaded reading: a subtree under a non-`Visible` ancestor paints nothing. Damage reads the emptied span as a rows-to-rowless transition. `Tree::container_text` uses the same reading, which [`TextRuns`](crate::layout::text::text_runs::TextRuns)' text-record pairing depends on.
 #[inline]
 fn compute_node_paint(ctx: PaintRectCtx<'_>, invisible: bool, arena: &mut PaintArena) -> Rect {
     if invisible {
@@ -644,12 +503,7 @@ fn compute_node_paint(ctx: PaintRectCtx<'_>, invisible: bool, arena: &mut PaintA
     paint_rect::compute_paint_rect(ctx, arena)
 }
 
-/// Ancestor-derived portion of the `cascade_input` hash — folded once
-/// per stack frame at push time and cloned per descendant. Split out
-/// from the per-node suffix (`layout_rect`) so a tree-shaped UI avoids
-/// re-hashing the parent context on every node. Fed as words straight
-/// from registers: a struct stored and then hashed as bytes reads its
-/// stores back across their seams, which cannot be forwarded.
+/// Ancestor-derived portion of the `cascade_input` hash, folded once per frame at push and cloned per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores back across seams that can't be forwarded.
 #[inline]
 pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
     let (clip, clip_present) = match parent.clip {

@@ -1,9 +1,6 @@
-//! Reading geometry back off a shaped `Buffer`: what a run measured to,
-//! where its glyph block starts, and the wrap floor a segment scan finds.
-//!
-//! Free functions over a borrowed buffer rather than methods, because
-//! none of them needs the measurer — which is what lets the shaping paths
-//! call them while holding other fields of it mutably.
+//! Reading geometry back off a shaped `Buffer`: a run's measured size, glyph
+//! block origin, and wrap floor. Free functions so shaping paths can call them
+//! while holding other measurer fields mutably.
 
 use crate::primitives::geometry::size::Size;
 use crate::text::extent::TextExtent;
@@ -11,19 +8,14 @@ use crate::text::root::TextRoot;
 use crate::text::wrap::{self, WrapFloor};
 use cosmic_text::Buffer;
 
-/// Measured facts of a shaped `buffer`: what it laid out to, and the
-/// block origin every reader normalizes against.
-///
-/// Deliberately not a [`TextRoot`]: these are facts about *a* buffer, and
-/// only an unbounded one is a run's root. The bounded paths read `size`
-/// and drop the rest; the unbounded one lifts the whole thing through
-/// [`Self::root`].
+/// Measured facts of a shaped `buffer`. Not a [`TextRoot`]: only an unbounded
+/// buffer is a run's root; the unbounded paths lift it through [`Self::root`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ShapedGeometry {
     /// Extent of the shaped block.
     pub(super) size: Size,
-    /// Widest unbreakable segment, present exactly when `floor` asked for
-    /// the scan — see [`TextRoot::intrinsic_min`].
+    /// Widest unbreakable segment, present exactly when `floor` asked for the
+    /// scan ([`TextRoot::intrinsic_min`]).
     pub(super) intrinsic_min: Option<f32>,
     /// Whether the buffer laid out as one visual line.
     pub(super) single_line: bool,
@@ -32,10 +24,8 @@ pub(super) struct ShapedGeometry {
 }
 
 impl ShapedGeometry {
-    /// These facts, with the buffer's `extent`, read as a run's unbounded
-    /// shape. Sound only for a buffer shaped without a width — the
-    /// callers that lift one are the unbounded paths, and they are the
-    /// only ones.
+    /// These facts as a run's unbounded shape; sound only for a buffer shaped
+    /// without a width.
     pub(super) fn root(self, extent: TextExtent) -> TextRoot {
         debug_assert_eq!(extent.size, self.size, "the extent of another buffer");
         TextRoot {
@@ -47,20 +37,13 @@ impl ShapedGeometry {
 }
 
 /// Measure a shaped `buffer`: the union of its lines' glyph spans (ceil'd)
-/// plus, when `floor` asks for it, the widest unbreakable segment the wrap
-/// path uses as a floor once a parent commits a narrower width. `breaks`
-/// is that scan's scratch, untouched when it is skipped.
+/// plus, when `floor` asks, the widest unbreakable segment used as a wrap
+/// floor. `breaks` is that scan's scratch.
 ///
-/// Width is `right - left` across every line, not `right` alone. Cosmic
-/// anchors a line wherever its alignment and direction put it, so the
-/// distance from 0 is the run's width *plus* whatever gap precedes it;
-/// spanning the union measures the glyphs and nothing else. Taking both
-/// edges per line also subsumes the RTL case a trailing-edge scan needed
-/// a `max` for: a right-to-left run's last glyph is its leftmost.
-///
-/// Glyphless lines are skipped rather than contributing a zero-width span
-/// at 0, which would drag `left` back to the origin for a block that
-/// starts elsewhere.
+/// Width is `right - left` across every line, not `right`: cosmic anchors a
+/// line by alignment and direction, so `right` alone includes the leading gap.
+/// Glyphless lines are skipped, or a zero-width span at 0 would drag `left` to
+/// the origin.
 pub(super) fn shaped_geometry(
     buffer: &Buffer,
     floor: WrapFloor,
@@ -78,8 +61,7 @@ pub(super) fn shaped_geometry(
             right = right.max(glyph.x + glyph.w);
         }
     }
-    // No glyphs anywhere — an empty buffer, or one holding only newlines.
-    // The block is empty and sits at the origin.
+    // No glyphs anywhere (empty, or only newlines): an empty block at the origin.
     let (left, width) = if left <= right {
         (left, right - left)
     } else {
@@ -93,34 +75,25 @@ pub(super) fn shaped_geometry(
     }
 }
 
-/// Retained scratch for [`intrinsic_min_width`]: a run's break offsets,
-/// and its glyph indices in logical order.
+/// Retained scratch for [`intrinsic_min_width`]: break offsets and logical-order
+/// glyph indices.
 #[derive(Debug, Default)]
 pub(super) struct SegmentScratch {
     breaks: Vec<u32>,
     order: Vec<u32>,
 }
 
-/// Width of the widest segment no line break can split — the min-content
-/// width. Trailing whitespace is excluded because UAX #14 places its
-/// break opportunity *after* a space, so a space always ends its segment
-/// and hangs rather than widening it; interior non-breaking whitespace
-/// (U+00A0 and friends) opens no opportunity and so counts in full.
+/// Width of the widest segment no line break can split (min-content).
+/// Trailing whitespace is excluded: UAX #14 breaks *after* a space, so it hangs
+/// rather than widening the segment; interior non-breaking whitespace counts.
 ///
-/// **Reported on the whole-pixel grid, like every other width here.**
-/// `WrapWithOverflow` floors its committed width at this value, and
-/// `F32Px::canonical_px` then snaps that to nearest. A raw 57.4 comes
-/// back as 57, and the shaper breaks the very segment the floor exists to
-/// keep whole — in the min-content case layout commits, where the
-/// policy's promise matters most. Rounding *up* is the only direction
-/// that keeps the segment fitting at the width finally asked for.
+/// **Reported on the whole-pixel grid, rounded up.** `WrapWithOverflow` floors
+/// its width here and `F32Px::canonical_px` snaps to nearest, so a raw 57.4
+/// would become 57 and break the segment the floor keeps whole.
 ///
-/// **Scanned in logical order.** Glyphs arrive in visual order, and a
-/// segment's logical first glyph — the one a break offset names — is the
-/// last of it visited in a right-to-left run, so a visual scan reset each
-/// segment one glyph late and merged two words, and the space between
-/// them, into one. Sorting the glyph indices by `start` reads every line,
-/// mixed-direction ones included, the way the break offsets do.
+/// **Scanned in logical order.** Glyphs arrive visually; in a right-to-left run
+/// a segment's logical first glyph (the one a break offset names) is visited
+/// last, so a visual scan would merge two words.
 pub(super) fn intrinsic_min_width(buffer: &Buffer, scratch: &mut SegmentScratch) -> f32 {
     let SegmentScratch { breaks, order } = scratch;
     let mut intrinsic_min = 0.0_f32;
@@ -129,8 +102,7 @@ pub(super) fn intrinsic_min_width(buffer: &Buffer, scratch: &mut SegmentScratch)
         breaks.extend(wrap::break_offsets(run.text));
         order.clear();
         order.extend(0..run.glyphs.len() as u32);
-        // The index breaks ties, so glyphs sharing a cluster start keep
-        // their order without the buffer a stable sort allocates.
+        // The index breaks ties without the allocation a stable sort needs.
         order.sort_unstable_by_key(|&index| (run.glyphs[index as usize].start, index));
         let mut segment_w = 0.0_f32;
         let mut trailing_ws_w = 0.0_f32;
@@ -153,16 +125,12 @@ pub(super) fn intrinsic_min_width(buffer: &Buffer, scratch: &mut SegmentScratch)
     intrinsic_min.ceil()
 }
 
-/// Right edge (widest `x + w` across glyphs — an RTL run's last glyph is
-/// its leftmost) of a shaped buffer's first layout run, or `0.0` when
-/// empty — the rendered width of one line.
+/// Right edge (widest `x + w`) of a shaped buffer's first layout run, or
+/// `0.0` when empty: the width of one line.
 ///
-/// For the one-glyph unbounded probe [`CosmicMeasure::ellipsis_advance`](crate::text::cosmic::CosmicMeasure::ellipsis_advance)
-/// shapes, whose line starts at 0, the right edge is the width.
-/// [`shaped_geometry`] spans `left..right` instead because it also
-/// measures width-bounded buffers, which cosmic may anchor away from the
-/// origin — and every caller that has a measured [`TextRoot`] to hand
-/// reads `size.w` off that rather than walking glyphs again.
+/// For the one-glyph probe [`CosmicMeasure::ellipsis_advance`](crate::text::cosmic::CosmicMeasure::ellipsis_advance)
+/// shapes, whose line starts at 0. [`shaped_geometry`] spans `left..right`
+/// since it also measures width-bounded buffers cosmic may anchor away from 0.
 pub(super) fn first_line_right(buffer: &Buffer) -> f32 {
     buffer
         .layout_runs()

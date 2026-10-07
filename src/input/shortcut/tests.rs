@@ -5,10 +5,7 @@ fn kp(mods: Modifiers, key: Key) -> KeyPress {
     KeyPress::with(key, mods)
 }
 
-/// The primary command modifier held. `Modifiers::ctrl` is already
-/// the platform-normalized command bit (the winit boundary maps Cmd
-/// → ctrl on macOS), so tests construct it directly with no
-/// platform branch.
+/// The primary command modifier held. `Modifiers::ctrl` is the platform-normalized command bit (winit maps Cmd → ctrl on macOS).
 fn primary_mod() -> Modifiers {
     Modifiers::CTRL
 }
@@ -34,8 +31,7 @@ fn primary_modifier_matches() {
 
 #[test]
 fn non_latin_layout_matches_command_chord_via_physical_key() {
-    // A Russian layout reports the physical Z key as Cyrillic 'я'; the
-    // physical char ('z') recovers the Cmd/Ctrl+Z chord.
+    // A Russian layout reports physical Z as Cyrillic 'я'; the physical char 'z' recovers the chord.
     let undo = Shortcut::ctrl('Z');
     let russian_z = KeyPress {
         key: Key::Char('я'),
@@ -46,9 +42,7 @@ fn non_latin_layout_matches_command_chord_via_physical_key() {
     };
     assert!(undo.matches(russian_z), "Cmd+Z fires on a Russian layout");
 
-    // The non-ASCII gate leaves ASCII layouts on the logical path: a
-    // Dvorak chord whose logical char is ASCII never consults `physical`,
-    // so the physical position can't trigger the wrong shortcut.
+    // The non-ASCII gate leaves ASCII layouts on the logical path: a Dvorak chord with an ASCII logical char never consults `physical`.
     let dvorak_semicolon = KeyPress {
         key: Key::Char(';'),
         mods: primary_mod(),
@@ -64,7 +58,7 @@ fn non_latin_layout_matches_command_chord_via_physical_key() {
 
 #[test]
 fn non_latin_fallback_requires_a_command_modifier() {
-    // No command modifier ⇒ no physical fallback (it's typing, not a chord).
+    // No command modifier ⇒ no physical fallback (typing, not a chord).
     let bare = Shortcut::key(Key::Char('z'));
     let russian_z = KeyPress {
         key: Key::Char('я'),
@@ -92,8 +86,7 @@ fn extra_modifier_rejects_match() {
     assert_eq!(ShortcutMods::from(mods), ShortcutMods::CTRL_SHIFT);
     assert!(!cut.matches(kp(mods, Key::Char('A'))));
     assert_eq!(cut.mods, ShortcutMods::CTRL);
-    // macOS Control plus a bare key is a chord, so a bare-key shortcut
-    // rejects it, as it rejects Ctrl or Alt.
+    // macOS Control plus a bare key is a chord, so a bare-key shortcut rejects it, as it does Ctrl or Alt.
     let mac_ctrl = Modifiers {
         mac_ctrl: true,
         ..Modifiers::NONE
@@ -144,8 +137,7 @@ fn label_non_letter_key() {
 
 #[test]
 fn modifier_order_is_canonical() {
-    // Ctrl+Shift+Alt+K. Mac order ⌥ ⇧ ⌘ then key (primary=⌘ last).
-    // Else: Ctrl+Shift+Alt+K.
+    // Ctrl+Shift+Alt+K; Mac order is ⌥ ⇧ ⌘ then key (primary=⌘ last).
     let s = Shortcut::new(
         ShortcutMods {
             ctrl: true,
@@ -162,9 +154,7 @@ fn modifier_order_is_canonical() {
     assert_eq!(s.to_string(), expected);
 }
 
-/// The two modifier types name the same sets, and each event-state set
-/// converts to its shortcut twin. The raw macOS Control has no twin, so it
-/// drops out: Control+Shift held reads as a bare Shift chord.
+/// The two modifier types name the same sets and each event-state set converts to its shortcut twin; raw macOS Control has no twin, so Control+Shift reads as bare Shift.
 #[test]
 fn named_modifier_sets_convert_to_their_twins() {
     for (held, declared) in [
@@ -183,9 +173,7 @@ fn named_modifier_sets_convert_to_their_twins() {
     assert_eq!(ShortcutMods::from(mac_control), ShortcutMods::SHIFT);
 }
 
-/// A Super chord converts to its shortcut twin, a bare-key shortcut does
-/// not fire under a held Super, and the display names the key the way the
-/// platform does: Win on Windows, Super on Linux.
+/// A Super chord converts to its shortcut twin, a bare-key shortcut doesn't fire under Super, and the display names the key as the platform does (Win on Windows, Super on Linux).
 #[test]
 fn the_meta_modifier_reaches_matching_and_display() {
     let held = Modifiers {
@@ -205,8 +193,7 @@ fn the_meta_modifier_reaches_matching_and_display() {
     match PLATFORM {
         Platform::Windows => assert_eq!(shown, "Win+L"),
         Platform::Linux => assert_eq!(shown, "Super+L"),
-        // macOS reports no Super key: Command is `ctrl` there, so a Super
-        // chord is never held and its name is never read.
+        // macOS reports no Super key (Command is `ctrl`), so its name is never read.
         Platform::Mac => {}
     }
 }

@@ -12,11 +12,7 @@ use std::hash;
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct LoweredShadow {
     pub(crate) color: RgbaF16,
-    /// `(offset.x, offset.y, blur, spread)`. Wraps [`F16x4`] rather
-    /// than a bare `[u16; 4]` for the reason that type exists: it is
-    /// the shared 4-lane storage core, and a field that stores the
-    /// lanes raw is a field that has to re-derive every lane idiom —
-    /// pack, unpack, and the NaN screen — by hand.
+    /// `(offset.x, offset.y, blur, spread)` in the shared 4-lane [`F16x4`] core.
     pub(crate) geom_f16: F16x4,
     pub(crate) inset_flag: u16,
 }
@@ -29,8 +25,6 @@ pub(crate) struct ShadowGeom {
 }
 
 impl ShadowGeom {
-    /// The `(offset.x, offset.y, blur, spread)` lanes a shadow travels in,
-    /// from the lowered shadow to the GPU instance.
     #[inline]
     pub(crate) const fn from_lanes([x, y, blur, spread]: [f32; 4]) -> Self {
         Self {
@@ -40,19 +34,13 @@ impl ShadowGeom {
         }
     }
 
-    /// How many standard deviations of blur a shadow is followed. The
-    /// Gaussian's weight past it, `Φ(−4) ≈ 3e-5`, is a tenth of an 8-bit
-    /// step even where sRGB is steepest (`12.92` near black, for a light
-    /// shadow over a dark background), where `Φ(−3)` is 4 steps and a glow
-    /// would end in a ledge. The quad shader takes it as a substituted
-    /// constant: it finds the source inside a drop shadow's quad by it, and
-    /// slices a blurred corner only within it.
+    /// Standard deviations of blur a shadow is followed: past it the Gaussian weight (`Φ(−4) ≈ 3e-5`) is a tenth of
+    /// an 8-bit step even where sRGB is steepest, whereas `Φ(−3)` would end a glow in a ledge. The quad shader takes
+    /// it as a substituted constant.
     pub(crate) const REACH_SIGMAS: f32 = 4.0;
 
-    /// How far a drop shadow reaches past its moved source:
-    /// [`Self::REACH_SIGMAS`] standard deviations of blur plus a positive
-    /// spread. The antialiasing ramp past that is not in it: the quad
-    /// shader grows every quad by its own ramp.
+    /// How far a drop shadow reaches past its moved source: [`Self::REACH_SIGMAS`] blur deviations plus a positive
+    /// spread; the AA ramp is not included, since the quad shader grows every quad by its own.
     #[inline]
     pub(crate) const fn halo(self) -> f32 {
         Self::REACH_SIGMAS * self.blur.max(0.0) + self.spread.max(0.0)
@@ -62,12 +50,8 @@ impl ShadowGeom {
 impl LoweredShadow {
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
-        // Geometry screened for NaN, not magnitude — a zero-sigma
-        // zero-offset shadow still paints a hard-edged rect, so only
-        // the tint's *size* decides visibility. Mirrors
-        // `Shadow::is_noop` one tier up; needed separately because
-        // chrome reaches `emit_shadow` through this lowered form, and
-        // chrome has no record-level NaN gate behind it.
+        // Geometry is screened for NaN, not magnitude: a zero-sigma zero-offset shadow still paints, so only the tint
+        // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `emit_shadow` through this form with no NaN gate.
         self.color.is_noop() || self.geom_f16.has_nan()
     }
 
@@ -81,15 +65,8 @@ impl LoweredShadow {
         self.inset_flag != 0
     }
 
-    /// Owner-local paint bbox of this shadow — a drop shadow is the
-    /// offset source inflated by its [halo](ShadowGeom::halo); an inset
-    /// shadow stays inside the source. `local_rect = None` ⇒ source covers
-    /// the full owner; `Some(r)` ⇒ source is `r` at owner-relative coords.
-    ///
-    /// What the cascade (per-node ink union) and
-    /// [`QuadShape::bbox_local`](crate::shape::paint::quad_shape::QuadShape::bbox_local)
-    /// read, so the two views cannot drift. The composer grows the same
-    /// way from the snapped source, through the same `halo`.
+    /// Owner-local paint bbox: a drop shadow is the offset source inflated by its [halo](ShadowGeom::halo), an inset
+    /// one stays inside the source. `local_rect = None` means the source covers the owner.
     pub(crate) fn paint_rect_local(self, local_rect: Option<Rect>, owner_size: Size) -> Rect {
         let source = local_rect.unwrap_or(Rect {
             min: Vec2::ZERO,
@@ -123,8 +100,7 @@ impl From<Shadow> for LoweredShadow {
     }
 }
 
-/// Fed as words straight from registers rather than as the struct's
-/// bytes, which a freshly lowered shadow would be read back across.
+/// Fed as words straight from registers, not as struct bytes.
 impl hash::Hash for LoweredShadow {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {

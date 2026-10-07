@@ -12,9 +12,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
-/// Pin: a clip-only Surface (no painted background) still emits a
-/// PushClip/PopClip pair so children get clipped, while contributing zero
-/// rect quads of its own.
+/// A clip-only Surface (no painted background) still emits a PushClip/PopClip pair so children are clipped, with zero rect quads of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -48,7 +46,6 @@ fn clip_emits_balanced_push_pop() {
                 });
         });
     });
-    // The draw sits inside the pair.
     assert_eq!(h.encode_paint().kinds(), ["PushClip", "Quad", "PopClip"]);
 }
 
@@ -81,10 +78,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     let payload = cmds.calls[1].as_push_clip().unwrap();
 
     let panel_rect = h.arranged(WidgetId::from_hash("rounded"));
-    // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
-    // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
-    // every side. Radius reduces by 2 to stay concentric with the
-    // painted stroke's inner edge.
+    // Stroke=2 folds into padding, so the mask insets by 2 and its radius drops by 2 to stay concentric with the stroke's inner edge.
     assert_eq!(payload.rect, panel_rect.deflated_by(Spacing::all(2.0)));
     assert_eq!(payload.corners, Corners::all(6.0));
 }
@@ -136,7 +130,6 @@ fn nested_clips_each_emit_their_own_pair() {
                 });
         });
     });
-    // Nested, not two siblings: the inner pair sits inside the outer one.
     assert_eq!(
         h.encode_paint().kinds(),
         ["PushClip", "PushClip", "PopClip", "PopClip"],

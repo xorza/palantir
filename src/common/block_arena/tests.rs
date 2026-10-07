@@ -9,9 +9,8 @@ use crate::common::counters::CounterSet;
 struct Slot(u32);
 
 impl BlockSlot for Slot {
-    /// The coarse setting, so these cases pin the rounding rather
-    /// than the exact-fit degenerate case; `Paint`'s granule of one
-    /// is covered by the damage tests it was measured for.
+    /// The coarse setting, so these cases pin the rounding, not the exact-fit degenerate case;
+    /// `Paint`'s granule of one is covered by the damage tests.
     const GRANULE: u32 = 4;
 
     fn free_link(next: u32) -> Self {
@@ -28,9 +27,8 @@ fn store(arena: &mut BlockArena<Slot>, tags: impl Iterator<Item = u32>) -> Span 
     arena.store(&items)
 }
 
-/// Hand-computed class boundaries. This fixture's granule is 4, so a class
-/// covers four lengths and its capacity is the top of that range —
-/// the relationship `release` recovers a block's size from.
+/// Hand-computed class boundaries. The granule is 4, so a class covers four lengths and its
+/// capacity is the top of that range, the relationship `release` recovers a block's size from.
 #[test]
 fn size_classes_round_up_to_the_granule() {
     for (len, class) in [(1u32, 0usize), (4, 0), (5, 1), (8, 1), (9, 2), (40, 9)] {
@@ -50,9 +48,8 @@ fn size_classes_round_up_to_the_granule() {
     }
 }
 
-/// A released block is handed straight back to the next span of its
-/// class, so a workload that keeps re-storing the same length stops
-/// growing the arena after the first store.
+/// A released block goes straight to the next span of its class, so re-storing the same length
+/// stops growing the arena after the first store.
 #[test]
 fn a_released_block_is_the_next_one_handed_out() {
     let mut arena = BlockArena::<Slot>::default();
@@ -75,9 +72,8 @@ fn a_released_block_is_the_next_one_handed_out() {
     assert_eq!((counts.allocs, counts.reuses), (1, 5));
 }
 
-/// Blocks are per class and never split or coalesced: a span only
-/// ever takes a block its own class freed, whatever is parked
-/// elsewhere.
+/// Blocks are per class and never split or coalesced: a span only takes a block its own class
+/// freed, whatever is parked elsewhere.
 #[test]
 fn a_block_is_only_reused_within_its_own_class() {
     let mut arena = BlockArena::<Slot>::default();
@@ -98,8 +94,7 @@ fn a_block_is_only_reused_within_its_own_class() {
     );
     assert_eq!(arena.slots.len(), 28);
 
-    // Their own classes do reclaim them, newest-freed first within a
-    // class — LIFO, so `large` is not what a class-1 span gets.
+    // Their own classes reclaim them, newest-freed first (LIFO), so `large` is not what a class-1 span gets.
     assert_eq!(store(&mut arena, 400..405).start, medium.start);
     assert_eq!(store(&mut arena, 500..509).start, large.start);
     assert_eq!(arena.slots.len(), 28, "both came off free lists");
@@ -108,9 +103,8 @@ fn a_block_is_only_reused_within_its_own_class() {
     assert_eq!((counts.allocs, counts.reuses), (4, 2));
 }
 
-/// LIFO within a class, which is the whole reason the free list is a
-/// chain rather than a queue: the block handed back is the one most
-/// recently released and therefore the one most likely still in cache.
+/// LIFO within a class, the reason the free list is a chain, not a queue: the block handed back is
+/// the most recently released and so the most likely still in cache.
 #[test]
 fn a_class_hands_back_the_most_recently_freed_block() {
     let mut arena = BlockArena::<Slot>::default();
@@ -154,10 +148,8 @@ fn an_empty_span_owns_no_block() {
     assert_eq!(store(&mut arena, 0..2).start, 0);
 }
 
-/// `clear` drops the free lists with the storage. Keeping them would
-/// leave every head pointing into a buffer that no longer holds
-/// blocks, and the next store would hand out an index into somebody
-/// else's entries.
+/// `clear` drops the free lists with the storage: kept, every head would point into a buffer that
+/// no longer holds blocks, and the next store would hand out an index into somebody else's entries.
 #[test]
 fn clear_drops_the_free_lists_with_the_storage() {
     let mut arena = BlockArena::<Slot>::default();

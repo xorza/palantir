@@ -24,8 +24,7 @@ fn switching_model_keeps_the_colour() {
     }
 }
 
-/// Grey has no hue in either model, so a switch and a switch back must
-/// carry the retained one through.
+/// Grey has no hue in either model, so a switch and back carries the retained hue through.
 #[test]
 fn switching_model_keeps_greys_hue() {
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x808080), 0.0);
@@ -36,8 +35,7 @@ fn switching_model_keeps_greys_hue() {
     assert_eq!(round_trip.hue(), 0.42, "{}", round_trip.hue());
 }
 
-/// Switching to the model already in use is the identity, axes included —
-/// re-deriving would quietly move the hue of a grey.
+/// Switching to the model in use is the identity, axes included; re-deriving would move a grey's hue.
 #[test]
 fn switching_to_the_same_model_changes_nothing() {
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::BLACK, 0.0);
@@ -45,8 +43,7 @@ fn switching_to_the_same_model_changes_nothing() {
     assert_eq!(coords.with_model(ColorModel::Okhsv), coords);
 }
 
-/// Every setter clamps, the hue included: 1.0 stays 1.0 — red, as 0.0
-/// is — rather than wrapping to 0.0, and 1.25 clamps to it.
+/// Every setter clamps, hue included: 1.0 stays 1.0 (red, as 0.0 is), 1.25 clamps to it.
 #[test]
 fn setters_clamp() {
     let mut coords = ColorCoords::default();
@@ -74,12 +71,7 @@ fn setters_clamp() {
     );
 }
 
-/// Both models read raw axes the same way when they convert: the hue as a
-/// turn and the rest as fractions, so an out-of-range or non-finite axis
-/// paints what its coerced value paints, never NaN. `1.25` wraps to
-/// `0.25`, `1.7` clamps to `1`, and NaN or an infinity reads as `0`. The
-/// getters read the axes the same way, so a field or a bar built from
-/// them paints the colour the swatch does.
+/// Both models read raw axes alike on conversion (hue as a turn, rest as fractions), so out-of-range or non-finite axes paint their coerced value, never NaN: `1.25` wraps to `0.25`, `1.7` clamps to `1`, NaN or infinity reads `0`. Getters read alike, so fields and bars match the swatch.
 #[test]
 fn raw_axes_coerce_on_conversion() {
     let cases = [
@@ -104,8 +96,7 @@ fn raw_axes_coerce_on_conversion() {
     }
 }
 
-/// `model`'s coordinates at the raw axes `(h, s, v)` — through the
-/// model's own constructor, which wraps and clamps, not the setters.
+/// `model`'s coordinates at raw axes `(h, s, v)` through its own constructor (wraps and clamps), not the setters.
 fn axes(model: ColorModel, h: f32, s: f32, v: f32) -> ColorCoords {
     match model {
         ColorModel::Okhsv => ColorCoords::Okhsv(Okhsv::new(h, s, v)),
@@ -119,11 +110,7 @@ fn hue_gap(a: f32, b: f32) -> f32 {
     raw.min(1.0 - raw)
 }
 
-/// What both models promise alike. Every triple in the unit cube is
-/// inside sRGB, so nothing clamps away and the round trip holds — 9 × 8
-/// × 8 samples, grey excluded, since it has no hue to recover. Grey
-/// keeps the fallback hue instead. And the axes past their ends take
-/// what a drag drives them to: the hue wraps, the other two clamp.
+/// What both models promise: every unit-cube triple is inside sRGB, so the round trip holds (9 × 8 × 8 samples, grey excluded, which keeps the fallback hue), and axes past their ends take what a drag gives them (hue wraps, the rest clamp).
 #[test]
 fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
     for model in ColorModel::ALL {

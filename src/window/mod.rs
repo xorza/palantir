@@ -1,11 +1,4 @@
-//! Backend-agnostic window vocabulary shared by the recorder
-//! ([`Ui`](crate::Ui)) and the windowing host
-//! ([`WinitHost`](crate::WinitHost)). Both depend *into* this module and
-//! neither back out, so the recorder never reaches up into the winit
-//! backend — [`WindowRequests`](window_requests::WindowRequests),
-//! [`WindowFrameState`](window_frame_state::WindowFrameState), and
-//! [`WindowConfig`](window_config::WindowConfig) deliberately carry no
-//! winit/wgpu types.
+//! Backend-agnostic window vocabulary shared by the recorder ([`Ui`](crate::Ui)) and the windowing host ([`WinitHost`](crate::WinitHost)). Both depend into this module and neither back out, so [`WindowRequests`](window_requests::WindowRequests), [`WindowFrameState`](window_frame_state::WindowFrameState) and [`WindowConfig`](window_config::WindowConfig) carry no winit/wgpu types.
 
 pub(crate) mod cursor_icon;
 pub(crate) mod vsync;

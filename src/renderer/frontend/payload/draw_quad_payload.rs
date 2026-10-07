@@ -14,23 +14,18 @@ use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
-/// The geometry half of a [`DrawQuadPayload`] — everything the composer
-/// needs to derive the instance's physical rect and its two reused
-/// lanes. Rectangles, windowed rectangles, and box-shadows all arrive
-/// as an already-resolved rect, so they share one variant; a triangle
-/// is the one shape whose covering rect only exists *after* its points
-/// are transformed, so it carries the points instead.
+/// The geometry half of a [`DrawQuadPayload`]. Rects, windowed rects and
+/// shadows arrive as an already-resolved rect; a triangle's covering rect
+/// only exists after its points are transformed, so it carries the points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum QuadGeom {
-    /// A logical-px rect + corner radii. For a shadow of either kind
-    /// they are the *source* shape's: the composer grows a drop shadow's
-    /// paint rect from the source after it snaps it.
+    /// A logical-px rect and corner radii; a shadow's are the source shape's
+    /// (the composer grows a drop shadow's paint rect from it after snapping).
     Rect { rect: Rect, corners: Corners },
-    /// Owner-local corner points and corner rounding. The composer
-    /// folds `origin` (the owner-rect top-left) + the active
-    /// push-transform before scaling to physical px, then derives the
-    /// covering AABB (the points inflated by `radius + AA fringe`) and
-    /// packs the physical points into the `corners` / `fill_axis` lanes.
+    /// Owner-local corner points and rounding. The composer folds `origin`
+    /// and the push-transform, scales to physical px, derives the covering
+    /// AABB (points inflated by `radius + AA fringe`) and packs the points
+    /// into the `corners` / `fill_axis` lanes.
     Triangle {
         origin: Vec2,
         a: Vec2,
@@ -40,45 +35,35 @@ pub(crate) enum QuadGeom {
     },
 }
 
-/// One quad-tier draw: a rounded rect, a windowed rect, a box-shadow,
-/// or a rounded triangle. All four lower to a single `Quad` instance on
-/// the one quad pipeline, so they share this payload and differ only in
-/// [`geom`](Self::geom) and which SDF `fill_kind` selects.
+/// One quad-tier draw (rounded rect, windowed rect, box-shadow or rounded
+/// triangle), all lowered to a single `Quad` instance; they differ in
+/// [`geom`](Self::geom) and the SDF `fill_kind` selects.
 ///
 /// `fill_kind`'s low byte is the kind tag; bits 8..16 carry `Spread` for
-/// gradient variants. `fill_lut_row` is the pre-registered gradient
-/// atlas row (set at shape lowering time), or [`LutRow::FALLBACK`] for
-/// everything else. `fill_axis` carries gradient geometry packed at
-/// lowering, or — for a shadow — `(0, 0, σ, spread)` for drops and
-/// `(offset.x, offset.y, σ, spread)` for insets in logical px, which the
-/// composer scales to physical px so the shader's `local` coords line
-/// up. A triangle's `fill_axis` is unread; the composer overwrites both
-/// reused lanes from the transformed points.
+/// gradients. `fill_lut_row` is the gradient atlas row, or
+/// [`LutRow::FALLBACK`]. `fill_axis` is the gradient geometry, or for a
+/// shadow `(0, 0, σ, spread)` (drop) / `(offset.x, offset.y, σ, spread)`
+/// (inset) in logical px, scaled to physical by the composer. A triangle's
+/// is overwritten by the composer.
 ///
-/// `fill: RgbaF16` is the solid colour when `kind == SOLID` (and the
-/// tint when it's a shadow); for a gradient it multiplies the colour the
-/// atlas row supplies. Storing as `RgbaF16` (8 B linear-RGB) vs. 16 B
-/// `RgbaF32` saves 8 B per payload — the composer decodes via
-/// `RgbaF32::from(f16)` at `Quad` write time.
+/// `fill` is the solid colour (the tint for a shadow); for a gradient it
+/// multiplies the atlas row's colour. `RgbaF16` saves 8 B per payload over
+/// `RgbaF32`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
     pub(crate) geom: QuadGeom,
     pub(crate) fill: GpuFill,
-    /// Normalized by [`ShapeStroke::normalized`] on the way in, so
-    /// [`ShapeStroke::NONE`] here means "no stroke" exactly.
+    /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
     pub(crate) stroke: ShapeStroke,
-    /// The reused four-lane geometry slot: gradient axis for a gradient
-    /// fill, `(offset, σ, spread)` for a shadow, unread for a triangle
-    /// (the composer overwrites it from the transformed points). Not part
-    /// of [`GpuFill`] because only this tier has one, and because a
-    /// shadow's lanes are not an axis at all.
+    /// The reused four-lane geometry slot: gradient axis, shadow `(offset, σ,
+    /// spread)`, or unread for a triangle. Outside [`GpuFill`] because only
+    /// this tier has one.
     pub(crate) fill_axis: FillAxis,
 }
 
 impl DrawQuadPayload {
     /// This draw with its alpha scaled by `by`, for
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
-    /// gate.
+    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s gate.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         if by == 1.0 {
@@ -91,12 +76,8 @@ impl DrawQuadPayload {
         }
     }
 
-    /// A rounded rect with `fill` and `stroke`.
-    ///
-    /// The brush is lowered here rather than at the call site because
-    /// the GPU lanes it fills — colour, kind, LUT row, axis — are this
-    /// type's, and a caller assembling them by hand is a caller that
-    /// can get the gradient case wrong.
+    /// A rounded rect with `fill` and `stroke`. The brush is lowered here
+    /// because the GPU lanes it fills are this type's.
     pub(crate) fn rect(
         rect: Rect,
         corners: Corners,
@@ -108,10 +89,8 @@ impl DrawQuadPayload {
 
     /// [`Self::rect`] of either kind. A [`RectKind::Windowed`] rect's
     /// `FillKind` carries the window bit, so the shader inverts the fill
-    /// coverage (fill outside the rounded boundary, transparent window
-    /// inside the stroke). The bit also keeps the composer's opaque-cover
-    /// checks (`fill_kind == FillKind::SOLID`) from treating the quad as
-    /// an occluder — its interior is a hole.
+    /// coverage and the composer's opaque-cover checks
+    /// (`fill_kind == FillKind::SOLID`) do not treat its hole as an occluder.
     pub(crate) fn rect_of_kind(
         kind: RectKind,
         rect: Rect,
@@ -119,7 +98,7 @@ impl DrawQuadPayload {
         fill: BrushSource,
         stroke: ShapeStroke,
     ) -> Self {
-        // Stroke stays solid-only — gradient strokes are a non-goal.
+        // Stroke stays solid-only.
         let mut lanes = fill.gpu_fill();
         if kind == RectKind::Windowed {
             lanes.kind = lanes.kind.with_window();
@@ -132,10 +111,9 @@ impl DrawQuadPayload {
         }
     }
 
-    /// A shadow of the source `rect` with its `corners`: `color` the
-    /// shadow tint, `fill_kind` `FillKind::SHADOW_DROP|SHADOW_INSET`, and
-    /// `fill_axis` its `(offset.x, offset.y, σ, spread)`. The composer
-    /// scales the logical-px lanes to physical px on emit.
+    /// A shadow of the source `rect`: `color` the tint, `fill_kind`
+    /// `SHADOW_DROP|SHADOW_INSET`, `fill_axis` `(offset.x, offset.y, σ,
+    /// spread)`, scaled to physical px by the composer.
     pub(crate) const fn shadow(
         rect: Rect,
         corners: Corners,
@@ -150,16 +128,14 @@ impl DrawQuadPayload {
                 kind: fill_kind,
                 lut_row: LutRow::FALLBACK,
             },
-            // A shadow has no stroke; its whole edge is the blur.
+            // A shadow has no stroke; its edge is the blur.
             stroke: ShapeStroke::NONE,
             fill_axis,
         }
     }
 
-    /// A rounded triangle from three owner-local `points` offset by
-    /// `origin`. Same quad tier as [`Self::rect`], down to the shared
-    /// stroke normalization — only the geometry and the SDF the
-    /// `FillKind` selects differ.
+    /// A rounded triangle from three owner-local `points` offset by `origin`.
+    /// Same tier and stroke normalization as [`Self::rect`].
     pub(crate) const fn triangle(
         origin: Vec2,
         points: [Vec2; 3],
@@ -179,8 +155,7 @@ impl DrawQuadPayload {
             fill: GpuFill {
                 color: fill,
                 kind: FillKind::TRIANGLE,
-                // The composer overwrites both reused lanes from the
-                // transformed points, so neither is read from here.
+                // The composer overwrites both reused lanes from the points.
                 lut_row: LutRow::FALLBACK,
             },
             stroke: stroke.normalized(),
@@ -188,32 +163,23 @@ impl DrawQuadPayload {
         }
     }
 
-    /// Paints nothing when the geometry covers no pixels, or when
-    /// neither the fill nor the stroke can put down a texel.
+    /// Paints nothing when the geometry covers no pixels, or neither fill nor
+    /// stroke can put down a texel.
     ///
-    /// Shadow parameters themselves (`fill_axis`) are not gated: a
-    /// zero-σ drop shadow still paints a hard-edged shifted rect, and
-    /// the `Shape::Shadow::is_noop` authoring boundary is what catches
-    /// the "no visible effect" cases.
+    /// Shadow parameters are not gated: a zero-σ drop shadow still paints a
+    /// hard shifted rect, and `Shape::Shadow::is_noop` catches no-effect cases.
     ///
-    /// A gradient fill is never a no-op here. [`BrushSource::gpu_fill`]
-    /// sets its colour lane to white — the atlas row supplies the colour,
-    /// and the lane only multiplies it — so that lane says nothing about
-    /// whether the ramp paints. Nor does it need to be: `Brush::is_noop`
-    /// filters the all-transparent-stops case *before* lowering, and one
-    /// slipping past that gate would paint a useless transparent quad
-    /// whose alpha blend produces nothing visible.
+    /// A gradient fill is never a no-op here: [`BrushSource::gpu_fill`] sets
+    /// its colour lane to white (the atlas row supplies the colour), and
+    /// `Brush::is_noop` filters all-transparent stops before lowering.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         self.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
     }
 
-    /// Whether the geometry covers no pixels on its own. A drop shadow
-    /// covers its source grown by the halo, so an empty source with a
-    /// blur or a spread still paints. A triangle always answers `false`:
-    /// its covering rect doesn't exist until the composer transforms the
-    /// points, and degenerate corners are already filtered at the
-    /// authoring boundary by `TriangleShape::is_noop`.
+    /// Whether the geometry covers no pixels. A drop shadow covers its source
+    /// grown by the halo. A triangle is `false`: its covering rect exists only
+    /// after transform, and `TriangleShape::is_noop` filters degenerates.
     #[inline]
     fn is_paint_empty(&self) -> bool {
         match self.geom {
@@ -245,23 +211,17 @@ mod tests {
     use crate::shape::paint::shape_stroke::ShapeStroke;
     use glam::Vec2;
 
-    /// Every quad-tier constructor runs one stroke normalization
-    /// ([`ShapeStroke::normalized`]): a noop stroke — transparent
-    /// colour, zero width, or a NaN width — lands in the payload as
-    /// [`ShapeStroke::NONE`]; anything else passes through verbatim.
+    /// Every quad-tier constructor normalizes the stroke
+    /// ([`ShapeStroke::normalized`]): a transparent, zero-width or NaN-width
+    /// stroke becomes [`ShapeStroke::NONE`]; others pass verbatim.
     ///
-    /// The NaN row is the interesting one. It normalizes away like any
-    /// other non-painting width, which is deliberate: catching a NaN
-    /// *loudly* is the `has_nan` screen's job at `Shapes::add`, the
-    /// authoring boundary, so by the time a value reaches here the useful
-    /// behaviour is to fail safe — and to do it identically for every
-    /// shape, rather than per-path (a rect forwarding NaN to the GPU
-    /// while a triangle scrubs it).
+    /// NaN normalizes away like any non-painting width: catching it loudly is
+    /// the `has_nan` screen's job at `Shapes::add`, so here it fails safe,
+    /// identically for every shape.
     ///
-    /// The table pins both halves: the exact normalized stroke per case,
-    /// **and** that [`DrawQuadPayload::rect`] and
-    /// [`DrawQuadPayload::triangle`] produce bit-identical stroke fields
-    /// — the regression guard against either growing its own copy again.
+    /// Pins the exact normalized stroke per case, and that
+    /// [`DrawQuadPayload::rect`] and [`DrawQuadPayload::triangle`] produce
+    /// bit-identical strokes.
     #[test]
     fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         let fill = RgbaF32::srgb(1.0, 0.0, 0.0);
@@ -320,15 +280,11 @@ mod tests {
         }
     }
 
-    /// A fade reaches a solid fill and a gradient fill through the one
-    /// alpha lane.
-    ///
-    /// A solid carries its own colour, so the fade scales the real alpha:
-    /// half of `0.8` is `0.4`. A gradient's colour lane multiplies the
-    /// sample, so it starts white and a half fade takes its alpha to
-    /// `0.5` with the RGB left at one. A fade to zero makes either a
-    /// no-op. The stroke is scaled either way, and `faded(1.0)` changes
-    /// nothing.
+    /// A fade reaches a solid fill and a gradient fill through the one alpha
+    /// lane. A solid scales its real alpha (half of `0.8` is `0.4`); a
+    /// gradient's lane multiplies the sample, starting white, so a half fade
+    /// gives alpha `0.5` with RGB at one. Fading to zero makes either a no-op,
+    /// the stroke scales either way, and `faded(1.0)` changes nothing.
     #[test]
     fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
         let stroke = ShapeStroke {

@@ -1,5 +1,4 @@
-//! Fields marked snap carry their target immediately, and only their own
-//! velocity clears.
+//! Snap-marked fields carry their target immediately; only their own velocity clears.
 
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::animation_spec::AnimationSpec;
@@ -13,10 +12,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
 
-/// Pin: `#[animate(snap)]` fields update on retarget mid-spring, not
-/// on settle. `Background.radius` is snap; without the
-/// `lerp(_, target, 0.0)` carry in spring `step`, the new radius
-/// would only land when the spring snaps to target.
+/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Background.radius` is snap).
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
     use crate::primitives::geometry::corners::Corners;
@@ -32,13 +28,9 @@ fn spring_snap_fields_carry_target_immediately() {
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
-    // First touch: snaps current = start, returns settled. No motion
-    // started yet.
     let _ = map.step(id, SLOT, start.clone(), AnimationSpec::SPRING, 0.016);
 
-    // Retarget to a new fill (animated) and a new radius (snap). From
-    // rest, the change's own frame steps nothing and shows the start,
-    // snap field included.
+    // Retarget fill (animated) and radius (snap): from rest the change's frame steps nothing and shows the start.
     let target = Background {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         border: Stroke::NONE,
@@ -138,8 +130,6 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
-    // Pass A's look, with the frame's report: the repaint request is
-    // what says whether the spring is still moving.
     let frame = |h: &mut UiHarness, look: &AnimatedLook| {
         h.frame_passes(|ui| {
             let current = ui.animate(id, SLOT, look.clone(), Some(AnimationSpec::SPRING));
@@ -160,7 +150,6 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     assert_ne!(retarget.a().text.color, target.text.color);
     assert!(retarget.report().repaint_requested);
 
-    // The gradient snaps and holds through every frame of the fade.
     let mut last = None;
     let frames = h.frames_until_idle(600, tick, |ui| {
         let current = ui.animate(id, SLOT, target.clone(), Some(AnimationSpec::SPRING));
@@ -170,8 +159,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
             .show(ui);
         last = Some(current);
     });
-    // The text colour moves black → white, √3 in linear RGB. The retarget
-    // frame stepped nothing, so frame `n` after it is step `n`.
+    // Text colour moves black → white, √3 in linear RGB; frame `n` after the retarget is step `n`.
     let step = closed_form_settle_step(170.0, 26.0, 3.0f64.sqrt(), 1.0 / 4096.0, |_| 0.016);
     assert_eq!(step, 56);
     assert_eq!(frames, Some(step), "the look's color spring settles");

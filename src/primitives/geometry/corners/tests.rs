@@ -8,13 +8,10 @@ fn lanes_round_trip_integer_values_exactly() {
     assert_eq!(c.as_array(), [1.0, 2.0, 3.0, 4.0]);
 }
 
-/// Documents the f16 precision contract. A refactor that quietly
-/// switched storage (e.g. to Q8.8 fixed-point) would trip these.
+/// The f16 precision contract; a silent storage switch (e.g. Q8.8) would trip these.
 #[test]
 fn f16_precision_contract() {
-    // Integers are exact to 2048. Past it the f16 step is 2, then 4 from
-    // 4096, and a tie rounds to the even mantissa: 2049 → 2048, 2051 →
-    // 2052, 4097 and 4098 → 4096, 4099 → 4100.
+    // Integers are exact to 2048; the f16 step is 2 past it and 4 from 4096, ties to even: 2049 → 2048, 2051 → 2052, 4097 and 4098 → 4096, 4099 → 4100.
     for (value, stored) in [
         (2048.0, 2048.0),
         (2049.0, 2048.0),
@@ -36,8 +33,7 @@ fn as_array_reads_clockwise_from_the_top_left() {
     );
 }
 
-/// `f = min(side / sum of its two radii)`, hand-computed per row; every
-/// radius scales by `f` when it is below 1.
+/// `f = min(side / sum of its two radii)`, hand-computed per row; every radius scales by `f` when below 1.
 #[test]
 fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
     let size = Size::new(100.0, 40.0);
@@ -63,8 +59,7 @@ fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
     for (label, corners, want) in rows {
         assert_eq!(corners.fit_to(size, 1.0).as_array(), want, "{label}");
     }
-    // Scaled first, in f32: 9999 × 8 is past f16's 65504, and still fits
-    // a 100×40 box at 8× (800×320) to 160.
+    // Scaled first, in f32: 9999 × 8 exceeds f16's 65504 yet a 100×40 box at 8× (800×320) fits it to 160.
     assert_eq!(
         Corners::all(9999.0)
             .fit_to(Size::new(800.0, 320.0), 8.0)
@@ -79,8 +74,7 @@ fn scaled_by_multiplies_each_corner() {
     assert_eq!(c.as_array(), [3.0, 6.0, 9.0, 12.0]);
 }
 
-/// Pins the bit-trick path in `is_approx_zero`. ±0 lanes, sub-EPS,
-/// at-EPS, above-EPS, and NaN must all classify correctly.
+/// The bit-trick path in `is_approx_zero`: ±0, sub-EPS, at-EPS, above-EPS and NaN lanes classify correctly.
 #[test]
 fn approx_zero_handles_edge_lane_patterns() {
     assert!(Corners::ZERO.is_approx_zero(), "all-zero bytes");
@@ -94,14 +88,12 @@ fn approx_zero_handles_edge_lane_patterns() {
         !Corners::all(EPS * 10.0).is_approx_zero(),
         "10×EPS must NOT register as zero",
     );
-    // One asymmetric lane above EPS — short-circuit must not
-    // accept it just because the other three lanes are zero.
+    // One asymmetric lane above EPS must not be accepted because the other three are zero.
     assert!(
         !Corners::new(0.0, 0.0, 1.0, 0.0).is_approx_zero(),
         "single non-zero lane breaks zero contract",
     );
-    // NaN bits land in the exponent region (≥ 0x7C00 absolute),
-    // far above the EPS threshold — must classify as non-zero.
+    // NaN bits sit in the exponent region (≥ 0x7C00), far above EPS: non-zero.
     assert!(
         !Corners::all(f32::NAN).is_approx_zero(),
         "NaN lanes are not zero"
@@ -123,9 +115,7 @@ fn tuples_map_to_lanes() {
     );
 }
 
-/// The packed form the chrome hash writes: four f16 lanes, little-endian
-/// `tl | tr | br | bl`. 1.0 is `0x3c00` and 2.0 is `0x4000` in f16, so
-/// `(1, 2, 1, 2)` packs to `0x4000_3c00_4000_3c00`.
+/// The packed chrome-hash form: four f16 lanes, little-endian `tl | tr | br | bl`. 1.0 is `0x3c00`, 2.0 `0x4000`, so `(1, 2, 1, 2)` packs to `0x4000_3c00_4000_3c00`.
 #[test]
 fn as_u64_packs_the_four_lanes() {
     assert_eq!(Corners::from((1, 2, 1, 2)).as_u64(), 0x4000_3c00_4000_3c00);
@@ -187,8 +177,7 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
     }
 }
 
-/// A file radius is a finite, non-negative f16: 0 and 65504 are the
-/// ends, and -1, one past 65504, infinity and NaN fail with the rule.
+/// A file radius is a finite, non-negative f16: 0 and 65504 are the ends; -1, past 65504, infinity and NaN fail with the rule.
 #[test]
 fn deserialize_rejects_a_radius_f16_cannot_hold() {
     for (input, valid) in [

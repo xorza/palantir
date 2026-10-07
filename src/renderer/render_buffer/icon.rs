@@ -4,37 +4,19 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::{IVec2, U16Vec2};
 
-/// One icon draw, placed in physical-pixel space.
+/// One icon draw in physical-pixel space. The composer resolves where and how big; the backend resolves pixels (rasterizing on an atlas miss), so the icon rasterizes at its true device size.
 ///
-/// Deferred the way a [`TextDrawRow`](crate::renderer::render_buffer::text::TextDrawRow)
-/// is: the composer resolves *where* and *how big*, and the backend resolves
-/// *what pixels* — rasterizing on an atlas miss and emitting the quad. That
-/// split is what lets an icon be rasterized at its true device size, which is
-/// only known once the display scale and every ancestor transform have been
-/// applied.
-///
-/// No `bounds` field, unlike a text row: an icon is one quad rather than a run
-/// of lines, so the group's own scissor is the whole of its clipping and there
-/// is nothing to pre-cull line by line.
+/// No `bounds` field, unlike a text row: one quad, so the group's scissor is all the clipping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct IconDrawRow {
-    /// Which icon at which physical size — already through the raster-size
-    /// ladder, so this is exactly the raster the atlas will hold.
+    /// Which icon at which physical size, already through the raster-size ladder.
     pub(crate) key: IconRasterKey,
-    /// Top-left of the quad in physical px. Whole pixels: in the exact band
-    /// the quad is drawn at the raster's own dimensions through a `Nearest`
-    /// sampler, so a fractional origin would blur what the rasterizer got
-    /// exactly right.
+    /// Quad top-left in physical px. Whole pixels: in the exact band the quad is drawn `Nearest` at raster size, so a fraction would blur.
     pub(crate) origin: IVec2,
-    /// The quad's extents in physical px: the raster's own in the exact band,
-    /// the icon's box (whole pixels) above it, where the raster is a rung of
-    /// the ladder near the box — or the capped one far below it — and is
-    /// resampled to fill it.
+    /// Quad extents in physical px: the raster's own in the exact band; above it the icon's whole-pixel box, resampled from a nearby ladder rung (or the capped one far below).
     pub(crate) size: U16Vec2,
-    /// Straight-alpha **linear** RGBA, like a text run's colour. Multiplies a
-    /// mask icon whole; a colour icon takes the alpha alone.
+    /// Straight-alpha **linear** RGBA. Multiplies a mask icon whole; a colour icon takes the alpha alone.
     pub(crate) color: RgbaF16,
-    /// Draw a colour icon as its own luminance — the backend folds this into
-    /// the quad's packed uv field rather than spending an instance lane on it.
+    /// Draw a colour icon as its own luminance; folded into the quad's packed uv field.
     pub(crate) desaturate: bool,
 }

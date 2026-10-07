@@ -1,15 +1,4 @@
-//! Input trickling: at most one state-changing event of each kind per
-//! frame.
-//!
-//! A widget reads one collapsed state per frame, so two gestures between
-//! frames would overwrite each other — a press and its release would
-//! surface as a click with no `Down` frame, and an Escape and the key after
-//! it would both land on the field Escape just blurred. Native toolkits
-//! avoid this by dispatching one event at a time to the current focus
-//! owner; Dear ImGui gets the same result in immediate mode by trickling
-//! its event queue (`io.ConfigInputTrickleEventQueue`, on by default since
-//! 1.87). [`InputQueue`] is that rule here: an event that would make a
-//! frame ambiguous waits, with every event after it, for the next frame.
+//! Input trickling: at most one state-changing event of each kind per frame.
 
 use crate::common::span::Span;
 use crate::input::input_event::InputEvent;
@@ -18,34 +7,19 @@ use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
 
-/// Events held back for a later frame, and what the current frame has
-/// already changed.
-///
-/// The frame boundary is the end of a frame: [`Self::next_frame`] forgets
-/// what changed, and the caller replays what the new frame admits. An
-/// event that arrives while nothing waits and changes nothing already
-/// changed applies at once.
+/// Events held back for a later frame, and what the current frame already changed.
 #[derive(Debug, Default)]
 pub(crate) struct InputQueue {
-    /// Held events, oldest first. Capacity is retained, so steady state
-    /// allocates nothing.
+    /// Held events, oldest first; capacity retained.
     pending: VecDeque<HeldEvent>,
-    /// Buttons pressed or released since the frame began.
     buttons: [bool; PointerButton::COUNT],
-    /// This frame's command key — a key press that typed nothing and is
-    /// not a bare modifier. A frame takes one; repeats of it ride along.
+    /// This frame's command key (typed nothing, not a bare modifier); repeats ride along.
     command_key: Option<Key>,
-    /// The text of every held IME event, end to end; each holds its span.
-    /// Cleared when a new hold starts on an empty queue, so it never
-    /// outgrows one burst of held events, and its capacity is retained.
+    /// Text of every held IME event, end to end; each holds its span.
     text: String,
 }
 
-/// An event held for a later frame, with the time it arrived.
-///
-/// An IME event's text is copied into the queue, because the host's
-/// string does not outlive the call: `event` holds it empty, and `text`
-/// is where it went.
+/// An event held for a later frame, with its arrival time.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HeldEvent {
     pub(super) event: InputEvent<'static>,
@@ -54,19 +28,11 @@ pub(super) struct HeldEvent {
 }
 
 impl InputQueue {
-    /// Whether nothing waits.
     pub(super) fn is_empty(&self) -> bool {
         self.pending.is_empty()
     }
 
-    /// Whether `event` may apply now: it changes nothing this frame
-    /// already changed. Nothing may overtake a held event, so a
-    /// non-empty queue admits nothing; the caller checks that first.
-    ///
-    /// Admitting records nothing. What counts as a change is decided by
-    /// applying the event — [`Self::note_button`] and
-    /// [`Self::note_command_key`] — because only then is it known whether
-    /// the press latched a capture or the key reached a reader.
+    /// Whether `event` may apply now: it changes nothing this frame already changed. Records nothing; the caller checks the queue is empty first.
     pub(super) fn admits(&self, event: &InputEvent<'_>) -> bool {
         match *event {
             InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
@@ -88,21 +54,16 @@ impl InputQueue {
         }
     }
 
-    /// `button`'s capture began or ended this frame. A press that hit
-    /// nothing, or a release with no capture to end, changes no widget's
-    /// state and is not noted: a frame can hold any number of those.
+    /// `button`'s capture began or ended this frame; presses that hit nothing are not noted.
     pub(super) const fn note_button(&mut self, button: PointerButton) {
         self.buttons[button.idx()] = true;
     }
 
-    /// A reader received `key`, a command key — a press that typed
-    /// nothing and is not a bare modifier. Key presses after it wait for
-    /// the next frame, except repeats of it.
+    /// A reader received command key `key`; later key presses wait a frame, except repeats of it.
     pub(super) fn note_command_key(&mut self, key: Key) {
         self.command_key.get_or_insert(key);
     }
 
-    /// Hold `event` for a later frame.
     pub(super) fn defer(&mut self, event: InputEvent<'_>, now: Duration) {
         if self.pending.is_empty() {
             self.text.clear();
@@ -118,19 +79,16 @@ impl InputQueue {
         });
     }
 
-    /// The text a held event's `span` names.
     pub(super) fn text(&self, span: Span) -> &str {
         &self.text[span.range()]
     }
 
-    /// Start the next frame: forget what this one changed.
     pub(super) const fn next_frame(&mut self) {
         self.buttons = [false; PointerButton::COUNT];
         self.command_key = None;
     }
 
-    /// The oldest held event, if the frame now admits it, taken off the
-    /// queue. Applying it notes what it changes.
+    /// The oldest held event if the frame now admits it; applying it notes what it changes.
     pub(super) fn pop_admitted(&mut self) -> Option<HeldEvent> {
         let held = self.pending.front()?;
         if !self.admits(&held.event) {
@@ -147,9 +105,7 @@ pub(crate) mod internals {
     use crate::input::keyboard::modifiers::Modifiers;
 
     impl InputQueue {
-        /// The modifier set the last held `ModifiersChanged` carries, if
-        /// one is held — what the modifiers will be once everything held
-        /// lands.
+        /// The modifier set of the last held `ModifiersChanged`, if any.
         pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
             self.pending.iter().rev().find_map(|held| match held.event {
                 InputEvent::ModifiersChanged(mods) => Some(mods),

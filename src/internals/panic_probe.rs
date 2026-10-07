@@ -1,8 +1,4 @@
-//! Assert that a closure panics *for the stated reason*.
-//!
-//! `catch_unwind(..).is_err()` accepts any panic: an index error in the
-//! fixture, an unprimed frame, an overflow. [`assert_panics_with`] checks
-//! the message, and keeps the expected panic off the test output.
+//! Assert that a closure panics for the stated reason (`catch_unwind(..).is_err()` accepts any panic).
 
 use std::any::Any;
 use std::cell::Cell;
@@ -10,21 +6,17 @@ use std::panic::{self, AssertUnwindSafe};
 use std::sync::Once;
 
 thread_local! {
-    /// Whether the panic hook stays quiet on this thread. Per thread
-    /// because libtest runs tests in parallel, and the hook is
-    /// process-wide: swapping the hook itself per call would race.
+    /// Whether the panic hook is quiet on this thread; per thread as libtest runs tests in parallel.
     static QUIET: Cell<bool> = const { Cell::new(false) };
 }
 
 static INSTALL: Once = Once::new();
 
-/// Run `f`, and assert that it panics with a message containing
-/// `fragment`.
+/// Run `f` and assert it panics with a message containing `fragment`.
 ///
 /// # Panics
 ///
-/// Panics when `f` returns normally, or panics with a message that does
-/// not contain `fragment`.
+/// When `f` returns normally or the message lacks `fragment`.
 #[track_caller]
 pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
     INSTALL.call_once(|| {
@@ -35,8 +27,7 @@ pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
             }
         }));
     });
-    // Restored rather than cleared, so a nested probe leaves an outer
-    // one quiet.
+    // Restored, not cleared, so a nested probe leaves an outer one quiet.
     let was_quiet = QUIET.with(|quiet| quiet.replace(true));
     let result = panic::catch_unwind(AssertUnwindSafe(f));
     QUIET.with(|quiet| quiet.set(was_quiet));

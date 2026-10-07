@@ -1,14 +1,5 @@
-//! Derive macro for `palantir::widget::Animatable`. Walks each field of a
-//! struct: animated fields call into the inner `Animatable` impl;
-//! fields marked `#[animate(snap)]` are excluded from arithmetic
-//! (lerp returns target's value, sub/add/scale/zero preserve `self`'s
-//! or pick a default, magnitude_squared contributes 0). Dynamic
-//! spring normalization forwards through animated fields only, and so
-//! does the settle distance, unless the struct names a tolerance of its
-//! own.
-//!
-//! Re-exported as `palantir::widget::Animatable` (the derive shares its name
-//! with the trait, by Rust convention).
+//! Derive for `palantir::widget::Animatable`: animated fields forward to their own impls;
+//! `#[animate(snap)]` fields take the target's value in `lerp` and are left out of the arithmetic.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -16,19 +7,11 @@ use quote::quote;
 use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse_macro_input};
 
 /// `#[derive(Animatable)]` on a struct with named fields.
+/// `#[animate(snap)]` (alias `skip`) on a field: `lerp` returns the target's value, spring math
+/// skips it and `magnitude` excludes it.
 ///
-/// Per-field attribute `#[animate(snap)]` (or its alias
-/// `#[animate(skip)]`) marks the field as non-animated: lerp returns
-/// the target's value, spring math noops on it, and `magnitude`
-/// excludes it. Useful for fields whose continuous interpolation is
-/// expensive (font sizes invalidating shape caches), aesthetically
-/// off (corner radii morphing across states), or simply not
-/// `Animatable` (`Spacing`, etc.).
-///
-/// Struct attribute `#[animate(settle_eps = EXPR)]` gives the whole value
-/// one settle tolerance, `EXPR`, in its own unit: the settle distance is
-/// then its magnitude over `EXPR²`. Without it, the settle distance is
-/// the sum of the animated fields' own, each in its own unit.
+/// Struct attribute `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
+/// unit (settle distance = magnitude over `EXPR²`); without it, the animated fields' own sum.
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -37,8 +20,6 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// The `Animatable` impl for `input`, or the error the derive reports in
-/// its place.
 fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -145,10 +126,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     });
 
-    // `#[inline]` on each method: Animatable is a tight math trait
-    // called per frame per animation, often across crate boundaries
-    // (palantir's `tick` calling derived impls in user code). Forces
-    // availability for cross-crate inlining.
+    // `#[inline]` on each method so cross-crate callers (palantir's `tick` into user impls) can inline.
     let expanded = quote! {
         impl #impl_generics ::palantir::widget::Animatable for #name #ty_generics #where_clause {
             #[inline]
@@ -205,9 +183,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     Ok(expanded)
 }
 
-/// The struct's own `#[animate(settle_eps = EXPR)]`, if it names one.
-/// Errors on any other option there, as [`classify_field`] does on a
-/// field, and on a second tolerance, which would otherwise win silently.
+/// The struct's `#[animate(settle_eps = EXPR)]`, if any; other options and a second tolerance error.
 fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
     let mut eps = None;
     for attr in &input.attrs {
@@ -229,10 +205,7 @@ fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
     Ok(eps)
 }
 
-/// Returns `Ok(true)` if `#[animate(snap)]` (or `skip`) is set on the
-/// field, `Ok(false)` otherwise. Errors on unrecognised idents inside
-/// `#[animate(...)]` so typos like `#[animate(snip)]` fail loud at
-/// compile time instead of silently animating the field.
+/// Whether the field is `#[animate(snap)]` or `skip`; unknown idents error so typos fail to compile.
 fn classify_field(f: &Field) -> syn::Result<bool> {
     let mut snap = false;
     for attr in &f.attrs {
@@ -256,10 +229,7 @@ mod tests {
     use crate::expand;
     use syn::{DeriveInput, parse_quote};
 
-    /// Each input the derive refuses, and the message it refuses with:
-    /// a shape with no named fields to walk, and an `#[animate(..)]`
-    /// option that is neither `snap` nor its alias `skip` — a typo there
-    /// would otherwise animate the field silently.
+    /// Refused inputs and their messages.
     #[test]
     fn refused_inputs_name_the_reason() {
         let shape = "Animatable can only be derived on structs with named fields";

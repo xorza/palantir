@@ -9,9 +9,7 @@ use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 
-/// Pin: each mesh-emitting group contributes its own mesh-tier batch,
-/// drained at the group iteration anchored by `last_group`. Two
-/// adjacent mesh groups → two emit steps, in order.
+/// Each mesh-emitting group contributes its own mesh-tier batch, drained at its group; two adjacent groups give two ordered emit steps.
 #[test]
 fn mesh_batches_emit_per_group_in_order() {
     let buf = buf_with_tier_anchors(
@@ -34,11 +32,7 @@ fn mesh_batches_emit_per_group_in_order() {
     );
 }
 
-/// Pin: a mesh batch anchored in a damage-skipped group is silently
-/// dropped — the stale-cursor advance at the top of each schedule
-/// iteration moves past it, so no mesh-tier step is emitted for
-/// invisible meshes. Counter-pin: the visible group still drains
-/// its own batch.
+/// A mesh batch in a damage-skipped group is dropped (the stale-cursor advance skips it); the visible group still drains its own.
 #[test]
 fn mesh_batch_in_damage_skipped_group_drops_silently() {
     let buf = buf_with_tier_anchors(
@@ -62,10 +56,7 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     );
 }
 
-/// Pin: an image batch anchored at group `j` replays after
-/// that group's quads and meshes (image sits at mesh tier in the
-/// kind order). Counter-pin to ensure the new `next_image_batch`
-/// cursor wires through both stencil and non-stencil paths.
+/// An image batch at group `j` replays after that group's quads and meshes, through both stencil and non-stencil paths.
 #[test]
 fn image_batch_emits_after_group_quads_in_non_stencil_path() {
     let buf = buf_with_tier_anchors(
@@ -88,7 +79,7 @@ fn image_batch_emits_after_group_quads_in_non_stencil_path() {
     );
 }
 
-/// Pin: image batch in a damage-skipped group is silently dropped.
+/// An image batch in a damage-skipped group is dropped.
 #[test]
 fn image_batch_in_damage_skipped_group_drops_silently() {
     let buf = buf_with_tier_anchors(
@@ -112,28 +103,14 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
     );
 }
 
-/// Pin: the backend replays higher-kind batches in `PaintTier` order.
-///
-/// The composer's flush arbitration reads that ordering directly —
-/// `HigherKindRects::conflicts` flushes only when the incoming tier
-/// sorts *below* one already recorded, which is correct exactly when the
-/// backend paints them in the same sequence. Until this test the only
-/// check was `higher_kind`'s own, comparing `conflicts` against
-/// `PaintTier`'s derived `Ord` — both sides of one file, so reordering
-/// the enum kept it green while silently changing which tier paints on
-/// top.
-///
-/// Written as "the emitted order equals the tiers sorted by `Ord`" so
-/// the assertion follows the enum rather than restating a fourth
-/// hand-written copy of Mesh → Image → Icon → Curve.
+/// The backend replays higher-kind batches in `PaintTier` order, which the composer's flush arbitration (`HigherKindRects::conflicts`) assumes. Asserted as "emitted order equals tiers sorted by `Ord`" so it follows the enum.
 #[test]
 fn higher_kind_replay_follows_paint_tier_order() {
     let mut buf = buf_with(vec![DrawGroup {
         scissor: None,
         ..group(Span::default())
     }]);
-    // One batch of every tier anchored in the single group, so the emit
-    // sequence is entirely the drain order.
+    // One batch of every tier in a single group, so emit order is the drain order.
     let anchored = GroupBatch {
         items: Span::new(0, 1),
         last_group: 0,

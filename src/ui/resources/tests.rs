@@ -34,10 +34,7 @@ fn img(w: u32, h: u32) -> Image {
     Image::from_srgba8(UVec2::new(w, h), vec![0u8; (w * h * 4) as usize]).unwrap()
 }
 
-/// The sequence is process-wide, so the ids are only ever compared
-/// against each other: another test registering an image on another
-/// thread lands between any two reserves here, which is exactly the
-/// interleaving the one sequence exists to survive.
+/// The sequence is process-wide, so ids are only compared against each other: another thread's registration lands between two reserves here, the interleaving the one sequence must survive.
 #[test]
 fn no_two_texture_ids_repeat_across_hosts_or_kinds() {
     let host = UiResources::isolated_mono();

@@ -75,20 +75,9 @@ fn disabled_reflects_cascaded_ancestor_flag() {
     );
 }
 
-/// Folding a disabled bit in takes the interaction half with it, and
-/// every fold does — not only the last.
-///
-/// Three sources reach a widget's state at three different times, and
-/// only `Widget::response` can see the third (the node's own flag). A
-/// reset that ran between the second and the third left a widget
-/// disabled *this* frame reporting `disabled: true` beside `hovered` and
-/// `left.clicked()` — a pair the steady-state hit index can never
-/// produce, because a disabled entry carries `Sense::NONE` and leaves the
-/// index entirely.
-///
-/// Geometry stays: `pointer_local` is where the cursor is relative to the
-/// widget, which `Ui::peek_pointer_local` answers whatever the widget is
-/// allowed to do about it.
+/// Every disabled fold drops the interaction half, not only the last: a reset
+/// between earlier folds once left a disabled widget reporting `hovered` and
+/// `clicked`, which the hit index cannot produce. Geometry stays.
 #[test]
 fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     let busy = ResponseState {
@@ -105,15 +94,11 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
         ..ResponseState::default()
     };
 
-    // A `false` fold changes nothing at all.
     let mut kept = busy;
     kept.merge_disabled(false);
     assert!(!kept.disabled);
     assert!(kept.hovered() && kept.left.clicked());
 
-    // The cascade's fold clears, and the node's later fold finds nothing
-    // left to clear — which is the point: the order of the three sources
-    // stops mattering.
     let mut off = busy;
     off.merge_disabled(true);
     off.merge_disabled(false);
@@ -125,8 +110,6 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
     assert_eq!(off.middle, ButtonState::default());
     assert_eq!(off.scroll, ScrollDelta::default(), "and the wheel");
 
-    // Geometry is untouched, `focused` included — a disabled widget still
-    // has a rect, and still knows where the cursor is over it.
     assert_eq!(off.rect, busy.rect);
     assert_eq!(off.layout_rect, busy.layout_rect);
     assert_eq!(off.pointer_local, busy.pointer_local);
@@ -155,14 +138,7 @@ fn disabled_false_when_chain_clean() {
     assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
 }
 
-/// A pointer that left takes every routed target with it:
-/// `refresh_pointer_targets` is the only writer of the three, and it
-/// clears them all when `pointer_pos` is `None`.
-///
-/// This is what lets `snapshot_frame_quiescent` read one pointer test
-/// where four would otherwise be needed — see there. The setting half of
-/// the same method, where a hit test fills the three in, is covered by
-/// the routing tests that drive a real tree.
+/// A departed pointer clears every routed target, which lets `snapshot_frame_quiescent` test one field instead of four.
 #[test]
 fn a_departed_pointer_clears_every_routed_target() {
     let id = WidgetId::from_hash("w");
@@ -182,18 +158,11 @@ fn a_departed_pointer_clears_every_routed_target() {
     );
 }
 
-/// The once-per-frame quiescence predicate that gates `response_for`'s
-/// fast path: every pointer/capture-derived signal flips it false, but
-/// `focused` deliberately does not (it can be set mid-record).
-///
-/// `hovered` / `scroll_targets` / `pinch_target` are not among the signals
-/// tested, and cannot be: `refresh_pointer_targets` clears all three
-/// whenever the pointer leaves, so a routed target without a pointer is
-/// a state nothing can reach. The invariant is asserted below, and
-/// `a_departed_pointer_clears_every_routed_target` pins its source.
+/// The quiescence predicate gating `response_for`'s fast path: every pointer or
+/// capture signal flips it false, `focused` deliberately does not. Routed
+/// targets cannot be tested alone, since a departed pointer clears them.
 #[test]
 fn frame_quiescent_predicate() {
-    // Fresh state, one mutation, snapshot — returns the sealed flag.
     let quiescent = |mutate: &dyn Fn(&mut InputState)| {
         let mut s = InputState::default();
         mutate(&mut s);
@@ -206,8 +175,6 @@ fn frame_quiescent_predicate() {
     );
 
     let id = WidgetId::from_hash("w");
-    // Each pointer / routing / capture signal independently breaks
-    // quiescence.
     let broken = |label: &str, mutate: &dyn Fn(&mut InputState)| {
         assert!(!quiescent(mutate), "{label} must break quiescence");
     };
@@ -238,28 +205,20 @@ fn frame_quiescent_predicate() {
         });
     });
 
-    // `focused` is excluded: a focused widget on an otherwise idle frame
-    // stays quiescent so the fast path still applies.
     assert!(
         quiescent(&|s| s.focused = Some(id)),
         "focus alone must NOT break quiescence (read live on the fast path)",
     );
 }
 
-/// On a quiescent frame (no pointer ever fed) `response_for` takes the
-/// geometry-only fast path: the arranged rect survives but every
-/// interaction field reads its default.
+/// On a quiescent frame `response_for` keeps the rect and defaults the interaction fields.
 #[test]
 fn quiescent_frame_keeps_geometry_defaults_interaction() {
     let mut h = UiHarness::new(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
-    // No pointer is ever fed → the frame is quiescent, so the snapshot
-    // taken at record-pass start stays valid for this post-frame read.
     h.frame(build_button(id));
 
     let r = h.ui.response_for(id);
-    // The hstack sits at the origin and its only child is a fixed 100 × 40,
-    // untransformed, so the layout rect and the screen rect agree.
     let placed = Rect::new(0.0, 0.0, 100.0, 40.0);
     assert_eq!(
         r.rect,
@@ -281,9 +240,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert_eq!(r.pointer_local, None);
 }
 
-/// With the pointer resting over a widget the frame is non-quiescent, so
-/// `response_for` runs the full interaction path and computes the
-/// pre-transform widget-local pointer.
+/// With the pointer over a widget the frame is non-quiescent and the widget-local pointer is computed.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
     let mut h = UiHarness::new(BUTTON_SURFACE);
@@ -292,8 +249,6 @@ fn non_quiescent_frame_computes_interaction() {
 
     let pointer = Vec2::new(50.0, 20.0);
     h.move_to(pointer);
-    // Run a frame *after* the pointer event so the snapshot reflects it,
-    // then read — the pointer makes the frame non-quiescent (full path).
     h.frame(build_button(id));
 
     let r = h.ui.response_for(id);
@@ -390,23 +345,13 @@ fn pointer_local_uses_unclipped_widget_origin() {
     );
 }
 
-/// The quiescent and non-quiescent paths must agree on every field they
-/// both own — the geometry half plus `focused`. They used to be two
-/// separate `ResponseState` constructions, so a field filled on one path
-/// could be silently defaulted on the other; this pins that they don't
-/// diverge.
-///
-/// Driven by toggling *only* `frame_quiescent`, with the same widget and
-/// the same cascade underneath, so any difference is attributable to the
-/// path taken rather than to the state it read.
+/// The quiescent and non-quiescent paths must agree on every field they both own; toggles only `frame_quiescent`.
 #[test]
 fn quiescent_and_full_paths_agree_on_geometry() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(build_focusable_leaf);
 
-    // Drive `InputState` directly against the harness's frozen cascade +
-    // layout: `Ui::response_for` owns the quiescent snapshot, and the
-    // point here is to flip that one bit with everything else held equal.
+    // Drives `InputState` directly against the frozen cascade, flipping only the quiescent bit.
     let mut s = InputState {
         focused: Some(focusable_id()),
         ..InputState::default()

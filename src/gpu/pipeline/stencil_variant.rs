@@ -3,12 +3,10 @@
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::surface::stencil::Stencil;
 
-/// A color render pipeline paired with its stencil-test twin (the same
-/// recipe plus [`Stencil::test_state`]).
-/// `base` runs on plain frames; `test` runs in the stencil-attached
-/// rounded-clip pass. Shared by the quad / mesh / image / curve
-/// pipelines so base-vs-test selection can't drift across them. Both
-/// are built up front so a
+/// A color render pipeline paired with its stencil-test twin (the same recipe plus
+/// [`Stencil::test_state`]). `base` runs on plain frames; `test` runs in the stencil-attached
+/// rounded-clip pass. Shared by the quad / mesh / image / curve pipelines so base-vs-test selection
+/// can't drift. Both are built up front so a
 /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
 /// set is complete the moment it exists.
 #[derive(Debug)]
@@ -23,11 +21,9 @@ pub(crate) struct StencilVariant {
 /// across the quad / mesh / image / curve / raster families and filled in
 /// by [`StencilVariant::build`].
 ///
-/// The layout arrives built rather than described, because a family with
-/// pipelines outside this pair — quad, with its two mask variants —
-/// shares one layout across all of them. A layout carries no
-/// depth-stencil state and no fragment entry, so every pipeline of one
-/// family wants the same object.
+/// The layout arrives built, not described, because a family with pipelines outside this pair (quad,
+/// with its two mask variants) shares one layout across all of them: a layout carries no
+/// depth-stencil state or fragment entry, so every pipeline of a family wants the same object.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ColorVariantSpec<'a> {
     pub(crate) label: &'static str,

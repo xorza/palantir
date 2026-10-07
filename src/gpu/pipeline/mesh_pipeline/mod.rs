@@ -1,15 +1,13 @@
-//! GPU side of user-supplied colored triangle meshes. Mirrors
-//! [`crate::gpu::pipeline::quad_pipeline::QuadPipeline`] but draws indexed
-//! triangle lists with per-vertex pos+color and per-instance
-//! transform+tint. The vertex stream is content-stable across frames;
-//! per-draw state lives in a parallel instance buffer.
+//! GPU side of user-supplied colored triangle meshes: like
+//! [`crate::gpu::pipeline::quad_pipeline::QuadPipeline`] but indexed triangle
+//! lists with per-vertex pos+color and per-instance transform+tint. The vertex
+//! stream is content-stable across frames; per-draw state is in a parallel
+//! instance buffer.
 //!
-//! **No `mesh_mask.wgsl`.** Rounded-clip masks are quad-shaped and
-//! always stamped by [`QuadPipeline`](crate::gpu::pipeline::quad_pipeline::QuadPipeline)'s
-//! mask stamp/clear variants
-//! (`quad_pipeline/shader.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant —
-//! it reads the mask but never writes one. Same shape for
-//! [`crate::gpu::pipeline::image_pipeline::ImagePipeline`].
+//! **No `mesh_mask.wgsl`:** rounded-clip masks are quad-shaped and stamped by
+//! [`QuadPipeline`](crate::gpu::pipeline::quad_pipeline::QuadPipeline) (`fs_mask`).
+//! Mesh and [`crate::gpu::pipeline::image_pipeline::ImagePipeline`] only build a
+//! stencil-*test* variant.
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -21,11 +19,8 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
 
-/// One frame's mesh geometry and per-draw state, uploaded together.
-///
-/// The three streams have to agree — an instance indexes a draw's vertex
-/// and index spans — so they travel as one value rather than three
-/// adjacent slice parameters.
+/// One frame's mesh geometry and per-draw state, uploaded together because an
+/// instance indexes a draw's vertex and index spans.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MeshUpload<'a> {
     pub(crate) vertices: &'a [MeshVertex],
@@ -33,12 +28,8 @@ pub(crate) struct MeshUpload<'a> {
     pub(crate) instances: &'a [MeshInstance],
 }
 
-/// One batch of mesh draws: the frame's whole per-draw column, and the
-/// slice of it this batch owns.
-///
-/// `items` is the same [`Span`] that indexes the per-frame instance
-/// buffer, so a draw's geometry and its transform plus tint cannot come
-/// from different batches.
+/// One batch of mesh draws: the frame's per-draw column and this batch's slice
+/// of it. `items` is the same [`Span`] that indexes the instance buffer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MeshBatch<'a> {
     pub(crate) draws: &'a [MeshDraw],
@@ -50,17 +41,16 @@ pub(crate) struct MeshPipeline {
     vertex_buffer: DynamicBuffer<MeshVertex>,
     index_buffer: DynamicBuffer<u32>,
     instance_buffer: DynamicBuffer<MeshInstance>,
-    /// Mesh shader module — format-independent; [`Self::build_variants`]
-    /// reads it to build each format's pipelines.
+    /// Mesh shader module, format-independent; [`Self::build_variants`] builds each
+    /// format's pipelines from it.
     shader: wgpu::ShaderModule,
-    /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl MeshPipeline {
-    /// Format-independent mesh resources; the pipelines are built by
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`].
+    /// Format-independent mesh resources; pipelines come from
+    /// [`Self::build_variants`] via
+    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = ShaderBody::Mesh.module(device);
 
@@ -75,8 +65,7 @@ impl MeshPipeline {
             index_buffer,
             instance_buffer,
             shader,
-            // No bind groups — only the shared immediate region for the
-            // viewport.
+            // No bind groups: only the shared immediate region for the viewport.
             pipeline_layout: PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
         }
     }
@@ -89,10 +78,8 @@ impl MeshPipeline {
         }
     }
 
-    /// Build the base + stencil-test color pipelines against `format` —
-    /// the only format-dependent mesh objects; the vertex / index /
-    /// instance buffers are reused. Called by `FormatPipelines` per
-    /// format.
+    /// Build the base and stencil-test color pipelines against `format`, the only
+    /// format-dependent mesh objects. Called by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
@@ -133,10 +120,9 @@ impl MeshPipeline {
         self.index_buffer.upload_instances(ctx, indices);
     }
 
-    /// Bind pipeline + vertex/instance/index buffers once per batch;
-    /// [`Self::draw`] then issues the draws. Mesh binds no groups —
-    /// the viewport rides the shared immediate region, re-pushed by
-    /// the backend's `rebind` after every pipeline switch.
+    /// Bind pipeline and vertex/instance/index buffers once per batch; [`Self::draw`]
+    /// then issues the draws. The viewport rides the shared immediate region,
+    /// re-pushed by the backend's `rebind` after every pipeline switch.
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -152,20 +138,13 @@ impl MeshPipeline {
         );
     }
 
-    /// Draw one mesh batch. `draws` is the frame's whole per-draw span
-    /// column and `items` selects this batch's slice of it — the same
-    /// `Span` that indexes the per-frame instance buffer, so a draw's
-    /// geometry and its transform + tint cannot come from different
-    /// batches.
+    /// Draw one mesh batch. `draws` is the frame's per-draw span column and `items`
+    /// selects this batch's slice (the same `Span` that indexes the instance buffer).
     ///
-    /// One `draw_indexed` per mesh, and unlike `ImagePipeline`'s arm of
-    /// the same method there is no run to coalesce: `shapes::lower` appends each authored
-    /// mesh's vertices and indices to the record payloads rather than
-    /// interning them, so every draw owns a private span and no two
-    /// `MeshDraw`s are ever equal — not even two draws of the same
-    /// `Mesh`. Interning payloads by their already-computed
-    /// `content_hash` would change that, and is the prerequisite for any
-    /// batching here.
+    /// One `draw_indexed` per mesh, with no run to coalesce unlike `ImagePipeline`:
+    /// `shapes::lower` appends each mesh's vertices and indices to the record
+    /// payloads without interning, so no two `MeshDraw`s are equal. Interning by
+    /// `content_hash` would be the prerequisite for batching.
     pub(crate) fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -175,12 +154,10 @@ impl MeshPipeline {
             if draw.indices.len == 0 {
                 continue;
             }
-            // The draw's absolute slot in `meshes.instances`.
             let instance = items.start + offset as u32;
             pass.draw_indexed(
                 draw.indices.into(),
-                // Per-call vertex offset, so a mesh's indices stay
-                // buffer-local rather than needing a rebase at record time.
+                // Per-call vertex offset keeps a mesh's indices buffer-local.
                 draw.vertices.start as i32,
                 instance..instance + 1,
             );
@@ -192,9 +169,8 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
     if instances == 0 {
         return false;
     }
-    // Debug: the composer produced these counts a pass ago and this runs
-    // on every frame's upload path, so it is the crate checking itself at
-    // frame rate rather than screening anything a caller passed.
+    // Debug: these counts come from the composer a pass ago, so this checks the
+    // crate at frame rate rather than screening caller input.
     debug_assert!(vertices != 0, "mesh instances require vertices");
     debug_assert!(indices != 0, "mesh instances require indices");
     true
@@ -202,15 +178,13 @@ fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bo
 
 const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     0 => Float32x2,
-    // `Unorm8x4` normalizes `u8/255 → 0..1` floats on the GPU.
-    // `MeshVertex::color` holds sRGB-encoded bytes, which the shader
-    // decodes per vertex with the exact transfer function.
+    // `Unorm8x4` normalizes `u8/255` to 0..1. `MeshVertex::color` holds sRGB-encoded
+    // bytes, decoded per vertex in the shader.
     1 => Unorm8x4,
 ];
 
-// Compile-time guard: attribute offsets must match the struct fields they
-// feed. `array_stride == size_of` alone wouldn't catch a same-size field
-// reorder or a format/field size mismatch; `offset_of!` does.
+// Attribute offsets must match the struct fields; `offset_of!` catches a
+// same-size reorder that `array_stride == size_of` would miss.
 const _: () = {
     use std::mem::offset_of;
     assert!(MESH_VERTEX_ATTRS[0].offset == offset_of!(MeshVertex, pos) as u64);
@@ -225,8 +199,8 @@ const fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-// Tint is straight-alpha linear, like `MeshVertex.color`; the shader
-// multiplies the two, with no decode on either side.
+// Tint is straight-alpha linear; the shader multiplies it by the decoded
+// vertex colour.
 const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
     2 => Float32x2,
     3 => Float32,
@@ -252,9 +226,8 @@ mod tests {
         assert!(mesh_upload_required(3, 3, 1));
     }
 
-    /// The two geometry screens are `debug_assert!`s, since the composer
-    /// produced these counts a pass ago and the upload path runs them at
-    /// frame rate.
+    /// The two geometry screens are `debug_assert!`s: the composer produced these
+    /// counts a pass ago and the upload path runs them at frame rate.
     #[test]
     #[cfg_attr(
         not(debug_assertions),

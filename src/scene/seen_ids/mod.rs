@@ -1,56 +1,29 @@
-//! Per-frame `WidgetId` tracker. Owns three things that all key off
-//! "which widgets were recorded this frame":
+//! Per-frame `WidgetId` tracker for "which widgets were recorded this frame":
 //!
-//! 1. **Eager disambiguation.** [`SeenIds::resolve`] runs at
-//!    `Widget::resolve` time — *before* the matching `Widget::record`
-//!    opens the actual record. It rewrites the resolved id by mixing
-//!    in an occurrence counter when the raw id has already been
-//!    handed out this frame, so the returned id matches what the
-//!    tree, cascade, and `response_for` will see. Per-id state
-//!    (focus, scroll, capture, hit-test) stays positional within the
-//!    colliding call site. Explicit-key collisions (`.id(X)`,
-//!    `.id_salt(X)`) are caller bugs: `resolve` queues a
-//!    [`PendingExplicitCollision`] for the second occurrence and
-//!    [`SeenIds::record_endpoint`] finalizes the [`CollisionRecord`]
-//!    once both opens have provided their `Endpoint`s. An id counts as
-//!    taken from the moment `resolve` hands it out — it enters `curr` as
-//!    [`IdSlot::Reserved`] — so two widgets that both resolve before
-//!    either records still get distinct ids. The [`ResolvedId`] it
-//!    returns carries the entry's index, so the record writes the entry
-//!    without a second hash probe.
-//! 2. **Endpoint tracking.** [`SeenIds::record_endpoint`] runs at
-//!    `Forest::open_node` time, after the final id has been carried
-//!    there by the `Widget`. Turns the id's slot into
-//!    [`IdSlot::Recorded`] so the magenta debug overlay has both halves
-//!    of a collision pair on hand.
-//! 3. **Removed-widget diff + rollover.** [`SeenIds::rollover`] computes
-//!    which ids were present last painted frame but absent this pass
-//!    (populating `removed` for [`crate::damage::engine::DamageEngine`] /
-//!    [`crate::text::shaper::TextShaper`] / measure cache / state /
-//!    animation), then swaps `curr → prev` so the next frame diffs
-//!    against this one. Called once per application frame from
-//!    `FrameCycle::finalize_frame`; `prev` stays anchored at the last
-//!    *painted* frame regardless of how many discard passes ran. Ids
-//!    seen only in a discarded pass (double-layout pass A, cold-start
-//!    warmup) are collected into `discarded` at the next `pre_record`
-//!    and folded into `removed` — they reach neither `prev` nor the
-//!    final `curr`, and without the fold their state/anim/text rows
-//!    would leak and resume stale if the widget later reappeared.
+//! 1. **Eager disambiguation.** [`SeenIds::resolve`] runs at `Widget::resolve`
+//!    time, before `record`, mixing an occurrence counter into a raw id already
+//!    handed out, so the id matches what the tree, cascade and `response_for` see.
+//!    Explicit-key collisions (`.id(X)`, `.id_salt(X)`) are caller bugs: `resolve`
+//!    queues a [`PendingExplicitCollision`] and [`SeenIds::record_endpoint`]
+//!    finalizes the [`CollisionRecord`] once both opens report. An id is taken from
+//!    the moment `resolve` hands it out ([`IdSlot::Reserved`]), so widgets that all
+//!    resolve before recording still get distinct ids. The [`ResolvedId`] carries
+//!    the entry's index, saving a second probe.
+//! 2. **Endpoint tracking.** [`SeenIds::record_endpoint`] (at `Forest::open_node`)
+//!    turns the slot into [`IdSlot::Recorded`].
+//! 3. **Removed-widget diff and rollover.** [`SeenIds::rollover`] puts ids present
+//!    in the last painted frame but absent now into `removed` (for damage, text,
+//!    measure cache, state, animation), then swaps `curr` and `prev`, once per
+//!    frame from `FrameCycle::finalize_frame`. Ids seen only in a discarded pass go
+//!    to `discarded` at the next `pre_record` and fold into `removed`, or their rows
+//!    would leak and resume stale.
 //!
-//! **In step with the last frame.** A frame usually resolves the same raw
-//! ids in the same order as the one before it. While it does, each id is
-//! known without a probe: an id that took its raw id last frame cannot be
-//! taken yet, because last frame's ids are distinct and this pass holds
-//! only the ones before it; and an auto id that collided gets the same
-//! occurrence, from the same taken set. So `curr` builds no hash index
-//! until the first resolve that differs, then indexes the entries so far,
-//! sets the counters from them, and goes on probing, as every resolve did
-//! before. The rollover diff compares by position over the matching
-//! prefix. A frame that changes early costs what every frame cost without
-//! this, and a steady frame hashes no id. Ordered reconciliation does the
-//! same: Flutter's `updateChildren` and the Vue and Inferno diffs walk the
-//! old and the new children in order and fall back to a keyed map only
-//! past a mismatch.
+//! **In step with the last frame.** A frame usually resolves the same raw ids in
+//! the same order. While it does, each id is known without a probe (last frame's
+//! ids are distinct and this pass holds only earlier ones), so `curr` builds no
+//! hash index until the first differing resolve, then indexes the entries so far
+//! and sets the counters. The rollover diff compares by position over the matching
+//! prefix. A steady frame hashes no id.
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
@@ -59,32 +32,22 @@ use std::collections::hash_map::Entry;
 use std::mem;
 use std::ptr;
 
-/// Both nodes of one explicit-id collision, in recording order. What
-/// [`SeenIds::record_endpoint`] hands back when the endpoint it just
-/// filed completed a pair. Logged by `Forest` in every profile, then
-/// accumulated into `Forest.collisions` for `encoder::collision_overlay`
-/// (`debug_assertions`).
+/// Both nodes of one explicit-id collision, returned by
+/// [`SeenIds::record_endpoint`] when an endpoint completes a pair.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CollisionRecord {
     pub(crate) first: Endpoint,
     pub(crate) second: Endpoint,
 }
 
-/// What one id holds in [`SeenIds::curr`] this pass.
-///
-/// One table for both states, because every widget resolves then
-/// records: resolve pays one probe, and record none — it writes through
-/// the index the [`ResolvedId`] carries.
+/// What one id holds in [`SeenIds::curr`] this pass. One table, so resolve pays
+/// one probe and record none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IdSlot {
-    /// Handed out by [`SeenIds::resolve`], not yet recorded. A widget may
-    /// resolve before it records, and another may resolve the same raw id
-    /// in between — `.state(ui)` on two auto-id buttons from one call
-    /// site, then `.show()` on both — so the id must count as taken from
-    /// here. Lasts one pass: an id resolved and never shown occupies its
-    /// occurrence for that pass only, and is in no frame's recording.
+    /// Handed out by [`SeenIds::resolve`], not yet recorded. Another widget may
+    /// resolve the same raw id in between (`.state(ui)` on two same-site buttons, then
+    /// `.show()`), so it counts as taken. Lasts one pass.
     Reserved,
-    /// Opened at this endpoint.
     Recorded(Endpoint),
 }
 
@@ -98,27 +61,17 @@ impl IdSlot {
     }
 }
 
-/// What [`SeenIds::last_frame_endpoint`] knows of an id's last frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LastFrame {
-    /// Recorded at this endpoint.
     At(Endpoint),
-    /// Not recorded: absent, or only reserved.
     Absent,
-    /// Not known without a probe.
     Unknown,
 }
 
-/// An id [`SeenIds::resolve`] handed out this pass, with the index of
-/// the entry that reserves it. Only `resolve` makes one, so the index
-/// always names that entry; [`SeenIds::record_endpoint`] checks the id
-/// against it all the same, since a stale value from an earlier pass
-/// would otherwise write another widget's entry.
-///
-/// Packed to 4-byte alignment so it fits the 8 bytes beside
-/// [`Ident`](crate::scene::node::ident::Ident)'s tag, which every
-/// widget carries: aligned to 8 it is 16 bytes, and each widget grows by
-/// 8.
+/// An id [`SeenIds::resolve`] handed out this pass, with its entry's index.
+/// [`SeenIds::record_endpoint`] still checks the id against it: a stale value from
+/// an earlier pass would write another widget's entry. Packed to 4-byte alignment
+/// to fit beside [`Ident`](crate::scene::node::ident::Ident)'s tag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(Rust, packed(4))]
 pub(crate) struct ResolvedId {
@@ -133,7 +86,6 @@ impl ResolvedId {
     }
 }
 
-/// One id handed out this pass, and what it holds.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct IdEntry {
     id: WidgetId,
@@ -141,33 +93,25 @@ pub(crate) struct IdEntry {
     origin: Origin,
 }
 
-/// How a pass came to an entry's id: what the next frame's resolve at the
-/// same position must repeat to stay in step.
+/// How a pass came to an entry's id: what the next frame's resolve at the same
+/// position must repeat to stay in step.
 #[derive(Clone, Copy, Debug)]
 struct Origin {
-    /// The raw id that resolved to the entry's id, and whether it was
-    /// explicit.
     raw: WidgetId,
     is_explicit: bool,
-    /// The occurrence counter the id took, or 0 when the id is `raw`.
     occurrence: u32,
-    /// The inputs of a parent-scoped `raw`, which name it without a hash.
     recipe: Option<Recipe>,
 }
 
-/// A parent-scoped raw id before its hash: an auto id's call site or a
-/// salt, and the parent it hangs off.
 #[derive(Clone, Copy, Debug)]
 struct Recipe {
-    /// [`Ident::Auto`] or [`Ident::Hash`].
     ident: Ident,
     parent: Option<WidgetId>,
 }
 
 impl Recipe {
-    /// Whether `other` names the same raw id by the same inputs. A
-    /// `Location` is compared by address: a call site the compiler
-    /// duplicated only fails to match, and the resolve then hashes it.
+    /// Whether `other` names the same raw id by the same inputs. A `Location` is
+    /// compared by address; a duplicated call site just fails to match.
     #[inline]
     fn is(self, other: Self) -> bool {
         let same = match (self.ident, other.ident) {
@@ -179,11 +123,8 @@ impl Recipe {
     }
 }
 
-/// One pass's ids: a hash index over a dense run of entries. The index
-/// answers "is this id taken" at resolve; the run is what a record
-/// writes through, and what the diffs and the cascade's id snapshot
-/// walk, in resolve order. `curr`'s index is empty while the pass is in
-/// step with `prev`, and `prev`'s always covers every entry.
+/// One pass's ids: a hash index over a dense run of entries in resolve order.
+/// `curr`'s index is empty while in step with `prev`.
 #[derive(Debug, Default)]
 struct IdTable {
     index: WidgetIdMap<u32>,
@@ -198,13 +139,11 @@ impl IdTable {
             .map(|&entry| self.entries[entry as usize].slot)
     }
 
-    /// Whether `id` is held as recorded, not only reserved.
     #[inline]
     fn recorded(&self, id: WidgetId) -> bool {
         self.slot(id).and_then(IdSlot::endpoint).is_some()
     }
 
-    /// The recorded ids, with their endpoints, in resolve order.
     #[inline]
     fn recorded_entries(&self) -> impl Iterator<Item = (WidgetId, Endpoint)> + '_ {
         self.entries
@@ -217,7 +156,6 @@ impl IdTable {
         self.entries.clear();
     }
 
-    /// Index every entry, into an empty index.
     fn index_entries(&mut self) {
         debug_assert!(self.index.is_empty());
         self.index.extend(
@@ -229,11 +167,8 @@ impl IdTable {
     }
 }
 
-/// One side of a queued explicit-collision pair. The first endpoint
-/// is looked up by `first_raw_id` (the un-disambiguated id of the
-/// first occurrence, already recorded in `curr` when this entry is
-/// queued); the second endpoint is filled in at
-/// [`SeenIds::record_endpoint`] when `second_final_id` is opened.
+/// One side of a queued explicit-collision pair; the second endpoint is filled in
+/// at [`SeenIds::record_endpoint`].
 #[derive(Clone, Copy, Debug)]
 struct PendingExplicitCollision {
     first_raw_id: WidgetId,
@@ -242,88 +177,42 @@ struct PendingExplicitCollision {
 
 #[derive(Debug, Default)]
 pub(crate) struct SeenIds {
-    /// Per-raw-id occurrence counter. Bumped inside [`Self::resolve`]
-    /// when the raw id is already occupied. Candidate ids normally
-    /// progress through `raw_id.with(1)`, `.with(2)`, etc.; explicitly
-    /// occupied candidates are skipped. Cleared each frame in
-    /// [`Self::pre_record`], left alone while the pass is in step, and set
-    /// from its entries when it leaves. Independent of the `(layer, node)`
-    /// of the actual record, so `Widget::resolve` answers the right id
-    /// before any node exists.
+    /// Per-raw-id occurrence counter, bumped in [`Self::resolve`] on collision. Cleared
+    /// in [`Self::pre_record`], untouched while in step, set from the entries when the
+    /// pass leaves step.
     counters: WidgetIdMap<u32>,
-    /// Every id this pass handed out, with the endpoint of each one that
-    /// has opened. [`Self::resolve`] reserves, and
-    /// [`Self::record_endpoint`] (from `Forest::open_node`) records.
-    /// Read for explicit-collision endpoint resolution (the first
-    /// endpoint lives under `raw_id`, which is the un-disambiguated form
-    /// of any subsequent occurrence). The recorded entries feed the
-    /// [`Self::rollover`] removed-diff and the
-    /// [`crate::cascade::Cascade::by_id`] snapshot taken at the end of
-    /// each `CascadeEngine::run`; a reserved one is in neither.
+    /// Every id this pass handed out, with the endpoint of each that has opened.
+    /// Reserved entries feed neither the [`Self::rollover`] diff nor the
+    /// [`crate::cascade::Cascade::by_id`] snapshot.
     curr: IdTable,
-    /// How many of `curr`'s entries match `prev`'s, once the pass has left
-    /// step; `None` while every entry so far matches, and `curr`'s index is
-    /// still unbuilt.
+    /// How many of `curr`'s entries match `prev`'s once the pass leaves step; `None`
+    /// while all match.
     split: Option<usize>,
-    /// Last *painted* frame's `curr`. Only which ids were recorded
-    /// matters for the rollover diff — endpoints are stale across
-    /// frames. Same type as `curr` so `std::mem::swap` is alloc-free.
-    ///
-    /// [`Cascade::by_id`](crate::cascade::Cascade) holds the same
-    /// entries with live values and still cannot serve this diff: it is
-    /// refreshed at every cascade *run*, so a two-pass frame overwrites
-    /// it before rollover and the diff would compare pass A against
-    /// pass B rather than frame against frame.
+    /// Last painted frame's `curr`; same type so the swap is alloc-free.
+    /// [`Cascade::by_id`](crate::cascade::Cascade) can't serve this diff: it refreshes
+    /// every cascade run, so a two-pass frame would compare pass A with pass B.
     prev: IdTable,
-    /// Diff output: widgets present in `prev` but not in `curr`.
-    /// Repopulated by [`Self::rollover`]; consumers iterate via a
-    /// shared borrow on the field. Public-in-crate so callers can
-    /// hold `&seen.removed` across other shared `&forest` reads — an
-    /// accessor returning `&[..]` would tie the returned slice to the
-    /// `&mut self` and block those reads.
+    /// Widgets in `prev` but not `curr`. A public field so callers can hold
+    /// `&seen.removed` across other `&forest` reads.
     pub(crate) removed: WidgetIdSet,
-    /// Explicit collisions queued by [`Self::resolve`] awaiting
-    /// endpoint resolution at [`Self::record_endpoint`]. Each entry
-    /// names the first occurrence's raw id (whose endpoint is already
-    /// in `curr`) and the second occurrence's final id (whose
-    /// endpoint arrives when `record_endpoint` opens it). Cleared
-    /// each frame.
+    /// Explicit collisions awaiting [`Self::record_endpoint`]. Cleared each frame.
     pending: Vec<PendingExplicitCollision>,
-    /// Ids that exist *only* inside this frame's discarded passes —
-    /// recorded by a pass that was then thrown away, and absent from
-    /// `prev`. Drained from `curr` by the next `pre_record` of the same
-    /// frame, folded into `removed` at [`Self::rollover`] (unless
-    /// re-recorded by the final pass) so rows created during a discarded
-    /// pass don't leak. Capacity retained.
-    ///
-    /// A discarded id that `prev` also holds stays out: the
-    /// prev-minus-curr diff already reports it. That filter is what keeps
-    /// this empty on the frames that matter — a settling second pass over
-    /// a thousand steady widgets adds nothing here instead of a thousand
-    /// entries.
+    /// Ids existing only in this frame's discarded passes and absent from `prev`.
+    /// Folded into `removed` at [`Self::rollover`] unless the final pass re-recorded
+    /// them. Ids `prev` holds stay out (the diff reports them), keeping this empty on
+    /// a settling second pass.
     discarded: WidgetIdSet,
 }
 
 impl SeenIds {
-    /// Reset per-frame state at the top of a record pass. Clears the
-    /// `curr` recording map + the disambiguation counter + pending
-    /// collisions. **Doesn't touch `prev`** — that holds the last
-    /// *painted* frame's recording, established by [`Self::rollover`].
-    /// A two-pass frame calls `pre_record` then
-    /// never reaches `rollover`, so `prev` must be preserved across
-    /// the discard. A non-empty `curr` here IS such a discarded pass
-    /// (rollover empties it at frame end) — the ids it holds that `prev`
-    /// has never seen move to `discarded`, so rows they created can be
-    /// swept if the final pass drops them. The ones `prev`
-    /// does hold need no help: [`Self::rollover`]'s prev-minus-curr diff
-    /// reports exactly those, so copying them here would be a hash insert
-    /// per widget per settling pass to restate what the diff already says.
+    /// Reset per-frame state at the top of a record pass. `prev` is untouched, since a
+    /// discarded pass never reaches `rollover`. A non-empty `curr` here is a discarded
+    /// pass: ids `prev` has never seen move to `discarded`.
     pub(crate) fn pre_record(&mut self) {
         self.counters.clear();
         let matched = self.split.unwrap_or(self.curr.entries.len());
         let prev = &self.prev;
-        // The matching prefix holds `prev`'s own ids at their positions, so
-        // it is read by position, and only the rest is probed.
+        // The matching prefix holds `prev`'s ids at their positions; only the rest is probed.
         let (stepped, rest) = self.curr.entries.split_at(matched);
         let new_in_step = stepped.iter().zip(&prev.entries).filter(|(entry, last)| {
             entry.slot != IdSlot::Reserved && last.slot == IdSlot::Reserved
@@ -341,28 +230,19 @@ impl SeenIds {
         self.pending.clear();
     }
 
-    /// Where `id` was recorded this pass, or `None` when it was not —
-    /// absent, or only reserved.
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
         if self.split.is_some() {
             return self.curr.slot(id).and_then(IdSlot::endpoint);
         }
-        // In step: `curr` is a prefix of `prev`, so `prev`'s index finds
-        // the position.
         let at = *self.prev.index.get(&id)? as usize;
         let entry = self.curr.entries.get(at)?;
         debug_assert_eq!(entry.id, id, "an in-step entry left its position");
         entry.slot.endpoint()
     }
 
-    /// Where the last painted frame recorded `id`, when that is known
-    /// without a probe: when `id` is the newest entry of a pass in step,
-    /// whose position names last frame's entry for the same id. Otherwise
-    /// [`LastFrame::Unknown`], and the caller probes.
-    ///
-    /// The newest entry is the usual case: a widget reads last frame's
-    /// response right after it resolves its id.
+    /// Where the last painted frame recorded `id`, when known without a probe (the
+    /// newest entry of a pass in step, the usual case). Otherwise [`LastFrame::Unknown`].
     #[inline]
     pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
         let newest = self.curr.entries.len().wrapping_sub(1);
@@ -381,14 +261,11 @@ impl SeenIds {
         }
     }
 
-    /// The ids recorded this pass, with their endpoints.
     #[inline]
     pub(crate) fn recorded(&self) -> impl Iterator<Item = (WidgetId, Endpoint)> + '_ {
         self.curr.recorded_entries()
     }
 
-    /// Push the reserved entry for `id`, which `origin` resolved to. Out
-    /// of step, the caller has just put its index in the hash index.
     #[inline]
     fn reserve(&mut self, id: WidgetId, origin: Origin) -> ResolvedId {
         let entry = self.curr.entries.len() as u32;
@@ -400,11 +277,8 @@ impl SeenIds {
         ResolvedId { id, entry }
     }
 
-    /// Index the entries so far, and set the counters from them: the
-    /// probing resolve the pass continues with reads both. The counters
-    /// only let a collision skip the occurrences already taken, so the
-    /// in-step resolves leave them alone and this pays one insert per
-    /// colliding raw id, once.
+    /// Index the entries so far and set the counters, for the probing resolve the pass
+    /// continues with. Pays one insert per colliding raw id, once.
     #[cold]
     fn leave_step(&mut self) {
         self.split = Some(self.curr.entries.len());
@@ -417,18 +291,10 @@ impl SeenIds {
         }
     }
 
-    /// What `raw` resolves to while the pass is in step, when no probe
-    /// this pass could answer differently; `None` leaves step.
-    ///
-    /// - An explicit id held by a reservation of this pass is its owner
-    ///   claiming it, and pushes no entry. The newest entry is the usual
-    ///   holder — a widget resolves, then records a wrapper under the id
-    ///   it got — and any other is found through `prev`'s index, since
-    ///   this pass holds `prev`'s ids at their positions.
-    /// - Otherwise the id is last frame's next entry, when that entry came
-    ///   from the same raw id and kind, and was no explicit collision:
-    ///   whether one of those claims a reservation depends on record
-    ///   order.
+    /// What `raw` resolves to while in step, when no probe could differ; `None` leaves
+    /// step. An explicit id held by a reservation of this pass is its owner claiming it
+    /// and pushes no entry. Otherwise the id is last frame's next entry, if it came
+    /// from the same raw id and kind and was no explicit collision.
     #[inline]
     fn in_step(
         &mut self,
@@ -476,9 +342,6 @@ impl SeenIds {
         self.claim(holder)
     }
 
-    /// The claim of entry `holder` by its owner's explicit resolve, while
-    /// it is only reserved; `None` once it is recorded, which makes the
-    /// resolve an explicit collision.
     #[inline]
     fn claim(&self, holder: usize) -> Option<ResolvedId> {
         let entry = &self.curr.entries[holder];
@@ -488,28 +351,18 @@ impl SeenIds {
         })
     }
 
-    /// Eagerly resolve a raw id to its disambiguated final id, and
-    /// reserve it until its [`Self::record_endpoint`].
-    /// Common case (first occurrence of `raw_id` this pass) returns
-    /// `raw_id` unchanged — `counters` stays untouched. Collision case
-    /// advances the per-raw-id counter until `raw_id.with(count)` is
-    /// neither recorded nor reserved. Explicit collisions queue a
-    /// [`PendingExplicitCollision`] so [`Self::record_endpoint`] can emit
-    /// the magenta-overlay [`CollisionRecord`] once both endpoints exist,
-    /// in whichever order the two record.
+    /// Eagerly resolve a raw id to its final id and reserve it until
+    /// [`Self::record_endpoint`]. A collision advances the counter until
+    /// `raw_id.with(count)` is neither recorded nor reserved. Explicit collisions queue
+    /// a [`PendingExplicitCollision`], whichever order the two record.
     #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> ResolvedId {
         self.resolve_raw(raw_id, is_explicit, None)
     }
 
-    /// [`Self::resolve`] for a parent-scoped ident — an auto id's call site
-    /// or a salt — under `parent`. In step, last frame's entry at this
-    /// position names the same raw id when it came from the same inputs,
-    /// so the id is taken from it and the raw id is never hashed: an auto
-    /// id's file path, or a salt's mix with the parent. An explicit salt
-    /// takes it only when last frame's did not collide, and then it is no
-    /// claim either, since that id is not yet taken. Otherwise the raw id
-    /// is hashed, by [`Ident::raw_id`] as for any other ident.
+    /// [`Self::resolve`] for a parent-scoped ident. In step, last frame's entry at this
+    /// position supplies the id when it came from the same inputs, so the raw id is
+    /// never hashed. An explicit salt takes it only when last frame's did not collide.
     #[inline]
     pub(crate) fn resolve_scoped(&mut self, ident: Ident, parent: Option<WidgetId>) -> ResolvedId {
         debug_assert!(matches!(ident, Ident::Auto(_) | Ident::Hash(_)));
@@ -532,7 +385,6 @@ impl SeenIds {
         self.resolve_raw(ident.raw_id(parent), is_explicit, Some(recipe))
     }
 
-    /// [`Self::resolve`], recording the `recipe` of a parent-scoped ident.
     #[inline]
     fn resolve_raw(
         &mut self,
@@ -548,9 +400,7 @@ impl SeenIds {
         }
         let next = self.curr.entries.len() as u32;
         match self.curr.index.entry(raw_id) {
-            // Fast path — first occurrence. `counters` only tracks raw
-            // ids that actually collided, so its size is
-            // `collisions / frame` (typically 0), not `widgets / frame`.
+            // First occurrence. `counters` tracks only collided raw ids.
             Entry::Vacant(slot) => {
                 slot.insert(next);
                 return self.reserve(
@@ -563,11 +413,9 @@ impl SeenIds {
                     },
                 );
             }
-            // An explicit id that is only reserved is the widget that
-            // reserved it, claiming it: a widget resolves its own id,
-            // then records a wrapper under `.id(resolved)`. Only an auto
-            // id, which two call-site twins can share, disambiguates
-            // against a reservation.
+            // An explicit id that is only reserved is its owner claiming it (resolve, then a
+            // wrapper under `.id(resolved)`). Only an auto id, which call-site twins share,
+            // disambiguates against a reservation.
             Entry::Occupied(slot)
                 if is_explicit
                     && self.curr.entries[*slot.get() as usize].slot == IdSlot::Reserved =>
@@ -608,16 +456,9 @@ impl SeenIds {
         )
     }
 
-    /// Record the endpoint where `resolved` is being opened. `Some`
-    /// when this endpoint completed a [`PendingExplicitCollision`]
-    /// queued at [`Self::resolve`], pairing it with the first
-    /// occurrence's endpoint — `None` on every other open, which is the
-    /// common case for every node of every frame.
-    ///
-    /// Panics if `resolved` was already recorded this pass, or was
-    /// resolved in an earlier one. [`Self::resolve`] must return an
-    /// available id, and the check enforces that invariant without
-    /// overwriting the existing endpoint.
+    /// Record the endpoint where `resolved` opens. `Some` when it completed a
+    /// [`PendingExplicitCollision`]; `None` otherwise, the common case. Panics if
+    /// `resolved` was already recorded this pass or resolved in an earlier one.
     #[inline]
     pub(crate) fn record_endpoint(
         &mut self,
@@ -636,14 +477,8 @@ impl SeenIds {
             "record_endpoint called twice for {final_id:?}"
         );
         entry.slot = IdSlot::Recorded(endpoint);
-        // Scanned rather than mapped: an explicit collision is a caller
-        // bug, so `pending` is empty on the frames that matter and this
-        // is a length test — where a hash probe would cost every node of
-        // every frame.
-        //
-        // Either side may record last: a widget that resolved before
-        // recording lets its duplicate open first. The pair completes
-        // on whichever record supplies the second endpoint.
+        // Scanned, not mapped: explicit collisions are caller bugs, so `pending` is
+        // usually empty and a probe would cost every node. Either side may record last.
         let (idx, record) = self.pending.iter().enumerate().find_map(|(idx, p)| {
             if p.second_final_id != final_id && p.first_raw_id != final_id {
                 return None;
@@ -660,12 +495,8 @@ impl SeenIds {
         Some(record)
     }
 
-    /// Populate `self.removed` with widgets present in `prev` but
-    /// absent from `curr`, then swap `curr → prev` so the next frame
-    /// diffs against this one. Returns a borrow of `self.removed`
-    /// for callers that want to fan the diff straight into per-widget
-    /// caches (text shaper, measure cache, state map, animation,
-    /// damage); the field stays populated until the next `rollover`.
+    /// Populate `self.removed` with widgets in `prev` but not `curr`, then swap. Returns
+    /// a borrow of `self.removed`, which stays populated until the next `rollover`.
     pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
         self.removed.clear();
         let matched = self.split.unwrap_or(self.curr.entries.len());
@@ -673,8 +504,7 @@ impl SeenIds {
             if last.slot == IdSlot::Reserved {
                 continue;
             }
-            // Past the matching prefix, an in-step `curr` holds none of
-            // `prev`'s ids: its own are the prefix's, and they are distinct.
+            // Past the matching prefix an in-step `curr` holds none of `prev`'s ids.
             let kept = match self.curr.entries.get(at) {
                 Some(entry) if at < matched => entry.slot != IdSlot::Reserved,
                 _ => self.split.is_some() && self.curr.recorded(last.id),
@@ -683,11 +513,8 @@ impl SeenIds {
                 self.removed.insert(last.id);
             }
         }
-        // Ids seen only in a discarded pass this frame (double-layout
-        // pass A, cold-start warmup) are in neither `prev` nor `curr`
-        // — the prev-minus-curr diff can't see them, but any state /
-        // anim / measure / text rows they created during that pass are
-        // real and must be swept with everything else.
+        // Ids seen only in a discarded pass are in neither `prev` nor `curr`, but the rows
+        // they created must be swept.
         for &wid in &self.discarded {
             if self.endpoint(wid).is_none() {
                 self.removed.insert(wid);
@@ -698,9 +525,8 @@ impl SeenIds {
             mem::swap(&mut self.curr, &mut self.prev);
             self.curr.clear();
         } else {
-            // In step, `curr` is a prefix of `prev`, so `prev`'s index
-            // already holds every position it needs once the tail leaves.
-            // It only ever loses ids here, so it never rehashes.
+            // In step `curr` is a prefix of `prev`, so `prev`'s index already holds every
+            // position needed; it only loses ids, so never rehashes.
             for last in &self.prev.entries[matched..] {
                 self.prev.index.remove(&last.id);
             }
@@ -712,8 +538,7 @@ impl SeenIds {
     }
 }
 
-/// Outlined from [`SeenIds::record_endpoint`], which runs for every node:
-/// the message is for a caller bug, not for the hot path.
+/// Outlined from [`SeenIds::record_endpoint`], which runs per node.
 #[cold]
 #[inline(never)]
 fn stale_resolved_id(id: WidgetId) -> ! {
@@ -728,8 +553,6 @@ pub(crate) mod internals {
 
     impl SeenIds {
         /// The ids the last finished frame recorded, with their endpoints.
-        /// Valid between frames: `rollover` ends a frame by moving `curr`
-        /// to `prev`.
         pub(crate) fn last_frame(&self) -> WidgetIdMap<Endpoint> {
             self.prev.recorded_entries().collect()
         }

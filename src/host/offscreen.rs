@@ -1,41 +1,8 @@
-//! [`OffscreenHost`] — the headless peer of
-//! [`WinitHost`](crate::WinitHost). Both build on the same [`HostCore`]: one
-//! [`UiResources`](crate::ui::resources::UiResources), one
-//! [`Frontend`](crate::renderer::frontend::Frontend), one
-//! [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend), and one
-//! [`WindowDriver`]. Unlike `WinitHost` there's no winit and no swapchain —
-//! the driver renders into a caller-supplied [`RenderTarget`].
-//! [`OffscreenHost::frame`] accepts the same [`App`] lifecycle as
-//! the windowed host, so update and replay semantics do not depend on the
-//! output backend.
+//! [`OffscreenHost`]: the headless peer of [`WinitHost`](crate::WinitHost), rendering into a caller-supplied [`RenderTarget`] with no winit and no swapchain.
 //!
-//! A supported headless rendering entry point — render-to-texture for
-//! screenshots, thumbnails, or server-side compositing — that also backs
-//! the visual harness and GPU benches. It's a `pub` facade because
-//! `WgpuBackend` is `pub(crate)` and can't be named from an external crate,
-//! so callers drive the backend through this bundle. The two
-//! cache-introspection methods stay `internals`-gated: they call gated
-//! `WgpuBackend` helpers and exist only for the format-change test.
+//! **One window, no window lifecycle.** A frame that records [`Ui::open_window`] or [`Ui::close_window`] panics rather than silently discarding the request. Window *settings* ([`Ui::set_cursor`](crate::Ui::set_cursor), [`Ui::set_vsync`](crate::Ui::set_vsync)) are accepted but inert.
 //!
-//! **One window, and no window lifecycle.** The window is created with the
-//! host and addressed by the fixed [`OffscreenHost::WINDOW`] for as long as
-//! the host lives — there is no window API at all. A frame that records
-//! [`Ui::open_window`] or [`Ui::close_window`] **panics** rather than silently
-//! discarding the request, since nothing here can service one and a swallowed
-//! request leaves the app believing a window appeared. Multi-window ownership
-//! is `WinitHost`'s alone.
-//!
-//! **Window *settings* are accepted and inert**, which is the other half of
-//! the same rule: [`Ui::set_cursor`](crate::Ui::set_cursor) and
-//! [`Ui::set_vsync`](crate::Ui::set_vsync) are levels the recorder retains
-//! and reads back — `Ui::vsync` answers what the app set, headless or not —
-//! so there is nothing for this host to swallow. Opens and closes are edges
-//! that mean nothing unless serviced; settings are not. That is the whole of
-//! which window calls this host honours.
-//!
-//! Everything the host can reject is a caller mistake — an unusable system
-//! scale, a window request it has no lifecycle for — so `frame`
-//! panics rather than returning a `Result` no caller could act on.
+//! Every rejection is a caller mistake, so `frame` panics rather than returning a `Result`.
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
@@ -54,8 +21,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::window_token::WindowToken;
 
-/// One shared renderer driving one render stream into a texture instead of a
-/// surface. The offscreen analogue of `WinitHost`.
+/// The offscreen analogue of `WinitHost`, rendering into a texture.
 #[derive(Debug)]
 pub struct OffscreenHost {
     core: HostCore,
@@ -67,125 +33,65 @@ pub struct OffscreenHost {
 #[must_use]
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
-    /// See [`Self::retained_target`].
     retained_target: bool,
-    /// `None` until [`Self::fonts`] or [`Self::shaper`] overrides; resolved
-    /// to the bundled-fonts default lazily in [`Self::build`] so an override
-    /// never pays the font load.
+    /// `None` until overridden; resolved lazily so an override never pays the font load.
     shaper: Option<TextShaper>,
     collect_gpu_stats: bool,
-    /// `None` leaves the driver's own default standing — see
-    /// [`WindowDriver::builder`](crate::host::window_driver::WindowDriver).
-    /// Held rather than applied, because the driver builder wants a
-    /// `UiResources` that does not exist until [`Self::build`]; restating the
-    /// defaults here instead is what let the two drift.
+    /// `None` leaves the driver's default; held because the driver builder needs a `UiResources` that exists only in [`Self::build`].
     clock: Option<Box<dyn Clock>>,
     pixel_snap: bool,
-    /// Off by default. An offscreen host is as often a thumbnailer or a
-    /// server-side compositor as it is an application, and neither should
-    /// reach for the desktop's clipboard because it happened to record a
-    /// `TextEdit`.
     #[cfg(feature = "system-clipboard")]
     system_clipboard: bool,
 }
 
 impl OffscreenHostBuilder {
-    /// Which faces this host shapes against. Defaults to
-    /// [`FontScope::Bundled`], so an offscreen render measures the same on
-    /// every machine.
-    ///
-    /// The door both hosts share — see
-    /// [`WinitHostBuilder::fonts`](crate::WinitHostBuilder::fonts), which
-    /// defaults the other way. Builds a fresh [`TextShaper`] and so
-    /// replaces one set by [`Self::shaper`].
+    /// Which faces this host shapes against. Defaults to [`FontScope::Bundled`], so measurement is machine-independent. Replaces a shaper set by [`Self::shaper`].
     pub fn fonts(mut self, scope: FontScope) -> Self {
         self.shaper = Some(TextShaper::with_fonts(scope));
         self
     }
 
-    /// Replace the default bundled-fonts [`TextShaper`], so several hosts
-    /// can share one shaped-buffer cache.
-    ///
-    /// The headless escape hatch past [`Self::fonts`]: a caller that
-    /// already built a shaper — with its warmed cache, or with fonts
-    /// loaded into it — hands that one over instead of a scope to build a
-    /// second from.
-    ///
-    /// Real shaping either way: every `TextShaper` carries a font
-    /// database, and the placeholder *metric* is reachable solely through
-    /// `test_mono`, which the `internals` feature gates out of production
-    /// builds. A released binary therefore cannot drive an offscreen host
-    /// on placeholder measurements through this builder.
+    /// Replaces the default [`TextShaper`], to share one shaped-buffer cache or preloaded fonts.
     pub fn shaper(mut self, shaper: TextShaper) -> Self {
         self.shaper = Some(shaper);
         self
     }
 
-    /// Opt into GPU timestamp and pipeline-statistics collection. The supplied
-    /// device must have the corresponding wgpu features enabled.
+    /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu features.
     pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
         self.collect_gpu_stats = collect;
         self
     }
 
-    /// Replace the realtime clock. A [`FixedClock`](crate::FixedClock) makes
-    /// screenshots and thumbnails reproducible by holding animations at a
-    /// caller-controlled phase.
+    /// Replaces the realtime clock; a [`FixedClock`](crate::FixedClock) makes screenshots reproducible.
     pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
         self.clock = Some(Box::new(clock));
         self
     }
 
-    /// Promise that every frame renders into the *same* texture, so the
-    /// target keeps what the last frame drew.
+    /// Promises every frame renders into the *same* texture, so the target keeps the last frame's pixels.
     ///
-    /// Off by default, because the safe assumption about a caller-supplied
-    /// texture is that it is a fresh one: without last frame's pixels, a
-    /// partial repaint would leave the rest of the target undefined, so every
-    /// frame goes through the retained backbuffer and is copied out whole.
+    /// Off by default: otherwise a partial repaint would leave the rest undefined, so frames go through a retained backbuffer and are copied out. On, small damage repaints straight into the target.
     ///
-    /// A caller that loops on one texture — a thumbnailer, a server-side
-    /// compositor — pays that backbuffer and that copy for nothing. Saying so
-    /// here renders straight into the target instead, and lets small damage
-    /// repaint only the damage.
-    ///
-    /// **Only say it if it is true.** Turning this on while handing in a fresh
-    /// texture each call leaves everything outside the damage region holding
-    /// whatever that texture happened to contain.
+    /// **Only say it if it is true:** with a fresh texture each call, everything outside the damage is whatever it contained.
     pub const fn retained_target(mut self, retained: bool) -> Self {
         self.retained_target = retained;
         self
     }
 
-    /// Configure whether axis-aligned paint edges snap to physical pixels.
+    /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.pixel_snap = pixel_snap;
         self
     }
 
-    /// Back this host's [`Clipboard`] with the OS
-    /// clipboard instead of the in-process buffer.
-    ///
-    /// Off by default, and deliberately: a thumbnailer or a server-side
-    /// compositor renders text fields it never intends to let the user
-    /// cut from, and reaching for the desktop's clipboard on their behalf
-    /// is a side effect nobody asked for. An offscreen *application* —
-    /// one whose frames a person actually looks at — turns it on.
-    ///
-    /// The in-process buffer stays underneath either way, so a system
-    /// backend that refuses a write does not lose the copy. See
-    /// [`Ui::clipboard`](crate::Ui::clipboard).
+    /// Backs this host's [`Clipboard`] with the OS clipboard instead of the in-process buffer, which stays underneath. Off by default: thumbnailers and compositors never cut text. See [`Ui::clipboard`](crate::Ui::clipboard).
     #[cfg(feature = "system-clipboard")]
     pub const fn system_clipboard(mut self, system: bool) -> Self {
         self.system_clipboard = system;
         self
     }
 
-    /// The clipboard [`Self::build`] hands the core.
-    ///
-    /// Split out because which backend it is depends on a feature as well
-    /// as on the flag, and `build` should read as the wiring it is rather
-    /// than carry a `cfg` in the middle of an argument list.
     fn clipboard(&self) -> Clipboard {
         #[cfg(feature = "system-clipboard")]
         if self.system_clipboard {
@@ -194,18 +100,11 @@ impl OffscreenHostBuilder {
         Clipboard::memory()
     }
 
-    /// Allocate the shared core and the window driver from the sealed
-    /// settings.
+    /// Allocates the shared core and the window driver from the sealed settings.
     ///
     /// # Panics
     ///
-    /// Panics if the device cannot run Palantir's pipelines — see
-    /// [`DeviceRequirements`](crate::DeviceRequirements). Checked here rather
-    /// than left to the first pipeline that trips over it, because a device is
-    /// only ever short of a feature its own request forgot to ask for: by the
-    /// time one exists, `request_device` has already granted whatever was
-    /// asked. The mistake is upstream of this call, so the report belongs at
-    /// this boundary and not several layers into the backend.
+    /// Panics if the device cannot run Palantir's pipelines, see [`DeviceRequirements`](crate::DeviceRequirements).
     pub fn build(self) -> OffscreenHost {
         if let Err(unmet) = self.gpu.requirements_met() {
             panic!("offscreen host device cannot run Palantir: {unmet}");
@@ -225,9 +124,7 @@ impl OffscreenHostBuilder {
         let strategy = if self.retained_target {
             PresentStrategy::DirectAdaptive
         } else {
-            // The target's prior contents can't be relied on (a caller may
-            // hand in a fresh texture each call), so every frame must fill the
-            // whole thing.
+            // The target's prior contents can't be relied on: fill it whole.
             PresentStrategy::BackbufferCopy
         };
         let mut driver = core.driver(OffscreenHost::WINDOW).strategy(strategy);
@@ -240,15 +137,10 @@ impl OffscreenHostBuilder {
 }
 
 impl OffscreenHost {
-    /// The token this host's one window is addressed by — handed to
-    /// [`App::update`] and [`App::record`], and all an offscreen app ever
-    /// sees. Fixed rather than caller-chosen: there is exactly one window and
-    /// no lifecycle, so a choice here would carry no information.
+    /// The token of this host's one window, as handed to [`App::update`] and [`App::record`].
     pub const WINDOW: WindowToken = WindowToken(0);
 
-    /// Start building an offscreen host. The text shaper defaults to bundled
-    /// fonts, GPU timing defaults off, the clock defaults to realtime, and
-    /// physical-pixel snapping defaults on.
+    /// Starts building an offscreen host: bundled fonts, no GPU timing, realtime clock, pixel snapping on.
     pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
@@ -262,42 +154,24 @@ impl OffscreenHost {
         }
     }
 
-    /// Mutable access to the window's `Ui` for building scenes.
+    /// Mutable access to the window's `Ui`.
     pub const fn ui(&mut self) -> &mut Ui {
         &mut self.driver.ui
     }
 
-    /// Deliver one input event to the window's `Ui`, and report whether it
-    /// asks for a repaint.
-    ///
-    /// The headless peer of the winit host's event pump: an offscreen host
-    /// drives a real [`App`], so it needs the door for the pointer and the
-    /// keyboard that a windowed one has. The event is stamped with this
-    /// host's own clock — the one that also stamps its frames — so a press
-    /// between two frames is timed against the other presses rather than
-    /// against the frame that carried it.
+    /// Delivers one input event to the window's `Ui` and reports whether it asks for a repaint, stamped with the host's clock.
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         let now = self.driver.now();
         self.driver.ui.on_input(event, now)
     }
 
-    /// Run one offscreen application frame against `target`, filling the
-    /// supplied texture even when the UI has not changed since the previous
-    /// call. The target may be replaced between calls. [`Self::WINDOW`] is
-    /// passed to [`App::update`] and [`App::record`], with the same once-only
-    /// update and replayable record semantics as [`crate::WinitHost`].
+    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged; the target may change between calls. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].
     ///
-    /// `system_scale` stands in for the device pixel ratio a platform would
-    /// report. The app's own scale multiplies onto it, exactly as in a
-    /// window, so a render at 200% asks for it through
-    /// [`Ui::set_user_scale`](crate::Ui::set_user_scale) rather than by
-    /// doubling this.
+    /// `system_scale` stands in for the platform's device pixel ratio; the app's scale multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200% render).
     ///
     /// # Panics
     ///
-    /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame
-    /// recorded [`Ui::open_window`] / [`Ui::close_window`] — this host has no
-    /// window lifecycle.
+    /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame recorded [`Ui::open_window`] / [`Ui::close_window`].
     pub fn frame<T: App>(
         &mut self,
         target: RenderTarget<'_>,
@@ -313,28 +187,21 @@ impl OffscreenHost {
         let key = TargetKey::of(target);
         let driver = &mut self.driver;
         driver.note_target(key);
-        // No monitor, so no refresh rate to declare.
         let display = driver.display(key.physical, system_scale, None);
         let CpuFrame { report, mode } = self.core.cpu_frame(driver, display, app);
-        // Before submitting: a frame that asked for a window it can never get
-        // is a caller error, and reporting it against an untouched target
-        // keeps the failure clean.
+        // Before submitting, so the failure leaves the target untouched.
         driver.deny_window_commands();
         self.core.submit(driver, target, mode);
         report
     }
 
-    /// Cloneable handle to the most-recent GPU instrumentation sample —
-    /// same handle the `Ui` debug overlay reads from.
+    /// Handle to the most recent GPU instrumentation sample, as the debug overlay reads.
     pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
         &self.core.resources.diagnostics().gpu_pass_stats
     }
 }
 
-/// Peepholes for the visual suite — cache introspection for the
-/// format-change test, and a forced full repaint for the pixel damage
-/// oracle — and the draw list the `record_pass` benchmark replays. Gated
-/// because the first two call `internals`-gated `WgpuBackend` helpers.
+/// Peepholes for the visual suite and the `record_pass` benchmark.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::gpu::surface::render_target::TargetFormat;
@@ -342,45 +209,34 @@ pub(crate) mod internals {
     #[cfg(feature = "bench")]
     use crate::renderer::render_buffer::RenderBuffer;
 
-    /// Draw list the most recent [`OffscreenHost::frame`]
-    /// composed. The `record_pass` benchmark replays the schedule over it
-    /// to report the exact step counts behind each timing — a number the
-    /// backend never publishes, because counting steps on the production
-    /// path would cost what the benchmark exists to measure.
+    /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
     #[cfg(feature = "bench")]
     pub(crate) const fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
         &host.core.frontend.buffer
     }
 
     impl OffscreenHost {
-        /// Shade every shadow corner's cutout from now on instead of baking
-        /// tables: the reference the visual suite compares the tables with.
+        /// Shades every shadow corner's cutout instead of baking tables; the visual suite's reference.
         pub fn disable_cutout_tables(&mut self) {
             self.driver.disable_cutout_tables();
         }
 
-        /// Draw every shadow as one cell of the full form instead of its
-        /// grid: the reference the visual suite compares the grid with.
+        /// Draws every shadow as one cell instead of its grid; the visual suite's reference.
         pub fn disable_shadow_grid(&mut self) {
             self.core.backend.disable_shadow_grid();
         }
 
         /// Whether the shared backend has built a pipeline set for `format`.
-        /// Lets format-change tests confirm a new format materializes its own
-        /// pipelines.
         pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
             self.core.backend.has_format_pipelines(format)
         }
 
-        /// Images resident in the GPU texture cache. Used by the format-change
-        /// test to assert the cache survives a new format's pipeline build (no
-        /// re-upload).
+        /// Images resident in the GPU texture cache.
         pub fn gpu_image_cache_len(&self) -> usize {
             self.core.backend.gpu_image_cache_len()
         }
 
-        /// Paint the next frame in full, as after a swapchain reconfigure:
-        /// the reference a partial repaint is compared against.
+        /// Paints the next frame in full, as after a swapchain reconfigure.
         pub const fn invalidate_target_contents(&mut self) {
             self.driver.invalidate_target_contents();
         }
@@ -399,11 +255,7 @@ mod tests {
     use crate::widgets::block::Block;
     use glam::UVec2;
 
-    /// The CPU half leaves a frame's output pending and the GPU half
-    /// completes it, on a real device: the paint's submit, and the copy
-    /// a still frame re-presents the backbuffer with. Each frame runs the
-    /// two halves of [`OffscreenHost::frame`] apart so the state between
-    /// them can be read.
+    /// The CPU half leaves a frame's output pending and the GPU half completes it.
     #[test]
     fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
         let gpu = headless_test_gpu();

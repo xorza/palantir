@@ -1,26 +1,14 @@
-//! Coarse gates over the whole pipeline, the counterpart to the
-//! fine-grained fixtures next door.
-//!
-//! Those audit small scenes one at a time, with no device, so a failure
-//! can name the line that allocated. These three answer what a small
-//! scene cannot: whether the pipeline allocates at all at *full* scale,
-//! whether the wgpu floor beneath it has drifted, and what a frame costs
-//! when every glyph and icon on it misses its atlas.
+//! Coarse gates over the whole pipeline, counterpart to the small fixtures next door: full-scale allocation, the wgpu floor, and a frame where every glyph and icon misses its atlas.
 //!
 //! | gate | covers | budget |
 //! |---|---|---|
-//! | [`full_tree_cpu_frame_alloc_free`] | record → measure → arrange → cascade → damage → encode → compose over the frame bench's own tree, through real cosmic shaping, on a deviceless frontend | strict zero |
-//! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame`, wgpu submission included, over a still tree | an empty scene's cost through the same target |
-//! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | a frame under a continuous zoom: full damage, glyph and icon rasterization, both atlases' insert paths | the measured miss cost |
+//! | [`full_tree_cpu_frame_alloc_free`] | record through compose over the frame bench's tree, real cosmic shaping, deviceless | strict zero |
+//! | [`on_gpu::still_tree_frame_costs_the_empty_floor`] | a whole frame through `OffscreenHost::frame` over a still tree | an empty scene's cost through the same target |
+//! | [`on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`] | a frame under continuous zoom: full damage, glyph and icon rasterization | the measured miss cost |
 //!
-//! The two in [`on_gpu`] take a device, and what they count is partly
-//! the driver's rather than a strict zero, which is what earns them a
-//! module of their own.
+//! The two in [`on_gpu`] take a device, so what they count is partly the driver's, not a strict zero.
 //!
-//! All three audit each measured frame on its own rather than summing a
-//! window, so an intermittent grow-on-Nth-frame allocation (`Vec`
-//! doubling, a `HashMap` rehash) fails on the frame that did it and
-//! arrives with that frame's backtraces attached.
+//! Each measured frame is audited on its own, so a grow-on-Nth-frame allocation fails on its frame with backtraces.
 
 pub(crate) mod on_gpu;
 
@@ -31,29 +19,14 @@ use palantir::internals::harness::frontend_harness::FrontendHarness;
 
 use crate::harness::Audit;
 
-/// Measured, the fixture stabilizes by frame 4 — at 1 it still leaks
-/// ~10 blocks — so this is margin. Too short is safe in the direction
-/// that matters: the leftovers land inside the measured window and trip
-/// the gate rather than hiding under it.
+/// The fixture stabilizes by frame 4 (at 1 it leaks ~10 blocks); too short is the safe direction.
 pub(crate) const WARMUP_FRAMES: usize = 16;
-/// Long enough for a once-every-N-frames allocation to land inside the
-/// window rather than after it.
+/// Long enough for a once-every-N-frames allocation to land inside the window.
 pub(crate) const MEASURE_FRAMES: usize = 256;
 
-/// Pins the `AGENTS.md` claim: "Per-frame allocation is a real metric.
-/// Steady-state must be heap-alloc-free after warmup." Strict zero,
-/// because everything on this path is ours.
+/// Pins the `AGENTS.md` claim that steady state is heap-alloc-free after warmup; strict zero, since everything on this path is ours.
 ///
-/// Renders the frame bench's tree at its surface and dpr, through real
-/// cosmic shaping rather than the mono fallback — so what clears here is
-/// the tree that bench times, not a smaller stand-in whose quieter
-/// caches prove less.
-///
-/// Every frame runs the whole CPU pipeline, through encode and compose
-/// on the deviceless frontend. The tree stands still, so its frames plan
-/// no paint after the first; each then repaints the whole scene anyway,
-/// so the encoder and the composer see every node on every measured
-/// frame.
+/// Renders the frame bench's tree through real cosmic shaping; every frame repaints the whole scene through compose on the deviceless frontend.
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();

@@ -24,42 +24,33 @@ use std::hint::black_box;
 
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
 
-/// Distinct committed widths a drag frame cycles through before
-/// repeating. Comfortably past [`crate::text::RENDERED_RUN_KEEP_FRAMES`] so a
-/// recycled width is a genuine miss rather than an accidental hit —
-/// otherwise the arm would quietly drift into measuring the cache.
+/// Distinct committed widths a drag frame cycles through. Well past
+/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`], so a recycled width is a real
+/// miss rather than a cache hit.
 const DRAG_WIDTHS: u32 = 512;
 
-/// Drag frames run before the measured section, to decide residency
-/// deterministically rather than leaving it to however many iterations
-/// criterion picked. Past [`crate::text::RENDERED_RUN_KEEP_FRAMES`], so a
-/// promoted buffer would still be inside its window and unretired
-/// widths would pile up visibly; under [`DRAG_WIDTHS`], so no width
-/// repeats.
+/// Drag frames run before the measured section, so residency does not depend
+/// on criterion's iteration count. Past
+/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] (unretired widths show), under
+/// [`DRAG_WIDTHS`] (no width repeats).
 const DRAG_PRIME_FRAMES: u32 = 256;
 
-/// Shaped buffers a superseding drag may hold: the live width, the
-/// unbounded root, and whatever is still inside the probation window,
-/// with room to spare. Derived rather than hardcoded so it tracks the
-/// window it is really about — the failure it guards against retains
-/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] of them instead.
+/// Shaped buffers a superseding drag may hold: the live width, the unbounded
+/// root and the probation window, with room to spare. Derived so it tracks
+/// the window; the failure guarded against retains
+/// [`crate::text::RENDERED_RUN_KEEP_FRAMES`] of them.
 const DRAG_RESIDENCY_LIMIT: usize = shaped_buffer_cache::PROBATION_KEEP_FRAMES as usize * 2 + 4;
 
-/// Distinct labels per frame in the reuse-layer A/B benches — a
-/// realistic mid-size UI's worth of text runs, enough that both maps
-/// see real cache pressure rather than one L1-resident entry.
+/// Distinct labels per frame in the reuse-layer A/B benches: a mid-size UI's
+/// text runs, enough for real cache pressure.
 const REUSE_LAYER_LABELS: usize = 64;
 
-/// Leading as a multiple of the font size. Named because two faces here
-/// want the same proportion — [`UI_FACE`] and whatever size the
-/// interleaving arm asks [`measure_truncated_face`] for — and a ratio
-/// spelled twice is one that can be changed in one of them.
+/// Leading as a multiple of the font size, shared by [`UI_FACE`] and
+/// [`measure_truncated_face`].
 const LEADING_RATIO: f32 = 1.2;
 
-/// The face every arm shapes in, stated once. `TestShape` is the same
-/// fixture the in-tree tests describe a face with — `bench` implies
-/// `internals`, so this side gets it too rather than re-deriving the
-/// constants per helper.
+/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture;
+/// `bench` implies `internals`.
 const UI_FACE: TestShape = TestShape::new(GlyphFont {
     size: 14.0,
     line_height: 14.0 * LEADING_RATIO,
@@ -80,8 +71,7 @@ fn measure_truncated_width(
         .shaped
 }
 
-/// [`measure_truncated_width`] at a caller-chosen face, for the arm that
-/// interleaves them.
+/// [`measure_truncated_width`] at a caller-chosen face, for the interleaving arm.
 fn measure_truncated_face(
     text_system: &mut TextSystem,
     slot: TextRunSlot,
@@ -90,9 +80,8 @@ fn measure_truncated_face(
     font_size: f32,
     weight: FontWeight,
 ) -> ShapedText {
-    // Overridden field by field rather than by struct update: outside
-    // `cfg(test)` the fixture is `font` alone, so `..UI_FACE` would be
-    // updating nothing.
+    // Set field by field: outside `cfg(test)` the fixture is `font` alone, so
+    // `..UI_FACE` would update nothing.
     let mut shape = UI_FACE;
     shape.font.size = font_size;
     shape.font.line_height = font_size * LEADING_RATIO;
@@ -103,35 +92,25 @@ fn measure_truncated_face(
         .shaped
 }
 
-/// One frame boundary as `FrameCycle::run` drives it: the reuse-row
-/// sweep, then the clock tick.
-///
-/// The tick is the caller's in production too, and a fixture that leaves
-/// it out measures a cache nothing can ever expire from — no probation,
-/// no protection, no sweep cost at all.
+/// One frame boundary as `FrameCycle::run` drives it: the reuse-row sweep,
+/// then the clock tick. The tick is the caller's in production too; leaving it
+/// out measures a cache nothing can expire from.
 fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
     text.end_frame(&WidgetIdSet::default());
     shaper.tick_frame();
 }
 
 /// A/B for the `TextSystem` reuse-slot layer: steady-state
-/// `TextSystem::measure` hits vs the raw shaper dispatches the
-/// layer-less design would issue per frame — one unbounded probe for
-/// single-line runs; unbounded root + bounded resolve for wrapped
-/// runs. Each iteration measures all [`REUSE_LAYER_LABELS`] labels
-/// once and then ends the frame; request construction — including the
-/// text hash — is inside the loop on both sides, as layout rebuilds it
-/// each frame either way.
+/// `TextSystem::measure` hits vs the raw shaper dispatches the layer-less
+/// design would issue per frame (one unbounded probe for single-line runs;
+/// unbounded root plus bounded resolve for wrapped runs). Each iteration
+/// measures all [`REUSE_LAYER_LABELS`] once and ends the frame; request
+/// construction, including the text hash, is inside the loop on both sides.
 ///
-/// The frame boundary belongs in the measured section, **split the way
-/// the two designs would really pay it**. `TextSystem::end_frame`
-/// retains every row it holds once a frame, and the layer-less arms
-/// have no rows to retain — so that half is the layer's alone, and
-/// leaving it out would hand the layer a discount on the very
-/// comparison meant to justify it. The clock tick is the other half
-/// and belongs to both: a design with no reuse rows still has a
-/// shaped-buffer cache to age, so charging it to one side only would
-/// bill the layer for a wheel drain it did not cause.
+/// The frame boundary is measured, split as each design would pay it:
+/// `TextSystem::end_frame` retains every row, which the layer-less arms lack,
+/// so it is the layer's alone; the clock tick ages the shaped-buffer cache in
+/// both designs, so it is charged to both.
 fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
     const WRAP_W: f32 = 150.0;
 
@@ -241,16 +220,15 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
 }
 
 /// The two workloads that separate a per-widget reuse address from a
-/// content-addressed one, kept as the standing evidence for why the reuse
-/// map is keyed on `(WidgetId, ordinal)` rather than on `TextShapeKey`.
+/// content-addressed one: the standing evidence for keying the reuse map on
+/// `(WidgetId, ordinal)` rather than `TextShapeKey`.
 ///
-/// `shared_content` draws one repeated label — a table column of "Enabled" —
-/// across many widgets, where content addressing would collapse 64 rows into
-/// one. `contended_width` measures that same repeated label at two widths,
-/// which per-widget rows hold in separate wrap slots and a single shared row
-/// cannot. Content-keying was prototyped against both: it lost 46% and 170%
-/// respectively, and 37-43% on the plain hit paths, because a 24-byte
-/// `TextShapeKey` hash costs more than the row dedup saves.
+/// `shared_content` draws one repeated label across many widgets, where
+/// content addressing would collapse 64 rows into one. `contended_width`
+/// measures that label at two widths, which per-widget rows hold in separate
+/// wrap slots and a shared row cannot. Content-keying was prototyped: it
+/// lost 46% and 170% on these and 37-43% on the plain hit paths, since a
+/// 24-byte `TextShapeKey` hash costs more than the dedup saves.
 fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
     fn request() -> TextShapeRequest<'static> {
         UI_FACE.unbounded_request(REPEATED)
@@ -313,30 +291,22 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
     });
 }
 
-/// One frame of a resize drag, which is the workload the shaped-buffer
-/// cache's retention policy exists for and the only arm here that
-/// reaches it: every other arm holds its widths still or never crosses
-/// a frame boundary, so probation, protection, supersession and expiry
-/// are all unreachable from them.
+/// One frame of a resize drag: the workload the shaped-buffer cache's
+/// retention policy exists for, and the only arm that reaches probation,
+/// protection, supersession and expiry.
 ///
-/// A drag commits a new whole-pixel width every frame, so each frame
-/// mints a bounded key nothing can ask for again — but leaves the
-/// *unbounded* root untouched, which is why one long-lived
-/// `TextSystem` is the honest fixture. Rebuilding it per batch (what
-/// the neighbouring churn arm does, to guarantee cold misses) would
-/// measure a cold cache forever and hide the retention behaviour
-/// entirely.
+/// Each frame commits a new whole-pixel width, minting a bounded key nothing
+/// asks for again while the unbounded root stays untouched, so one long-lived
+/// `TextSystem` is the honest fixture; rebuilding it per batch would measure
+/// a cold cache forever.
 ///
-/// Both halves of a frame are modelled — layout's measure *and* the
-/// encoder's restore — because the restore is what promotes a buffer
-/// onto the long window. A layout-only fixture leaves everything
-/// probationary, ages it out regardless, and reports a bounded cache
-/// whether retention works or not.
+/// Both halves of a frame are modelled, layout's measure and the encoder's
+/// restore, because the restore promotes a buffer onto the long window; a
+/// layout-only fixture ages everything out and looks bounded regardless.
 ///
-/// The residency assertion is the standing guard: with supersession
-/// working the drag holds a handful of buffers; without it every
-/// rendered frame is promoted to the 120-frame window and residency
-/// tracks the drag's length instead.
+/// The residency assertion is the standing guard: with supersession working
+/// the drag holds a handful of buffers; without it every rendered frame is
+/// promoted to the 120-frame window and residency tracks the drag's length.
 fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.group(c);
     let slot = TextRunSlot {
@@ -346,10 +316,8 @@ fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
     let shaper = TextShaper::new();
     let mut text = TextSystem::new(shaper.clone());
 
-    // Prime a fixed-length drag and judge residency on that. Reading it
-    // after the measured section instead would make the guard depend on
-    // however many iterations criterion chose — and report nothing at
-    // all under `--list`, where the routine never runs.
+    // Prime a fixed-length drag and judge residency on that, not on
+    // criterion's iteration count (which is zero under `--list`).
     for step in 0..DRAG_PRIME_FRAMES {
         black_box(drag_frame(&mut text, &shaper, slot, step));
     }
@@ -378,13 +346,9 @@ fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
 }
 
 /// One drag frame end to end: layout commits a fresh width, the encoder
-/// restores the buffer it will replay, and the frame boundary ages the
-/// cache.
-///
-/// All three matter. Drop the render and every buffer stays
-/// probationary, ages out on its own, and the arm reports a bounded
-/// cache whether retention works or not; drop the frame boundary and a
-/// drag becomes an unbounded fill.
+/// restores the buffer it will replay, and the frame boundary ages the cache.
+/// Dropping the render leaves everything probationary; dropping the boundary
+/// makes the drag an unbounded fill.
 fn drag_frame(
     text: &mut TextSystem,
     shaper: &TextShaper,
@@ -401,21 +365,17 @@ fn drag_frame(
     measured
 }
 
-/// The truncation *miss* path, which is where the ellipsis-advance memo
-/// is consulted: every frame commits a fresh width, so the cut is redone
-/// and the "…" reservation asked for again.
+/// The truncation miss path, where the ellipsis-advance memo is consulted:
+/// every frame commits a fresh width, so the cut and the "…" reservation are
+/// redone.
 ///
-/// Two arms, because the memo's whole question is how many faces a frame
-/// interleaves. `one_face` is the easy case any memo handles. `two_faces`
-/// alternates a body style with a heavier heading — a header above its
-/// detail row, a tree sized per depth — which is the order record
-/// traversal actually produces, and which a single-slot memo misses on
-/// every call.
+/// `one_face` is the easy case. `two_faces` alternates a body style with a
+/// heavier heading, the order record traversal produces, which a single-slot
+/// memo misses on every call.
 ///
-/// The label is long enough that the cut keeps a short prefix: that is
-/// the asymmetry `shape_truncated` is built around, since the whole
-/// string is shaped once into the cached unbounded probe and only the
-/// prefix is reshaped per width.
+/// The label is long enough that the cut keeps a short prefix: the whole
+/// string is shaped once into the cached unbounded probe and only the prefix
+/// is reshaped per width.
 fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
     const HEADING_PX: f32 = 20.0;
     let shaper = TextShaper::new();
@@ -453,8 +413,7 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
         b.iter(|| {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
-            // Body then heading, the way a row records: with one memo
-            // slot each of these evicts the other's face.
+            // Body then heading, as a row records: one memo slot evicts the other's face.
             let body =
                 measure_truncated_face(&mut text, slots[0], TEXT, width, 14.0, FontWeight::REGULAR);
             let head = measure_truncated_face(

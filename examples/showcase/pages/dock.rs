@@ -1,5 +1,4 @@
-//! A live dock: drag a chip onto another pane's edge to split it, into
-//! its strip to join, and onto a divider to resize.
+//! A live dock: drag a chip to another pane's edge to split, into its strip to join, onto a divider to resize.
 
 use crate::support;
 use crate::support::{body_style, note_style, well_bg};
@@ -8,8 +7,7 @@ use palantir::{
     InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
 };
 
-/// The showcase's own tab key: a small `Copy` value, which is all the
-/// dock ever stores.
+/// The showcase's tab key: a small `Copy` value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Tab {
     Canvas,
@@ -43,9 +41,7 @@ impl Tab {
 #[derive(Debug)]
 struct State {
     dock: DockState<Tab>,
-    /// The frame's operation sink, cleared and refilled by the two calls
-    /// below. A field rather than a local so the page allocates once
-    /// rather than once a frame.
+    /// The frame's operation sink, reused so the page allocates once.
     operations: Vec<DockOperation<Tab>>,
 }
 
@@ -71,7 +67,6 @@ impl Default for State {
     }
 }
 
-/// The showcase's viewer: every tab is a caption and a blurb.
 #[derive(Debug)]
 struct Panes;
 
@@ -138,9 +133,7 @@ pub(crate) fn build(ui: &mut Ui) {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 let mut panes = Panes;
-                // The two-call surface, spelled out: the scan settles the
-                // arrangement before the record walks it, so a click draws
-                // on the frame it lands.
+                // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
                 DockView::scan(ui, &s.dock, &mut s.operations);
                 for operation in s.operations.drain(..) {
@@ -156,8 +149,7 @@ pub(crate) fn build(ui: &mut Ui) {
     });
 }
 
-/// Buttons that re-open whichever tabs are closed, so the demo cannot be
-/// emptied down to the pinned pane and left there.
+/// Re-open closed tabs so the demo can't be emptied down to the pinned pane.
 fn reopen_row(ui: &mut Ui, s: &mut State) {
     let all_open = OPENABLE.iter().all(|&t| s.dock.find_tab(t).is_some());
     let line = if all_open {

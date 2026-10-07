@@ -24,11 +24,9 @@ fn run_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
 }
 
 fn run_frame_at(h: &mut UiHarness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
-    // The surface lives on the harness now, so a per-frame size has to be
-    // applied — the whole point of these cases is that available changes.
+    // The surface lives on the harness, so a per-frame size must be applied: available changes here.
     h.resize(size);
-    // These cases drive the snapshot restore, which a run that keeps the
-    // last output never reaches.
+    // Drives the snapshot restore, which a run that keeps the last output never reaches.
     h.engines.layout.forget_last_run();
     h.frame(|ui| {
         Panel::hstack()
@@ -135,9 +133,8 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
-    // The rects above must come from the replay, not from arrange
-    // re-deriving them — identical output either way, so without this the
-    // assertion says nothing about which path ran.
+    // The rects must come from the replay, not from arrange re-deriving them: the output is identical
+    // either way, so only this assertion says which path ran.
     assert_eq!(
         h.engines.layout.scratch.counters.arrange_replays(),
         ReplayCounts {
@@ -149,9 +146,8 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     assert_snapshot_is_linear(&h);
 }
 
-/// A recolour is paint, not layout: the measure cache keys on the layout
-/// half of the rollup, so a frame that only changes a fill hits at the
-/// root, where the full subtree hash did change.
+/// A recolour is paint, not layout: the measure cache keys on the layout half of the rollup, so a
+/// fill-only change hits at the root even though the full subtree hash changed.
 #[test]
 fn a_recolour_hits_the_measure_cache_at_the_root() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -182,8 +178,8 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
     });
     let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
-    // A layout change — the leaf's size. A colour change is paint and
-    // leaves the layout hash alone; that is the next test's case.
+    // A layout change (the leaf's size). A colour change is paint and leaves the layout hash alone, as
+    // `a_recolour_hits_the_measure_cache_at_the_root` shows.
     run_frame(&mut h, |ui| {
         build_wrapped_frame(ui, "a", 60.0, RgbaF32::srgb(0.2, 0.4, 0.8));
     });
@@ -488,12 +484,10 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     for frame in 0..8 {
         render(&mut h, frame % 2 == 0);
     }
-    // Only non-leaf nodes earn a descriptor, so adding and dropping a
-    // leaf leaves the id sequence — and its `descriptor_identity` — the
-    // same on every frame. Steady-state oscillation must therefore reuse
-    // the retained map rather than refilling it. Counted because the
-    // `debug_assert` inside the reuse branch is vacuous on a frame that
-    // rebuilt instead.
+    // Only non-leaf nodes earn a descriptor, so adding and dropping a leaf leaves the id sequence, and
+    // its `descriptor_identity`, the same every frame. Steady-state oscillation must reuse the retained
+    // map, not refill it. Counted because the `debug_assert` in the reuse branch is vacuous on a frame
+    // that rebuilt instead.
     let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
         h.engines.layout.cache.previous.nodes.desired.capacity(),
@@ -533,11 +527,9 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         "steady-state oscillation must reuse each buffer's descriptor map",
     );
 
-    // The other leg: re-key the container so the descriptor *ids* change,
-    // and the gate has to bust — a retained map that still answered for
-    // the old id would hand `try_lookup` a stale index. Without this the
-    // assertion above would pass just as well on a cache that had stopped
-    // rebuilding altogether.
+    // The other leg: re-key the container so the descriptor ids change and the gate must bust; a
+    // retained map answering for the old id would hand `try_lookup` a stale index. Without this, the
+    // assertion above would pass on a cache that had stopped rebuilding altogether.
     run_frame(&mut h, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("re-keyed"))
@@ -581,14 +573,12 @@ fn available_key_axis_invariants() {
     assert_eq!(MeasureCache::available_key(Size::ZERO), glam::IVec2::ZERO);
 }
 
-/// A frame whose layout inputs all match the last run keeps that run's
-/// output whole: a recolour keeps it, and so does the frame after a
-/// change once the change has run. A resize offers the root another
-/// extent and a moved overlay resolves another origin, so each runs
-/// again — and the kept output is the one a run would have written. The
-/// popup's margin of 5 puts its rect at `(20, 30) + 5 = (25, 35)`, so the
-/// move to `(25, 35)` lands the new origin where the old rect sat, and
-/// must still run, to `(25, 35) + 5 = (30, 40)`.
+/// A frame whose layout inputs all match the last run keeps that run's output whole: a recolour
+/// keeps it, and so does the frame after a change once it has run. A resize offers the root another
+/// extent and a moved overlay another origin, so each runs again, and the kept output is the one a
+/// run would have written. The popup's margin of 5 puts its rect at `(20, 30) + 5 = (25, 35)`, so
+/// a move to `(25, 35)` lands the new origin where the old rect sat and must still run, to
+/// `(25, 35) + 5 = (30, 40)`.
 #[test]
 fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     let mut h = UiHarness::new(UVec2::new(200, 200));

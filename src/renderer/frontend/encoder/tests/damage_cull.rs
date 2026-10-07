@@ -46,9 +46,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
     }
 }
 
-/// Cull subtree when filter misses it: clipped or transformed parent's
-/// Push/Pop and descendant draws all suppressed. By-convention trust:
-/// children stay inside the parent's screen_rect.
+/// Cull a subtree when the filter misses it: a clipped or transformed parent's Push/Pop and descendant draws are all suppressed, trusting children stay inside the parent's screen_rect.
 #[test]
 fn damage_filter_culls_subtree_outside_damage() {
     #[derive(Debug)]
@@ -56,8 +54,6 @@ fn damage_filter_culls_subtree_outside_damage() {
         Clipped,
         Transformed,
     }
-    // The whole stream a region over the subtree keeps: the wrap's
-    // push, the leaf's quad, the wrap's pop.
     let cases = [
         ("clipped", Wrap::Clipped, ["PushClip", "Quad", "PopClip"]),
         (
@@ -91,9 +87,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        // A region past the subtree culls the push, the pop and the draw;
-        // one over it keeps all three, so an encoder that drew nothing at
-        // all fails the second row.
+        // A region past the subtree culls push, pop and draw; one over it keeps all three, so an encoder that draws nothing fails the second row.
         let past = h.encode_paint_for(DamageRegion::from(Rect::new(150.0, 150.0, 50.0, 50.0)));
         assert!(
             past.calls.is_empty(),
@@ -211,8 +205,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             0,
             "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
         );
-        // The same scene uncut by damage draws the visible one, so the
-        // zero above is the cull's and not an encoder that draws nothing.
+        // Uncut by damage the same scene draws the visible one, so the zero above is the cull's.
         if let Cull::Damage = cull {
             assert_eq!(
                 count_draw_rects(&h.encode_paint()),
@@ -223,22 +216,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     }
 }
 
-/// Soundness repro for the encoder's damage cull, which must test
-/// `LayerCascade::subtree_paint_rects` (the node's own extent rolled up
-/// with every descendant's) rather than the node's own paint extent
-/// alone. When a descendant overflows the parent — a Canvas-positioned
-/// child placed outside the parent's `Fixed` bound, a shape with
-/// negative-margin overhang — an own-extent test at the parent skips the
-/// whole subtree even though a descendant's pixels DO lie inside damage.
-/// Symptom in real apps: panning a `Scroll` over a node-graph leaves
-/// trails of stale curves because the cull misses overhanging
-/// port-circle children.
-///
-/// This test forces that exact shape:
-///   parent (Canvas, Fixed 50×50) at (0..50, 0..50)
-///   └── child (Frame, Fixed 40×40) `.position(60, 0)` → (60..100, 0..40)
-/// Damage = (60..100, 0..40) — exactly the child's rect, no overlap
-/// with the parent's own rect. The child MUST emit a rect quad.
+/// Soundness repro: the damage cull must test `LayerCascade::subtree_paint_rects` (own extent rolled up with descendants'), or a descendant overflowing its parent is skipped though its pixels lie in damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40 `.position(60, 0)`, damage = the child's rect: the child must emit a rect quad.
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -266,29 +244,13 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
     );
 }
 
-/// Regression: a static node sitting in the backend's AA-padding ring —
-/// just *outside* the raw damage rect but inside the
-/// `RenderPlan::AA_PADDING`
-/// (2 physical px) the backend PreClears around each scissor — must still
-/// emit its draw. The backend clears the padded region every partial
-/// frame; if the encoder's subtree-cull only tested the raw (unpadded)
-/// damage rect, that node would be cleared but never repainted, leaving a
-/// hard cut exactly along the damage boundary. This is the "dragging a
-/// bezier wire past a node border / port circle leaves it cropped along
-/// the wire's bbox edge" bug.
-///
-/// A node comfortably *beyond* the pad ring must still be culled, so the
-/// margin doesn't silently disable damage culling.
+/// Regression: a static node in the backend's AA-padding ring (outside the raw damage rect, inside `RenderPlan::AA_PADDING`, 2 physical px) must still draw, since the backend clears the padded region every partial frame; testing only the raw rect left a hard cut along the damage boundary. A node beyond the ring must still be culled.
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
-    // At `scale_factor() == 1` (UiHarness::new) the cull margin is
-    // `RenderPlan::AA_PADDING + 1 = 3` logical px. A neighbor 2 px away is
-    // inside the pad the backend clears → must repaint; one 10 px away is
-    // well past the margin → must stay culled.
+    // At `scale_factor() == 1` the cull margin is `RenderPlan::AA_PADDING + 1 = 3` logical px: a neighbour 2 px away repaints, one 10 px away stays culled.
     let cases: &[(&str, Rect, usize)] = &[
         ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
-        // The margin repaints any gap under 3 px. At 3 the pad's 2 px of
-        // clear stops a pixel short of the neighbour, so it stays culled.
+        // Any gap under 3 px repaints; at 3 the pad's 2 px of clear stops a pixel short, so it stays culled.
         ("at_the_margin_gap_3", Rect::new(60.0, 100.0, 37.0, 20.0), 0),
         (
             "past_the_margin_gap_4",
@@ -304,8 +266,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    // Static neighbour at (100..120, 100..120) — stands in
-                    // for a node border / port circle the wire swept past.
+                    // Static neighbour at (100..120, 100..120), standing in for a node border the wire swept past.
                     Block::new()
                         .id(WidgetId::from_hash("neighbour"))
                         .position(Vec2::new(100.0, 100.0))

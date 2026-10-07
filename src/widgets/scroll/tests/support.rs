@@ -15,7 +15,7 @@ use glam::{UVec2, Vec2};
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 600);
 
-/// A `w × h` block — the content a scroll test pans, zooms or bars over.
+/// A `w × h` block of scroll content.
 pub(super) fn fixed_block(ui: &mut Ui, id: WidgetId, w: f32, h: f32) {
     Block::new()
         .id(id)
@@ -27,9 +27,7 @@ pub(super) fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
     driven(ui, viewport_h, content_h, Vec2::ZERO);
 }
 
-/// [`build`] with a pan request folded in — the viewport driven by
-/// authoring code rather than by a pointer. `build` passes a zero one,
-/// which the widget takes as the no-op it is.
+/// [`build`] with a pan request folded in: driven by authoring code, not a pointer.
 pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
@@ -44,9 +42,7 @@ pub(super) fn driven(ui: &mut Ui, viewport_h: f32, content_h: f32, pan: Vec2) {
         });
 }
 
-/// A zoomable viewport, taking one [`Scroll::zoom_by`] per entry of
-/// `factors` — so a case can ask what several requests on one builder
-/// compose to. Read back through [`read_state`], like its panning peer.
+/// A zoomable viewport taking one [`Scroll::zoom_by`] per entry of `factors`; read back through [`read_state`].
 pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
     let mut scroll = Scroll::both()
         .id(WidgetId::from_hash("scroll"))

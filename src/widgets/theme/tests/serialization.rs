@@ -55,8 +55,7 @@ fn widget_look_serde_roundtrip() {
         let serialized = pretty(&look);
         let parsed: WidgetLook = ron::from_str(&serialized).expect("parse");
         assert_eq!(look, parsed);
-        // A file names only the axes a look overrides, and an inheriting
-        // look writes no `text` at all.
+        // A file names only the axes a look overrides; an inheriting look writes no `text`.
         assert_eq!(
             serialized.contains("text:"),
             !look.text.is_empty(),
@@ -66,10 +65,7 @@ fn widget_look_serde_roundtrip() {
     }
 }
 
-/// An override is checked as far as the axes it names reach: a size or a
-/// leading alone on its own terms, both together as the face they make.
-/// `16 × 0.000001 = 0.000016` is under EPS = 0.0001, though each half is
-/// valid alone.
+/// An override is checked as far as the axes it names reach: a size or leading alone, both together as the face they make. `16 × 0.000001 = 0.000016` is under EPS = 0.0001 though each half is valid alone.
 #[test]
 fn text_overrides_reject_invalid_metrics_on_load() {
     for (label, ron, ok) in [

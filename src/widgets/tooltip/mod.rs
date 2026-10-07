@@ -1,6 +1,5 @@
-//! The hover tooltip: the widget, the per-trigger hover clock it needs to
-//! honour a delay, and the app-global state that lets a second tooltip
-//! appear without re-serving the delay.
+//! The hover tooltip: the widget, its per-trigger hover clock, and the app-global
+//! state letting a second tooltip skip the delay.
 
 use crate::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
@@ -20,31 +19,24 @@ use crate::widgets::theme::tooltip::TooltipTheme;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
-/// hovered frame; elapsed = `now - hover_started_at`, immune to
-/// the frame runtime's `MAX_DT` clamp on idle wakes.
+/// Per-trigger state; `hover_started_at` is Ui-time, immune to the `MAX_DT` clamp
+/// on idle wakes.
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
 struct TooltipState {
     hover_started_at: Option<Duration>,
     visible: bool,
 }
 
-/// Singleton tracking the most recent moment any tooltip was visible.
-/// Cold-start tooltips within `theme.warmup` of `last_visible_at`
-/// skip their delay (egui-style toolbar warmup).
+/// Singleton holding when any tooltip was last visible; a cold tooltip within
+/// `theme.warmup` of it skips its delay.
 #[derive(Default, Clone, Copy, Debug)]
 struct TooltipGlobal {
     last_visible_at: Option<Duration>,
 }
 
-/// Hover-driven text bubble attached to a trigger widget. Records into
-/// [`crate::scene::layer::Layer::Tooltip`] after the pointer has rested
-/// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
-/// seconds. A short warmup window (configured on the theme) keeps
-/// subsequent tooltips instant after one was dismissed, so scanning a
-/// row of buttons doesn't re-delay on every move.
-///
-/// Two-line attachment:
+/// Hover-driven text bubble attached to a trigger widget, recorded into
+/// [`Layer::Tooltip`](crate::scene::layer::Layer::Tooltip) after the pointer rests
+/// for the theme's delay; the theme's warmup keeps later tooltips instant.
 ///
 /// ```
 /// # use palantir::{Button, Tooltip, Ui};
@@ -54,15 +46,9 @@ struct TooltipGlobal {
 /// # }
 /// ```
 ///
-/// Tooltips are pointer-driven only and skip recording on disabled
-/// triggers by default. Pass `.when_disabled(true)` to opt in for
-/// "why is this disabled?" hints.
-///
-/// Implements [`Configure`], so the bubble takes `.padding(...)`,
-/// `.max_size(...)`, `.size(...)`, `.margin(...)` and the rest like any
-/// other widget. Identity defaults to the trigger's id — a tooltip has
-/// no call site of its own worth keying on — but an explicit `.id(...)`
-/// / `.id_salt(...)` wins.
+/// Pointer-driven only, and skipped on disabled triggers unless
+/// `.when_disabled(true)`. Implements [`Configure`]; identity defaults to the
+/// trigger's id.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Tooltip<'a> {
@@ -76,17 +62,12 @@ pub struct Tooltip<'a> {
 }
 
 impl<'a> Tooltip<'a> {
-    /// Attach a tooltip showing `text` to the given trigger response
-    /// snapshot. The snapshot carries the trigger's `WidgetId` and
-    /// last-frame rect — both drive timer keying and anchor computation.
-    /// Pass via `trigger.snapshot()` to detach from the trigger's `&Ui`
-    /// borrow before recording the tooltip body.
-    ///
-    /// `text` is the bubble's whole content, so it is required. An empty
-    /// one records no bubble at all.
+    /// Attach a tooltip showing `text` to a trigger's response snapshot
+    /// (`trigger.snapshot()` releases the `&Ui` borrow). An empty `text` records no
+    /// bubble.
     #[track_caller]
     pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
-        // Bubble must never claim hover — would shadow its own trigger.
+        // The bubble must never claim hover, or it would shadow its trigger.
         let widget = Widget::vstack().sense(Sense::NONE);
         Self {
             snapshot,
@@ -99,35 +80,28 @@ impl<'a> Tooltip<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `tooltip`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// Per-field [`Self::background`] / [`Self::delay`] still win over it.
+    /// Per-instance override of [`crate::Theme`]'s `tooltip`.
     pub fn style(mut self, s: impl Into<Option<&'a TooltipTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Override the per-tooltip delay. Falls back to
-    /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
+    /// Override the delay; falls back to the theme's.
     pub const fn delay(mut self, delay: Duration) -> Self {
         self.delay = Some(delay);
         self
     }
 
-    /// Allow the tooltip to fire on disabled triggers. Off by default —
-    /// most disabled tooltips would be UX noise.
+    /// Allow the tooltip on disabled triggers. Off by default.
     pub const fn when_disabled(mut self, yes: bool) -> Self {
         self.when_disabled = yes;
         self
     }
 
-    /// Tick the hover timer, update visibility, and (when visible)
-    /// record the bubble into `Layer::Tooltip` anchored next to the
+    /// Tick the hover timer and, when visible, record the bubble next to the
     /// trigger.
     pub fn show(self, ui: &mut Ui) -> TooltipResponse {
-        // Handle, not a borrow: the bundle may point into the `Ui`'s own
-        // theme, and the record below reborrows `ui` mutably.
+        // A handle, not a borrow: recording below reborrows `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let theme = self.style.unwrap_or(&ui_theme.tooltip);
         let delay = self.delay.unwrap_or(theme.delay);
@@ -137,25 +111,19 @@ impl<'a> Tooltip<'a> {
         let trigger_id = self.snapshot.id;
         let bubble_id = trigger_id.with("bubble");
 
-        // The observation, not the reaction: the two agree for an enabled
-        // trigger, and a disabled one is never hovered — which is the
-        // trigger `when_disabled` exists for.
+        // The observation, not the reaction: a disabled trigger is never hovered,
+        // which `when_disabled` is for.
         let pointer_over = self.snapshot.state.pointer_over;
         let trigger_disabled = self.snapshot.state.disabled;
         let trigger_rect = self.snapshot.state.rect;
-        // An empty label is inactive rather than an empty bubble, and
-        // inactive early enough that the hover timer never arms and no
-        // wake is queued for a tooltip that could never appear.
         let active_trigger =
             pointer_over && !self.label.is_empty() && (!trigger_disabled || self.when_disabled);
 
         let now = ui.now();
 
-        // A tooltip attaches to a trigger that is idle on almost every
-        // frame it is recorded, so nothing here may touch the state map
-        // unconditionally: the read probes without materialising a row, the
-        // warmup singleton is only asked for by a hovered trigger, and the
-        // write-back below is gated on an actual change.
+        // Idle on almost every frame, so nothing here touches the state map
+        // unconditionally: reads probe without creating a row, writes are gated on
+        // change.
         let prev: TooltipState = ui
             .state::<TooltipState>(trigger_id)
             .copied()
@@ -171,9 +139,8 @@ impl<'a> Tooltip<'a> {
                 t
             } else {
                 state.hover_started_at = Some(now);
-                // One wake at the threshold is enough — the queue
-                // remembers it. If the user moves off before then
-                // the wake still fires into a no-op frame; cheap.
+                // One wake at the threshold is enough; a stale one is a cheap no-op
+                // frame.
                 ui.request_repaint_after(delay);
                 now
             };
@@ -194,18 +161,13 @@ impl<'a> Tooltip<'a> {
             let label = self.label;
             let chrome = self.chrome.as_ref().unwrap_or(&theme.panel);
             let text = theme.text.apply(&ui_theme.text);
-            // Theme fills in whatever the caller left alone. Identity
-            // derives from the trigger, because that is the only thing a
-            // tooltip *has* — but a caller-set id wins like any other
-            // explicit value.
             let mut bubble = self
                 .widget
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
-            // `Backdrop::None`: a tooltip annotates rather than
-            // interrupts, and it is recorded every frame it is up — a
-            // scope would cut off every layer below it for as long.
+            // `Backdrop::None`: a tooltip annotates, and a scope recorded every
+            // frame would cut off every layer below.
             let scope = OverlayScope::claim(
                 ui,
                 Layer::Tooltip,
@@ -233,15 +195,13 @@ impl<'a> Tooltip<'a> {
 }
 
 impl Tooltip<'_> {
-    /// Paint `background` as this widget's background.
-    ///
-    /// `None` is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme().tooltip.panel` when unset. Pass
-    /// [`Background::NONE`] to suppress the themed bubble chrome.
+    /// Paint `background` as this widget's background; unset falls back to the
+    /// theme's. [`Background::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background)
+    /// lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         background.validate();
@@ -249,15 +209,13 @@ impl Tooltip<'_> {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paint `background` unless the caller set one, for a wrapper theming a widget
+    /// after the caller's setters.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`](crate::Background)
+    /// lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         background.validate();
@@ -275,13 +233,8 @@ impl Configure for Tooltip<'_> {
     }
 }
 
-/// What one pass over a [`Tooltip`] produced.
-///
-/// No [`Response`](crate::Response) here, unlike the other widget results:
-/// the bubble senses nothing and does not record at all on the frames it is
-/// down, so there is no node an application would ask about. Whether it is
-/// up is the whole answer — for a trigger that wants to paint differently
-/// while its hint is showing.
+/// What one pass over a [`Tooltip`] produced. No [`Response`](crate::Response): the
+/// bubble senses nothing and records nothing while down.
 #[derive(Debug, Clone, Copy)]
 pub struct TooltipResponse {
     /// The bubble recorded this frame.

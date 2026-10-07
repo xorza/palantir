@@ -2,10 +2,7 @@
 
 use crate::primitives::layout::justify::Justify;
 
-/// Main-axis offset + effective inter-child gap for one row of
-/// `justify`-distributed children. Single source of truth for Stack and
-/// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules
-/// (count < 2 / count < 1) in one place.
+/// Main-axis offset and effective gap for one row of `justify`-distributed children; the single source for Stack and WrapStack.
 #[derive(Debug)]
 pub(super) struct JustifyOffsets {
     pub(super) start: f32,
@@ -13,8 +10,7 @@ pub(super) struct JustifyOffsets {
 }
 
 impl JustifyOffsets {
-    /// The offsets `justify` asks for, given `leftover` free main-axis
-    /// space across `count` children at a base `gap`.
+    /// The offsets `justify` asks for with `leftover` free space across `count` children at base `gap`.
     pub(super) const fn new(justify: Justify, leftover: f32, gap: f32, count: usize) -> Self {
         match justify {
             Justify::Start => Self { start: 0.0, gap },

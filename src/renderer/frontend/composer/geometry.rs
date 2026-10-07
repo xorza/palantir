@@ -1,5 +1,5 @@
-//! The arithmetic a composed frame is cut with: how a curve is subdivided, how
-//! a join is chosen, and how a logical rectangle lands on physical pixels.
+//! Arithmetic a composed frame is cut with: curve subdivision, join choice, and
+//! how a logical rect lands on physical pixels.
 
 use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
@@ -16,24 +16,17 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
 
-/// Upper bound on sub-instances per curve. Long, fast-curving strokes
-/// (think a 4k-px-long swooping bezier at 200% zoom) hit this cap;
-/// beyond it the chord error rises but stays well under a pixel for
-/// any realistic UI workload. Cap is a sanity belt — far above the
-/// 1–4 sub-instance steady state.
+/// Upper bound on sub-instances per curve, a sanity belt far above the 1-4
+/// steady state; past it the chord error rises but stays under a pixel.
 const MAX_SUB_INSTANCES: u32 = 256;
 
-/// Target chord length for GPU-stroke subdivision, physical px. The
-/// shader bakes `SEGMENTS_PER_INSTANCE` chords per instance; the
-/// composer sizes the instance count so each chord lands near this
-/// length — short enough that the 0.5 px AA fringe fully covers any
-/// sub-pixel kink between chords. Shared by the cubic (control-polygon
-/// length bound) and arc (exact `r·|sweep|` length) paths.
+/// Target chord length for GPU-stroke subdivision, physical px: short enough
+/// that the 0.5 px AA fringe covers any kink between chords. Shared by the
+/// cubic (control-polygon bound) and arc (`r*|sweep|`) paths.
 const TARGET_CHORD_PX: f32 = 1.5;
 
-/// Sub-instance count for a GPU stroke of on-screen length `len_px`:
-/// enough `SEGMENTS_PER_INSTANCE`-chord instances that each chord
-/// lands near [`TARGET_CHORD_PX`], clamped to [`MAX_SUB_INSTANCES`].
+/// Sub-instance count for a GPU stroke of on-screen length `len_px`, so each
+/// chord lands near [`TARGET_CHORD_PX`]; clamped to [`MAX_SUB_INSTANCES`].
 #[inline]
 #[expect(
     clippy::cast_sign_loss,
@@ -46,18 +39,15 @@ pub(super) fn sub_instance_count(len_px: f32) -> u32 {
         .clamp(1, MAX_SUB_INSTANCES)
 }
 
-/// Squared distance below which two consecutive transformed polyline
-/// points count as coincident and the latter is dropped — a
-/// zero-length segment has no direction (`normalize` would NaN the
-/// joint planes), so it must contribute no geometry, and its color
-/// drops with it.
+/// Squared distance below which consecutive transformed polyline points are
+/// coincident and the latter is dropped: a zero-length segment has no
+/// direction (`normalize` would NaN the joint planes).
 pub(super) const POLYLINE_COINCIDENT_EPS_SQ: f32 = 1e-12;
 
-/// Chrome kind for the joint between two polyline segments with unit
-/// directions `d_a` (into the joint) and `d_b` (out of it). `Miter`
-/// downgrades to bevel past [`MITER_LIMIT`] — the SVG convention; an
-/// antiparallel fold (180°, bisector undefined) renders round — the
-/// only join whose shape is well-defined there.
+/// Join kind between two polyline segments with unit directions `d_a` (into
+/// the joint) and `d_b` (out). `Miter` downgrades to bevel past
+/// [`MITER_LIMIT`] (the SVG convention); an antiparallel fold renders round,
+/// the only well-defined join there.
 pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> CurveKind {
     let sum = d_a + d_b;
     let len_sq = sum.length_squared();
@@ -68,7 +58,6 @@ pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> CurveK
         LineJoin::Round => CurveKind::JOIN_ROUND,
         LineJoin::Bevel => CurveKind::JOIN_BEVEL,
         LineJoin::Miter => {
-            // |d_a + d_b| = 2·cos(half turn angle) for unit inputs.
             let cos_half = 0.5 * len_sq.sqrt();
             if cos_half < 1.0 / MITER_LIMIT {
                 CurveKind::JOIN_BEVEL
@@ -79,17 +68,14 @@ pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> CurveK
     }
 }
 
-/// Max perpendicular distance (physical px) of a cubic's inner control
-/// points from the chord line for the curve to count as flat. The
-/// curve deviates at most `3/4 · max(d1, d2)` from the chord, so at
-/// this threshold it sits within ~0.075 px of a straight line —
-/// invisible under the 0.5 px AA fringe at any chord density.
+/// Max perpendicular distance (physical px) of a cubic's inner control points
+/// from the chord for the curve to count as flat. The curve deviates at most
+/// `3/4 * max(d1, d2)`, so ~0.075 px: invisible under the AA fringe.
 const FLAT_EPS_PX: f32 = 0.1;
 
-/// True when the cubic's trace is visually indistinguishable from the
-/// straight segment `p0 → p3` (see [`FLAT_EPS_PX`]). Both inner CPs
-/// must sit within the threshold of the *infinite* chord line; a
-/// degenerate chord (closed curve) is never flat.
+/// True when the cubic is indistinguishable from the straight segment
+/// `p0 -> p3` ([`FLAT_EPS_PX`]): both inner CPs within the threshold of the
+/// *infinite* chord line. A degenerate chord (closed curve) is never flat.
 #[inline]
 pub(super) fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
     let chord = p3 - p0;
@@ -103,9 +89,8 @@ pub(super) fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
 }
 
 /// Snap the ancestor-transform component of a text run's scale to the
-/// additive 0.5% ladder. Identity is preserved exactly so non-zoom UIs
-/// stay on the trivial path. See call-site comment in `DrawText` for
-/// rationale.
+/// additive 0.5% ladder; identity is exact so non-zoom UIs stay on the trivial
+/// path.
 pub(super) fn snap_text_scale(s: f32) -> f32 {
     if (s - 1.0).abs() < EPS {
         return 1.0;
@@ -113,35 +98,21 @@ pub(super) fn snap_text_scale(s: f32) -> f32 {
     (s / TEXT_SCALE_STEP).fast_round() * TEXT_SCALE_STEP
 }
 
-/// The pixels a physical-px AABB covers, held inside the viewport — the
-/// `URect` the GPU can consume.
-///
-/// Both halves belong to the rectangles rather than here: which pixels a float
-/// rect touches is [`URect::covering`], and holding one inside another is
-/// [`URect::clamp_to`]. What this adds is the pairing, and the name the
-/// composer knows it by.
+/// The pixels a physical-px AABB covers, held inside the viewport: the `URect`
+/// the GPU consumes. Pairs [`URect::covering`] with [`URect::clamp_to`].
 pub(super) fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
 }
 
 /// Physical pixels per owner-local unit under `xform`.
-///
-/// Named because six draw paths need it and reached for it two ways —
-/// through the stack's `scale()` and through a `current()` already in
-/// hand — which is one spelling too many for a number every one of them
-/// multiplies a stroke width or a radius by.
 #[inline]
 pub(super) const fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32 {
     xform.scale * display_scale
 }
 
-/// The map from owner-local logical px to physical px: fold in the
-/// owner's origin, place by the active transform, scale by the display
-/// factor.
-///
-/// A closure rather than a per-point call, because every caller applies
-/// it to a run of points and the transform read belongs outside that
-/// loop.
+/// The map from owner-local logical px to physical px: owner origin, active
+/// transform, display factor. A closure so the transform read sits outside
+/// callers' per-point loops.
 #[inline]
 pub(super) fn phys_point_map(
     xform: TranslateScale,
@@ -151,11 +122,9 @@ pub(super) fn phys_point_map(
     move |q| xform.apply_point(q + origin) * display_scale
 }
 
-/// [`phys_point_map`]'s rect: an owner-local bbox in physical px.
-///
-/// Unsnapped — the tiers that fold a bbox this way (mesh, and the stroked
-/// pair through [`StrokeBbox::urect`]) all place sub-pixel geometry and
-/// let their shaders resolve the fringe.
+/// [`phys_point_map`]'s rect: an owner-local bbox in physical px. Unsnapped,
+/// since mesh and stroked tiers place sub-pixel geometry and let shaders
+/// resolve the fringe (see [`StrokeBbox::urect`]).
 #[inline]
 pub(super) fn phys_bbox(
     xform: TranslateScale,
@@ -177,10 +146,9 @@ pub(super) fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
 }
 
-/// One stroked shape's owner-local centerline and the style laid over
-/// it. Named fields rather than positional arguments: the curve and the
-/// polyline path differ in two of these and agree on the rest, which
-/// nothing at a call site could say.
+/// One stroked shape's owner-local centerline and the style laid over it.
+/// Named fields because the curve and polyline paths differ in two and agree
+/// on the rest.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct StrokeBbox {
     pub(super) xform: TranslateScale,
@@ -195,10 +163,9 @@ pub(super) struct StrokeBbox {
 }
 
 impl StrokeBbox {
-    /// Physical-px painted bounds. Folds `origin` + the active transform
-    /// into physical space, applies the shared stroke/cap/join/AA bound
-    /// once, then clamps to the viewport. Shared by the curve and
-    /// polyline paths so their cull and overlap bounds cannot drift.
+    /// Physical-px painted bounds: folds in `origin` and the active transform,
+    /// applies the shared stroke/cap/join/AA bound, clamps to the viewport. Shared
+    /// by curve and polyline paths so their cull and overlap bounds agree.
     pub(super) fn urect(self) -> URect {
         let Self {
             xform,

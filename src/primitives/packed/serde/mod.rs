@@ -1,12 +1,6 @@
-//! The shared four-lane wire format.
-//!
+//! The shared four-lane wire format: a number, a 1-, 2- or 4-node array, or a named table.
 //! [`Corners`](crate::primitives::geometry::corners::Corners) and
-//! [`Spacing`](crate::primitives::geometry::spacing::Spacing) both serialize as
-//! "a number, a 1-, 2-, or 4-node array, or a named table", differing
-//! only in what their lanes are called and how the 2-node shorthand
-//! expands. That policy is [`LaneCodec`], implemented next to each type;
-//! the `Serialize` / `Deserialize` impls that drive it live there too.
-//! What stays here is the machinery neither type owns.
+//! [`Spacing`](crate::primitives::geometry::spacing::Spacing) differ in lane names and 2-node expansion, which [`LaneCodec`] captures; the serde impls live beside each type.
 
 pub(crate) mod checked;
 
@@ -17,15 +11,9 @@ use ::serde::de::{self, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use ::serde::ser::SerializeSeq;
 use ::serde::{Deserializer, Serializer};
 
-/// Per-type policy for the shared lane serde. Implementors are the
-/// `[u16; 4]`-backed primitives whose four lanes carry domain meaning.
+/// Per-type policy for the shared lane serde, for `[u16; 4]`-backed primitives with four meaningful lanes.
 ///
-/// **A lane the table form omits reads as `0.0`** — the identity every
-/// type on this codec shares, so `{tl: 4}` is a radius on one corner
-/// and nothing on the others. A type whose neutral is something else
-/// does not belong here: `Size` reads an omitted axis as *unbounded*,
-/// and writes its own serde for that one reason. The table must still
-/// name a lane, matching the array form's rejection of an empty node.
+/// **An omitted table lane reads as `0.0`**, the identity every type here shares. A type with another neutral (`Size`: unbounded) writes its own serde. The table must still name a lane.
 pub(crate) trait LaneCodec: Sized {
     /// Struct-form field names, in lane order. Must be length 4.
     const FIELDS: &'static [&'static str];
@@ -33,16 +21,13 @@ pub(crate) trait LaneCodec: Sized {
     fn from_lane_array(lanes: [f32; 4]) -> Self;
     fn to_lane_array(&self) -> [f32; 4];
 
-    /// The 2-node shorthand for these lanes, when they collapse to
-    /// one. Callers have already ruled out the all-equal (scalar) case.
+    /// The 2-node shorthand when the lanes collapse to one; the all-equal case is ruled out by callers.
     fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]>;
 
     /// Expand a parsed 2-node array back to four lanes.
     fn expand_two(pair: [f32; 2]) -> [f32; 4];
 
-    /// Whether one parsed lane is a value this type can hold. A file is
-    /// untrusted, so a lane that fails is a deserialization error rather
-    /// than a value that reaches a NaN screen or an f16 overflow later.
+    /// Whether a parsed lane is holdable; failures are deserialization errors, not later NaN or f16 overflow.
     fn lane_is_valid(lane: f32) -> bool;
 
     /// What [`Self::lane_is_valid`] demands, for the error message.

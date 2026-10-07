@@ -1,29 +1,16 @@
-//! A viewer for the benchmark workload — the tree
-//! `cargo bench -p palantir --bench criterion -- -d frame` records, drawn
-//! live at a window-sized scale. `frame` is the one opt-in driver, so it
-//! runs only when `--driver` names it; a bare run selects none of it.
+//! A viewer for the benchmark workload (the tree `cargo bench -p palantir --bench criterion -- -d frame` records) drawn live at window scale. `frame` is the one opt-in driver, run only when `--driver` names it.
 //!
-//! Deliberately the one page that builds none of its own content and
-//! borrows none of [`crate::support`]'s tokens. The fixture's node
-//! structure is what makes bench numbers comparable across releases, so
-//! it owns its own look; a restyle of the tour must not reach in here and
-//! silently retarget every recorded series.
+//! The one page that builds no content of its own and borrows none of [`crate::support`]'s tokens: the fixture's node structure makes bench numbers comparable across releases, so a tour restyle must not retarget recorded series.
 //!
-//! What to look at: it should read as a real app screen, not a pile of
-//! widgets. Anything that looks broken here is a layout or paint
-//! regression the timing numbers alone would not have caught.
+//! It should read as a real app screen; anything broken here is a layout or paint regression timings alone would miss.
 
 use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{Ui, WidgetId};
 
-/// Content multiplier. The benches use 32 against a 3840x6000 offscreen
-/// target; this is sized so the card column fills a normal window instead
-/// of running thousands of pixels past the bottom of the page scroll.
+/// Content multiplier. The benches use 32 (`BENCH_SCALE`); this fills a normal window.
 const SCALE: usize = 6;
 
-/// The fixture holds the values the tree binds `&mut` to, so it lives in a
-/// state row across frames, as the benches hold it: a fresh one each frame
-/// would reset every control.
+/// The fixture holds the values the tree binds `&mut` to, so it lives in a state row as in the benches; a fresh one each frame would reset every control.
 pub(crate) fn build(ui: &mut Ui) {
     let id = WidgetId::from_hash("showcase::frame_bench::fixture");
     ui.with_state::<FrameFixture, _>(id, |ui, fixture| fixture.render(SCALE, ui));

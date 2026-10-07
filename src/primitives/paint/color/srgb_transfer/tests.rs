@@ -1,8 +1,7 @@
 use super::*;
 use crate::primitives::math::domain::internals::assert_close;
 
-/// The transfer function as the standard writes it, with `powf` in
-/// `f64`, rounded to `f32` once.
+/// The transfer function as the standard writes it: `powf` in `f64`, rounded to `f32` once.
 fn reference(c: f64) -> f32 {
     if c <= 0.040_45 {
         (c / 12.92) as f32
@@ -11,10 +10,7 @@ fn reference(c: f64) -> f32 {
     }
 }
 
-/// Every byte decodes to the reference bit for bit, through the table
-/// and through the float path both, and encodes back to itself. The
-/// float path takes the byte as the `f32` a caller would write,
-/// `byte / 255`, so its reference does too.
+/// Every byte decodes to the reference bit for bit, through table and float path, and encodes back to itself. The float path takes `byte / 255`, as a caller would write.
 #[test]
 fn every_byte_decodes_exactly_and_encodes_back() {
     for byte in 0u8..=255 {
@@ -31,9 +27,7 @@ fn every_byte_decodes_exactly_and_encodes_back() {
     }
 }
 
-/// A dense sweep of `f32` inputs across the curved branch and on into
-/// HDR values decodes to the reference bit for bit. Every 97th bit
-/// pattern from the knee to 64, about 450 000 inputs.
+/// A dense sweep (every 97th bit pattern from the knee to 64, ~450 000 inputs) decodes to the reference bit for bit.
 #[test]
 fn a_dense_float_sweep_decodes_exactly() {
     let first = 0.040_45f32.to_bits();
@@ -44,8 +38,7 @@ fn a_dense_float_sweep_decodes_exactly() {
     }
 }
 
-/// NaN and the infinities are not colours; they pass through rather
-/// than turning into a finite value.
+/// NaN and infinities are not colours; they pass through.
 #[test]
 fn non_finite_input_passes_through() {
     assert!(decode(f64::NAN).is_nan());
@@ -53,11 +46,7 @@ fn non_finite_input_passes_through() {
     assert_eq!(decode(f64::NEG_INFINITY), f32::NEG_INFINITY);
 }
 
-/// Each byte starts exactly at its threshold: the largest `f32` below
-/// threshold `i` encodes to `i`, and the smallest at or above it to
-/// `i + 1`. And the threshold is where the reference encode reaches
-/// `i + ½` — to `1e-9` of a step, well past the `1e-13` an `f64`
-/// `powf` round trip loses here.
+/// Each byte starts exactly at its threshold: the largest `f32` below threshold `i` encodes to `i`, the smallest at or above to `i + 1`, and the threshold is where the reference reaches `i + ½` to `1e-9` of a step (an `f64` `powf` round trip loses `1e-13`).
 #[test]
 fn a_byte_rises_exactly_at_its_threshold() {
     for (i, &threshold) in BYTE_THRESHOLDS.iter().enumerate() {
@@ -102,18 +91,13 @@ fn encode_byte_saturates_like_unit_to_u8() {
     }
 }
 
-/// The byte by binary search over the `f64` thresholds: what
-/// [`encode_byte`] computed before its bucket table, kept as its
-/// reference.
+/// The byte by binary search over the `f64` thresholds, the reference for the bucket table.
 fn searched(y: f32) -> u8 {
     let y = f64::from(y);
     BYTE_THRESHOLDS.partition_point(|&threshold| threshold <= y) as u8
 }
 
-/// The bucket lookup gives the searched byte for every 4099th `f32` bit
-/// pattern from 0 to `+∞` — about half a million inputs across every
-/// bucket — and for the values at its edges: NaN, the zeros, negatives,
-/// the subnormals, the first bucket's start, and either side of `1.0`.
+/// The bucket lookup matches the search for every 4099th `f32` bit pattern from 0 to `+∞` (~500 000 inputs) and at edges: NaN, zeros, negatives, subnormals, the first bucket start, either side of `1.0`.
 #[test]
 fn encode_byte_matches_the_search() {
     let last = f32::INFINITY.to_bits();
@@ -140,7 +124,7 @@ fn encode_byte_matches_the_search() {
     }
 }
 
-/// Every non-negative `f32`, `+∞` included, gives the searched byte.
+/// Every non-negative `f32`, `+∞` included, matches the searched byte.
 #[test]
 #[ignore = "about 2·10⁹ inputs: run with --ignored after a change to the table"]
 fn encode_byte_matches_the_search_everywhere() {

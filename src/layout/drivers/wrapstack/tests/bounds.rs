@@ -1,5 +1,4 @@
-//! The main bound a wrap inherits from its parent, and never overflowing
-//! it.
+//! The main bound a wrap inherits from its parent, and never overflowing it.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -11,18 +10,11 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// Pin issue 2: showcase tab-toolbar pattern. A `Sizing::FILL`
-/// WrapHStack containing many `Button` children (each Hug-sized,
-/// driven by their non-wrapping label text), nested under a FILL
-/// panel with padding. Every button must fit within the wrapstack's
-/// arranged width — wrapping to a new row when necessary, never
-/// extending past the right edge.
+/// Pin: a `Sizing::FILL` WrapHStack of Hug `Button`s under a padded FILL panel keeps every button within the arranged width, wrapping instead of passing the edge.
 #[test]
 fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     use crate::widgets::button::Button;
 
-    // Shared between the fixture and the assertions, so the two cannot
-    // drift the way a parallel `Vec<NodeId>` could.
     const LABELS: [&str; 14] = [
         "text",
         "text layouts",
@@ -40,8 +32,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         "buttons",
     ];
 
-    // Returns the wrapstack's node: it is `auto_id`'d, so unlike the
-    // buttons it has no stable `WidgetId` to read back by.
+    // Returns the wrapstack's node: it is `auto_id`'d, so it has no stable `WidgetId`.
     fn build(ui: &mut Ui) -> NodeId {
         let mut wrap_node = None;
         Panel::vstack()
@@ -87,10 +78,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 }
 
-/// A `wrap_vstack` of five 50×40 cells, gap 10, line gap 12, capped at
-/// `cap` height when given. Against a 100 px bound a column fits two cells
-/// (40 + 10 + 40 = 90); the third (140 > 100) wraps to the next column,
-/// 50 + 12 over.
+/// A `wrap_vstack` of five 50×40 cells, gap 10, line gap 12, optionally capped: against 100 px a column fits two cells (90).
 fn func_wrap(ui: &mut Ui, cap: Option<f32>) {
     let mut wrap = Panel::wrap_vstack()
         .id(WidgetId::from_hash("wrap"))
@@ -116,22 +104,11 @@ fn hug_vstack(name: &str) -> Panel {
         .size((Sizing::HUG, Sizing::HUG))
 }
 
-/// A same-axis stack measures a `wrap_vstack` with `INF` main available,
-/// so the wrap needs a finite bound from somewhere. Each case puts the
-/// 100 px cap in a different place, and the darkroom new-node popup uses
-/// all of them:
-/// - on the wrap itself — `AxisSlot::resolve` clamps the `INF` to it;
-/// - on the parent vstack — a stack forwards its finite main extent to a
-///   same-axis wrap child;
-/// - on an hstack of category columns, each a vstack of
-///   `[60×15 header, wrap]` — the hstack's cross bound becomes each
-///   column's height. The column forwards its whole 100 px, not the 85
-///   left under the header, so the wrap ends at 15 + 90 = 105, past the
-///   cap: a wrap stack's lines are packed against the extent it measured
-///   at, so it gives way to nothing and overflows;
-/// - on a vstack popup above that hstack — a bounded stack constrains its
-///   children on the main axis, so the cap reaches the wrap through the
-///   non-wrap hstack (CSS `max-height`).
+/// A same-axis stack measures a `wrap_vstack` with `INF` main, so a finite bound must come from somewhere; each case puts the 100 px cap elsewhere:
+/// - on the wrap itself: `AxisSlot::resolve` clamps the `INF`;
+/// - on the parent vstack: a stack forwards its finite main extent to a same-axis wrap;
+/// - on an hstack of `[60×15 header, wrap]` columns: the column forwards its whole 100 px, so the wrap ends at 15 + 90 = 105, past the cap;
+/// - on a vstack popup above that hstack: the cap reaches the wrap through the non-wrap hstack (CSS `max-height`).
 #[test]
 fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
     #[derive(Debug)]
@@ -215,14 +192,7 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
     }
 }
 
-/// The stack contract (REDESIGN decision D-1): a stack measures every
-/// non-`Fill` child against its whole main extent and shrinks none of
-/// them, so the Hug wrap under a header above overflows the cap by the
-/// header's 15 px. A wrap meant to take what the header leaves is `Fill`
-/// on the main axis: the column hands it the 100 − 15 = 85 px left, two
-/// cells no longer fit (40 + 10 + 40 = 90 > 85), so each cell takes a
-/// column of its own, 50 + 12 apart. The column hugs that one row, so the
-/// wrap ends at 15 + 40 = 55, inside the cap.
+/// A stack measures every non-`Fill` child against its whole main extent and shrinks none, so the Hug wrap under a 15 px header overflows the cap by 15. A `Fill` wrap gets the 85 px left: two cells no longer fit (90 > 85), so each takes a column and the wrap ends at 55.
 #[test]
 fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -263,13 +233,7 @@ fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
     assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 55.0);
 }
 
-/// A Hug wrap stack offered less height than its lines take keeps every
-/// line: its floor across is each line's tallest child, summed with the
-/// line gaps, so it overflows its parent rather than its lines
-/// overlapping what follows. Five 40 × 20 blocks with a 10 px gap break
-/// 40 + 10 + 40 = 90 per line in a 100 px width — lines of 2, 2 and 1 —
-/// so three 20 px lines and two 5 px line gaps: 3 × 20 + 2 × 5 = 70 in a
-/// 30 px parent.
+/// A Hug wrap offered less height than its lines keeps every line (floor = tallest child per line plus line gaps) and overflows its parent. Five 40 × 20 blocks, 10 px gap, 100 px width: lines of 2, 2, 1, so 3 × 20 + 2 × 5 = 70 in a 30 px parent.
 #[test]
 fn a_hug_wrap_stack_keeps_its_lines_under_a_short_parent() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

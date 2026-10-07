@@ -1,8 +1,7 @@
-//! Baked-icon fixtures. Exact-pixel assertions (no goldens): every icon here
-//! is a solid rectangle whose colour is written down in the SVG, so what
-//! should reach the framebuffer is hand-derivable and the test pins the
-//! *semantics* — the raster lands at the exact physical size, on whole pixels,
-//! with the tint applied the way the icon's kind says — rather than a snapshot.
+//! Baked-icon fixtures with exact-pixel assertions (no goldens). Every icon is a
+//! solid rectangle whose colour is written in the SVG, so the result is
+//! hand-derivable and the tests pin the *semantics*: the raster lands at the exact
+//! physical size, on whole pixels, tinted as the icon's kind says.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -19,22 +18,17 @@ use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 use std::ops;
 
-/// Fills its whole 8x8 viewBox with one colour, so every covered pixel is
-/// fully opaque and the raster's extent is exactly the icon's box. Marked
-/// tintable, so the artwork colour is discarded and the shape's tint supplies
-/// it — which is what makes the expected value the tint and nothing else.
+/// Fills its 8x8 viewBox with one colour, so every covered pixel is opaque. Marked
+/// tintable, so the expected value is the tint alone.
 const SOLID_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#fff"/></svg>"##;
 
-/// Two opaque halves, as a colour icon: the artwork's own colours must survive
-/// to the framebuffer, which a mask icon's would not.
+/// Two opaque halves, as a colour icon whose own colours must survive.
 const HALVES_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#e63c3c"/><rect x="4" width="4" height="8" fill="#3c78e6"/></svg>"##;
 
-/// sRGB of the two halves, as authored.
 const LEFT: [u8; 4] = [0xe6, 0x3c, 0x3c, 255];
 const RIGHT: [u8; 4] = [0x3c, 0x78, 0xe6, 255];
 
-/// The set, built once per thread. `from_svgs` derives each icon's viewBox
-/// and tintability by parsing it, so the fixtures state only their artwork.
+/// The set, built once per thread.
 pub(crate) fn atlas() -> Rc<IconTable> {
     thread_local! {
         static BUILT: Rc<IconTable> =
@@ -43,18 +37,11 @@ pub(crate) fn atlas() -> Rc<IconTable> {
     BUILT.with(Rc::clone)
 }
 
-/// Assert every interior pixel of a 20x20 solid pane at `at` is `tint`.
-///
-/// The whole interior rather than a handful of samples, because a case
-/// that draws something *over* the pane cannot be relied on to hit a
-/// chosen offset — glyph coverage moves with the face. Offsets run from
-/// the pane's own origin, which is what lets a case move the pane and keep
-/// the derivation, and stop one pixel short of each edge so the
-/// rasterizer's boundary row is nobody's business here.
-///
-/// `RgbaF32::srgb` takes sRGB components and the sRGB render target encodes
-/// them back on write, so the expected bytes are the authored ones — the
-/// same round trip the clear-colour smoke test pins.
+/// Assert every interior pixel of a 20x20 solid pane at `at` is `tint`: the whole
+/// interior, because glyph coverage drawn *over* a pane moves with the face,
+/// stopping a pixel short of each edge to leave the rasterizer's boundary row out.
+/// `RgbaF32::srgb` is encoded back on write, so the expected bytes are the authored
+/// ones.
 fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     let expected = tint.map(|c| (c * 255.0f32).round() as u8);
@@ -72,9 +59,8 @@ fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     }
 }
 
-/// [`assert_pane_interior`] plus one pixel outside each side, which proves
-/// the raster is the size of the box rather than rounded up into its
-/// neighbour. Only for panes with nothing drawn near them.
+/// [`assert_pane_interior`] plus one pixel outside each side, proving the raster is
+/// the box's size; only for panes with nothing near them.
 fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     assert_pane_interior(img, at, tint);
     let (ox, oy) = (at.x as u32, at.y as u32);
@@ -92,8 +78,7 @@ fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     }
 }
 
-/// One icon in an exactly placed pane, so the pixels it owns are known from
-/// the pane's position and size alone.
+/// One icon in an exactly placed pane.
 fn pane(ui: &mut Ui, id: &'static str, at: Vec2, size: Vec2, name: &str, tint: RgbaF32) {
     pane_desaturated(ui, id, at, size, name, tint, false);
 }
@@ -124,8 +109,8 @@ fn pane_desaturated(
         });
 }
 
-/// A tintable icon reaches the framebuffer as coverage times the shape's tint,
-/// filling exactly the pixels its pane covers and none beyond.
+/// A tintable icon reaches the framebuffer as coverage times the tint, filling
+/// exactly its pane's pixels.
 #[test]
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let mut h = Harness::new();
@@ -153,9 +138,8 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     assert_solid_pane(&img, Vec2::new(6.0, 6.0), [0.2, 0.8, 0.4]);
 }
 
-/// A colour icon keeps the artwork's own colours — the tint's RGB is ignored,
-/// only its alpha applies. Drawn with a saturated red tint that a mask icon
-/// would have taken on: the halves must stay red and blue regardless.
+/// A colour icon keeps the artwork's colours; the tint's RGB is ignored and only
+/// its alpha applies, so a saturated red tint must leave the halves red and blue.
 #[test]
 fn colour_icon_keeps_its_own_colours_under_a_tint() {
     let mut h = Harness::new();
@@ -179,8 +163,7 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
         })
         .image;
 
-    // Pane spans x 8..40, so the seam is at x = 24. Sample well inside each
-    // half to stay clear of the one-pixel edge the rasterizer antialiases.
+    // Pane spans x 8..40, so the seam is x = 24; sample inside each half.
     assert_px(
         img.get_pixel(14, 16).0,
         LEFT,
@@ -202,12 +185,9 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
     );
 }
 
-/// The pixel-exactness claim, at the scale that makes it: 1.5.
-///
-/// A 20x20 logical pane at (4, 4) is physical 6..36 — a 30 px box, inside the
-/// ladder's exact band, so the icon rasterizes at exactly 30x30 and lands on
-/// whole pixels. The edges are what the test is really about: at 6 and 35 the
-/// icon is present, at 5 and 36 it is not.
+/// The pixel-exactness claim at scale 1.5: a 20x20 logical pane at (4, 4) is
+/// physical 6..36, a 30 px box inside the ladder's exact band, so the icon is
+/// present at 6 and 35 and absent at 5 and 36.
 #[test]
 fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     let mut h = Harness::new();
@@ -245,19 +225,15 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     assert!(dark(20, 36), "pixel 36 is outside the 30 px box");
 }
 
-/// `desaturate` collapses a colour icon to its own luminance — the disabled
-/// look for artwork a tint cannot recolour.
-///
-/// Both greys are hand-computed, which is what pins the *coefficients* rather
-/// than merely "something grey came out". Per half: sRGB → linear, dot with
+/// `desaturate` collapses a colour icon to its own luminance (the disabled look).
+/// The greys are hand-computed to pin the *coefficients*: sRGB to linear, dot with
 /// Rec. 709 (0.2126, 0.7152, 0.0722), then sRGB-encode.
 ///
 /// - `#e63c3c` → linear (0.7913, 0.0452, 0.0452) → luma 0.2038 → **125**
 /// - `#3c78e6` → linear (0.0452, 0.1878, 0.7913) → luma 0.2011 → **124**
 ///
-/// The two land a byte apart because these particular colours are very nearly
-/// isoluminant — which is exactly why the test asserts the computed values and
-/// not an ordering between them.
+/// They land a byte apart as the colours are nearly isoluminant, so the test
+/// asserts values, not an ordering.
 #[test]
 fn desaturate_greys_a_colour_icon_by_its_luminance() {
     let mut h = Harness::new();
@@ -296,34 +272,21 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
             format_args!("{label} half is its luminance, opaque"),
         );
     }
-    // A flat channel average would put both at 117; the artwork's own colours
-    // would leave them at LEFT / RIGHT. Neither is what luminance gives.
+    // A flat channel average would give 117 and the artwork would stay LEFT /
+    // RIGHT.
     assert!(left != LEFT && right != RIGHT, "grey is not the artwork");
 }
 
-/// Paint order across the raster tiers, and the two pipeline transitions
-/// that carry it.
+/// Paint order across the raster tiers: a label, an icon recorded *over* it, and a
+/// second label in a clipped panel. The icon closes the first label's batch, so the
+/// pass runs text, icon, text; text and icons share one pipeline, so neither
+/// transition rebinds anything (see `Bound::Raster`).
 ///
-/// A label, an icon recorded *over* it, and a second label in a clipped
-/// panel below. The icon closes the first label's batch because it covers
-/// it, so the pass runs text, icon, text — and since text and icons share
-/// one pipeline, neither transition rebinds anything (see `Bound::Raster`).
-///
-/// **What the icon box proves.** Its coverage is hand-derivable: a solid
-/// 8x8 viewBox filled to its pane is the tint on every pixel of the box.
-/// The first label's glyphs run straight through that box, so any pixel of
-/// it that is not the tint is a glyph that reordered above the icon. A
-/// batch left open would do exactly that — it would drain in the clipped
-/// panel's group, which the icon's own group has already finished.
-///
-/// **What the two bands prove.** The label has to have drawn, or the box
-/// tests nothing. Lit pixels are counted either side of the icon rather
-/// than named, because glyph coverage moves with the face.
-///
-/// A regression here is not subtle: a raster step that inherited the wrong
-/// pipeline draws the atlas through the wrong shader, and a step that lost
-/// the viewport immediate lands its quad at garbage NDC and leaves the box
-/// empty.
+/// **The icon box:** a solid 8x8 viewBox filled to its pane is the tint on every
+/// pixel, and the first label's glyphs run through it, so any non-tint pixel is a
+/// glyph that reordered above the icon (as a batch left open would, draining in the
+/// clipped panel's group). **The two bands:** the label must have drawn or the box
+/// proves nothing; lit pixels are counted either side of the icon.
 #[test]
 fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     let mut h = Harness::new();
@@ -361,10 +324,9 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
                         "solid",
                         tint,
                     );
-                    // A rect clip changes the scissor without changing the
-                    // stencil chain: it flushes the group and leaves an open
-                    // batch open. That is what gives the batch somewhere later
-                    // to drain, if it were still open.
+                    // A rect clip changes the scissor without changing the stencil
+                    // chain: it flushes the group but leaves an open batch open,
+                    // giving it somewhere later to drain.
                     Panel::zstack()
                         .id_salt("panel")
                         .clip_rect()
@@ -379,8 +341,8 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
 
     assert_pane_interior(&img, Vec2::new(20.0, 6.0), [0.2, 0.8, 0.4]);
 
-    // This run measures x 6..=51, y 9..=20, so it shows either side of
-    // the icon's 20..40 box and passes straight through it.
+    // This run measures x 6..=51, y 9..=20, so it shows either side of the icon's
+    // 20..40 box.
     let any_lit = |xs: ops::Range<u32>, ys: ops::Range<u32>| {
         ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
             .any(|(x, y)| img.get_pixel(x, y).0[0] > 32)
@@ -390,10 +352,9 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     assert!(any_lit(0..96, 44..72), "the label in the clipped panel");
 }
 
-/// Past the 512 px raster cap an icon still fills its box: the capped raster
-/// is resampled up to it. A 300 logical px pane at (20, 20) and scale 2 is
-/// the physical box 40..640; the raster is 512, and drawn at its own size it
-/// sat centred at 84..596 with a 44 px gap on every side.
+/// Past the 512 px raster cap an icon still fills its box: the capped raster is
+/// resampled up to it. A 300 logical px pane at (20, 20), scale 2 is physical
+/// 40..640 while the raster is 512 (at its own size it would sit at 84..596).
 #[test]
 fn an_icon_past_the_raster_cap_fills_its_box() {
     let mut h = Harness::new();
@@ -423,8 +384,8 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
     assert!(lit(340, 41) && lit(340, 638), "the top and bottom edges");
     assert!(dark(38, 340) && dark(642, 340), "nothing past the box");
 
-    // A colour icon takes the same path through the colour atlas: each half
-    // keeps its own colour, filtered only along the seam at x = 340.
+    // A colour icon takes the same path through the colour atlas; each half keeps
+    // its colour, filtered only along the seam.
     let img = h
         .size(UVec2::new(680, 680))
         .scale(2.0)

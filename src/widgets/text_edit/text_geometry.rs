@@ -9,9 +9,6 @@ use glam::Vec2;
 use std::num::NonZeroU64;
 use std::ops::Range;
 
-/// What one probe of the content run yields. A named struct because the
-/// closure has to hand all three back at once — the probe's borrow ends
-/// with it, so nothing can be re-read afterwards.
 #[derive(Clone, Copy, Debug)]
 struct Probed {
     measured: Size,
@@ -28,55 +25,29 @@ pub(super) struct GeometryInput<'a> {
     pub(super) selection: Option<Range<usize>>,
 }
 
-/// The layout plus everything only the shape probe could answer. Paint
-/// reads this; nothing here exists before [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve) runs,
-/// which is why it is a separate type rather than zeroed fields on
-/// [`TextLayout`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextGeometry {
     pub(super) layout: TextLayout,
-    /// Where the shaped block sits inside the inner rect, as the *record*
-    /// pass can work it out — from last pass's rect, since arrange has not
-    /// run.
-    ///
-    /// **Read by the hit-test and by nothing else.** Painting stopped needing
-    /// it when the block became a child the engine places: what a click has to
-    /// undo is where the text was when the user aimed at it, which is last
-    /// frame's, so a value one frame behind is the right one here and the wrong
-    /// one there. Stored back into `ViewState` at the end of the pass, which is
-    /// what makes it next frame's [`TextLayout::prev_block_offset`].
+    /// Block position inside the inner rect, from last pass's rect (arrange has not run). Only the
+    /// hit-test reads it; stored back into `ViewState` as next frame's [`TextLayout::prev_block_offset`].
     pub(super) block_offset: Vec2,
-    /// What the *run* measured, placeholder or not. Both axes: the width
-    /// drives horizontal scroll, and the height is what the caret and the
-    /// wash are positioned against.
+    /// What the run measured, placeholder or not.
     pub(super) content_size: Size,
-    /// What is on show measured — [`Self::content_size`], except in the
-    /// one case they differ: an empty run with a placeholder set, where
-    /// the placeholder is what the field is painting and therefore what
-    /// it has to be sized to. The block node takes both axes from this,
-    /// and the hug reservation the width.
+    /// What is on show: [`Self::content_size`], or the placeholder's size for an empty run with one.
     pub(super) display_size: Size,
     pub(super) caret_pos: Caret,
-    /// Identity of the bytes the probe hashed, or `None` where its face
-    /// named no size to shape at — see `EditState::observe_text_hash`.
+    /// Hash of the probed bytes, `None` where the face named no size (see `EditState::observe_text_hash`).
     pub(super) text_hash: Option<NonZeroU64>,
 }
 
 impl TextGeometry {
-    /// Measure the run and fill `selection_rects` with the wash for
-    /// `input.selection` — an out-parameter so the caller's retained buffer
-    /// is refilled in place instead of a fresh one being handed back each
-    /// frame.
     pub(super) fn resolve(
         ui: &mut Ui,
         input: GeometryInput<'_>,
         selection_rects: &mut Vec<Rect>,
     ) -> Self {
         let layout = input.layout;
-        // The block is load-bearing: the content probe holds the shaper's
-        // exclusive borrow, so the placeholder measurement below cannot be
-        // taken until this one has dropped. Overlapping them is E0499, not a
-        // runtime surprise.
+        // Scoped: the content probe's exclusive shaper borrow must end before the placeholder probe.
         let Probed {
             measured,
             caret_pos,
@@ -98,12 +69,7 @@ impl TextGeometry {
         } else {
             measured
         };
-        // Through the same align and the same block box the block node
-        // hands the layout engine, so the offset stored for next frame's
-        // hit-test is where the block was actually placed. Aligning the
-        // *content* here instead puts an empty field with a placeholder
-        // and a centred alignment a whole placeholder away from its
-        // block.
+        // Same align and block box as the block node, so next frame's hit-test offset matches the placement.
         let block = layout.block_align().place_in(
             Rect {
                 min: Vec2::ZERO,

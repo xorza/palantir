@@ -1,5 +1,5 @@
 //! The font, size, weight, colour and leading a run of text is shaped and
-//! painted with — the vocabulary every other theme carries a copy of.
+//! painted with.
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
@@ -9,23 +9,15 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::widgets::theme::palette::Palette;
 
-/// Default [`TextStyle::line_height_factor`]: the leading widgets resolve
-/// into the `line_height` they record, and so also the y-range a caret
-/// spans.
-///
-/// A widget convention, not a shaping one — the shaper takes resolved
-/// pixels off `ShapeRecord::Text` and never consults a multiplier.
+/// Default [`TextStyle::line_height_factor`]. A widget convention; the shaper
+/// takes resolved pixels and never sees a multiplier.
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
-/// Default text-rendering inputs grouped together so apps can swap the
-/// whole "text look" with one assignment, and so future axes (italic,
-/// letter-spacing) extend a single struct rather than scattering across
-/// [`crate::Theme`].
+/// Default text-rendering inputs, grouped so an app can swap the whole text
+/// look with one assignment.
 ///
-/// `Animatable` derived: `color` interpolates; `font_size` and
-/// `line_height_factor` are `#[animate(snap)]` because animating font
-/// size invalidates the text-shape cache every frame and animating
-/// leading doesn't read meaningfully.
+/// `color` interpolates; the rest are `#[animate(snap)]` because animating
+/// size invalidates the shape cache every frame.
 #[derive(
     Clone,
     Copy,
@@ -38,38 +30,25 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 #[serde(try_from = "UncheckedTextStyle")]
 #[must_use]
 pub struct TextStyle {
-    /// Default font size in logical px. Button labels read this
-    /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
-    /// when their builder didn't set a size.
+    /// Default font size in logical px; [`crate::Text`] and
+    /// [`crate::TextEdit`] fall back to it.
     #[animate(snap)]
     pub font_size: f32,
-    /// Default fill color for [`crate::Text`] runs that didn't call
-    /// `.color(...)`, and the ink a widget look inherits: `Button` and
-    /// `TextEdit` carry per-state [`TextStyleOverrides`], and every state
-    /// that leaves `color` unset — which is every active one by default —
-    /// resolves to this.
+    /// Default ink for [`crate::Text`] and for every widget look state that
+    /// leaves `color` unset.
     pub color: RgbaF32,
-    /// Line-height-to-font-size ratio. Drives the shaper's leading and
-    /// the caret rect height (locked together via
-    /// `ShapeRecord::Text.line_height`). Default matches cosmic-text's
-    /// natural leading (1.2). A widget look and a caller both override it
-    /// alone, through [`TextStyleOverrides`].
+    /// Line-height-to-font-size ratio, driving shaper leading and caret
+    /// height. Default is cosmic-text's natural 1.2.
     #[animate(snap)]
     pub line_height_factor: f32,
-    /// Font family used for shaping. Default
-    /// [`FontFamily::SANS`] resolves to bundled Inter; the debug
-    /// `frame_stats` overlay overrides to [`FontFamily::MONO`].
+    /// Font family. Default [`FontFamily::SANS`] is bundled Inter.
     #[animate(snap)]
     pub family: FontFamily,
-    /// Font weight used for shaping, on the CSS 1–1000 scale. Default
-    /// [`FontWeight::REGULAR`]; set [`FontWeight::BOLD`] (or call
-    /// [`Self::bold`]) to shape against the family's bold face.
+    /// Font weight on the CSS 1–1000 scale. Default [`FontWeight::REGULAR`].
     #[animate(snap)]
     pub weight: FontWeight,
-    /// Upright or italic. Default [`FontSlant::Normal`]; set
-    /// [`FontSlant::Italic`] (or call [`Self::italic`]) to shape against
-    /// the family's italic face, or a synthesized slant where it has
-    /// none.
+    /// Upright or italic; a slant is synthesized where the family has no
+    /// italic face. Default [`FontSlant::Normal`].
     #[animate(snap)]
     pub slant: FontSlant,
 }
@@ -89,23 +68,14 @@ impl Default for TextStyle {
 
 /// Per-axis overrides folded onto a resolved [`TextStyle`].
 ///
-/// What a text-rendering widget collects from its one-axis setters —
-/// [`Text::color`](crate::Text::color),
-/// [`TextEdit::font_size`](crate::TextEdit::font_size) and the rest — so
-/// that a caller who wants one axis does not have to build a whole bundle.
-/// A `None` field leaves the resolved style's own value standing.
-///
-/// One type rather than a set of fields per widget, so [`Text`](crate::Text)
-/// and [`TextEdit`](crate::TextEdit) answer the same chain, and so a widget
-/// of your own can offer it too. Every text slot in a theme past
-/// [`Theme::text`](crate::Theme) — a [`WidgetLook`](crate::WidgetLook)'s,
-/// the tooltip's, the colour picker's captions — is one for the same
-/// reason: a disabled look that dims the ink names the colour and nothing
-/// else, so it keeps following [`Theme::text`](crate::Theme)'s size and
-/// face.
-///
-/// In a theme file a `None` axis is left out, so a look that overrides
-/// nothing writes no `text` at all.
+/// What a text widget collects from its one-axis setters
+/// ([`Text::color`](crate::Text::color),
+/// [`TextEdit::font_size`](crate::TextEdit::font_size)), so a caller wanting
+/// one axis need not build a whole style. A `None` field leaves the resolved
+/// value standing. Every text slot in a theme past
+/// [`Theme::text`](crate::Theme) is one, so a disabled look that dims the ink
+/// keeps following its size and face. A `None` axis is omitted from theme
+/// files.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "UncheckedTextStyleOverrides")]
 #[must_use]
@@ -131,7 +101,7 @@ pub struct TextStyleOverrides {
 }
 
 impl TextStyleOverrides {
-    /// Overrides nothing: every axis comes from the style it is applied to.
+    /// Overrides nothing.
     pub const NONE: Self = Self {
         color: None,
         font_size: None,
@@ -155,9 +125,7 @@ impl TextStyleOverrides {
     }
 
     /// Chainable single-axis override, the counterpart of
-    /// [`TextStyle::with_font_size`]: `TextStyleOverrides::NONE
-    /// .with_font_size(14.0)` names the size and leaves every other axis
-    /// to the style it lands on.
+    /// [`TextStyle::with_font_size`].
     #[inline]
     pub const fn with_font_size(mut self, px: f32) -> Self {
         self.font_size = Some(px);
@@ -199,7 +167,7 @@ impl TextStyleOverrides {
         self
     }
 
-    /// Whether this set names no axis, so applying it changes nothing.
+    /// Whether this set names no axis.
     pub(crate) const fn is_empty(&self) -> bool {
         self.color.is_none()
             && self.font_size.is_none()
@@ -209,10 +177,9 @@ impl TextStyleOverrides {
             && self.slant.is_none()
     }
 
-    /// Whether every axis this set names can stand in a face the shaper
-    /// accepts. A lone size or leading is checked as far as it goes
-    /// alone. With both named, the base cannot change the line height,
-    /// so the whole face is checked.
+    /// Whether every named axis can stand in a face the shaper accepts. With
+    /// both size and leading named the base cannot change the line height, so
+    /// the whole face is checked.
     fn metrics_valid(&self) -> bool {
         match (self.font_size, self.line_height_factor) {
             (Some(_), Some(_)) => self.apply(&TextStyle::default()).metrics_valid(),
@@ -228,17 +195,9 @@ impl TextStyle {
         GlyphFont::metrics_are_valid(self.font_size, self.line_height_for(self.font_size))
     }
 
-    /// This style as the face the shaper is asked for, at its own size.
-    ///
-    /// The bridge between the theme's spelling of a face — a size plus a
-    /// *ratio* — and the shaper's, which wants leading resolved. Every
-    /// widget that records text goes through here rather than pairing
-    /// `font_size` with a separately-computed line height, so the two
-    /// cannot arrive at the shaper disagreeing.
-    ///
-    /// A builder that overrides one axis folds a [`TextStyleOverrides`]
-    /// onto the style before it gets here, which is why there is no
-    /// per-field variant.
+    /// This style as the face the shaper is asked for. Widgets go through
+    /// here rather than pairing `font_size` with a separately computed line
+    /// height, so the two cannot disagree.
     #[inline]
     pub fn font(&self) -> GlyphFont {
         GlyphFont {
@@ -250,26 +209,17 @@ impl TextStyle {
         }
     }
 
-    /// Resolve the absolute line-height-in-px the shaper will use for
-    /// text rendered at `font_size`. Single call site that owns the
-    /// `line_height_factor` formula; widgets call this instead of doing
-    /// `font_size * line_height_factor` inline so the formula can evolve
-    /// (font-dependent leading, etc.) without a sweep through every
-    /// text-rendering widget.
+    /// Absolute line height in px for text at `font_size`: the one owner of
+    /// the `line_height_factor` formula.
     ///
-    /// The shaper lays lines on the 1/64-px grid its cache keys hold, so
-    /// this answers on that grid too: 16 px at 1.2 leads at 19.203125, not
-    /// 19.2, and five lines of it measure 96.015625 px.
+    /// Answers on the 1/64-px grid the shaper's cache keys hold: 16 px at 1.2
+    /// leads at 19.203125, not 19.2.
     #[inline]
     pub fn line_height_for(&self, font_size: f32) -> f32 {
         TextShapeKey::leading_on_grid(font_size * self.line_height_factor)
     }
 
-    /// Chainable single-axis tweak. Lets callers write
-    /// `theme.text.with_font_size(14.0)` instead of `TextStyle {
-    /// font_size: 14.0, ..theme.text }`. All widget style setters
-    /// borrow a whole `TextStyle` (all-or-nothing), so the common case of
-    /// "theme defaults, but smaller" goes through one of these.
+    /// Chainable single-axis tweak: `theme.text.with_font_size(14.0)`.
     #[inline]
     pub const fn with_font_size(mut self, px: f32) -> Self {
         self.font_size = px;
@@ -325,12 +275,8 @@ impl TextStyle {
 }
 
 /// [`TextStyle`] as it arrives off the wire, before the metrics check.
-///
-/// Exists because a theme file is untrusted input: a non-finite or
-/// non-positive size reaches the shaper as a face it cannot resolve, and
-/// the failure surfaces frames later as text that measured to nothing.
-/// [`TextStyle`]'s `#[serde(try_from)]` routes every deserialize through
-/// this, so no path builds one without the check.
+/// A theme file is untrusted: a non-finite or non-positive size would reach
+/// the shaper as a face it cannot resolve.
 #[derive(Debug, serde::Deserialize)]
 struct UncheckedTextStyle {
     font_size: f32,
@@ -360,9 +306,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
     }
 }
 
-/// [`TextStyleOverrides`] as it arrives off the wire, before the metrics
-/// check — the same gate [`UncheckedTextStyle`] puts in front of a whole
-/// style.
+/// [`TextStyleOverrides`] as it arrives off the wire, before the metrics check.
 #[derive(Debug, serde::Deserialize)]
 struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,

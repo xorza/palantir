@@ -3,16 +3,7 @@
 use half::f16;
 use std::fmt;
 
-/// The within-line and between-line spacing of one panel, packed as two
-/// f16 lanes. Every lane is finite and non-negative: an authoring gap
-/// the caller never set is folded to `0.0` by
-/// [`AuthoredGaps::resolve`](crate::scene::node::authored_gaps::AuthoredGaps::resolve),
-/// so nothing downstream carries an unset state or has to fold one.
-///
-/// That is what lets the bit pattern be the identity — the derived
-/// `Eq`/`Hash` are what a cascade key and a
-/// [`PanelExtras`](crate::scene::node::panel_extras::PanelExtras) row
-/// compare on.
+/// The within-line and between-line spacing of one panel, packed as two f16 lanes, each finite and non-negative (an unset gap is folded to `0.0` by [`AuthoredGaps::resolve`](crate::scene::node::authored_gaps::AuthoredGaps::resolve)), so the bit pattern is the identity for `Eq`/`Hash` in cascade keys and [`PanelExtras`](crate::scene::node::panel_extras::PanelExtras) rows.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Gaps([u16; 2]);
@@ -37,11 +28,6 @@ impl Gaps {
         ])
     }
 
-    /// Both lanes as one `u32`, low lane first.
-    ///
-    /// Shifted rather than byte-cast so the number is the same on either
-    /// endianness. It never leaves the process, but a layout-dependent
-    /// key is a trap worth not setting.
     #[inline]
     pub(crate) const fn as_u32(self) -> u32 {
         self.0[0] as u32 | ((self.0[1] as u32) << 16)

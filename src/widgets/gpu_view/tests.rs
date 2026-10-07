@@ -16,15 +16,12 @@ use crate::shape::record::ShapeRecord;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-/// The renderer an application keeps and lends back every frame — one
-/// handle, because a fresh one is a fresh view and takes a target of its
-/// own (see `GpuViews::record`).
+/// The renderer an application keeps and lends back each frame, one handle since a fresh one is a fresh view with its own target (see `GpuViews::record`).
 fn scene() -> Rc<RefCell<NoopPaint>> {
     Rc::new(RefCell::new(NoopPaint))
 }
 
-/// Records exactly one `GpuView` shape on its node, arranged at the
-/// committed size — the layout half of the widget, GPU-free.
+/// Records exactly one `GpuView` shape on its node at the committed size: the GPU-free layout half.
 #[test]
 fn records_one_gpu_view_shape_at_committed_size() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
@@ -56,9 +53,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
     assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
 }
 
-/// `repaint(false)` keeps the epoch the view last painted at, so the
-/// backend skips it, where the default re-stamps it with every frame's
-/// render id. The first frame paints either way: the target is new.
+/// `repaint(false)` keeps the epoch the view last painted at so the backend skips it; the default re-stamps it every frame. The first frame paints either way (new target).
 #[test]
 fn repaint_false_holds_the_epoch_of_the_last_paint() {
     let paint = scene();
@@ -84,7 +79,7 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
     }
 }
 
-/// Default sizing fills the parent — a viewport has no intrinsic size.
+/// Default sizing fills the parent; a viewport has no intrinsic size.
 #[test]
 fn default_fills_parent() {
     let mut h = UiHarness::new(UVec2::new(160, 100));
@@ -93,15 +88,7 @@ fn default_fills_parent() {
     assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
 }
 
-/// Retention is keyed on what the frame *recorded*, painting on what it
-/// *damaged* — so a view culled out of a partial repaint keeps its
-/// off-screen target, and `GpuPaint::init` is not re-run when it next
-/// paints.
-///
-/// Composed twice off one recorded frame: a `Full` plan draws the view,
-/// a `Partial` plan whose region sits nowhere near it does not. The live
-/// roster is the same both times, which is the whole property — it must
-/// not move with the damage.
+/// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster.
 #[test]
 fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -132,7 +119,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         "the roster names the view's target",
     );
 
-    // Damage confined to the opposite corner from the bottom-right view.
+    // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
     frontend.build(h.ui.frame_scene(), plan(Damage::Partial(elsewhere)));
     assert!(
@@ -145,8 +132,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     );
 }
 
-/// Doesn't sense by default, but a caller can opt in via
-/// `Configure::sense` and read clicks off the returned `Response`.
+/// Senses nothing by default; a caller can opt in via `Configure::sense` and read clicks off the `Response`.
 #[test]
 fn senses_click_when_opted_in() {
     let id = WidgetId::from_hash("gpu_view_hitbox");

@@ -11,27 +11,14 @@ use std::fmt;
 use swash::scale::ScaleContext;
 use swash::scale::outline::Outline;
 
-/// Ink bounds of every glyph a run has shaped, read once per glyph and
-/// face and kept for the life of the measurer.
-///
-/// The measured block spans the glyphs' advances, and a glyph's ink is
-/// not bound to its advance: an italic's overhang, a negative left side
-/// bearing, a mark above the line box all reach past it. What reaches
-/// past is what [`Self::extent`] answers, so damage and the text scissor
-/// can cover it.
-///
-/// **In ems, from the unhinted outline.** Every glyph rasterizes unhinted
-/// (`attrs_named` sets `DISABLE_HINTING`), so its ink scales linearly
-/// with size and one entry per glyph and face serves every size it is
-/// drawn at. Bounded by the glyphs of the faces a session shapes, so
-/// nothing is evicted.
+/// Ink bounds of every glyph a run has shaped, read once per glyph and face. Ink can reach past the measured
+/// advance block (italic overhang, negative bearing); [`Self::extent`] answers by how much. Stored in ems from
+/// the unhinted outline (`attrs_named` sets `DISABLE_HINTING`), so one entry serves every size.
 #[derive(Default)]
 pub(super) struct GlyphInk {
     bounds: FxHashMap<GlyphInkKey, EmBox>,
-    /// Swash's per-face scratch, kept apart from the rasterizer's so the
-    /// shaping paths can read ink while they hold the measurer's fields.
+    /// Swash's per-face scratch, apart from the rasterizer's so shaping can read ink while holding the measurer.
     context: ScaleContext,
-    /// Retained outline, so a miss scales into it without allocating.
     outline: Outline,
 }
 
@@ -43,8 +30,7 @@ impl fmt::Debug for GlyphInk {
     }
 }
 
-/// What a glyph's ink depends on beyond its size: the face, the glyph,
-/// the weight a variable face is instanced at, and the synthetic skew.
+/// What a glyph's ink depends on beyond size: face, glyph, variable weight, synthetic skew.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct GlyphInkKey {
     font_id: fontdb::ID,
@@ -53,8 +39,7 @@ struct GlyphInkKey {
     fake_italic: bool,
 }
 
-/// A glyph's ink in ems, relative to its pen position on the baseline,
-/// y down like the buffer it is placed in.
+/// A glyph's ink in ems, relative to its baseline pen position, y down.
 #[derive(Clone, Copy, Debug, Default)]
 struct EmBox {
     min: Vec2,
@@ -62,10 +47,7 @@ struct EmBox {
 }
 
 impl GlyphInk {
-    /// `buffer`'s block, as `geometry` measured it, and how far its
-    /// glyphs' ink reaches past it — `x` from `left` to `left + size.w`,
-    /// `y` from 0 to `size.h` — per side, rounded out to whole pixels, and
-    /// zero on a side it stays inside.
+    /// How far glyph ink reaches past `buffer`'s measured block, per side, rounded out to whole pixels.
     pub(super) fn extent(
         &mut self,
         buffer: &Buffer,
@@ -81,7 +63,6 @@ impl GlyphInk {
                 if em.min.x >= em.max.x || em.min.y >= em.max.y {
                     continue;
                 }
-                // Where `LayoutGlyph::physical` puts the pen, unscaled.
                 let pen = Vec2::new(
                     glyph.x + glyph.x_offset * glyph.font_size,
                     run.line_y + glyph.y - glyph.y_offset * glyph.font_size,
@@ -120,25 +101,17 @@ impl GlyphInk {
         em
     }
 
-    /// The glyph's bounds from the source the rasterizer draws it from
-    /// (`GLYPH_SOURCES`): a colour outline, else — in a face with colour
-    /// bitmaps, whose strikes have no outline to measure — the face's
-    /// own bounds, else the plain outline, else the face's bounds. Each
-    /// is the box of the outline's control points, which holds its curves.
-    /// Skewed as the rasterizer skews a synthetic italic, in y-up font
-    /// units where the skew leans the top right.
+    /// The glyph's bounds from the source the rasterizer draws from (`GLYPH_SOURCES`), skewed as it skews a
+    /// synthetic italic, in y-up font units.
     fn read_em_box(&mut self, font_system: &mut FontSystem, key: GlyphInkKey) -> EmBox {
         let Some(font) = font_system.get_font(key.font_id, fontdb::Weight(key.weight)) else {
             return EmBox::default();
         };
-        // A face that claims no em is malformed, and has no scale to
-        // read its outlines at.
         let units_per_em = font.as_swash().metrics(&[]).units_per_em;
         if units_per_em == 0 {
             return EmBox::default();
         }
         let units_per_em = f32::from(units_per_em);
-        // Size zero reads the outline in font units.
         let mut scaler = glyph_scaler(
             &mut self.context,
             &font,

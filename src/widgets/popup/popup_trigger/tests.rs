@@ -13,8 +13,7 @@ fn trigger_id() -> WidgetId {
     WidgetId::from_hash("popup-trigger")
 }
 
-/// One frame: the trigger button, disabled or not, and its popup, whose
-/// body returns 7. The popup's response is what the frame reports.
+/// One frame: the trigger (disabled or not) and its popup, whose body returns 7.
 fn scene(ui: &mut Ui, disabled: bool) -> OverlayResponse<Option<i32>> {
     let trigger = Button::new()
         .id(trigger_id())
@@ -29,11 +28,7 @@ fn trigger_centre(h: &UiHarness) -> Vec2 {
     h.rect(trigger_id()).expect("trigger arranged").center()
 }
 
-/// A click opens the popup and runs its body; a second click closes it.
-/// That click lands outside the open popup, so the popup takes it as a
-/// dismissal: the body runs once more, the response reports `closed()`,
-/// and the next frame records nothing. A never-opened trigger keeps no
-/// state row, so `is_open` is a probe.
+/// A click opens the popup; a second lands outside and is a dismissal: the body runs once more, the response reports `closed()`, the next frame records nothing.
 #[test]
 fn a_click_toggles_and_the_body_runs_only_while_open() {
     let mut h = UiHarness::new(SURFACE);
@@ -61,8 +56,7 @@ fn a_click_toggles_and_the_body_runs_only_while_open() {
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
 }
 
-/// A programmatic open records on the next frame, and a disabled trigger
-/// closes an open popup without running its body. `close` closes it too.
+/// A programmatic open records next frame; a disabled trigger closes an open popup without running its body.
 #[test]
 fn open_close_and_a_disabled_trigger() {
     let mut h = UiHarness::new(SURFACE);
@@ -90,9 +84,7 @@ fn open_close_and_a_disabled_trigger() {
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
 }
 
-/// A popup the keyboard opened takes focus on its first stop, and gives
-/// it back to the trigger when Escape closes it; one a click opened leaves
-/// focus on the trigger it clicked.
+/// A keyboard-opened popup takes focus and returns it to the trigger on Escape; a click-opened one leaves focus on the trigger.
 #[test]
 fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     use crate::input::keyboard::key::Key;
@@ -110,7 +102,6 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
         });
     };
 
-    // Tab to the trigger, Enter opens: focus moves in, Escape gives it back.
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
     h.key(Key::Tab);
@@ -126,7 +117,6 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
     assert_eq!(h.focus(), Some(trigger_id()), "closing gives it back");
 
-    // A click opens it and focus stays on the trigger the click focused.
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
     let at = trigger_centre(&h);

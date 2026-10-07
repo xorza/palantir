@@ -1,6 +1,4 @@
-//! One module per nav entry. A page exposes the `build` the shell's page
-//! table calls, and emits `support::section`s into the vstack the shell
-//! hands it — no root panel, no padding, no title of its own.
+//! One module per nav entry. A page exposes the `build` the shell's page table calls and emits `support::section`s into the vstack it is handed.
 
 pub(crate) mod clip;
 pub(crate) mod colors;

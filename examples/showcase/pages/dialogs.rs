@@ -1,9 +1,4 @@
-//! Modal flows: a confirm Modal, and close-request interception
-//! (`Ui::close_requested` / `Ui::keep_open`). The page exposes a toggle
-//! standing in for "the document has unsaved changes"; [`intercept`],
-//! wired into the window's frame at the top level in the shell, catches
-//! the OS close request, vetoes it while changes are pending, and shows a
-//! Save / Discard / Cancel dialog instead of letting the window vanish.
+//! Modal flows: a confirm Modal and close-request interception (`Ui::close_requested` / `Ui::keep_open`) behind an unsaved-changes toggle.
 
 use crate::support::{api, checklist, note, readout, row, section};
 use palantir::{
@@ -17,14 +12,9 @@ struct State {
     last: Option<&'static str>,
 }
 
-/// Shared between the page (writes `pretend_dirty`) and [`intercept`]
-/// (reads it, drives `show_dialog`). Keyed on one stable id so both
-/// reach the same row regardless of which page is open.
 #[derive(Clone, Copy, Debug, Default)]
 struct ExitState {
-    /// Stand-in for "unsaved changes exist".
     pretend_dirty: bool,
-    /// Whether the confirm-on-exit dialog is currently up.
     show_dialog: bool,
 }
 
@@ -32,9 +22,6 @@ fn exit_state_id() -> WidgetId {
     WidgetId::from_hash("showcase::dialogs::exit-state")
 }
 
-/// The scaffold both dialogs on this page share: a titled card over a
-/// button row. What the buttons are and what they do differs per dialog,
-/// so those stay with the caller.
 #[track_caller]
 fn dialog(
     ui: &mut Ui,
@@ -123,9 +110,7 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
     }
 }
 
-/// Wire into the window's frame after the page content. With no pending
-/// changes the OS close proceeds untouched; with changes it vetoes and
-/// prompts. `win` is the window closed for real once the user confirms.
+/// Wire into the frame after the page content: with changes pending the OS close is vetoed and prompts; `win` is closed for real on confirm.
 pub(crate) fn intercept(ui: &mut Ui, win: WindowToken) {
     ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| exit_dialog(ui, win, exit));
 }

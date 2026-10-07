@@ -5,17 +5,14 @@ use glam::Vec2;
 
 /// One button's drag lifecycle, carried on [`ButtonState::drag`](crate::ButtonState::drag) — the
 /// owning button is the slot's position in [`ResponseState`](crate::ResponseState). The four
-/// phases are mutually exclusive per button, which is why this is an
-/// enum rather than an `Option` + edge flags:
+/// phases are exclusive per button, hence an enum rather than an `Option` plus edge flags:
 ///
 /// `None` → `Started` (the threshold-crossing frame) → `Active` (every
 /// following held frame) → `Stopped` (the release frame) → `None`.
 ///
-/// `delta` is the cumulative pointer travel since press in pre-transform
-/// widget-local logical coordinates. It is rect-independent; the pointer
-/// may leave the widget's rect mid-drag and the delta keeps tracking.
-/// `Stopped` carries no delta: the capture is already gone, so
-/// commit-on-release gestures stash the running value while
+/// `delta` is the cumulative pointer travel since press, in pre-transform widget-local logical
+/// coordinates and rect-independent: the pointer may leave the widget mid-drag. `Stopped` carries
+/// no delta (the capture is gone), so commit-on-release gestures stash the running value during
 /// `Started`/`Active` and commit it on `Stopped`.
 ///
 /// A same-frame stop-and-relatch (release + press + threshold-crossing
@@ -23,12 +20,10 @@ use glam::Vec2;
 /// gesture supersedes the stale stop edge.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Drag {
-    /// No drag on this button: either nothing is pressed, or a press is
-    /// down but hasn't travelled past the latch threshold yet.
+    /// No drag on this button: nothing pressed, or a press that hasn't passed the latch threshold.
     #[default]
     None,
-    /// One-frame edge: the drag latched this frame. Snapshot anchors
-    /// here.
+    /// One-frame edge: the drag latched this frame; snapshot anchors here.
     Started {
         /// Cumulative travel since press, widget-local and pre-transform.
         delta: Vec2,

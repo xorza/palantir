@@ -3,10 +3,7 @@
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 
-/// A window-open request enqueued by
-/// [`Ui::open_window`](crate::Ui::open_window), drained by
-/// [`WinitHost`](crate::WinitHost) in `about_to_wait` once it holds
-/// `&ActiveEventLoop`.
+/// A window-open request, drained by [`WinitHost`](crate::WinitHost) in `about_to_wait`.
 #[derive(Debug)]
 pub(crate) struct PendingWindow {
     pub(crate) token: WindowToken,
@@ -21,13 +18,6 @@ pub(crate) struct WindowCommands {
 }
 
 impl WindowCommands {
-    /// Enqueue an open for `token`, or re-configure the one already
-    /// enqueued for it.
-    ///
-    /// Deduplicated by token because a token addresses one window: two
-    /// opens in a frame are the same window described twice, and the
-    /// later description is the one the app meant. Without this the host
-    /// would open two windows the app can only address one of.
     pub(crate) fn open(&mut self, token: WindowToken, config: WindowConfig) {
         match self.opens.iter_mut().find(|p| p.token == token) {
             Some(pending) => pending.config = config,
@@ -35,17 +25,12 @@ impl WindowCommands {
         }
     }
 
-    /// Enqueue a close for `token`, once. A frame's replayed passes —
-    /// warmup, pass A, pass B — each record the same close, and one drain
-    /// applies every close in it to the window the token names then.
     pub(crate) fn close(&mut self, token: WindowToken) {
         if !self.closes.contains(&token) {
             self.closes.push(token);
         }
     }
 
-    /// Move every command out of `source` onto the end of `self`, leaving
-    /// `source` empty with its buffers — and their capacity — intact.
     pub(crate) fn append(&mut self, source: &mut Self) {
         self.opens.append(&mut source.opens);
         self.closes.append(&mut source.closes);

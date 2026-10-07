@@ -6,16 +6,9 @@ use palantir::{Background, Block, Configure, Corners, Panel, Rect, RgbaF32, Sizi
 
 use crate::harness::Harness;
 
-/// Radii past half the shorter side shrink until adjacent corners meet,
-/// the CSS "overlapping curves" rule: on a 100×40 box both `corners(30)`
-/// and `corners(9999)` become 20, a pill exactly 100 px wide. Unfitted,
-/// 30 drew a shape 96.6 px wide and 9999 drew nothing.
+/// Radii past half the shorter side shrink until adjacent corners meet (CSS "overlapping curves"): on a 100×40 box `corners(30)` and `corners(9999)` both become 20, a pill 100 px wide; unfitted they drew 96.6 px and nothing. A rounded clip's mask follows the same rule.
 ///
-/// A rounded clip's mask follows the same rule: a white block under a
-/// `corners(9999)` clip shows as the same pill.
-///
-/// Each pill sits at x 10..110. Pixel (11, y) has its centre 18.5 px from
-/// the left arc's centre at (30, y + 0.5) on the mid-line: inside.
+/// Each pill sits at x 10..110; pixel (11, y) is 18.5 px from the left arc's centre (30, y + 0.5): inside.
 #[test]
 fn oversized_radii_fit_their_box() {
     let mut h = Harness::new();

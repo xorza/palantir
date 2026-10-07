@@ -1,24 +1,8 @@
-//! GPU debug groups (RenderDoc / Xcode capture labels), compiled out
-//! unless the `gpu-debug-markers` feature is on.
+//! GPU debug groups (RenderDoc / Xcode capture labels), compiled out unless the `gpu-debug-markers` feature is on.
 //!
-//! Recording a pair from every emitted draw step is not free. In
-//! wgpu 30 a pair is not free on the CPU even when no capture tool is
-//! attached: `render_pass_push_debug_group` memcpys the label bytes into
-//! the pass's `string_data`, pushes two `ArcRenderCommand`s into the
-//! command vec, and adds two iterations to the command-replay match at
-//! pass end. Only the HAL call is conditional on the `debug_utils`
-//! extension. Step count is exactly what grows with UI complexity, so a
-//! frame with a few hundred groups paid several hundred recorded
-//! commands for tooling nobody had attached.
-//!
-//! The markers themselves are worth keeping — a capture of this renderer
-//! is worth far more than the CPU it costs, and the labels are well
-//! chosen — so this gates them rather than deleting them. Turn the
-//! feature on whenever you intend to capture; `showcase` enables it.
+//! A push/pop pair per draw step costs CPU even with no capture tool attached: wgpu 30's `render_pass_push_debug_group` copies the label into the pass's `string_data` and pushes two `ArcRenderCommand`s, and only the HAL call is conditional. Step count grows with UI complexity, so a few hundred groups cost several hundred commands. The labels are worth keeping, so they are gated; enable the feature when capturing (`showcase` does).
 
-/// One `cfg!` rather than a `#[cfg]` pair per call: the gate reads as a
-/// constant the branch folds away, so a marker-free build emits neither
-/// the wgpu call nor a second body to keep in step with the first.
+/// One `cfg!` rather than a `#[cfg]` pair per call: the constant folds away, so a marker-free build emits neither the wgpu call nor a second body.
 const ENABLED: bool = cfg!(feature = "gpu-debug-markers");
 
 #[inline]

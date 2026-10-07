@@ -1,18 +1,10 @@
-//! A `(start, len)` range into a flat arena, in eight bytes — how every
-//! table in the crate points at a run of another one.
+//! A `(start, len)` range into a flat arena in eight bytes; how every table points at a run of another.
 
 use std::ops::Range;
 
-/// `(start, len)` index range over a flat arena. Compact — 8 bytes —
-/// because measure-cache snapshots and grid hug slots store many of
-/// these and we want to keep the per-entry footprint small. Public as
-/// the input method's cursor in [`ImePreedit`](crate::ImePreedit) and as
-/// the byte range of an icon's SVG in its set's blob.
+/// `(start, len)` index range over a flat arena, 8 bytes because measure-cache snapshots and grid hug slots store many. Public as the cursor in [`ImePreedit`](crate::ImePreedit) and the byte range of an icon's SVG in its set's blob.
 ///
-/// Plain data: [`Span::new`] checks nothing, so the fields carry no
-/// invariant. `From` converts both ways against `Range<u32>` and
-/// `Range<usize>`, for callers that already hold a `start..end`.
-/// [`Span::range`] returns `Range<usize>` for slicing.
+/// Plain data: [`Span::new`] checks nothing. `From` converts both ways with `Range<u32>` and `Range<usize>`; [`Span::range`] returns `Range<usize>` for slicing.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Span {
@@ -23,11 +15,7 @@ pub struct Span {
 }
 
 impl Span {
-    /// A span of `len` entries starting at `start`.
-    ///
-    /// `const` and public because the baked icon format is a flat blob with
-    /// spans beside it: a generated set writes those spans into a `const` that
-    /// this crate then reads — see [`IconDefinition::svg`](crate::IconDefinition::svg).
+    /// A span of `len` entries starting at `start`. `const` and public because the baked icon format is a flat blob with spans beside it, written by generated sets into a `const` (see [`IconDefinition::svg`](crate::IconDefinition::svg)).
     #[inline]
     pub const fn new(start: u32, len: u32) -> Self {
         Self { start, len }

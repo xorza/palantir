@@ -5,39 +5,23 @@ use serde::de;
 use std::fmt;
 use std::sync::{LazyLock, RwLock, RwLockReadGuard};
 
-/// The process-wide [`FamilyTable`].
-///
-/// A static, and the crate's only mutable one. Nothing here is
-/// per-shaper because a [`TextStyle`](crate::TextStyle) deserialized
-/// from a theme file has no shaper in reach to resolve a name against —
-/// and a family has to survive that round trip as the same two bytes the
-/// hot path carries.
+/// Static: a deserialized `TextStyle` has no shaper to resolve names against.
 static NAMES: LazyLock<RwLock<FamilyTable>> =
     LazyLock::new(|| RwLock::new(FamilyTable::seeded(FAMILY_LIMIT)));
 
 /// Every index a `u16` can name.
 const FAMILY_LIMIT: usize = 1 << 16;
 
-/// Append-only table mapping a [`FontFamily`] index to its name, and the
-/// name back to its index.
-///
-/// Append-only, so an index handed out stays valid and `name` never has
-/// to fail. Names are leaked on the way in, which is what lets the table
-/// answer in `&'static str` and cosmic's `Attrs<'static>` hold one
-/// without a copy per shape — and what lets the reverse index key on the
-/// same leaked string rather than on a second copy.
+/// Append-only; names are leaked so lookups return `&'static str`.
 #[derive(Debug)]
 struct FamilyTable {
     names: Vec<&'static str>,
     index: FxHashMap<&'static str, u16>,
-    /// How many names the table takes: [`FAMILY_LIMIT`] for the process
-    /// table, fewer in the test that fills one.
+    /// Fewer than [`FAMILY_LIMIT`] in the test that fills one.
     limit: usize,
 }
 
 impl FamilyTable {
-    /// The two bundled families at their fixed indices, and room for
-    /// `limit` names in all.
     fn seeded(limit: usize) -> Self {
         let mut table = Self {
             names: Vec::new(),
@@ -54,9 +38,6 @@ impl FamilyTable {
         self.index.get(name).map(|&index| FontFamily(index))
     }
 
-    /// The family called `name`, interning it when the table has not seen
-    /// it, or `None` when it has not and holds [`Self::limit`] names
-    /// already.
     fn intern(&mut self, name: &str) -> Option<FontFamily> {
         if let Some(found) = self.get(name) {
             return Some(found);
@@ -76,52 +57,35 @@ impl FamilyTable {
     }
 }
 
-/// Which family to shape in, as an index into the interned name table.
-///
-/// Identity is the **name** — the unit every CSS engine, Zed and Slint
-/// resolve on — and the index is what the hot path carries.
-/// The shape-cache key and [`GlyphFont`](crate::widget::GlyphFont) both hold one,
-/// so this stays `Copy` and two bytes wide.
-///
-/// Serializes as its name, so a theme file says `family: "Inter"` and
-/// reads back as the same index this process interned.
+/// Which family to shape in; the `Copy` index into the interned name table.
+/// Serializes as its name.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct FontFamily(u16);
 
 impl FontFamily {
-    /// The default proportional family: bundled Inter.
+    /// Bundled Inter.
     pub const SANS: Self = Self(0);
-    /// The bundled monospace family: JetBrains Mono.
+    /// Bundled JetBrains Mono.
     pub const MONO: Self = Self(1);
 
     const SANS_NAME: &'static str = "Inter";
     const MONO_NAME: &'static str = "JetBrains Mono";
 
-    /// The family called `name`, interning it when this process has not
-    /// seen it before.
+    /// The family called `name`, interning it on first sight.
     ///
-    /// Cold: one lock, and a leak the first time a name appears. Naming
-    /// a family no face answers to is not an error here — it resolves at
-    /// shaping time, and [`Ui::has_font`](crate::Ui::has_font)
-    /// is what asks in advance.
-    ///
-    /// `None` when 65 536 families are interned already and `name` is not
-    /// one of them. A name usually comes from configuration or a font
-    /// file, so a full table is data the caller handles, not a panic.
+    /// `None` when 65 536 families are already interned and `name` is new.
     pub fn named(name: &str) -> Option<Self> {
         if let Some(found) = read_names().get(name) {
             return Some(found);
         }
-        // `intern` searches again under the write lock rather than trusting
-        // the read above: two threads can both miss it, and a name interned
-        // twice would be two families.
+        // Re-check under the write lock: two threads can both miss the read.
         NAMES
             .write()
             .expect("the font name table is poisoned")
             .intern(name)
     }
 
-    /// This family's name, as `Family::Name` wants it.
+    /// This family's name.
     pub fn name(self) -> &'static str {
         read_names()
             .names
@@ -130,11 +94,7 @@ impl FontFamily {
             .expect("a font family index this process never interned")
     }
 
-    /// The key's spelling of a family, and its inverse.
-    ///
-    /// Both `pub(crate)`: an index means nothing outside the process that
-    /// interned it, so it is never part of the published surface — a
-    /// family crosses that boundary as a name.
+    /// `pub(crate)`: an index means nothing outside this process.
     pub(crate) const fn raw(self) -> u16 {
         self.0
     }
@@ -148,8 +108,6 @@ fn read_names() -> RwLockReadGuard<'static, FamilyTable> {
     NAMES.read().expect("the font name table is poisoned")
 }
 
-/// The name rather than the index, so a `{:?}` of a `TextStyle` reads
-/// like the theme file it came from.
 impl fmt::Debug for FontFamily {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("FontFamily").field(&self.name()).finish()
@@ -168,8 +126,7 @@ impl<'de> serde::Deserialize<'de> for FontFamily {
     }
 }
 
-/// A visitor rather than `String::deserialize`, so a borrowed name off a
-/// theme file interns without an allocation it would immediately drop.
+/// A visitor, so a borrowed name interns without allocating.
 #[derive(Debug)]
 struct NameVisitor;
 
@@ -190,9 +147,6 @@ mod tests {
     use crate::text::font_family::{FamilyTable, FontFamily};
     use ron::ser;
 
-    /// The two seeded families are the names `resolved_name` answers and the
-    /// indices the key encodes — pinned together because the table's
-    /// order is what makes `SANS`/`MONO` those indices.
     #[test]
     fn the_seeded_families_are_the_bundled_faces() {
         assert_eq!(FontFamily::SANS.raw(), 0);
@@ -207,7 +161,6 @@ mod tests {
         );
     }
 
-    /// Interning is idempotent, and a new name lands past the seeded two.
     #[test]
     fn a_new_name_interns_once() {
         let first = FontFamily::named("Palantir Test Family").unwrap();
@@ -217,9 +170,6 @@ mod tests {
         assert!(first.raw() >= 2, "a fresh name cannot take a seeded index");
     }
 
-    /// A full table refuses a new name and keeps answering every name it
-    /// holds with the index it gave out. Four names: the two seeded ones
-    /// at 0 and 1, then two fresh ones at 2 and 3.
     #[test]
     fn a_full_table_refuses_a_new_name() {
         let mut table = FamilyTable::seeded(4);
@@ -237,8 +187,6 @@ mod tests {
         assert_eq!(table.names.len(), 4, "a refusal leaves no trace");
     }
 
-    /// A family round-trips through serde as its name, and an unknown
-    /// name deserializes to the family interning it produces.
     #[test]
     fn serde_carries_the_name() {
         let encoded = ser::to_string(&FontFamily::MONO).expect("serialize");

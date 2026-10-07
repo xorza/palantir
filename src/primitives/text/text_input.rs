@@ -3,18 +3,14 @@
 use crate::primitives::text::interned_str::InternedStr;
 use std::borrow::Cow;
 
-/// Transient text accepted by widget builders. Borrowed and owned inputs
-/// are copied into the active [`crate::Ui`] text arena when the widget is
-/// shown; an [`InternedStr`] is already there and passes through
-/// unchanged, provided it belongs to the pass doing the showing.
+/// Transient text accepted by widget builders. Borrowed and owned inputs are copied into the active [`crate::Ui`] text arena at `show`; an [`InternedStr`] passes through if it belongs to the showing pass.
 #[derive(Debug)]
 pub enum TextInput<'a> {
     /// A `&str`, copied into the arena at `show`.
     Borrowed(&'a str),
     /// A `String`, likewise copied — the allocation is the caller's.
     Owned(String),
-    /// Already in the arena. Passes through untouched, provided it
-    /// belongs to the pass doing the showing.
+    /// Already in the arena; passes through if it belongs to the showing pass.
     Interned(InternedStr),
 }
 
@@ -86,8 +82,6 @@ mod tests {
         };
         assert_eq!(text, "nested");
 
-        // Every epoch is distinct, which is what separates one pass's
-        // handles from the next's and one window's from another's.
         assert_ne!(TextEpoch::reserve(), TextEpoch::reserve());
 
         let cow = Cow::Borrowed("cow");

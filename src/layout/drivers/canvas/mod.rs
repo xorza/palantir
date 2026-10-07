@@ -1,5 +1,4 @@
-//! The absolute-position driver: children sit where their own offsets put
-//! them, and the container reports the extent that covers them.
+//! The absolute-position driver: children sit at their own offsets; the container reports the extent covering them.
 
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::drivers::LayoutDriver;
@@ -23,51 +22,21 @@ impl LayoutDriver for Canvas {
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Canvas: children placed at their declared `Layout.position`
-    /// (parent-inner coords, defaulting to `(0, 0)`), each measured
-    /// against the room left past where it sits — see
-    /// [`LayoutPass::measure_per_axis_hug`], which owns both the offer and
-    /// the fold. A constrained axis (Fill / Fixed) is what gives a child
-    /// that needs a finite slot one to commit against (Grid's Phase-1
-    /// column resolution, wrap text reshaping).
+    /// Canvas: children placed at their declared `Layout.position` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`LayoutPass::measure_per_axis_hug`].
     ///
-    /// **Content size per axis depends on the canvas's own sizing on that
-    /// axis.** A `Hug` axis reports `max(child_pos + child_desired)` so the
-    /// canvas wraps every positioned child. A `Fill` axis reports
-    /// `max(child_desired)` — `.position(...)` becomes purely positional and
-    /// can't inflate the canvas past its available. Without this gating, a
-    /// child placed at `.position(700, ...)` with size 160 forces a FILL
-    /// canvas's `intrinsic_min` to 860, which floors FILL above the
-    /// available and overflows the surface; in the damage diff, the canvas's
-    /// chrome paint rect then changes every frame the user drags the child,
-    /// producing `Damage::Full` flicker.
-    /// Negative positions render outside the canvas's `inner` either way
-    /// (the loop's running max starts at 0); if you need scrollable
-    /// negative-origin canvases, build the userspace pattern on top of
-    /// [`crate::widgets::scroll::Scroll`] (shift positions into positive
-    /// space and auto-compensate the scroll's offset so visible state stays
-    /// stable).
+    /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.position(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
+    /// Negative positions render outside `inner` either way (the running max starts at 0); build scrollable negative-origin canvases on [`crate::widgets::scroll::Scroll`].
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
         (): Self::Payload,
         inner_avail: Size,
     ) -> Measured {
-        // Active children only: a collapsed child at (100,100) must not
-        // inflate the canvas's content size. `desired` is already ZERO for
-        // collapsed children (reset at the top of `run`); arrange zeros
-        // their subtrees regardless.
-        //
-        // The position is the whole of what a canvas adds: it decides both
-        // the room a bounded axis has left for the child and the extent a
-        // Hug axis has to grow to cover it, and `measure_per_axis_hug`
-        // derives each from it — the same two answers `arrange` gives.
+        // Active children only: a collapsed child must not inflate the content size. The position decides both the room a bounded axis has left and the extent a Hug axis grows to; `measure_per_axis_hug` derives each.
         pass.measure_per_axis_hug(node, inner_avail, |tree, c| tree.bounds(c).position)
     }
 
-    /// Each child gets a slot at `bounds.position`, sized per its
-    /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
-    /// `measure`.
+    /// Each child gets a slot at `bounds.position`, sized per its desired size; `Fill` falls back to intrinsic as in `measure`.
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Size) {
         let tree = pass.tree;
         let layouts = tree.records.layout();
@@ -78,12 +47,7 @@ impl LayoutDriver for Canvas {
             let child_layout = layouts[c.idx()];
             let bounds = tree.bounds(c);
             let pos = bounds.position;
-            // A bounded axis gets the room left past the child's own
-            // position — a canvas places its children, so what it has left
-            // to give one is what lies past where it put it. `measure`
-            // offered exactly this, so a child that wraps is arranged at
-            // the width it shaped against. A Hug axis has no extent of its
-            // own to divide and gives the child its desired.
+            // A bounded axis gives the room past the child's position, exactly what `measure` offered, so a wrapping child arranges at the width it shaped against. A Hug axis gives the desired.
             let room = inner.room_past(pos);
             let slot = d.select(canvas_size.hug_mask(), room);
             let child_rect = Rect {
@@ -94,13 +58,7 @@ impl LayoutDriver for Canvas {
         }
     }
 
-    /// Intrinsic size of a Canvas. Mirrors `measure`'s per-axis gating:
-    /// when the canvas is `Hug` on the queried axis, returns
-    /// `max(child.position + child.intrinsic)` so Hug-canvas wraps every
-    /// positioned child; when `Fill` (or `Fixed`, though `Fixed` doesn't
-    /// reach this branch — see `intrinsic.rs`), drops the positional offset
-    /// so a `.position(...)` past `available` can't floor `Fill` above what
-    /// the parent offered.
+    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.position + child.intrinsic)`; `Fill` drops the offset so a `.position(...)` past `available` cannot floor it.
     fn intrinsic(
         layout: &mut LayoutEngine,
         tree: &Tree,

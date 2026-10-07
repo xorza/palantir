@@ -7,8 +7,7 @@ use std::hash::Hasher as _;
 
 const HP: Duration = Duration::from_millis(500);
 const START: Duration = Duration::from_secs(1);
-/// Long enough that the tests below never reach it, so each one
-/// isolates phase behaviour from the settle.
+/// Long enough that no test reaches it, isolating phase from the settle.
 const NO_STOP: Duration = Duration::MAX;
 
 /// A blink that runs forever, for the cases about phase alone.
@@ -57,10 +56,9 @@ fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
         "jumping over culled shape 10 must not strand the cursor",
     );
 
-    // A jump that lands *between* two registrations: culling skipped
-    // shape 5, and shape 6 sits below the next registered index. It
-    // owns no animation, and taking 10's would both misparent it and
-    // leave shape 10 unanimated.
+    // A jump between two registrations: culling skipped shape 5, and shape 6 sits
+    // below the next registered index. It owns no animation; taking 10's would
+    // misparent it and leave shape 10 unanimated.
     let mut cursor = anims.cursor();
     assert_eq!(cursor.sample(0, now).rotation, 1.0);
     assert_eq!(
@@ -80,9 +78,8 @@ fn sparse_cursor_samples_boundaries_and_advances_across_skipped_animations() {
     assert_eq!(anims.entries.capacity(), entry_capacity);
 }
 
-/// The reading half of the ordering contract `push_entry` asserts on
-/// the recording half. Debug-only, because the check needs a field
-/// the release cursor doesn't carry.
+/// The reading half of the ordering contract `push_entry` asserts. Debug-only:
+/// the check needs a field the release cursor lacks.
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic(expected = "must be monotonic")]
@@ -123,8 +120,7 @@ fn next_wake_aligns_with_next_boundary() {
         a.next_wake(START + Duration::from_millis(100)),
         Some(START + HP),
     );
-    // On the boundary: still wake at the *next* one (strictly
-    // future).
+    // On the boundary: wake at the *next* one (strictly future).
     assert_eq!(a.next_wake(START + HP), Some(START + HP + HP));
     // Several periods in.
     assert_eq!(
@@ -141,12 +137,10 @@ fn pre_start_phase_is_solid_and_wakes_at_start() {
     assert_eq!(a.next_wake(before), Some(START));
 }
 
-/// A zero period finishes each pass the instant it starts. Linear
-/// `0 → 1` alpha, so the sampled alpha is the phase: `Once` jumps to its
-/// end value at the start, a repeat stays at its start value, and
-/// `Settle` stops modifying the shape (alpha 1, the identity) at its
-/// settle time. Before the start every mode reads phase 0 and wakes at
-/// the start.
+/// A zero period finishes each pass at once. With linear `0 -> 1` alpha the
+/// sampled alpha is the phase: `Once` jumps to its end value, a repeat stays at
+/// its start, `Settle` stops modifying the shape (alpha 1) at its settle time.
+/// Before the start every mode reads phase 0 and wakes at the start.
 #[test]
 fn a_zero_period_settles_to_the_right_value() {
     const SETTLE: Duration = Duration::from_secs(2);
@@ -211,48 +205,43 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
 
 #[test]
 fn spin_wakes_every_frame() {
-    // `next_wake(prev)` must be <= now for any prev <= now so
-    // `extend_predamaged` repaints the spun rect each frame.
+    // `next_wake(prev)` must be <= now for any prev <= now, so `extend_predamaged`
+    // repaints the spun rect each frame.
     let a = spinning(0, 1.0).anim;
     let prev = START + Duration::from_secs(3);
     let now = prev + Duration::from_millis(16);
     assert!(a.next_wake(prev).is_some_and(|wake| wake <= now));
 }
 
-/// The idle stop has to hold at *sample* time, because the frames
-/// that carry a settled blink past its cutoff are paint-only — no
-/// record pass runs on them to re-decide anything.
+/// The idle stop must hold at *sample* time: frames carrying a settled blink
+/// past its cutoff are paint-only and run no record pass.
 #[test]
 fn blink_settles_solid_after_stop_and_stops_waking() {
     // Stop at 4 half-periods: boundaries at +1..+4 HP, then solid.
     let stop = HP * 4;
     let a = blink().with_repeat(PaintRepeat::Settle(stop));
 
-    // Before the stop the phase still alternates: odd multiples of
-    // HP are the hidden ones.
+    // Before the stop the phase alternates; odd multiples of HP are hidden.
     assert_eq!(a.sample(START + HP).alpha, 0.0);
     assert_eq!(a.sample(START + HP * 2).alpha, 1.0);
     assert_eq!(a.sample(START + HP * 3).alpha, 0.0);
 
-    // At the stop and ever after: solid, whatever the parity says.
-    // `START + HP*5` is an odd multiple — it would be hidden if the
-    // stop weren't applied.
+    // At the stop and after: solid whatever the parity. `START + HP*5` is odd and
+    // would be hidden without the stop.
     assert_eq!(a.sample(START + stop).alpha, 1.0);
     assert_eq!(a.sample(START + HP * 5).alpha, 1.0);
     assert_eq!(a.sample(START + Duration::from_secs(600)).alpha, 1.0);
 
-    // Wakes run up to and including the boundary that reaches the
-    // stop — that transition still has to be painted — and cease
-    // afterwards, so an idle editor stops asking for frames.
+    // Wakes run through the boundary reaching the stop (that transition must be
+    // painted), then cease so an idle editor stops asking for frames.
     assert_eq!(a.next_wake(START + HP * 2), Some(START + HP * 3));
     assert_eq!(a.next_wake(START + HP * 3), Some(START + stop));
     assert_eq!(a.next_wake(START + stop), None);
     assert_eq!(a.next_wake(START + Duration::from_secs(600)), None);
 
-    // A stop that lands *between* boundaries still gets its own
-    // wake, since the settle is the flip that has to be painted.
-    // 3.5 half-periods in, the phase is the hidden one (n = 3), so
-    // waking only on boundaries would strand the caret invisible.
+    // A stop between boundaries still gets its own wake, since the settle is the
+    // flip to paint. At 3.5 HP the phase is hidden (n = 3), so boundary-only wakes
+    // would strand the caret invisible.
     let ragged = HP * 3 + HP / 2;
     let b = blink().with_repeat(PaintRepeat::Settle(ragged));
     assert_eq!(b.sample(START + HP * 3).alpha, 0.0);
@@ -261,22 +250,18 @@ fn blink_settles_solid_after_stop_and_stops_waking() {
     assert_eq!(b.next_wake(START + ragged), None);
 }
 
-/// A caller's own curve, driving both channels off one pass.
+/// A caller's own curve driving both channels off one pass.
 ///
-/// Hand-computed against `alpha(0.2, 1.0)` and `turn(0.0, 0.5)` over a
-/// one-second period with `curve = |t| t * t`:
+/// Hand-computed with `alpha(0.2, 1.0)`, `turn(0.0, 0.5)`, one-second period,
+/// `curve = |t| t * t`:
 ///
-/// - at 0.5 s the phase is 0.5, so the curve gives 0.25. Alpha lerps to
-///   `0.2 + 0.8 * 0.25 = 0.4`, and the turn to `0.5 * 0.25 = 0.125`
-///   turns, which is `TAU / 8` radians.
-/// - at 1.0 s the pass is over. `Once` holds the end: alpha 1.0, turn a
-///   half, which is `TAU / 2`.
+/// - at 0.5 s the curve gives 0.25: alpha `0.2 + 0.8 * 0.25 = 0.4`, turn
+///   `0.5 * 0.25 = 0.125` turns = `TAU / 8` radians.
+/// - at 1.0 s `Once` holds the end: alpha 1.0, turn a half = `TAU / 2`.
 ///
-/// A sample is coerced where it is read: an alpha past either end
-/// clamps to it, a NaN alpha end or a curve that answers NaN reads as no
-/// opacity, and a turn that is not finite reads as no turn. Halfway along
-/// a linear curve, `-1 → 3` is `1` and `0 → 4` is `2`; past `1` it is
-/// clamped there.
+/// Samples are coerced where read: alpha clamps at either end, a NaN alpha end
+/// or curve reads as no opacity, a non-finite turn as no turn. Halfway along a
+/// linear curve `-1 -> 3` is `1` and `0 -> 4` is `2`; past `1` it clamps.
 #[test]
 fn samples_are_coerced_where_they_are_read() {
     let half = START + Duration::from_millis(500);
@@ -301,8 +286,8 @@ fn samples_are_coerced_where_they_are_read() {
     );
 }
 
-/// A fractional alpha is the whole point — the two shipped animations
-/// only ever answered 0 or 1, so nothing before this could produce one.
+/// A fractional alpha is the point: the two shipped animations only answered 0
+/// or 1.
 #[test]
 fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
     fn squared(t: f32) -> f32 {
@@ -324,16 +309,14 @@ fn a_custom_curve_drives_both_channels_and_holds_at_the_end() {
     assert_eq!(end.rotation, TAU / 2.0);
     assert_eq!(a.next_wake(START + Duration::from_secs(1)), None);
 
-    // A turn of any range makes the damage bound the swept square, and
-    // the cascade asks without a `now` or a call into the curve.
+    // A turn of any range makes the damage bound the swept square; the cascade
+    // asks without a `now` or a curve call.
     assert!(a.rotates());
     assert!(!PaintAnimation::alpha(0.0, 1.0).rotates());
 }
 
-/// `Settle` stops modifying the shape, rather than holding an end value.
-/// A settled blink is a solid caret, and a settled fade is the shape as
-/// recorded — which is why the caret needs no "and now paint me opaque"
-/// arm of its own.
+/// `Settle` stops modifying the shape rather than holding an end value, so a
+/// settled blink is a solid caret and a settled fade is the shape as recorded.
 #[test]
 fn a_settled_animation_stops_modifying_the_shape() {
     let a = PaintAnimation::alpha(0.0, 0.25)
@@ -348,18 +331,15 @@ fn a_settled_animation_stops_modifying_the_shape() {
     assert_eq!(a.next_wake(START + Duration::from_millis(250)), None);
 }
 
-/// Zero steps would read as a shape that never animates, with nothing
-/// else to say the animation was asked for.
+/// Zero steps would read as a never-animating shape.
 #[test]
 #[should_panic = "a count must be at least 1"]
 fn zero_steps_is_a_caller_bug() {
     let _ = PaintAnimation::alpha(0.0, 1.0).with_steps(0);
 }
 
-/// Every part of an animation reaches its hash, so a shape whose
-/// animation changes in any one of them reads as changed: the range
-/// either channel drives, each timing field, and the curve. The same
-/// animation hashes the same.
+/// Every part of an animation reaches its hash: the range either channel
+/// drives, each timing field, and the curve. The same animation hashes the same.
 #[test]
 fn hash_static_covers_channel_timing_and_curve() {
     let hash = |anim: PaintAnimation| {

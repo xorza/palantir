@@ -1,5 +1,5 @@
-//! The GPU side of registered images: their textures and bind groups,
-//! created, rewritten and freed the moment the registry asks.
+//! GPU textures and bind groups for registered images, created, rewritten and
+//! freed as the registry asks.
 
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::texture_region::TextureRegion;
@@ -14,29 +14,21 @@ use std::array;
 use std::cell::{Ref, RefCell};
 use std::sync::OnceLock;
 
-/// The [`ImageStore`] a host's registry writes through and its backend
-/// draws from. The two hold one `Rc` between them, which is why the map
-/// sits behind a `RefCell`: a handle creates, rewrites or frees through a
-/// shared reference between frames, and the draw takes one [`Self::read`]
-/// for a whole pass. Only a queue drained by the backend under `&mut self`
-/// would remove the cell, and that is the staged-upload design this
-/// immediate one replaced.
+/// The [`ImageStore`] a host's registry writes through and its backend draws
+/// from. They share one `Rc`, so the map sits behind a `RefCell`; a draw takes
+/// one [`Self::read`] per pass.
 #[derive(Debug)]
 pub(crate) struct WgpuImageStore {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    /// The group-0 layout and sampler every image bind group is built
-    /// against — the backend's one, which the `GpuView` targets share, so
-    /// a composite of a view binds exactly like an image.
+    /// The backend's group-0 layout and sampler, shared with `GpuView` targets.
     binding: TextureBinding,
     textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
-    /// Where [`premultiply_into`] stages a write, kept so a refilled
-    /// image allocates once rather than once per update. An image with
-    /// no transparency never reaches it — see [`Self::write`].
+    /// Staging for [`premultiply_into`], reused across updates. Opaque images skip
+    /// it ([`Self::write`]).
     staged: RefCell<Vec<SrgbaU8>>,
-    /// Built here, with the backend, rather than on the first
-    /// soft-edged image: the build takes milliseconds, which belong to
-    /// startup and not to whichever frame registers that image.
+    /// Built at startup: the build takes milliseconds, which shouldn't land on the
+    /// frame that registers a soft-edged image.
     premultiply: &'static [[u8; 256]; 256],
 }
 
@@ -58,14 +50,12 @@ impl WgpuImageStore {
         }
     }
 
-    /// One borrow for a render traversal, so a draw pays neither a
-    /// `RefCell` probe nor a handle clone per run.
+    /// One borrow per render traversal, avoiding a `RefCell` probe per run.
     pub(crate) fn read(&self) -> Ref<'_, FxHashMap<TextureId, ImageTexture>> {
         self.textures.borrow()
     }
 
-    /// An empty texture at `size` and the bind group a draw samples it
-    /// through. The texels follow in the write that asked for it.
+    /// An empty texture at `size` and its bind group; the write that follows fills it.
     fn create(&self, id: TextureId, size: UVec2) -> ImageTexture {
         let raw_id = id.0;
         let texture_label = format!("palantir.image.tex.{raw_id:016x}");
@@ -112,12 +102,8 @@ impl ImageStore for WgpuImageStore {
             size: image.size,
             bytes_per_row: image.size.x * 4,
         };
-        // An image with nothing transparent in it is premultiplied
-        // already — every colour is scaled by one — so it goes as it
-        // stands, for a read the write pays anyway rather than a second
-        // buffer the size of the image. A photograph, a screenshot and
-        // an opaque generated surface all take that path: what pays is
-        // what could have had a fringe.
+        // An image with no transparency is already premultiplied (scale by one), so
+        // it is written as is rather than copied into a second buffer.
         let texels = image.texels();
         if texels.iter().all(|texel| texel.a == u8::MAX) {
             region.write(&self.queue, &image.pixels);
@@ -133,34 +119,23 @@ impl ImageStore for WgpuImageStore {
     }
 }
 
-/// `texels` with every colour scaled by its own alpha, still sRGB-encoded
-/// — what the texture holds, and what an [`Image`] does not.
+/// `texels` with every colour scaled by its own alpha, still sRGB-encoded:
+/// what the texture holds and an [`Image`] does not.
 ///
-/// **The filter runs before the shader does**, so the texels it blends
-/// have to carry their own coverage already: halfway between opaque red
-/// and transparent black, straight colour averages to full red at half
-/// alpha, and the shader's multiply then leaves a quarter of the red the
-/// edge covers. That is a dark fringe around every soft edge, and a
-/// coloured one wherever the clear texels carry a colour. The image
-/// shader's header states the contract this satisfies.
+/// **The filter runs before the shader**, so texels must already carry their
+/// coverage: straight colour blended halfway to transparent black leaves a
+/// dark (or coloured) fringe once the shader multiplies by alpha. The image
+/// shader's header states the contract.
 ///
-/// The scale happens in linear light, because that is what the sRGB
-/// texture decodes to and what the filter blends.
+/// The scale is in linear light, which the sRGB texture decodes to and the
+/// filter blends.
 ///
-/// **A texture cannot follow how it is sampled.** The error needs a
-/// blending filter *and* neighbours whose alpha differs, and only the
-/// second is a property of the image — one texture serves every draw of
-/// it, magnified here and snapped to its texels there. So the caller
-/// tests the alpha, and this converts whatever it is handed. The raster
-/// atlases are the textures that *can* answer the first, and they answer
-/// it the other way: the shader reads one texel per pixel by index, and
-/// the one path that blends texels — an icon drawn off its raster's size
-/// — premultiplies its taps itself. So they keep straight alpha, which is
-/// what lets the icon rasterizer hand them demultiplied pixels.
+/// The caller tests the alpha, since the error needs differing neighbour
+/// alphas, a property of the image. The raster atlases keep straight alpha
+/// because their shader reads one texel per pixel and the icon path
+/// premultiplies its own taps.
 ///
-/// Paid once per upload rather than per fragment, which suits an image
-/// registered once and sampled for as long as it is shown. An
-/// application refilling one every frame pays it every frame.
+/// Paid once per upload; an image refilled every frame pays every frame.
 fn premultiply_into(table: &[[u8; 256]; 256], texels: &[SrgbaU8], out: &mut Vec<SrgbaU8>) {
     out.clear();
     out.reserve_exact(texels.len());
@@ -175,20 +150,11 @@ fn premultiply_into(table: &[[u8; 256]; 256], texels: &[SrgbaU8], out: &mut Vec<
     }));
 }
 
-/// `encode(decode(value) · alpha)` for every byte pair a texel can hold,
-/// indexed `[alpha][value]`.
+/// `encode(decode(value) * alpha)` for every byte pair, indexed `[alpha][value]`.
 ///
-/// **The arithmetic is what costs, not the pass.** One entry is a cubic
-/// sRGB decode and an encode that seeds with `powf` and then runs three
-/// Newton steps — around a hundred nanoseconds, per channel, per texel. A
-/// soft-edged image is mostly part-transparent texels, so computing it
-/// per texel would spend that three times over on every one of them and
-/// stall the frame that registered the image. Two lookups instead, and
-/// the pass over the buffer is what is left.
-///
-/// 64 KiB, built with the first image store and kept for the process.
-/// The build spends the arithmetic 65536 times, which is less than one
-/// soft image of any size would have spent.
+/// The arithmetic (an sRGB decode and an iterative encode) is what costs, so
+/// it runs 65536 times once instead of per channel per texel. 64 KiB, built
+/// with the first image store and kept for the process.
 fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
     static TABLE: OnceLock<Box<[[u8; 256]; 256]>> = OnceLock::new();
     TABLE.get_or_init(|| {
@@ -216,10 +182,8 @@ fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
                 .r;
             }
         }
-        // Full coverage scales by one, and an opaque image must reach the
-        // GPU as the bytes it was handed. The decode and encode either
-        // side of that multiply round-trip to within one LSB rather than
-        // exactly, so the identity is stated instead of computed.
+        // Full coverage must reach the GPU as the bytes it was handed, but the
+        // round trip drifts by an LSB, so the identity is stated.
         table[usize::from(u8::MAX)] = array::from_fn(|value| value as u8);
         table
     })
@@ -230,8 +194,8 @@ pub(crate) mod internals {
     use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 
     impl WgpuImageStore {
-        /// Registered images resident on the GPU. The surface-format-change
-        /// tests assert this survives a pipeline rebuild.
+        /// Registered images resident on the GPU; surface-format-change tests assert
+        /// it survives a pipeline rebuild.
         pub(crate) fn resident(&self) -> usize {
             self.textures.borrow().len()
         }
@@ -254,11 +218,8 @@ mod tests {
     use glam::UVec2;
     use std::rc::Rc;
 
-    /// The table stands in for the arithmetic, so it answers what the
-    /// arithmetic answers — over every byte pair a texel can hold, not a
-    /// sample of them. Full coverage is the one deliberate difference:
-    /// it is the identity, where the round trip through the transfer
-    /// functions could drift a bit.
+    /// Must match the arithmetic over every byte pair, except full coverage,
+    /// which is the identity.
     #[test]
     fn the_premultiply_table_answers_for_the_arithmetic() {
         let texels: Vec<SrgbaU8> = (0..=u8::MAX)

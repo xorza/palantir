@@ -1,6 +1,4 @@
-//! The line, Bézier and arc builder. Every geometry lowers to one
-//! `ShapeRecord::Curve`, and the stroke properties travel beside the
-//! geometry so only the geometry varies between the entry points.
+//! The line, Bézier and arc builder: every geometry lowers to one `ShapeRecord::Curve`, with stroke properties travelling beside it.
 
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
@@ -39,9 +37,7 @@ pub(crate) enum CurveGeometry {
     },
 }
 
-/// The stroke properties every curve geometry carries into lowering. They travel
-/// together from the setters to the lowering entry points, so the geometry is the
-/// only thing that varies between them.
+/// The stroke properties every geometry carries into lowering, so only the geometry varies between entry points.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CurveStyle {
     pub(crate) stroke: Stroke,
@@ -49,8 +45,7 @@ pub(crate) struct CurveStyle {
     pub(crate) cap: LineCap,
 }
 
-/// Stroked line, Bézier, or circular arc. The stroke is centred on the
-/// curve, like every path shape's.
+/// Stroked line, Bézier, or circular arc, centred on the curve like every path shape.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct CurveShape {
@@ -72,13 +67,7 @@ impl CurveShape {
 }
 
 impl CurveShape {
-    /// Vary the colour along the curve: at curve parameter `t` it is the
-    /// stroke colour times `ramp` at `t`, channel by channel — the rule a
-    /// mesh tint follows. `t` runs from 0 at the start to 1 at the end:
-    /// `p0` → `p3` on a Bézier, across the sweep on an arc. It is the
-    /// curve parameter, not arc length: on a Bézier whose control points
-    /// are unevenly spaced, the colour changes fastest where the curve
-    /// moves least per step of `t`.
+    /// Vary the colour along the curve: at parameter `t` it is the stroke colour times `ramp` at `t`, per channel (as a mesh tint). `t` runs 0 to 1 (`p0` → `p3` on a Bézier, across the sweep on an arc); it is not arc length, so colour changes fastest where the curve moves least per step.
     pub const fn ramp(mut self, ramp: ColorRamp) -> Self {
         self.style.ramp = Some(ramp);
         self
@@ -110,11 +99,7 @@ impl sealed::LowerShape for CurveShape {
         }
     }
 
-    /// The geometry is a fixed handful of scalars, so they are read
-    /// directly rather than through a fold — the bbox lowering derives
-    /// from them would carry the NaN too, but only after the ramp had
-    /// interned into the store. A ramp's stops are integer-encoded, so
-    /// it holds no NaN of its own.
+    /// The geometry is a few scalars, read directly rather than folded: the derived bbox would carry the NaN only after the ramp had interned. A ramp's integer-encoded stops hold no NaN.
     fn has_nan(&self) -> bool {
         let geometry = match &self.geometry {
             CurveGeometry::Line { a, b } => a.has_nan() || b.has_nan(),

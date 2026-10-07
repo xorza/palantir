@@ -1,17 +1,9 @@
-//! The GPU half both raster tenants own, in one type.
-//!
-//! An icon quad and a glyph quad are the same thing at the GPU level: a
-//! tinted, atlas-sourced rectangle drawn at exactly the raster's pixel
-//! dimensions. The two differ only in what fills the instance buffer —
-//! cosmic and swash on one side, a baked SVG and resvg on the other —
-//! and everything from the atlas a quad's uv points into to the `draw`
-//! that consumes it is this file.
-//!
-//! What the tenants do **not** share is an instance of it. Each gets its
-//! own atlas — its own textures, bind group, and eviction budget — so a
-//! colour-icon-heavy frame cannot evict the glyphs of the label beside
-//! it, and so the two can be sized for the content they actually hold.
-//! The cost is one extra draw call on a group that mixes icons and text.
+//! The GPU half both raster tenants own, in one type. An icon quad and a glyph quad
+//! are the same at the GPU level (a tinted, atlas-sourced rectangle at the raster's
+//! pixel size), differing only in what fills the instance buffer. Each tenant gets
+//! its own instance, with its own atlas and eviction budget, so a colour-icon-heavy
+//! frame cannot evict the label's glyphs; the cost is one extra draw on a group
+//! mixing icons and text.
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -25,70 +17,48 @@ use crate::primitives::paint::raster_image::RasterImage;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-/// Everything one tenant's pass settles at construction.
-///
-/// The pipeline and the shader are named by the [`RasterProgram`] that
-/// owns them, since a frame capture wants one name per object. What is
-/// per tenant is the instance buffer and the atlas.
+/// Everything one tenant's pass settles at construction; the pipeline and shader
+/// belong to the [`RasterProgram`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RasterPassConfig {
-    /// GPU debug name for this tenant's instance buffer.
     pub(super) vbuf: &'static str,
     pub(super) atlas: RasterAtlasConfig,
-    /// Quads the vertex buffer holds before its first growth. A screen of
-    /// text runs to thousands of them and a screen of icons to hundreds,
-    /// so the two tenants start far apart.
+    /// Quads the vertex buffer holds before its first growth.
     pub(super) initial_instances: usize,
 }
 
-/// What one [`RasterPass::insert_raster`] managed to do with an image.
-///
-/// The two failures are kept apart because only one of them is
-/// transient, and a caller that caches what it drew has to know which it
-/// met.
+/// What one [`RasterPass::insert_raster`] managed to do with an image. The failures
+/// are kept apart because only one is transient.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Rasterized {
-    /// Slab index of the image's atlas slot.
     Slot(u32),
-    /// The atlas is at the device maximum with no evictable rectangle.
-    /// The image is missing *this frame only*.
+    /// The atlas is at the device maximum with no evictable rectangle; the image is
+    /// missing *this frame only*.
     AtlasFull,
 }
 
-/// The life of one atlas-starvation episode.
-///
-/// Starvation is not corruption — the image is skipped and re-encodes
-/// next frame — but it is silent, self-inflicted slowness with a visible
-/// hole in the frame, and nothing else in the pipeline would say so. It
-/// is edge-triggered because it recurs per raster per frame, and logging
-/// each one would bury the signal in its own noise.
-///
-/// Three named states rather than two bools: the bools admit a fourth
-/// combination that means nothing, and a type that refuses it is one a
-/// reader need not rule out.
+/// The life of one atlas-starvation episode. Starvation is not corruption (the
+/// image re-encodes next frame) but it is silent slowness with a visible hole, so
+/// it is edge-triggered: it recurs per raster per frame. Three named states rather
+/// than two bools, which admit a meaningless fourth combination.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Starvation {
-    /// No episode open: the last frame fit everything it drew.
     #[default]
     Clear,
-    /// Reported, and this frame has starved too.
     Open,
-    /// Reported, and this frame fit everything. One more such frame
-    /// closes the episode, so a later recurrence is reported again
-    /// rather than swallowed forever.
+    /// Reported, and this frame fit everything; one more such frame closes the
+    /// episode so a recurrence is reported again.
     Settling,
 }
 
 impl Starvation {
-    /// Record a starved raster, answering whether it is the first of its
-    /// episode and so the one worth a log line.
+    /// Record a starved raster, answering whether it is the first of its episode.
     fn note(&mut self) -> bool {
         let first = *self == Self::Clear;
         *self = Self::Open;
         first
     }
 
-    /// Close a frame.
     const fn end_frame(&mut self) {
         *self = match self {
             Self::Open => Self::Settling,
@@ -100,16 +70,12 @@ impl Starvation {
 #[derive(Debug)]
 pub(super) struct RasterPass<K> {
     pub(super) atlas: RasterAtlas<K>,
-    /// Drawable quads accumulated across this frame's batches.
     pub(super) instances: Vec<RasterQuad>,
-    /// Where each batch's quads start in [`Self::instances`]. The next
-    /// entry — or the instance count, for the last batch — is where they
-    /// end, so a batch costs one push when it opens and needs no close.
+    /// Where each batch's quads start in [`Self::instances`]; the next entry (or
+    /// the instance count) is where they end.
     starts: Vec<u32>,
     vbuf: DynamicBuffer<RasterQuad>,
-    /// Label stem, for the diagnostics that have to name a tenant.
     stem: &'static str,
-    /// Where the atlas-starvation report stands — see [`Starvation`].
     starvation: Starvation,
 }
 
@@ -129,13 +95,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         }
     }
 
-    /// File a freshly rasterized image under `key` and return the slot it
-    /// landed in.
-    ///
-    /// An image whose extents or bearing overflow [`PackedMetadata`], and
-    /// one that covers no pixels at all, take a slot that owns no
-    /// rectangle: the key is then a hit forever after, so the tenant pays
-    /// the rasterizer once instead of on every frame that asks again.
+    /// File a freshly rasterized image under `key` and return its slot. An image
+    /// whose extents or bearing overflow [`PackedMetadata`], or that covers no
+    /// pixels, takes a slot owning no rectangle, so the key is a hit forever and
+    /// the rasterizer runs once.
     pub(super) fn insert_raster(
         &mut self,
         device: &wgpu::Device,
@@ -168,9 +131,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         }
     }
 
-    /// Report the first starved raster of an episode, so a full atlas is
-    /// visible in a log rather than only as a hole in the frame and a
-    /// pass that quietly re-encodes everything.
+    /// Report the first starved raster of an episode, so a full atlas shows in a
+    /// log.
     #[cold]
     fn note_atlas_starved(&mut self) {
         if !self.starvation.note() {
@@ -186,7 +148,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         );
     }
 
-    /// Note where batch `batch_idx`'s quads begin, before any is pushed.
     pub(super) fn open_batch(&mut self, batch_idx: usize) {
         debug_assert_eq!(
             batch_idx,
@@ -197,8 +158,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.starts.push(self.instances.len() as u32);
     }
 
-    /// The instance range batch `batch_idx` draws. An empty span draws
-    /// nothing.
     pub(super) fn batch_span(&self, batch_idx: usize) -> Span {
         let Some(&start) = self.starts.get(batch_idx) else {
             panic!(
@@ -214,16 +173,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         Span::new(start, end - start)
     }
 
-    /// Upload this frame's accumulated quads in one belt write, then drain
-    /// the atlas's queued uploads (grow blits and per-raster texture
-    /// copies) onto the renderer's encoder. Called once per frame, after
-    /// every batch is prepared and before any pass draws — so the pixels
-    /// land in the same submit as the draws that read them.
-    ///
-    /// One deferred write replaces N per-batch belt suballocations and
-    /// copy commands over disjoint tails of the same `Vec`, and a
-    /// mid-frame grow re-uploads at most once. Batch spans index the
-    /// shared buffer, so per-batch draws are unaffected.
+    /// Upload this frame's quads in one belt write, then drain the atlas's queued
+    /// uploads onto the renderer's encoder. Called once per frame after every batch
+    /// is prepared and before any pass draws, so pixels land in the same submit as
+    /// the draws reading them.
     pub(super) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
         self.vbuf.upload_instances(ctx, &self.instances);
         self.atlas.flush_pending_uploads(ctx);
@@ -234,11 +187,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.atlas.draw_span(pass, &self.vbuf, span);
     }
 
-    /// Age the atlas against `frame` and drop this frame's quads and batch
-    /// starts. Runs for every submit, including one that prepared no batch
-    /// at all — a frame whose damage missed every raster still has to age
-    /// the cache, or a keep count bounds only the frames that drew
-    /// something rather than retention itself.
+    /// Age the atlas against `frame` and drop this frame's quads and batch starts.
+    /// Runs for every submit, even one that prepared no batch, or a keep count
+    /// would bound only frames that drew something.
     pub(super) fn end_frame(&mut self, frame: u64) {
         debug_assert!(
             !self.starts.is_empty() || self.instances.is_empty(),
@@ -256,14 +207,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
 mod tests {
     use crate::gpu::raster::raster_pass::Starvation;
 
-    /// The episode's whole life: reported once on the first starved
-    /// raster, held open while starvation continues, and closed by the
-    /// second clean frame so a later recurrence is reported again.
-    ///
-    /// The settling frame is the part worth pinning. Closing on the first
-    /// clean frame instead would re-report a raster that starved again the
-    /// very next frame, which is the per-frame noise the edge trigger
-    /// exists to avoid.
+    /// The episode's life: reported once on the first starved raster, held open
+    /// while starvation continues, closed by the second clean frame. Closing on the
+    /// first would re-report a raster that starved again next frame, the per-frame
+    /// noise the edge trigger avoids.
     #[test]
     fn a_starvation_episode_reports_once_and_closes_one_clean_frame_later() {
         let mut s = Starvation::default();
@@ -280,8 +227,6 @@ mod tests {
             "starving again while settling is the same episode",
         );
 
-        // Two clean frames from an open episode: the first settles, the
-        // second closes.
         s.end_frame();
         assert_eq!(s, Starvation::Settling);
         s.end_frame();

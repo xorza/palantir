@@ -19,26 +19,14 @@ struct Case<'a> {
     want: &'a [DrawOp],
 }
 
-/// A text batch emits once, right after its `last_group`'s quads, and
-/// nowhere else.
+/// A text batch emits once, right after its `last_group`'s quads, nowhere else.
 ///
-/// - `interleaves_per_group`: text in group 0 renders *between* group 0's
-///   quads and group 1's, so a child quad declared after a label can
-///   occlude it — the per-group z-order the showcase's `text z-order` tab
-///   shows.
-/// - `quadless_group`: a group with text and no quads (a Hug parent whose
-///   only paint is its label) still emits its `Text`.
-/// - `spans_two_groups`: two groups sharing one batch emit `Text` once,
-///   after the last group's quads — not one raster pass each.
-/// - `trailing_quad_group`: a batch followed by a text-less group still
-///   emits at its `last_group`, not pushed forward.
-/// - `anchored_in_trailing_skipped_group`: the batch's `last_group` falls
-///   outside the damage, but group 0 inside it contributed text, so the
-///   batch still renders — out of the trailing drain, since no later
-///   unskipped group exists to drain it. The batch scissor clips the
-///   merged text, so emitting late is paint-safe.
-/// - `two_batches`: each batch emits at its own `last_group`, the cursor
-///   neither skipping nor doubling one.
+/// - `interleaves_per_group`: group 0's text renders between group 0's and group 1's quads (per-group z-order).
+/// - `quadless_group`: a group with text and no quads still emits its `Text`.
+/// - `spans_two_groups`: two groups sharing a batch emit `Text` once, after the last group's quads.
+/// - `trailing_quad_group`: a batch followed by a text-less group emits at its `last_group`.
+/// - `anchored_in_trailing_skipped_group`: `last_group` is outside the damage but group 0 contributed text, so the batch renders from the trailing drain; the batch scissor makes late emission paint-safe.
+/// - `two_batches`: each emits at its own `last_group`, never skipped or doubled.
 #[test]
 fn text_batches_emit_once_after_their_last_group() {
     let left = Some(URect::new(0, 0, 50, 50));

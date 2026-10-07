@@ -1,5 +1,4 @@
-//! One shaped run's render-handoff identity, carried from the encoder to
-//! the text backend.
+//! One shaped run's render-handoff identity, from the encoder to the text backend.
 
 use crate::common::span::Span;
 use crate::primitives::text::interned_text::InternedText;
@@ -7,13 +6,7 @@ use crate::primitives::text::recorded_text::RecordedText;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 
-/// One shaped run's render-handoff identity: the shaped-buffer cache key
-/// plus the record-store span of the exact source bytes it hashes. Minted
-/// once by the encoder via [`Self::new`] (which checks the pairing against
-/// the recorded content hash) and carried as a unit through the paint
-/// payload, composer, and text backend so the key cannot drift from its
-/// bytes between layers; [`Self::resolve_request`] is the single place the
-/// pair turns back into a shaping request.
+/// One shaped run's handoff identity: the shaped-buffer cache key plus the record-store span of the source bytes it hashes. Minted once by the encoder via [`Self::new`] and carried as a unit so key and bytes can't drift; [`Self::resolve_request`] turns the pair back into a shaping request.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ShapedTextRef {
     pub(crate) key: TextShapeKey,
@@ -21,11 +14,7 @@ pub(crate) struct ShapedTextRef {
 }
 
 impl ShapedTextRef {
-    /// Pair a measured cache key with the recorded source it was shaped
-    /// from. The O(1) hash comparison catches a mis-paired key/source
-    /// here, while the recorded hash is still to hand and nothing has to
-    /// re-read the bytes; [`Self::resolve_request`] checks the resolved
-    /// bytes themselves on the way back out.
+    /// Pair a measured cache key with its recorded source. The O(1) hash comparison catches a mis-pairing here; [`Self::resolve_request`] checks the bytes on the way out.
     pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
         debug_assert_eq!(
             key.text_hash,
@@ -38,18 +27,7 @@ impl ShapedTextRef {
         }
     }
 
-    /// Resolve the retained bytes and rebuild the shaping request the
-    /// backend replays on an encoded-cache miss.
-    ///
-    /// [`TextShapeRequest::for_key`] is what checks the resolved bytes
-    /// against the key's content hash — the contract that makes reusing a
-    /// cached shaped buffer sound, and the reason this is a pairing call
-    /// rather than a struct literal.
-    ///
-    /// A run that reaches here has bytes: `TextShape::is_noop` drops an
-    /// empty one before it becomes a record, so no `ShapedTextRef` is
-    /// ever minted for one. The `expect` is that contract, not a case to
-    /// answer.
+    /// Resolve the bytes and rebuild the shaping request replayed on an encoded-cache miss. [`TextShapeRequest::for_key`] checks the bytes against the key's content hash, which makes cached-buffer reuse sound. `TextShape::is_noop` drops empty runs before recording, so the `expect` is that contract.
     pub(crate) fn resolve_request<'a>(
         self,
         interned_text: &'a InternedText<'_>,

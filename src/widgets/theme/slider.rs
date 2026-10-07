@@ -3,10 +3,7 @@
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Slider`]: a thin two-tone track (filled `fill`
-/// left of the knob, `track` right of it) with a round `knob`. The
-/// track is `track_thickness` tall and pill-capped; the knob is
-/// `knob_size` across.
+/// Visuals for [`crate::Slider`]: a two-tone track (`fill` left of the knob, `track` right) with a round `knob`.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SliderTheme {
     /// Unfilled track color (right of the knob).
@@ -18,15 +15,13 @@ pub struct SliderTheme {
     /// Knob diameter in logical px — also the widget's height.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub knob_size: f32,
-    /// Track thickness in logical px. Pill radius is
-    /// `track_thickness / 2`.
+    /// Track thickness in logical px; the pill radius is half.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub track_thickness: f32,
 }
 
 impl SliderTheme {
-    /// A muted track, an accent fill behind the knob, and a knob in the
-    /// text colour.
+    /// A muted track, an accent fill and a text-colour knob.
     pub const fn from_palette(p: &Palette) -> Self {
         Self {
             track: p.element_mid,

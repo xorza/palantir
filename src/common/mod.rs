@@ -1,7 +1,4 @@
-//! Cross-cutting utilities that don't fit any single subsystem.
-//! Submodules are `pub(crate)`; canonical paths are
-//! `crate::common::<sub>::<item>`. [`flag_set`] is the exception — it holds
-//! a macro, which is reached textually rather than by path.
+//! Cross-cutting utilities. Submodules are `pub(crate)` at `crate::common::<sub>::<item>`, except [`flag_set`], which holds a macro reached textually.
 
 pub(crate) mod app_setting;
 pub(crate) mod block_arena;

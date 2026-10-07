@@ -1,5 +1,4 @@
-//! What deserializing a [`DockState`](crate::DockState) rejects: a tree
-//! that broke one of the invariants its module doc lists.
+//! What deserializing a [`DockState`](crate::DockState) rejects: a tree breaking an invariant its module doc lists.
 
 use crate::widgets::dock::tab_group::TabGroupId;
 use std::error;
@@ -51,8 +50,7 @@ pub enum DockError<T> {
         /// The id focus points at.
         group: TabGroupId,
     },
-    /// The group-id counter cannot mint a fresh id: it would repeat one
-    /// the tree already uses, or it has counted to the end of its range.
+    /// The group-id counter can't mint a fresh id: it would repeat one in use, or has counted to the end of its range.
     GroupAllocator {
         /// The id the counter would mint next.
         next_group: u64,

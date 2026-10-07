@@ -1,49 +1,32 @@
-//! What a scroll's bars wear, in both the modes they can lay out in —
-//! reserved beside the content, or floating over it.
+//! What a scroll's bars wear, reserved beside the content or floating over it.
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under
-/// [`BarMode::Reserved`](crate::BarMode) the widget takes `thickness`
-/// of padding off each panned axis's far edge whether or not anything
-/// currently overflows, and the bar paints in that reserved strip —
-/// beside the visible content, never on top of it. Track + thumb are
-/// pill-capped filled rects, and the thumb fill picks between `thumb` /
-/// `thumb_hovered` / `thumb_active` on the bar leaf's hover + drag
-/// state.
+/// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under [`BarMode::Reserved`](crate::BarMode) the widget takes `thickness` of padding off each panned axis's far edge and paints the bar there. Track and thumb are pill-capped; the thumb fill follows hover and drag state.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
-    /// Cross-axis thickness of the bar in logical px. The pill radius
-    /// of track and thumb is `thickness / 2`.
+    /// Cross-axis thickness in logical px; pill radius is `thickness / 2`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub thickness: f32,
-    /// Empty padding strip between content and the bar. Reserved
-    /// alongside `thickness` (total reservation = `thickness + gap`) but
-    /// painted as nothing — pure breathing room so the bar doesn't
-    /// touch the visible content.
+    /// Empty strip between content and bar; reserved in addition to `thickness`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
-    /// Floor for the thumb's main-axis length so a tiny `viewport /
-    /// content` ratio doesn't produce an ungrabbable nub.
+    /// Floor for the thumb's main-axis length.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_thumb: f32,
-    /// Track background. `RgbaF32::TRANSPARENT` = pure overlay (only the
-    /// thumb is visible) — the macOS-style default.
+    /// Track background; `TRANSPARENT` is pure overlay (macOS-style default).
     pub track: RgbaF32,
     /// Idle thumb fill.
     pub thumb: RgbaF32,
     /// Thumb fill while the pointer is over the bar.
     pub thumb_hovered: RgbaF32,
-    /// Thumb fill while the thumb is drag-captured (or pressed).
+    /// Thumb fill while drag-captured or pressed.
     pub thumb_active: RgbaF32,
 }
 
 impl ScrollbarTheme {
-    /// The palette defines no scrollbar colors; use `text_muted` at
-    /// decreasing translucency for idle / hover / active so the bar
-    /// reads as a soft overlay matching the palette's muted-text gray
-    /// rather than pure black.
+    /// The palette defines no scrollbar colors; derived from `text_muted` at decreasing translucency.
     pub fn from_palette(p: &Palette) -> Self {
         let thumb = |alpha: f32| p.text_muted.with_alpha(alpha);
         Self {

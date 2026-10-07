@@ -18,7 +18,6 @@ use crate::widgets::text_edit::unicode::{
 use std::borrow::Cow;
 use std::ops;
 
-/// One frame's semantic editing session.
 #[derive(Debug)]
 pub(super) struct Editor<'a> {
     text: &'a mut String,
@@ -26,9 +25,8 @@ pub(super) struct Editor<'a> {
     multiline: bool,
     max_chars: Option<usize>,
     history_checked: bool,
-    /// The buffer was mutated this session (typing, delete, paste,
-    /// cut, undo/redo). Set by the mutation choke points, so it's
-    /// content-accurate — a same-length overwrite still reports.
+    /// The buffer was mutated this session, set at the mutation choke points so a
+    /// same-length overwrite still reports.
     edited: bool,
 }
 
@@ -49,19 +47,12 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Run the default context menu against this session, returning
-    /// whether it edited the buffer. Caret motion is *not* reported:
-    /// `TextEdit::pass` brackets this call and the keyboard pass in one
-    /// before/after comparison, so there is nothing here for a second
-    /// one to add.
-    ///
-    /// One session for the whole menu, not one per action, so the undo
-    /// history is reconciled against the buffer once — exactly as it is
-    /// once for the key pass.
-    ///
-    /// `filter` is the field's own — the menu drains the same layer-wide
-    /// stream the input pass does, so it owes the same
-    /// [`KeyFilter::takes_press`] gate against double dispatch.
+    /// Run the default context menu against this session, returning whether it
+    /// edited the buffer. Caret motion is not reported: `TextEdit::pass` brackets
+    /// this and the keyboard pass in one comparison. One session serves the whole
+    /// menu so undo history is reconciled once; `filter` is the field's own, as the
+    /// menu drains the same layer-wide stream and owes the same
+    /// [`KeyFilter::takes_press`] gate.
     pub(super) fn show_menu(
         &mut self,
         ui: &mut Ui,
@@ -113,8 +104,6 @@ impl<'a> Editor<'a> {
         self.text
     }
 
-    /// This field takes newlines, so a vertical caret move and an
-    /// `Enter` insertion both mean something.
     pub(super) const fn multiline(&self) -> bool {
         self.multiline
     }
@@ -135,22 +124,14 @@ impl<'a> Editor<'a> {
         !self.text.is_empty()
     }
 
-    /// Clamp the caret and selection back onto grapheme boundaries of
-    /// the current buffer, which app code may have replaced under us.
     pub(super) fn normalize(&mut self) {
         self.state.normalize(self.text);
     }
 
-    /// Place the caret for a pointer press, given how many presses the
-    /// multi-press run holds: one places a caret and arms the drag, two
-    /// take the word under it, three or more take everything.
-    ///
-    /// A multi-click leaves the drag disarmed, so a pointer still held
-    /// cannot grow the word or line it chose — the range stays locked
-    /// until the next press.
-    /// With `extend` — Shift held — a single press moves the caret and
-    /// keeps the selection's anchor, so the drag that follows grows the
-    /// selection from where it began.
+    /// Place the caret for a pointer press: one click places it and arms the drag,
+    /// two take the word, three or more everything. A multi-click leaves the drag
+    /// disarmed. With `extend` (Shift) a single press keeps the anchor, so the drag
+    /// grows the selection from where it began.
     pub(super) fn press(&mut self, at: usize, clicks: u8, extend: bool) {
         self.state.drag_anchor = None;
         if extend && clicks <= 1 {
@@ -173,17 +154,14 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Grow the pointer selection to `at` from the anchor an armed
-    /// press left behind. Does nothing after a multi-click, which arms
-    /// none.
+    /// Grow the pointer selection to `at` from the armed press's anchor; nothing
+    /// after a multi-click.
     pub(super) fn drag_to(&mut self, at: usize) {
         if self.state.drag_anchor.is_some() {
             self.move_caret(at, true);
         }
     }
 
-    /// The pointer gesture ended, so the next press starts a fresh
-    /// selection instead of growing this one.
     pub(super) const fn end_drag(&mut self) {
         self.state.drag_anchor = None;
     }
@@ -200,12 +178,8 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Reconcile the history against the buffer once per editor.
-    ///
-    /// `history_checked` is the once-per-frame latch, not a second copy
-    /// of the rule: the `Editor` is built per frame and several entry
-    /// points below open with this, so the first one pays and the rest
-    /// are free. The rule itself is [`EditState::reconcile_before_edit`].
+    /// Reconcile the history against the buffer once per editor; `history_checked`
+    /// latches it, as several entry points open with it.
     fn ensure_history_matches(&mut self) {
         if self.history_checked {
             return;
@@ -230,8 +204,8 @@ impl<'a> Editor<'a> {
         }
         self.ensure_history_matches();
         let before = self.selection_state();
-        // Where the caret lands, derived rather than read back after the
-        // splice: the history wants it *before* the buffer moves.
+        // Derived, not read back after the splice: the history wants it *before*
+        // the buffer moves.
         let after = SelectionState {
             caret: range.start + replacement.len(),
             selection: None,
@@ -240,9 +214,8 @@ impl<'a> Editor<'a> {
         let counts_chars = self.state.char_count.is_some();
         let removed_chars = counts_chars.then(|| removed.chars().count());
         let inserted_chars = counts_chars.then(|| replacement.chars().count());
-        // Recorded first, while `removed` is still a borrow of the live
-        // buffer: typing appends into the open undo group, and a group that
-        // takes the edit takes no allocation with it.
+        // Recorded first, while `removed` still borrows the live buffer, so typing
+        // appends into the open undo group with no allocation.
         self.state.record_edit(
             EditParts {
                 start: range.start,
@@ -284,9 +257,6 @@ impl<'a> Editor<'a> {
         self.edited = true;
     }
 
-    /// Portion of `s` that fits after deleting the live selection.
-    /// The cap is by character count; the returned prefix remains on
-    /// a UTF-8 boundary.
     fn capped_prefix<'s>(&mut self, s: &'s str) -> &'s str {
         match self.max_chars {
             Some(max) => {
@@ -309,16 +279,14 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Replace the live selection with `s` under one undo unit of
-    /// `kind` — the shared choke point for typing, IME text, newline
-    /// insert, and paste.
+    /// Replace the live selection with `s` under one undo unit of `kind`: the choke
+    /// point for typing, IME text, newline insert and paste.
     pub(super) fn replace_selection(&mut self, s: &str, kind: EditKind) {
         self.ensure_history_matches();
         let fit_len = self.capped_prefix(s).len();
         let fit = &s[..fit_len];
-        // Input the cap leaves no room for is dropped whole — the
-        // selection it would have replaced stays. An empty replacement is
-        // a delete, which still clears a selection.
+        // Input the cap leaves no room for is dropped whole; an empty replacement
+        // is a delete, which still clears a selection.
         if fit.is_empty() && (!s.is_empty() || self.state.selection.is_none()) {
             return;
         }
@@ -329,8 +297,6 @@ impl<'a> Editor<'a> {
         self.replace_range(range, fit, kind);
     }
 
-    /// Single-line editors never admit line breaks; multi-line passes
-    /// text through untouched.
     pub(super) fn sanitized<'s>(&self, raw: &'s str) -> Cow<'s, str> {
         if self.multiline {
             Cow::Borrowed(raw)
@@ -339,9 +305,6 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Paste at the caret, replacing any live selection; line breaks
-    /// are sanitized away for single-line editors. No-op on an empty
-    /// clipboard.
     pub(super) fn paste(&mut self, raw: &str) {
         let cleaned = self.sanitized(raw);
         if !cleaned.is_empty() {
@@ -349,7 +312,6 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Delete the live selection as one bulk edit.
     pub(super) fn cut_selection(&mut self) {
         let Some(r) = self.state.sel_range() else {
             return;
@@ -361,7 +323,6 @@ impl<'a> Editor<'a> {
         self.state.sel_range().map(|range| &self.text[range])
     }
 
-    /// Clear the whole buffer (the context menu's Clear).
     pub(super) fn clear(&mut self) {
         if !self.text.is_empty() {
             self.replace_range(0..self.text.len(), "", EditKind::Other);
@@ -388,41 +349,32 @@ impl<'a> Editor<'a> {
         self.edited = true;
     }
 
-    /// Select the whole buffer (collapses to no-selection when empty).
     pub(super) fn select_all(&mut self) {
         self.select_range(0, self.text.len());
     }
 
-    /// Select `start..end` with the caret at `end`, or place a bare
-    /// caret when the range is empty — the "never `Some(caret)`"
-    /// invariant [`Self::move_caret`] keeps, stated once for every
-    /// caller that knows both ends up front. Ends the current
-    /// edit-coalesce group, like any other caret motion.
+    /// Select `start..end` with the caret at `end` (a bare caret when empty),
+    /// keeping the "never `Some(caret)`" invariant and ending the edit-coalesce
+    /// group.
     pub(super) fn select_range(&mut self, start: usize, end: usize) {
         self.state.selection = (start != end).then_some(start);
         self.state.caret = end;
         self.state.last_edit_kind = None;
     }
 
-    /// Move the caret to `new_caret`, extending the selection if
-    /// `extend` is set (latches the anchor on the first extending
-    /// move) or collapsing it otherwise. Maintains the "never
-    /// `Some(caret)`" invariant. Always ends the current edit-coalesce
-    /// group — caret-only motion breaks Typing / Delete runs into
-    /// separate undo entries.
+    /// Move the caret to `new_caret`, extending the selection (latching the anchor
+    /// on the first extending move) or collapsing it; ends the edit-coalesce group.
     pub(super) fn move_caret(&mut self, new_caret: usize, extend: bool) {
         let anchor = match self.state.selection {
             Some(anchor) if extend => anchor,
-            // An extending move with nothing selected latches the anchor
-            // where the caret stands; a collapsing one anchors on the
-            // destination, which [`Self::select_range`] reads as empty.
+            // With nothing selected an extending move latches the anchor at the
+            // caret; a collapsing one anchors on the destination (empty).
             _ if extend => self.state.caret,
             _ => new_caret,
         };
         self.select_range(anchor, new_caret);
     }
 
-    /// No-op on an empty stack.
     pub(super) fn undo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.undo.pop_back() {
@@ -431,7 +383,6 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// No-op on an empty stack.
     pub(super) fn redo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.redo.pop() {
@@ -440,18 +391,13 @@ impl<'a> Editor<'a> {
         }
     }
 
-    /// Type `text` over the selection, or at the caret where there is
-    /// none.
-    ///
-    /// A whole string rather than a character: one key press can produce
-    /// two — a dead-key sequence the platform could not compose — and
-    /// both belong in one undo step, since one press made them.
+    /// Type `text` over the selection or at the caret. A whole string: one press
+    /// can produce two characters (an uncomposed dead-key sequence) that belong in
+    /// one undo step.
     pub(super) fn insert_str(&mut self, text: &str) {
         self.replace_selection(text, EditKind::Typing);
     }
 
-    /// Delete back to the start of the caret's line, or the selection —
-    /// macOS's Cmd+Backspace.
     pub(super) fn delete_to_line_start(&mut self) {
         let range = if let Some(range) = self.state.sel_range() {
             range
@@ -529,9 +475,6 @@ impl<'a> Editor<'a> {
     }
 }
 
-/// Reach-in for the `text_edit` unit tests: the undo/redo depth and the
-/// hash latch, neither of which any production caller reads off a live
-/// session.
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::widgets::text_edit::edit_state::EditState;
@@ -542,8 +485,6 @@ pub(crate) mod internals {
             self.state.redo.len()
         }
 
-        /// Latch the buffer's hash, as `TextEdit::show` does once the
-        /// frame's edits have settled.
         pub(crate) fn observe_text(&mut self) {
             let text_hash = EditState::text_hash(self.text);
             self.state.observe_text_hash(Some(text_hash));

@@ -24,27 +24,10 @@ fn specialization_rejects_missing_marker() {
     specialize_source("const A: u32 = 1u;", &[ShaderConstant::uint("A", 7)]);
 }
 
-/// Every constant the Rust side substitutes is compared against
-/// somewhere in the shader that declares it.
-///
-/// [`ShaderBody::specialize`]'s own assert proves a marker was *replaced*. It
-/// cannot prove the value is *read*, and a constant that is declared
-/// and never read is a pin the shader ignores: Rust believes it owns
-/// the mapping while the shader has hard-coded a literal, and the two
-/// drift the first time either side renumbers. Both halves of that
-/// have happened here — `apply_spread` switched on `case 1u` beside
-/// three substituted spread modes, and the curve fragment decoded its
-/// join look as `kind - KIND_JOIN_ROUND` beside a substituted
-/// `KIND_JOIN_BEVEL` it never mentioned.
-///
-/// A value the shader legitimately does not compare against — the
-/// fall-through arm of a dispatch — must not be pinned at all. The
-/// fix for a failure here is one or the other, never an exemption.
+/// Every constant Rust substitutes must be read by its shader; an unread pin means the shader
+/// hard-codes the value and the two drift on renumbering. Unpin rather than exempt.
 #[test]
 fn every_pinned_shader_constant_is_read() {
-    // Each body's own constants fill every marker it and the prelude
-    // declare, exactly once — `specialize` panics otherwise — so a
-    // constant added on one side only fails here, with no device.
     for &body in ShaderBody::VARIANTS {
         body.specialize();
     }
@@ -54,8 +37,6 @@ fn every_pinned_shader_constant_is_read() {
         .chain([("prelude".to_owned(), PRELUDE)]);
     for (file, source) in sources {
         let code = strip_comments(source);
-        // Every marker is on a `const` line the name scan reads, so a
-        // scan that stopped matching cannot pass by checking nothing.
         assert_eq!(
             source.lines().filter_map(pinned_const_name).count(),
             source.matches("/*{").count(),
@@ -75,17 +56,8 @@ fn every_pinned_shader_constant_is_read() {
     }
 }
 
-/// The quad shader's `fs` never reaches the blurred-corner integral, and
-/// `fs_shadow` does. `fs_shadow_tables` reaches only the tabled form: no
-/// shaded cutout and no outline integral.
-///
-/// A pipeline gets the registers and code of everything its entry
-/// reaches. With the integral reachable from `fs`, the pipeline of every
-/// quad — a plain rectangle too — carried 56 VGPRs and 50 KB of code on
-/// RDNA2 instead of 40 and 4 KB. The schedule routes shadows to
-/// `fs_shadow`, so nothing else needs the integral. On the Pi 5's V3D,
-/// `fs_shadow_tables` compiles to a seventh of the instructions of
-/// `fs_shadow`, which a shadow whose corners all read tables never runs.
+/// `fs` must not reach the blurred-corner integral (`fs_shadow` does, `fs_shadow_tables` only the
+/// tabled form): reachable code costs registers (56 VGPRs and 50 KB vs 40 and 4 KB on RDNA2).
 #[test]
 fn only_the_shadow_entries_reach_the_blur_integral() {
     let source = strip_comments(&ShaderBody::Quad.specialize());
@@ -128,9 +100,6 @@ fn only_the_shadow_entries_reach_the_blur_integral() {
     );
 }
 
-/// Every function `entry` calls, directly or through others, in a WGSL
-/// `source` without comments. A call is a defined function's name followed
-/// by `(`.
 fn reachable_functions(source: &str, entry: &str) -> HashSet<String> {
     let bodies: HashMap<&str, &str> = source
         .split("fn ")
@@ -176,8 +145,6 @@ fn reachable_functions(source: &str, entry: &str) -> HashSet<String> {
     seen
 }
 
-/// The name a `const NAME: T = /*{MARKER}*/;` line declares, or
-/// `None` for any other line.
 fn pinned_const_name(line: &str) -> Option<&str> {
     if !line.contains("/*{") {
         return None;
@@ -186,12 +153,7 @@ fn pinned_const_name(line: &str) -> Option<&str> {
     Some(declared.split(':').next()?.trim())
 }
 
-/// `source` with both comment forms removed, so a constant named in
-/// prose is not counted as a use — nor is the `/*{MARKER}*/` sitting
-/// on the declaration line, which repeats the name it fills.
-///
-/// Line comments go first: no block comment in these sources
-/// contains a `//`, while several lines carry both.
+/// `source` without comments, so prose and `/*{MARKER}*/` are not counted as uses.
 fn strip_comments(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     for line in source.lines() {

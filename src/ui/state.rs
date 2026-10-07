@@ -1,18 +1,8 @@
-//! Cross-frame widget state. Per-T dense `Vec<T>` stores indexed by
-//! `WidgetId`, held in a [`TypedStores`] — one boxed store per
-//! *distinct T* (typically a handful), not per widget. Steady-state allocation is zero after
-//! warmup — `Vec<T>` capacity is reused across frames, no per-row
-//! `Box`, no `Any` downcast on the hot path.
+//! Cross-frame widget state: dense `Vec<T>` stores indexed by `WidgetId` in a [`TypedStores`], one boxed store per distinct `T`. Allocation-free after warmup; no `Any` downcast on the hot path.
 //!
-//! Reusing a `WidgetId` with two different `T`s is a caller bug — the
-//! two rows live in different stores and don't see each other. Not
-//! checked; debug aid wasn't worth a hashmap probe per call.
+//! Reusing a `WidgetId` with two `T`s is a caller bug: the rows live in separate stores. Unchecked, to avoid a probe per call.
 //!
-//! Sweep: when a widget stops being recorded, `FrameCycle::finalize_frame`
-//! calls `sweep_removed` with the diff (once per frame, after the
-//! final record pass); each per-T store `swap_remove`s affected rows
-//! and patches the swapped neighbour's index in O(1) using the
-//! parallel `owners` vec.
+//! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbour via the `owners` vec in O(1).
 
 use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
@@ -61,8 +51,7 @@ impl<T> Default for Store<T> {
 }
 
 impl<T> Store<T> {
-    /// The row `id` occupies, if it has one. The map column is `u32` to
-    /// stay narrow; every reader indexes with a `usize`.
+    /// The row `id` occupies, if any. The map column is `u32` to stay narrow; readers index with `usize`.
     fn index_of(&self, id: WidgetId) -> Option<usize> {
         self.map.get(&id).map(|&idx| idx as usize)
     }
@@ -87,8 +76,7 @@ impl<T> Store<T> {
 }
 
 impl<T: 'static> TypedStore for Store<T> {
-    /// `swap_remove` the row, then patch the swapped neighbour's index
-    /// in O(1) off the parallel `owners` vec.
+    /// `swap_remove` the row, then patch the swapped neighbour's index off `owners`.
     fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         for id in removed {
             let Some(idx) = self.map.remove(id) else {
@@ -105,9 +93,7 @@ impl<T: 'static> TypedStore for Store<T> {
         }
     }
 
-    /// Only read by the drop-drained sweep, which state does not use —
-    /// an empty per-`T` store costs one hashmap slot and is reused the
-    /// next time a widget of that type appears.
+    /// Read only by the drop-drained sweep, which state doesn't use; an empty per-`T` store costs one hashmap slot and is reused.
     fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
@@ -180,8 +166,7 @@ mod tests {
         *map.get_or_insert_with(wid(1), || 0u32) = 1;
         *map.get_or_insert_with(wid(2), || 0u32) = 2;
         *map.get_or_insert_with(wid(3), || 0u32) = 3;
-        // Drop the middle one; `wid(3)` was at idx 2, must end at idx 1
-        // and still read back as 3.
+        // Drop the middle one: `wid(3)` moves from idx 2 to 1 and still reads back as 3.
         map.sweep_removed(&WidgetIdSet::from_iter([wid(2)]));
         assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 1);
         assert_eq!(*map.get_or_insert_with(wid(3), || 0u32), 3);

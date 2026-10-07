@@ -1,19 +1,6 @@
-//! `HostCore` — the composition root both hosts build on: the app-global
-//! [`UiResources`], the one CPU [`Frontend`], and the one [`WgpuBackend`]
-//! every window renders through.
-//!
-//! The three are constructed together because they are not independent: the
-//! backend connects to the registries, the atlas and the timing sample in
-//! the resources and attaches its texture store to their image registry,
-//! the frontend bakes into the same atlas, and both halves' texture-dimension
-//! cap is one number over one device. Building them apart means re-deriving
-//! that wiring per host, which is what this type exists to stop.
-//!
-//! It deliberately does *not* own the [`WindowDriver`]s. Each host pairs a
-//! driver with whatever its target needs — a swapchain and native handle for
-//! [`WinitHost`](crate::WinitHost), nothing at all for
-//! [`OffscreenHost`](crate::OffscreenHost) — so the map lives with the host
-//! and the drivers are passed back in per frame.
+//! `HostCore`: the composition root both hosts build on: [`UiResources`], the one CPU [`Frontend`] and
+//! the one [`WgpuBackend`] every window renders through, built together to share registries and one
+//! texture-dimension cap. It does not own the [`WindowDriver`]s; each host pairs its own.
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
@@ -31,11 +18,7 @@ use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use std::num::NonZeroU32;
 
-/// The app-global choices a host seals when it builds its core.
-///
-/// `pixel_snap` lives here rather than on each driver because it is the
-/// host's, not the window's: every driver a core mints inherits it, so a
-/// host with several windows cannot set it on one and forget the next.
+/// App-global choices a host seals at build; `pixel_snap` is the host's, inherited by every driver.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct HostCoreConfig {
     pub(super) collect_gpu_stats: bool,
@@ -45,20 +28,13 @@ pub(super) struct HostCoreConfig {
 #[derive(Debug)]
 pub(super) struct HostCore {
     pub(super) resources: UiResources,
-    /// Shared CPU encode/compose allocations, reused serially across windows.
     pub(super) frontend: Frontend,
-    /// The one shared GPU renderer every window draws through (pipelines,
-    /// atlases, image textures).
     pub(super) backend: WgpuBackend,
-    /// Seeded into every driver this core mints — see [`HostCoreConfig`].
     pixel_snap: bool,
 }
 
 impl HostCore {
-    /// `max_texture_dim` is handed in rather than read off `device`: a
-    /// windowed host clamps its surface sizes by the same limit, and the
-    /// surface clamp, the [`TextureLimit`] and the frontend's clamp have
-    /// to be one number rather than two readings of the device's limits.
+    /// `max_texture_dim` is passed in so surface clamp, [`TextureLimit`] and frontend clamp are one number.
     pub(super) fn new(
         gpu: Gpu,
         max_texture_dim: NonZeroU32,
@@ -93,22 +69,13 @@ impl HostCore {
         }
     }
 
-    /// Start building a render stream for `token` against these shared
-    /// resources. Defaults suit a swapchain window — see
-    /// [`WindowDriver::builder`].
     pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
         WindowDriver::builder(token, &self.resources, self.pixel_snap)
             .bake_cutouts(self.backend.bakes_cutouts())
     }
 
-    /// Retire a closed window's render stream, freeing the `GpuView` targets
-    /// scoped to it. Backend eviction is owner-scoped, so a closed window's
-    /// targets have no submit left to be absent from and would otherwise be
-    /// held until host shutdown.
-    ///
-    /// The window's directory entry is not this call's business — the
-    /// driver's own `Drop` retires that, so a host that closed a window
-    /// without reaching here still cannot leave a token live.
+    /// Retires a closed window's render stream, freeing its `GpuView` targets, which owner-scoped eviction
+    /// would otherwise hold until shutdown. The driver's `Drop` retires its directory entry.
     #[cfg_attr(
         not(feature = "winit"),
         expect(

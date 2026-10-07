@@ -1,5 +1,4 @@
-//! The triangle-mesh builder. Lowers to `ShapeRecord::Mesh`, with the
-//! vertices and indices copied into the record store.
+//! Triangle-mesh builder; lowers to `ShapeRecord::Mesh`.
 
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
@@ -31,8 +30,7 @@ impl<'a> MeshShape<'a> {
 }
 
 impl MeshShape<'_> {
-    /// Paint into `rect`, in owner-relative coords, instead of the
-    /// owner's whole arranged rect.
+    /// Paint into `rect` in owner-relative coords instead of the owner's rect.
     ///
     /// # Panics
     ///
@@ -63,10 +61,6 @@ impl sealed::LowerShape for MeshShape<'_> {
             || self.mesh.is_noop()
     }
 
-    /// The vertices reach this as the memoized bbox, so the whole shape
-    /// is one load and three tests. The two placement fields are what
-    /// only this screen sees: lowering copies every vertex and index into
-    /// the store before a record exists to be judged on them.
     fn has_nan(&self) -> bool {
         self.local_rect.has_nan() || self.tint.has_nan() || self.mesh.bbox().has_nan()
     }

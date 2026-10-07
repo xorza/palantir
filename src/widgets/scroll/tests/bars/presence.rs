@@ -80,8 +80,6 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
                     });
             });
     });
-    // One vertical thumb at the far edge, 8 px thick, its length the
-    // viewport's share of the content times the track: 200 / 800 × 200.
     assert_eq!(
         thumb_rects(&ui.ui, "scroll"),
         [Rect::new(
@@ -93,15 +91,7 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
     );
 }
 
-/// Content that stops overflowing must retire its bar, even though
-/// the bar overlay's own subtree hash and slot are unchanged — the
-/// showcase symptom was a scrollbar surviving a page switch.
-///
-/// The bars' placement reads a *sibling's* measured `scroll_content`,
-/// so it is not the pure function of its own slot that arrange replay
-/// assumes; `LayoutEngine::arrange` exempts `Scrollbars` for exactly
-/// this. Asserting the raw rects (not `thumb_rects`, which filters
-/// collapsed bars) is what makes a stale bar visible to the test.
+/// Content that stops overflowing retires its bar though the overlay's hash and slot are unchanged (showcase symptom: a scrollbar surviving a page switch). Raw rects expose a stale bar; `thumb_rects` filters collapsed ones.
 #[test]
 fn content_that_stops_overflowing_retires_its_bar() {
     let build = |tall: bool| {
@@ -144,7 +134,6 @@ fn content_that_stops_overflowing_retires_its_bar() {
         );
     }
 
-    // ...and come back, so the collapse isn't a one-way latch.
     h.frame(build(true));
     assert_eq!(
         thumb_rects(&h.ui, "scroll").len(),
@@ -194,8 +183,7 @@ fn both_axes_overflow_emits_two_thumbs() {
     );
 }
 
-/// `ScrollXY` with both axes overflowing must NOT have its V and H
-/// bars overlap at the bottom-right corner.
+/// `ScrollXY` with both axes overflowing must not overlap its bars at the bottom-right corner.
 #[test]
 fn both_axes_bars_dont_overlap_at_corner() {
     let ui = record_two_frames(UVec2::new(400, 400), |ui| {
@@ -223,14 +211,11 @@ fn both_axes_bars_dont_overlap_at_corner() {
         .iter()
         .find(|r| r.min.y == outer_far)
         .expect("H bar at bottom edge");
-    // Each track is the 188 px inner span, kept out of the other bar's
-    // reserved strip; each thumb is 188 / 800 of it, 44.18, snapped to 44.
     assert_eq!(inner, 188.0);
     assert_eq!(*v, Rect::new(outer_far, 0.0, theme.thickness, 44.0));
     assert_eq!(*h, Rect::new(0.0, outer_far, 44.0, theme.thickness));
 }
 
-/// Every bar node's arranged rect, collapsed ones included.
 fn raw_bar_rects(ui: &Ui, scroll_key: &str) -> Vec<(&'static str, Rect)> {
     let layout = ui.layout(Layer::Main);
     let scroll_id = WidgetId::from_hash(scroll_key).with("viewport");

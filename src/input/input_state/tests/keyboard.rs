@@ -34,8 +34,6 @@ fn keyboard_events_do_not_perturb_scroll_state() {
 
 #[test]
 fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
-    // Modifiers captured at push time, so a ModifiersChanged between
-    // two KeyDowns attributes correctly.
     let mut state = InputState::default();
     state.set_focus(Some(forged_focus()));
 
@@ -59,14 +57,10 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     assert!(presses[1].repeat);
 }
 
-/// An app that declares **no scope at all** reads every chord.
-///
-/// The regression scopes invite: routing a chord to "the scope the reader
-/// speaks for" silences the reader outright when there is no scope to
-/// speak for, which would leave `key_pressed` dead for every consumer
-/// that never calls `input_scope` — the showcase, the examples, any host
-/// that only wants accelerators. Both sides of the grant answer `None`
-/// there, and `None == None` is what keeps it working.
+/// An app that declares **no scope at all** reads every chord: routing a chord to
+/// "the scope the reader speaks for" would silence `key_pressed` for every consumer
+/// that never calls `input_scope`. Both sides of the grant answer `None`, and `None
+/// == None` keeps it working.
 #[test]
 fn a_tree_with_no_scopes_still_reads_every_chord() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
@@ -85,35 +79,25 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
     assert!(pressed, "no scopes declared must not gate the chord out");
 }
 
-/// A scope silences the layers **strictly below** it, and only those.
-///
-/// The property the old whole-stream claim carried, now a consequence of
-/// where a scope sits: an overlay declaring one on `Layer::Popup` cuts
-/// `Main` off, while its own layer and everything above keep reading —
-/// which is what lets a `TextEdit` inside the popup go on draining.
+/// A scope silences the layers **strictly below** it and only those: an overlay
+/// with one on `Layer::Popup` cuts `Main` off while its own layer and everything
+/// above keep reading.
 #[test]
 fn a_scope_silences_the_layers_strictly_below_it() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    // Something focused, so the keyboard wake-gate delivers an
-    // unsubscribed chord at all. Not a recorded id, so it anchors no
-    // scope path — these cases are about the layer gate.
-    // Two frames: the scope is declared during the first record and the
-    // path resolves from the cascade at the start of the next.
+    // The scope is declared during the first record; its path resolves from the
+    // cascade at the start of the next.
     h.frame(popup_with_scope);
     press_escape(&mut h);
     let seen = sample_layers(&mut h, Stream::Keyboard, popup_with_scope).layers;
 
     assert_eq!(seen[Layer::Popup.idx()], 1, "the scope's own layer reads");
-    // Strictly below — cut off, which is the whole point.
     assert_eq!(seen[Layer::Main.idx()], 0);
-    // Above — a modal over a popup is not silenced by it, the case that
-    // once left a modal unable to see its own Escape.
     assert_eq!(seen[Layer::Modal.idx()], 1);
     assert_eq!(seen[Layer::Tooltip.idx()], 1);
 }
 
-/// A scope that stops being recorded stops owning input — no release
-/// call, and no frame of ownership after the overlay is gone.
+/// A scope that stops being recorded stops owning input, with no release call.
 #[test]
 fn a_scope_that_stops_recording_reopens_the_stream() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
@@ -124,8 +108,6 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
         0
     );
 
-    // Popup gone: its scope leaves the cascade, so the next resolution
-    // hands `Main` the stream back.
     h.frame(|_| {});
     press_escape(&mut h);
     assert_eq!(
@@ -134,18 +116,12 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
     );
 }
 
-/// A layer's fallback grant is its **outermost** scope, not its
-/// last-recorded one.
-///
-/// Scopes record in pre-order, so a scope nested inside another comes
-/// last. Resolving the fallback to it would hand an app root's
-/// accelerators to whatever text field happens to sit inside it, and
-/// every one of them would die mid-edit — so the root reads the chord
-/// and the nested scope, which the grant passed over, does not.
+/// A layer's fallback grant is its **outermost** scope, not its last-recorded one:
+/// scopes record in pre-order, so granting the nested one would hand an app root's
+/// accelerators to a text field inside it and kill them mid-edit.
 #[test]
 fn the_layer_fallback_grant_is_the_outermost_scope() {
     let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-    // Whether Escape reads at the root and inside the inner scope.
     let nested = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -167,9 +143,6 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
         nested(ui);
     });
     press_escape(&mut h);
-    // Focus sits on an unrecorded id, so no scope path anchors and the
-    // grant falls through to the layer's outermost scope — the case this
-    // is about.
     let [at_root, at_inner] = h.frame_value(nested);
 
     assert!(
@@ -179,26 +152,16 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
     assert!(!at_inner, "the nested scope must not shadow its container");
 }
 
-/// One overlay closing must not unblock a layer another still holds,
-/// and the survivor has to keep *reading* — either half alone is a
-/// silent failure, so both are asserted per closed sibling.
-///
-/// Per-scope, not per-layer — the property `release` used to carry.
-///
-/// Both orders run, because only one of them catches a scan that reads
-/// the stale cascade raw. Sibling scopes contain nobody, so the
-/// outermost-of fold falls through to "last recorded": closing `first`
-/// leaves the grant on `second`, which is also the survivor and passes
-/// by luck. Closing `second` is the case that bites — the grant stays
-/// assigned to the scope that is gone, `first` reads nothing, and no
-/// layer count moves to show it.
+/// One overlay closing must not unblock a layer another still holds, and the
+/// survivor must keep *reading*. Both orders run, since only one catches a scan
+/// reading the stale cascade raw: closing `first` leaves the grant on `second`,
+/// which passes by luck; closing `second` leaves the grant on the gone scope and
+/// `first` reads nothing.
 #[test]
 fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     for closed in ["first", "second"] {
         let survivor = if closed == "first" { "second" } else { "first" };
         let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-        // Read from inside the survivor, which is where a scoped chord
-        // has to land now that its sibling is gone.
         let two = |ui: &mut Ui| {
             let mut read_by_survivor = false;
             for id in ["first", "second"] {
@@ -219,7 +182,6 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
             ui.release_input_scope(WidgetId::from_hash(closed));
         });
 
-        // The next resolution honours the close, and the sibling holds.
         press_escape(&mut h);
         let Sample {
             layers: seen,
@@ -237,24 +199,12 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     }
 }
 
-/// A `release_input_scope` takes effect at the next resolution, like a
-/// focus move: reads after it in its own pass get the answer reads before
-/// it got, and the next frame routes as if the scope were gone.
-///
-/// Nested scopes, `root` around `inner`, with one read at `root`'s own
-/// position and two inside `inner`, either side of the release. Two
-/// rows:
-///
-/// - **No focus anchor** — focus sits on an unrecorded id, so the grant
-///   falls to the layer's outermost, `root`. The read inside `inner`
-///   speaks for `inner` and misses. The read at `root` lands.
-/// - **Focus inside `inner`** — the path is `[root, inner]` and the grant
-///   is `inner`. The read inside `inner` lands and the read at `root`
-///   misses.
-///
-/// On the frame after the release, `inner` is withdrawn in both rows:
-/// the grant is `root`, every read speaks for `root`, and all of them
-/// land.
+/// A `release_input_scope` takes effect at the next resolution, like a focus move:
+/// reads after it in the same pass get the answer reads before it got. Nested
+/// scopes `root` around `inner`, with a read at `root` and two inside `inner`
+/// either side of the release. With no focus anchor the grant falls to `root`; with
+/// focus inside `inner` it is `inner`. After the release `inner` is withdrawn,
+/// `root` holds the grant and every read lands.
 #[test]
 fn a_close_takes_effect_at_the_next_resolution() {
     #[derive(Debug, Default)]
@@ -293,9 +243,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
     };
     for focus_inside in [false, true] {
         let mut h = UiHarness::new(glam::UVec2::new(200, 200));
-        // `closes` is false on the setup frame: a close outlives its own
-        // frame, so closing there would leave `inner` already withdrawn
-        // when the pass under test starts.
+        // `closes` is false on the setup frame: a close outlives its frame.
         h.frame(|ui| {
             nested(ui, focus_inside, false);
         });
@@ -321,10 +269,8 @@ fn a_close_takes_effect_at_the_next_resolution() {
     }
 }
 
-/// A steady frame keeps the routing it resolved the frame before: the same
-/// focus, no withdrawal, and a cascade that kept its structure. A focus
-/// move, a new scope in the tree and a withdrawal each resolve again, once,
-/// and a frame that only moves rects does not.
+/// A steady frame keeps last frame's routing; a focus move, a new scope or a
+/// withdrawal each resolve again once, a frame that only moves rects does not.
 #[test]
 fn scopes_resolve_again_only_when_their_inputs_change() {
     let scene = |ui: &mut Ui, extra: bool, width: f32, closes: bool| {
@@ -376,20 +322,15 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
     step(&mut h, "the withdrawal resolved", 1, true, false);
 }
 
-/// Feed an Escape that the keyboard wake-gate will actually deliver,
-/// focused on the fixture's `editor` block when it records one.
-/// The gate drops an unsubscribed chord when nothing is focused, and
-/// `end_frame` evicts focus whose widget was not recorded — so this has
-/// to be set immediately before the press, not once up front.
+/// Feed an Escape the keyboard wake-gate will deliver, focused on the fixture's
+/// `editor` block: the gate drops an unsubscribed chord with nothing focused and
+/// `end_frame` evicts focus on unrecorded widgets.
 fn press_escape(h: &mut UiHarness) {
     h.set_focus(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
 }
 
-/// A node on `layer` declaring an all-taking scope — the shape every
-/// overlay reduces to once `modal_layer` became `input_scope`. `body`
-/// records inside it, which is what puts a read's `parent` within the
-/// scope.
+/// A node on `layer` declaring an all-taking scope; `body` records inside it.
 fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str, body: impl FnOnce(&mut Ui)) {
     ui.layer(layer).show(|ui| {
         Panel::vstack()
@@ -406,7 +347,6 @@ fn popup_with_scope(ui: &mut Ui) {
 
 #[test]
 fn focus_policy_routing() {
-    // (label, policy, expect_focus_after_outside_press).
     let cases: &[(&str, FocusPolicy, bool)] = &[
         ("preserve_keeps_focus", FocusPolicy::PreserveOnMiss, true),
         ("clear_drops_focus", FocusPolicy::ClearOnMiss, false),
@@ -438,7 +378,6 @@ fn focus_policy_routing() {
         };
         assert_eq!(h.focus(), expected, "{label}: after outside press");
     }
-    // Default policy is ClearOnMiss.
     assert_eq!(
         UiHarness::new(BUTTON_SURFACE).ui.focus_policy(),
         FocusPolicy::ClearOnMiss
@@ -465,7 +404,6 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(build);
-    // Checked: a click that missed `plain` would keep focus too.
     h.click_on(WidgetId::from_hash("plain"));
     assert_eq!(
         h.focus(),
@@ -509,8 +447,8 @@ fn set_focus_bypasses_policy() {
 
 #[test]
 fn invisible_or_disabled_focusable_refuses_focus() {
-    // Cascade combines `disabled || invisible`; pin both axes so a
-    // future split doesn't keep one alive.
+    // Cascade combines `disabled` or `invisible`; pin both axes so a split cannot
+    // keep one alive.
 
     #[derive(Debug)]
     enum Mode {
@@ -518,7 +456,6 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         Hidden,
         Disabled,
     }
-    // `Shown` is the control: the same click on the same spot focuses it.
     let editable = WidgetId::from_hash("editable");
     let cases: &[(&str, Mode, Option<WidgetId>)] = &[
         ("shown", Mode::Shown, Some(editable)),
@@ -554,7 +491,6 @@ fn post_record_clears_keys_but_preserves_modifiers() {
     state.end_frame(&cascade);
 
     assert!(state.frame_keyboard_events.is_empty());
-    // Capacity-retained: typing across frames stays alloc-free.
     assert_eq!(state.frame_keyboard_events.capacity(), buf_cap_before);
     assert!(state.modifiers.shift);
 }

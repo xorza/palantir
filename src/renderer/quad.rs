@@ -1,7 +1,4 @@
-//! Per-instance quad data — the Pod type that flows from the
-//! composer through `RenderBuffer` into the backend's `QuadPipeline`.
-//! Lives at the renderer root alongside `RenderBuffer`: both are the
-//! frontend↔backend contract, so neither side owns them.
+//! Per-instance quad data: the Pod type the composer hands, through `RenderBuffer`, to the backend's `QuadPipeline`.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -13,57 +10,31 @@ use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 
-/// Per-instance quad data (60 B). Field types are the matching
-/// `repr(C)` primitives, byte-identical to `[f32; N]`s — see
-/// `QUAD_INSTANCE_ATTRS` (in the backend) for the explicit attribute
-/// offsets, which is the only thing constraining the field order. No tail padding: vertex buffer strides only need
-/// 4-byte alignment, unlike std140 uniforms.
+/// Per-instance quad data (60 B). Field order is constrained by `QUAD_INSTANCE_ATTRS` (backend); no tail padding, as vertex strides need only 4-byte alignment.
 ///
-/// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` carries the
-/// colour, `fill_lut_row` / `fill_axis` ignored.
+/// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the colour, `fill_lut_row` / `fill_axis` ignored.
 ///
-/// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], which
-/// carries the `Spread` beside the tag, `fill_lut_row` indexes the gradient atlas texture
-/// row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the object-space
-/// projection axis and parametric range. `fill` is white, the multiplier
-/// the shader applies to the ramp's colour (`c * in.fill`), so its alpha
-/// carries a fade.
+/// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient atlas row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
 ///
-/// **Stroke** is stored as inline `stroke_color` + `stroke_width`
-/// fields rather than an embedded `Stroke` so the user-facing `Stroke`
-/// is free to carry non-`Pod` paint sources (`Brush`); the composer
-/// translates the user `Stroke` into these GPU fields. Stroke-as-
-/// gradient is not supported.
+/// **Stroke** is inline `stroke_color` + `stroke_width` so the user `Stroke` can carry non-`Pod` sources; gradient strokes are unsupported.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
     pub(crate) rect: Rect,
-    /// Linear-RGB fill, packed as four `f16` (8 B). Straight-alpha per
-    /// the colour-pipeline contract — the shader premultiplies at
-    /// output. Halves the 16 B a full `RgbaF32` would cost per instance
-    /// while keeping enough precision for linear blending.
+    /// Linear-RGB fill as four `f16` (8 B), straight-alpha; the shader premultiplies at output.
     pub(crate) fill: RgbaF16,
     pub(crate) corners: Corners,
     pub(crate) stroke_color: RgbaF16,
     pub(crate) stroke_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
-    /// Row index into the gradient atlas texture when `fill_kind`'s
-    /// low byte is a gradient tag (1..=3). `LutRow(0)`
-    /// (`LutRow::FALLBACK`) is the magenta debug fallback — any quad
-    /// reaching the sampler with that value paints magenta. Solid
-    /// quads write `LutRow::FALLBACK` and the shader ignores the field.
+    /// Gradient atlas row when `fill_kind` is a gradient tag; `LutRow::FALLBACK` (0) is the magenta debug fallback, written by solid quads and ignored.
     pub(crate) fill_lut_row: LutRow,
-    /// Gradient axis vector — see [`FillAxis`]. Ignored when
-    /// `fill_kind == FillKind::SOLID`.
     pub(crate) fill_axis: FillAxis,
 }
 
 impl Quad {
-    /// The whole pixels the quad shader shades for this quad:
-    /// `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to
-    /// every pixel centre within [`AA_HALF_WIDTH`] of it, since its
-    /// coverage reaches that far. A windowed rect is drawn at its rect.
+    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel centre within [`AA_HALF_WIDTH`]; a windowed rect is drawn at its rect.
     pub(crate) fn shaded_rect(&self) -> Rect {
         if self.fill_kind.is_window() {
             return self.rect;
@@ -76,11 +47,7 @@ impl Quad {
     }
 }
 
-// Layout guards live where the layout is consumed: the compile-time
-// `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` in
-// `gpu/pipeline/quad_pipeline/mod.rs` pin every field against its vertex
-// attribute, and the `hot_struct_sizes_are_pinned` inventory in
-// `lib.rs` pins the 60/4 footprint.
+// Layout guards live where it is consumed: `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` and `hot_struct_sizes_are_pinned` in `lib.rs`.
 
 #[cfg(test)]
 mod tests {
@@ -88,9 +55,7 @@ mod tests {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::renderer::quad::Quad;
 
-    /// A rect on pixel boundaries shades itself. One off them shades every
-    /// pixel its edges cross: (10.25, 3)..(20.5, 8) is columns 10..21 and
-    /// rows 3..8. A windowed rect is drawn at its rect.
+    /// A rect on pixel boundaries shades itself; otherwise every pixel its edges cross: (10.25, 3)..(20.5, 8) is columns 10..21, rows 3..8.
     #[test]
     fn a_quad_shades_the_pixels_its_edges_cross() {
         let shaded = |rect: Rect, fill_kind: FillKind| {

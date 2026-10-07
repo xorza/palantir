@@ -16,12 +16,9 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
-/// Pin: a Display change between frames (resize, either scale factor, or
-/// a snap flip) forces the next compute to `Full` regardless of how few widgets
-/// are dirty. The backend recreates the backbuffer / reshapes text
-/// and a partial paint over a freshly cleared backbuffer would leave
-/// the rest of the screen as clear color — the showcase resize-flicker
-/// case.
+/// A Display change between frames (resize, scale factor, snap flip) forces
+/// `Full` however few widgets are dirty: the backend recreates the backbuffer,
+/// and a partial paint over it would leave the rest clear colour.
 #[test]
 fn display_change_forces_full_repaint() {
     let cases: &[(&str, Display)] = &[
@@ -39,9 +36,7 @@ fn display_change_forces_full_repaint() {
                 ..DISPLAY
             },
         ),
-        // The user scale rasterizes exactly as the system one does, so it
-        // escalates for the same reason — and it is the half an app can
-        // move while the monitor never changes.
+        // The user scale rasterizes like the system one and can move alone.
         (
             "user_scale",
             Display {
@@ -49,11 +44,8 @@ fn display_change_forces_full_repaint() {
                 ..DISPLAY
             },
         ),
-        // DPI-monitor move: physical and scale change proportionally,
-        // leaving `logical_rect` bit-identical — yet the swapchain is
-        // reconfigured to a new pixel size and must repaint. Comparing
-        // logical rects alone classified this as Skip and the window
-        // kept stale old-DPI content until unrelated damage arrived.
+        // A DPI-monitor move leaves `logical_rect` identical, yet the swapchain
+        // reconfigures; comparing logical rects alone gave Skip and stale content.
         (
             "dpi_move_constant_logical",
             Display {
@@ -62,8 +54,6 @@ fn display_change_forces_full_repaint() {
                 ..DISPLAY
             },
         ),
-        // Snap flips change compose-time rasterization with identical
-        // logical damage — same blind spot as the DPI move.
         (
             "pixel_snap_flip",
             Display {
@@ -108,30 +98,15 @@ fn display_change_forces_full_repaint() {
     }
 }
 
-/// Pin (precise bug reproducer): the showcase resize-flicker fired
-/// when surface changed AND the damage rect was small enough to fall
-/// below the area threshold — only a few descendants shifted while
-/// the root and most others were stable. Without the surface-change
-/// short-circuit, `compute` returns `Some(small_rect)` and the
-/// encoder produces a damage-filtered partial paint, but the backend
-/// force-clears the freshly recreated backbuffer, leaving the rest of
-/// the screen as clear color.
-///
-/// The test uses a Fixed-size root so descendant rects are stable
-/// across surface changes; a tiny injected nudge to one descendant's
-/// `prev` snapshot would, absent the short-circuit, produce a small
-/// partial damage rect on the resize frame.
+/// Reproducer of the resize flicker: the surface changed while the damage rect
+/// fell below the area threshold. Without the surface-change short-circuit a
+/// small partial paint follows a backbuffer clear. A Fixed-size root keeps
+/// descendant rects stable, so the `prev` nudge is the only damage.
 #[test]
 fn small_damage_with_surface_change_forces_full_repaint() {
     let mut h = UiHarness::new(UVec2::new(2000, 2000));
-    // Root: Fixed-size VStack containing two Fixed children. Stacked
-    // vertically so both children's `paint_rect`s land inside the
-    // 2000×2000 surface — required since the Vacant arm in the diff
-    // skips inserting an off-surface widget into `prev` (no visible
-    // pixels to track). Root rect is stable across surface changes
-    // (Fixed never reads `available`), so any damage-rect change
-    // must come from the descendant nudge, not the root re-resolving.
-    // Frame "small" ends up at (0, 60, 50, 60).
+    // Two Fixed children in a Fixed VStack, both inside the 2000×2000 surface
+    // (the Vacant arm skips off-surface widgets). "small" ends at (0, 60, 50, 60).
     let mut scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -153,10 +128,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     h.prime(2, &mut scene);
     assert!(h.engines.damage.counters.dirty().is_empty());
 
-    // Inject: flip widget "small"'s prev `cascade_input` so the next
-    // diff sees it as a cascade-state change and damages its paint_rect
-    // (50×60 = 3000 area) inside a 2000×2000 surface (4M area) —
-    // ratio ≈ 0.075%, well below the full-repaint threshold.
+    // Flip "small"'s prev `cascade_input`: 3000 of 4M area, far below the full-repaint threshold.
     let target_wid = WidgetId::from_hash("small");
     let snap = h
         .engines
@@ -176,13 +148,8 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     );
 }
 
-/// Pin (negative): a stable surface across many frames does *not*
-/// fire the surface-change short-circuit on every frame. This guards
-/// the alpha-mode / present-mode / swapchain-recreated-but-backbuffer-
-/// kept scenarios from the damage layer's POV — they all leave the
-/// surface rect unchanged, so damage must pass through to the normal
-/// dirty/threshold logic. Without this guarantee partial repaint
-/// would never apply.
+/// A stable surface across frames does not fire the short-circuit, or partial
+/// repaint would never apply.
 #[test]
 fn stable_surface_does_not_short_circuit() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -194,9 +161,7 @@ fn stable_surface_does_not_short_circuit() {
     let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(h.engines.damage.counters.dirty().is_empty());
-    // Frame 3: same surface, *one leaf* changes color. Diff must
-    // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
-    // proves the surface-change short-circuit didn't fire.
+    // Frame 3: one leaf changes colour; `Partial` proves the short-circuit didn't fire.
     let changed = frame(&mut h, |ui| build(ui, RED));
     let Some(Damage::Partial(damage)) = changed else {
         panic!(
@@ -204,19 +169,14 @@ fn stable_surface_does_not_short_circuit() {
              repaint, got {changed:?} — surface-change short-circuit fired incorrectly",
         );
     };
-    // DamageEngine rect = the 50×50 frame's rect. Well below 50% of 200×200.
     assert!(
         damage.coverage < 0.5,
         "damage region should be small (partial repaint range), got {damage:?}",
     );
 }
 
-/// The clear colour is the bottom paint layer of every frame, and no
-/// widget carries it. A full frame clears to it; a partial frame
-/// pre-fills each scissor with it and leaves every other pixel alone —
-/// so a new colour under a partial frame, or under a frame with nothing
-/// else to paint, would never reach the screen at all. It escalates
-/// instead, once, and the next frame settles back.
+/// The clear colour is the bottom paint layer and no widget carries it; a
+/// partial frame only pre-fills scissors, so a new colour escalates once.
 #[test]
 fn a_new_clear_colour_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);

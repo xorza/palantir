@@ -1,67 +1,48 @@
-//! The per-button press-capture state machine: what a press latched
-//! onto, whether it has become a drag, how it ended, and how presses
-//! chain into double- and triple-click runs.
+//! The per-button press-capture state machine: what a press latched onto,
+//! whether it became a drag, how it ended, and how presses chain into
+//! double- and triple-click runs.
 //!
-//! [`Capture`] is the whole of it — [`Press`], [`PressDrag`],
-//! [`Release`], [`ReleaseKind`] and [`PressRun`] are its parts, and the
-//! three tunables below are the thresholds it latches on. Kept together
-//! because the invariants only hold across the set: a capture always has
-//! a press origin, a drag latch always has a capture, click and
-//! drag-stop never coexist, and the run tracker never half-exists.
+//! Kept together because the invariants hold across the set: a capture always
+//! has a press origin, a drag latch always has a capture, click and drag-stop
+//! never coexist, and the run tracker never half-exists.
 
 use crate::primitives::identity::widget_id::WidgetId;
 use glam::Vec2;
 use std::time::Duration;
 
-/// Pointer travel from press origin (logical px) before a gesture
-/// latches as a drag. Under this, the gesture is still a click. Once
-/// crossed, the latch holds for the press lifetime and the release
-/// no longer emits a click. Mouse-sized — touch will want larger.
+/// Pointer travel (logical px) from the press origin before a gesture latches
+/// as a drag. The latch holds for the press and the release emits no click.
 pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
-/// Maximum interval between two clicks on the same widget for the
-/// second one to be reported as a double-click. 500 ms matches the
-/// Windows / Chromium default; macOS's `NSEvent.doubleClickInterval`
-/// is user-configurable but defaults to the same neighborhood, and
-/// Linux has no system-wide value to read. Tracked per-button on
-/// [`Capture`].
+/// Maximum interval between two clicks on the same widget for a double-click.
+/// 500 ms matches the Windows / Chromium default; Linux has no system value.
 pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
-/// Maximum pointer travel (logical px) between two clicks for the second
-/// to still count as a double-click. A slow drift past this reads as two
-/// separate clicks, which matches native behaviour. Tracked per-button on
-/// [`Capture`], and [`TextEdit`](crate::TextEdit)'s word and all-selection
-/// read the run it bounds rather than keeping a radius of their own.
+/// Maximum pointer travel (logical px) between two clicks for a double-click.
+/// [`TextEdit`](crate::TextEdit)'s word and all-selection read the run it
+/// bounds rather than keeping a radius of their own.
 pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
 
-/// Per-button capture. One slot per
-/// [`PointerButton`](crate::input::pointer::PointerButton); three
-/// all-or-nothing pieces rather than twelve loose fields, so the
-/// invariants (a capture always has a press origin, a drag latch always
-/// has a capture, click and drag-stop never coexist, the run tracker
-/// never half-exists) are unrepresentable rather than maintained by
-/// convention.
+/// Per-button capture, one slot per
+/// [`PointerButton`](crate::input::pointer::PointerButton). Three
+/// all-or-nothing pieces make the invariants in the module doc
+/// unrepresentable to break.
 #[derive(Default, Clone, Copy, Debug)]
 pub(super) struct Capture {
-    /// The in-flight press, created by [`Self::begin_press`] and
-    /// destroyed by [`Self::end_press`]. `Some` == "this button's
-    /// capture is latched".
+    /// The in-flight press; `Some` means the capture is latched.
     pub(super) press: Option<Press>,
-    /// One-frame edge: how a capture ended this frame. Cleared by
-    /// `end_frame`.
+    /// One-frame edge: how a capture ended this frame. Cleared by `end_frame`.
     pub(super) release: Option<Release>,
-    /// Multi-press run tracker. Persists *across* presses (that's the
-    /// chaining) — never cleared, only replaced by the next press.
+    /// Multi-press run tracker. Persists across presses; only replaced by the
+    /// next press.
     pub(super) run: Option<PressRun>,
 }
 
 impl Capture {
-    /// Latch a press on `target` at `pos`, chaining the multi-press
-    /// run when it lands on the same target within
-    /// [`DOUBLE_CLICK_WINDOW`] of the previous press and
-    /// [`DOUBLE_CLICK_RADIUS`] of its position; any break restarts the
-    /// run at 1. `count` saturates so a caffeinated 255-click run cannot
-    /// wrap back to "single".
+    /// Latch a press on `target` at `pos`, chaining the run when it lands on
+    /// the same target within [`DOUBLE_CLICK_WINDOW`] and
+    /// [`DOUBLE_CLICK_RADIUS`] of the previous press; any break restarts at
+    /// 1. `count` saturates instead of wrapping.
     pub(super) fn begin_press(&mut self, target: WidgetId, pos: Vec2, now: Duration) {
         let count = match &self.run {
             Some(run)
@@ -89,18 +70,13 @@ impl Capture {
         });
     }
 
-    /// End the in-flight press and record how, as one step.
+    /// End the in-flight press and record how.
     ///
-    /// **The only way a press leaves a capture.** Every end writes a
-    /// [`Release`], which is what both collations downstream read — a
-    /// widget's own `ButtonPhase` / [`Drag`](crate::Drag) and
-    /// `pointer_actions`'s [`PointerEdge`](crate::PointerEdge). A press
-    /// dropped without one ends the gesture for the state machine and
-    /// for nobody else: the drag simply stops being reported, and a
-    /// widget that commits on `drag.stopped()` never commits.
-    ///
-    /// `kind` is asked of the press because only the caller knows how it
-    /// ended, and only the press knows whether a drag was latched.
+    /// The only way a press leaves a capture. Every end writes a [`Release`],
+    /// which both downstream collations read (a widget's `ButtonPhase` /
+    /// [`Drag`](crate::Drag) and `pointer_actions`'s
+    /// [`PointerEdge`](crate::PointerEdge)); without one, a widget committing
+    /// on `drag.stopped()` never commits.
     pub(super) fn end_press(&mut self, kind: impl FnOnce(&Press) -> ReleaseKind) {
         let Some(press) = self.press.take() else {
             return;
@@ -111,13 +87,9 @@ impl Capture {
         });
     }
 
-    /// End the press because the gesture was cut off rather than
-    /// released: the widget left the tree, or the surface lost focus.
-    ///
-    /// A latched drag still owes the commit edge its widget is waiting
-    /// for. A press that never became one just dissolves, which is what
-    /// [`ReleaseKind::Miss`] means everywhere else — nothing landed on
-    /// the widget, so nothing is reported as having.
+    /// End the press because the gesture was cut off (the widget left the
+    /// tree, or the surface lost focus). A latched drag still owes its commit
+    /// edge; an unlatched press dissolves as [`ReleaseKind::Miss`].
     pub(super) fn abandon_press(&mut self) {
         self.end_press(|press| {
             if press.drag == PressDrag::None {
@@ -129,46 +101,35 @@ impl Capture {
     }
 }
 
-/// One in-flight press: the capture target, the drag anchor, and this
-/// press's run position, bundled so none can exist without the others.
+/// One in-flight press: capture target, drag anchor and run position.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Press {
     /// Widget the press latched onto.
     pub(super) target: WidgetId,
-    /// Pointer position at the press. The anchor [`Self::travel`] is
-    /// measured from.
+    /// Pointer position at the press; the anchor for [`Self::travel`].
     pub(super) origin: Vec2,
     /// Surface-space travel since [`Self::origin`], refreshed on every
     /// pointer move.
     ///
-    /// Retained rather than recomputed from the live pointer, because
-    /// the two readers would otherwise disagree about whether a drag is
-    /// happening: a pointer that has left the surface is `None`, and a
-    /// drag that reads its delta from it stops being reported while the
-    /// latch — which `pointer_actions` reads — is still set. A drag
-    /// deliberately survives the pointer leaving the window, so the
-    /// travel has to survive with it.
-    ///
-    /// Surface space, not widget space: the reader applies its own
-    /// widget's transform.
+    /// Retained rather than read from the live pointer: a drag survives the
+    /// pointer leaving the window, where the live pointer is `None` and would
+    /// stop the drag being reported while the latch (read by
+    /// `pointer_actions`) is still set. The reader applies its own widget's
+    /// transform.
     pub(super) travel: Vec2,
-    /// This press's position in its multi-press run (1 = single,
-    /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::count`]
-    /// at press time so the release can carry the click count without
-    /// depending on the run tracker's later state.
+    /// Position in the multi-press run (1 = single, 2 = double, ...), stamped
+    /// at press time so the release does not depend on later run state.
     pub(super) count: u8,
-    /// One-frame edge: the press landed this frame (drives
-    /// `ButtonPhase::Down`). Lowered by `drain_per_frame_queues`.
+    /// One-frame edge: the press landed this frame (`ButtonPhase::Down`).
+    /// Lowered by `drain_per_frame_queues`.
     pub(super) fresh: bool,
-    /// Drag latch. Sticky non-`None` for the press lifetime; doubles
-    /// as "suppress click on release".
+    /// Drag latch, sticky for the press; also suppresses click on release.
     pub(super) drag: PressDrag,
 }
 
-/// Drag latch of an in-flight [`Press`]: `None` until the pointer has
-/// travelled [`DRAG_THRESHOLD`] from `origin`, `Started` on exactly
-/// the threshold-crossing frame (the drag-start edge),
-/// `Active` after — `drain_per_frame_queues` lowers the edge.
+/// Drag latch of a [`Press`]: `None` until travel exceeds [`DRAG_THRESHOLD`],
+/// `Started` on that frame, `Active` after (`drain_per_frame_queues` lowers
+/// the edge).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum PressDrag {
     #[default]
@@ -177,10 +138,8 @@ pub(super) enum PressDrag {
     Active,
 }
 
-/// One-frame edge: how this button's capture ended this frame. One
-/// value instead of three parallel edge fields — a click and a
-/// drag-stop are mutually exclusive by construction, and either can
-/// only target the widget that was released.
+/// One-frame edge: how this button's capture ended. One value, so a click and
+/// a drag-stop cannot coexist.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Release {
     /// The widget whose capture ended.
@@ -190,27 +149,19 @@ pub(super) struct Release {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ReleaseKind {
-    /// The release landed back on the captured widget with no drag
-    /// latched — a click. `count` is the press run's number
-    /// (2 = double-click, 3 = triple…), stamped from [`Press::count`].
+    /// Released back on the captured widget with no drag latched. `count` is
+    /// the press run's number, stamped from [`Press::count`].
     Click { count: u8 },
-    /// A latched drag ended — the commit edge for drag gestures.
+    /// A latched drag ended: the commit edge.
     DragStopped,
-    /// Released off the widget with no drag latched — the capture
-    /// just dissolves (drives the click-less `ButtonPhase::Up`).
+    /// Released off the widget with no drag latched (`ButtonPhase::Up`).
     Miss,
 }
 
 impl ReleaseKind {
-    /// The click this release completed, and its place in the press run.
-    /// `None` when a drag ate the click or the release landed off the
-    /// widget.
-    ///
-    /// Both collations read it: a widget's own
-    /// [`ButtonPhase::Up`](crate::ButtonPhase) and the frame-wide
-    /// [`PointerEdge::Clicked`](crate::PointerEdge). They walk the
-    /// captures differently — see `ButtonPhase` for why — but they must
-    /// not disagree about what a click was.
+    /// The click this release completed and its place in the press run;
+    /// `None` when a drag ate it or it landed off the widget. Both collations
+    /// read it so they cannot disagree about what a click was.
     pub(super) const fn click(self) -> Option<u8> {
         match self {
             Self::Click { count } => Some(count),
@@ -218,17 +169,15 @@ impl ReleaseKind {
         }
     }
 
-    /// Whether this release ended a latched drag — the commit edge, read
-    /// by both collations for the reason [`Self::click`] gives.
+    /// Whether this release ended a latched drag, read by both collations.
     pub(super) fn ended_drag(self) -> bool {
         self == Self::DragStopped
     }
 }
 
-/// Multi-press run state: where/when/on-what the last press landed and
-/// its position in the run. The next press chains (`count + 1`) when it
-/// lands on the same `target` within [`DOUBLE_CLICK_WINDOW`] of `at`
-/// and [`DOUBLE_CLICK_RADIUS`] of `pos`; any break restarts at 1.
+/// Multi-press run state: where, when and on what the last press landed. The
+/// next press chains (`count + 1`) on the same `target` within
+/// [`DOUBLE_CLICK_WINDOW`] and [`DOUBLE_CLICK_RADIUS`]; any break restarts at 1.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PressRun {
     pub(super) at: Duration,

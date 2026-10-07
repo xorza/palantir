@@ -1,26 +1,11 @@
-//! A key's identity — used both as what the layout produced and as the
-//! physical position it came from.
+//! A key's identity, logical or physical.
 
-/// A key identity. Used two ways on [`KeyPress`](crate::KeyPress): as the
-/// **logical** key ([`KeyPress::key`](crate::KeyPress::key)) — after the
-/// keyboard layout has been applied, so Shift+'a'
-/// arrives as `Char('A')`, same convention as winit — and as the
-/// **layout-independent physical** key ([`KeyPress::physical`](crate::KeyPress::physical)), the US-QWERTY
-/// identity of the pressed position (always the unshifted form, e.g. `Char('z')`
-/// for the Z position).
-///
-/// `Char` covers letters, digits, and punctuation in a single arm; the
-/// named variants only exist for keys that *don't* produce a printable
-/// character (or whose printable form is platform-noisy, like `Enter →
-/// '\r'`). Anything not covered collapses to [`Key::Other`] so callers
-/// can still see "a key happened" without needing every esoteric key
-/// modeled.
-///
-/// What a press *means* to input routing is [`KeyClass`](crate::KeyClass),
-/// not this type: the arrows, Home and End are `Caret`, the paging keys
-/// `Page`, Tab `Focus` and Tab under a command modifier `Cycle`,
-/// Backspace and Delete `Edit`, Escape its own class, and the function
-/// keys `Accel`.
+/// A key identity: the **logical** key ([`KeyPress::key`](crate::KeyPress::key),
+/// after layout; Shift+'a' is `Char('A')`) or the layout-independent
+/// **physical** key ([`KeyPress::physical`](crate::KeyPress::physical), the
+/// unshifted US-QWERTY identity). Named variants exist for keys with no
+/// printable character or a platform-noisy one; anything else is
+/// [`Key::Other`]. A press's routing meaning is [`KeyClass`](crate::KeyClass).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     /// Left arrow.
@@ -33,8 +18,7 @@ pub enum Key {
     ArrowDown,
     /// Backspace, which macOS keyboards label "delete".
     Backspace,
-    /// Forward delete — a separate key from [`Key::Backspace`], and not
-    /// every keyboard has it.
+    /// Forward delete, separate from [`Key::Backspace`]; not every keyboard has it.
     Delete,
     /// Home.
     Home,
@@ -44,16 +28,12 @@ pub enum Key {
     PageUp,
     /// Page down.
     PageDown,
-    /// Return / Enter, from either the main block or the numeric pad.
-    /// Named rather than `Char('\r')`, whose printable form differs by
-    /// platform.
+    /// Return or Enter, main block or numeric pad; named because `Char('\r')` differs by platform.
     Enter,
-    /// Tab. With Shift or without, it moves focus between Tab stops —
-    /// see [`Configure::tab_stop`](crate::Configure::tab_stop) — unless a
-    /// scope on the focus path takes [`KeyFilter::FOCUS`](crate::KeyFilter),
-    /// which then reads it as an ordinary press.
+    /// Tab, with or without Shift. Moves focus between Tab stops unless a scope
+    /// takes [`KeyFilter::FOCUS`](crate::KeyFilter), which reads it as an ordinary press.
     Tab,
-    /// Escape — the conventional cancel, and what dismisses an overlay.
+    /// Escape: the conventional cancel, and what dismisses an overlay.
     Escape,
     /// Function key 1.
     F1,
@@ -79,10 +59,8 @@ pub enum Key {
     F11,
     /// Function key 12.
     F12,
-    /// Printable character, post-layout (post-shift). Space arrives as
-    /// `Char(' ')`, not a dedicated variant.
+    /// Printable character, post-layout and post-shift; space is `Char(' ')`.
     Char(char),
-    /// Any key not covered by the variants above. Carried so dispatch
-    /// can ignore it cleanly without translation losing the keypress.
+    /// Any key not covered above, carried so dispatch can ignore it cleanly.
     Other,
 }

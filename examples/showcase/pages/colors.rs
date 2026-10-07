@@ -1,9 +1,6 @@
-//! The colour family in one composition: the whole panel, the parts on their
-//! own, and the chip that opens a panel of its own.
+//! The colour family in one composition: the whole panel, the parts alone, and the chip that opens its own panel.
 //!
-//! What to look at — the field and both bars are exact per texel, so the
-//! Okhsv square keeps one brightness right across the hue circle where the
-//! HSV one does not. Switch the model under the panel to see the difference.
+//! The field and both bars are exact per texel, so the Okhsv square keeps one brightness across the hue circle where HSV does not; switch the model under the panel to compare.
 
 use crate::support::{api, note, row, section};
 use palantir::{

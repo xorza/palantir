@@ -1,5 +1,4 @@
-//! The surface a tree test records against, and the hashes it asserts
-//! on.
+//! The surface a tree test records against, and the hashes it asserts on.
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
@@ -10,9 +9,7 @@ use glam::UVec2;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
-/// The hashes one recorded frame gives: the node `f` returns, its
-/// subtree and the subtree's layout half, and the tree's cascade-static
-/// fingerprint.
+/// The hashes of one recorded frame: the returned node, its subtree and layout half, and the tree's cascade-static fingerprint.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Hashes {
     pub(super) node: ContentHash,

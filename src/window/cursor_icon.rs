@@ -2,13 +2,10 @@
 
 use crate::primitives::layout::axis::Axis;
 
-/// The mouse cursor a widget wants shown this frame, requested through
-/// [`Ui::set_cursor`](crate::Ui::set_cursor). Backend-agnostic subset of
-/// the platform cursors (the winit mapping lives in the host); grows
-/// variants as widgets need them.
+/// The mouse cursor a widget wants shown this frame, requested via [`Ui::set_cursor`](crate::Ui::set_cursor). A backend-agnostic subset (the winit mapping lives in the host) that grows as widgets need.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CursorIcon {
-    /// The platform arrow — what every frame resets to.
+    /// The platform arrow; every frame resets to it.
     #[default]
     Default,
     /// Clickable affordance (hand).
@@ -32,11 +29,7 @@ pub enum CursorIcon {
 }
 
 impl CursorIcon {
-    /// The double-headed resize cursor for a divider the pointer drags
-    /// **along** `axis`. Note the quarter-turn: dragging along X moves a
-    /// *vertical* divider, which wants the east-west arrows. Getting that
-    /// backwards is easy enough by hand that the mapping is worth naming
-    /// once.
+    /// The resize cursor for a divider dragged **along** `axis`. Quarter-turn: dragging along X moves a *vertical* divider, wanting the east-west arrows; named once because it is easy to get backwards.
     pub(crate) const fn resize_along(axis: Axis) -> Self {
         match axis {
             Axis::X => Self::EwResize,

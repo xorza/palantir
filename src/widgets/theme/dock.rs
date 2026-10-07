@@ -1,5 +1,4 @@
-//! What a dock paints that a tab strip does not: the drop preview, the
-//! insertion caret, and the chip trailing the pointer.
+//! What a dock paints that a tab strip does not: the drop preview, insertion caret and pointer-trailing chip.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -12,12 +11,7 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
-/// Visuals for [`crate::DockView`] — and only for what is dock-specific.
-///
-/// The dividers read [`Theme::splitter`](crate::Theme::splitter) and
-/// every pane's strip reads [`Theme::tabs`](crate::Theme::tabs), so a
-/// bundle that would restate either of them does not exist. What is left
-/// is the drag feedback.
+/// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DockTheme {
     /// Wash over the region a drop would occupy.
@@ -38,16 +32,13 @@ pub struct DockTheme {
     /// Where the ghost chip sits relative to the pointer.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub ghost_offset: Vec2,
-    /// How far in from each edge the split wedges reach, as a fraction
-    /// of the pane's content rect. `0.25` leaves the inner half as the
-    /// join zone.
+    /// How far in from each edge the split wedges reach, as a fraction of the pane's content rect; `0.25` leaves the inner half as the join zone.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
     pub edge_fraction: f32,
 }
 
 impl DockTheme {
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             ghost,

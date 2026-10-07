@@ -4,9 +4,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use std::hash::{Hash, Hasher as _};
 
-/// Two-stop gradient, the shape almost every UI gradient takes. Built
-/// from the bytes a stop stores, which the decode and re-encode return
-/// exactly.
+/// Two-stop gradient built from the bytes a stop stores, which decode and re-encode return exactly.
 fn ramp(a: SrgbaU8, b: SrgbaU8) -> GradientStops {
     GradientStops::new([
         Stop::new(0.0, RgbaF32::from_srgba(a)),
@@ -14,8 +12,7 @@ fn ramp(a: SrgbaU8, b: SrgbaU8) -> GradientStops {
     ])
 }
 
-/// Entries landing on the most crowded bucket index, hashing `keys`
-/// the way `FxHashMap` would: `hash & (buckets - 1)`.
+/// Entries landing on the most crowded bucket index, hashing `keys` as `FxHashMap` does: `hash & (buckets - 1)`.
 fn worst_bucket(keys: &[GradientStops], buckets: usize) -> usize {
     let mut counts = vec![0usize; buckets];
     for key in keys {
@@ -26,28 +23,14 @@ fn worst_bucket(keys: &[GradientStops], buckets: usize) -> usize {
     counts.into_iter().max().unwrap_or(0)
 }
 
-/// Structured palettes must spread across buckets, not pile onto one.
-///
-/// This is the property the byte layout exists for, and nothing else
-/// observes it: a clustering layout returns identical *values* from
-/// every lookup and fails only as a silent 10-30x slowdown in
-/// `CpuGradientAtlas`'s index. The three populations are ordinary
-/// ways to generate a palette, and the previous layout — colour in
-/// the high half — put all 200 of the first two into a **single**
-/// bucket.
-///
-/// The bound is deliberately loose. 200 keys in 256 buckets average
-/// 0.8 each and a sound hash peaks around 4-5; the failure being
-/// guarded against peaks at 200. Anything under 16 means the low bits
-/// carry real entropy, which is the whole claim.
+/// Structured palettes must spread across buckets. A clustering layout returns identical values and fails only as a silent 10-30x slowdown in `CpuGradientAtlas`'s index. The bound is loose: 200 keys in 256 buckets peak around 4-5 for a sound hash, so under 16 means the low bits carry entropy.
 #[test]
 fn hash_spreads_across_buckets_for_structured_palettes() {
     const N: u32 = 200;
     const BUCKETS: usize = 256;
     const LIMIT: usize = 16;
 
-    // One hue family: blue pinned, red/green varying — themed accents
-    // generated off a base colour.
+    // One hue family: blue pinned, red/green varying (themed accents).
     let same_blue: Vec<GradientStops> = (0..N)
         .map(|i| {
             ramp(
@@ -83,10 +66,7 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     }
 }
 
-/// A stop keeps the bytes of the hex code it was written as, and gives
-/// back the colour that hex code names. Every grey byte, so the dark
-/// ramp is covered: linear bytes collapsed sRGB 8, 10 and 16 onto one
-/// stored value.
+/// A stop keeps the bytes of the hex code it was written as and returns the colour that names. Every grey byte, since linear bytes collapsed sRGB 8, 10 and 16 onto one value.
 #[test]
 fn a_hex_stop_keeps_its_bytes() {
     for v in 0u8..=255 {
@@ -101,10 +81,7 @@ fn a_hex_stop_keeps_its_bytes() {
     }
 }
 
-/// Distinct content still hashes distinctly — the spread above must
-/// not have come from collapsing information. Offset and colour
-/// occupy disjoint halves of one word, so a colour can never alias
-/// an offset.
+/// Distinct content still hashes distinctly; offset and colour occupy disjoint halves of one word, so a colour never aliases an offset.
 #[test]
 fn offset_and_colour_stay_independent() {
     let base = ramp(SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6));
@@ -124,26 +101,16 @@ fn offset_and_colour_stay_independent() {
     assert_eq!(digest(&base), digest(&base.clone()));
 }
 
-/// Written order must not reach cache identity: the stops *are* the
-/// gradient's key, so two spellings of one ramp that bake the same
-/// LUT row have to hash and compare the same, or they take two atlas
-/// rows and two eviction slots apiece.
-///
-/// Both doors have to establish the order, so both are driven here: the
-/// constructor a caller authors through, and the deserializer a theme
-/// arrives through.
+/// Written order must not reach cache identity: stops are the gradient's key, so two spellings of one ramp must hash and compare equal or take two atlas rows. Both the constructor and the deserializer establish the order, so both are driven.
 #[test]
 fn written_order_does_not_reach_identity() {
-    // The deserializer is the other door onto the same invariant, and it
-    // kept the wire order until it started routing through the sort too.
+    // The deserializer is the other door onto the same invariant.
     #[derive(Debug, serde::Deserialize)]
     struct Document {
         stops: GradientStops,
     }
 
-    // Colours the wire form can also name, since the parsed half below
-    // has to land on this exact ramp: a stop serializes as the sRGB hex
-    // every other theme colour uses.
+    // Colours the wire form (sRGB hex) can also name, so the parsed half lands on this ramp.
     let a = RgbaF32::hex(0xff0000);
     let b = RgbaF32::hex(0x00ff00);
     let c = RgbaF32::hex(0x0000ff);
@@ -157,8 +124,7 @@ fn written_order_does_not_reach_identity() {
     };
     assert_eq!(ascending, shuffled, "reordered input is the same gradient");
     assert_eq!(digest(&ascending), digest(&shuffled));
-    // Sorted on the way in, so the stored sequence is ascending
-    // whichever order it was written in.
+    // Sorted on the way in, whichever order it was written in.
     let offsets: Vec<u8> = shuffled.iter().map(|s| s.offset_u8).collect();
     assert_eq!(offsets, vec![0, 128, 255]);
 
@@ -174,8 +140,7 @@ fn written_order_does_not_reach_identity() {
     assert_eq!(parsed, ascending, "a parsed theme is the same gradient");
     assert_eq!(digest(&parsed), digest(&ascending));
 
-    // Equal offsets keep their written order, so a hard break still
-    // reads in the direction it was authored.
+    // Equal offsets keep their written order, so a hard break reads as authored.
     let break_ab = GradientStops::new([Stop::new(0.5, a), Stop::new(0.5, b)]);
     let break_ba = GradientStops::new([Stop::new(0.5, b), Stop::new(0.5, a)]);
     assert_ne!(break_ab, break_ba);

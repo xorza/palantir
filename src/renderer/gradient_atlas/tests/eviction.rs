@@ -13,26 +13,19 @@ use crate::renderer::gradient_atlas::tests::support::{
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
 
-/// Filling all 255 real slots then registering one more (after a
-/// `flush`, i.e. in the next epoch) evicts the LRU row in
-/// 1..INITIAL_ATLAS_ROWS — never row 0 (magenta fallback). The new gradient
-/// ends up in the evicted slot; the previously resident row's
-/// content hash is gone, while a surviving gradient re-registers
-/// onto its exact original row (hit path).
+/// Filling all 255 real slots then registering one more in the next epoch evicts
+/// the LRU row in 1..INITIAL_ATLAS_ROWS, never row 0 (magenta fallback); a
+/// surviving gradient re-registers onto its exact original row.
 #[test]
 fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
     let mut atlas = CpuGradientAtlas::default();
     let filled_rows = fill_rows(&mut atlas, INITIAL_ATLAS_ROWS - 1);
-    // Re-touch every gradient except index 0 so the very first
-    // registration's row is unambiguously the LRU.
+    // Re-touch all but index 0 so the first registration's row is the LRU.
     for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         atlas.register(&distinct_grad(i).ramp);
     }
-    // Epoch boundary: everything above was registered "this frame"
-    // and is eviction-exempt until a flush.
     let _ = atlas.flush();
     let lru = filled_rows[0];
-    // Push one more distinct gradient → forces eviction.
     let evictions = atlas.counters.counts().evictions;
     let new_row = atlas.register(&distinct_grad(999900).ramp);
     assert_eq!(
@@ -45,23 +38,18 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
         new_row, lru,
         "newest registration must land in the LRU slot",
     );
-    // A surviving gradient re-registers onto its exact original row.
     let survivor = atlas.register(&distinct_grad(1).ramp);
     assert_eq!(
         survivor, filled_rows[1],
         "surviving content must reuse its original row exactly",
     );
-    // Row 0 still magenta after eviction.
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
 
-/// 255 distinct registrations then a 256th in the SAME epoch grows
-/// the atlas: every resident row's `LutRow` id is already captured in
-/// this frame's draw payloads, so evicting one would silently paint
-/// the wrong gradient. More distinct gradients than the table holds is
-/// legal content, so capacity doubles and the overflow gets its own
-/// row — no crash, no aliasing.
+/// A 256th distinct registration in the SAME epoch grows the atlas: every resident
+/// `LutRow` id is already captured in this frame's draw payloads, so evicting one
+/// would paint the wrong gradient.
 #[test]
 fn full_atlas_same_epoch_overflow_grows() {
     let mut atlas = CpuGradientAtlas::default();
@@ -82,8 +70,6 @@ fn full_atlas_same_epoch_overflow_grows() {
         overflow.0,
     );
     assert_real_row(&atlas, overflow);
-    // Growth invalidates the backend's texture height, so the whole
-    // atlas — not just the new rows — must re-upload.
     let flushed = atlas.flush().expect("growth must dirty the atlas");
     assert_eq!(flushed.first_row, 0);
     assert_eq!(flushed.total_rows, INITIAL_ATLAS_ROWS * 2);
@@ -93,17 +79,13 @@ fn full_atlas_same_epoch_overflow_grows() {
     );
 }
 
-/// The hit path stamps the epoch too: re-registering all 255
-/// resident gradients after a flush re-protects every row, so a
-/// 256th distinct gradient in that same epoch grows rather than
-/// evicting a row whose id this frame's draws already hold. The
-/// re-registered gradients keep their original rows across growth.
+/// The hit path stamps the epoch too: re-registering all 255 resident gradients
+/// after a flush re-protects every row, so a 256th grows rather than evicting.
 #[test]
 fn full_atlas_all_hit_this_epoch_grows() {
     let mut atlas = CpuGradientAtlas::default();
     let original = fill_rows(&mut atlas, INITIAL_ATLAS_ROWS - 1);
     let _ = atlas.flush();
-    // New epoch: every row re-registered via the hit path.
     for (i, row) in original.iter().enumerate() {
         assert_eq!(
             atlas.register(&distinct_grad(i as u32).ramp),
@@ -120,16 +102,13 @@ fn full_atlas_all_hit_this_epoch_grows() {
     );
 }
 
-/// Growth is bounded by the device's texture-height cap. At the cap a
-/// full same-epoch table can neither evict nor grow, so the overflow
-/// paints the magenta fallback: loudly wrong for that one gradient,
-/// but it neither crashes nor repaints rows the frame's other draws
-/// already captured. `max_rows` below the initial capacity is raised
-/// to fit, so one doubling is all this atlas gets.
+/// Growth is bounded by the device's texture-height cap. At the cap a full
+/// same-epoch table can neither evict nor grow, so the overflow paints the magenta
+/// fallback: no crash and no repaint of captured rows. `max_rows` below the initial
+/// capacity is raised to fit.
 #[test]
 fn growth_stops_at_max_rows_and_falls_back() {
     let mut atlas = CpuGradientAtlas::new(INITIAL_ATLAS_ROWS * 2);
-    // Fill both the initial capacity and the one doubling available.
     let rows: HashSet<_> = fill_rows(&mut atlas, INITIAL_ATLAS_ROWS * 2 - 1)
         .into_iter()
         .collect();
@@ -150,27 +129,18 @@ fn growth_stops_at_max_rows_and_falls_back() {
         "a fallback must not bake — there is no row to bake into",
     );
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2, "cap must hold");
-    // The fallback row is still magenta — the overflow never baked
-    // over it.
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 
-    // Next epoch: rows are evictable again, so the same gradient gets
-    // a real row instead of the fallback.
     let _ = atlas.flush();
     let recovered = atlas.register(&distinct_grad(999900).ramp);
     assert_ne!(recovered, LutRow::FALLBACK);
     assert_real_row(&atlas, recovered);
 }
 
-/// Rows resident before a growth keep their ids AND their baked
-/// content — this frame's draw payloads already hold those ids, so a
-/// row moving or being rewritten under them would repaint issued draws.
-///
-/// Lookup goes through the key → row index, which growth doesn't
-/// touch, so re-registering a resident gradient afterwards returns its
-/// *original* row — the duplicate bake the open-addressed table used
-/// to produce (its probe modulus moved with the capacity) is gone.
+/// Rows resident before a growth keep their ids AND baked content, since this
+/// frame's draw payloads hold those ids; lookup goes through the key to row index,
+/// which growth does not touch.
 #[test]
 fn growth_preserves_resident_row_content() {
     let mut atlas = CpuGradientAtlas::default();
@@ -180,15 +150,12 @@ fn growth_preserves_resident_row_content() {
     for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         atlas.register(&distinct_grad(i).ramp);
     }
-    // Same epoch throughout, so this forces growth.
     atlas.register(&distinct_grad(999900).ramp);
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
     assert_eq!(
         atlas.baked[pinned_row.0 as usize], pinned_texels,
         "growth must not disturb a row this frame's draws reference",
     );
-    // Growth leaves the index alone, so this resolves to the original
-    // row rather than baking a second copy of the same gradient.
     let after = atlas.register(&pinned.ramp);
     assert_eq!(after, pinned_row, "growth baked a duplicate row");
     assert_eq!(
@@ -197,26 +164,19 @@ fn growth_preserves_resident_row_content() {
     );
 }
 
-/// Hit-path bumps the row stamp: a gradient registered first, then
-/// re-registered after others, must survive eviction even when the
-/// table fills.
+/// A hit bumps the row stamp: a gradient re-registered after others must survive
+/// eviction when the table fills.
 #[test]
 fn register_hit_bumps_stamp_protecting_recent_content() {
     let mut atlas = CpuGradientAtlas::default();
     let pinned = distinct_grad(0);
     let pinned_row = atlas.register(&pinned.clone().ramp);
-    // Fill 253 more rows.
     for i in 1..(INITIAL_ATLAS_ROWS - 2) {
         atlas.register(&distinct_grad(i).ramp);
     }
-    // Re-touch the pinned gradient so its stamp is now the largest.
     let r = atlas.register(&pinned.ramp);
     assert_eq!(r, pinned_row, "re-register must reuse the same row");
-    // Epoch boundary so the eviction below is legal (nothing above
-    // is referenced by the "current frame" anymore).
     let _ = atlas.flush();
-    // Two more distinct registrations: the second forces eviction.
-    // The pinned row's recent stamp must keep it alive.
     atlas.register(&distinct_grad(100000).ramp);
     let evicted_row = atlas.register(&distinct_grad(100100).ramp);
     assert_ne!(
@@ -225,36 +185,26 @@ fn register_hit_bumps_stamp_protecting_recent_content() {
     );
 }
 
-/// Evicting a row then re-registering its original content re-bakes
-/// into some slot; the row is restored, no panics, atlas remains
-/// usable. Pin the round-trip explicitly so a future eviction-bug
-/// that loses content silently is caught.
+/// Evicting a row then re-registering its content re-bakes into some slot and
+/// restores the row.
 #[test]
 fn evicted_content_can_be_re_registered() {
     let mut atlas = CpuGradientAtlas::default();
     let first = distinct_grad(0);
     let _ = atlas.register(&first.clone().ramp);
-    // Fill, cross the epoch boundary, then force eviction of `first`
-    // (oldest stamp).
     for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         atlas.register(&distinct_grad(i).ramp);
     }
     let _ = atlas.flush();
     atlas.register(&distinct_grad(999900).ramp);
-    // Re-register `first` — must succeed and return a valid row.
     let reborn = atlas.register(&first.ramp);
     assert_real_row(&atlas, reborn);
 }
 
-/// The invariant `register` reads eviction off: rows registered
-/// this epoch form a head prefix of the MRU list, so checking the tail
-/// alone is equivalent to scanning for the oldest unprotected row.
-///
-/// Built as a genuinely mixed frame — fresh claims, hits on resident
-/// rows, and rows left untouched — because the property is only
-/// interesting when all three are present. Checked again after a flush
-/// (the whole list becomes stale, so a vacuous all-stale prefix) and
-/// after a partial re-touch in the new epoch.
+/// `register` reads eviction off an invariant: rows registered this epoch form a
+/// head prefix of the MRU list, so checking the tail alone finds the oldest
+/// unprotected row. Built as a mixed frame (fresh claims, hits, untouched rows),
+/// checked again after a flush (an all-stale prefix) and after a partial re-touch.
 #[test]
 fn epoch_current_rows_form_an_mru_prefix() {
     let mut atlas = CpuGradientAtlas::default();
@@ -262,8 +212,6 @@ fn epoch_current_rows_form_an_mru_prefix() {
     let _ = atlas.flush();
     assert!(atlas.epoch_prefix_holds(), "a fresh epoch protects nothing");
 
-    // New epoch: re-touch some resident rows out of insertion order,
-    // claim some fresh ones, leave the rest alone.
     for i in [7, 31, 2, 19] {
         atlas.register(&distinct_grad(i as u32).ramp);
     }
@@ -278,10 +226,9 @@ fn epoch_current_rows_form_an_mru_prefix() {
         "hits and claims must both move their row to the MRU head",
     );
 
-    // 13 distinct rows were registered this epoch — 4 re-touched, 8
-    // freshly claimed, then 3 (new) and 44 (already counted, a repeat
-    // hit inside the same epoch). Pinning the count keeps the prefix
-    // check above from passing vacuously on an empty prefix.
+    // 13 distinct rows registered this epoch: 4 re-touched, 8 fresh, then 3 (new)
+    // and 44 (a repeat hit). The count stops the prefix check passing vacuously on
+    // an empty prefix.
     let protected = (0..48)
         .filter(|i| {
             let g = distinct_grad(*i as u32);
@@ -293,9 +240,8 @@ fn epoch_current_rows_form_an_mru_prefix() {
     assert_eq!(protected, 13);
 }
 
-/// Growth leaves lookup alone: every gradient resident beforehand still
-/// resolves to the row it already occupied, so no draw payload issued
-/// this frame is repainted and no duplicate row is baked.
+/// Growth leaves lookup alone: every resident gradient still resolves to its row,
+/// so no issued draw is repainted and no duplicate is baked.
 #[test]
 fn growth_leaves_resident_lookups_on_their_original_rows() {
     let mut atlas = CpuGradientAtlas::default();
@@ -306,7 +252,6 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
         .collect();
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
 
-    // Same epoch, so the overflow has to grow rather than evict.
     atlas.register(&distinct_grad(999900).ramp);
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS * 2);
 
@@ -330,16 +275,11 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
         "re-registering after growth baked at all — the open-addressed \
          table used to duplicate here because its probe modulus moved",
     );
-    // A duplicate bake would have consumed rows beyond the 255 resident
-    // ones plus the overflow.
     assert_eq!(atlas.index_len(), INITIAL_ATLAS_ROWS as usize);
 }
 
-/// Eviction takes the outgoing gradient out of the index with its row.
-/// Leaving it behind is the failure mode unique to splitting lookup
-/// from storage: the stale entry would resolve to a row now holding
-/// somebody else's bake, and the evicted gradient would paint the
-/// wrong colours instead of re-baking.
+/// Eviction takes the outgoing gradient out of the index with its row; a stale
+/// entry would resolve to a row holding somebody else's bake.
 #[test]
 fn eviction_drops_the_outgoing_key_from_the_index() {
     let mut atlas = CpuGradientAtlas::default();
@@ -350,7 +290,6 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
     }
     let _ = atlas.flush();
 
-    // `first` is the least-recently-registered, so it is the victim.
     let newcomer = distinct_grad(999900);
     assert_eq!(atlas.register(&newcomer.clone().ramp).0, first_row);
     assert_eq!(
@@ -359,11 +298,8 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
         "evicted gradient still resolves to a row",
     );
     assert_eq!(atlas.resident_row(&newcomer.ramp), Some(first_row));
-    // The table stayed at one entry per occupied row.
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 
-    // Re-registering the evicted content re-bakes it somewhere else,
-    // and its texels are the real gradient rather than the newcomer's.
     let _ = atlas.flush();
     let reborn = atlas.register(&first.clone().ramp).0;
     assert_ne!(reborn, first_row);

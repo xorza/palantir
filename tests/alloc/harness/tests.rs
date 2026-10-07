@@ -9,14 +9,12 @@ use palantir::{Block, Configure, Panel, Spinner, Ui};
 use std::hint::black_box;
 use std::panic::catch_unwind;
 
-/// Force one heap alloc that the optimizer can't hoist or elide.
+/// Force one heap alloc the optimizer can't hoist or elide.
 fn one_alloc() {
     black_box(Box::new(black_box(0u64)));
 }
 
-/// Frames allocating 2, 1, 2, 3, 1 sort to 1, 1, 2, 2, 3: the worst is
-/// 3, and 1 and 2 tie on two frames each, so the mode is the smaller, 1.
-/// Then one more 2 breaks the tie its way.
+/// Frames allocating 2, 1, 2, 3, 1 sort to 1, 1, 2, 2, 3: worst 3; 1 and 2 tie, so the mode is the smaller, 1. One more 2 breaks the tie.
 #[test]
 fn report_reads_worst_and_mode() {
     for (counts, mode) in [(&[2, 1, 2, 3, 1][..], 1), (&[2, 1, 2, 3, 1, 2], 2)] {
@@ -36,9 +34,7 @@ fn report_reads_worst_and_mode() {
     }
 }
 
-/// Each way an audit fails names itself, frame 0 and the caller. The
-/// spinner animates paint-only, so after its first frame it skips the
-/// scene; the block does not animate, so every frame runs it.
+/// Each audit failure names itself, frame 0 and the caller. The spinner animates paint-only, so it skips the scene after frame 1; the block doesn't animate, so every frame runs it.
 #[test]
 fn audit_panics_with_diagnostic_message() {
     let over_budget: fn() = || {
@@ -76,9 +72,7 @@ fn audit_panics_with_diagnostic_message() {
             msg.contains(expected),
             "panic message missing {expected:?}: {msg}"
         );
-        // The fixture names itself by where it is, not by a string it
-        // repeats: `Audit::run` is `#[track_caller]`, so the location is
-        // this file.
+        // Named by location, not a repeated string: `Audit::run` is `#[track_caller]`, so it is this file.
         assert!(
             msg.contains(file!()),
             "panic message missing the caller's location: {msg}",
@@ -88,17 +82,9 @@ fn audit_panics_with_diagnostic_message() {
 
 #[test]
 fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
-    // Provoke a real palantir frame stack so the filter has both
-    // `src/...` and `tests/alloc/...` candidates to choose between.
-    // The rendered output must:
-    //   - include `src/...` frames (the bug source we want to surface),
-    //   - exclude every `tests/alloc/` path — including this test
-    //     module, since it's harness machinery, not a fixture,
-    //   - drop the `alloc::` test-binary-crate prefix.
+    // Provoke a real palantir frame stack so the filter has `src/...` and `tests/alloc/...` candidates. The output must include `src/...` frames, exclude every `tests/alloc/` path (this module is harness machinery), and drop the `alloc::` crate prefix.
     //
-    // The allocation is one palantir makes by contract, recorded inside a
-    // frame so the stack runs through the frame path as well; the primed
-    // frame around it allocates nothing, so it is the first trace.
+    // The allocation is one palantir makes by contract, recorded inside a frame so the stack runs through the frame path; the primed frame around it allocates nothing, so it is the first trace.
     let scene = |ui: &mut Ui| {
         Panel::vstack().auto_id().show(ui, |_| {
             black_box(Mesh::with_capacity(4, 6));

@@ -1,6 +1,4 @@
-//! A composition in a field: shown in place, underlined, typed only on
-//! commit, starting over a selection by deleting it; and the field asking
-//! for IME text while it holds focus.
+//! IME composition in a field, and the field asking for IME text while focused.
 
 use crate::common::span::Span;
 use crate::input::ime_preedit::ImePreedit;
@@ -27,9 +25,6 @@ fn record(ui: &mut Ui, buf: &mut String) {
     TextEdit::new(buf).id(field()).show(ui);
 }
 
-/// The block's painted text, and the rects drawn wider than they are
-/// tall at the caret's width — the composition's underlines, which no
-/// other shape a field paints is.
 fn painted(h: &UiHarness, caret_width: f32) -> (String, usize) {
     let node = h.node_of(field()).expect("recorded").node;
     let block = block_of(&h.ui, node);
@@ -49,8 +44,6 @@ fn painted(h: &UiHarness, caret_width: f32) -> (String, usize) {
     (shown, underlines)
 }
 
-/// A field focused on `text`, its caret placed `back` characters from the
-/// end, settled.
 fn focused_at(text: &str, back: usize) -> (UiHarness, String) {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::from(text);
@@ -66,8 +59,7 @@ fn focused_at(text: &str, back: usize) -> (UiHarness, String) {
     (h, buf)
 }
 
-/// A composition shows spliced in at the caret, underlined, and leaves
-/// the buffer alone; its commit types it there, and the underline goes.
+/// A composition shows spliced in and underlined without touching the buffer; commit types it.
 #[test]
 fn a_composition_shows_in_place_and_types_on_commit() {
     let caret_width = TextEditTheme::default().caret_width;
@@ -86,9 +78,7 @@ fn a_composition_shows_in_place_and_types_on_commit() {
     assert_eq!(painted(&h, caret_width), ("ab仮名cd".to_owned(), 0));
 }
 
-/// A composition that starts over a selection deletes it first — once,
-/// as it starts, so the next preedit of the same composition deletes
-/// nothing more.
+/// A composition starting over a selection deletes it once, as it starts; later preedits delete nothing.
 #[test]
 fn a_composition_starting_over_a_selection_deletes_it() {
     let (mut h, mut buf) = focused_at("hello", 0);
@@ -103,9 +93,7 @@ fn a_composition_starting_over_a_selection_deletes_it() {
     }
 }
 
-/// The field asks for IME text while it holds focus, with its caret in
-/// screen space — inside the field's own rect, one caret wide and one
-/// line tall — and stops asking once focus leaves.
+/// While focused the field asks for IME text with its caret in screen space, and stops when focus leaves.
 #[test]
 fn a_focused_field_asks_for_ime_at_its_caret() {
     let caret_width = TextEditTheme::default().caret_width;

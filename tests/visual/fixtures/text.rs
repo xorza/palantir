@@ -7,9 +7,7 @@ use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
-/// Multi-line paragraph with mixed sizes/colors. Slightly looser
-/// tolerance — glyph AA varies more across drivers than rect-only
-/// scenes.
+/// Multi-line paragraph with mixed sizes/colors; looser tolerance as glyph AA varies across drivers.
 #[test]
 fn text_paragraph_matches_golden() {
     let mut h = Harness::new();
@@ -51,11 +49,7 @@ fn text_paragraph_matches_golden() {
     assert_matches_golden(GoldenName::TextParagraph, &img);
 }
 
-/// Row list with many labels under per-row backgrounds. Exercises
-/// text-batch coalescing across distinct scissors (each row's
-/// background creates a group) — the composer fuses all rows' text
-/// into one glyphon `prepare`/`render`. Visual pin: every row's
-/// label must read on its row's background, no glyphs missing.
+/// Many labels under per-row backgrounds: text-batch coalescing across distinct scissors (each row's background makes a group), the composer fusing all text into one glyphon `prepare`/`render`. Every label must read on its row, no glyphs missing.
 #[test]
 fn text_row_list_batches_into_one_render() {
     let mut h = Harness::new();

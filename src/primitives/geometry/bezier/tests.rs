@@ -7,8 +7,7 @@ fn quadratic_to_cubic_promotes_inner_cps() {
     let c = Vec2::new(50.0, 100.0);
     let p2 = Vec2::new(100.0, 0.0);
     let CubicControls { c1: q1, c2: q2 } = quadratic_to_cubic(p0, c, p2);
-    // q1 = p0 + 2/3·(c − p0) = (100/3, 200/3), q2 = p2 + 2/3·(c − p2) =
-    // (200/3, 200/3), each rounded once through the f32 2/3.
+    // q1 = p0 + 2/3·(c − p0) = (100/3, 200/3), q2 = p2 + 2/3·(c − p2) = (200/3, 200/3), each rounded once through the f32 2/3.
     let two_thirds = 2.0 / 3.0;
     assert_eq!(q1, p0 + (c - p0) * two_thirds);
     assert_eq!(q2, p2 + (c - p2) * two_thirds);
@@ -18,8 +17,7 @@ fn quadratic_to_cubic_promotes_inner_cps() {
 
 #[test]
 fn cubic_bbox_is_endpoints_for_monotone_curve() {
-    // Straight monotone curve along x: bbox = endpoint hull, no
-    // contribution from inner CPs (which lie on the line).
+    // Straight monotone curve along x: bbox is the endpoint hull; inner CPs lie on the line.
     let p0 = Vec2::new(0.0, 0.0);
     let p1 = Vec2::new(33.0, 0.0);
     let p2 = Vec2::new(66.0, 0.0);
@@ -28,14 +26,9 @@ fn cubic_bbox_is_endpoints_for_monotone_curve() {
     assert_eq!((bbox.min, bbox.max()), (p0, p3));
 }
 
-/// S-curve: horizontal endpoints, inner CPs pulled vertically in opposite
-/// directions, so the curve's excursion in y is far inside the control
-/// hull's ±100.
+/// S-curve: horizontal endpoints, inner CPs pulled vertically opposite ways, so y's excursion is far inside the hull's ±100.
 ///
-/// Hand-computed: `y(t) = 300·t(1−t)(1−2t)`, whose derivative
-/// `300(1 − 6t + 6t²)` vanishes at `t = (3 ∓ √3)/6`. There `u = t − ½ =
-/// ∓√3/6`, and `y = 300·(¼ − u²)(−2u) = ±300·√3/18 = ±50/√3 ≈ ±28.87`. The
-/// x extent is the endpoints', since x is monotone.
+/// `y(t) = 300·t(1−t)(1−2t)`; `y' = 300(1 − 6t + 6t²)` vanishes at `t = (3 ∓ √3)/6`, where `u = t − ½ = ∓√3/6` and `y = 300·(¼ − u²)(−2u) = ±50/√3 ≈ ±28.87`. x is monotone, so its extent is the endpoints'.
 #[test]
 fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
     let p0 = Vec2::new(0.0, 0.0);
@@ -58,8 +51,7 @@ fn cubic_bbox_tighter_than_control_hull_for_opposing_tangents() {
 
 #[test]
 fn cubic_bbox_contains_sampled_curve() {
-    // Stress: random-ish CPs; verify all sampled curve points lie
-    // inside the reported bbox.
+    // Stress: random-ish CPs; every sampled curve point lies inside the bbox.
     let p0 = Vec2::new(10.0, 20.0);
     let p1 = Vec2::new(-30.0, 80.0);
     let p2 = Vec2::new(120.0, -40.0);
@@ -97,14 +89,7 @@ fn quadratic_to_cubic_matches_midpoint() {
     assert_eq!(q_mid, c_mid);
 }
 
-/// Every quadratic, promoted to a cubic, keeps its extremum inside the
-/// cubic bbox. The promotion's `2/3` blend leaves the cubic's `a`
-/// coefficient at rounding residue rather than zero, which is where a
-/// textbook root formula loses the small root.
-///
-/// The worked case: `p0 = 7, c = 49, p2 = 8` peaks at
-/// `t* = (p0 − c)/(p0 − 2c + p2) = −42/−83 = 0.506`, where
-/// `B(t*) = 7(1−t*)² + 98·t*(1−t*) + 8t*² = 28.253`.
+/// Every quadratic promoted to a cubic keeps its extremum inside the cubic bbox. The `2/3` blend leaves the `a` coefficient at rounding residue, where a textbook root formula loses the small root. Worked case: `p0 = 7, c = 49, p2 = 8` peaks at `t* = −42/−83 = 0.506`, `B(t*) = 28.253`.
 #[test]
 fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
     let peak = |p0: f64, c: f64, p2: f64| {
@@ -126,7 +111,7 @@ fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
          quadratic it promotes",
     );
 
-    // A sweep over integer quadratics: every sampled point inside.
+    // Sweep of integer quadratics: every sampled point inside.
     let values: Vec<f32> = (0..800).step_by(53).map(|v| v as f32).collect();
     for &p0 in &values {
         for &c in &values {

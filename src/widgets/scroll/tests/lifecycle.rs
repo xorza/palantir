@@ -91,29 +91,21 @@ fn state_is_swept_when_scroll_disappears() {
     assert!(state.drag_anchor_is_none());
 }
 
-/// A thumb drag composes each frame's *cumulative* delta against the
-/// offset the press captured, so the anchor cannot outlive the geometry
-/// that maps delta → offset. `ScrollbarsDef::thumb` answers `None` the moment
-/// content fits or the track collapses, which a drag can reach mid-press
-/// (the content shrinks under it) while the pointer capture still names
-/// the zero-extent thumb.
+/// A thumb drag composes cumulative delta against the offset the press captured; `ScrollbarsDef::thumb` goes `None` if content fits or the track collapses mid-press, and the anchor must not outlive it.
 #[test]
 fn thumb_drag_anchor_dies_with_its_geometry() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
-        // Track 20, content 120 => the bar's domain is [0, 100].
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
 
-    // Press, then one tracked step: 10 + 5 * 2 = 20.
     state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
     state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 5.0)), geom);
     assert_eq!(state.offset.y, 20.0);
     assert!(!state.drag_anchor_is_none(), "the press is still held");
 
-    // Geometry vanishes while that same press is held.
     state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 40.0)), None);
     assert_eq!(state.offset.y, 20.0, "no geometry, no movement");
     assert!(
@@ -121,9 +113,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         "the anchor must not outlive the geometry it composes against",
     );
 
-    // Geometry returns under the same held press. The delta is still
-    // cumulative from the press, so a surviving anchor would land
-    // 10 + 60 * 2 = 130, clamped to the 100 max — a full-track jump.
+    // Geometry returns under the same press: a surviving anchor would jump 10 + 60 * 2 = 130, clamped to 100.
     state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 60.0)), geom);
     assert_eq!(state.offset.y, 20.0, "a dead anchor must not resume");
 
@@ -133,10 +123,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
     assert_eq!(state.offset.y, 26.0);
 }
 
-/// `LayerLayout::scroll_content` records the extent the scroll
-/// viewport sees. V-axis and H-axis behave like a Stack: sum along
-/// the panned axis, max on the cross. XY behaves like a ZStack: max
-/// per axis. An empty scroll records zero.
+/// `LayerLayout::scroll_content`: V/H scrolls sum along the panned axis and max across, XY maxes per axis; an empty scroll records zero.
 #[test]
 fn scroll_records_content_extent() {
     #[derive(Debug)]
@@ -269,9 +256,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     };
 
     let mut h = UiHarness::new(surface);
-    // Two frames: the first has no box to read overflow from, so the
-    // viewport claims its wheel axis, and the second drops it — a flag
-    // change, which misses the measure cache as any other would.
+    // Two frames: the first has no box to read overflow from so the viewport claims its wheel axis; the second drops it, which misses the measure cache.
     h.frame(build);
     h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
@@ -298,8 +283,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     assert_eq!(scroll_viewport(&h.ui, scroll_id), viewport_first);
 }
 
-/// A scroll-offset change updates the authored viewport transform, so
-/// its subtree hash must bust the cascade skip.
+/// A scroll-offset change must bust the cascade skip through the subtree hash.
 #[test]
 fn cascade_skip_busts_on_scroll_offset_change() {
     let mut h = UiHarness::new(SURFACE);
@@ -315,8 +299,6 @@ fn cascade_skip_busts_on_scroll_offset_change() {
         "unchanged scroll frame skips the cascade"
     );
 
-    // Scroll the viewport: the offset shifts, so the content re-arranges
-    // and the cascade must re-run.
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
@@ -326,34 +308,18 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     );
 }
 
-/// A thumb drag that starts while the offset sits inside a
-/// `content_margin` leading band moves the thumb on the very first
-/// tracked pixel.
-///
-/// The bar's domain is `[0, max_off]` — `content_margin` is documented
-/// as not showing extra thumb travel — but the offset's runs lower, into
-/// the negative leading band the wheel can reach. Anchoring the drag at
-/// the raw offset mixed the two: the target was composed from a negative
-/// anchor and then clamped to the bar domain, so the first
-/// `-offset / factor` px of the gesture were spent climbing back to zero
-/// with nothing moving. Anchoring in the bar domain is what makes the
-/// gesture start where the thumb is.
+/// A thumb drag starting inside a `content_margin` leading band must move the thumb on the first tracked pixel: the bar domain is `[0, max_off]` but the offset runs negative there, so anchor in the bar domain.
 #[test]
 fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
     let geom = Some(ThumbTravel {
         factor: 2.0,
-        // Track 20, content 120 => the bar's domain is [0, 100].
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
-    // Panned into the leading band, as a wheel over a scroll with a
-    // `content_margin` can leave it.
     state.offset = Vec2::new(0.0, -30.0);
 
     state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
-    // One pixel of thumb travel buys `factor` px of offset, from the
-    // clamped anchor 0 — not from -30, which would have needed 15 px of
-    // drag before the offset left zero at all.
+    // One pixel of thumb travel buys `factor` px of offset from the clamped anchor 0, not from -30.
     state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 1.0)), geom);
     assert_eq!(
         state.offset.y, 2.0,

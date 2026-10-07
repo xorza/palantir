@@ -1,6 +1,4 @@
-//! The logical-pixel rectangle every pass measures, arranges, clips and
-//! damages in, plus the NaN-safe fold that derives one from a set of
-//! points.
+//! The logical-pixel rectangle every pass works in, plus the NaN-safe fold that derives one from points.
 
 pub(crate) mod aabb;
 
@@ -18,13 +16,9 @@ use std::hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-/// An axis-aligned rectangle in logical pixels, stored as origin + extent
-/// rather than two corners — layout produces sizes, so this is the form
-/// that avoids a subtraction on every read.
+/// An axis-aligned rectangle in logical pixels, stored as origin + extent.
 ///
-/// Half-open on both axes: [`Self::contains`] accepts the min edge and
-/// rejects the max, so adjacent rects tile without double-hitting a
-/// pointer on the seam. Hashing is approximate (`1e-4` tolerance).
+/// Half-open on both axes: [`Self::contains`] accepts the min edge and rejects the max, so adjacent rects tile without double-hitting. Hashing is approximate (`1e-4` tolerance).
 #[must_use]
 pub struct Rect {
     /// Top-left corner.
@@ -41,8 +35,7 @@ impl hash::Hash for Rect {
     }
 }
 
-/// Origin then extent, each packed by its own impl — so a rect and the
-/// `(Vec2, Size)` pair it is made of feed a hasher the same bytes.
+/// Origin then extent, each packed by its own impl, so a rect and its `(Vec2, Size)` pair hash the same bytes.
 impl FloatHash for Rect {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
@@ -58,9 +51,7 @@ impl FloatHash for Rect {
 }
 
 impl Rect {
-    /// Panics unless every component is an [offset](crate::widget::domain::offset):
-    /// finite. The check shape geometry faces where it enters a shape. A
-    /// negative size is not refused: it paints nothing.
+    /// Panics unless every component is an [offset](crate::widget::domain::offset) (finite). A negative size is not refused: it paints nothing.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {
@@ -75,9 +66,7 @@ impl Rect {
         size: Size::ZERO,
     };
 
-    /// The poisoned rect an [`Aabb`](aabb::Aabb) folds to once it has
-    /// seen a NaN. [`Self::is_paint_empty`] reports it as invisible, so
-    /// it drops out at the first no-op gate it meets.
+    /// The poisoned rect an [`Aabb`](aabb::Aabb) folds to after a NaN. [`Self::is_paint_empty`] reports it invisible.
     pub(crate) const NAN: Self = Self {
         min: Vec2::NAN,
         size: Size::new(f32::NAN, f32::NAN),
@@ -96,17 +85,10 @@ impl Rect {
     ///
     /// # Panics
     ///
-    /// Debug-asserts that `min` is componentwise `<= max`, unless a
-    /// corner is NaN — see the note in the body.
+    /// Debug-asserts that `min` is componentwise `<= max`, unless a corner is NaN.
     #[inline]
     pub const fn from_min_max(min: Vec2, max: Vec2) -> Self {
-        // A NaN corner is exempt, because it is *expected* input under
-        // the AABB NaN contract (see [`Aabb`](aabb::Aabb)): a NaN vertex
-        // is deliberately carried into the bounds so the shape-level
-        // gate can drop the draw and name the shape it came from.
-        // Tripping here instead would report the arithmetic and not the
-        // caller. `max - min` keeps the NaN in `size`, which is what
-        // `is_paint_empty` reads.
+        // A NaN corner is expected under the AABB NaN contract (see [`Aabb`](aabb::Aabb)): it is carried into the bounds so the shape-level gate can name the shape. `max - min` keeps the NaN in `size`.
         debug_assert!(
             (min.x <= max.x && min.y <= max.y) || nan::vec2_has_nan(min) || nan::vec2_has_nan(max)
         );
@@ -116,13 +98,7 @@ impl Rect {
         }
     }
 
-    /// The four visually-canonical lanes [`FloatHash::hash_visual`]
-    /// writes, as data instead.
-    ///
-    /// For a caller that packs them into a POD blob and hashes that in
-    /// one write — the cascade's per-frame prefix — so it canonicalizes a
-    /// rect the way everything else does without writing `canon_bits` out
-    /// four times.
+    /// The four canonical lanes [`FloatHash::hash_visual`] writes, as data, for callers that hash them in one POD write.
     #[inline]
     pub(crate) const fn canon_lanes(self) -> [u32; 4] {
         [
@@ -133,7 +109,7 @@ impl Rect {
         ]
     }
 
-    /// Bottom-right corner — exclusive, per the half-open convention.
+    /// Bottom-right corner, exclusive.
     #[inline]
     pub const fn max(self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
@@ -152,22 +128,13 @@ impl Rect {
         self.size.w * self.size.h
     }
 
-    /// True when this rect paints no pixels — at least one axis is
-    /// `<= EPS` (including NaN / negative). Defers to
-    /// [`Size::is_paint_empty`]; shared between every paint-payload
-    /// noop gate so the predicate can't drift.
+    /// True when this rect paints no pixels: an axis is `<= EPS`, NaN or negative. Defers to [`Size::is_paint_empty`].
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        // `min` needs the NaN half of the test but not the `<= EPS`
-        // half — a rect at a negative origin paints fine, one at an
-        // undefined origin does not.
         self.size.is_paint_empty() || nan::vec2_has_nan(self.min)
     }
 
-    /// True if any of the four lanes is NaN. `const`, so the const
-    /// predicates that need the sweep can call it; the [`NanCheck`] impl
-    /// below delegates here rather than keeping a second copy of the
-    /// field walk.
+    /// True if any of the four lanes is NaN. `const`; the [`NanCheck`] impl delegates here.
     ///
     /// [`NanCheck`]: crate::primitives::math::nan::NanCheck
     #[inline]
@@ -175,18 +142,14 @@ impl Rect {
         nan::vec2_has_nan(self.min) || self.size.has_nan()
     }
 
-    /// Half-open containment: the min edges are inside, the max edges are
-    /// not, so tiled rects never both claim the same point.
+    /// Half-open containment: min edges inside, max edges outside.
     #[inline]
     pub const fn contains(self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
     }
 
-    /// True when `self` fully encloses `other`. Equality on the right
-    /// edges counts (so `r.contains_rect(r)` is `true`). Used by the
-    /// damage-region merge policy to drop rects already covered by a
-    /// bigger one.
+    /// True when `self` fully encloses `other`; equal right edges count.
     #[inline]
     pub const fn contains_rect(self, other: Self) -> bool {
         let self_max = self.max();
@@ -197,10 +160,7 @@ impl Rect {
             && other_max.y <= self_max.y
     }
 
-    /// Outset by `amount` on each side, growing both edges — the
-    /// "uniform expansion" case (a path's stroke extent, an
-    /// AABB-around-circle). Counterpart to [`Self::deflated`], which is
-    /// the same step inward and clamps where this one does not.
+    /// Outset by `amount` on each side. Counterpart to [`Self::deflated`], which clamps where this does not.
     #[inline]
     pub const fn inflated(self, amount: f32) -> Self {
         Self {
@@ -209,13 +169,7 @@ impl Rect {
         }
     }
 
-    /// Inset by `amount` on each side, clamping the resulting size at
-    /// zero. The counterpart to [`Self::inflated`], and the uniform case
-    /// of [`Self::deflated_by`].
-    ///
-    /// Clamped where [`Self::inflated`] is not, because the two ends are
-    /// not symmetric: growing a rect cannot collapse it, and an inset
-    /// deeper than the extent has no rect to name.
+    /// Inset by `amount` on each side, clamping the size at zero. Counterpart to [`Self::inflated`]; the uniform case of [`Self::deflated_by`].
     #[inline]
     pub const fn deflated(self, amount: f32) -> Self {
         Self {
@@ -236,20 +190,13 @@ impl Rect {
         }
     }
 
-    /// Owner-local point a shape inside this rect spins about: the rect's
-    /// centre in the owner-local space the shape's geometry is recorded
-    /// in, so the rect's own `min` is no part of it.
-    ///
-    /// Both ends of the spin contract derive the pivot here — the encoder
-    /// to put it in the payload the composer turns points by, the cascade
-    /// to cover the disc the shape sweeps.
+    /// Owner-local point a shape inside this rect spins about: its centre, with `min` no part of it.
     #[inline]
     pub(crate) const fn spin_pivot(self) -> Vec2 {
         Vec2::new(self.size.w * 0.5, self.size.h * 0.5)
     }
 
-    /// Distance from `pivot` to this rect's farthest corner — the radius
-    /// of the disc it sweeps when it turns about that point.
+    /// Distance from `pivot` to this rect's farthest corner: the radius of the disc it sweeps.
     #[inline]
     pub(crate) fn spun_radius(self, pivot: Vec2) -> f32 {
         (self.min - pivot)
@@ -258,40 +205,21 @@ impl Rect {
             .length()
     }
 
-    /// The axis-aligned square this rect covers at *every* rotation about
-    /// `pivot`.
-    ///
-    /// Angle-free by construction, which is the point: the composer culls
-    /// a spun shape against this square and the cascade damages the same
-    /// one, without the two passes having to sample the animation at the
-    /// same instant.
+    /// The square this rect covers at every rotation about `pivot`; angle-free, so composer culling and cascade damage agree.
     #[inline]
     pub(crate) fn spun_cover(self, pivot: Vec2) -> Self {
         Self::square_about(pivot, self.spun_radius(pivot))
     }
 
-    /// Largest axis-aligned rect that fits inside `self` when `self`
-    /// is the bounding box of a rounded-rect paint with the given
-    /// corner radii. Each side is inset by
-    /// `max(adjacent_radii) * (1 - 1/√2)` — the 45° point of the
-    /// corner arc, the deepest the inscribed rect can reach without
-    /// crossing the rounded cutout. Returned size is clamped at
-    /// zero; a sharp-cornered input passes through unchanged. Used
-    /// by the renderer's occlusion-prune to derive the opaque cover
-    /// area of a rounded fill.
+    /// Largest axis-aligned rect inside `self` when it bounds a rounded-rect paint with the given radii; each side is inset by `max(adjacent_radii) * (1 - 1/√2)`.
     #[inline]
     pub fn inscribed_for_corners(self, corners: Corners) -> Self {
-        // `1 - 1/√2 ≈ 0.2929`: the inscribed-square offset per unit
-        // radius for a quarter-circle arc. Multiplying a corner
-        // radius by this gives the distance from the bounding-box
-        // corner inward to the arc's 45° point.
+        // `1 - 1/√2 ≈ 0.2929`: inward offset to a quarter arc's 45° point per unit radius.
         const KAPPA: f32 = 1.0 - FRAC_1_SQRT_2;
 
         if corners.is_approx_zero() {
             return self;
         }
-        // Single SIMD f16x4→f32x4 unpack — `tl()`/`tr()`/`br()`/`bl()`
-        // would each issue an independent f16→f32 conversion.
         let [tl, tr, br, bl] = corners.as_array();
         let top = tl.max(tr) * KAPPA;
         let bottom = bl.max(br) * KAPPA;
@@ -306,10 +234,7 @@ impl Rect {
         }
     }
 
-    /// Outset by `s` on each side, growing both edges. The per-side
-    /// counterpart to [`Self::inflated`], and what undoes a
-    /// [`Self::deflated_by`] inset side for side, as long as that inset
-    /// did not clamp.
+    /// Outset by `s` on each side; undoes a non-clamped [`Self::deflated_by`].
     #[inline]
     pub fn inflated_by(self, s: Spacing) -> Self {
         let [l, t, r, b] = s.as_array();
@@ -319,8 +244,7 @@ impl Rect {
         }
     }
 
-    /// Inset by `s` on each side, clamping the resulting size at zero. Used for
-    /// margin / padding insets in the layout pass.
+    /// Inset by `s` on each side, clamping the size at zero.
     #[inline]
     pub fn deflated_by(self, s: Spacing) -> Self {
         let [l, t, r, b] = s.as_array();
@@ -333,9 +257,7 @@ impl Rect {
         }
     }
 
-    /// True if `self` and `other` overlap on both axes (strict — touching
-    /// edges don't count). Used by the encoder's damage-rect filter to
-    /// decide whether a node's paint commands can be skipped.
+    /// True if `self` and `other` overlap on both axes; touching edges don't count.
     #[inline]
     pub const fn intersects(self, other: Self) -> bool {
         let a_max = self.max();
@@ -346,13 +268,7 @@ impl Rect {
             && other.min.y < a_max.y
     }
 
-    /// Strict axis-aligned intersection. `None` when the inputs don't overlap,
-    /// touching edges included — the same answer [`Self::intersects`] gives as
-    /// a bool, and the counterpart of the crate-internal `URect::intersect`.
-    ///
-    /// [`Self::clamp_to`] beside it is the saturating one, for a caller that
-    /// wants a rect either way. The pair is named the same on both rectangles
-    /// so that reading one does not teach the wrong thing about the other.
+    /// Strict intersection: `None` when the inputs don't overlap, touching included. [`Self::clamp_to`] is the saturating one.
     #[inline]
     pub const fn intersect(self, other: Self) -> Option<Self> {
         let clamped = self.clamp_to(other);
@@ -363,16 +279,7 @@ impl Rect {
         }
     }
 
-    /// Saturating intersection: clamps `self` to fit inside `bounds`, giving a
-    /// possibly zero-sized rect rather than nothing at all.
-    ///
-    /// The counterpart of the crate-internal `URect::clamp_to`. Named for
-    /// the clamp rather than for an intersection, because
-    /// [`Self::intersect`] is the strict one that answers `None`.
-    ///
-    /// Neither operand may hold a NaN: `f32::max` drops one, so the answer
-    /// would be the other operand's edge — a clip that silently stops
-    /// clipping. Shapes and backgrounds screen NaN where they are added.
+    /// Saturating intersection: clamps `self` into `bounds`, possibly to zero size. Neither operand may hold a NaN, or the clip silently stops clipping.
     #[inline]
     pub const fn clamp_to(self, bounds: Self) -> Self {
         debug_assert!(
@@ -388,15 +295,7 @@ impl Rect {
         }
     }
 
-    /// Smallest axis-aligned rect enclosing both `self` and `other`. A
-    /// paint-empty operand (any axis ≤ EPS, NaN included — see
-    /// [`Self::is_paint_empty`]) acts as the identity, so callers can
-    /// fold a `Rect::ZERO`-seeded accumulator without a special
-    /// first-node branch and a non-painting extent can never drag a
-    /// rollup's min to the origin. The integer-rectangle union follows the
-    /// same contract. Fold over
-    /// `Option<Rect>` only when "no rects at all" must stay
-    /// distinguishable from "some rects".
+    /// Smallest rect enclosing both. A paint-empty operand (NaN included) is the identity, so a `Rect::ZERO`-seeded fold needs no first-node branch.
     #[inline]
     pub const fn union(self, other: Self) -> Self {
         if self.is_paint_empty() {
@@ -405,8 +304,6 @@ impl Rect {
         if other.is_paint_empty() {
             return self;
         }
-        // `f32::min`/`max` rather than `Vec2::min`/`max` only because
-        // glam's aren't `const fn`.
         let (a, b) = (self.max(), other.max());
         let min = Vec2::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y));
         let max = Vec2::new(a.x.max(b.x), a.y.max(b.y));
@@ -416,16 +313,9 @@ impl Rect {
         }
     }
 
-    /// Scale by `scale` and optionally snap edges to integer pixels.
-    ///
-    /// The logical→physical-px step, so `snap` is the renderer's own
-    /// [`Display::pixel_snap`](crate::Display) travelling as an argument.
-    /// Snapping derives width and height from rounded edges rather than from
-    /// `size * scale`, which is what stops width drift creeping across a row
-    /// of identical rects.
+    /// Scale by `scale` and optionally snap edges to integer pixels, deriving size from the rounded edges to avoid width drift.
     #[inline]
     pub(crate) fn scaled_by(self, scale: f32, snap: bool) -> Self {
-        // Scalar lanes because glam's `Vec2` ops aren't `const fn`.
         let m = self.max();
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);
         let mut max = Vec2::new(m.x * scale, m.y * scale);

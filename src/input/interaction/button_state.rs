@@ -1,35 +1,21 @@
-//! One pointer button's slice of a widget's interaction snapshot: its
-//! phase, its edges, and the drag it may be driving.
+//! One pointer button's slice of a widget's interaction snapshot.
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::drag::Drag;
 
-/// One pointer button's slice of a widget's interaction snapshot.
-/// [`ResponseState`](crate::ResponseState) carries one per
-/// [`PointerButton`](crate::PointerButton) — every button
-/// gets the same uniform surface (middle-click is as queryable as
-/// left).
+/// A widget's interaction snapshot for one pointer button, so middle-click is as queryable as left.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ButtonState {
-    /// Press lifecycle (see [`ButtonPhase`]).
+    /// Press phase.
     pub phase: ButtonPhase,
-    /// Drag lifecycle (see [`Drag`]). At most one button's drag is
-    /// live per widget: when several buttons are simultaneously
-    /// latched, the first in [`PointerButton`](crate::PointerButton)'s
-    /// declaration order wins.
+    /// Drag lifecycle (see [`Drag`]); with several buttons latched, the first in declaration order wins.
     pub drag: Drag,
 }
 
 impl ButtonState {
-    /// Pair a phase with the drag it is driving.
-    ///
-    /// **The one constructor**, and the one place the pairing rule is
-    /// written: a live drag implies a live press, and a stopped one
-    /// implies the click-less release that ended it. The struct's fields
-    /// stay public because this is a snapshot a widget reads, never one
-    /// it hands back — but every value the router produces is built here,
-    /// so a combination the router cannot mean is caught where it would
-    /// be introduced.
+    /// Pairs a phase with its drag, the one place the pairing rule lives: a live drag implies a live press, a
+    /// stopped one the click-less release that ended it. Every router value is built here, so impossible
+    /// combinations are caught where introduced.
     #[inline]
     pub(crate) fn new(phase: ButtonPhase, drag: Drag) -> Self {
         debug_assert!(
@@ -44,33 +30,26 @@ impl ButtonState {
         Self { phase, drag }
     }
 
-    /// The press is latched on the widget (`Down` or `Held`) —
-    /// rect-independent, no travel threshold.
     #[inline]
+    /// Whether the button is down.
     pub const fn held(self) -> bool {
         matches!(self.phase, ButtonPhase::Down { .. } | ButtonPhase::Held)
     }
 
-    /// One-frame edge: a press+release landed on the widget without
-    /// latching a drag. Fires on the release. For double/triple
-    /// dispatch read [`Self::click_count`] (`== 2` is the
-    /// double-click).
+    /// One-frame edge: a press+release landed on the widget without latching a drag.
     #[inline]
     pub const fn clicked(self) -> bool {
         matches!(self.phase, ButtonPhase::Up { click: Some(_) })
     }
 
-    /// One-frame edge: the press ended this frame, whether as a click or
-    /// as the release of a latched drag. The frame a value-writing widget
-    /// reports `committed` on — a gesture is one edit however it ended.
+    /// One-frame edge: the press ended this frame (click or latched-drag release); where `committed` reports.
     #[inline]
     pub const fn released(self) -> bool {
         matches!(self.phase, ButtonPhase::Up { .. })
     }
 
-    /// This frame's press-run position: `0` off the press edge,
-    /// 1/2/3+ on it (`press_count() > 0` is the press-rising edge).
     #[inline]
+    /// Consecutive presses while down; `0` otherwise.
     pub const fn press_count(self) -> u8 {
         match self.phase {
             ButtonPhase::Down { count } => count,
@@ -78,8 +57,7 @@ impl ButtonState {
         }
     }
 
-    /// This frame's click-run position: `0` off the click edge,
-    /// 1/2/3+ on it (`2` = double-click, `3` = triple-click).
+    /// This frame's click-run position: `0` off the click edge, else 1/2/3+.
     #[inline]
     pub const fn click_count(self) -> u8 {
         match self.phase {
@@ -88,9 +66,7 @@ impl ButtonState {
         }
     }
 
-    /// One-frame edge: this click completed a double (its press was
-    /// the second in its run). Sugar for `click_count() == 2` — read
-    /// [`Self::click_count`] for triple and beyond.
+    /// One-frame edge: this click was the second in its run (`click_count() == 2`).
     #[inline]
     pub const fn double_clicked(self) -> bool {
         self.click_count() == 2

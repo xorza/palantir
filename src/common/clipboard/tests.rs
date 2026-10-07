@@ -59,8 +59,7 @@ fn clones_share_one_clipboard() {
     assert_eq!(second.text().unwrap(), "shared");
 }
 
-/// The error crosses the public surface, so it owes the two impls a
-/// caller needs to put it in a `Box<dyn Error>` and print it.
+/// The error crosses the public surface, so it owes the impls a caller needs to box and print it.
 #[test]
 fn unavailable_reports_itself_as_an_error() {
     let boxed: Box<dyn error::Error> = Box::new(ClipboardUnavailable);
@@ -107,8 +106,7 @@ fn system_reads_without_text_answer_empty() {
     }
 }
 
-/// The last write reached only the fallback, so the fallback answers
-/// until the primary shows a copy made after that write.
+/// After a fallback-only write the fallback answers until the primary shows a later copy.
 #[test]
 fn failed_primary_write_holds_until_another_copy() {
     let primary = primary("stale");
@@ -133,8 +131,7 @@ fn failed_primary_write_holds_until_another_copy() {
     assert_eq!(clipboard.text().unwrap(), "replacement");
 }
 
-/// A primary that could not be read when the write failed takes its
-/// first later answer as the reference instead.
+/// A primary unreadable at write time takes its first later answer as the reference.
 #[test]
 fn unread_primary_takes_its_next_answer_as_the_reference() {
     let primary = primary("stale");
@@ -152,8 +149,7 @@ fn unread_primary_takes_its_next_answer_as_the_reference() {
     assert_eq!(clipboard.text().unwrap(), "external");
 }
 
-/// Only a backend error falls back, and only to text the fallback
-/// mirrored from the primary or wrote beside it.
+/// Only a backend error falls back, and only to text mirrored from or written beside the primary.
 #[test]
 fn unreadable_primary_answers_from_a_current_fallback() {
     let primary = primary("seen");

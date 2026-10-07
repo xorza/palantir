@@ -66,14 +66,8 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     assert_eq!(atlas.registrations(), registered + 1);
 }
 
-/// Baseline encoder counts: empty tree emits no draws; a Frame with a
-/// fill emits one rect quad; an invisible Frame (no fill / border /
-/// shape) emits none — `ShapeRecord::is_noop` filters at `add_shape` time
-/// so
-/// the encoder sees no rectangle record in the tree. Degenerate Backgrounds
-/// (transparent + no border) and clip-only Surfaces (`Surface::clip_rect`)
-/// also emit zero rect quads — the encoder's `bg.is_noop()` guard at
-/// chrome-paint time filters them.
+/// Baseline counts: an empty tree emits no draws, a filled Frame one rect quad; invisible Frames, degenerate
+/// Backgrounds and clip-only Surfaces emit none.
 #[test]
 fn baseline_draw_rect_count_cases() {
     #[derive(Debug)]
@@ -142,10 +136,7 @@ fn baseline_draw_rect_count_cases() {
     }
 }
 
-/// Pin: the encoder iterates ALL shape variants in the background phase,
-/// not just `Text`. Custom widgets pushing `Shape::rect` /
-/// `Shape::line` via `ui.add_shape` should still emit draw cmds; degenerate
-/// `Line` variants are filtered at `add_shape` time.
+/// The encoder iterates all shape variants in the background phase, not just `Text`.
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::paint::lut_row::LutRow;
@@ -178,7 +169,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 )
                 .ramp(ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
             );
-            // Degenerate variants: filtered before reaching the buffer.
             ui.add_shape(
                 Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -217,11 +207,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         [FillKind::SOLID, FillKind::SOLID.with_window()],
         "the rounded rect is plain solid, the windowed one window-tagged",
     );
-    // A Line rides the GPU curve pipeline (degenerate cubic), so it
-    // emits a DrawCurve — not a DrawPolyline — and never touches the
-    // polyline point payloads. The solid line carries its colour; the
-    // ramp line carries the ramp kind, a real atlas row, and the stroke
-    // colour as the multiplier on the sample.
+    // A Line rides the GPU curve pipeline as a degenerate cubic: a DrawCurve, never a DrawPolyline.
     assert_eq!(cmds.kinds(), ["Quad", "Quad", "Curve", "Curve"]);
     let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
     assert_eq!(
@@ -241,9 +227,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
 }
 
-/// Both shadow kinds lower to their source rect and their stored
-/// `(offset, σ, spread)` lanes: the composer grows a drop shadow from the
-/// source once it is snapped, and the shader moves an inset one's hole.
+/// Both shadow kinds lower to their source rect and `(offset, σ, spread)` lanes.
 #[test]
 fn shadows_lower_to_their_source_and_geometry_lanes() {
     use crate::Shadow;
@@ -296,8 +280,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
         drop.fill.color,
         RgbaF16::from(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5))
     );
-    // A shadow's whole edge is its blur — the merged payload must carry
-    // no stroke, or the shared quad path would paint one.
+    // A shadow's whole edge is its blur: the payload must carry no stroke, or the shared quad path would paint one.
     assert_eq!(drop.stroke.color, RgbaF16::TRANSPARENT);
     assert_eq!(drop.stroke.width, 0.0);
 
@@ -306,12 +289,9 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     assert_eq!(inset.fill_axis.lanes(), [2.0, 4.0, 8.0, -2.0]);
 }
 
-/// Chrome paints its shadow in CSS Backgrounds 3 §7.1 order: a drop
-/// shadow under the fill, an inset one over it. A drop shadow's source is
-/// the whole 100×60 rect. An inset one's is the padding box — the rect
-/// less the border on every side — on the padding edge's radii: fitted to
-/// the rect (§5.5), then each `max(r − w, 0)` (§5.2). The width is the
-/// layout fold's, so a transparent border still moves the shadow in.
+/// Chrome paints shadows in CSS Backgrounds 3 §7.1 order: drop under the fill, inset over it. An inset
+/// shadow's source is the padding box on the padding edge's radii: fitted to the rect (§5.5), then each
+/// `max(r − w, 0)` (§5.2); the width is the layout fold's, so a transparent border still moves it in.
 #[test]
 fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     use crate::primitives::geometry::corners::Corners;
@@ -323,7 +303,6 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
         inset: bool,
         border: Stroke,
         corners: Corners,
-        /// The shadow's source rect, from the node's top left.
         shadow_rect: Rect,
         shadow_corners: Corners,
     }
@@ -350,10 +329,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             label: "inset under radii that overlap",
             inset: true,
             border: Stroke::new(red, 2.0),
-            // The left side's 100 + 100 fit its 60 px at f = 0.3 before the
-            // border comes off: 30 − 2 = 28 and 20·0.3 − 2 = 4. Deflated
-            // first, the 4 would be 18·(56 / 196) = 5.14, a rounder curve
-            // than the border's inner edge.
+            // The left side's 100 + 100 fit its 60 px at f = 0.3 before the border comes off: 30 − 2 = 28, 20·0.3 − 2 = 4.
             corners: Corners::new(100.0, 20.0, 20.0, 100.0),
             shadow_rect: Rect::new(2.0, 2.0, 96.0, 56.0),
             shadow_corners: Corners::new(28.0, 4.0, 4.0, 28.0),

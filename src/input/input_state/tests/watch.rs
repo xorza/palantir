@@ -1,10 +1,5 @@
-//! Off-target wake gates — `PointerWake` flags + specific key
-//! chords. Pinned axes:
-//!  * watcher wakes the frame on events that otherwise wouldn't
-//!    (press on inert surface, key with no focus);
-//!  * no watcher → no wake AND no entry in `frame_pointer_events`
-//!    (the `any_mask` short-circuit gates the push);
-//!  * pre-record clear drops stale watches.
+//! Off-target wake gates (`PointerWake` flags and key chords): no watcher means
+//! no wake and no `frame_pointer_events` entry; pre-record clear drops stale watches.
 use crate::input::input_state::tests::{Stream, sample_layers};
 use crate::primitives::identity::widget_id::WidgetId;
 
@@ -107,7 +102,6 @@ fn press_and_release_both_captured() {
     assert!(matches!(events[1], PointerEvent::Up { .. }));
 }
 
-/// `MOVE` wakes on every pointer move — even inert ones.
 #[test]
 fn move_watcher_wakes_on_inert_move() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -124,9 +118,7 @@ fn move_watcher_wakes_on_inert_move() {
     ));
 }
 
-/// `MOVE` not watched → no `Move` in the stream even
-/// though hover may have changed. Hover-driven wake still fires
-/// via the existing hit-test path; we're only checking the buffer.
+/// With `MOVE` unwatched there is no `Move` in the stream.
 #[test]
 fn move_without_watcher_does_not_log() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -160,14 +152,10 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     ));
 }
 
-/// `SCROLL` and `PINCH` are separate wake categories, mirroring the
-/// `Sense` split — a wheel tick and a touchpad pinch are different
-/// gestures with different routing targets, and watching one must not
-/// wake on the other. Both directions, because a one-sided assertion
-/// would still pass if the two bits were aliased.
+/// `SCROLL` and `PINCH` are separate wake categories; both directions are
+/// tested so aliased bits fail.
 #[test]
 fn scroll_and_pinch_wake_categories_are_independent() {
-    // (label, watched category, expects scroll, expects zoom)
     let cases: &[(&str, PointerWake, bool, bool)] = &[
         ("scroll only", PointerWake::SCROLL, true, false),
         ("pinch only", PointerWake::PINCH, false, true),
@@ -213,12 +201,8 @@ fn scroll_and_pinch_wake_categories_are_independent() {
     }
 }
 
-/// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`: record
-/// output derived from the raw pointer may change on any move, so moves
-/// must wake even over an inert surface. A pass that stops reading
-/// drops the wake like any other lapsed watch — the staleness
-/// this pins: a pointer-proximity highlight painted from `pointer_pos`
-/// must not freeze on screen when the hover target stops changing.
+/// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`; a pass that
+/// stops reading drops the wake.
 #[test]
 fn pointer_pos_read_asserts_move_watch() {
     fn empty_reads_pointer(ui: &mut Ui) {
@@ -234,8 +218,6 @@ fn pointer_pos_read_asserts_move_watch() {
         "a record pass that read pointer_pos must wake on moves"
     );
 
-    // Next pass doesn't read → watch lapses with the rest of
-    // the per-pass set.
     h.frame(empty);
     let delta = h.move_to(Vec2::new(60.0, 50.0));
     assert!(
@@ -328,8 +310,6 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
         (Modifiers::NONE, RgbaF32::BLACK),
     ];
     for (modifiers, expected) in states {
-        // Raw, not `set_modifiers`: this asserts the modifier wake, and
-        // the helper's change-only emit has no delta to hand back.
         let delta = h.on_input(InputEvent::ModifiersChanged(modifiers));
         assert!(
             delta.repaint_requested,
@@ -349,10 +329,7 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     let delta = h.key(Key::Enter);
     assert!(!delta.repaint_requested);
 
-    // Alt+Escape: watcher asked for bare Escape → no match.
-    // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
-    // `Shortcut`'s `ShortcutMods` vocabulary, so ctrl+Escape would *match*
-    // Shortcut::key(Escape) — a documented platform compromise.)
+    // Alt+Escape against a bare-Escape watcher: no match (not ctrl, which matches on macOS).
     let alt = Modifiers::ALT;
     h.set_modifiers(alt);
     let delta = h.key(Key::Escape);
@@ -362,8 +339,6 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     let delta = h.key(Key::Escape);
     assert!(delta.repaint_requested);
 
-    // The watch list keeps duplicates, so a chord declared twice in one
-    // frame must still wake once and match nothing extra.
     h.frame(|ui| {
         empty_watch_escape(ui);
         ui.watch_key(Shortcut::key(Key::Escape));
@@ -386,10 +361,8 @@ fn pointer_events_drain_between_frames() {
     assert!(h.ui.pointer_events().is_empty());
 }
 
-/// The pointer watch stream is layer-gated exactly like the keyboard's:
-/// an overlay's scope silences watchers *strictly below* it and nobody
-/// else. Same predicate, same shape as
-/// `a_scope_silences_the_layers_strictly_below_it`.
+/// The pointer watch stream is layer-gated like the keyboard's: an overlay's
+/// scope silences watchers strictly below it.
 #[test]
 fn a_scope_silences_pointer_watchers_strictly_below_it() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -403,22 +376,16 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
                 .show(ui);
         });
     };
-    // Two frames: the scope records in the first, resolves in the next.
-    // Counts are read *inside* pass A, the only place the queue is live.
+    // Two frames: the scope records, then resolves. Counts are read inside pass A.
     h.frame(scoped);
     h.press_at(Vec2::new(50.0, 50.0));
     let seen = sample_layers(&mut h, Stream::Pointer, scoped).layers;
 
-    // Strictly below — cut off, which is the whole point.
     assert_eq!(seen[Layer::Main.idx()], 0);
-    // Same layer — the overlay's own body keeps watching, so a popup can
-    // still drive a drag inside itself.
     assert_eq!(seen[Layer::Popup.idx()], 1);
-    // Above — a modal over a popup is not silenced by it.
     assert_eq!(seen[Layer::Modal.idx()], 1);
     assert_eq!(seen[Layer::Tooltip.idx()], 1);
 
-    // Nothing re-declares it, so the next resolution reopens the stream.
     h.release();
     h.frame(empty_watch_buttons);
     h.press_at(Vec2::new(50.0, 50.0));
@@ -428,9 +395,7 @@ fn a_scope_silences_pointer_watchers_strictly_below_it() {
     );
 }
 
-/// End-to-end, and the distinction an overlay's scope exists to draw: a
-/// `Modal` takes the stream from `Main`, a plain `Ui::layer` on the very
-/// same layer does not. Not recording the modal is the whole release.
+/// End to end: a `Modal` takes the stream from `Main`, a plain `Ui::layer` on the same layer does not.
 #[test]
 fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     let surface = UVec2::new(200, 200);
@@ -444,9 +409,7 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
         ui.layer(Layer::Modal).show(empty);
     };
 
-    // A scope takes effect on the frame *after* the one that declared
-    // it — the path resolves at record-pass start from the cascade the
-    // previous frame left — so each leg records twice.
+    // A scope takes effect the frame after it is declared, so each leg records twice.
     let mut h = UiHarness::new(surface);
     h.frame(with_modal);
     h.press_at(press_point);
@@ -456,8 +419,6 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
         "a Modal declares an ALL scope on its layer, so Main is cut off",
     );
 
-    // A paint-only overlay on the same layer — a tooltip, a debug HUD —
-    // must leave the canvas underneath able to pan and zoom.
     h.release();
     h.frame(plain_layer);
     h.press_at(press_point);
@@ -477,24 +438,19 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
     );
 }
 
-/// `peek_*` is the same value as its watching twin and none of the wake:
-/// A → wakes, B → doesn't, and both report the same reading. The point
-/// is the pair, so they're asserted against each other rather than
-/// separately.
+/// `peek_*` reads the same value as its watching twin without the wake.
 #[test]
 fn peeks_return_the_watched_value_without_asserting_the_watch() {
     let surface = UVec2::new(200, 200);
     let id = WidgetId::from_hash("root");
     let at = Vec2::new(50.0, 50.0);
 
-    // Watching pass: reads pointer + modifiers the auto-watch way.
     let mut watched = UiHarness::new(surface);
     watched.frame(|ui| {
         empty(ui);
         let _ = ui.pointer_pos();
         let _ = ui.modifiers();
     });
-    // Peeking pass: same two reads, no watch.
     let mut peeked = UiHarness::new(surface);
     peeked.frame(|ui| {
         empty(ui);
@@ -532,7 +488,6 @@ fn peeks_return_the_watched_value_without_asserting_the_watch() {
         "peek_modifiers must not",
     );
 
-    // Same reading from both, so the cheap one isn't cheap by lying.
     assert_eq!(peeked.ui.peek_pointer_pos(), Some(Vec2::new(60.0, 50.0)));
     assert_eq!(peeked.ui.peek_pointer_pos(), watched.ui.peek_pointer_pos());
     assert!(peeked.ui.peek_modifiers().shift);

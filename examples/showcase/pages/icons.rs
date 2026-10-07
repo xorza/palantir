@@ -1,12 +1,10 @@
-//! Baked SVG icons. Each one is rasterized at the exact physical pixel size
-//! it lands on and cached in the icon atlas, so drawing this page exercises
-//! the whole path — parse, resvg raster, atlas insert, glyph shader — and the
-//! size ladder runs again on every window scale change.
+//! Baked SVG icons. Each is rasterized at the exact physical pixel size it lands on and cached in
+//! the icon atlas, so this page exercises the whole path (parse, resvg raster, atlas insert, glyph
+//! shader), and the size ladder reruns on every window scale change.
 //!
-//! The set is built at startup from the sources below rather than compiled in
-//! as a generated `const` — which is the point of `IconTable::from_svgs`: it
-//! derives each icon's viewBox, tintability, and filter use from the artwork
-//! itself, so a demo page states only its SVGs.
+//! The set is built at startup from the sources below, not compiled in as a generated `const`:
+//! `IconTable::from_svgs` derives each icon's viewBox, tintability and filter use from the artwork,
+//! so a demo page states only its SVGs.
 
 use crate::support::{api, demo_cell_at, note, section, tiles};
 use palantir::{IconId, IconSet, IconTable, RgbaF32, Ui, WidgetId};
@@ -30,9 +28,8 @@ const SAVE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 <rect x="8" y="18" width="8" height="1.4" fill="#9fb4d8"/>
 </g></svg>"##;
 
-/// A folder with a radial gradient and a soft drop shadow. The filter case —
-/// 10-20x the raster cost of the others, and so the one the backend prewarms
-/// at load instead of meeting on the frame that first draws it.
+/// A folder with a radial gradient and a soft drop shadow. The filter case: 10-20x the raster cost
+/// of the others, so the backend prewarms it at load instead of on the frame that first draws it.
 const FOLDER_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 <defs>
 <filter id="s" x="-40%" y="-40%" width="180%" height="180%">
@@ -64,9 +61,8 @@ const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 <rect x="26" y="4" width="3" height="8" rx="1.5" fill="#facc15"/>
 </svg>"##;
 
-/// The set, plus the ids resolved once. `from_svgs` parses each source to
-/// derive its viewBox, tintability, and filter use, and sorts by name — so
-/// ids come back through `by_name` rather than being counted off by hand.
+/// The set, plus the ids resolved once. `from_svgs` derives each icon's viewBox, tintability and
+/// filter use and sorts by name, so ids come back through `by_name` rather than hand-counted.
 #[derive(Clone, Debug)]
 struct Icons {
     set: IconSet,
@@ -76,12 +72,9 @@ struct Icons {
     wide: IconId,
 }
 
-/// The loaded set, parked in a state row across frames. An `IconSet` owns
-/// the host's parsed SVGs and atlas rasters for its icons, so a page that
-/// let its own drop at the end of every frame would unload and
-/// re-rasterize the whole set every frame. The row is what an app does
-/// with one, and it is scoped to the `Ui` that minted the handles rather
-/// than to the thread.
+/// The loaded set, parked in a state row across frames: an `IconSet` owns the host's parsed SVGs and
+/// atlas rasters, so letting one drop at the end of every frame would unload and re-rasterize the
+/// set each frame. The row is scoped to the `Ui` that minted the handles, not to the thread.
 fn icons(ui: &mut Ui) -> Icons {
     ui.with_state::<Option<Icons>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
         held.get_or_insert_with(|| {
@@ -172,13 +165,11 @@ pub(crate) fn build(ui: &mut Ui) {
                     draw(ui, &icons, icons.new_file, tint);
                 });
             }
-            // A colour icon takes only the tint's alpha, so fading is
-            // what it gets instead of recolouring.
+            // A colour icon takes only the tint's alpha: fading, not recolouring.
             demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
                 draw(ui, &icons, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
             });
-            // …and `desaturate` is the other half of a disabled state:
-            // the artwork's own luminance, hue gone.
+            // …and `desaturate` is the other half of a disabled state: the artwork's own luminance, hue gone.
             demo_cell_at(ui, "colour icon desaturated", 96.0, 96.0, |ui| {
                 ui.add_shape(icons.set.shape(icons.save).desaturate(true));
             });
@@ -199,8 +190,7 @@ fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: RgbaF32) {
     ui.add_shape(icons.set.shape(icon).tint(tint));
 }
 
-/// Cell captions need a `&'static str`, and the sizes are a fixed list, so
-/// the label rides alongside the number rather than being formatted.
+/// Cell captions need a `&'static str` and the sizes are a fixed list, so the label rides alongside the number.
 const SIZES: [(f32, &str); 5] = [
     (16.0, "16 px"),
     (24.0, "24 px"),

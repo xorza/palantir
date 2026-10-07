@@ -1,15 +1,10 @@
-//! Canonical per-[`ShapeRecord`] hash. One entry point —
-//! [`compute_record_hash`] — used by `Shapes::add` to populate the
-//! parallel `Shapes::hashes` arena, and by tests that pin the hash
-//! schedule. `Tree::compute_rollups` and damage diff both read those
-//! precomputed `ContentHash`es; no production code rehashes records.
-//!
-//! The schedule is `discriminant → per-variant fields`, at every level
-//! of the nesting. `mem::discriminant` writes the discriminant, so it
-//! cannot drift from the enum it describes. Nothing here is persisted —
-//! a `ContentHash` is only ever compared against another produced in the
-//! same process run — so there is no numbering to hold stable and
-//! variants can be added or reordered freely.
+//! Canonical per-[`ShapeRecord`] hash. [`compute_record_hash`] fills the parallel
+//! `Shapes::hashes` arena (`Shapes::add`) and is pinned by tests;
+//! `Tree::compute_rollups` and damage diff read those `ContentHash`es, and
+//! production code never rehashes records. The schedule is `discriminant →
+//! per-variant fields` at every nesting level (`mem::discriminant`, so it cannot
+//! drift from the enum). Nothing is persisted, so variants can be added or
+//! reordered freely.
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
@@ -26,25 +21,15 @@ use crate::shape::record::ShapeRecord;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
 
-/// Hash a fully-lowered `ShapeRecord` into a stable `ContentHash`.
-/// Sole public entry; the production call site is `Shapes::add`,
-/// which pushes the result onto the parallel `Shapes::hashes` arena.
-///
-/// `Polyline` and `Mesh` hand over a `content_hash` their lowering
-/// computed instead of hashing their own payload. Both carry spans, and
-/// the bytes those spans address live in the `RecordStore` this function
-/// never sees, so the summary has to travel on the record. Neither field
-/// widens `ShapeRecord`: another variant sets its 88 bytes, and those
-/// two fill 48 and 72 with the hash already counted.
+/// Hash a fully-lowered `ShapeRecord` into a `ContentHash`. `Polyline` and `Mesh`
+/// hand over a `content_hash` their lowering computed, as their payload bytes live
+/// in the `RecordStore` this function never sees.
 pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
     let mut h = Hasher::new();
     mem::discriminant(record).hash(&mut h);
     match record {
-        // All three shapes share this record's discriminant, so
-        // `QuadShape`'s goes in ahead of the per-shape fields to keep a
-        // rectangle, a shadow, and a triangle apart — without it a rect
-        // and a shadow over the same rounded box would differ only by
-        // fields their schedules happen not to share.
+        // All three shapes share this record's discriminant, so `QuadShape`'s goes
+        // in first to keep a rectangle, shadow and triangle apart.
         ShapeRecord::Quad(shape) => {
             mem::discriminant(shape).hash(&mut h);
             match shape {
@@ -70,9 +55,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     corners.hash(&mut h);
                     shadow.hash(&mut h);
                 }
-                // `bbox` is derived from `a`/`b`/`c` + `radius`, so it's
-                // excluded — the geometry that determines it is already
-                // hashed.
+                // `bbox` derives from `a`/`b`/`c` + `radius`, so it is excluded.
                 QuadShape::Triangle {
                     a,
                     b,
@@ -91,14 +74,11 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                 }
             }
         }
-        // `content_hash` already folds width + color_mode + cap + join
-        // + points + colors; bbox/spans are frame-local and excluded.
-        //
-        // Spelled out rather than `..`: naming every field is what makes
-        // the compiler reject a *new* one until someone decides whether
-        // it belongs in the hash. `..` would absorb it silently, and a
-        // field missing from the hash is two records sharing one — which
-        // damage diff reads as "unchanged" and skips the repaint.
+        // `content_hash` already folds width, color_mode, cap, join, points and
+        // colors; bbox/spans are frame-local. Fields are named rather than `..` so
+        // the compiler rejects a *new* one until someone decides if it belongs in
+        // the hash: a missing field makes two records share a hash, which damage
+        // diff reads as "unchanged".
         ShapeRecord::Polyline {
             content_hash,
             width: _,
@@ -109,8 +89,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             colors: _,
             bbox: _,
         } => h.write_u64(*content_hash),
-        // The shaping inputs are layout's as well as paint's, so they are
-        // fed by the one method the layout rollup reads too.
+        // The shaping inputs are layout's as well as paint's, so one method feeds
+        // both hashes.
         ShapeRecord::Text {
             local_origin,
             color,
@@ -129,8 +109,6 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             color.hash(&mut h);
             record.hash_layout_inputs(&mut h);
         }
-        // Fields named exhaustively for the reason given on the
-        // `Polyline` arm above.
         ShapeRecord::Mesh {
             local_rect,
             tint,
@@ -143,10 +121,9 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             tint.hash(&mut h);
             h.write_u64(*content_hash);
         }
-        // Both sources share this record's discriminant, so
-        // `ImageSource`'s goes in ahead of the source fields to keep a
-        // texture draw and a view composite apart; the placement fields
-        // they share are hashed once, around the split.
+        // `ImageSource`'s discriminant goes in first to keep a texture draw and a
+        // view composite apart; the shared placement fields are hashed once, around
+        // the split.
         ShapeRecord::Image {
             local_rect,
             tint,
@@ -160,9 +137,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             tint.hash(&mut h);
             mem::discriminant(source).hash(&mut h);
             match source {
-                // The registration `id`, the intrinsic `size`, and the write
-                // count that moves the hash when the texels change under an
-                // id that does not.
+                // The registration `id`, the intrinsic `size`, and the write count
+                // that moves the hash when texels change under an unchanged id.
                 ImageSource::Texture {
                     id,
                     size,
@@ -172,36 +148,26 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
                     h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
                     h.write_u32(*generation);
                 }
-                // `epoch` is the view's damage version: `Ui::gpu_view` bumps
-                // it to the frame id on `repaint(true)` (hash changes → the
-                // rect repaints and the texture re-renders) and holds it
-                // stable on `repaint(false)` (hash matches → the view culls).
-                // The view's id + paint live in `Ui::gpu_views`, which the
-                // hash can't see; `epoch` rides the record precisely so this
-                // stays correct.
+                // `epoch` is the view's damage version: `Ui::gpu_view` bumps it to
+                // the frame id on `repaint(true)` (hash changes, the rect repaints)
+                // and holds it on `repaint(false)` (hash matches, the view culls).
+                // The view's paint lives in `Ui::gpu_views`, which the hash cannot
+                // see.
                 ImageSource::GpuView { epoch } => h.write_u64(*epoch),
             }
-            // The fit (incl. `Tile`'s UV transform, which changes every
-            // pan/zoom frame and must repaint), both sampling filters, and the
-            // minification tap mode — one byte, two 1-bit filters in the low
-            // bits and the 3-variant `downsample` above them.
+            // The fit (including `Tile`'s UV transform, which changes every
+            // pan/zoom frame), both sampling filters and the minification tap mode:
+            // two 1-bit filters in the low bits, the 3-variant `downsample` above.
             hash_fit(fit, &mut h);
             h.write_u8(
                 (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
             );
         }
-        // The handle's `view_box` is baked data — constant for a given
-        // `(set, icon)` — so identity plus the rect, fit and tint is the
-        // whole of what can change. Constant on both counts a cache
-        // needs. `IconSetId` carries a generation, so a slot reused by
-        // another set answers to a different id and one `(slot, icon)`
-        // pair can never name two artworks. And the field is readable
-        // but not writable, so no caller can move the painted rect —
-        // `IconFit` resolves against it — under a hash that omits it.
-        // The raster size is *not* hashed: it is a function of the
-        // resolved screen rect, which the paint bound already tracks,
-        // and folding it in would need the display scale the record
-        // does not carry.
+        // The handle's `view_box` is baked and constant per `(set, icon)`, so
+        // identity plus rect, fit and tint is all that can change; `IconSetId`
+        // carries a generation, so a reused slot never names two artworks. The
+        // raster size is *not* hashed: it follows from the resolved screen rect and
+        // needs a display scale the record lacks.
         ShapeRecord::Icon {
             local_rect,
             handle,
@@ -215,15 +181,11 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
             h.write_u16(handle.icon.icon.0);
             h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
         }
-        // Geometry + style hashed inline — every input lives on the
-        // record, so no lowering-time content hash is needed (unlike
-        // `Polyline`/`Mesh`, whose payload bytes live in the record store).
-        // `bbox` derives from geometry + width + cap and is excluded.
-        // The ramp goes in by its content hash, so strokes with the same
-        // geometry but different ramps don't collide. Both bases share
-        // this record's discriminant, so `CurveBasis`'s goes in ahead of
-        // the basis fields to keep a cubic and an arc apart; the stroke
-        // fields they share are hashed once, after the split.
+        // Geometry + style are hashed inline (every input lives on the record).
+        // `bbox` is excluded. The ramp goes in by content hash so equal geometry
+        // with different ramps differs. `CurveBasis`'s discriminant goes in first
+        // to keep a cubic and an arc apart; the shared stroke fields are hashed
+        // after the split.
         ShapeRecord::Curve {
             cap,
             basis,
@@ -273,17 +235,16 @@ fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
     }
 }
 
-/// Fold a lowered fill into the shape hash. The two values come off
-/// [`ShapeBrush::hash_parts`], which the chrome hash reads too.
+/// Fold a lowered fill into the shape hash via [`ShapeBrush::hash_parts`], which
+/// the chrome hash reads too.
 fn hash_brush(fill: ShapeBrush, h: &mut Hasher) {
     let BrushHash { tag, payload } = fill.hash_parts();
     h.write_u8(tag);
     h.write_u64(payload);
 }
 
-/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for
-/// `Tile`, the UV transform bits (these vary per pan/zoom frame, so
-/// they must drive a repaint). The other variants carry no payload.
+/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for `Tile`, the
+/// UV transform bits.
 fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     mem::discriminant(fit).hash(h);
     if let ImageFit::Tile { offset, scale } = fit {
@@ -339,10 +300,8 @@ mod tests {
         compute_record_hash(s).0
     }
 
-    /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
-    /// in the node hash so layout and paint caches invalidate when text
-    /// metrics, appearance, or position changes. New fields go in the table,
-    /// not in a new test.
+    /// Pin: every authoring-relevant `ShapeRecord::Text` field participates in the
+    /// hash so caches invalidate on a change. New fields go in the table.
     #[test]
     fn text_shape_hash_distinguishes_each_authoring_field() {
         let (regular, bold) = (FontWeight::REGULAR, FontWeight::BOLD);
@@ -402,9 +361,7 @@ mod tests {
         }
     }
 
-    /// Sanity counterpart: identical shapes hash identically (guards
-    /// against accidental non-determinism, e.g. a future field
-    /// hashed via a `RandomState` or rand call).
+    /// Identical shapes hash identically (no `RandomState`).
     #[test]
     fn text_shape_hash_matches_when_inputs_match() {
         assert_eq!(

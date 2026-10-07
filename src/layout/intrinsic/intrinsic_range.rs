@@ -21,15 +21,9 @@ impl IntrinsicRange {
         }
     }
 
-    /// The `(kind, slot)` pairs `query` asks for, as mutable handles into
-    /// this accumulator.
+    /// The `(kind, slot)` pairs `query` asks for, as mutable handles into this accumulator.
     ///
-    /// Every driver's `intrinsic` folds children into a range under the
-    /// same gate. Spelling that per driver as two near-identical
-    /// `if query.includes(..)` blocks would put a third `LenReq` behind
-    /// six call-site edits, any one of which is silent to forget.
-    /// Iterating the requested halves puts the gate here and leaves each
-    /// driver one loop body.
+    /// Keeps the `query.includes(..)` gate every driver's `intrinsic` shares in one place, so a third `LenReq` isn't six silent call-site edits.
     #[inline]
     pub(crate) fn requested(
         &mut self,

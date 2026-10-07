@@ -1,6 +1,4 @@
-//! Palantir-native input: the host-facing event vocabulary, the live
-//! state machine that consumes it, and the per-widget response the
-//! record pass reads back out.
+//! Palantir-native input: the host-facing event vocabulary, the state machine consuming it, and the per-widget response the record pass reads back.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;

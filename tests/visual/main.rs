@@ -1,16 +1,8 @@
-//! Visual regression suite: drives `Ui` headlessly through wgpu, reads
-//! the rendered texture into an `RgbaImage`, and compares against
-//! stored golden PNGs in `tests/visual/golden/`. Failures dump artifacts
-//! under `tests/visual/output/<name>/`.
+//! Visual regression suite: drives `Ui` headlessly through wgpu, reads the texture back and compares against golden PNGs in `tests/visual/golden/`; failures dump artifacts under `tests/visual/output/<name>/`.
 //!
-//! Both directories are gitignored, so the baseline is local rather than
-//! something a diff reviews. A fresh checkout has no goldens: the first run
-//! writes every one and fails it, so someone looks before they become the
-//! reference.
+//! Both directories are gitignored, so baselines are local. A fresh checkout has none: the first run writes each golden and fails it, so someone looks before it becomes the reference.
 //!
-//! Layout: `harness` raises the UI, `palantir::golden` does the comparing,
-//! and `fixtures/` holds the actual UI scenes grouped by topic. Add new
-//! fixtures there, and name each new golden in `golden_name`.
+//! `harness` raises the UI, `palantir::golden` compares, `fixtures/` holds the scenes. Name each new golden in `golden_name`.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -21,8 +13,7 @@ mod fixtures;
 mod golden_name;
 mod goldens;
 mod harness;
-/// The showcase's support module, compiled into this suite so a golden can
-/// render a showcase page itself rather than a copy that drifts from it.
+/// The showcase's support module, compiled in so a golden renders a showcase page itself.
 #[expect(
     dead_code,
     unused_macro_rules,
@@ -36,8 +27,7 @@ use palantir::{FramePaint, RgbaF32, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 
-/// Smoke test of the harness: an empty scene reads back as the clear colour,
-/// and a replayed record pass reproduces it pixel-for-pixel.
+/// Harness smoke test: an empty scene reads back as the clear colour, and a replayed record pass reproduces it pixel-for-pixel.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();
@@ -45,8 +35,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = RgbaF32::srgb(sr, sg, sb);
     let scene = |ui: &mut palantir::Ui| {
-        // Vetoing a close the offscreen host never requests is a no-op, not an
-        // error — unlike opening a window, which it cannot service at all.
+        // Vetoing a close the offscreen host never requests is a no-op; opening a window is not serviceable.
         ui.keep_open();
         ui.request_relayout();
     };
@@ -54,16 +43,14 @@ fn readback_returns_clear_color_for_empty_scene() {
     assert_eq!(first.paint, FramePaint::Full);
     let img = first.image;
 
-    // Invalidated, so the replay repaints: an unchanged scene would
-    // otherwise skip and present a copy of the backbuffer.
+    // Invalidated so the replay repaints; an unchanged scene would skip.
     h.host.invalidate_target_contents();
     let replayed = h.frame(scene);
     assert_eq!(replayed.paint, FramePaint::Full, "the replay repaints");
     goldens::assert_same("replay_empty_scene", &replayed.image, &img);
     assert_eq!(img.dimensions(), (size.x, size.y));
 
-    // sRGB → linear (in `RgbaF32::srgb`) → sRGB (wgpu's sRGB target) round-trips
-    // to the original 8-bit sRGB values.
+    // sRGB → linear (`RgbaF32::srgb`) → sRGB (wgpu target) round-trips to the original 8-bit values.
     let expected = [
         (sr * 255.0).round() as u8,
         (sg * 255.0).round() as u8,
@@ -80,8 +67,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     }
 }
 
-/// The offscreen host has no window lifecycle, so a recorded open is a caller
-/// error rather than a silently dropped request.
+/// The offscreen host has no window lifecycle, so a recorded open is a caller error.
 #[test]
 #[should_panic(expected = "Ui::open_window(WindowToken(1))")]
 fn opening_a_window_offscreen_panics() {

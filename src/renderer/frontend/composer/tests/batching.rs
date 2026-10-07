@@ -33,11 +33,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
 
-/// Pin: a `Quad → Text → Quad` paint sequence inside a single scissor
-/// produces TWO groups so the second quad renders *after* the text.
-/// Without this split, `submit` batches both quads together and the
-/// text always paints on top — which is the bug the `text z-order`
-/// showcase tab exposes.
+/// `Quad -> Text -> Quad` in one scissor makes two groups, so the second quad renders after the text.
 #[test]
 fn compose_splits_group_on_text_to_quad_transition() {
     let buf = run(
@@ -55,19 +51,13 @@ fn compose_splits_group_on_text_to_quad_transition() {
         2,
         "text→quad transition must start a new group"
     );
-    // First group: quad #0; the text rides its batch, anchored at
-    // group 0 so it renders after that group's quad.
     assert_eq!(buf.groups[0].quads, Span::new(0, 1));
     assert_eq!(buf.text_batches.len(), 1);
     assert_eq!(buf.text_batches[0].texts, Span::new(0, 1));
     assert_eq!(buf.text_batches[0].last_group, 0);
-    // Second group: quad #1 only — renders after group 0's text.
     assert_eq!(buf.groups[1].quads, Span::new(1, 1));
 }
 
-/// Pin: consecutive `Text → Text` should NOT split (both go into the
-/// same group). Only `Text → Quad` triggers a flush. Otherwise a
-/// header-then-body label pair produces two groups for nothing.
 #[test]
 fn compose_does_not_split_consecutive_texts() {
     let buf = run(
@@ -82,19 +72,12 @@ fn compose_does_not_split_consecutive_texts() {
     assert_eq!(buf.texts.len(), 2);
     assert_eq!(buf.groups.len(), 1);
     assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-    // Both runs coalesce into one batch anchored at the single group.
     assert_eq!(buf.text_batches.len(), 1);
     assert_eq!(buf.text_batches[0].texts, Span::new(0, 2));
     assert_eq!(buf.text_batches[0].last_group, 0);
 }
 
-/// Pin: a nested clip that resolves to the same scissor as its
-/// parent (a redundant `PushClip` of an equal-or-larger rect) is a
-/// no-op — accumulated overlap state must survive the push/pop pair
-/// so a later disjoint quad still batches into the open group.
-/// Without this, anything emitted between the inner Push and Pop
-/// would lose the parent's text-overlap context and a following
-/// quad could reorder over earlier text.
+/// A redundant nested clip (same scissor as its parent) keeps overlap state across the push/pop.
 #[test]
 fn compose_same_clip_push_pop_preserves_overlap_state() {
     let buf = run(
@@ -102,11 +85,8 @@ fn compose_same_clip_push_pop_preserves_overlap_state() {
             clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A bg
             text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
-            // Redundant nested clip — same rect, no narrowing.
             clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             b.pop_clip();
-            // Overlapping bg after the redundant clip: must still
-            // flush against node A's label.
             draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B bg, overlaps A's label
             b.pop_clip();
         },
@@ -121,13 +101,7 @@ fn compose_same_clip_push_pop_preserves_overlap_state() {
     );
 }
 
-/// Pin: a stack of `(quad, text)` row units that don't overlap each
-/// other batches into ONE group. This is the row-list / grid case —
-/// 40 rows each with a background and a label should collapse to a
-/// single `quads` batch and a single `texts` batch, not 40 groups.
-/// Overlap-aware composer: a later quad only flushes when it
-/// intersects a prior text in the same group; disjoint rows stay
-/// batched.
+/// Non-overlapping `(quad, text)` rows batch into one group; a quad flushes only when it intersects a prior text.
 #[test]
 fn compose_batches_disjoint_row_units_into_one_group() {
     let buf = run(
@@ -152,11 +126,7 @@ fn compose_batches_disjoint_row_units_into_one_group() {
     assert_eq!(buf.text_batches[0].texts, Span::new(0, 5));
 }
 
-/// Pin: when a later quad DOES overlap a prior text (the node-editor
-/// case — node B's chrome lands on node A's label), the composer
-/// must flush so paint order is preserved. Same fixture shape as the
-/// row-batching test but the second row's chrome is offset to land
-/// on the first row's label.
+/// A later quad overlapping a prior text must flush to preserve paint order.
 #[test]
 fn compose_flushes_when_later_quad_overlaps_prior_text() {
     let buf = run(
@@ -204,9 +174,6 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     assert_eq!(buf.groups[1].quads, Span::new(0, 1));
 }
 
-/// Pin: `Quad → Quad → Text` fits in one group. The text comes after
-/// both quads and renders on top of both — the common case (button
-/// background + button border + label).
 #[test]
 fn compose_keeps_quads_then_text_in_one_group() {
     let buf = run(
@@ -224,10 +191,7 @@ fn compose_keeps_quads_then_text_in_one_group() {
     assert_eq!(buf.text_batches[0].last_group, 0);
 }
 
-/// Pin: two adjacent rows where each row sits in its own scissor
-/// (a clipped panel per row) coalesce their text into ONE batch even
-/// though they're in different groups. Saves a raster pass per extra
-/// row — the bulk of the savings from text batching.
+/// Rows in separate scissors still coalesce their text into one batch.
 #[test]
 fn compose_coalesces_text_across_distinct_scissor_groups() {
     let buf = run(
@@ -252,30 +216,18 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
     assert_eq!(buf.text_batches[0].texts.len, 2);
 }
 
-/// Pin: a text run whose ancestor clip cuts its full extent must end
-/// up in a batch whose GPU scissor equals exactly its clipped bounds —
-/// the text shader has no per-instance clip, so a merged scissor would
-/// let glyphs paint past the intended clip. Wider neighbour text on
-/// the other side of the strict clip forces a split.
+/// A clipped text run lands in a batch whose scissor equals its clipped bounds (the text shader has no per-instance clip); wider neighbour text forces a split.
 #[test]
 fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     let buf = run(
         |b, _arena| {
-            // Wide outer text — unclipped, full bbox.
             text(b, Rect::new(0.0, 0.0, 200.0, 20.0));
-            // Narrow clip (20px wide) wrapping a wide text run (100px).
-            // The run's intended visible region is 20px, but its
-            // measured rect is 100px — the clip is the only thing
-            // keeping the glyphs inside.
             clip(b, Rect::new(40.0, 40.0, 20.0, 20.0));
             text(b, Rect::new(40.0, 40.0, 100.0, 20.0));
             b.pop_clip();
         },
         &params(1.0, UVec2::new(300, 300)),
     );
-    // Two batches: one for the unclipped run, one for the strict one.
-    // The strict batch's scissor must be the 20×20 clip rect — not
-    // the union with the wide neighbour.
     assert_eq!(
         buf.text_batches.len(),
         2,
@@ -290,10 +242,6 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     assert_eq!(strict.scissor.size.y, 20);
 }
 
-/// Pin: two strict runs whose clips happen to be IDENTICAL rects can
-/// coalesce into one batch — the GPU scissor matches both. Important
-/// for repeated strict clips (e.g. a column of clipped numeric inputs
-/// all the same width).
 #[test]
 fn compose_strict_text_with_matching_clip_coalesces() {
     let clip_rect = Rect::new(40.0, 40.0, 20.0, 20.0);
@@ -315,13 +263,7 @@ fn compose_strict_text_with_matching_clip_coalesces() {
     );
 }
 
-/// Pin: a rounded-clip change splits the text batch even when text
-/// across the change wouldn't otherwise overlap. Different rounded
-/// clips → different stencil masks at render time; one merged prepare
-/// would mis-clip text under one of them. Each batch also carries the
-/// mask chain its runs were recorded under, value-matching its
-/// `last_group`'s chain — the schedule needs it to stencil a batch
-/// drained past damage-skipped groups against the right mask.
+/// A rounded-clip change splits the text batch (different stencil masks); each batch carries its runs' mask chain so the schedule can stencil it past skipped groups.
 #[test]
 fn compose_rounded_clip_change_splits_text_batch() {
     let buf = run(
@@ -346,23 +288,15 @@ fn compose_rounded_clip_change_splits_text_batch() {
             "batch {i} chain matches its last_group's chain"
         );
     }
-    // The two batches carry the two DIFFERENT masks (r4 vs r8).
     let r0 = buf.rounded_clips[buf.text_batches[0].rounded_clips.range()][0];
     let r1 = buf.rounded_clips[buf.text_batches[1].rounded_clips.range()][0];
     assert_eq!(r0.corners.as_array()[0], 4.0);
     assert_eq!(r1.corners.as_array()[0], 8.0);
 }
 
-/// Wiring for the paint-time spin (spinner): the composer must read
-/// `DrawPolylinePayload::rotation` and rotate each point about
-/// `bbox.center()` before the ancestor transform. A horizontal segment
-/// through the box centre, spun 90°, comes out vertical and stays
-/// centred on the pivot — catches a dropped rotation or a wrong pivot
-/// that the analytic geometry test in `spinner` can't see.
+/// The composer rotates each polyline point about `bbox.center()` before the ancestor transform: a 90 degree spin of a centred horizontal segment is vertical and centred.
 #[test]
 fn compose_spins_polyline_about_bbox_center() {
-    // bbox 100×100 ⇒ centre (50, 50) is both the pivot and the symmetry
-    // point of the segment, so a correct spin keeps the AABB centred.
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
         let mut buffer = PaintCapture::default();
         let mut store = RecordStore::default();
@@ -374,8 +308,6 @@ fn compose_spins_polyline_about_bbox_center() {
         buffer.draw_polyline(
             DrawPolylinePayload {
                 alpha: 1.0,
-                // Pivot is the 100x100 box centre, which `stroke_bounds`
-                // derives from the owner rect on the production path.
                 bounds: if rotation == 0.0 {
                     StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0))
                 } else {
@@ -402,16 +334,11 @@ fn compose_spins_polyline_about_bbox_center() {
         let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
         rig.store = store;
         rig.compose(&buffer);
-        // GPU path: the polyline emits one segment instance whose
-        // p0/p3 lanes carry the transformed (spun) endpoints.
         assert_eq!(rig.out.curves.len(), 1, "one segment instance");
         let ci = &rig.out.curves[0];
         (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
-    // Unrotated, the segment is where it was recorded. Spun 90° about
-    // the box centre (50, 50), its ends turn ±35 px off the pivot onto
-    // the vertical: (50, 15) and (50, 85) — rotation applied, about the
-    // right pivot.
+    // Spun 90 degrees about (50, 50): ends at (50, 15) and (50, 85).
     assert_eq!(aabb(0.0), (Vec2::new(15.0, 50.0), Vec2::new(85.0, 50.0)));
     assert_eq!(
         aabb(FRAC_PI_2),
@@ -419,12 +346,7 @@ fn compose_spins_polyline_about_bbox_center() {
     );
 }
 
-/// Pin: a higher-kind draw that gets *culled* (fully outside the active
-/// clip) does NOT split the text batch, even when its unclipped rect
-/// covers a run already in that batch. The cull runs first, so the
-/// overlap test that closes the batch never sees a draw that paints
-/// nothing. The mesh here is recorded under a clip that discards it
-/// whole, at the coordinates of the first label.
+/// A culled higher-kind draw does not split the text batch: the cull runs before the overlap test.
 #[test]
 fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
     let label = Rect::new(0.0, 0.0, 100.0, 20.0);
@@ -448,15 +370,12 @@ fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
     );
 }
 
-/// Pin: a quad that overlaps prior batch text closes the batch — the
-/// merged batch would otherwise paint that text over the occluding
-/// quad. Two groups, two text batches; quad in the middle.
+/// A quad overlapping prior batch text closes the batch: two groups, two text batches.
 #[test]
 fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
     let buf = run(
         |b, _arena| {
             text(b, Rect::new(0.0, 0.0, 100.0, 30.0)); // text A
-            // Push a clip to force a fresh group; quad inside overlaps text A.
             clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             draw(b, Rect::new(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
             b.pop_clip();
@@ -479,9 +398,7 @@ fn tight_curve_bound_avoids_false_group_split() {
         expected_groups: usize,
     }
 
-    // Curve centerline ends at x=20. Width 2 + 0.5 AA gives a
-    // physical bound ending at ceil(21.5)=22. Touching x=22 is
-    // disjoint; moving the image one pixel left creates real overlap.
+    // The curve ends at x=20; width 2 + 0.5 AA bounds it at ceil(21.5)=22. x=22 is disjoint; one pixel left overlaps.
     let cases = [
         Case {
             image_x: 22.0,
@@ -505,8 +422,6 @@ fn tight_curve_bound_avoids_false_group_split() {
     }
 }
 
-/// Counter-pin: record [mesh, curve] — the replay order mesh→curve
-/// already matches record order, so both stay in one group.
 #[test]
 fn compose_mesh_then_overlapping_curve_keeps_one_group() {
     let buf = run(
@@ -521,9 +436,7 @@ fn compose_mesh_then_overlapping_curve_keeps_one_group() {
     assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
 }
 
-/// Mesh→image replays in record order (mesh drains before image in
-/// `emit_group_body`) → one group; image→mesh inverts it (the later-
-/// recorded mesh would drain first) → flush into two groups.
+/// Mesh then image replays in record order (one group); image then mesh inverts it and flushes.
 #[test]
 fn compose_mesh_image_record_order_gates_group_split() {
     let buf = run(
@@ -553,12 +466,7 @@ fn compose_mesh_image_record_order_gates_group_split() {
     assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 1);
 }
 
-/// Non-overlapping mixed kinds never conflict — record order between
-/// disjoint draws is invisible, so they share one group (one draw call
-/// per kind). Gaps exceed every bbox inflation: the curve at
-/// (0,0,20,20) tracks (0,0)..(22,22) after its width/2 + 0.5 fringe,
-/// the mesh at (40,40,20,20) tracks (39,39)..(61,61) after its 0.5
-/// fringe, the image at (80,80,20,20) is exact.
+/// Non-overlapping mixed kinds share one group. Inflated bounds: curve (0,0)..(22,22), mesh (39,39)..(61,61), image (80,80,20,20) exact.
 #[test]
 fn compose_disjoint_mixed_kinds_share_one_group() {
     let buf = run(
@@ -575,26 +483,14 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
     assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
 }
 
-//
-// Pruning drops a quad iff a later quad in the same group fully
-// covers its painted extent (`q.rect`, which holds its inner-edge
-// border) under `Rect::contains_rect`.
+// Pruning drops a quad iff a later quad in its group fully covers its painted extent (`q.rect`) under `Rect::contains_rect`.
 
-/// Regression: a quad overlapping text that lives in an *already-closed*
-/// batch within the same group must still flush so the text paints under
-/// it. Reproduces the node-label-over-inspector-panel bug: a node's text
-/// gets closed into its own batch (here, by a polyline over the label's
-/// far end, clear of the quad), then the panel quad — recorded later,
-/// overlapping — must not let that closed batch's text paint on top.
+/// A quad overlapping text in an already-closed batch of the same group must still flush.
 #[test]
 fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
         |b, store| {
-            // First node label.
             text(b, Rect::new(0.0, 0.0, 300.0, 20.0));
-            // A polyline over the label's far end closes the text batch
-            // (curve-tier) without flushing the group, and clears the
-            // quad below in x (so it can't be what forces the flush).
             polyline_cmd(
                 b,
                 store,
@@ -605,10 +501,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
                 LineCap::Butt,
                 LineJoin::Miter,
             );
-            // Panel chrome quad, overlapping the (now closed-batch) label.
             draw(b, Rect::new(0.0, 0.0, 100.0, 60.0));
-            // Repeat after the first closed batch has been indexed and
-            // flushed. The new pending tail must be discovered independently.
             text(b, Rect::new(0.0, 100.0, 300.0, 20.0));
             polyline_cmd(
                 b,
@@ -625,9 +518,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         &params(1.0, UVec2::new(600, 600)),
     );
     assert_eq!(buf.text_batches.len(), 2);
-    // Each run's box padded by the scale-step pad, 0.25 % a side: 0.75 px
-    // across, 0.05 px down, then covered. The first clamps at the surface
-    // to (0, 0)..(301, 21); the second spans y 99.95..120.05, so 99..121.
+    // Each box is padded 0.25 % a side (0.75 px across, 0.05 down) and covered; the first clamps to (0, 0)..(301, 21), the second spans y 99.95..120.05, so 99..121.
     assert_eq!(buf.text_batches[0].scissor, URect::new(0, 0, 301, 21));
     assert_eq!(buf.text_batches[1].scissor, URect::new(0, 99, 301, 22));
     for (batch, quad_y) in buf.text_batches.iter().zip([0.0, 100.0]) {
@@ -652,12 +543,7 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     }
 }
 
-/// Fragment fast-path flag: solid + sharp + stroke-less + pixel-aligned
-/// quads carry `FillKind::FAST_BIT`; any disqualifier (fractional rect,
-/// corners, stroke, gradient) leaves the kind plain. Alignment is
-/// checked on the *physical* rect, so a fractional logical rect at a
-/// DPR that lands it on integers still qualifies — and translucency
-/// does NOT disqualify (the skip is coverage-based, not opacity-based).
+/// Solid, sharp, stroke-less, pixel-aligned quads carry `FillKind::FAST_BIT`; alignment is on the physical rect, and translucency does not disqualify.
 #[test]
 fn quad_fast_path_flag_cases() {
     use crate::primitives::packed::fill_axis::FillAxis;
@@ -668,7 +554,6 @@ fn quad_fast_path_flag_cases() {
     let solid = |c: RgbaF32| BrushSource::Solid(c.into());
     let opaque = RgbaF32::srgb(0.5, 0.5, 0.5);
 
-    // (case, rect, corners, stroke, brush, dpr, expect_fast)
     let gradient = BrushSource::Gradient(ResolvedGradient {
         axis: FillAxis::ZERO,
         lut_row: LutRow::FALLBACK,
@@ -775,18 +660,7 @@ fn quad_fast_path_flag_cases() {
     }
 }
 
-/// What a labelled toolbar costs in batches. Eight buttons, each an icon
-/// beside its label, laid out left to right with no overlap.
-///
-/// Icons are a higher kind than text, but a higher-kind draw closes the open
-/// text batch only where it covers a run already in that batch. Disjoint
-/// buttons therefore cost one icon batch and one text batch, not one text
-/// batch per button.
-///
-/// The split this used to pin was **text's**, not the icon atlas's — eight
-/// images or eight meshes interleaved with labels split it the same way. So
-/// the condition that removed it removed it for every tier at once, and
-/// merging the two atlases was never what the draw calls were waiting on.
+/// A labelled toolbar of eight non-overlapping icon+label buttons costs one icon batch and one text batch: a higher-kind draw closes the text batch only where it covers a run already in it.
 #[test]
 fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
     const BUTTONS: usize = 8;
@@ -819,9 +693,7 @@ fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
     assert_eq!(out.groups.len(), 1, "disjoint draws need no group flush");
 }
 
-/// The control for the test above: the same eight labels with an *image*
-/// between them instead of an icon coalesce identically. The saving belongs to
-/// the tier boundary, not to icons having their own atlas.
+/// Control: an *image* between the labels coalesces identically; the saving belongs to the tier boundary.
 #[test]
 fn images_between_labels_coalesce_text_the_same_way() {
     const BUTTONS: usize = 8;
@@ -844,20 +716,11 @@ fn images_between_labels_coalesce_text_the_same_way() {
     assert_eq!(out.text_batches.len(), 1);
 }
 
-/// The ordering the toolbar's coalescing rests on, both halves of it. A
-/// button whose icon lands on the previous label must still split the
-/// batch, and a label that lands on that icon must still flush the group —
-/// otherwise the icon paints over text recorded after it.
-///
-/// One fixture, read twice: with the trailing label clear of the icon the
-/// batch splits and the group does not, and with it over the icon both do.
-/// A composer that closed nothing would report one batch for the first arm
-/// as well, which is what makes the pair a test rather than a count.
+/// Both halves of the ordering the coalescing rests on: an icon landing on the previous label splits the batch, a label landing on the icon flushes the group. Read twice; a composer that closed nothing fails the second arm.
 #[test]
 fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
     #[derive(Debug)]
     struct Case {
-        /// x of the label recorded after the icon. The icon spans 40..56.
         trailing_x: f32,
         groups: usize,
     }
@@ -892,13 +755,7 @@ fn icon_over_prior_label_splits_batch_and_over_later_label_flushes_group() {
     }
 }
 
-/// A batch that survives a higher-kind draw survives the group flush that
-/// draw's neighbours force, and drains past it: one batch, two groups, and
-/// its `last_group` is the second while the image's is the first.
-///
-/// That is the reordering the overlap test allows on purpose — the first
-/// label paints over the image it was recorded under, which is unobservable
-/// because the two do not meet.
+/// A batch surviving a higher-kind draw drains past the group flush: one batch, two groups, its `last_group` the second and the image's the first. Unobservable, since the two don't meet.
 #[test]
 fn text_batch_drains_past_a_non_overlapping_image() {
     let out = run(
@@ -928,23 +785,13 @@ fn text_batch_drains_past_a_non_overlapping_image() {
     );
 }
 
-/// A text batch's scissor never cuts the glyphs' own extent. With pixel
-/// snapping on, a run at x 10 of width 100.4 spans 10..110.4; padded by
-/// 0.25 % a side (0.251 px across, 0.05 px down) and covered, that is x
-/// 9..111, y 9..31. The snapped box ended at 110, and cut the last column
-/// of antialiasing.
+/// A text batch's scissor never cuts the glyphs' extent. Pixel-snapped, a run at x 10 of width 100.4 spans 10..110.4; padded 0.25 % a side and covered: x 9..111, y 9..31.
 ///
-/// Ink reaching past the block widens it from the same origin: 3, 2, 5
-/// and 4 px out make 7..115.4 by 8..34, a 108.4 × 26 extent, padded by
-/// 0.271 × 0.065 to 6.729..115.671 by 7.935..34.065 and covered as x
-/// 6..116, y 7..35. At display scale 2 the same run is 216.8 × 52 from
-/// (20, 20) − (6, 4) = (14, 16), padded by 0.542 × 0.13: x 13..232, y
-/// 15..69. The origin the glyphs are placed at does not move.
+/// Ink past the block (3, 2, 5, 4 px out) gives 7..115.4 by 8..34, padded 0.271 x 0.065 to 6.729..115.671 by 7.935..34.065, covered x 6..116, y 7..35. At scale 2: 216.8 x 52 from (14, 16), padded 0.542 x 0.13: x 13..232, y 15..69.
 #[test]
 fn a_text_scissor_covers_the_snapped_glyph_block() {
     let block = Rect::new(10.0, 10.0, 100.4, 20.0);
     let ink = Spacing::new(3.0, 2.0, 5.0, 4.0);
-    // (scale, physical, ink, origin, scissor)
     let cases = [
         (
             1.0,

@@ -1,5 +1,4 @@
-//! A settled dock as a recordable scene, at the scale a real editor runs
-//! one.
+//! A settled dock as a recordable scene, at a real editor's scale.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
@@ -15,13 +14,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::text::Text;
 
-/// Three panes and two dividers: the pinned canvas beside a split-off
-/// console, with an output pane under the console, and five tabs across
-/// the three strips. Each pane's body is one line of its title.
-///
-/// One tree for the allocation gates and the visual suite alike, as
-/// [`FrameFixture`](crate::internals::frame_fixture::FrameFixture) is for
-/// the frame workload, so neither keeps a stand-in of its own.
+/// Three panes and two dividers (canvas beside a console, an output pane under it) and five tabs across three strips; each body is one line of its title. Shared by the allocation gates and visual suite.
 #[derive(Debug)]
 pub struct DockFixture {
     dock: DockState<Tab>,
@@ -87,8 +80,7 @@ impl DockFixture {
         DockView::run(ui, &mut self.dock, &mut self.panes);
     }
 
-    /// Record one frame through the two-call surface: scan last frame's
-    /// responses into the reused operation buffer, apply them, then show.
+    /// Record one frame through the two-call surface: scan responses into the reused operation buffer, apply, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.operations.clear();
         DockView::scan(ui, &self.dock, &mut self.operations);

@@ -7,24 +7,16 @@ use crate::primitives::paint::color::srgb_transfer;
 
 /// Hue, saturation and value in the classic HSV space.
 ///
-/// Every axis is `0..1`, and `h` wraps at `1`. **The axes are defined on
-/// sRGB-encoded components**, which is what every other tool means by HSV and
-/// what makes `v = 0.5` read as `#808080` rather than as half the light. The
-/// conversion therefore goes through [`RgbaF32::srgb`], not
-/// [`RgbaF32::new`].
-///
-/// It is the alternate model, not the default:
-/// [`Okhsv`](crate::Okhsv) is the same three axes without HSV's hue
-/// distortion and hue-dependent brightness. HSV is here because a colour
-/// matched against Photoshop, Figma or a CSS value has to land on the same
-/// numbers.
+/// Every axis is `0..1`; `h` wraps. The axes are on sRGB-encoded components
+/// (as in other tools), so conversion goes through [`RgbaF32::srgb`]. The
+/// alternate model; [`Okhsv`](crate::Okhsv) is the default.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Hsv {
-    /// Hue around the colour circle, `0..1`. Wraps.
+    /// Hue.
     pub h: f32,
-    /// Saturation, `0` grey to `1` fully coloured.
+    /// Saturation.
     pub s: f32,
-    /// Value, `0` black to `1` at full brightness.
+    /// Value.
     pub v: f32,
 }
 
@@ -32,19 +24,16 @@ pub struct Hsv {
 const GREY_SPREAD: f32 = 1e-6;
 
 impl Hsv {
-    /// Construct from the three axes. Out-of-range values are the caller's
-    /// until [`Self::to_color`], which reads the hue as a *turn* and the
-    /// rest as *fractions*: it wraps the hue, clamps the rest, and reads a
-    /// non-finite axis as `0`.
+    /// Out-of-range values are resolved by [`Self::to_color`]: hue wraps, the rest clamp, non-finite reads as `0`.
     pub const fn new(h: f32, s: f32, v: f32) -> Self {
         Self { h, s, v }
     }
 
-    /// The opaque colour these axes name.
     #[expect(
         clippy::cast_sign_loss,
         reason = "a turn puts the hue in [0, 6), so its sector is non-negative"
     )]
+    /// The colour in linear RGB.
     pub fn to_color(self) -> RgbaF32 {
         let hue = domain::turn(self.h) * 6.0;
         let sat = domain::fraction(self.s);
@@ -102,9 +91,7 @@ mod tests {
     use crate::primitives::paint::color::hsv::Hsv;
     use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
-    /// The axes are sRGB-encoded, not linear. Half value on a pure hue is
-    /// `#800000` — 128, the encoded midpoint. Reading the axes as linear
-    /// would give 188, and the picker would paint a field nobody recognises.
+    /// Axes are sRGB-encoded: half value on a pure hue is `#800000` (128), not 188.
     #[test]
     fn value_is_an_encoded_component() {
         assert_eq!(
@@ -117,7 +104,6 @@ mod tests {
         );
     }
 
-    /// The six corners of the ramp are the six saturated cube corners.
     #[test]
     fn the_six_corners_are_the_cube_corners() {
         let want = [

@@ -1,29 +1,16 @@
-//! [`BoundSides`] — everything group 0 needs to read a
-//! [`RasterAtlas`](crate::gpu::raster::raster_atlas::RasterAtlas)'s two
-//! sides.
+//! [`BoundSides`]: the group-0 binding over a [`RasterAtlas`](crate::gpu::raster::raster_atlas::RasterAtlas)'s two sides.
 
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::primitives::paint::content_type::ContentType;
 
-/// The group-0 binding over an atlas's `[mask, color]` sides.
-///
-/// Two tiers, and the split is the point. The layout is a property of the
-/// *shape* of a group-0 binding, so it outlives any one pair of textures —
-/// and outlives any one *atlas*, which is why it belongs to the shared
-/// [`RasterProgram`] rather than here. The bind group describes the
-/// textures that exist right now, and a grow replaces it through
-/// [`Self::rebind`].
+/// The group-0 binding over an atlas's `[mask, color]` sides, in two tiers: the layout outlives any pair of textures and any atlas, so it belongs to the shared [`RasterProgram`]; the bind group describes current textures and a grow replaces it via [`Self::rebind`].
 #[derive(Debug)]
 pub(super) struct BoundSides {
-    /// A clone of the shared [`RasterProgram`]'s, so a rebind needs
-    /// nothing but the device and the sides.
+    /// A clone of the shared [`RasterProgram`]'s layout.
     layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
-    /// Held here rather than passed in, so [`Self::rebind`] needs nothing
-    /// but the device and the sides — a caller that has to supply the
-    /// label is a caller that can supply a different one, and the debug
-    /// label is how a capture tells the two atlases apart.
+    /// Held here so [`Self::rebind`] needs only the device and sides; the debug label tells the two atlases apart in a capture.
     label: String,
 }
 
@@ -45,9 +32,7 @@ impl BoundSides {
         }
     }
 
-    /// Re-bind after a grow moved one side's texture, from the `sides` the
-    /// grow left behind. The layout is deliberately untouched — every
-    /// pipeline built against it stays valid across any number of grows.
+    /// Re-bind after a grow moved a side's texture. The layout is untouched, so pipelines built against it stay valid.
     pub(super) fn rebind(&mut self, device: &wgpu::Device, sides: &[Side; 2]) {
         self.bind_group = Self::create_bind_group(device, &self.layout, sides, &self.label);
     }

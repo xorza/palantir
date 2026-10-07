@@ -1,10 +1,6 @@
-//! TextEdit — editable text leaves. Single-line fields and the edges a
-//! focus session reports, a multi-line editor, text alignment, and the
-//! input method's composition drawn in place.
+//! TextEdit: single-line fields and focus-session edges, a multi-line editor, alignment, and IME composition.
 //!
-//! Buffer storage: one [`Page`] row under a non-widget id, lent to the whole
-//! page body by `Ui::with_state`, so the buffers survive page switches and
-//! the editors can take `&mut String` straight out of it.
+//! Buffers live in one [`Page`] row lent by `Ui::with_state`, so they survive page switches.
 
 use crate::support::{
     INK, api, checklist, mono_style, note, note_style, readout, row, section, well,
@@ -14,7 +10,6 @@ use palantir::{
     Align, Configure, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
-/// Everything this page keeps across frames.
 #[derive(Debug)]
 struct Page {
     a: String,
@@ -24,9 +19,7 @@ struct Page {
     multiline: String,
     aligned: [String; 3],
     ime: String,
-    /// A copy of the live composition, so the readout can format it
-    /// while the `Ui` is borrowed for the text. Cleared and refilled, so
-    /// it allocates only while it grows.
+    /// A copy of the live composition for the readout, refilled to avoid reallocating.
     preedit: String,
     preedit_cursor: Option<Span>,
     plain: String,
@@ -51,7 +44,6 @@ impl Default for Page {
     }
 }
 
-/// One edge a [`TextEditResponse`] reports.
 #[derive(Clone, Copy, Debug)]
 enum Edge {
     FocusGained,
@@ -75,11 +67,11 @@ impl Edge {
     }
 }
 
-/// The last [`EventLog::LEN`] edges, newest last, in a fixed ring.
+/// The last [`EventLog::LEN`] edges in a fixed ring.
 #[derive(Debug, Default)]
 struct EventLog {
     entries: [Option<(u32, Edge)>; EventLog::LEN],
-    /// Sequence number of the next edge; its slot is `next % LEN`.
+    /// Next edge's sequence number; its slot is `next % LEN`.
     next: u32,
 }
 

@@ -1,5 +1,4 @@
-//! What the body costs while closed, who owns the open flag, the snap on
-//! a first reveal, and the keys that toggle a focused header.
+//! What the body costs while closed, who owns the open flag, the first-reveal snap, and the keys that toggle a header.
 
 use glam::{UVec2, Vec2};
 
@@ -51,9 +50,7 @@ fn frame(h: &mut UiHarness, start_open: bool) {
     });
 }
 
-/// A closed section records nothing below its header — which is the
-/// whole reason the control exists, and the reason its body's state is
-/// swept.
+/// A closed section records nothing below its header.
 #[test]
 fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     let mut h = UiHarness::new(SURFACE);
@@ -76,8 +73,6 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     });
     let body_rect = h.rect(body()).expect("an open section records its body");
     let header_rect = h.rect(header()).expect("the header");
-    // The body sits right under the header, indented by the theme's
-    // 17 px from its leading edge and running to the header's far edge.
     let indent = h.ui().theme().expander.indent;
     assert_eq!(indent, 17.0);
     assert_eq!(
@@ -92,8 +87,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     assert!(h.rect(label()).is_some(), "the body's own content records");
 }
 
-/// A section nobody has touched keeps no cross-frame row at all — the
-/// probe-don't-insert path `ComboBox` takes for its own open flag.
+/// A section nobody has touched keeps no cross-frame row.
 #[test]
 fn an_untouched_section_mints_no_state_row() {
     let mut h = UiHarness::new(SURFACE);
@@ -104,7 +98,6 @@ fn an_untouched_section_mints_no_state_row() {
         "a closed default wrote a row it did not need",
     );
 
-    // Opening it is what mints one, and it survives the next frame.
     h.click_on(header());
     frame(&mut h, false);
     let row = h
@@ -115,8 +108,7 @@ fn an_untouched_section_mints_no_state_row() {
     assert!(row.open, "the click opened it");
 }
 
-/// A click toggles, and the body it revealed records on the same frame —
-/// the header resolves the click before it records anything below it.
+/// A click toggles and the revealed body records on the same frame.
 #[test]
 fn a_click_toggles_and_reveals_on_the_same_frame() {
     let mut h = UiHarness::new(SURFACE);
@@ -149,9 +141,7 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     assert!(h.rect(body()).is_none(), "a second click closed it again");
 }
 
-/// An Expander disabled on the frame a click lands does not toggle: the
-/// header reads its owner's flag that frame, not through the cascade a
-/// frame late.
+/// An Expander disabled on the frame a click lands does not toggle.
 #[test]
 fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
     let mut h = UiHarness::new(SURFACE);
@@ -171,9 +161,7 @@ fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
     assert!(h.rect(body()).is_none());
 }
 
-/// `keep_body` trades a record per frame for the state inside it. The
-/// collapsed body takes no space and paints nothing, but its ids stay
-/// live, so a `TextEdit` in there still holds its text.
+/// `keep_body` keeps a collapsed body's ids live (and its `TextEdit` text) at a record per frame.
 #[test]
 fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     let mut h = UiHarness::new(SURFACE);
@@ -207,8 +195,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     );
 }
 
-/// The binding wins over the default, and every toggle is written back
-/// through it.
+/// The binding wins over the default, and every toggle is written back.
 #[test]
 fn a_bound_flag_is_read_and_written() {
     let mut h = UiHarness::new(SURFACE);
@@ -232,15 +219,12 @@ fn a_bound_flag_is_read_and_written() {
     h.frame(|ui| record(ui, &mut open));
     assert!(!open, "the toggle was written back through the binding");
 
-    // The caller's own write is read on the next frame.
     open = true;
     h.prime(2, |ui| record(ui, &mut open));
     assert!(h.rect(body()).is_some(), "the caller reopened it");
 }
 
-/// The first reveal snaps because there is no measured height to tween
-/// against; every one after it animates, which is what the remembered
-/// height buys.
+/// The first reveal snaps (no measured height to tween against); later ones animate.
 #[test]
 fn the_first_reveal_snaps_and_the_next_one_animates() {
     let base = ExpanderTheme::default();
@@ -271,7 +255,6 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         1.0,
         "no height was known, so the reveal snapped whole",
     );
-    // A frame with the body whole is what measures it.
     h.advance_frames(2, time::Duration::from_millis(16), |ui| {
         record(ui);
     });
@@ -281,20 +264,14 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
     h.click_on(header());
-    // The click frame carries the new target but no elapsed time, so the
-    // tween has not moved yet; the frame after it is the one that shows.
+    // The click frame has no elapsed time; the next shows the tween.
     assert_eq!(h.frame_value(&mut record), 1.0);
     h.advance(time::Duration::from_millis(16));
-    // `MEDIUM` is 200 ms of ease-out cubic, so 16 ms in the reveal has
-    // (1 − 16/200)³ = 0.92³ = 0.778688 left: the close tweened rather
-    // than snapping.
+    // `MEDIUM` is 200 ms ease-out cubic: at 16 ms (1 − 16/200)³ = 0.778688 is left.
     assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
-/// Space and Enter toggle a focused header, and nothing else does. The
-/// header claims `KeyClass::Text` while it holds focus, which is the
-/// same claim a text field makes — and right for a target that is not
-/// one.
+/// Space and Enter toggle a focused header, nothing else.
 #[test]
 fn space_and_enter_toggle_a_focused_header() {
     for key in [Key::Char(' '), Key::Enter] {
@@ -318,8 +295,7 @@ fn space_and_enter_toggle_a_focused_header() {
     }
 }
 
-/// The arrow is one shape at two sizes, and a quarter turn takes the
-/// dropdown's `v` to the disclosure `>`.
+/// A quarter turn takes the dropdown `v` to the disclosure `>`.
 #[test]
 fn a_quarter_turn_points_the_arrow_at_the_label() {
     let c = Arrow {
@@ -341,16 +317,13 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         Vec2::new(8.0, 4.0),
         Vec2::new(0.0, 0.0),
     ];
-    // f32 `cos(π/2)` is -4.4e-8, not 0, so a turned point carries a
-    // residue of that times its 4 px lever, a few ulps of 8.
+    // f32 `cos(π/2)` is -4.4e-8, leaving a few ulps of residue on the 4 px lever.
     let residue = "f32 cos(π/2) is not 0";
     for (got, want) in turned.into_iter().zip(expected) {
         assert_close(got.x, want.x, 1e-6, residue);
         assert_close(got.y, want.y, 1e-6, residue);
     }
 
-    // Rounded by 1: the same turn on a 6 px arrow one px in from every
-    // edge, so the dilated shape's extents are the box's again.
     let rounded = c.rounded(1.0, -consts::FRAC_PI_2);
     let expected = [
         Vec2::new(1.0, 7.0),
@@ -367,7 +340,6 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         "a sharp triangle is the arrow itself"
     );
 
-    // Both angles the theme names, resolved through it.
     let t = ExpanderTheme::default();
     assert_eq!(t.arrow_angle(0.0), t.arrow_closed_angle);
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);
@@ -378,10 +350,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
     );
 }
 
-/// The height a reveal clips against is the body's whole height, on the
-/// frame the tween settles too. A settled tween asks for no further frame,
-/// so a height read off a clipped body there is the one the next collapse
-/// clips against, and the body jumps.
+/// The reveal clips against the body's whole height even on the frame the tween settles, or the next collapse jumps.
 #[test]
 fn a_settling_reveal_stores_the_whole_height() {
     let base = ExpanderTheme::default();

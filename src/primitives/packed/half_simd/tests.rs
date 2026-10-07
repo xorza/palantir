@@ -1,16 +1,7 @@
 use crate::primitives::packed::half_simd::*;
 use half::f16;
 
-/// The SWAR lane compare, checked **exhaustively** against the
-/// scalar form it replaces: every one of the 65 536 f16 bit
-/// patterns, in each of the four lane positions, at both thresholds
-/// the crate uses.
-///
-/// Exhaustive because the failure mode it guards is a carry
-/// escaping one lane into its neighbour — which would show up for
-/// specific bit patterns near the top of a lane's range and be
-/// invisible to hand-picked cases. Cheap enough to be worth it: the
-/// whole sweep is a few hundred thousand ALU ops.
+/// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighbouring lane would show only for specific patterns.
 #[test]
 fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     const F16_INFINITY: u16 = 0x7C00;
@@ -21,10 +12,7 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
             for lane in 0..4 {
                 let mut lanes = [0u16; 4];
                 lanes[lane] = bits;
-                // Lane `lane` is the only non-zero one, so the
-                // answer must be exactly the scalar verdict for it
-                // — unless the threshold is 0, where the zero lanes
-                // are themselves not above it either.
+                // Only `lane` is non-zero, so the answer must equal the scalar verdict (unless the threshold is 0).
                 assert_eq!(
                     F16x4::from_bits(lanes).any_lane_above(threshold),
                     scalar,
@@ -34,8 +22,7 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
         }
     }
 
-    // `has_nan` is that sweep at the infinity threshold, so pin it
-    // against real f16 semantics rather than against itself.
+    // `has_nan` is that sweep at the infinity threshold; pin it against real f16 semantics.
     for bits in 0..=u16::MAX {
         let want = f16::from_bits(bits).is_nan();
         for lane in 0..4 {
@@ -49,8 +36,7 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
         }
     }
 
-    // A saturated neighbour must not leak a carry into the lane
-    // under test — the specific thing SWAR could get wrong.
+    // A saturated neighbour must not leak a carry into the lane under test.
     for lane in 0..4 {
         let mut lanes = [0x7FFFu16; 4];
         lanes[lane] = 0;
@@ -76,19 +62,12 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     );
 }
 
-/// [`f16x4_scaled`] is a hand-written SIMD chain that replaced the
-/// composed `from_lanes(lanes().map(* k))`, so the property that
-/// matters is that it is **bit-identical** to what it replaced —
-/// not merely close. Swept over every f16 bit pattern in a rotating
-/// lane arrangement, against every scale class that could round
-/// differently: identity, zero, sign flip, halving, a value that
-/// overflows f16's range, and a non-terminating fraction.
+/// [`f16x4_scaled`] replaced `from_lanes(lanes().map(* k))` and must be bit-identical, swept over every f16 pattern in a rotating lane arrangement against scale classes that could round differently (identity, zero, sign flip, halving, overflow, non-terminating fraction).
 #[test]
 fn scaled_is_bit_identical_to_the_composed_round_trip() {
     let composed = |bits: [u16; 4], k: f32| f16x4_from_f32x4(f16x4_to_f32x4(bits).map(|v| v * k));
     for hi in 0..=u16::MAX {
-        // Rotate the pattern across lanes so a lane-index mistake
-        // cannot hide behind four identical lanes.
+        // Rotate the pattern across lanes so a lane-index mistake cannot hide.
         let bits = [hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi];
         for k in [1.0f32, 0.0, -3.0, 0.5, 1.0e4, 1.0 / 3.0] {
             assert_eq!(
@@ -100,10 +79,7 @@ fn scaled_is_bit_identical_to_the_composed_round_trip() {
     }
 }
 
-/// Packing matches `half`'s scalar round-to-nearest-even bit for bit.
-/// The first row is exact in f16 (zero, normal positive, normal negative,
-/// sub-integer: |x| < 2048 and the mantissa fits), so it also unpacks to
-/// itself. The second is not: 1.1 has no f16 form.
+/// Packing matches `half`'s scalar round-to-nearest-even bit for bit. Row one is exact in f16 so it also unpacks to itself; 1.1 in row two has no f16 form.
 #[test]
 fn packing_matches_scalar_quantization() {
     for (src, exact) in [
@@ -114,8 +90,7 @@ fn packing_matches_scalar_quantization() {
         let expected = src.map(|x| f16::from_f32(x).to_bits());
         assert_eq!(packed, expected, "{src:?}");
         assert_eq!(f16x4_to_f32x4(packed) == src, exact, "{src:?} round trip");
-        // The `u64` word is the four lanes' bytes in lane order, as a
-        // cast of the array reads them.
+        // The `u64` word is the four lanes' bytes in lane order.
         let lanes = F16x4::from_lanes(src);
         assert_eq!(
             lanes.as_u64(),
@@ -127,9 +102,7 @@ fn packing_matches_scalar_quantization() {
 
 #[test]
 fn to_f32_matches_scalar_reference_exhaustively() {
-    // Every f16 bit pattern (including subnormals, ±inf, NaNs) must
-    // decode exactly like `half`'s scalar path — this cross-checks
-    // whichever SIMD/dispatch path the build selected.
+    // Every f16 bit pattern (including subnormals, ±inf, NaNs) decodes like `half`'s scalar path.
     for b in 0..=u16::MAX {
         let got = f16x4_to_f32x4([b; 4]).map(f32::to_bits);
         let want = f16::from_bits(b).to_f32().to_bits();
@@ -139,9 +112,7 @@ fn to_f32_matches_scalar_reference_exhaustively() {
 
 #[test]
 fn from_f32_matches_scalar_reference_on_sweep() {
-    // Quantization sweep across magnitudes bracketing f16's range:
-    // subnormal (< 6.1e-5), normal, overflow-to-inf (> 65504), plus
-    // sign coverage. Bit-exact against `half`'s scalar RTNE.
+    // Quantization across magnitudes bracketing f16's range (subnormal, normal, overflow-to-inf, both signs), bit-exact against `half`.
     for i in 0..20_000u32 {
         let x = (i as f32 - 10_000.0) * 7.3;
         let tiny = (i as f32 - 10_000.0) * 1.0e-8;
@@ -158,18 +129,7 @@ fn from_f32_matches_scalar_reference_on_sweep() {
     assert_eq!(inf[3], 0);
 }
 
-/// The pre-F16C scalar fallbacks, called directly.
-///
-/// Gated exactly as they are, and it has to be direct: on a machine that
-/// *has* F16C the runtime detect inside `f16x4_from_f32x4` takes the
-/// intrinsic branch, so the sweeps above never reach these even in a
-/// baseline build. Without this, the fallback's only coverage would be
-/// running the suite on pre-2012 hardware.
-///
-/// Checked against the intrinsic rather than against `half` again: the
-/// property that matters is that a machine without F16C encodes
-/// *identically* to one with it, so a value doesn't change meaning with
-/// the host CPU.
+/// The pre-F16C scalar fallbacks, called directly: on an F16C machine the runtime detect in `f16x4_from_f32x4` takes the intrinsic branch, so the sweeps above never reach them. Checked against the intrinsic: both must encode identically.
 #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
 #[test]
 fn scalar_fallbacks_match_the_intrinsic() {

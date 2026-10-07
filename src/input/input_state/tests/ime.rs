@@ -1,5 +1,4 @@
-//! IME text: commits typed in place among the key presses, split between
-//! characters, and the preedit a focused widget reads.
+//! IME text: commits typed in place among key presses, split between characters, and the preedit a focused widget reads.
 
 use crate::common::span::Span;
 use crate::input::ime_preedit::ImePreedit;
@@ -33,10 +32,7 @@ fn record(ui: &mut Ui, buf: &mut String) {
     TextEdit::new(buf).id(field()).show(ui);
 }
 
-/// While IME is on, plain typing arrives as commits, so a commit, a
-/// Backspace and a commit in one frame must apply in that order: `a`,
-/// erased, then `b`. Applied before the keys, the commits would leave
-/// `a` erased by nothing and `b` erased by Backspace.
+/// While IME is on, typing arrives as commits, so a commit, Backspace and commit in one frame apply in that order: `a`, erased, then `b`.
 #[test]
 fn commits_and_keys_type_in_arrival_order() {
     let (mut h, mut buf) = focused_field();
@@ -47,10 +43,7 @@ fn commits_and_keys_type_in_arrival_order() {
     assert_eq!(buf, "b");
 }
 
-/// A commit longer than one press holds splits between characters — 3
-/// bytes each here, so four to a 14-byte press — and arrives whole, with
-/// control characters dropped and held modifiers ignored: Ctrl held while
-/// an input method commits `z` types `z` rather than undoing.
+/// A commit longer than one press holds splits between characters (3 bytes each, four to a 14-byte press) and arrives whole, control characters dropped and held modifiers ignored: Ctrl held while an input method commits `z` types `z`.
 #[test]
 fn a_commit_splits_between_characters_and_types_whole() {
     let (mut h, mut buf) = focused_field();
@@ -66,15 +59,12 @@ fn a_commit_splits_between_characters_and_types_whole() {
         record(ui, &mut buf);
         pieces
     });
-    // 11 three-byte characters and `z`: 4 + 4 + 3 characters, the third
-    // piece taking `z` too (9 + 1 bytes).
+    // 11 three-byte characters and `z`: 4 + 4 + 3 characters, the third piece taking `z` (9 + 1 bytes).
     assert_eq!(pieces, ["日本語の", "文章を入", "力するz"]);
     assert_eq!(buf, format!("{text}z"));
 }
 
-/// The preedit is the focused widget's: read back as the last event left
-/// it, with its cursor as a byte range, gone once it commits, and gone
-/// for a widget that no longer holds focus.
+/// The preedit belongs to the focused widget: read as the last event left it, its cursor a byte range, gone once committed or when focus is lost.
 #[test]
 fn the_preedit_is_a_level_for_the_focused_widget() {
     let (mut h, mut buf) = focused_field();
@@ -106,15 +96,12 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
     assert_eq!(h.ui.ime_preedit(), None, "it is the focused widget's alone");
 }
 
-/// A commit that arrives behind a held key waits with it, and keeps its
-/// text across the wait — the host's string is gone by then, so the queue
-/// copied it — and still types after the key it waited behind.
+/// A commit behind a held key waits with it, keeping its text (the queue copied it, the host's string being gone), and types after the key.
 #[test]
 fn a_held_commit_keeps_its_text() {
     let (mut h, mut buf) = focused_field();
     h.on_input(InputEvent::ImeCommit("ab"));
-    // Two command keys: the second waits a frame, and so does everything
-    // after it.
+    // Two command keys: the second waits a frame, and so does everything after it.
     h.key(Key::ArrowLeft);
     h.key(Key::ArrowLeft);
     let owned = String::from("xy");

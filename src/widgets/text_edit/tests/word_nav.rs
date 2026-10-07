@@ -19,8 +19,7 @@ fn word_boundary_helpers_step_word_then_skip_whitespace() {
         ("number_keeps_its_decimal_point", "3.14 x", 0, 4, 0),
         ("apostrophe_stays_inside_the_word", "don't", 0, 5, 0),
         ("underscore_joins_an_identifier", "foo_bar baz", 0, 7, 0),
-        // Each mark is its own segment upstream; a caret crosses the
-        // whole arrow.
+        // Each mark is its own segment upstream; a caret crosses the whole arrow.
         ("punctuation_run_crosses_as_one", "-->", 0, 3, 0),
         // Han has no dictionary in UAX #29's default, so one character is
         // one word; the katakana run is one.

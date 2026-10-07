@@ -1,5 +1,4 @@
-//! A composer and the buffer it writes, kept across frames as the
-//! frontend keeps them.
+//! A composer and its buffer, kept across frames as the frontend keeps them.
 
 use crate::display::Display;
 use crate::internals::paint_capture::PaintCapture;
@@ -10,9 +9,7 @@ use crate::scene::record_store::RecordStore;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-/// One composer, one output buffer and one record store, reused by every
-/// [`Self::compose`] — so a multi-frame test exercises the same buffer
-/// reuse production does, and a one-frame test skips the setup.
+/// One composer, output buffer and record store reused by every [`Self::compose`], so multi-frame tests exercise production's buffer reuse.
 #[derive(Debug)]
 pub(super) struct ComposeRig {
     pub(super) composer: Composer,

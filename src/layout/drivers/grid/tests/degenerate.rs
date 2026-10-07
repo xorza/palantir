@@ -1,5 +1,4 @@
-//! Zero extents, empty dimensions, and a track list long enough to test the
-//! inline cap.
+//! Zero extents, empty dimensions, and a track list long enough to test the inline cap.
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::size::Size;
@@ -12,10 +11,7 @@ use crate::widgets::{block::Block, grid::Grid, panel::Panel};
 use glam::UVec2;
 use std::array;
 
-/// Pin: empty grid (zero rows or zero cols) measures + arranges to zero
-/// without panicking; child rects are zeroed at parent anchor. The other
-/// dimension's one 50 px track does not survive: a grid with no cells in
-/// one direction has none at all.
+/// An empty grid (zero rows or cols) measures and arranges to zero without panicking; child rects are zeroed at the parent anchor, and the other dimension's 50 px track doesn't survive.
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let empty: &[Track] = &[];
@@ -47,15 +43,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     }
 }
 
-/// Pin: a grid whose own slot resolves to zero extent still gives its
-/// Fixed track the declared size, and its Fill track the nothing that
-/// remains.
-///
-/// `0.0` is a legitimate `resolve_axis` total, so arrange must not read
-/// it as "measure never ran for this grid". This is the frame where that
-/// distinction bites: measure records a zero total, arrange is handed the
-/// same zero, and the track sizes it reuses have to be the ones the
-/// solver produced.
+/// A grid whose slot resolves to zero still gives its Fixed track the declared size and its Fill track nothing. `0.0` is a legitimate `resolve_axis` total, so arrange must not read it as "measure never ran": the track sizes it reuses must be the solver's.
 #[test]
 fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
     fn build(ui: &mut Ui) {
@@ -85,13 +73,10 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
         let fill = h.arranged(WidgetId::from_hash("fill-cell"));
 
         assert_eq!((grid.size.w, grid.size.h), (0.0, 0.0));
-        // Phase 1 commits Fixed tracks before any leftover is shared out,
-        // so the zero total leaves the 30×20 cell whole and the cell
-        // overflows its parent — the contains-content rule, same as
-        // anywhere else.
+        // Phase 1 commits Fixed tracks before sharing leftover, so the zero total leaves the 30×20 cell whole and overflowing its parent (contains-content rule).
         assert_eq!((fixed.size.w, fixed.size.h), (30.0, 20.0));
         assert_eq!(fixed.min, grid.min);
-        // Nothing left after the Fixed column, but the row still stands.
+        // Nothing left after the Fixed column, but the row stands.
         assert_eq!((fill.size.w, fill.size.h), (0.0, 20.0));
         assert_eq!(fill.min.x, grid.min.x + 30.0);
         frames.push((fixed, fill));

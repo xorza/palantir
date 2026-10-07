@@ -1,5 +1,4 @@
-//! What the cache retains for the bench's adversarial tree shapes, and
-//! which subtrees a localized change still hits.
+//! What the cache retains for the bench's adversarial trees, and which subtrees a localized change still hits.
 
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::internals::{
@@ -9,7 +8,6 @@ use crate::layout::cache::internals::{
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 
-/// A fresh harness after the first frame of `build`.
 fn first_frame(build: fn(&mut Ui)) -> UiHarness {
     let mut h = UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
     let _ = h.frame(build);
@@ -49,15 +47,7 @@ fn adversarial_workloads_retain_one_row_per_node() {
     );
 }
 
-/// One changed leaf re-measures the panels above it, and every sibling
-/// subtree beside that path hits: seven at each of the three levels.
-///
-/// The surface is 400 logical px tall, so the 512 one-pixel leaves
-/// overflow it, and each panel offers its children its own minimum
-/// rather than the surface. A taller leaf moves that minimum, 512 → 513
-/// at the root, so every sibling is offered more than it was measured
-/// at — and still hits, because a Hug stack of fixed leaves holds under
-/// any offer past its content.
+/// One changed leaf re-measures the panels above it; every sibling subtree beside the path hits (seven at each of three levels), even though a taller leaf raises each panel's minimum offer, since a Hug stack of fixed leaves holds under any larger offer.
 #[test]
 fn localized_change_hits_unchanged_sibling_subtrees() {
     for change in [BroadChange::FillWeight, BroadChange::LeafHeight] {

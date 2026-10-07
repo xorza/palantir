@@ -3,15 +3,11 @@
 use crate::common::span::Span;
 use std::hash::{Hash, Hasher};
 
-/// Text stored on a [`ShapeRecord`](crate::shape::record::ShapeRecord).
-/// Its span always addresses the active record store because lowering rebases
-/// handles from any other arena before constructing this value.
+/// Text stored on a [`ShapeRecord`](crate::shape::record::ShapeRecord); its span addresses the active record store because lowering rebases handles from other arenas first.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RecordedText {
     pub(crate) span: Span,
-    /// `hash_str` of the recorded bytes, computed once at record time.
-    /// Downstream consumers (scene identity, [`crate::text::key::TextShapeKey`])
-    /// reuse it instead of rescanning the text.
+    /// `hash_str` of the recorded bytes, computed once at record time and reused by scene identity and [`crate::text::key::TextShapeKey`].
     pub(crate) hash: u64,
 }
 

@@ -1,38 +1,22 @@
-//! The result of one turn of the eviction clock, named so the policy is
-//! testable against a hand-built slab with no device present.
+//! The result of one turn of the eviction clock, named so the policy is testable on a hand-built slab with no device.
 
 use crate::gpu::raster::raster_atlas::atlas_slot::AtlasSlot;
 use crate::primitives::paint::content_type::ContentType;
 
-/// One turn of [`RasterAtlas::evict_one`]'s clock: where the hand ended
-/// up, what it found, and how far it walked.
-///
-/// A named result over a hand-built slab, so the policy is testable with
-/// no `wgpu::Device` in sight — the hand's persistence across calls is
-/// the property most worth pinning and the least visible from outside.
+/// One turn of [`RasterAtlas::evict_one`]'s clock: where the hand ended, what it found, how far it walked.
 ///
 /// [`RasterAtlas::evict_one`]: super::RasterAtlas
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ClockSweep {
     pub(super) victim: Option<u32>,
-    /// Where the next sweep resumes. Past the victim, not on it: the
-    /// slot just evicted is about to be refilled, and starting there
-    /// would make the next eviction reconsider it first.
+    /// Where the next sweep resumes: past the victim, since that slot is about to be refilled.
     pub(super) hand: u32,
-    /// Slots examined. What
-    /// [`AtlasCounters::evict_scans`](super::counters::AtlasCounters) bills,
-    /// and the number that says whether the clock is behaving — a healthy
-    /// thrash state stops after one or two.
+    /// Slots examined, billed to [`AtlasCounters::evict_scans`](super::counters::AtlasCounters); a healthy thrash stops after one or two.
     pub(super) examined: u32,
 }
 
 impl ClockSweep {
-    /// Advance `hand` over `slots` until it meets an entry eligible for
-    /// eviction: packed, of `target` content, and not drawn on
-    /// `current_frame`. Gives up after one full rotation.
-    ///
-    /// [`AtlasSlot::placement`] is what keeps a slot already on the free
-    /// list out of the result — see its doc.
+    /// Advance `hand` over `slots` to an entry that is packed, of `target` content, and not drawn on `current_frame`; gives up after one rotation. [`AtlasSlot::placement`] keeps free-listed slots out.
     pub(super) fn over(
         slots: &[AtlasSlot],
         hand: u32,
@@ -47,8 +31,7 @@ impl ClockSweep {
                 examined: 0,
             };
         }
-        // `slots` only ever grows, but a hand parked at the old length is
-        // still possible after a `store` that pushed — wrap it in.
+        // `slots` only grows, but a hand parked at the old length is possible after a `store` push: wrap it in.
         let mut at = hand as usize % n;
         for examined in 1..=n {
             let idx = at;

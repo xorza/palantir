@@ -1,22 +1,18 @@
 //! How a stack distributes the space its children did not use.
 
-/// Main-axis distribution of leftover space in a stack panel. Mirrors CSS
-/// `justify-content`. Has no effect when any child is `Sizing::fill` along
-/// the main axis — Fill consumes the leftover first.
+/// Main-axis distribution of leftover space, as CSS `justify-content`; a `Sizing::fill` child along the main axis consumes the leftover first.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Justify {
-    /// Pack to the start (left for HStack, top for VStack). Default.
+    /// Pack to the start. Default.
     #[default]
     Start,
-    /// Pack to the center of the main axis.
+    /// Pack to the center.
     Center,
-    /// Pack to the end (right / bottom).
+    /// Pack to the end.
     End,
-    /// First child at start, last at end, leftover split as equal extra gaps
-    /// between siblings. With <2 visible children, behaves like `Start`.
+    /// Equal gaps between siblings; with fewer than 2 visible children, `Start`.
     SpaceBetween,
-    /// Equal padding around each child: leftover/(count) per slot, half at
-    /// the leading edge, half at the trailing edge, full between siblings.
+    /// Equal padding around each child: half at each edge, full between siblings.
     SpaceAround,
 }

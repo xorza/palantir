@@ -1,44 +1,11 @@
-//! Text-backend microbench: prepare + flush + render directly against
-//! `TextBackend`, bypassing the full `WindowDriver` pipeline.
+//! Text-backend microbench: `prepare`, `flush` and `render_batch` driven directly against `TextBackend`, bypassing `WindowDriver`.
 //!
-//! The previous version drove the full offscreen host frame, which mixed
-//! record/measure/cascade/encode noise into every sample —
-//! `CascadeEngine::run` was the top hotspot at ~7%, and the actual
-//! text path (`encode_batch` + atlas uploads) totalled <10%. This
-//! bench skips all of that: a fixed slice of `TextDrawRow`s, shaped once
-//! at construction, fed into `TextBackend::prepare` →
-//! `flush` → `render_batch` each iteration.
+//! - `text_atlas/steady_warm`: fixed scale, atlas primed; every glyph is an `atlas.touch` hit.
+//! - `zoom_smooth` / `zoom_cold`: five resident scale rungs in adjacent or jumping order (encoded-cache hits).
+//! - `cache_churn`: 128 rungs in permuted order, past the retention window, so each revisit misses.
+//! - `mixed_stable_churn`: half the runs stay at one hot scale while the rest cycle the cold rungs, to see whether atlas pressure rebuilds unrelated stable runs.
 //!
-//! Two motivating workloads:
-//!
-//! - `text_atlas/steady_warm` — fixed scale, atlas warmed by two
-//!   priming iterations. Every glyph is an `atlas.touch` hit; the
-//!   measurement floor is `encode_batch` walking layout runs +
-//!   `cosmic_text::CacheKey::new` + vertex buffer upload + draw.
-//! - `text_atlas/zoom_smooth` / `zoom_cold` — cycle through five
-//!   resident scale rungs in adjacent or jumping order. These isolate
-//!   multi-scale encoded-cache hits after all rungs are primed.
-//! - `text_atlas/cache_churn` — cycles through 128 scale rungs in a
-//!   permuted order. That exceeds the encoded-cache retention window,
-//!   so every revisited rung is a real encode/raster/upload miss.
-//! - `text_atlas/mixed_stable_churn` — keeps half the runs at one hot
-//!   scale while the other half cycles through those 128 cold rungs.
-//!   This isolates whether atlas pressure rebuilds unrelated stable
-//!   encoded runs.
-//!
-//! Each iteration:
-//!   1. begin command encoder
-//!   2. `prepare` (shape lookup + encode_batch into instance Vec +
-//!      potential atlas grow + vbuf upload + params reupload)
-//!   3. `flush` (upload instances + drain pending glyph uploads into
-//!      encoder)
-//!   4. render pass: `render_batch` → submit → `poll(Wait)` so the
-//!      GPU work drains before the next iteration.
-//!   5. `end_frame` (atlas trim + clear instance Vec + reset ranges)
-//!
-//! Run with:
-//!   cargo bench --bench gpu --features bench -- text_atlas
-//!   cargo bench --bench gpu --features bench -- 'zoom_smooth$'
+//! Run with `cargo bench --bench gpu --features bench -- text_atlas`.
 
 #![expect(
     clippy::print_stderr,
@@ -79,38 +46,13 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
 const WARM_SCALE_CYCLE: u32 = 5;
 
-/// Rungs the churn arms cycle through.
-///
-/// Sized to put the mask atlas **past** its
-/// `RasterAtlasConfig::eager_growth_bytes` — the point where it stops
-/// growing and starts recycling rectangles, which is where
-/// `RasterAtlas::evict_one` bills. Measured on this fixture, the
-/// side fills and eviction begins between rung 250 and 500; 512 keeps
-/// the benched iterations solidly on the far side of that.
-///
-/// This is the crate's only coverage of that regime. Every other
-/// `text_atlas` arm sits below it — `zoom_cold` peaks at 137 live
-/// glyphs and the pre-widening `cache_churn` at 3700, both with *zero*
-/// evictions — so without this arm a change to the eviction policy is
-/// unmeasurable here. `report_atlas_pressure` prints which side of the
-/// line an arm landed on, so a future retune can tell at a glance.
+/// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::eager_growth_bytes`, where it recycles rectangles (`RasterAtlas::evict_one`); eviction begins between rung 250 and 500. The only arm coverage of that regime; `report_atlas_pressure` prints which side an arm landed on.
 const CHURN_SCALE_CYCLE: u32 = 512;
-/// Coprime with [`CHURN_SCALE_CYCLE`], so cycling `i * STRIDE % CYCLE`
-/// visits every rung before repeating and the revisit order stays a
-/// permutation rather than a short orbit.
 const CHURN_INDEX_STRIDE: u32 = 37;
 
-/// Per-frame text count. Graph-view-shaped: many small runs rather
-/// than a few wrapped paragraphs. 32 rows × 4 columns = 128 runs ≈
-/// what the showcase's node graph tab paints.
 const ROWS: u32 = 32;
 
-/// Distinct-text run count for the large-stable-key-set workload. The
-/// steady scene reuses four labels at integral origins, and
-/// `EncodedKey` folds in only the text key, quantized scale, colour and
-/// subpixel bins — so all 128 of its runs collapse onto a handful of
-/// cache rows. Encoded-cache maintenance scales with *rows*, so pinning
-/// it needs a scene where every run owns one.
+/// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale, colour and subpixel bins), and maintenance scales with rows.
 const DISTINCT_RUNS: usize = 512;
 
 #[derive(Debug)]
@@ -171,19 +113,13 @@ impl BenchText {
         self.backend.flush(ctx);
     }
 
-    /// `render_batch` binds neither the pipeline nor the viewport — the
-    /// render loop owns both so consecutive raster steps skip them (see
-    /// `Bound::Raster`), which leaves a standalone pass to bind its own.
+    /// `render_batch` binds neither pipeline nor viewport (the render loop owns both, see `Bound::Raster`), so a standalone pass binds its own.
     fn draw<'a>(&'a self, batch_index: usize, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(self.pipelines.select(false));
         ViewportPush { size: Vec2::ZERO }.push_into(pass);
         self.backend.render_batch(batch_index, pass);
     }
 
-    /// Frame teardown for the harness, matching `TextSystem`'s
-    /// on the production side: what it drives happens to advance the
-    /// shared text clock, but the harness is modelling a frame boundary,
-    /// not owning the clock.
     fn end_frame(&mut self) {
         self.backend.tick_frame();
     }
@@ -217,10 +153,7 @@ fn make_run(
 ) -> TextDrawRow {
     let interned = store.intern(text);
     let recorded = store.record_text(interned);
-    // Warm through the run rather than a hand-built request, so the key
-    // stamped into the row below is by construction the one the shaped
-    // buffer landed under. No width and a non-binding policy, so this is
-    // the unbounded root and nothing else.
+    // Warm through the run so the stamped key is the one the shaped buffer landed under (no width, non-binding policy: the unbounded root).
     let run = TextRun {
         text,
         font: GlyphFont {
@@ -244,16 +177,13 @@ fn make_run(
     }
 }
 
-/// Shape one frame's worth of runs against `shaper`. Stable layout so
-/// the same `TextDrawRow` slice is reusable across iterations; only the
-/// per-iteration `scale` argument to `prepare` changes between frames.
+/// Shapes one frame's runs against `shaper`; the slice is reused and only `scale` changes.
 fn build_runs(shaper: &TextShaper) -> BenchRuns {
     let mut store = RecordStore::default();
     let color = RgbaF16::new(0.86, 0.86, 0.86, 1.0);
     let mut runs = Vec::with_capacity((ROWS * 4) as usize);
     for row in 0..ROWS {
         let y = 16.0 + (row as f32) * 18.0;
-        // Four short labels per row at typical graph-node sizes.
         let label_color = RgbaF16::new(0.96, 0.96, 0.96, 1.0);
         runs.push(make_run(
             &mut store,
@@ -303,8 +233,6 @@ fn build_runs(shaper: &TextShaper) -> BenchRuns {
     BenchRuns { store, runs }
 }
 
-/// One iteration: prepare → flush → render pass → submit → poll →
-/// post. Mirrors `OffscreenHost::frame`'s text-relevant slice.
 fn run_frame(
     g: &Gpu,
     backend: &mut BenchText,
@@ -379,11 +307,7 @@ fn run_batches(
     backend.end_frame();
 }
 
-/// [`DISTINCT_RUNS`] runs whose texts all differ, so each occupies its
-/// own encoded-cache row. Laid out in `ROWS` columns-worth of rows with
-/// every origin integral: y stays inside the viewport so no run is
-/// y-culled (a culled run is deliberately not cached, which would leave
-/// the map empty and defeat the workload).
+/// [`DISTINCT_RUNS`] runs with distinct texts, each in its own encoded-cache row, at integral origins with y inside the viewport (a y-culled run isn't cached).
 fn build_distinct_runs(shaper: &TextShaper) -> BenchRuns {
     let mut store = RecordStore::default();
     let color = RgbaF16::new(0.86, 0.86, 0.86, 1.0);
@@ -411,23 +335,11 @@ fn fresh_backend(g: &Gpu) -> (BenchText, BenchRuns) {
     let shaper = TextShaper::new();
     let runs = build_runs(&shaper);
     let backend = BenchText::new(&g.device, TARGET_FORMAT, shaper);
-    // Viewport is no longer the text backend's concern — it reads
-    // from the shared `@group(0)` uniform the production host binds.
-    // The bench's atlas-only fixture doesn't actually issue draws
-    // that need it, so leaving it unset is safe.
     let _ = PHYSICAL;
     (backend, runs)
 }
 
-/// Report what the glyph atlas paid to stay packed over `frames` primed
-/// frames — in particular whether it reached the regime where it
-/// recycles rectangles instead of growing, and what the clock's hand
-/// cost it there.
-///
-/// Printed before the measured section, like the residency guard in
-/// `text_shape`: reading it afterwards would make the number depend on
-/// whatever iteration count criterion chose, and report nothing at all
-/// under `--list`.
+/// Reports what the glyph atlas paid to stay packed over `frames` primed frames. Printed before the measured section so it doesn't depend on criterion's iteration count or `--list`.
 fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
     let atlas = &backend.backend.pass.atlas;
     let counts = atlas.counters.counts();
@@ -441,10 +353,7 @@ fn report_atlas_pressure(label: &str, backend: &BenchText, frames: u32) {
         counts.evict_scans,
         counts.oversized,
     );
-    // Not a tuning number like the rest of the line: an entry past the
-    // ceiling is refused on every frame it is drawn, so a fixture that
-    // produces one is measuring a permanently degraded atlas and its
-    // timings mean nothing.
+    // An entry past the ceiling is refused every frame, so a fixture producing one measures a permanently degraded atlas.
     assert_eq!(
         counts.oversized, 0,
         "[text_atlas] {label}: a glyph exceeded the atlas ceiling — \
@@ -463,7 +372,6 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     {
         let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
-        // Two priming frames so every glyph is in the atlas.
         for _ in 0..2 {
             run_frame(
                 g,
@@ -488,12 +396,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
                 );
             });
         });
-        // CPU-only: prepare + end_frame, no encoder/submit/poll.
-        // Isolates text-backend CPU work from GPU sync — useful when
-        // the full case looks GPU-bound and you want to see whether a
-        // change moved the CPU prepare cost. Still needs a belt +
-        // throwaway encoder to satisfy `prepare`'s signature; the
-        // encoder is discarded.
+        // CPU-only, isolating CPU cost from GPU sync; a belt and throwaway encoder satisfy `prepare`'s signature.
         group.bench_function("steady_warm_cpu", |b| {
             b.iter(|| {
                 let mut encoder =
@@ -517,8 +420,6 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     {
         let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
-        // Prime the cycle so the LRU has all rungs resident before the
-        // measured loop starts evicting + re-inserting.
         for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
             run_frame(
@@ -673,11 +574,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     }
 
     {
-        // Large stable key set: every run hits its own cache row every
-        // frame, so nothing expires and nothing is re-encoded — all the
-        // encoded cache does is maintenance. CPU-only, because a
-        // whole-map scan is microseconds against a GPU submit and the
-        // full-frame variant cannot resolve it.
+        // Large stable key set: every run hits its own row, nothing expires or re-encodes. CPU-only, since a whole-map scan is microseconds against a GPU submit.
         let shaper = TextShaper::new();
         let scene = build_distinct_runs(&shaper);
         let mut backend = BenchText::new(&g.device, TARGET_FORMAT, shaper);
@@ -714,12 +611,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     }
 
     {
-        // The counter-workload to `stable_keys_cpu`: every frame lands on
-        // a new quantized scale, so every run misses, appends to the
-        // encoded arena and inserts a row. CPU-only for the same reason
-        // — `cache_churn` measures the same scene end to end, but at
-        // ~1 ms per GPU-bound iteration it cannot resolve which side of
-        // the encoded cache's maintenance tradeoff moved.
+        // Counter-workload to `stable_keys_cpu`: every frame lands on a new scale, so every run misses and inserts a row. CPU-only because `cache_churn` (~1 ms, GPU-bound) can't resolve the maintenance tradeoff.
         let (mut backend, scene) = fresh_backend(g);
         let mut belt = StagingBelt::new(g.device.clone(), 1 << 20);
         for step in 0..CHURN_SCALE_CYCLE {
@@ -763,33 +655,12 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     bench_encoded_cache(c, run);
 }
 
-/// The encoded cache's per-frame maintenance, priced on its own in the
-/// two steady states a real frame is ever in. Both run CPU-only: the
-/// `text_atlas` arms above can't resolve either (a few percent of those
-/// workloads, under this machine's run-to-run drift).
+/// The encoded cache's per-frame maintenance in two steady states, CPU-only (the `text_atlas` arms can't resolve it under drift).
 ///
-/// - **`steady`** — a static text-heavy scene. Nothing expires, so every
-///   fired ticket finds its row live and re-files. This is the drain
-///   path a still frame pays, and it runs on every frame by design: a
-///   cadence gate would trade uniform cost for a periodic spike, so this
-///   is the number that has to stay small. 12 glyphs per row matches
-///   what the 512-row stable scene actually leaves in the arena (~11.8).
-/// - **`churn`** — a zoom or width drag. Every run is re-keyed, so every
-///   frame settles a full complement of rows and expires the one from a
-///   window ago. This is the only arm that executes `settle`'s
-///   allocate-and-copy at all — the per-row cost of the block allocator's
-///   copy out of `pending`.
+/// - **`steady`**: nothing expires, so every fired ticket re-files; this drain path runs every frame by design (a cadence gate would trade uniform cost for a spike), so it must stay small. 12 glyphs per row matches the 512-row scene (~11.8).
+/// - **`churn`**: a zoom or width drag re-keys every run; the only arm running `settle`'s allocate-and-copy.
 ///
-/// The two are not redundant: they drive opposite branches of the drain
-/// closure, `refiles` against `expiries`, and only one of them allocates.
-///
-/// **Neither guards uniformity, and neither can.** The compaction the
-/// block allocator replaced was amortised free — one frame in 122 paying
-/// 122x — so a mean or a median showed nothing and the whole defect
-/// lived in the tail. What guards the shape is
-/// `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates`,
-/// which asserts zero allocations and a constant arena outright. These
-/// arms guard the *constant*.
+/// **Neither guards uniformity:** the replaced compaction was amortised free (one frame in 122 paying 122x), so the defect lived in the tail. `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates` guards the shape; these guard the constant.
 fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "encoded_cache");
     group.measurement_time(Duration::from_secs(2));
@@ -802,21 +673,9 @@ fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Two sizes, not three: per-glyph cost is flat once the fixed
-    // per-frame overhead stops dominating (measured 413 Melem/s at
-    // 50x25 against 431 at 200x40), so a middle arm prices nothing the
-    // ends don't. The small one is overhead-dominated; the large one is
-    // the 6.8 MB-arena shape the block-allocator measurements were taken
-    // at, and the only one where cache pressure could show.
+    // Two sizes: per-glyph cost is flat once fixed overhead stops dominating (413 Melem/s at 50x25 against 431 at 200x40); the large one is the 6.8 MB-arena shape where cache pressure could show.
     //
-    // Warmed past the retention window first, because the interesting
-    // state is the saturated one — before that the arena is still
-    // growing and every row is a fresh block rather than a recycled one,
-    // which is the opposite of what a gesture pays in steady state.
-    // Warmed against `RENDERED_RUN_KEEP_FRAMES` rather than the encoded
-    // window itself: that constant is the documented *ceiling* on this
-    // one, so twice it saturates the population whatever the encoded
-    // window is later tuned to, and this arm needs no edit to follow it.
+    // Warmed past the retention window (against `RENDERED_RUN_KEEP_FRAMES`, the documented ceiling), since the arena is still growing before saturation.
     for (runs, glyphs) in [(8u32, 12u32), (200, 40)] {
         let mut fixture = ChurnBench::new(runs, glyphs);
         for _ in 0..RENDERED_RUN_KEEP_FRAMES * 2 {
@@ -829,10 +688,7 @@ fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
             &runs,
             |b, _| b.iter(|| black_box(fixture.churn_frame())),
         );
-        // The property the number is priced against: a saturated gesture
-        // recycles, so the measured frames must not have grown the
-        // arena. A regression here invalidates the number rather than
-        // merely changing it.
+        // A saturated gesture recycles, so the arena must not have grown; a regression invalidates the number.
         assert_eq!(
             fixture.arena_len(),
             saturated,

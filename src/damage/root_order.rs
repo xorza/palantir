@@ -9,26 +9,15 @@ use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use crate::scene::tree::Tree;
 
-/// Each layer's roots, last frame, in paint order — the child list of a
-/// virtual parent the layer would be if it were a node.
+/// Each layer's roots from last frame in paint order: the child list of a virtual parent the layer would be as a node.
 ///
-/// A node's children are paint rows of the node, so two children that
-/// swap order flip the node's row order, and the walk damages their
-/// overlap. A root has no parent to hold that row, and no hash a root
-/// carries includes its position. Two overlapping roots raised past each
-/// other with the same content and rects would otherwise read as
-/// unchanged, and the overlap would keep the old stacking.
-///
-/// Matched by id, so a root added or removed shifts no other root: the
-/// order of the roots both frames hold is what is compared.
+/// A node's children are paint rows, so swapped children flip the row order and the walk damages their overlap. A root has no parent row and no hash includes its position, so two overlapping roots raised past each other with the same content and rects would read as unchanged. Matched by id, so adding or removing a root shifts no other; only the order of roots both frames hold is compared.
 #[derive(Debug, Default)]
 pub(crate) struct RootOrder {
     prev: PerLayer<Vec<WidgetId>>,
-    /// Scratch: last frame's roots of the layer being diffed, with each
-    /// one's position, sorted by id.
+    /// Scratch: last frame's roots of the layer being diffed with their positions, sorted by id.
     positions: Vec<(WidgetId, u32)>,
-    /// Scratch: for each current root, its position last frame, or
-    /// [`ROW_UNMATCHED`].
+    /// Scratch: each current root's position last frame, or [`ROW_UNMATCHED`].
     matched: Vec<u32>,
     /// Scratch: each current root's painted extent.
     extents: Vec<Rect>,
@@ -36,9 +25,7 @@ pub(crate) struct RootOrder {
 }
 
 impl RootOrder {
-    /// Damage the overlap of every two roots of `layer` whose order
-    /// flipped since last frame, into `out` unless `force_full` makes the
-    /// region moot, and remember this frame's order.
+    /// Damage the overlap of every two roots of `layer` whose order flipped, into `out` unless `force_full` makes it moot, and remember this frame's order.
     pub(crate) fn diff(
         &mut self,
         layer: Layer,

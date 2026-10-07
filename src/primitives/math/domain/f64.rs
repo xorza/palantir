@@ -1,7 +1,4 @@
-//! The [`domain`](super) rules for the `f64` values a
-//! [`Slider`](crate::Slider) or a [`DragValue`](crate::DragValue) binds:
-//! the twins of the scalar rules, with the same message, and the range a
-//! slider maps its track onto.
+//! The [`domain`](super) rules for the `f64` values a [`Slider`](crate::Slider) or [`DragValue`](crate::DragValue) binds: twins of the scalar rules with the same message, and the slider's track range.
 
 use crate::primitives::math::domain;
 use std::ops::RangeInclusive;
@@ -12,7 +9,7 @@ pub const fn is_positive(v: f64) -> bool {
     v.is_finite() && v > 0.0
 }
 
-/// `v`, which must be *positive*: finite and above zero — a step, a speed.
+/// `v`, which must be *positive* (a step, a speed).
 ///
 /// # Panics
 ///
@@ -31,10 +28,7 @@ pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
 }
 
 /// `r` in ascending order, whose ends must be finite.
-///
-/// The ends are validated and the order is coerced: a reversed range is
-/// ordinary data — two settings read from a file — and means the same
-/// span.
+/// The ends are validated and the order coerced: a reversed range is ordinary data (e.g. from a file) meaning the same span.
 ///
 /// # Panics
 ///

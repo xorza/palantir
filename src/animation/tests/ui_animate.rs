@@ -9,9 +9,7 @@ use crate::widgets::block::Block;
 use std::cell;
 use std::time::Duration;
 
-/// End-to-end through `Ui::animate` + `FrameOutput::repaint_requested`:
-/// first-touch settled → no repaint; retarget in-flight → repaint;
-/// repeated frames eventually settle and stop requesting repaint.
+/// First-touch settled: no repaint; in-flight retarget: repaint; repeated frames settle and stop requesting.
 #[test]
 fn animate_drives_repaint_until_settle() {
     let AnimUi { mut h, id } = setup_anim_ui("anim-test");
@@ -36,8 +34,7 @@ fn animate_drives_repaint_until_settle() {
         .repaint_requested;
     assert!(repaint, "in-flight animation must request repaint");
 
-    // FAST is 120 ms. The retarget frame spent nothing, so frame `n`
-    // after it has spent n × 16 ms: 112 ms at 7, 128 ms at 8.
+    // FAST is 120 ms; frame `n` after the retarget has spent n × 16 ms: 112 at 7, 128 at 8.
     let frames = h.frames_until_idle(100, Duration::from_millis(16), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
         Block::new().id(id).show(ui);
@@ -45,13 +42,8 @@ fn animate_drives_repaint_until_settle() {
     assert_eq!(frames, Some(8), "the 8th 16 ms frame passes 120 ms");
 }
 
-/// `Ui::animate(..., None)` must: return `target` unchanged, never
-/// allocate a row, never request a repaint. `None` is the API-level
-/// signal "this caller didn't ask for motion."
-///
-/// [`AnimationSpec::SNAP`] is the named spelling of the same answer, so it is
-/// swept here rather than pinned apart — a caller reaching for the name
-/// must not get different behaviour from the one passing `None`.
+/// `Ui::animate(..., None)` returns `target`, allocates no row and requests
+/// no repaint. [`AnimationSpec::SNAP`] must behave the same.
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
     for (label, spec) in [("none", None), ("snap", Some(AnimationSpec::SNAP))] {
@@ -75,9 +67,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
     }
 }
 
-/// Switching from `Some(spec)` to `None` mid-flight must drop the
-/// stale row so a future `Some(spec)` retarget starts fresh from the
-/// new target rather than carrying in-flight `current` forward.
+/// Switching from `Some(spec)` to `None` mid-flight drops the stale row, so a later retarget starts fresh.
 #[test]
 fn animate_some_then_none_drops_stale_row() {
     let AnimUi { mut h, id } = setup_anim_ui("anim-toggle");
@@ -106,10 +96,7 @@ fn animate_some_then_none_drops_stale_row() {
     );
 }
 
-/// `WidgetLook::animate` folds the look's text overrides onto the
-/// ambient style and returns an `AnimatedLook` of flat values.
-/// Walks both branches: with `spec = None` (snap, no rows) and with a
-/// real spec (rows allocated for non-trivial components).
+/// `WidgetLook::animate` folds text overrides onto the ambient style into an `AnimatedLook`; covers `spec = None` (no rows) and a real spec.
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::geometry::corners::Corners;
@@ -159,10 +146,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
 
-    // Some(FAST) spec, retargeting to a different fill: a row gets
-    // allocated for the in-flight Background animation. Text didn't
-    // change, so the snap-if-close fast path leaves TextStyle row
-    // unallocated.
+    // Retargeting the fill allocates a Background row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
     let look2 = WidgetLook {
         background: Background {
             fill: RgbaF32::hex(0xff0000).into(),
@@ -181,9 +165,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 
-    // The other half of the contract: the axes a look names win, and only
-    // the rest come from the ambient style. Ambient and override differ on
-    // every axis involved, so a value from the wrong source shows up.
+    // Axes the look names win; the rest come from the ambient style. Every axis differs, so a wrong source shows.
     let own_size = fallback.font_size + 7.0;
     let own_color = RgbaF32::hex(0x00ff00);
     let ambient = TextStyle {
@@ -221,10 +203,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     );
 }
 
-/// `AnimationSpec::FAST` from rest after a second of idle: the frame of the
-/// change shows the start value, though the clamp would have handed it
-/// 0.1 s — 83 % of a 120 ms curve, 99.5 % eased. The next frame, 16 ms
-/// later, shows `OutCubic(16 / 120)`.
+/// `FAST` from rest after a second idle: the change frame shows the start value (not the clamped 0.1 s); the next frame, 16 ms later, shows `OutCubic(16 / 120)`.
 #[test]
 fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     use crate::animation::easing::Easing;

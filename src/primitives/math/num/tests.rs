@@ -36,9 +36,8 @@ fn fast_round_matches_std_round() {
     }
     assert!(f32::NAN.fast_round().is_nan());
 
-    // Componentwise, and per axis: the two lanes carry different
-    // cases (up vs away-from-zero down) so a swapped or duplicated
-    // component fails.
+    // Componentwise, and per axis: the lanes carry different cases (up vs away-from-zero down) so a
+    // swapped or duplicated component fails.
     let v = Vec2::new(2.5, -0.5).fast_round();
     assert_eq!(v.x.to_bits(), 3.0f32.to_bits());
     assert_eq!(v.y.to_bits(), (-1.0f32).to_bits());
@@ -61,10 +60,8 @@ fn fast_round_matches_std_round() {
 
 #[test]
 fn ceil_px_matches_std_ceil() {
-    // The whole pixel that covers a coordinate: integral values stay,
-    // anything with a fraction goes up. `0.0` is the floor of the
-    // domain and `2^24 - 1` its top, where a `u32` still round-trips
-    // through `f32` exactly.
+    // The whole pixel covering a coordinate: integral values stay, anything fractional goes up. `0.0` is
+    // the domain's floor and `2^24 - 1` its top, where a `u32` still round-trips through `f32` exactly.
     let cases: &[(f32, u32)] = &[
         (0.0, 0),
         (0.000_000_1, 1),
@@ -79,9 +76,8 @@ fn ceil_px_matches_std_ceil() {
         assert_eq!(x.ceil_px(), want, "x = {x}");
         assert_eq!(want, x.ceil() as u32, "case out of sync with std: {x}");
     }
-    // Dense sweep against `f32::ceil` over the pixel range a viewport
-    // and its AA fringe can reach, at a step that lands on and between
-    // whole pixels.
+    // Dense sweep against `f32::ceil` over the pixel range a viewport and its AA fringe can reach, at a
+    // step landing on and between whole pixels.
     for i in 0..200_000u32 {
         let x = i as f32 * 0.173;
         assert_eq!(x.ceil_px(), x.ceil() as u32, "x = {x}");
@@ -127,8 +123,7 @@ fn quantize_px_snaps_to_whole_pixels_and_saturates() {
     ] {
         assert_eq!(v.quantize_px(), expected, "v = {v}");
     }
-    // Neighbouring inputs inside one pixel must collapse, adjacent
-    // pixels must not — that collapse is what makes the key stable
+    // Neighbouring inputs inside one pixel collapse, adjacent pixels don't: that keeps the key stable
     // under sub-pixel jitter during a resize drag.
     assert_eq!(100.1_f32.quantize_px(), 100.4_f32.quantize_px());
     assert_ne!(100.4_f32.quantize_px(), 100.6_f32.quantize_px());

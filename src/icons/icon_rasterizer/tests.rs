@@ -10,27 +10,20 @@ use crate::primitives::paint::raster_image::RasterImage;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
 use std::borrow::Cow;
 
-/// A solid black square filling its whole 8x8 viewBox: every pixel is
-/// fully covered, so coverage is exactly 255 everywhere and the expected
-/// output can be written down rather than eyeballed.
+/// A solid black square filling its 8x8 viewBox: coverage is exactly 255 everywhere.
 const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
-/// Left half opaque red, right half empty — a hand-checkable split, and
-/// the colour path's fixture.
+/// Left half opaque red, right half empty: a hand-checkable split and the colour path's fixture.
 const HALF: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#ff0000"/><rect x="4" width="4" height="8" fill="#0000ff" fill-opacity="0.5"/></svg>"##;
 
-/// The two fixtures as a set. `IconTable::from_svgs` derives each one's
-/// viewBox and tintability by parsing it, which is also what makes the
-/// ids below the *name-sorted* order rather than the listed one.
+/// The two fixtures as a set (ids follow `from_svgs`' name order).
 fn fixtures() -> IconTable {
     IconTable::from_svgs([("half", HALF), ("solid", SOLID)]).unwrap()
 }
 
-// Name-sorted, not listed-order.
 const HALF_ID: IconId = IconId(0);
 const SOLID_ID: IconId = IconId(1);
 
-/// Rasterize, and require an image — every case below draws a fixture
-/// that parses, so a `None` here is the failure rather than a branch.
+/// Rasterize and require an image.
 fn raster<'a>(r: &'a mut IconRasterizer, table: &IconTable, key: IconRasterKey) -> RasterImage<'a> {
     r.rasterize(table, key).expect("fixture icon rasterizes")
 }
@@ -39,18 +32,13 @@ fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
     in_set(0, icon, w, h)
 }
 
-/// [`key`] for set slot `set`.
 fn in_set(set: u16, icon: IconId, w: u16, h: u16) -> IconRasterKey {
     IconRasterKey::for_test(IconRef::fixture(set, icon.0), U16Vec2::new(w, h))
 }
 
-/// The parse cache is capped, and what leaves is what has gone longest
-/// without a rasterize — a session that draws its way through a large
-/// set keeps a working set instead of every document it ever parsed.
+/// The parse cache is capped and evicts the longest-unrasterized.
 #[test]
 fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
-    // `from_svgs` sorts by name and keys ids in that order, so the
-    // zero-padded names make `IconId(i)` the `i`th icon.
     let table = IconTable::from_svgs((0..=MAX_PARSED_TREES).map(|i| {
         let name: &'static str = Box::leak(format!("i{i:03}").into_boxed_str());
         (name, SOLID)
@@ -63,8 +51,7 @@ fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
     }
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "filled to the ceiling");
 
-    // Re-drawing icon 0 makes icon 1 the coldest; re-drawing a resident
-    // icon must not evict anything, since nothing new lands.
+    // Re-drawing icon 0 makes icon 1 the coldest; re-drawing a resident icon evicts nothing.
     raster(&mut r, &table, key(IconId(0), 4, 4));
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "a hit evicts nothing");
 
@@ -90,12 +77,9 @@ fn tintable_icon_rasterizes_to_full_coverage_at_the_exact_size() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
     let image = raster(&mut r, &table, key(SOLID_ID, 5, 5));
     assert_eq!(image.content, ContentType::Mask);
-    // The box asked for — not the 8x8 viewBox, which is the whole point
-    // of rasterizing on demand. An icon's raster is its box, so it
-    // carries no bearing for the composer to apply.
+    // The box asked for, not the viewBox; the raster carries no bearing.
     assert_eq!(image.size, UVec2::new(5, 5));
     assert_eq!(image.bearing, IVec2::ZERO);
-    // One coverage byte per pixel of that box.
     assert_eq!(image.data.len(), 25);
     assert!(
         image.data.iter().all(|&c| c == 255),
@@ -103,7 +87,6 @@ fn tintable_icon_rasterizes_to_full_coverage_at_the_exact_size() {
         image.data,
     );
 
-    // A second, larger size reuses the parse and produces that many px.
     let image = raster(&mut r, &table, key(SOLID_ID, 40, 40));
     assert_eq!(image.size, UVec2::new(40, 40));
     assert_eq!(image.data.len(), 1600);
@@ -118,10 +101,7 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
     assert_eq!(image.size, UVec2::new(8, 2));
     let out = image.data;
     assert_eq!(out.len(), 8 * 2 * 4);
-    // Left half: opaque red. Right half: blue at 50% — and stored
-    // *straight*, so blue reads 255 rather than the 128 a premultiplied
-    // buffer would hold. That distinction is the whole reason the
-    // rasterizer demultiplies before handing pixels to the atlas.
+    // Right half is blue at 50%, stored straight (255, not premultiplied 128): the rasterizer demultiplies before the atlas.
     assert_eq!(&out[0..4], &[255, 0, 0, 255], "left half is opaque red");
     assert_eq!(&out[12..16], &[255, 0, 0, 255]);
     let right = &out[16..20];
@@ -134,9 +114,7 @@ fn colour_icon_rasterizes_to_straight_srgb_rgba() {
     );
 }
 
-/// `IconTable::from_svgs` drops a source that will not parse, so reaching this
-/// path takes a hand-built set — which a baked one effectively is. The
-/// rasterizer still has to fail *once* rather than once per frame.
+/// A hand-built set can hold an unparseable source; the rasterizer must fail once, not per frame.
 #[test]
 fn unparseable_icon_fails_once_and_is_not_retried() {
     static BROKEN_ICONS: [IconDefinition; 1] = [IconDefinition {
@@ -158,9 +136,7 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
     );
 }
 
-/// Unloading a set drops its parses and nothing else's. This is the
-/// expensive half of the unload: one parsed document per icon the
-/// session drew, held for as long as the set was loaded.
+/// Unloading a set drops its parses and nothing else's.
 #[test]
 fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
@@ -174,8 +150,6 @@ fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
     r.forget_sets(&[IconSetId::new(0, 0)]);
     assert_eq!(r.parsed_count(), 2, "only set 0's parses go");
 
-    // The generation is part of the identity: the slot's next occupant
-    // is not the set that was forgotten.
     r.forget_sets(&[IconSetId::new(1, 1)]);
     assert_eq!(
         r.parsed_count(),
@@ -186,9 +160,7 @@ fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
     assert_eq!(r.parsed_count(), 0);
 }
 
-/// Several sets released on one frame are forgotten in one walk, and
-/// the batch is what makes that possible: `retain` costs the map's
-/// whole raw table, so a per-set call paid that once per set.
+/// Several sets released on one frame are forgotten in one walk, since `retain` costs the map's whole raw table.
 #[test]
 fn forgetting_a_batch_drops_exactly_its_members() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
@@ -199,14 +171,11 @@ fn forgetting_a_batch_drops_exactly_its_members() {
 
     r.forget_sets(&[IconSetId::new(0, 0), IconSetId::new(2, 0)]);
     assert_eq!(r.parsed_count(), 1, "both named sets go, in one pass");
-    // And it is set 1 that survived, not whichever was cheapest to keep.
     r.forget_sets(&[in_set(1, SOLID_ID, 8, 8).icon.set]);
     assert_eq!(r.parsed_count(), 0);
 }
 
-/// Non-square boxes must render the artwork stretched to fill them, not
-/// letterboxed — the fit decision was already made upstream, and the
-/// rasterizer's contract is "fill exactly this many pixels".
+/// Non-square boxes render the artwork stretched to fill them, not letterboxed.
 #[test]
 fn non_square_box_stretches_rather_than_letterboxing() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());

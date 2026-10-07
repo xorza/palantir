@@ -1,5 +1,4 @@
-//! One resident raster's placement, bearing and lifetime stamps — the hot
-//! read on the atlas hit path.
+//! One resident raster's placement and lifetime stamps, the atlas hit path's hot read.
 
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -7,39 +6,25 @@ use crate::primitives::paint::content_type::ContentType;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};
 
-/// Where a packed raster sits on its side, what bearing it draws with, and
-/// the packer rectangle it owns.
-///
-/// One value rather than seven fields on [`AtlasSlot`], because they mean
-/// something together or not at all: a non-drawing entry owns no
-/// rectangle, so it has no side to name, no extent and no bearing. Every
-/// reader already gated on the allocation before touching any of them, and
-/// this is that gate spelled once.
+/// Where a packed raster sits on its side, its bearing and its packer rectangle; a non-drawing entry owns none.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SlotPlacement {
-    /// Top-left texel of the rectangle on its side.
+    /// Top-left texel on its side.
     pub(crate) origin: U16Vec2,
     pub(crate) size: U16Vec2,
-    /// Offset from the pen position to the raster's top-left, in the
-    /// rasterizer's sense: `x` right, `y` **up**.
+    /// Pen position to the raster's top-left; `y` up.
     pub(crate) bearing: I16Vec2,
-    /// Which side holds the rectangle — also the sampling mode the quad
-    /// draws with.
+    /// Which side holds the rectangle, also the sampling mode.
     pub(crate) content: ContentType,
     pub(crate) alloc: AllocId,
 }
 
 impl SlotPlacement {
-    /// The instance that draws this raster with its top-left at `pen`
-    /// plus the bearing, tinted `color`.
-    ///
-    /// Both tenants build a quad from a slot, and every term but the pen
-    /// and the tint is the slot's: the extents, the atlas origin, the
-    /// side to sample.
+    /// The instance drawing this raster at `pen` plus the bearing.
     pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
         let dim = self.size.to_array();
         RasterQuad {
-            // `y` up in the rasterizer's sense, `y` down on screen.
+            // Bearing `y` is up; screen `y` is down.
             pos: [
                 pen.x + i32::from(self.bearing.x),
                 pen.y - i32::from(self.bearing.y),
@@ -51,9 +36,7 @@ impl SlotPlacement {
         }
     }
 
-    /// [`Self::quad`] drawn at `size` physical px instead of the raster's
-    /// own extents, the raster resampled to fill it — an icon outside the
-    /// exact band, which rasterizes near its box rather than at it.
+    /// [`Self::quad`] resampled to `size` physical px, for an icon outside the exact band.
     pub(crate) fn quad_sized(self, pen: IVec2, size: U16Vec2, color: RgbaF16) -> RasterQuad {
         RasterQuad {
             size: size.to_array(),
@@ -62,48 +45,19 @@ impl SlotPlacement {
     }
 }
 
-/// One entry of [`RasterAtlas`](super::RasterAtlas)'s dense slab: where a
-/// raster sits on its side, what bearing it draws with, and the two stamps
-/// that decide when it may be taken away.
-///
-/// Kept narrow and `Copy` because it is the hot read: the encoded-run
-/// cache's hit path loads one per glyph and copies it whole, which is why
-/// the key that maps to it lives in a parallel column instead of a field
-/// here.
+/// One entry of [`RasterAtlas`](super::RasterAtlas)'s dense slab; narrow and `Copy` for the per-glyph hit path.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AtlasSlot {
-    /// Where this raster draws from, or `None` for a non-drawing entry —
-    /// a whitespace glyph, or one the rasterizer produced no pixels for.
-    ///
-    /// Also what the eviction clock picks by: it may only reclaim an
-    /// entry that owns a rectangle, so `Some` means neither a non-drawing
-    /// entry nor an index already on the free list. The second half holds
-    /// because [`FreeSlots::release`](super::free_slots::FreeSlots::release)
-    /// clears this on the way onto that list. A non-drawing entry expires
-    /// on a deadline instead.
+    /// Where this raster draws from, or `None` for a non-drawing entry
+    /// (whitespace, no pixels), which expires on a deadline. `Some` is what
+    /// lets the eviction clock reclaim it; [`FreeSlots::release`](super::free_slots::FreeSlots::release) clears it.
     pub(crate) placement: Option<SlotPlacement>,
-    /// Advanced whenever the slab index is handed to another raster, so
-    /// an encoded run still holding the index reads it as stale rather
-    /// than drawing whatever took its place.
+    /// Bumped when the index goes to another raster, so a stale encoded run is detected.
     pub(crate) generation: u32,
-    /// Frame this entry was last drawn or looked up on, in its atlas's
-    /// own clock. The clock hand skips anything stamped with the current
-    /// frame, and a non-drawing entry's deadline is measured from here.
+    /// Frame last drawn or looked up; the clock hand skips the current frame.
     pub(crate) last_use: u64,
-    /// This index is on the free list, waiting to be handed to the next
-    /// insert.
-    ///
-    /// `placement` cannot answer it: a non-drawing entry carries `None`
-    /// while still live, so the two are indistinguishable there. Kept as
-    /// a field rather than asked of the list, which answers the same
-    /// question in `O(n)` over every waiting index — see
-    /// [`FreeSlots::release`](super::free_slots::FreeSlots::release).
-    ///
-    /// Carried in every profile although only a debug build reads it: it
-    /// rides in padding the slot already had, so the hot copy is
-    /// unchanged, and one byte costs less than the four `#[cfg]`s a
-    /// debug-only field would put across this struct's three
-    /// construction sites.
+    /// On the free list. `placement` cannot say so (a live non-drawing entry is
+    /// also `None`) and the list is `O(n)`. Rides in existing padding.
     pub(crate) free: bool,
 }
 
@@ -115,8 +69,7 @@ pub(super) mod internals {
     use glam::{I16Vec2, U16Vec2};
 
     impl SlotPlacement {
-        /// A zero placement on the mask side, for the tests that care
-        /// only about the allocation it carries.
+        /// A zero mask-side placement carrying only `alloc`.
         pub(crate) fn for_test(alloc: AllocId) -> Self {
             Self {
                 origin: U16Vec2::ZERO,
@@ -129,8 +82,7 @@ pub(super) mod internals {
     }
 
     impl AtlasSlot {
-        /// A zero-placement mask entry, for the tests that care only
-        /// about the allocation and the two stamps.
+        /// A zero-placement mask entry carrying only the allocation and stamps.
         pub(crate) fn for_test(alloc: Option<AllocId>, last_use: u64) -> Self {
             Self {
                 placement: alloc.map(SlotPlacement::for_test),

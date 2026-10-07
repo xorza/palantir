@@ -1,5 +1,4 @@
-//! The WPF-style grid: explicit row and column tracks, with each child
-//! placed into a cell it names.
+//! The WPF-style grid: explicit row and column tracks, children placed into named cells.
 
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
@@ -10,21 +9,7 @@ use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
-/// WPF-style grid: explicit row + column track definitions, per-track
-/// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
-/// children placed by `(row, col)` with optional `(row_span, col_span)`.
-///
-/// Track sizing maps 1:1 to `Sizing`: `Fixed` = Pixel, `Hug` = Auto,
-/// `Fill(weight)` = Star. Star tracks split the leftover after Fixed and Hug
-/// tracks resolve, weighted, with bounded constraint resolution if any
-/// `Track::with_min` / `Track::with_max` clamps fire.
-///
-/// Arrays remain inline in the builder and borrowed slices remain borrowed.
-/// On `show`, tracks are copied into the current Tree's capacity-retained
-/// arena, so natural array declarations are allocation-free after warmup.
-///
-/// The layout driver documents the three-phase solver and its explicit
-/// non-goals: no Auto-vs-Star cycle, `SharedSizeScope`, or auto-flow.
+/// WPF-style grid: row + column tracks with `Pixel`/`Auto`/`Star` sizing (`Fixed`/`Hug`/`Fill(weight)`) and optional `[min, max]` clamps, children placed by `(row, col)` with optional spans. The layout driver documents the solver and its non-goals.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
@@ -49,8 +34,7 @@ impl Grid {
 }
 
 impl<Rows, Cols> Grid<Rows, Cols> {
-    /// The row tracks, as anything that borrows a `[Track]` — an array, a
-    /// slice, or a `Vec`.
+    /// The row tracks, as anything that borrows a `[Track]`.
     pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols> {
         Grid {
             widget: self.widget,
@@ -70,10 +54,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         }
     }
 
-    /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
-    /// the default; theme fallback in [`Self::show`] fills it in from
-    /// `ui.theme().panel_background` when unset. Pass [`Background::NONE`]
-    /// to suppress that fallback for this grid.
+    /// Paint chrome; `None` takes `ui.theme().panel_background`, [`Background::NONE`] suppresses that.
     ///
     /// # Panics
     ///
@@ -85,11 +66,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paint `background` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::background`] wins either order.
     ///
     /// # Panics
     ///
@@ -103,8 +80,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         self
     }
 
-    /// Record the grid and its `body`. Children name their own slot with
-    /// [`Configure::grid_cell`].
+    /// Record the grid and its `body`; children name their slot with [`Configure::grid_cell`].
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
     where
         Rows: AsRef<[Track]>,
@@ -134,9 +110,7 @@ mod tests {
     use crate::primitives::math::domain::MAX_GAP;
     use crate::widget_core::configure::Configure;
 
-    /// A grid's spacing is the node column every other container uses,
-    /// so it is set through the same two setters; the packed-gap range
-    /// they share is pinned in `widget::tests`.
+    /// Spacing goes through the node column's shared setters.
     #[test]
     fn gaps_validate_and_store_values() {
         let configured = Grid::new().line_gap(3.0).gap(5.0);

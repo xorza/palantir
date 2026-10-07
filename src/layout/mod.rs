@@ -1,13 +1,7 @@
-//! Layout: the measure and arrange passes over a recorded forest, and the
-//! per-layer rect tables they produce.
-//!
-//! [`LayoutEngine`](engine::LayoutEngine) owns the scratch, the text system
-//! and the cross-frame measure cache. The finalized [`Layout`] is threaded
-//! out to the caller instead of held here, because the cascade, the encoder,
-//! hit testing and scroll refresh all read it.
-//!
-//! Each container kind is a [`LayoutDriver`](drivers::LayoutDriver), and the
-//! three passes reach one through the single dispatch in that module.
+//! Layout: the measure and arrange passes over a recorded forest, and the per-layer rect tables they
+//! produce. [`LayoutEngine`](engine::LayoutEngine) owns the scratch, text system and measure cache; the
+//! finalized [`Layout`] is threaded out to cascade, encoder, hit testing and scroll refresh. Each
+//! container kind is a [`LayoutDriver`](drivers::LayoutDriver) reached through one dispatch.
 
 mod axis_align_pair;
 mod axis_placement;
@@ -36,46 +30,23 @@ use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use std::ops::{Index, IndexMut};
 
-/// Per-frame layout output across all layers. Callers index by
-/// `Layer` directly (`result[Layer::Main]`) — see [`PerLayer`].
-/// Filled in place by `LayoutEngine::run`, which takes it as `&mut` so the
-/// buffers survive across frames; the encoder, cascade, hit-index,
-/// and tests all read it afterwards. (The cascade pass's own output lives on
-/// `Ui::cascade` — this struct is purely the layout pass's product.)
+/// Per-frame layout output across all layers, indexed by `Layer` (see [`PerLayer`]); filled in place.
 #[derive(Debug, Default)]
 pub(crate) struct Layout {
-    /// Private: `Index<Layer>` is the one way to a layer's columns, so
-    /// there is a single spelling to grep for. The two [`Endpoint`]
-    /// accessors below sit alongside it because they answer a different
-    /// question — they bridge a `WidgetId`-keyed caller into this
-    /// `(layer, node)`-keyed table.
+    /// Private: `Index<Layer>` is the one way to a layer's columns.
     layers: PerLayer<LayerLayout>,
 }
 
 impl Layout {
-    /// Measured content extent of the scroll viewport at `endpoint` —
-    /// the size its bars express a ratio of, `ZERO` for any node that
-    /// isn't a `LayoutMode::Scroll`.
+    /// Measured content extent of the scroll viewport at `endpoint`, `ZERO` for non-`LayoutMode::Scroll` nodes.
     ///
-    /// Takes an [`Endpoint`] because that is what
-    /// [`Cascade::endpoint`](crate::cascade::Cascade::endpoint)
-    /// hands back: the two tables are keyed differently (by widget id,
-    /// by node index) and only a caller holding both can bridge them.
-    /// Naming each half keeps the bridge from being four raw indexes.
+    /// Takes an [`Endpoint`] ([`Cascade::endpoint`](crate::cascade::Cascade::endpoint)) to bridge the id-keyed and node-keyed tables.
     #[inline]
     pub(crate) fn scroll_content(&self, endpoint: Endpoint) -> Size {
         self.layers[endpoint.layer].scroll_content[endpoint.node.idx()]
     }
 
-    /// The node's arranged rect — pre-transform, unclipped, in world
-    /// coords. Takes an [`Endpoint`] for the same reason
-    /// [`Self::scroll_content`] does: this table is keyed by
-    /// `(layer, node)` while its callers hold a `WidgetId`, and
-    /// `Cascade` is what bridges the two.
-    ///
-    /// This is the single home of the arranged rects. `ResponseState`'s
-    /// `layout_rect` reads through here rather than from a copy on the
-    /// cascade's per-node row.
+    /// The node's arranged rect: pre-transform, unclipped, world coords; the single home of arranged rects.
     #[inline]
     pub(crate) fn arranged_rect(&self, endpoint: Endpoint) -> Rect {
         self.layers[endpoint.layer].rect[endpoint.node.idx()]

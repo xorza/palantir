@@ -1,5 +1,4 @@
-//! The first frame a scroll is recorded on: bars must be right before any
-//! settle.
+//! The first frame a scroll is recorded on: bars must be right before any settle.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -18,12 +17,7 @@ use crate::widgets::scroll::tests::support::{fixed_block, scroll_content, scroll
 use glam::UVec2;
 use std::time::Duration;
 
-/// The reason `layout::drivers::scrollbars` exists. A scroll that has never
-/// recorded has no arranged viewport and no measured content — both
-/// terms of the thumb's size ratio — so it used to call
-/// `Ui::request_relayout` and re-record the entire frame to get them.
-/// The driver resolves them after measure instead, so the thumb is
-/// placed on the first painted frame *and* the frame stays one pass.
+/// Why `layout::drivers::scrollbars` exists: a never-recorded scroll has no arranged viewport or measured content (the thumb ratio's terms) and used to `Ui::request_relayout`, re-recording the frame. The driver now resolves them after measure, so the thumb is placed on the first frame in one pass.
 #[test]
 fn cold_mount_places_the_thumb_in_one_record_pass() {
     let build = |ui: &mut Ui| {
@@ -45,10 +39,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
         "a cold-mounted scroll must not re-record"
     );
 
-    // The vertical bar's gutter comes out of the *cross* axis (width),
-    // so its own main extent is the full 200 — only a horizontal bar
-    // would shorten it, and this scroll has none. Thumb is
-    // `viewport/content * track` with track == viewport: 200/800*200.
+    // The vertical bar's gutter comes out of the cross axis (width), so its main extent stays 200; thumb = `viewport/content * track` = 200/800*200.
     let theme = theme();
     let track: f32 = 200.0;
     let expected = (track / 800.0 * track).max(theme.min_thumb);
@@ -64,8 +55,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
     assert_eq!(thumbs[0].size.w, theme.thickness);
 }
 
-/// Cold-mount overflow must paint with the gutter reservation
-/// already in place on frame 1.
+/// Cold-mount overflow paints with the gutter reserved on frame 1.
 #[test]
 fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
     let surface = UVec2::new(400, 600);
@@ -100,8 +90,7 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
     );
 }
 
-/// Cold-mount bar geometry must match steady-state frame-2 bar
-/// geometry.
+/// Cold-mount bar geometry matches steady-state frame 2.
 #[test]
 fn cold_mount_bar_geometry_matches_frame_two() {
     use crate::primitives::geometry::rect::Rect;
@@ -145,9 +134,7 @@ fn cold_mount_bar_geometry_matches_frame_two() {
     );
 }
 
-/// Cold-mount with content that fits in the viewport: the gutter
-/// is still reserved (constant), the bar thumb just isn't drawn.
-/// Overflow stays `false`.
+/// Cold-mount with content that fits: the gutter is still reserved, no thumb is drawn, overflow stays `false`.
 #[test]
 fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
     let surface = UVec2::new(400, 600);
@@ -178,9 +165,7 @@ fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
     );
 }
 
-/// Repro for "PopClip without matching PushClip" panic — drive
-/// the full encode + compose pipeline twice (cold + warm caches)
-/// with a Scroll that emits bar shapes.
+/// Repro for the "PopClip without matching PushClip" panic: encode + compose twice (cold, warm caches) with a Scroll emitting bar shapes.
 #[test]
 fn scroll_with_bars_composes_through_warm_cache() {
     let surface = UVec2::new(400, 300);
@@ -205,8 +190,7 @@ fn scroll_with_bars_composes_through_warm_cache() {
     h.prime(2, build);
 }
 
-/// Showcase-style nested scroll cards. Pin that the deeper
-/// clip-stack walk + warm caches still leave the paint stream balanced.
+/// Showcase-style nested scroll cards: the deeper clip-stack walk with warm caches keeps the paint stream balanced.
 #[test]
 fn nested_clipped_scrolls_compose_through_warm_cache() {
     let surface = UVec2::new(800, 600);

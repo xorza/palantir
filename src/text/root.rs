@@ -2,54 +2,31 @@
 
 use crate::text::extent::TextExtent;
 
-/// A run's *unbounded* shape — the root every wrap policy reasons from.
-///
-/// Carries the two facts only an unbounded shape can supply, which is why
-/// they live here and not on the width-resolved result: a bounded shape
-/// cannot report a wrapping floor it never scanned for, and its line count
-/// answers a different question. Nothing here identifies a shaped buffer;
-/// the buffer key is derived by [`TextSystem`](crate::text::system::TextSystem)
-/// from the request that produced it.
+/// A run's unbounded shape, the root every wrap policy reasons from. It carries
+/// the wrapping floor and single-line flag a bounded shape cannot supply. It
+/// does not identify a shaped buffer;
+/// [`TextSystem`](crate::text::system::TextSystem) derives that key.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TextRoot {
-    /// The block and ink this shape measured to — what a run answers
-    /// where its root stands in.
     pub(super) extent: TextExtent,
-    /// Width of the widest unbreakable run (typically the longest word).
-    /// The wrapping path uses this as the floor when a parent commits a
-    /// narrower width: text overflows rather than breaking inside a word.
-    ///
-    /// `None` when the run was shaped without the scan that produces it —
-    /// see [`TextWrap::floor_scan`](crate::text::wrap::TextWrap). A shaped
-    /// buffer is shared by every run with the same text and face regardless
-    /// of wrap policy, so one that never asked for the floor can be the one
-    /// that populates the cache entry. Storing the absence rather than `0.0`
-    /// is what keeps that from silently reading as "no unbreakable segment"
-    /// to a later `WrapWithOverflow` run over the same string.
+    /// Width of the widest unbreakable run; the wrapping path floors a narrower
+    /// width with it so text overflows rather than breaking a word. `None` when
+    /// shaped without the scan ([`TextWrap::floor_scan`](crate::text::wrap::TextWrap)):
+    /// buffers are shared across wrap policies, and `None` (not `0.0`) keeps a
+    /// later `WrapWithOverflow` run from reading "no unbreakable segment".
     pub(super) intrinsic_min: Option<f32>,
-    /// `true` when the shaped result is one visual line. Gates
-    /// `TextSystem::measure`'s fitting-truncate skip: a single-line run
-    /// whose natural width fits the committed width needs no Clip/Ellipsis
-    /// resolve — the unbounded root stands in.
+    /// `true` when the result is one visual line, so `TextSystem::measure` can skip the Clip/Ellipsis resolve.
     pub(super) single_line: bool,
 }
 
 impl TextRoot {
-    /// The wrap floor, for the one policy that reads it.
-    ///
-    /// Panics with [`WRAP_FLOOR_ERROR`] when the run was shaped without
-    /// the scan — a wiring bug rather than bad data.
+    /// The wrap floor; panics with [`WRAP_FLOOR_ERROR`] when shaped without the scan.
     pub(super) const fn wrap_floor(&self) -> f32 {
         self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
     }
 }
 
-/// What reading an unscanned wrap floor means, stated once.
-///
-/// Two types answer this question — [`TextRoot`] and the gated
-/// `TestMeasure` — off the same `intrinsic_min`, under the same contract.
-/// One message rather than one each, so a change to when the scan runs
-/// cannot leave one of them describing a rule the other dropped.
+/// What reading an unscanned wrap floor means, shared with the gated `TestMeasure`.
 const WRAP_FLOOR_ERROR: &str = "the wrap floor was never scanned for this shape: TextWrap::floor_scan \
      and the policy asking for it have drifted apart";
 
@@ -59,41 +36,24 @@ pub(crate) mod internals {
     use crate::primitives::geometry::size::Size;
     use crate::text::key::TextShapeKey;
 
-    /// Shaping result as the in-tree tests read it: the measurement plus
-    /// the shaped-buffer key its request minted. Production derives that
-    /// key in [`TextSystem`](crate::text::system::TextSystem) rather than
-    /// carrying it on the measurement, but tests assert on buffer
-    /// identity, so the helpers hand both back together.
-    ///
-    /// **Flattened rather than holding a [`TextRoot`], because it is not
-    /// always one.** `TextSystem::shape_run` fills `size` from the
-    /// *width-bounded* resolve while `intrinsic_min` comes from the
-    /// unbounded root, which is exactly the fact a bounded shape cannot
-    /// answer for itself. Storing a `root: TextRoot` would give that
-    /// hybrid a name promising it came from one shape.
+    /// Shaping result as the tests read it: the measurement plus the buffer key
+    /// its request minted. Flattened, as `shape_run` takes `size` from the
+    /// bounded resolve and `intrinsic_min` from the unbounded root.
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestMeasure {
         pub(crate) size: Size,
-        /// `None` where the run shaped no buffer — an unusable face, or
-        /// the mono metric, which is what most fixtures measure through.
         pub(crate) key: Option<TextShapeKey>,
-        /// `None` when the run was shaped by a policy that skips the
-        /// wrap-floor scan — see [`TextRoot::intrinsic_min`].
+        /// `None` when the policy skips the wrap-floor scan.
         pub(crate) intrinsic_min: Option<f32>,
     }
 
     impl TestMeasure {
-        /// The key of the buffer this run shaped under. Panics where
-        /// none was shaped, which every fixture reaching here rules out
-        /// by measuring through cosmic.
+        /// The key of the buffer this run shaped under; panics where none was shaped.
         pub(crate) fn buffer_key(&self) -> TextShapeKey {
             self.key.expect("this fixture shapes a buffer")
         }
 
-        /// The scanned wrap floor, for tests that assert on it. Panics
-        /// with [`WRAP_FLOOR_ERROR`] exactly as [`TextRoot::wrap_floor`]
-        /// does — same field, same contract, so a drift in one cannot
-        /// leave the other explaining a rule it dropped.
+        /// The scanned wrap floor; panics like [`TextRoot::wrap_floor`].
         pub(crate) const fn wrap_floor(&self) -> f32 {
             self.intrinsic_min.expect(WRAP_FLOOR_ERROR)
         }

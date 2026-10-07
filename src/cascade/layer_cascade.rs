@@ -5,117 +5,89 @@ use crate::cascade::paint::PaintArena;
 use crate::common::content_hash::ContentHash;
 use crate::primitives::geometry::rect::Rect;
 
-/// All per-layer cascade state grouped on one struct. The `cascade_inputs`,
-/// `subtree_paint_rects`, and `paint_arena` columns are produced together
-/// by [`CascadeEngine::run_tree`](crate::cascade::engine::CascadeEngine::run_tree),
-/// retained together between frames, and read together by the damage diff
-/// and encoder.
+/// All per-layer cascade state. `cascade_inputs`, `subtree_paint_rects` and
+/// `paint_arena` are produced together by
+/// [`CascadeEngine::run_tree`](crate::cascade::engine::CascadeEngine::run_tree),
+/// retained together between frames, and read together by the damage diff and
+/// encoder.
 ///
 /// ## Columnar split
 ///
-/// The per-node data is deliberately divided by who reads what
-/// together:
+/// Per-node data is divided by who reads what together:
 ///
-/// - [`Self::cascade_inputs`] is the only datum on the per-node hot
-///   path: the encoder reads `cascade_input.invisible()` for every
-///   node it walks, and damage compares the full u64 on its skip /
-///   descend arms. At 8 B/node the encoder's per-frame walk and
-///   damage's scan stay cache-dense.
-/// - [`Self::subtree_paint_rects`] answers "what does this subtree
-///   paint" — the encoder's cull, and damage's two moved-subtree
-///   pushes. One column rather than a fold each caller runs over the
-///   rows, so the answer cannot depend on who asked.
-/// - [`Self::subtree_ends`] is read only by
+/// - [`Self::cascade_inputs`] is the only per-node hot-path datum: the encoder
+///   reads `invisible()` per node and damage compares the full u64. At 8
+///   B/node both walks stay cache-dense.
+/// - [`Self::subtree_paint_rects`] answers "what does this subtree paint" for
+///   the encoder's cull and damage's moved-subtree pushes, in one column so the
+///   answer cannot depend on the asker.
+/// - [`Self::subtree_ends`] serves
 ///   [`Cascade::is_within`](crate::cascade::Cascade::is_within) ancestry
-///   lookups — sparse random access, never a walk, so it must not fatten the
-///   walked columns.
-/// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
-///   [`Paint`](crate::cascade::paint::Paint)s plus the `node_spans`
-///   index). Read only on damage's per-shape legs (vacant insert, hash
-///   mismatch, paint-anim lookup), so it sits behind a `node_spans[i]`
-///   indirection that damage's subtree-skip fast path skips entirely.
-/// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with
-///   the authoring rollup they were built from — provenance, not a
-///   walked column.
+///   lookups: sparse random access that must not fatten the walked columns.
+/// - [`Self::paint_arena`] holds per-paint-row data, read only on damage's
+///   per-shape legs, behind a `node_spans[i]` indirection its subtree-skip
+///   fast path avoids.
+/// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with the
+///   rollup they were built from.
 /// - [`Self::paint_rects`] and [`Self::hit_rows`] are read only by the
-///   incremental walk, to refresh a node in place: the first stands in
-///   for a node it need not repaint, the second finds the hit row it
-///   moves.
+///   incremental walk, to refresh a node in place.
 #[derive(Debug, Default)]
 pub(crate) struct LayerCascade {
-    /// Per-node `cascade_input` fingerprint, indexed the same way as
-    /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
-    /// ancestor state + own arranged rect hash with the cascade-resolved
-    /// `invisible` bit in the high position (see [`CascadeInputHash`]).
-    /// The encoder reads `.invisible()`; damage pairs the full u64 with
-    /// `Tree.rollups.subtree[i]` for its subtree-skip fast path.
+    /// Per-node `cascade_input` fingerprint, indexed like `Tree::records`:
+    /// ancestor state plus own arranged rect hash, with the cascade-resolved
+    /// `invisible` bit high (see [`CascadeInputHash`]). Damage pairs the full
+    /// u64 with `Tree.rollups.subtree[i]` for its subtree-skip fast path.
     pub(crate) cascade_inputs: Vec<CascadeInputHash>,
-    /// Per-node subtree paint rect — the node's own paint extent rolled up with
-    /// every descendant's `subtree_paint_rects[i]`. Computed inline in
-    /// [`CascadeEngine::run_tree`](crate::cascade::engine::CascadeEngine::run_tree)
-    /// via a stack-frame accumulator.
+    /// Per-node subtree paint rect: the node's own paint extent rolled up with
+    /// every descendant's, computed inline in
+    /// [`CascadeEngine::run_tree`](crate::cascade::engine::CascadeEngine::run_tree).
     ///
-    /// Read by the encoder for the viewport + damage subtree culls where
-    /// "may I skip the whole subtree?" must consider overhanging
-    /// descendants — Canvas-positioned children outside the parent's
-    /// `Fixed` bound, shapes with negative-margin overhang, etc. Damage
-    /// reads the same column wherever it asks the same question: the
-    /// extent a moved subtree paints, and a child marker's extent in the
-    /// order-inversion check.
+    /// Read by the encoder's viewport and damage culls, which must consider
+    /// overhanging descendants (Canvas-positioned children, negative-margin
+    /// shapes), and by damage for a moved subtree's extent and a child
+    /// marker's extent in the order-inversion check.
     ///
-    /// Invisible subtrees seed with `Rect::ZERO` so a long-lived hidden
-    /// subtree doesn't keep the cull from firing at ancestors — and so a
-    /// hidden subtree that moves damages nothing, where a fold over its
-    /// rows would repaint pixels no pass paints. A clip-only container's
-    /// own visible rect is in here and in no row, which only ever makes
-    /// the answer cover more than the subtree's rows do.
+    /// Invisible subtrees seed with `Rect::ZERO`, so a hidden subtree neither
+    /// blocks ancestors' culls nor damages anything when it moves. A clip-only
+    /// container's visible rect is here and in no row, so the answer only ever
+    /// covers more than the rows do.
     pub(crate) subtree_paint_rects: Vec<Rect>,
     /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid flag
-    /// stripped), snapshotted so ancestry queries
-    /// ([`Cascade::is_within`](crate::cascade::Cascade::is_within)) can
-    /// run against the frozen cascade result *during the next record* — by then
-    /// the live tree's columns are already being rebuilt. Indexed like
-    /// `cascade_inputs`.
+    /// stripped), snapshotted so ancestry queries can run against the frozen
+    /// cascade during the next record, while the live tree is rebuilt.
     pub(super) subtree_ends: Vec<u32>,
-    /// Unified paint arena (rows + per-node spans).
+    /// Unified paint arena (rows plus per-node spans).
     pub(crate) paint_arena: PaintArena,
-    /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`]
-    /// rows were built from — the per-node half of the validity gate
-    /// whose whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key).
-    /// An incremental repair recomputes a node where this disagrees with
-    /// the live rollup, or where its `cascade_input` moved, and re-stamps
-    /// what it repaired. Dirty ancestors recompute their own paint rows,
-    /// so no separate per-node paint hash is retained.
+    /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`] rows
+    /// were built from: the per-node half of the validity gate whose
+    /// whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key). An
+    /// incremental repair recomputes a node where this disagrees with the live
+    /// rollup or its `cascade_input` moved, and re-stamps it.
     ///
-    /// **Not the damage engine's snapshot of the same rollup.** The two hold
-    /// equal values and cannot be merged: this one is node-indexed, and
-    /// [`NodeSnapshot::subtree_hash`](crate::damage::node_snapshot::NodeSnapshot)
-    /// is keyed by [`WidgetId`](crate::primitives::identity::widget_id::WidgetId) because
-    /// a widget outlives the index it occupied. The frames where a widget's
-    /// index moves are exactly the frames a full rebuild overwrites this whole
-    /// column, so neither reader can answer from the other's copy without a
-    /// per-node hash probe on the repair path.
+    /// Not mergeable with the damage engine's snapshot of the same rollup
+    /// ([`NodeSnapshot::subtree_hash`](crate::damage::node_snapshot::NodeSnapshot)):
+    /// this is node-indexed, that is keyed by
+    /// [`WidgetId`](crate::primitives::identity::widget_id::WidgetId), since a
+    /// widget outlives its index. Index moves coincide with full rebuilds that
+    /// overwrite this column, and sharing would need a hash probe on the
+    /// repair path.
     pub(super) arena_hashes: Vec<ContentHash>,
-    /// Per-node own paint extent — the seed [`Self::subtree_paint_rects`]
-    /// rolls up from. The incremental walk reads it for a node whose
-    /// inputs held while something under it moved, so the node's rollup
-    /// is rebuilt without recomputing its rows.
+    /// Per-node own paint extent, the seed [`Self::subtree_paint_rects`] rolls
+    /// up from; the incremental walk rebuilds a node's rollup from it without
+    /// recomputing rows.
     pub(super) paint_rects: Vec<Rect>,
     /// Per-node index of the node's row in
     /// [`Cascade::hits`](crate::cascade::Cascade::hits), or
     /// [`Self::NO_HIT_ROW`]. Which nodes hold a row is structural, so the
-    /// incremental walk rewrites a moved node's row through this rather
-    /// than rebuilding the table.
+    /// incremental walk rewrites a moved node's row through this.
     pub(super) hit_rows: Vec<u32>,
     /// Offset of this layer's first `EntryRow` in
-    /// [`Cascade::entries`](crate::cascade::Cascade::entries) — fixed
-    /// for the layer's run, set at `reset_for` time. A full rebuild pushes
-    /// one entry per node; incremental runs rewrite the block in place. The
-    /// entry index is therefore always `entries_base + node.0`. Combined
-    /// with the per-pass
-    /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this
-    /// gives O(1) `WidgetId → entry` without a per-widget `WidgetId → u32`
-    /// hashmap fill.
+    /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
+    /// layer's run and set at `reset_for`. A full rebuild pushes one entry per
+    /// node; incremental runs rewrite the block in place, so the entry index is
+    /// `entries_base + node.0`. With the per-pass
+    /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this gives
+    /// O(1) `WidgetId → entry` without a per-widget hashmap fill.
     pub(crate) entries_base: u32,
 }
 
@@ -123,14 +95,11 @@ impl LayerCascade {
     /// The [`Self::hit_rows`] entry of a node that holds no hit row.
     pub(super) const NO_HIT_ROW: u32 = u32::MAX;
 
-    /// Reset all per-node columns for `n_nodes` and stamp the layer's
-    /// `entries_base` in one call — both prep this
-    /// layer for the upcoming `run_tree`, splitting them invites a
-    /// caller that resets but forgets the offset (or vice versa).
-    /// The fixed-size per-node columns are resized once and overwritten
-    /// in place during the walk, retaining both allocation and initialized
-    /// slots when the tree size is stable;
-    /// `paint_arena` columns reset according to their own sizing rules.
+    /// Reset all per-node columns for `n_nodes` and stamp `entries_base` in one
+    /// call, so a caller cannot reset but forget the offset. Per-node columns
+    /// are resized and overwritten in place during the walk, retaining
+    /// allocation and initialized slots at a stable tree size; `paint_arena`
+    /// resets by its own sizing rules.
     pub(super) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
         self.cascade_inputs
             .resize(n_nodes, CascadeInputHash::default());

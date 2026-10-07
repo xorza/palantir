@@ -17,33 +17,19 @@ use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::click_outside::ClickOutside;
 use std::rc::Rc;
 
-/// A side-layer container placed relative to a screen-space anchor.
-/// Records into [`Layer::Popup`] so it draws above all `Main` siblings,
-/// escapes ancestor clip, and hit-tests on top. Placement is resolved
-/// from the body's current measured size, then flipped or shifted to fit
-/// the surface.
+/// A side-layer container placed relative to a screen-space anchor, drawn
+/// above `Main`, escaping ancestor clip. Placement uses the body's measured
+/// size, flipped or shifted to fit the surface.
 ///
-/// Which layer is a field rather than a constant, because this is the engine
-/// under every anchored overlay and not only the plain one: a context menu is
-/// a popup on [`Layer::Menu`], which is what lets one be raised from inside a
-/// popup.
+/// The layer is a field because this is the engine under every anchored
+/// overlay; a context menu is a popup on [`Layer::Menu`].
 ///
-/// Outside clicks are handled per [`ClickOutside`]. Under the modal pair
-/// (`Block` / `Dismiss`, the default) a full-surface "click-eater" leaf
-/// is recorded in the `Popup` layer underneath the body, so clicks
-/// anywhere outside the body don't leak through to the `Main` tree.
-/// Inside-body clicks route to the body's own leaves first (popup
-/// hit-test priority).
+/// Outside clicks follow [`ClickOutside`]. Under the modal pair (`Block` /
+/// `Dismiss`, the default) a full-surface click-eater sits under the body and
+/// the popup owns keyboard and pointer watches for every layer below it.
+/// Focus is unchanged. Use [`ClickOutside::PassThrough`] to take neither.
 ///
-/// While recorded, such a popup owns both input streams — keyboard and
-/// the pointer watches — for every layer below it. Focus remains
-/// unchanged, so context-menu commands can still operate on their
-/// trigger without also reaching the focused widget. Choose
-/// [`ClickOutside::PassThrough`] for an overlay that must not take
-/// either stream.
-///
-/// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
-/// `.padding(...)`, `.size(...)`, etc. on the popup body.
+/// Implements [`Configure`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Popup {
@@ -55,12 +41,7 @@ pub struct Popup {
 }
 
 impl Popup {
-    /// A popup placed by `anchor`.
-    ///
-    /// [`Anchor`] carries the whole placement vocabulary — a point, a side
-    /// of a rect, and the gap off it — so this is the one constructor:
-    /// `Popup::new(Anchor::below(rect))`,
-    /// `Popup::new(Anchor::at_point(p).with_gap(4.0))`.
+    /// A popup placed by `anchor`, e.g. `Popup::new(Anchor::below(rect))`.
     #[track_caller]
     pub fn new(anchor: Anchor) -> Self {
         Self {
@@ -72,44 +53,32 @@ impl Popup {
         }
     }
 
-    /// Record into `layer` rather than [`Layer::Popup`].
-    ///
-    /// For an overlay whose kind has its own rank: a context menu records on
-    /// [`Layer::Menu`], which is what lets one open from inside a popup. The
-    /// rank follows the kind of overlay, not the call site, because the ranks
-    /// are what keep a menu above the popup that raised it.
+    /// Record into `layer` rather than [`Layer::Popup`]; a context menu uses
+    /// [`Layer::Menu`] so it can open from inside a popup.
     ///
     /// # Panics
     ///
-    /// At `show`, when this popup is nested inside a layer that does not sit
-    /// strictly below `layer` — the rule [`Ui::layer`] enforces.
+    /// At `show`, when nested inside a layer not strictly below `layer`
+    /// ([`Ui::layer`]'s rule).
     pub const fn layer(mut self, layer: Layer) -> Self {
         self.layer = layer;
         self
     }
 
-    /// What a press outside the overlay does. Default
-    /// [`ClickOutside::Dismiss`] — see that type for why the choice
-    /// matters.
+    /// What a press outside the overlay does. Default [`ClickOutside::Dismiss`].
     pub const fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
         self
     }
 
-    /// Re-anchor an already-built popup.
-    ///
-    /// For a wrapper whose placement is late-bound: [`crate::ContextMenu`]
-    /// holds its popup from the moment the caller starts configuring it,
-    /// but doesn't learn where the menu was opened until `show` reads the
-    /// state map. The constructors stay the canonical way in; this is for
-    /// a wrapper that cannot use them.
+    /// Re-anchor an already-built popup, for a wrapper whose placement is only
+    /// known at `show` ([`crate::ContextMenu`]).
     pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
 
-    /// Record the overlay and its `body`, which is handed a
-    /// [`CloseHandle`] so anything inside it can close the overlay.
+    /// Record the overlay and its `body`, which gets a [`CloseHandle`].
     pub fn show<R>(
         self,
         ui: &mut Ui,
@@ -122,15 +91,11 @@ impl Popup {
             mut widget,
             chrome,
         } = self;
-        // Resolved before the layer switch below, so the body id — and the
-        // eater derived from it — is parent-scoped to the trigger's site the
-        // way any other widget is, not to the side layer's empty root.
+        // Resolved before the layer switch so the body and eater ids are scoped
+        // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
         let eater_id = id.with("eater");
-        // The two captures are one decision: an overlay either takes the
-        // pointer *and* the keys from the layers below, or neither. Taking
-        // one without the other leaves a host that is half-dead in a way
-        // nothing at the call site would explain.
+        // Takes the pointer and the keys from lower layers together, or neither.
         let backdrop = if click_outside == ClickOutside::PassThrough {
             Backdrop::None
         } else {
@@ -146,10 +111,7 @@ impl Popup {
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
             id,
-            // A `Dismiss` popup closes on an eaten outside-press OR an Esc
-            // press — so overlay hosts (ComboBox / ContextMenu) read one
-            // `closed()` signal instead of each re-deriving Esc. (`Block`
-            // records a backdrop and ignores both edges.)
+            // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
             dismissed: dismiss_mode && (turn.outside || turn.escape),
             close_requested: handle.requested(),
             inner: turn.inner,
@@ -160,11 +122,8 @@ impl Popup {
 }
 
 impl Popup {
-    /// Paint `background` as this widget's background.
-    ///
-    /// `None` is the default; theme fallback in [`Self::show`] fills it in
-    /// from `ui.theme().panel_background` when unset. Pass
-    /// [`Background::NONE`] to suppress that fallback for this popup.
+    /// Paint `background` as this widget's background; unset falls back to
+    /// `panel_background`. [`Background::NONE`] suppresses the fallback.
     ///
     /// # Panics
     ///
@@ -176,11 +135,9 @@ impl Popup {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paint `background` unless the caller set one; an explicit
+    /// [`Self::background`] wins in either order. For wrappers that theme a held
+    /// widget after the caller's setters ran.
     ///
     /// # Panics
     ///

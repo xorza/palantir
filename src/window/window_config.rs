@@ -4,57 +4,33 @@ use crate::primitives::paint::image::Image;
 use crate::window::window_placement::WindowPlacement;
 use glam::{IVec2, UVec2};
 
-/// Per-window options — what [`Ui::open_window`](crate::Ui::open_window)
-/// takes (and what the first window's options live in inside
-/// [`WinitHostBuilder`](crate::WinitHostBuilder)). Backend-agnostic by
-/// design: no winit or wgpu types, so opening a window from app code
-/// doesn't pull the windowing backend into the `Ui` API. Sizes are
-/// `UVec2` logical pixels (DPI-independent), `.x` = width, `.y` = height
-/// — the same integer-extent vocabulary as [`Display`](crate::Display).
+/// Per-window options for [`Ui::open_window`](crate::Ui::open_window) and the
+/// first window of [`WinitHostBuilder`](crate::WinitHostBuilder). Backend-agnostic;
+/// sizes are `UVec2` logical pixels, `.x` = width.
 #[derive(Clone, Debug, Default)]
 #[must_use]
 pub struct WindowConfig {
     /// Native window title.
     pub title: String,
-    /// Initial inner size in logical pixels. `None` lets the platform
-    /// pick.
+    /// Initial inner size in logical pixels; `None` lets the platform pick.
     pub inner_size: Option<UVec2>,
-    /// Minimum inner size in logical pixels. `None` = no floor.
+    /// Minimum inner size in logical pixels; `None` = no floor.
     pub min_inner_size: Option<UVec2>,
-    /// Where to open the window — what
-    /// [`WindowGeometry::placement`](crate::WindowGeometry) hands back, so
-    /// a saved session restores by assignment rather than field by field.
-    ///
-    /// The host drops a position at creation if it no longer lands on any
-    /// connected monitor, so a window saved on a since-disconnected
-    /// display doesn't reopen off-screen.
+    /// Where to open the window, as [`WindowGeometry::placement`](crate::WindowGeometry)
+    /// returns it. The host drops a position no longer on a connected monitor.
     pub placement: WindowPlacement,
-    /// Title-bar / taskbar icon. `None` = platform default. Honored on
-    /// Windows and Linux (X11/Wayland); **macOS ignores per-window icons**
-    /// (its Dock icon comes from the `.app` bundle's `.icns`, set at
-    /// packaging time). [`WinitHost`](crate::WinitHost) converts the
-    /// backend-agnostic [`Image`] to the platform icon at window creation.
+    /// Title-bar and taskbar icon; `None` = platform default. Ignored on macOS,
+    /// whose Dock icon comes from the bundle.
     pub icon: Option<Image>,
-    /// Application identity, as the desktop shell uses it to tie this window
-    /// to its `.desktop` entry — Wayland's `app_id`, X11's `WM_CLASS`. Set it
-    /// to the desktop file's basename (`org.example.App` for
-    /// `org.example.App.desktop`).
-    ///
-    /// Worth setting even though it looks cosmetic: **Wayland has no
-    /// fallback**. X11 derives `WM_CLASS` from `argv[0]` when nothing is
-    /// given, but a Wayland window left unnamed has no `app_id` at all, and a
-    /// shell with nothing to match on shows the window under a generic icon,
-    /// detached from the launcher entry that started it.
-    ///
-    /// `None` keeps the platform default. Ignored on macOS and Windows, where
-    /// application identity comes from the bundle or the executable.
+    /// Application identity the desktop shell ties to the window's `.desktop`
+    /// entry: Wayland `app_id`, X11 `WM_CLASS`. Set it to the desktop file's
+    /// basename (`org.example.App`); Wayland has no fallback and shows a generic
+    /// icon otherwise. `None` keeps the platform default; ignored on macOS and Windows.
     pub app_id: Option<String>,
 }
 
 impl WindowConfig {
-    /// A config for a window titled `title`; every other option defaults
-    /// (platform-picked size/position, not maximized, default icon). Chain
-    /// the setters below to override.
+    /// A config for a window titled `title`; every other option defaults.
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
@@ -62,50 +38,43 @@ impl WindowConfig {
         }
     }
 
-    /// Initial inner size in logical pixels (`.x` = width, `.y` = height).
+    /// Initial inner size in logical pixels.
     pub const fn with_inner_size(mut self, size: UVec2) -> Self {
         self.inner_size = Some(size);
         self
     }
 
-    /// Minimum inner size in logical pixels — the window can't shrink below
-    /// it.
+    /// Minimum inner size in logical pixels.
     pub const fn with_min_inner_size(mut self, size: UVec2) -> Self {
         self.min_inner_size = Some(size);
         self
     }
 
-    /// Initial outer position in physical pixels (top-left of the frame) —
-    /// half of [`Self::with_placement`], for a caller that has only this half.
+    /// Initial outer position in physical pixels.
     pub const fn with_position(mut self, position: IVec2) -> Self {
         self.placement.position = Some(position);
         self
     }
 
-    /// Position and maximized state together — the restore door, for a
-    /// [`WindowGeometry::placement`](crate::WindowGeometry) read back from
-    /// wherever the app persisted it.
+    /// Position and maximized state together, for restoring a persisted [`WindowGeometry::placement`](crate::WindowGeometry).
     pub const fn with_placement(mut self, placement: WindowPlacement) -> Self {
         self.placement = placement;
         self
     }
 
-    /// Start the window maximized (holding [`Self::with_inner_size`] as the
-    /// un-maximize size).
+    /// Starts maximized; [`Self::with_inner_size`] is the un-maximize size.
     pub const fn with_maximized(mut self, maximized: bool) -> Self {
         self.placement.maximized = maximized;
         self
     }
 
-    /// Title-bar / taskbar icon (ignored on macOS).
+    /// Title-bar and taskbar icon (ignored on macOS).
     pub fn with_icon(mut self, icon: Image) -> Self {
         self.icon = Some(icon);
         self
     }
 
-    /// Desktop application identity — Wayland `app_id` / X11 `WM_CLASS`. Give
-    /// it the `.desktop` entry's basename; see [`WindowConfig::with_app_id`] for
-    /// why Wayland in particular needs it.
+    /// Desktop application identity; see [`WindowConfig::with_app_id`].
     pub fn with_app_id(mut self, app_id: impl Into<String>) -> Self {
         self.app_id = Some(app_id.into());
         self
@@ -138,11 +107,8 @@ mod tests {
             },
         );
         assert!(config.icon.is_none());
-        // Identity is distinct from the title: a shell matches the `.desktop`
-        // entry on the id, so the two must not be conflated.
         assert_eq!(config.app_id.as_deref(), Some("org.example.Inspector"));
         assert!(WindowConfig::default().icon.is_none());
-        // Unset by default — the platform's own default identity stands.
         assert!(WindowConfig::default().app_id.is_none());
         assert!(WindowConfig::new("inspector").app_id.is_none());
     }

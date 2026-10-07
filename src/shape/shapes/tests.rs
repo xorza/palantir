@@ -50,14 +50,9 @@ impl ColorSource {
     }
 }
 
-/// The colour-cardinality contract is checked where it is consumed —
-/// `lower::polyline`. A polyline that never lowers (fewer than two points)
-/// is dropped in silence whatever its colour slice says. A slice of the
-/// wrong length is never a no-op, however transparent, so it lowers and is
-/// checked.
-///
-/// What lowers stages each colour times the stroke colour, channel by
-/// channel, and a single-colour polyline stages the stroke colour itself.
+/// The colour-cardinality contract is checked at `lower::polyline`: a polyline
+/// under two points is dropped whatever its colour slice, and a wrong-length
+/// slice is never a no-op, so it lowers and is checked.
 #[test]
 fn polyline_color_cardinality_is_enforced_at_lowering() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
@@ -67,9 +62,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
         RgbaF32::new(0.5, 1.0, 0.5, 1.0),
         RgbaF32::new(0.0, 0.5, 1.0, 0.5),
     ];
-    // `tint` × each colour: (0.5·1, 0.25·1, 1·1, 0.5·1), (0.5·0.5,
-    // 0.25·1, 1·0.5, 0.5·1), (0.5·0, 0.25·0.5, 1·1, 0.5·0.5). Every
-    // product is a power-of-two fraction, exact in f16.
+    // `tint` × each colour; every product is a power-of-two fraction, exact in f16.
     let tinted = [
         RgbaF32::new(0.5, 0.25, 1.0, 0.5),
         RgbaF32::new(0.25, 0.25, 0.5, 0.5),
@@ -95,11 +88,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                     &colors[..colors_len],
                 );
                 let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
-                // What the no-op gate drops never reaches lowering, and so is
-                // never checked: fewer than two points. A colour slice of the
-                // wrong length is not a no-op however invisible — an empty
-                // one included — so it lowers, and the cardinality assert
-                // panics.
+                // A wrong-length colour slice (empty included) is never a no-op, so the cardinality assert panics.
                 let lowers = points_len >= 2;
                 let accepted = !lowers || source.accepts(points_len, colors_len);
 
@@ -179,29 +168,13 @@ fn image_dimensions_above_u16_survive_lowering() {
     assert_eq!(size, UVec2::new(WIDTH, 1));
 }
 
-/// **The NaN contract**, exercised through `Shapes::add` for every
-/// shape kind: a NaN anywhere in a shape's inputs means the shape is
-/// **never recorded**. Its clean twin must record, so a gate that
-/// rejected everything would fail this too.
-///
-/// The bulk cases are the point of the design: a NaN polyline point,
-/// mesh vertex, or curve control point is caught via the `bbox` it folds
-/// into, not by rescanning the data — which is what keeps the check
-/// `O(1)` and affordable in release rather than debug-only.
-///
-/// Two doors lead to "not recorded", and which one a case takes is not
-/// pinned here because it is not part of the contract: a NaN that also
-/// reads as invisible (a NaN origin makes `is_paint_empty` true) exits
-/// through the ordinary no-op gate, quietly; one that would otherwise
-/// have painted reaches `Shapes::add`'s NaN gate and additionally
-/// asserts in debug. Both drop the shape, which is what callers can
-/// rely on.
+/// **The NaN contract**, through `Shapes::add` for every kind: a shape with a
+/// NaN input is never recorded, and its clean twin must record. Bulk NaNs are
+/// caught via the `bbox` they fold into, keeping the check `O(1)`. Which door
+/// drops it (the no-op gate or `Shapes::add`'s NaN gate) is not pinned.
 #[test]
 fn the_nan_gate_drops_every_shape_kind() {
-    // A generic helper, one call per case: without the erased `Shape`
-    // enum the kinds no longer share a type, so they cannot sit in one
-    // table. Each call monomorphizes, which is also what the production
-    // path now does.
+    // One generic helper per case: without the erased `Shape` enum the kinds share no type.
     #[track_caller]
     fn gate<T: Lower, C: Lower>(label: &str, tainted: T, clean: C) {
         let mut shapes = Shapes::default();
@@ -216,11 +189,8 @@ fn the_nan_gate_drops_every_shape_kind() {
             shapes.records.is_empty(),
             "case {label}: nothing may reach the record buffer",
         );
-        // A rejected shape must leave no trace in the payload arena
-        // either, which is what places the screen before lowering rather
-        // than on the record it produces: a mesh copies its vertices, a
-        // gradient fill interns a row, and a text run copies its bytes,
-        // all before a record exists to be judged.
+        // A rejected shape must leave nothing in the payload arena, so the
+        // screen runs before lowering copies vertices, interns rows or copies text.
         {
             assert!(
                 store.polyline_points.is_empty()
@@ -251,10 +221,7 @@ fn the_nan_gate_drops_every_shape_kind() {
     use crate::shape::rect::{RectKind, RectShape};
     use crate::shape::triangle::TriangleShape;
 
-    // Every public builder refuses a non-finite input (see
-    // `builders_refuse_what_they_check`), so the tainted shapes here come
-    // through the crate's own constructors: the gate is the backstop for
-    // a crate path that skipped a builder, and this pins that it holds.
+    // Public builders refuse non-finite input; the gate backstops a path that skipped one.
     const N: f32 = f32::NAN;
     let nan_pt = Vec2::new(1.0, N);
     let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
@@ -302,8 +269,6 @@ fn the_nan_gate_drops_every_shape_kind() {
         PolylineShape::new(&pts_nan, stroke),
         PolylineShape::new(&pts_ok, stroke),
     );
-    // A NaN channel in one colour of three: the rest are visible, so the
-    // no-op gate passes it and only the colour scan can catch it.
     let nan_red = RgbaF32::new(N, 0.0, 0.0, 1.0);
     let colors_nan = [white, nan_red, white];
     let colors_ok = [white; 3];
@@ -336,11 +301,9 @@ fn the_nan_gate_drops_every_shape_kind() {
     );
 }
 
-/// The inputs a shape builder checks never reach the record gate: a NaN
-/// corner radius, stroke colour or triangle radius, a gradient's geometry
-/// and a shadow's blur each panic with their kind's rule where they enter
-/// the shape. A gradient's geometry most of all, since it interns behind a
-/// `GradientId` that a record gate could not see.
+/// Inputs a builder checks never reach the record gate: each panics with its
+/// kind's rule on entry. Gradient geometry most of all, as it interns behind a
+/// `GradientId` the gate cannot see.
 #[test]
 fn builders_refuse_what_they_check() {
     use crate::internals::harness::UiHarness;
@@ -384,10 +347,7 @@ fn builders_refuse_what_they_check() {
         Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
     });
 
-    // Geometry is checked as offsets at every door a caller has: a rect, a
-    // corner, a control point, a centre, a polyline point, a mesh vertex,
-    // a shape's box and a text origin. A colour of a polyline that varies
-    // along it is checked as a colour.
+    // Geometry is checked as offsets at every door; a varying polyline colour as a colour.
     let geometry: [fn(); 11] = [
         || drop(Shape::rect(Rect::new(0.0, N, 8.0, 8.0))),
         || {
@@ -441,11 +401,9 @@ fn builders_refuse_what_they_check() {
         let colors = [white, RgbaF32::new(N, 0.0, 0.0, 1.0)];
         drop(Shape::polyline(&[Vec2::ZERO, Vec2::X], thin()).per_point(&colors));
     });
-    // A negative size is finite: it is taken, and paints nothing.
     let _ = Shape::rect(Rect::new(0.0, 0.0, -4.0, 8.0));
 }
 
-/// A one-pixel white stroke, for the geometry cases above.
 fn thin() -> Stroke {
     Stroke::new(RgbaF32::WHITE, 1.0)
 }

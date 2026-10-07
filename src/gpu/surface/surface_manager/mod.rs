@@ -15,55 +15,38 @@ use crate::gpu::surface::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
 use std::fmt;
 
-/// What a surface must offer to be usable at all: somewhere to draw.
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT;
 
-/// What the retained backbuffer takes when it can, and what a GLES swapchain
-/// cannot give.
-///
-/// A GLES surface *is* the default framebuffer, so nothing can be copied into
-/// it and EGL advertises `RENDER_ATTACHMENT` alone. Demanding this made every
-/// such target unusable. It is negotiated instead, and a surface without it
-/// loses nothing: the backbuffer reaches it by being drawn rather than copied
-/// — see
-/// [`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto).
+/// Taken when offered. A GLES surface is the default framebuffer and
+/// advertises only `RENDER_ATTACHMENT`, so requiring this made it unusable;
+/// without it the backbuffer is drawn onto the surface
+/// ([`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto)).
 const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::COPY_DST;
 
-/// The device-and-swapchain choices a host seals once at startup and every
-/// window then inherits.
+/// Device and swapchain choices a host seals at startup.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HostGpuConfig {
     pub(crate) power_preference: PowerPreference,
     pub(crate) vsync: Vsync,
-    /// Opt into timestamp and pipeline-statistics queries. Off leaves the
-    /// per-frame readback dead-stripped.
+    /// Opt into timestamp and pipeline-statistics queries.
     pub(crate) collect_gpu_stats: bool,
 }
 
-/// Native-surface authority retained after startup. The cloned device and
-/// queue handles refer to the same objects `WgpuBackend` owns.
+/// Native-surface authority retained after startup.
 #[derive(Debug)]
 pub(crate) struct SurfaceManager {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    /// The host's device and queue, held here because `configure` and
-    /// `present` are this type's to run. `HostCore` clones them from here
-    /// rather than being handed a second pair alongside — one holder, and a
-    /// clone for whoever else needs them.
+    /// The host's device and queue; `HostCore` clones them from here.
     pub(crate) gpu: Gpu,
-    /// `max_texture_dimension_2d` granted at device creation — fixed for
-    /// the device's lifetime, cached so the host's per-event resize clamp
-    /// doesn't re-query `device.limits()`.
+    /// `max_texture_dimension_2d` at device creation, cached for the resize clamp.
     pub(crate) max_texture_dim: NonZeroU32,
-    /// App-global pacing requested through the host config. Every surface
-    /// accepts it, because both states map to an *automatic* policy the
-    /// driver resolves per surface.
+    /// App-global pacing; both states map to automatic policies every surface accepts.
     vsync: Vsync,
 }
 
-/// What [`SurfaceManager::start`] hands back. The probe surface used for
-/// adapter selection is reused as the first window's swapchain, so the two
-/// come out together or not at all.
+/// What [`SurfaceManager::start`] returns: the adapter-probe surface is
+/// reused as the first window's swapchain.
 #[derive(Debug)]
 pub(crate) struct SurfaceStartup {
     pub(crate) surfaces: SurfaceManager,
@@ -71,13 +54,9 @@ pub(crate) struct SurfaceStartup {
 }
 
 impl SurfaceManager {
-    /// Pick the shared adapter and device, and create the first native
-    /// surface against them.
-    ///
-    /// `window` is anything the platform can hand a surface for; taking it as
-    /// a type parameter is what keeps the windowing toolkit out of this
-    /// module. `size` is the window's physical extent, which the caller reads
-    /// from its own window type.
+    /// Pick the shared adapter and device, and create the first native surface.
+    /// `window` is generic to keep the windowing toolkit out of this module;
+    /// `size` is its physical extent.
     pub(crate) fn start<W>(
         window: &Arc<W>,
         size: UVec2,
@@ -86,19 +65,12 @@ impl SurfaceManager {
     where
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
-        // With the window's display handle, which is what lets the GLES
-        // backend find the EGL display the window lives on — see
-        // [`GpuRequest::instance`].
+        // Built from the window's display handle so GLES finds its EGL display.
         let instance = GpuRequest::windowed_instance(window)?;
         let surface = create_surface(&instance, window)?;
 
-        // Caller-driven opt-in through `HostGpuConfig::collect_gpu_stats`.
-        // When on, the three optional features degrade independently per
-        // adapter advertisement: `DeviceRequirements` intersects them with
-        // what the adapter offers and drops the rest, rather than failing.
-        // `TIMESTAMP_QUERY` alone → pass begin/end only;
-        // `+ TIMESTAMP_QUERY_INSIDE_PASSES` → per-batch attribution;
-        // `+ PIPELINE_STATISTICS_QUERY` → vertex/fragment invocation counts.
+        // Timing features are optional: `DeviceRequirements` drops those the
+        // adapter lacks rather than failing.
         let timing_features = if cfg.collect_gpu_stats {
             DeviceRequirements::GPU_TIMING_FEATURES
         } else {
@@ -128,10 +100,8 @@ impl SurfaceManager {
     }
 }
 
-/// Create a native surface for `window`.
-///
-/// A free function because [`SurfaceManager::start`] needs one *before* it has
-/// a [`SurfaceManager`] — the adapter is picked against this very surface.
+/// Create a native surface for `window`; free because the adapter is picked
+/// against it before a [`SurfaceManager`] exists.
 fn create_surface<W>(
     instance: &wgpu::Instance,
     window: &Arc<W>,
@@ -147,19 +117,15 @@ where
 }
 
 impl SurfaceManager {
-    /// A surface extent the device can actually back: at least one texel,
-    /// at most `max_texture_dimension_2d`.
-    ///
-    /// Takes the limit rather than `&self` because the host's event handler
-    /// has to read it before it borrows the window it is about to resize,
-    /// and that borrow is what had the clamp written a second time there.
+    /// A surface extent the device can back: at least one texel, at most
+    /// `max_texture_dimension_2d`. Takes the limit so the host can clamp before
+    /// borrowing the window.
     pub(crate) fn clamp_extent(max_texture_dim: NonZeroU32, size: UVec2) -> UVec2 {
         let max = max_texture_dim.get();
         UVec2::new(size.x.clamp(1, max), size.y.clamp(1, max))
     }
 
-    /// Create and configure a swapchain for an additional window against the
-    /// selected adapter.
+    /// Create a surface for an additional window.
     pub(crate) fn make_surface<W>(
         &self,
         window: &Arc<W>,
@@ -172,10 +138,8 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
-    /// Pick an sRGB swapchain format and bundle `surface` with a fresh
-    /// configuration — *without* calling `surface.configure`. The host
-    /// applies it lazily on the first paint, so there is no eager device
-    /// reconfigure here.
+    /// Pick an sRGB format and bundle `surface` with a fresh configuration,
+    /// without calling `surface.configure`; the host applies it on first paint.
     fn build_window_surface(
         &self,
         surface: wgpu::Surface<'static>,
@@ -191,15 +155,8 @@ impl SurfaceManager {
     }
 }
 
-/// The swapchain policy `vsync` asks for.
-///
-/// Both are *automatic* policies, which every surface accepts — the driver
-/// resolves each against what the surface actually supports — so there is
-/// nothing to negotiate and either can be applied to a live swapchain
-/// directly.
-///
-/// A free function rather than a `From` impl: the target type is foreign, and
-/// this crate does not implement a foreign trait for a foreign type.
+/// The swapchain policy `vsync` asks for. Both are automatic policies every
+/// surface accepts, so either applies to a live swapchain directly.
 pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
     match vsync {
         Vsync::On => wgpu::PresentMode::AutoVsync,
@@ -207,15 +164,9 @@ pub(super) const fn swapchain_mode(vsync: Vsync) -> wgpu::PresentMode {
     }
 }
 
-/// Which of [`Vsync`]'s two states `mode` paces like.
-///
-/// Total over the driver's vocabulary although Palantir only ever asks for
-/// the two automatic policies, because a surface reports back the mode it
-/// resolved them to.
-///
-/// A free function although `From<wgpu::PresentMode> for Vsync` would compile:
-/// that impl would have to live in [`Vsync`]'s own file, which would put a
-/// graphics-API type in `crate::window`.
+/// Which [`Vsync`] state `mode` paces like. Total over the driver's modes
+/// because a surface reports the mode it resolved to. Free to keep
+/// graphics-API types out of `crate::window`.
 pub(super) const fn vsync_of(mode: wgpu::PresentMode) -> Vsync {
     match mode {
         wgpu::PresentMode::AutoVsync | wgpu::PresentMode::Fifo | wgpu::PresentMode::FifoRelaxed => {
@@ -240,8 +191,7 @@ fn build_surface_config(
             missing: error::flag_names((REQUIRED_SURFACE_USAGES - caps.usages).iter_names()),
         });
     }
-    // The color pipeline writes linear values and relies on an sRGB
-    // swapchain for the final encode.
+    // The pipeline writes linear values and relies on an sRGB swapchain.
     let format = caps
         .formats
         .iter()
@@ -266,7 +216,6 @@ fn build_surface_config(
             caps.alpha_modes[0]
         },
         view_formats: vec![],
-        // One frame of latency maps to a double-buffered swapchain.
         desired_maximum_frame_latency: 1,
     })
 }

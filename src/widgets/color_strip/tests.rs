@@ -14,8 +14,7 @@ fn harness() -> UiHarness {
     UiHarness::new(BAR)
 }
 
-/// The bar writes the axis it owns and nothing else. An alpha bar that also
-/// wrote the colour would undo a pick every time the opacity moved.
+/// The bar writes only its own axis; an alpha bar that wrote the colour would undo picks.
 #[test]
 fn the_alpha_bar_writes_only_alpha() {
     let id = WidgetId::from_hash("strip-alpha-writes");
@@ -52,10 +51,7 @@ fn the_hue_bar_writes_only_the_hue() {
     assert_eq!(coords.model(), ColorModel::Okhsv);
 }
 
-/// The alpha bar's texture carries **straight alpha** and lets the GPU
-/// composite it over the checker, so its own texels keep the colour intact
-/// from end to end. A CPU composite would bake the checker into the colour
-/// and read wrong over any other ground.
+/// The alpha bar's texture keeps straight alpha for the GPU to composite over the checker.
 #[test]
 fn the_alpha_texture_is_the_colour_at_every_alpha() {
     let color = RgbaF32::hex(0x4cd3ff);
@@ -70,7 +66,6 @@ fn the_alpha_texture_is_the_colour_at_every_alpha() {
             "colour held"
         );
     }
-    // Four texels: centres at 1/8, 3/8, 5/8, 7/8 of the ramp.
     let alphas: Vec<u8> = texels.iter().take(4).map(|t| t.a).collect();
     assert_eq!(alphas, vec![32, 96, 159, 223]);
 }
@@ -87,10 +82,7 @@ fn every_row_of_a_bar_is_the_first_row() {
     assert_eq!(&texels[..row], &texels[row * 2..]);
 }
 
-/// The hue ramp shows each hue's most saturated colour, sRGB-encoded. Hue 0.5
-/// of Okhsv is a cyan-green whose exact bytes the model decides — the point
-/// here is that the texture agrees with it rather than with some ramp of its
-/// own.
+/// The hue ramp is each hue's most saturated colour, sRGB-encoded; the texture must match Okhsv's bytes at hue 0.5.
 #[test]
 fn the_hue_texture_follows_the_model() {
     for model in ColorModel::ALL {
@@ -126,8 +118,7 @@ fn a_click_commits_as_a_drag_does() {
     assert!(committed, "the release is the edit");
 }
 
-/// The hue bar's right end is hue 1, not hue 0: a drag past the edge
-/// stores 1, End stores 1 and Home 0, and a step past either end wraps round.
+/// The hue bar's right end is hue 1, not 0: a drag past the edge and End store 1, Home 0; steps past either end wrap.
 #[test]
 fn the_hue_bar_keeps_both_ends() {
     use crate::input::keyboard::key::Key;
@@ -168,8 +159,7 @@ fn the_hue_bar_keeps_both_ends() {
     assert_eq!(coords.hue(), paged.rem_euclid(1.0), "so does a page");
 }
 
-/// PageUp and PageDown step an alpha bar by 0.1, and a step past an end
-/// clamps rather than wraps.
+/// PageUp/PageDown step an alpha bar by 0.1, clamping at the ends.
 #[test]
 fn page_keys_step_the_alpha_bar() {
     use crate::input::keyboard::key::Key;
@@ -199,8 +189,7 @@ fn page_keys_step_the_alpha_bar() {
     }
 }
 
-/// The bar's surface — its texture and the image behind it — lives on the
-/// bar's own id, so it leaves with the bar rather than outliving it.
+/// The bar's texture and backdrop image live on its own id and leave with it.
 #[test]
 fn the_surface_leaves_with_the_bar() {
     use crate::widgets::color_surface::ColorSurface;

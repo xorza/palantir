@@ -4,12 +4,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::ui::Ui;
 
-/// The keys that walk one `0..1` axis: a pair that steps, an optional pair
-/// that pages, and an optional pair that jumps to the ends.
-///
-/// One type for every axis a colour widget drives — the field's two and a
-/// bar's one — so the step sizes, the `Shift` multiplier and the rule that
-/// every chord is sampled are stated once.
+/// The keys that walk one `0..1` axis: a step pair, optional page pair and optional end-jump pair.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AxisKeys {
     pub(crate) step: KeyPair,
@@ -17,14 +12,12 @@ pub(crate) struct AxisKeys {
     pub(crate) ends: Option<KeyPair>,
 }
 
-/// The key toward 0 and the key toward 1.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct KeyPair {
     pub(crate) back: Key,
     pub(crate) forward: Key,
 }
 
-/// Where this frame's presses send the axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct AxisTravel {
     /// Unclamped: a step past an end is the caller's to clamp or wrap.
@@ -33,18 +26,12 @@ pub(crate) struct AxisTravel {
     pub(crate) jumped: bool,
 }
 
-/// What one press moves, what `Shift` multiplies it by, and what a page
-/// key moves.
 const STEP: f32 = 0.005;
 const COARSE: f32 = 10.0;
 const PAGE: f32 = 0.1;
 
 impl AxisKeys {
-    /// Where this frame's presses send an axis now at `at`.
-    ///
-    /// Every chord is sampled rather than short-circuited: `key_pressed` both
-    /// reads the press and keeps the chord subscribed for the wake gate, so
-    /// one firing must not drop another's subscription that frame.
+    /// Where this frame's presses send an axis now at `at`. Every chord is sampled so `key_pressed` subscribes each for the wake gate.
     pub(crate) fn travel(self, ui: &mut Ui, at: f32) -> AxisTravel {
         let mut to = at;
         for (key, sign) in self.step.signed() {

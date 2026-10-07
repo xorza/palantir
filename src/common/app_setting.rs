@@ -2,18 +2,7 @@
 
 use std::cell::Cell;
 
-/// A value every window's frames read and any one window's recorder may
-/// write, plus whether it changed since the host last asked.
-///
-/// **The signal is what makes app-global work.** A write in one window has
-/// to reach the others, and nothing else tells the host that: the windows
-/// that did not record are asleep, and the one that did has no way to wake
-/// them. So the write raises the signal, [`Self::take_change`] lowers it,
-/// and the host holds no copy of its own to keep in step — nor asks
-/// anything of a setting on a loop tick that moved none.
-///
-/// Held behind an `Rc` by [`UiResources`](crate::ui::resources::UiResources)
-/// so every recorder shares the one cell.
+/// An app-global value any window may write, with a flag for whether it changed since the host last asked: windows that didn't record are asleep, so the write raises the signal and [`Self::take_change`] lowers it. Shared through an `Rc` in [`UiResources`](crate::ui::resources::UiResources).
 #[derive(Debug, Default)]
 pub(crate) struct AppSetting<T: Copy + PartialEq> {
     value: Cell<T>,
@@ -26,9 +15,7 @@ impl<T: Copy + PartialEq> AppSetting<T> {
         self.value.get()
     }
 
-    /// Writing the value already held is not a change: an app that
-    /// assigns the same one every frame must not repaint every window
-    /// every frame.
+    /// Writing the held value is not a change, so a per-frame assign doesn't repaint every window.
     #[inline]
     pub(crate) fn set(&self, value: T) {
         if self.value.replace(value) != value {
@@ -36,9 +23,6 @@ impl<T: Copy + PartialEq> AppSetting<T> {
         }
     }
 
-    /// Whether the value changed since this was last asked, clearing the
-    /// signal. Gated with the windowed runtime, its only caller: it is the
-    /// one that has other windows to repaint.
     #[cfg(any(test, feature = "winit"))]
     #[inline]
     pub(crate) const fn take_change(&self) -> bool {

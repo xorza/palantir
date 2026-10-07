@@ -2,25 +2,19 @@
 
 use crate::primitives::packed::fill_kind::FillKind;
 
-/// The paths of `fs` a quad reaches, pinned per pipeline as `QUAD_FORM`.
-/// The driver drops the paths a form never takes, so a solid rect does not
-/// pay the registers of a gradient or a triangle: on the Pi 5's V3D, `fs`
-/// for every form at once holds 54 temporaries and runs two threads, and
-/// the solid form 22 and four.
+/// The paths of `fs` a quad reaches, pinned per pipeline as `QUAD_FORM`, so a solid rect skips a gradient's register cost (Pi 5 V3D: 54 temporaries and two threads for all forms, 22 and four for solid).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum QuadForm {
-    /// A rounded rect with a solid fill, stroked or windowed.
+    /// Rounded rect, solid fill.
     Solid = 0,
-    /// A rounded rect filled by a gradient, stroked or windowed.
+    /// Rounded rect, gradient fill.
     Gradient = 1,
-    /// A rounded triangle.
+    /// Rounded triangle.
     Triangle = 2,
 }
 
 impl QuadForm {
-    /// The form a quad of `kind` draws through. A tag `fs` does not know
-    /// takes the gradient form, whose `eval_fill` falls back to the solid
-    /// fill for it.
+    /// The form a quad of `kind` draws through; an unknown tag takes the gradient form, whose `eval_fill` falls back to solid.
     pub(crate) const fn of(kind: FillKind) -> Self {
         match kind.tag() {
             FillKind::TAG_SOLID => Self::Solid,
@@ -36,7 +30,6 @@ mod tests {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
 
-    /// The flags beside the tag do not move a quad between forms.
     #[test]
     fn a_quad_takes_its_tags_form() {
         for (kind, form) in [

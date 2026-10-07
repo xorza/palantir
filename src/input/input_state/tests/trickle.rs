@@ -1,6 +1,4 @@
-//! Gestures fed between two frames, spread one change of a kind per
-//! frame by `InputQueue` — each case stepped frame by frame so the
-//! spread itself is what is asserted.
+//! Gestures fed between two frames are spread one change of a kind per frame by `InputQueue`; each case steps frame by frame.
 
 use crate::Ui;
 use crate::input::capture::DRAG_THRESHOLD;
@@ -35,9 +33,7 @@ fn scene(ui: &mut Ui) {
     });
 }
 
-/// Step frames while input owes one — the report asks for the next
-/// frame while a replayed or held event is still to be seen — collecting
-/// pass A's left-button state for each.
+/// Step frames while input owes one, collecting pass A's left-button state per frame.
 fn step_until_idle(h: &mut UiHarness) -> Vec<ButtonState> {
     let mut frames = Vec::new();
     loop {
@@ -63,9 +59,7 @@ fn up_click(count: u8) -> ButtonState {
     ButtonState::new(ButtonPhase::Up { click: Some(count) }, Drag::None)
 }
 
-/// Each batch, fed between two frames, against the frames it lands in.
-/// Hand-derived: a press frame shows `Down`, a release frame `Up{click}`
-/// (the click carrying its run number), and no frame holds both.
+/// Each batch fed between two frames against the frames it lands in: a press frame shows `Down`, a release frame `Up{click}` (carrying its run number), never both.
 #[test]
 fn each_batch_lands_one_button_change_per_frame() {
     // [P]: one frame, held.
@@ -80,8 +74,7 @@ fn each_batch_lands_one_button_change_per_frame() {
     h.click_at(TARGET);
     assert_eq!(step_until_idle(&mut h), [down(1), up_click(1)]);
 
-    // [P, R, P, R]: four frames, and the second click is a double-click —
-    // the arrival times, not the frames, decide the run.
+    // [P, R, P, R]: four frames; arrival times, not frames, decide the double-click.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.prime(2, scene);
     h.click_at(TARGET);
@@ -92,10 +85,7 @@ fn each_batch_lands_one_button_change_per_frame() {
     );
 }
 
-/// A drag stopped and a fresh press, fed together — the batch that, in
-/// one frame, would break `ButtonState::new`'s invariant. Spread, the
-/// stop and the new press land in different frames and every state is a
-/// legal pair.
+/// A drag stop and a fresh press fed together would break `ButtonState::new`'s invariant in one frame; spread, each state is a legal pair.
 #[test]
 fn a_drag_stop_and_a_new_press_never_share_a_frame() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -116,9 +106,7 @@ fn a_drag_stop_and_a_new_press_never_share_a_frame() {
     assert_eq!(frames[1], down(1), "frame 2 the fresh press, no stale stop");
 }
 
-/// A click elsewhere between two clicks on one widget breaks the run:
-/// the third press is a single, though it lands inside the window and
-/// radius of the first.
+/// A click elsewhere between two clicks on one widget breaks the run, though the third press is inside the window and radius.
 #[test]
 fn a_press_elsewhere_breaks_the_click_run() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
@@ -169,9 +157,7 @@ fn record_field(ui: &mut Ui, buffer: &mut String) -> FieldPass {
         .inner
 }
 
-/// `[Escape, 'a']` fed together: Escape blurs the field in its frame,
-/// and `a` lands in the next frame, where the field no longer has focus
-/// — so it is not typed into the field Escape just left.
+/// `[Escape, 'a']`: Escape blurs the field in its frame, so `a` lands next frame unfocused and isn't typed in.
 #[test]
 fn a_key_after_escape_reaches_the_next_focus_owner() {
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -196,8 +182,7 @@ fn a_key_after_escape_reaches_the_next_focus_owner() {
     assert_eq!(h.focus(), None);
 }
 
-/// `[Enter, 'x']` fed together: the caller reads the submitted value in
-/// Enter's frame, and `x` is typed in the next.
+/// `[Enter, 'x']`: the caller reads the submitted value in Enter's frame; `x` is typed in the next.
 #[test]
 fn a_key_after_enter_is_typed_after_the_submit() {
     let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -224,9 +209,7 @@ fn a_key_after_enter_is_typed_after_the_submit() {
     assert_eq!(buffer, "hellox", "`x` is typed in the frame after");
 }
 
-/// A capture whose widget vanishes mid-drag ends with a stop edge, and
-/// the frame that carries it records instead of painting from the
-/// retained tree — the report asks for it.
+/// A capture whose widget vanishes mid-drag ends with a stop edge; its frame records rather than paints from the retained tree.
 #[test]
 fn an_evicted_drag_asks_for_the_frame_that_reports_its_stop() {
     let mut h = UiHarness::new(UVec2::new(200, 200));

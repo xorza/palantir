@@ -87,9 +87,7 @@ impl ComposeBench {
     }
 }
 
-/// `IntoStaticStr` supplies the criterion id: the variant name in
-/// snake_case is the label every arm wanted anyway, and a derived one
-/// cannot drift from the variant it names.
+/// `IntoStaticStr` supplies the criterion id (the snake_case variant name), which can't drift from the variant.
 #[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
 #[strum(serialize_all = "snake_case")]
 enum HigherKindCase {
@@ -97,13 +95,9 @@ enum HigherKindCase {
     SameTierImage,
     MixedOverlap,
     MixedNonOverlap,
-    /// One mesh per label, clear of it: the toolbar shape. Every mesh
-    /// pays the open batch's overlap query and none of them closes it,
-    /// so the whole run is one text batch.
+    /// One mesh per label, clear of it (the toolbar shape): every mesh pays the open batch's overlap query and none closes it, so the run is one text batch.
     TextBetweenMeshClear,
-    /// The same layout with each mesh moved onto its own label, so every
-    /// query hits and every mesh closes the batch. The pair is what
-    /// separates the query's cost from the close's.
+    /// Each mesh on its own label, so every query hits and every mesh closes the batch; the pair separates query cost from close cost.
     TextBetweenMeshOver,
 }
 
@@ -111,9 +105,7 @@ impl HigherKindCase {
     /// Columns of the label grid the two text arms lay out.
     const TEXT_COLS: u32 = 16;
 
-    /// The cell that grid gives each label-plus-mesh pair. A label and
-    /// its mesh fit side by side in one, and a 64 px text-grid tile then
-    /// holds about three labels — the occupancy the index is built for.
+    /// The cell per label-plus-mesh pair; a 64 px text-grid tile holds about three labels, the occupancy the index targets.
     const TEXT_CELL: Vec2 = Vec2::new(64.0, 24.0);
 
     /// Where the label sits in its cell.
@@ -170,9 +162,7 @@ impl HigherKindCase {
         ComposeBench::new(cmds, self.viewport(draw_count))
     }
 
-    /// The display each arm composes against: 128 square for the arms
-    /// that stack every draw at one spot, and the whole label grid —
-    /// rounded up to whole rows — for the two that lay one out.
+    /// The display each arm composes against: 128 square for the stacked arms, the label grid (rounded up to whole rows) for the two text arms.
     const fn viewport(self, draw_count: usize) -> UVec2 {
         match self {
             Self::TextBetweenMeshClear | Self::TextBetweenMeshOver => {
@@ -200,9 +190,7 @@ impl HigherKindCase {
         }
     }
 
-    /// The number the two text arms exist to separate: one batch for the
-    /// whole grid when no mesh covers a label, one per label when they
-    /// all do.
+    /// What the text arms separate: one batch for the grid when no mesh covers a label, one per label when all do.
     const fn expected_text_batches(self, draw_count: usize) -> usize {
         match self {
             Self::TextBetweenMeshClear => 1,

@@ -18,11 +18,8 @@ use crate::renderer::gradient_atlas::*;
 use std::array;
 use std::collections::HashSet;
 
-/// `Interpolation::Linear`: midpoint of black→white in linear-RGB space
-/// is exactly linear 0.5. The sampler reads the f16 store directly
-/// as the linear value the shader uses. Regression check: an
-/// accidental sRGB-space lerp would produce linear ≈ 0.215, far
-/// below the 0.4 threshold.
+/// `Interpolation::Linear`: the black-to-white midpoint is exactly linear 0.5,
+/// read directly from the f16 store. An sRGB-space lerp would give ~0.215.
 #[test]
 fn linear_midpoint_black_to_white_is_half() {
     let g = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE)
@@ -34,11 +31,8 @@ fn linear_midpoint_black_to_white_is_half() {
     assert_eq!(texel(&out, 127), stored(RgbaF32::new(t, t, t, 1.0)));
 }
 
-/// `Interpolation::Oklab`: red→green midpoint should *not* be muddy
-/// brown (which is what linear-RGB lerps produce). Specifically,
-/// the green channel at midpoint should be high (Oklab keeps
-/// luminance up through the midpoint by traversing yellow-ish
-/// hues rather than dipping through dark brown).
+/// `Interpolation::Oklab`: the red-to-green midpoint is not muddy brown; Oklab
+/// keeps green high via yellow-ish hues.
 #[test]
 fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let red = linear(255, 0, 0);
@@ -46,9 +40,8 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     let g = LinearGradient::two_stop(0.0, red, green).with_interpolation(Interpolation::Oklab);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // The midpoint is the two stops' Oklab coordinates blended at
-    // t = 127/255 and brought back to linear — a warm yellow, where a
-    // linear-RGB blend dips through dark brown.
+    // The midpoint is the stops' Oklab coordinates blended at t = 127/255 and
+    // brought back to linear: a warm yellow, not a dip through dark brown.
     let t = 127.0 / 255.0;
     let (from, to) = (
         oklab::from_linear(1.0, 0.0, 0.0),
@@ -59,9 +52,8 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     assert_stored(mid, RgbaF32::new(r, g, b, 1.0), "Oklab midpoint");
 }
 
-/// First and last texels hold the corresponding stops' stored colours.
-/// Catches off-by-one in the parametric `t = i/(N-1)` stride and the
-/// edge-clamp guard.
+/// First and last texels hold the stops' stored colours (catches off-by-one in
+/// the `t = i/(N-1)` stride and the edge clamp).
 #[test]
 fn endpoints_match_stops_exactly() {
     for interpolation in [Interpolation::Linear, Interpolation::Oklab] {
@@ -79,9 +71,8 @@ fn endpoints_match_stops_exactly() {
     }
 }
 
-/// 3-stop gradient at offset `0.25` falls in the first half of the
-/// `0.0..0.5` bracket — should be halfway between stop 0 and stop
-/// 1, not stop 1 and stop 2. Catches bracketing logic.
+/// A 3-stop gradient at offset `0.25` is halfway between stops 0 and 1, not 1
+/// and 2 (bracketing).
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
     let g = LinearGradient::builder(0.0)
@@ -92,27 +83,23 @@ fn three_stop_quarter_brackets_first_pair() {
         .build();
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // Stop offsets snap to the texel grid, so the 0.5 stop sits on texel
-    // 128 (offset 128/255). Texel 64 is then exactly halfway into the
-    // first segment, 64/128 of the way from black to red.
+    // Stop offsets snap to the texel grid, so the 0.5 stop sits on texel 128
+    // (128/255) and texel 64 is 64/128 of the way from black to red.
     assert_eq!(g.ramp.stops[1].offset(), 128.0 / 255.0);
     let q = texel(&out, 64);
     assert_eq!(q, stored(RgbaF32::new(0.5, 0.0, 0.0, 1.0)));
-    // Stops 0 and 1 are both b=0, so the whole first segment bakes b=0 —
-    // stop 2's b=1.0 is not reached until past the midpoint.
+    // Stops 0 and 1 are both b=0, so b=1.0 isn't reached until past the midpoint.
     assert_eq!(q.b, 0.0, "quarter-texel leaked blue from stop 2");
 }
 
-/// The segment search resumes where the previous texel left it, which is
-/// sound only because `t` never decreases across the row. A scan that
-/// re-brackets from the first segment every time is the reference: eight
-/// stops, a hard stop (two at one offset) and segments narrower than the
-/// texel step, every texel bit-identical.
+/// The segment search resumes where the previous texel left it, sound only
+/// because `t` never decreases. A scan re-bracketing from the first segment each
+/// time is the reference: eight stops, a hard stop and segments narrower than
+/// the texel step, every texel bit-identical.
 #[test]
 fn cursor_scan_matches_restart_scan_across_eight_stops() {
-    /// The pre-cursor bracketing, transcribed: restart at segment 1 and
-    /// walk forward. Same arithmetic in the same order, so agreement is
-    /// exact rather than approximate.
+    /// The reference bracketing: restart at segment 1 and walk forward. Same
+    /// arithmetic and order, so agreement is exact.
     fn restart_scan(stops: &GradientStops, t: f32) -> RgbaF32 {
         let linear: Vec<RgbaF32> = stops.iter().map(|stop| stop.color()).collect();
         if t <= stops[0].offset() {
@@ -161,9 +148,8 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     }
 }
 
-/// Pin the row layout: 256 `RgbaF16` texels = 2048 bytes total,
-/// `[r, g, b, a]` f16 lanes per texel. Endpoint texels decode back
-/// to their stops' linear values.
+/// Row layout: 256 `RgbaF16` texels = 2048 bytes, `[r, g, b, a]` f16 lanes.
+/// Endpoint texels decode to their stops' linear values.
 #[test]
 fn lut_row_layout() {
     assert_eq!(LUT_ROW_TEXELS, 256);
@@ -180,9 +166,8 @@ fn lut_row_layout() {
     );
 }
 
-/// Unsorted stops are sorted at bake time. Authors shouldn't rely
-/// on this — `LinearGradient::new` accepts any order — but the
-/// bake must produce a sensible output regardless.
+/// Unsorted stops are sorted at bake time. Authors shouldn't rely on it
+/// (`LinearGradient::new` accepts any order), but output must stay sensible.
 #[test]
 fn unsorted_stops_get_sorted_at_bake() {
     let stops = [
@@ -192,18 +177,14 @@ fn unsorted_stops_get_sorted_at_bake() {
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // First texel should be blue (the stop at 0.0), last should be red.
     let first = texel(&out, 0);
     let last = texel(&out, LUT_ROW_TEXELS - 1);
     assert_eq!((first.r, first.g, first.b), (0.0, 0.0, 1.0));
     assert_eq!((last.r, last.g, last.b), (1.0, 0.0, 0.0));
 }
 
-/// Stops covering only `0.25..0.75` clamp at the edges: texels
-/// before 0.25 paint the first stop's colour, after 0.75 paint
-/// the last stop's colour. Spread modes (Pad/Repeat/Reflect) are
-/// applied later in the shader on `t`, not here; the bake just
-/// emits the parametric range with edge-clamp behaviour.
+/// Stops covering only `0.25..0.75` clamp at the edges. Spread modes apply
+/// later in the shader on `t`; the bake only emits the parametric range.
 #[test]
 fn partial_range_clamps_at_edges() {
     let stops = [
@@ -213,27 +194,21 @@ fn partial_range_clamps_at_edges() {
     let g = LinearGradient::new(0.0, stops);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // Texel 0 (t=0): clamped to first stop colour (green).
     assert_eq!(texel(&out, 0).g, 1.0);
-    // Texel 255 (t=1): clamped to last stop colour (blue).
     assert_eq!(texel(&out, LUT_ROW_TEXELS - 1).b, 1.0);
 }
 
-/// The showcase's dark `#1a1a2e → #4c5cdb` gradient is the
-/// motivating case for the f16 store. Both stops linearise to tiny
-/// reds (3/255 → 19/255), so an 8-bit *linear* row crushes the
-/// red channel onto ~16 integer steps across 256 texels — the
-/// visible banding. The f16 row keeps a distinct value at nearly
-/// every texel. This asserts both sides: the f16 row is smooth,
-/// and re-quantizing the same reds to 8-bit linear reproduces the
-/// banding (so the test fails loudly if the premise ever changes).
+/// The showcase's dark `#1a1a2e -> #4c5cdb` gradient motivates the f16 store:
+/// both stops linearise to tiny reds (3/255 to 19/255), so an 8-bit linear row
+/// crushes red onto ~16 steps across 256 texels (banding). Asserts both sides:
+/// the f16 row is smooth, and 8-bit linear requantizing reproduces the banding,
+/// so the test fails loudly if the premise changes.
 #[test]
 fn dark_gradient_row_has_no_banding() {
     let navy = RgbaF32::hex(0x1a1a2e);
     let blue = RgbaF32::hex(0x4c5cdb);
-    // The whole problem: both stops linearise to tiny reds, 2.6/255 and
-    // 18.4/255, so the bake walks a narrow span that an 8-bit linear row
-    // can't resolve.
+    // Both stops linearise to tiny reds, 2.6/255 and 18.4/255, a span an 8-bit
+    // linear row can't resolve.
     assert_eq!([navy.r, blue.r], [0.010329823, 0.07227185]);
     let g = LinearGradient::two_stop(0.0, navy, blue); // default Oklab
     let mut out = fresh_row();
@@ -241,8 +216,8 @@ fn dark_gradient_row_has_no_banding() {
 
     let reds: Vec<f32> = (0..LUT_ROW_TEXELS).map(|i| texel(&out, i).r).collect();
 
-    // f16 store: per-texel red delta (~2.5e-4) dwarfs the f16 ulp
-    // (~8e-6) at this magnitude, so every texel holds its own red.
+    // f16: per-texel red delta (~2.5e-4) dwarfs the f16 ulp (~8e-6), so every
+    // texel holds its own red.
     let distinct_f16 = reds
         .iter()
         .map(|r| r.to_bits())
@@ -253,14 +228,12 @@ fn dark_gradient_row_has_no_banding() {
         "f16 red: a distinct level at every texel"
     );
 
-    // Counterfactual: the old `Rgba8Unorm` store quantized these
-    // same reds to 8-bit linear, collapsing onto ≤ 20 levels.
+    // Counterfactual: 8-bit linear quantizing collapses these reds onto few levels.
     let distinct_u8 = reds
         .iter()
         .map(|r| (r * 255.0).round() as u8)
         .collect::<HashSet<_>>()
         .len();
-    // 8-bit linear: the reds span 3..=18, sixteen levels across 256 texels.
     assert_eq!(distinct_u8, 16, "premise: 8-bit linear bands hard");
 }
 
@@ -269,8 +242,7 @@ fn stored(color: RgbaF32) -> RgbaF32 {
     RgbaF16::from(color).unpack()
 }
 
-/// One baked texel decoded back to a linear `RgbaF32`. The f16 store
-/// round-trips losslessly enough that `≈` comparisons hold to well
+/// One baked texel decoded to a linear `RgbaF32`; `≈` comparisons hold well
 /// under a u8 LSB (1/255).
 fn texel(out: &LutRowTexels, i: usize) -> RgbaF32 {
     out[i].unpack()

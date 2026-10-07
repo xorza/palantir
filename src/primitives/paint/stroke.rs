@@ -6,10 +6,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;
 
-/// One colour and one width, and nothing about where the width lies:
-/// that is the shape's rule. An area shape — a [`Background`], a rect, a
-/// triangle — paints it as a border inside its edge. A path shape — a
-/// line, a curve, an arc, a polyline — centres it on the path.
+/// One colour and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centres it on the path.
 ///
 /// [`Background`]: crate::Background
 #[derive(
@@ -24,9 +21,7 @@ pub struct Stroke {
 }
 
 impl Stroke {
-    /// Panics unless the width is a [length](domain::length) and the
-    /// colour a [colour](domain::color) — the check a stroke faces where it
-    /// enters a shape or a node.
+    /// Panics unless the width is a [length](domain::length) and the colour a [colour](domain::color).
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -34,25 +29,13 @@ impl Stroke {
         let _ = domain::color(self.color);
     }
 
-    /// Canonical "no stroke" — width 0, transparent color. Equivalent
-    /// to `Stroke::default()` but `const`, so callers can use it in
-    /// const contexts and read it as the sentinel "this background
-    /// has no border" without needing `Option<Stroke>` in the type.
+    /// The "no stroke" sentinel: width 0, transparent; `Stroke::default()` but `const`.
     pub const NONE: Self = Self {
         color: RgbaF32::TRANSPARENT,
         width: 0.0,
     };
 
-    /// True when this stroke would paint nothing visible — width is
-    /// sub-UI-tolerance (including negative, treated as zero), or
-    /// the color is fully transparent. The animation pipeline lerps
-    /// `Stroke` directly through `Stroke::NONE`, so a "bordered →
-    /// borderless" transition settles at `is_noop()` and the encoder
-    /// filters it out without any `Option` collapse step.
-    /// `&self` where the crate's other `Copy` paint predicates take
-    /// `self`: `Background`'s `skip_serializing_if` names this, and
-    /// serde requires an `fn(&T) -> bool` there. `Corners::is_approx_zero`
-    /// takes `&self` for the same reason.
+    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent colour. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Background`'s `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()

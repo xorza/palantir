@@ -1,17 +1,4 @@
-//! Deterministic placeholder shaping for the mono fallback: every glyph
-//! is `font_size * 0.5` wide, so a layout case can state the width it
-//! expects as arithmetic rather than as whatever the bundled face
-//! advances to. [`root`] and [`resolve`] are the metric
-//! behind [`TextShaper::test_mono`](crate::text::shaper::TextShaper) — the
-//! same two-kind split the cosmic measurer offers — and
-//! [`single_line_caret_x`] / [`nearest_byte`] are the geometry
-//! [`probe`] falls back to for the runs it produces.
-//!
-//! Only [`TextShaper::test_mono`](crate::text::shaper::TextShaper) makes
-//! a run that reaches any of this, so the whole module is gated and
-//! production compiles none of it.
-//!
-//! [`probe`]: crate::text::probe
+//! Deterministic placeholder shaping for the mono fallback: every glyph is `font_size * 0.5` wide, so layout tests state widths as arithmetic. Reached only through [`TextShaper::test_mono`](crate::text::shaper::TextShaper), so the module is test-gated.
 
 use crate::primitives::geometry::size::Size;
 use crate::text::extent::TextExtent;
@@ -24,18 +11,13 @@ fn glyph_width(font_size: f32) -> f32 {
     font_size * 0.5
 }
 
-/// Caret-x along a single-line mono layout: one glyph width per `char`
-/// before `byte_offset`. Multi-line aware callers should go through
-/// `cursor_xy` instead — this is the cheap path for the mono fallback's
-/// degenerate single-line behaviour.
+/// Caret-x along a single-line mono layout: one glyph width per `char` before `byte_offset`.
 pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size: f32) -> f32 {
     let clamped = text.floor_char_boundary(byte_offset.min(text.len()));
     text[..clamped].chars().count() as f32 * glyph_width(font_size)
 }
 
-/// Inverse of [`single_line_caret_x`]. Picks the char boundary whose
-/// prefix-x is closest to `target_x` so click positioning on the mono
-/// fallback matches the rendered glyph layout exactly.
+/// Inverse of [`single_line_caret_x`]: the char boundary whose prefix-x is closest to `target_x`.
 pub(super) fn nearest_byte(text: &str, target_x: f32, font_size: f32) -> usize {
     let mut best_off = 0usize;
     let mut best_dist = target_x.abs();
@@ -51,15 +33,7 @@ pub(super) fn nearest_byte(text: &str, target_x: f32, font_size: f32) -> usize {
     best_off
 }
 
-/// The run's unbounded shape under the mono metric — the twin of
-/// [`CosmicMeasure::root`](crate::text::cosmic::CosmicMeasure).
-///
-/// Mints no shaped buffer, so `TextSystem` reports no buffer key for
-/// every run measured this way and the renderer drops them cleanly.
-///
-/// Reached only through the shaper's dispatch, so the text is non-empty
-/// and the key commits no width by the time it arrives — exactly as on
-/// the cosmic side.
+/// The run's unbounded shape under the mono metric (twin of [`CosmicMeasure::root`](crate::text::cosmic::CosmicMeasure)); mints no shaped buffer, so the renderer drops these runs.
 pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
     let glyph_w = glyph_width(request.key.font_size());
     TextRoot {
@@ -70,15 +44,12 @@ pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot 
         )),
         intrinsic_min: (floor == WrapFloor::Scan)
             .then(|| intrinsic_min_width(request.text, glyph_w)),
-        // Mono breaks no lines of its own: an unbounded run is one line
-        // however many newlines it holds.
+        // Mono breaks no lines of its own: an unbounded run is one line.
         single_line: true,
     }
 }
 
-/// The extent this run resolves to at its key's committed width — the
-/// twin of [`CosmicMeasure::resolve`](crate::text::cosmic::CosmicMeasure),
-/// routed by the same [`LineFit`] to the same two answers.
+/// The extent this run resolves to at its key's committed width; twin of [`CosmicMeasure::resolve`](crate::text::cosmic::CosmicMeasure), routed by [`LineFit`].
 pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let key = request.key;
     let glyph_w = glyph_width(key.font_size());
@@ -87,11 +58,9 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let chars = request.text.chars().count() as f32;
     let unbroken_w = chars * glyph_w;
     TextExtent::inked_within(match key.fit() {
-        // One line capped at the width, which is what the cosmic side's
-        // cut measures to once it has retired the clusters that overrun.
+        // One line capped at the width, matching the cosmic cut.
         LineFit::Clip | LineFit::Ellipsis => Size::new(unbroken_w.min(max), line_h),
-        // Wrapping is approximated by character-count division: at a
-        // 16 px font size, an 8 px/char × 16 px line.
+        // Wrapping is approximated by character-count division (8 px/char at 16 px).
         LineFit::Wrap => {
             let per_line = (max / glyph_w).floor().max(1.0);
             let lines = (chars / per_line).ceil().max(1.0);
@@ -100,18 +69,7 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     })
 }
 
-/// Widest unbreakable segment of `text` under a uniform `glyph_w` — the
-/// twin of `cosmic::geometry::intrinsic_min_width`, which answers the
-/// same question off a shaped buffer's glyph widths.
-///
-/// Segments come from [`wrap::break_offsets`], the rule both twins
-/// measure against, and each drops its trailing whitespace for the same
-/// reason: the break opportunity sits *after* a space, so a space hangs
-/// off the end of its segment rather than widening it.
-///
-/// Ceil'd like its twin — `WrapWithOverflow` floors a committed width at
-/// this, and rounding down would break the very segment the floor exists
-/// to keep whole.
+/// Widest unbreakable segment of `text` under a uniform `glyph_w`; twin of `cosmic::geometry::intrinsic_min_width`. Segments come from [`wrap::break_offsets`] with trailing whitespace dropped (the break sits after a space). Ceil'd like its twin: `WrapWithOverflow` floors a committed width at this.
 fn intrinsic_min_width(text: &str, glyph_w: f32) -> f32 {
     let mut widest = 0usize;
     let mut start = 0usize;

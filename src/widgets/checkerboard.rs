@@ -9,19 +9,9 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 
-/// The pattern behind anything see-through in a colour picker: one light
-/// ground with its dark squares drawn over it.
+/// The light ground with dark squares drawn over it, behind translucent colour.
 ///
-/// One type for the chip, the preview and the alpha bar. All three owe the
-/// viewer the same answer to "how much of this is transparent", and two
-/// checkers of different cell sizes in one panel read as a bug.
-///
-/// Holds only what the theme says, so a widget builds it before it opens its
-/// node and paints it after. The painted size arrives with each paint: the
-/// arranged rect's this frame, or the themed one on the first frame, before
-/// there is one. The size only decides how many squares are drawn — wrong
-/// for one frame, it draws the pattern over the wrong extent, never in the
-/// wrong colour.
+/// One type so the chip, preview and alpha bar share a cell size. The painted size arrives with each paint (the themed one before the first arrange) and only decides how many squares are drawn.
 #[derive(Debug)]
 pub(crate) struct Checkerboard {
     light: RgbaF32,
@@ -43,9 +33,7 @@ impl Checkerboard {
         }
     }
 
-    /// A chip: the pattern when `color` is translucent, then the colour and
-    /// the theme's hairline over it. What a swatch and a picker's trigger
-    /// both are.
+    /// The pattern when `color` is translucent, then the colour and the theme's hairline.
     pub(crate) fn paint_chip(&self, ui: &mut Ui, color: RgbaF32, size: Size) {
         if color.a < 1.0 {
             self.paint(ui, size);
@@ -53,8 +41,7 @@ impl Checkerboard {
         ui.add_shape(Shape::owner_rect().fill(color).border(self.border));
     }
 
-    /// Paint the pattern across the owner's rect. The caller decides whether
-    /// it is needed; an opaque colour hides it either way.
+    /// Paint the pattern across the owner's rect.
     #[expect(
         clippy::cast_sign_loss,
         reason = "the cell count is held at zero or above before the cast"

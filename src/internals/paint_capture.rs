@@ -1,20 +1,8 @@
-//! Capturing [`PaintSink`] for tests and benches.
-//!
-//! Production paints straight into a `ComposeSession`, which leaves no
-//! artifact to assert on. [`PaintCapture`] holds the same call sequence
-//! as owned values so tests can count, match, and compare it, and
-//! [`PaintCapture::replay`] pushes it into any other sink — which is
-//! what lets the compose bench measure compose alone, feeding a stream
-//! it captured once outside the timed loop.
-//!
-//! *Capture*, not *record*: this crate spends "record" on the authoring
-//! pass (`App::record`, `RecordStore`) and on SoA rows (`NodeRecord`),
-//! and a third meaning on the same word cost more than the rename did.
-//!
-//! Capturing happens *below* [`PaintSink`]'s `draw_*` gates, so a call
-//! only lands here if it survived the no-op gate. Two captures comparing
-//! equal therefore means the two encodes agreed on every painted
-//! operation, in order.
+//! Capturing [`PaintSink`] for tests and benches: [`PaintCapture`] holds the
+//! call sequence as owned values, and [`PaintCapture::replay`] feeds it to
+//! another sink so the compose bench can time compose alone. "Capture", not
+//! "record", which the crate spends on authoring. It sits below the `draw_*`
+//! no-op gates, so equal captures mean equal painted operations.
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -30,25 +18,16 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 
-/// Declare [`PaintCall`] alongside the three transcriptions that have
-/// to stay in lockstep with it — the variant name used in assertion
-/// messages, the replay dispatch, and the [`PaintSink`] impl that does
-/// the recording — from one table of `Variant(Payload) => sink_method`.
-///
-/// Two shapes because the sink has two: calls carrying a single `Copy`
-/// payload, and the two pops that carry nothing. `image` is written out
-/// by hand below the repetitions — it is the one call whose sink method
-/// takes a second argument, and pretending it were uniform would cost
-/// more than it saves.
+/// Declares [`PaintCall`] with its three lockstep transcriptions (variant
+/// name, replay dispatch, [`PaintSink`] impl) from one table. `image` is
+/// written by hand: its sink method takes a second argument.
 macro_rules! paint_calls {
     (
         $( $variant:ident($payload:ty) => $method:ident, )*
         --
         $( $unit:ident => $unit_method:ident, )*
     ) => {
-        /// One recorded [`PaintSink`] call, owning whatever the call
-        /// carried. A `GpuView` composite records as [`Self::Image`]
-        /// carrying its paint callback, exactly as the sink sees it.
+        /// One recorded [`PaintSink`] call; a `GpuView` composite records as [`Self::Image`] with its callback.
         #[derive(Clone, Debug, PartialEq)]
         pub(crate) enum PaintCall {
             $( $variant($payload), )*
@@ -61,8 +40,6 @@ macro_rules! paint_calls {
         }
 
         impl PaintCall {
-            /// Short name for assertion messages — the variant alone,
-            /// without the payload a `Debug` dump would print.
             #[cfg(test)]
             pub(crate) const fn kind(&self) -> &'static str {
                 match self {
@@ -72,9 +49,7 @@ macro_rules! paint_calls {
                 }
             }
 
-            /// Push this call back into `sink` through the *required*
-            /// half of the trait. See [`PaintCapture::replay`] for why
-            /// that bypasses the no-op gate.
+            /// Pushes this call into `sink` through the required half; see [`PaintCapture::replay`].
             fn replay_into(&self, sink: &mut impl PaintSink) {
                 match self {
                     $( Self::$variant(payload) => sink.$method(*payload), )*
@@ -123,19 +98,15 @@ paint_calls! {
     PopTransform => pop_transform,
 }
 
-/// Every paint call one encode made, in order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct PaintCapture {
     pub(crate) calls: Vec<PaintCall>,
 }
 
 impl PaintCapture {
-    /// Push the recorded sequence into `sink`. Calls re-enter through
-    /// the *required* half, below the no-op gate — deliberately, so a
-    /// replay reproduces the recorded stream exactly rather than
-    /// re-filtering it. Sound because every recorded call already
-    /// passed the gate once, at record time. Replaying calls that did
-    /// **not** come from a recording would bypass it.
+    /// Pushes the sequence into `sink` through the required half, below the
+    /// no-op gate, so replay reproduces the stream exactly. Only sound for
+    /// calls that came from a recording.
     pub(crate) fn replay(&self, sink: &mut impl PaintSink) {
         for call in &self.calls {
             call.replay_into(sink);
@@ -151,9 +122,7 @@ pub(crate) mod internals {
     use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
     use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
-    /// Typed reads of one call's payload, for a test that has already pinned
-    /// the sequence with [`PaintCapture::kinds`] and wants what a call
-    /// carried.
+    /// Typed reads of one call's payload.
     impl PaintCall {
         pub(crate) fn as_push_clip(&self) -> Option<&PushClipPayload> {
             match self {
@@ -185,27 +154,17 @@ pub(crate) mod internals {
     }
 
     impl PaintCapture {
-        /// The recorded calls' kinds, in order — what an assertion about
-        /// nesting or order compares, where a count of each kind would let
-        /// two siblings pass for a parent and its child.
+        /// The calls' kinds in order, so order assertions can tell a parent and child from siblings.
         pub(crate) fn kinds(&self) -> Vec<&'static str> {
             self.calls.iter().map(PaintCall::kind).collect()
         }
     }
 
-    /// Assert two encodes painted the same sequence, reporting the first
-    /// divergence by index and kind instead of dumping both call lists.
+    /// Asserts two encodes painted the same sequence, reporting the first divergence.
     pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
         for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
-            // Compare rendered `Debug`, not `PartialEq`: the payloads are
-            // full of `f32`, and derived equality gets both float edge cases
-            // wrong here. `NaN != NaN` would fail two byte-identical frames
-            // (a NaN stroke width is a documented pass-through, not a noop),
-            // and `-0.0 == 0.0` would hide a sign-of-zero drift between
-            // them. `Debug` distinguishes signed zeros and prints `NaN` for
-            // every NaN, so it is the bitwise-shaped comparison this check
-            // wants — no fast path, since the `PartialEq` one would
-            // reintroduce the signed-zero hole.
+            // Compares rendered `Debug`, not `PartialEq`: `NaN != NaN` would fail
+            // identical frames and `-0.0 == 0.0` would hide a sign-of-zero drift.
             let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
             assert!(
                 ls == rs,
@@ -213,8 +172,6 @@ pub(crate) mod internals {
                 l.kind(),
                 r.kind(),
             );
-            // A view's callback prints as a constant, so `Debug` cannot tell
-            // two of them apart; identity is what decides.
             if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) = (l, r)
             {
                 assert!(

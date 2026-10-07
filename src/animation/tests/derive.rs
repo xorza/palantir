@@ -25,8 +25,7 @@ struct AllSnap {
     b: u16,
 }
 
-/// One tolerance for the whole struct: `0.5`, a power of two, so its
-/// square divides exactly.
+/// One tolerance for the whole struct: `0.5`, a power of two, so its square divides exactly.
 #[derive(Clone, Copy, Debug, PartialEq, Animatable)]
 #[animate(settle_eps = 0.5)]
 struct Scaled {
@@ -50,11 +49,7 @@ struct Pair<T: Animatable + Copy> {
     second: T,
 }
 
-/// Each generated method against its hand-computed result. Animated
-/// fields go through their own `Animatable`; a snap field, under either
-/// spelling, takes the target in `lerp`, keeps `self` in `sub`, `add`
-/// and `scale`, adds nothing to the magnitude, and is `Default` in
-/// `zero`.
+/// Each generated method against its hand-computed result. Animated fields use their own `Animatable`; a snap field (either spelling) takes the target in `lerp`, keeps `self` in `sub`, `add` and `scale`, adds nothing to magnitude, and is `Default` in `zero`.
 #[test]
 fn derived_methods_split_animated_from_snapped_fields() {
     let a = Probe {
@@ -135,14 +130,7 @@ fn derived_methods_split_animated_from_snapped_fields() {
     );
 }
 
-/// The settle distance, which the spring and the duration snap compare
-/// against `1.0`. A struct that names a tolerance divides its magnitude by
-/// it: `(3² + 4²) / 0.5² = 100`. One that does not sums its fields', each
-/// in its own unit: a red channel of `1/4096` is exactly one `RgbaF32`
-/// tolerance, `2^-24 / 2^-24 = 1`, beside `Scaled`'s 100, for 101. At the
-/// unit-free `f32` tolerance the same channel would weigh
-/// `(2.44e-4 / 1e-4)² ≈ 5.96` — so the colour's own tolerance is the one
-/// the sum used. Snap fields weigh nothing.
+/// The settle distance, compared against `1.0` by spring and duration snap. A struct naming a tolerance divides its magnitude by it: `(3² + 4²) / 0.5² = 100`. Otherwise it sums its fields' in their own units: a red channel of `1/4096` is one `RgbaF32` tolerance (`2^-24 / 2^-24 = 1`), so 100 + 1 = 101; at the `f32` tolerance it would weigh `(2.44e-4 / 1e-4)² ≈ 5.96`. Snap fields weigh nothing.
 #[test]
 fn derived_settle_distance_measures_each_field_in_its_own_unit() {
     let scaled = Scaled { a: 3.0, b: 4.0 };

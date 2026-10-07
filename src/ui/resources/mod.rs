@@ -1,13 +1,6 @@
-//! The app-global resources of one host — what every window's recorder,
-//! the one frontend and the one backend are built over: the shaper, the
-//! image and icon registries, the gradient atlas, the clipboard, the window
-//! directory, the diagnostics flags and the user scale.
-//!
-//! Every field is clone-shared, so two recorders in two windows resolve
-//! the same font, the same texture, the same overlay toggle and the same
-//! scale, and the backend drains the registries those recorders fill.
-//! The one constructor mints every handle; a bundle no backend is built
-//! over is a standalone CPU recorder, and needs nothing further.
+//! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
+//! shaper, image and icon registries, gradient atlas, clipboard, window directory, diagnostics and user scale. Every
+//! field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
 use std::rc::Rc;
 
@@ -26,31 +19,21 @@ use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
 
-/// The host's app-global handles. Every field is clone-shared; frame-local
-/// scene and layout state remain directly on `Ui`.
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources {
     text: TextShaper,
     images: ImageRegistry,
     icons: IconRegistry,
-    /// The frontend bakes gradients into it and the backend uploads them.
-    /// Held here, where no recorder reads it, so the one list of handles a
-    /// host shares is this struct and not this struct plus a loose atlas.
+    /// The frontend bakes gradients into it and the backend uploads them; held here so this struct is the one
+    /// list of handles a host shares.
     gradient_atlas: SharedGradientAtlas,
-    /// The device ceiling a registered image is measured against, and what
-    /// `Ui::max_image_dimension` reports. Held beside the registry rather
-    /// than inside it: this is an immutable device constant, and the
-    /// gradient atlas takes the same value from the same call site.
+    /// The device ceiling a registered image is measured against (`Ui::max_image_dimension`), an immutable
+    /// constant held beside the registry; the gradient atlas takes it from the same call site.
     texture_limit: TextureLimit,
     clipboard: Clipboard,
     diagnostics: Diagnostics,
-    /// The one scale every window's `Display` is minted from.
-    ///
-    /// App-global rather than per window: the per-monitor case is already
-    /// answered by `Display::system_scale`, which the platform reports per
-    /// window, so what is left is a preference — and two windows of one
-    /// application disagreeing about a preference is not a picture anyone
-    /// asks for.
+    /// The one scale every window's `Display` is minted from; app-global because per-monitor scale is already
+    /// `Display::system_scale`, leaving a preference windows should not disagree about.
     user_scale: Rc<AppSetting<UserScale>>,
     windows: WindowDirectory,
 }
@@ -124,12 +107,8 @@ pub(crate) mod internals {
     use crate::ui::resources::UiResources;
 
     impl UiResources {
-        /// Recorder capabilities that share nothing with any other
-        /// recorder: a mono-fallback shaper (deterministic metrics, wrong for
-        /// width-follows-label), a memory clipboard, and no texture cap. The
-        /// real-measurement peer is [`UiResources::new`] over a shaper of
-        /// the test's own, which is also what pairs two recorders onto one
-        /// text cache.
+        /// Recorder capabilities that share nothing with another recorder: a mono-fallback shaper (deterministic metrics),
+        /// a memory clipboard, and no texture cap.
         pub(crate) fn isolated_mono() -> Self {
             Self::new(
                 TextShaper::test_mono(),
@@ -138,9 +117,7 @@ pub(crate) mod internals {
             )
         }
 
-        /// [`Self::isolated_mono`] with real shaping over the bundled faces,
-        /// through a shaper of its own: metrics identical on every machine,
-        /// and right for anything that sizes to its text.
+        /// [`Self::isolated_mono`] with real shaping over the bundled faces, for anything that sizes to its text.
         pub(crate) fn isolated_text() -> Self {
             Self::new(
                 TextShaper::new(),

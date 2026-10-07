@@ -9,22 +9,14 @@ use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use std::hash::Hasher as _;
 
-/// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run)
-/// reads, in one place. Two frames with equal keys produce the same cascade,
-/// so the run skips. Two frames whose keys agree on structure produce the
-/// same structural tables, so the run refreshes geometry and paint in place.
+/// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; keys agreeing on structure refresh geometry and paint in place.
 ///
-/// The skip is sound only while this struct names every input the walk
-/// reads. A new cascade input goes here, or the cascade goes stale.
+/// Sound only while this names every input the walk reads: add new inputs here.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CascadeKey {
-    /// `Display::scale_factor`, as bits: the walk's only read of the
-    /// display. The surface size reaches the cascade only through the
-    /// arranged rects, which [`LayerKey::rects`] holds.
+    /// `Display::scale_factor` bits, the walk's only display read; surface size arrives via [`LayerKey::rects`].
     scale: u32,
-    /// `TextShaper::font_epoch`. A face loaded after a run was shaped
-    /// can move its ink extent without moving its rect or its
-    /// authoring, so nothing per layer sees it.
+    /// `TextShaper::font_epoch`: a later font load can move ink extent without moving any rect or authoring.
     font_epoch: u32,
     layers: PerLayer<LayerKey>,
 }
@@ -32,17 +24,13 @@ pub(crate) struct CascadeKey {
 /// One layer's part of a [`CascadeKey`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct LayerKey {
-    /// `TreeFingerprint::cascade_static`: what the structural tables are
-    /// built from.
+    /// `TreeFingerprint::cascade_static`: the structural tables' source.
     structure: ContentHash,
-    /// `TreeFingerprint::paint_counts`. The incremental walk repairs paint
-    /// rows in place, so a row count that moved is a full rebuild.
+    /// `TreeFingerprint::paint_counts`; a moved row count is a full rebuild.
     paint_counts: ContentHash,
-    /// `LayerLayout::rect_hash`: the arranged geometry. While it holds,
-    /// the incremental walk skips every subtree whose own inputs held.
+    /// `LayerLayout::rect_hash`: while it holds, the walk skips subtrees whose inputs held.
     rects: ContentHash,
-    /// Every root's full subtree hash, in order: every node's authoring,
-    /// layout half and transform included.
+    /// Every root's full subtree hash, in order.
     paint: ContentHash,
 }
 
@@ -68,9 +56,7 @@ impl CascadeKey {
         }
     }
 
-    /// Whether a cascade built from `self` keeps every structural table
-    /// valid under `live`, so the incremental walk can refresh the rest
-    /// in place.
+    /// Whether `self`'s structural tables stay valid under `live`, so the rest refreshes in place.
     pub(crate) fn keeps_structure(&self, live: &Self) -> bool {
         self.scale == live.scale
             && self.font_epoch == live.font_epoch
@@ -81,8 +67,7 @@ impl CascadeKey {
                 .all(|(a, b)| a.structure == b.structure && a.paint_counts == b.paint_counts)
     }
 
-    /// Whether `layer` arranged every node where it did when `self` was
-    /// built.
+    /// Whether `layer` arranged every node where it did when `self` was built.
     pub(crate) fn keeps_rects(&self, live: &Self, layer: Layer) -> bool {
         self.layers[layer].rects == live.layers[layer].rects
     }

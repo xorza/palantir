@@ -1,5 +1,4 @@
-//! The one mutation vocabulary the dock speaks, and where its move operation
-//! lands a tab.
+//! The dock's one mutation vocabulary, and where a move lands a tab.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +11,7 @@ use crate::widgets::dock::tab_group::TabGroupId;
 pub enum DockDrop {
     /// Join `group`'s strip at `index` (clamped to its length).
     Into {
-        /// The strip the tab joins.
+        /// Target group.
         group: TabGroupId,
         /// Slot within that strip, clamped to its length.
         index: usize,
@@ -20,68 +19,48 @@ pub enum DockDrop {
     /// Split `group`'s pane; the tab becomes a fresh single-tab group on
     /// the given side.
     Split {
-        /// The pane that splits.
+        /// Target group.
         group: TabGroupId,
         /// Which half of it the new group takes.
         side: SplitSide,
     },
 }
 
-/// One dock mutation, executed by
-/// [`DockState::apply`](crate::DockState::apply).
-///
-/// The single vocabulary the whole pipeline speaks: the widget (or a
-/// menu item, or a button elsewhere in the application) constructs one,
-/// the application's own queue transports it, and `apply` runs it. An
-/// application with no such queue reaches the same place through
-/// [`DockView::run`](crate::DockView::run).
-///
-/// **Every operation tolerates a stale address.** One is built from a response
-/// of the frame before and applied a phase later, by which time the tab,
-/// group or split it names may be gone — so an operation that resolves to
-/// nothing leaves the tree untouched rather than failing.
-///
-/// Every tab operation names its tab by identity, never by strip position: an
-/// index would by then address whatever tab slid into that slot.
+/// One dock mutation, run by [`DockState::apply`](crate::DockState::apply) and transported by the application's queue or [`DockView::run`](crate::DockView::run). **Every operation tolerates a stale address**: it is built from the previous frame's response, so a vanished tab, group or split leaves the tree untouched. Tabs are named by identity, never strip position.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum DockOperation<T> {
-    /// Make `tab` visible in whichever group holds it, and focus that
-    /// group.
+    /// Make `tab` visible in its group and focus that group.
     ActivateTab {
-        /// The tab to reveal.
+        /// The tab.
         tab: T,
     },
-    /// Open `tab` in the focused group — reusing it wherever it already
-    /// sits — then make it visible and focus its pane.
+    /// Open `tab` in the focused group (reusing it where it sits), make it visible and focus its pane.
     OpenTab {
-        /// The tab to open.
+        /// The tab.
         tab: T,
     },
-    /// Close `tab` wherever it sits. The pinned tab never closes — the
-    /// operation refuses it.
+    /// Close `tab` wherever it sits; the pinned tab refuses.
     CloseTab {
-        /// The tab to close.
+        /// The tab.
         tab: T,
     },
     /// Move `tab` to `to` — into another strip, or splitting a pane.
     MoveTab {
-        /// The tab to move.
+        /// The tab.
         tab: T,
-        /// Where it lands.
+        /// Destination.
         to: DockDrop,
     },
-    /// Set the ratio of the split at `split` (its packed root path).
-    /// Emitted per frame by a divider drag; coalesces per split.
+    /// Set the ratio of the split at `split` (its packed root path); emitted per drag frame, coalescing per split.
     SetRatio {
-        /// Packed root path of the split to move.
+        /// The split.
         split: DockPath,
-        /// Fraction of the pane the leading half takes, coerced into the
-        /// split clamp; a non-finite one centres the split.
+        /// Fraction the leading half takes, coerced into the split clamp; non-finite centres it.
         ratio: f32,
     },
     /// Move focus onto `group`, because a press landed inside its pane.
     FocusPane {
-        /// The pane that takes focus.
+        /// The group.
         group: TabGroupId,
     },
 }

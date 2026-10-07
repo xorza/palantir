@@ -5,41 +5,22 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 
-/// One shaped text run placed in physical-px space. The backend resolves
-/// [`ShapedTextRef`] — source bytes from the active record store plus the
-/// shaped-buffer key — when the encoded glyph cache misses.
+/// One shaped text run in physical-px space. The backend resolves
+/// [`ShapedTextRef`] when the encoded glyph cache misses.
 ///
-/// Named for the `*DrawRow` pattern its siblings in this module already
-/// use ([`ImageDrawRow`](crate::renderer::render_buffer::image::ImageDrawRow),
-/// [`MeshDrawRow`](crate::renderer::render_buffer::mesh::MeshDrawRow)), not
-/// `TextRun` — that name belongs to [`crate::widget::TextRun`], the *authoring*
-/// input a caller hands to `Ui`. The two sat at opposite ends of the
-/// pipeline under one name.
+/// Not `TextRun`: that is the authoring type [`crate::widget::TextRun`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextDrawRow {
     pub(crate) text: ShapedTextRef,
-    /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
-    /// Bounds for clipping (physical px) — the parent rect after transform &
-    /// snap. The backend only y-culls whole lines against this (keeps
-    /// off-screen lines out of the glyph atlas); the actual pixel clip is
-    /// the batch GPU scissor
-    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor), the union of the
-    /// batch's bounds), which the composer's strict-bounds batching rule
-    /// keeps no wider than any ancestor-clipped run's bounds.
+    /// Clip bounds (physical px). The backend only y-culls whole lines against
+    /// this; the pixel clip is the batch scissor
+    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::text_batch::TextBatch::scissor)).
     pub(crate) bounds: URect,
-    /// **Straight-alpha linear**: the native text backend consumes linear
-    /// and premultiplies at output, so nothing here makes an sRGB round
-    /// trip.
     pub(crate) color: RgbaF16,
-    /// Per-run scale factor on top of the global DPI scale, sourced from
-    /// the cumulative ancestor `TranslateScale.scale` at compose time
-    /// and snapped to an additive ladder of `TEXT_SCALE_STEP` rungs
-    /// (`composer::geometry::snap_text_scale`). `1.0` outside any transformed
-    /// subtree. Multiplied into the text backend's per-`TextArea.scale`, which
-    /// cosmic-text mixes into its glyph `CacheKey` (`font_size * scale`),
-    /// so every distinct value here mints a fresh swash rasterization +
-    /// atlas slot. Snapping is what keeps a continuous zoom gesture from
-    /// re-rasterizing every glyph every frame.
+    /// Per-run scale on top of the DPI scale: the ancestor `TranslateScale.scale`
+    /// snapped to `TEXT_SCALE_STEP` rungs (`composer::geometry::snap_text_scale`).
+    /// `1.0` outside transformed subtrees. Each distinct value mints a new glyph
+    /// rasterization, so snapping keeps zoom gestures from re-rasterizing every frame.
     pub(crate) scale: f32,
 }

@@ -5,16 +5,13 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::node::layout_core::LayoutCore;
 
-/// What a parent grants one axis of one node, in the six numbers plus
-/// `Sizing` that decide the axis' extent.
+/// What a parent grants one axis of one node: `Sizing` plus the numbers that
+/// decide the axis' extent.
 ///
-/// One slot per axis, built once and read twice: [`Self::inner_avail`]
-/// derives what the driver measures against, and [`Self::resolve`] folds
-/// the driver's answer back into the node's own extent. Two lanes of one
-/// rule, rather than one rule written per lane.
-///
-/// `available` and what [`Self::resolve`] returns are margin-inclusive;
-/// everything in between is margin-exclusive.
+/// One slot per axis, built once and read twice: [`Self::inner_avail`] gives
+/// what the driver measures against, [`Self::resolve`] folds its answer back
+/// into the node's extent. `available` and `resolve`'s result are
+/// margin-inclusive; everything between is margin-exclusive.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AxisSlot {
     pub(super) sizing: Sizing,
@@ -26,14 +23,10 @@ pub(super) struct AxisSlot {
 }
 
 impl AxisSlot {
-    /// The extent this node's own box takes before its padding — a Fixed
-    /// axis' own value, otherwise what is left of the parent's grant past
-    /// the margin — clamped to `[min, max]`.
-    ///
-    /// The clamp matches [`Self::resolve`]'s, so a child's `available`
-    /// tracks the parent's eventual arranged extent: a `max_size`-capped
-    /// parent must not grant children more room than it can later
-    /// arrange.
+    /// The extent of this node's own box before padding (a Fixed axis' value,
+    /// else the parent's grant less margin), clamped to `[min, max]`. The clamp
+    /// matches [`Self::resolve`]'s so a `max_size`-capped parent does not grant
+    /// children more room than it can arrange.
     #[inline]
     const fn outer(self, dispatch_avail: f32) -> f32 {
         match self.sizing.fixed_value() {
@@ -43,48 +36,37 @@ impl AxisSlot {
         .clamp(self.min, self.max)
     }
 
-    /// What the driver measures its children against on this axis: the
-    /// outer extent above, less `padding`.
-    ///
-    /// `available` is floored by `intrinsic_min` first, so children
-    /// measure against the parent's actual outer size. Without it a Hug
-    /// grid inside a FILL panel whose own `intrinsic_min` is pinned by a
-    /// long sibling would shape children against the smaller surface
-    /// width. INFINITY on a Hug axis survives (`INF.max(x) == INF`); a
-    /// Fixed axis reads neither input.
+    /// What the driver measures its children against on this axis: the outer
+    /// extent less `padding`. `available` is floored by `intrinsic_min` first,
+    /// so children measure against the parent's actual outer size (a Hug grid
+    /// in a FILL panel pinned by a long sibling would otherwise shape against
+    /// the smaller surface width). INFINITY on a Hug axis survives; a Fixed axis
+    /// reads neither input.
     #[inline]
     const fn inner_avail(self, padding: f32) -> f32 {
         (self.outer(self.available.max(self.intrinsic_min)) - padding).max(0.0)
     }
-    /// **Contains-content rule:** Hug aims for content size, Fill aims
-    /// for `available`. Fill floors at `max(content, intrinsic_min)`.
-    /// Hug, under a finite `available`, caps its content at what is
-    /// available and floors at `max(floor, intrinsic_min)` — so a Hug
-    /// rect shrinks what can give way, a scroll on its panned axis, but
-    /// never below what its content takes at the constraints it was
-    /// measured under. If the floor exceeds `available`, the node
-    /// overflows its parent rather than its content overflowing the
-    /// node's rect. Downstream (cascade/composer/backend) tolerates
-    /// overflow, same as the root-vs-surface case.
+    /// **Contains-content rule:** Hug aims for content size, Fill for
+    /// `available`. Fill floors at `max(content, intrinsic_min)`. Hug under a
+    /// finite `available` caps content at what is available and floors at
+    /// `max(floor, intrinsic_min)`, so a Hug rect shrinks what can give way
+    /// (a scroll on its panned axis) but never below what its content takes
+    /// at the constraints it was measured under. If the floor exceeds
+    /// `available` the node overflows its parent, which downstream tolerates.
     ///
-    /// `content` and `floor` here are the post-dispatch measured content
-    /// and its floor (margin-exclusive). Both already reflect wrapping
-    /// under the constrained available width, so on the block axis of a
-    /// wrapping text leaf the floor is the multi-line height — unlike
-    /// `intrinsic_min`, which is computed pure-subtree at `available =
-    /// INFINITY` and only captures the single-line case. `intrinsic_min`
-    /// still floors both sizings for what the measure cannot see, rigid
-    /// descendants of a `Fill` track among them.
+    /// `content` and `floor` are post-dispatch and margin-exclusive, already
+    /// reflecting wrapping under the constrained width (so a wrapping text
+    /// leaf's block-axis floor is the multi-line height), unlike
+    /// `intrinsic_min`, computed at `available = INFINITY`. `intrinsic_min`
+    /// still floors both sizings for what measure cannot see, such as rigid
+    /// descendants of a `Fill` track.
     ///
-    /// The two cases where desired exceeds `available`:
-    /// `max(floor, intrinsic_min) > available` (rigid descendant or
-    /// post-wrap content doesn't fit) or `Sizing::fixed(v)`. An explicit
-    /// `min_size` floor applies on top of all three branches via the
+    /// Desired exceeds `available` when `max(floor, intrinsic_min) > available`
+    /// or `Sizing::fixed(v)`. An explicit `min_size` applies on top via the
     /// trailing `clamp`.
     ///
-    /// `Fill` on an unconstrained axis (intrinsic queries with
-    /// `available = INFINITY`) collapses to its content size — matches
-    /// CSS Grid's `1fr` track in an auto-context parent.
+    /// `Fill` on an unconstrained axis collapses to its content size, like
+    /// CSS Grid's `1fr` in an auto-context parent.
     pub(super) const fn resolve(self, content_plus_padding: f32, floor_plus_padding: f32) -> f32 {
         let rendered = if let Some(value) = self.sizing.fixed_value() {
             value
@@ -98,21 +80,17 @@ impl AxisSlot {
                 content_plus_padding
             }
         } else {
-            // WPF Stretch: Fill returns content at measure-time. The
-            // "fill the slot" expansion happens at *arrange* — driver
-            // arrange code redistributes leftover to Fill children
-            // proportionally. Returning `available` here would balloon
-            // any Hug ancestor to its grandparent's allocation (CSS auto-
-            // sizing's classic Hug+Fill bug).
+            // WPF Stretch: Fill returns content at measure time; arrange
+            // redistributes leftover to Fill children. Returning `available`
+            // would balloon any Hug ancestor to its grandparent's allocation.
             content_plus_padding.max(self.intrinsic_min - self.margin)
         };
         rendered.max(0.0).clamp(self.min, self.max) + self.margin
     }
 
-    /// The node's own floor on this axis, margin-inclusive: the floor of
-    /// its content with padding, or its fixed value, under the same
-    /// clamps as [`Self::resolve`] — and never more than `resolved`, what
-    /// that answered.
+    /// The node's own floor on this axis, margin-inclusive: the content floor
+    /// with padding, or the fixed value, under [`Self::resolve`]'s clamps and
+    /// never more than `resolved`.
     const fn floor(self, floor_plus_padding: f32, resolved: f32) -> f32 {
         let rendered = match self.sizing.fixed_value() {
             Some(value) => value,
@@ -122,22 +100,19 @@ impl AxisSlot {
     }
 
     /// The least finite `available` from which this axis' measure holds
-    /// unchanged — see [`Measured`] — given the driver's own
-    /// `inner_stable_from` and the content and floor it answered,
-    /// padding-inclusive.
+    /// unchanged (see [`Measured`]), given the driver's `inner_stable_from`
+    /// and the padding-inclusive content and floor it answered.
     ///
-    /// A Fixed axis reads no offer. Otherwise two things must hold. The
-    /// node's own fold: a Fill axis does not read `available`, and a Hug
-    /// axis reads it only through its cap — free once the offer is past
-    /// the content, while a content at or below its floors resolves to
-    /// the floors under every finite offer. And the driver's: what this node
-    /// hands its children must not fall below `inner_stable_from`, which
-    /// the `intrinsic_min` and `min` floors on that hand-down may already
-    /// guarantee whatever the offer.
+    /// A Fixed axis reads no offer. Otherwise two things must hold. The node's
+    /// fold: Fill does not read `available`; Hug reads it only through its cap,
+    /// free once the offer is past the content, while content at or below its
+    /// floors resolves to the floors under every finite offer. And the
+    /// driver's: what the node hands its children must not fall below
+    /// `inner_stable_from`, which the `intrinsic_min` and `min` floors may
+    /// already guarantee.
     ///
     /// Finite offers only: an unbounded Hug axis skips its floors, so an
-    /// offer of `INFINITY` is served by the cache only where it was
-    /// measured.
+    /// `INFINITY` offer is served only where it was measured.
     const fn stable_from(
         self,
         content_plus_padding: f32,
@@ -176,21 +151,14 @@ impl AxisSlot {
         own.max(inner)
     }
 
-    /// Full per-node sizing pipeline: build a slot per axis, hand the
-    /// driver what each says its children measure against, and fold the
-    /// driver's raw content, floor and range back through the pair into a
-    /// margin-inclusive `desired`, floor and range.
+    /// Full per-node sizing pipeline: build a slot per axis, hand the driver
+    /// what each says its children measure against, and fold its raw content,
+    /// floor and range back into a margin-inclusive `desired`, floor and range.
     ///
-    /// Per-node padding/margin sums are unpacked once and threaded
-    /// through both halves, which is only possible because the dispatch
-    /// is single-shot.
-    ///
-    /// Single dispatch: when `desired` exceeds `available` on a non-Fixed
-    /// axis it is because a rigid descendant pinned the floor; a
-    /// re-dispatch against the grown outer would converge to the same
-    /// value, because every driver's content size is monotone in
-    /// `available` and pass 1 already saturated at the floor. Pinned by
-    /// `layout::tests::convergence`.
+    /// Single dispatch: when `desired` exceeds `available` on a non-Fixed axis
+    /// a rigid descendant pinned the floor, and a re-dispatch would converge
+    /// to the same value since every driver's content size is monotone in
+    /// `available`. Pinned by `layout::tests::convergence`.
     #[inline]
     pub(super) fn resolve_node(
         layout: LayoutCore,
@@ -242,8 +210,7 @@ impl AxisSlot {
             "a driver holds from {stable_from:?}, past the {inner_avail:?} it measured at",
         );
 
-        // Margin is added once at the end, inside `resolve`, so the fold
-        // works in margin-exclusive space.
+        // Margin is added once at the end, inside `resolve`.
         let desired = Size::new(
             w.resolve(size.w + p_horiz, floor.w + p_horiz),
             h.resolve(size.h + p_vert, floor.h + p_vert),

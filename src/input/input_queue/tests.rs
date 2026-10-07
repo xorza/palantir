@@ -19,8 +19,7 @@ fn typed(c: char) -> InputEvent<'static> {
     key(Key::Char(c), KeyText::from_char(c), false)
 }
 
-/// Admit `event` and note what it changes, as `InputState::apply`
-/// does when every press latches and every key reaches a reader.
+/// Admit `event` and note what it changes, as `InputState::apply` does.
 fn admit_and_apply(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
     if !queue.admits(event) {
         return false;
@@ -37,7 +36,6 @@ fn admit_and_apply(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
     true
 }
 
-/// The admission rules, one row per event sequence in a fresh frame.
 #[test]
 fn a_frame_admits_one_change_per_button_and_one_command_key() {
     let left = PointerButton::Left;
@@ -111,8 +109,7 @@ fn a_frame_admits_one_change_per_button_and_one_command_key() {
     }
 }
 
-/// Only what was noted holds the frame: a press that latched nothing
-/// leaves its release free to land in the same frame.
+/// Only what was noted holds the frame: an unlatched press leaves its release free in the same frame.
 #[test]
 fn an_unnoted_change_holds_nothing_back() {
     let left = PointerButton::Left;
@@ -121,8 +118,7 @@ fn an_unnoted_change_holds_nothing_back() {
     assert!(queue.admits(&InputEvent::PointerReleased(left)));
 }
 
-/// A held event waits for `next_frame`, then pops in order, one
-/// frame's worth at a time.
+/// A held event waits for `next_frame`, then pops in order, a frame's worth at a time.
 #[test]
 fn held_events_replay_in_order_one_frame_at_a_time() {
     let left = PointerButton::Left;
@@ -153,9 +149,7 @@ fn held_events_replay_in_order_one_frame_at_a_time() {
     assert_eq!(frames, [vec![1], vec![2], vec![3]], "arrival times kept");
 }
 
-/// A held IME event outlives the host's string: the queue copies its text
-/// and hands each event back its own, in order, across a refill that
-/// starts on an empty queue.
+/// A held IME event outlives the host's string: the queue copies its text and returns each event its own, in order.
 #[test]
 fn a_held_ime_event_keeps_its_own_text() {
     use crate::common::span::Span;
@@ -187,7 +181,6 @@ fn a_held_ime_event_keeps_its_own_text() {
             "ImePreedit(ImePreedit { text: \"abc\", cursor: Some(Span { start: 1, len: 1 }) })",
         ],
     );
-    // Empty again, so the next hold starts the buffer over.
     queue.defer(InputEvent::ImeCommit("z"), Duration::ZERO);
     let held = queue.pop_admitted().expect("held");
     assert_eq!(queue.text(held.text), "z");

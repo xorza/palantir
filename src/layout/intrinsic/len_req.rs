@@ -5,24 +5,16 @@ use crate::primitives::layout::axis::Axis;
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum LenReq {
-    /// Smallest size the node can occupy without breaking. Text: longest
-    /// unbreakable run.
+    /// Smallest size without breaking; text: longest unbreakable run.
     MinContent,
-    /// Size the node "wants" with unlimited room. Text: natural unbroken
-    /// width.
+    /// Size wanted with unlimited room; text: natural unbroken width.
     MaxContent,
 }
 
-/// Width of the `[f32; SLOT_COUNT]` array on `LayoutScratch.intrinsics`.
-/// Equals `LenReq` variants × `Axis` variants. Adding a third variant
-/// to either enum must update this constant and `LenReq::slot`; the
-/// `const _:` below catches the array overflow at compile time.
+/// Width of `LayoutScratch.intrinsics`' `[f32; SLOT_COUNT]`: `LenReq` × `Axis` variants; the `const _:` below catches overflow.
 pub(crate) const SLOT_COUNT: usize = 4;
 
 impl LenReq {
-    /// Index into `LayoutScratch.intrinsics[node]` for `(axis, self)`.
-    /// Encoding lives next to the variant set so adding a `LenReq`
-    /// surfaces here, not in `mod.rs`.
     #[inline]
     pub(crate) const fn slot(self, axis: Axis) -> usize {
         let a = match axis {

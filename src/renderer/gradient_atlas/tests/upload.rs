@@ -1,5 +1,4 @@
-//! The dirty span a flush hands the GPU, and how often a steady frame
-//! rebakes.
+//! The dirty span a flush hands the GPU, and how often a steady frame rebakes.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -11,10 +10,7 @@ use crate::renderer::gradient_atlas::tests::support::{assert_real_row, distinct_
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
 
-/// Idle atlas (no registrations beyond magenta init) hits the
-/// `Some` branch once for the magenta upload — covering exactly the
-/// one dirty row (row 0, 2048 bytes), not the whole 512 KB atlas —
-/// then stays clean.
+/// An idle atlas flushes once for the magenta init (one 2048-byte row), then stays clean.
 #[test]
 fn freshly_constructed_atlas_flushes_magenta_once() {
     let mut atlas = CpuGradientAtlas::default();
@@ -26,23 +22,18 @@ fn freshly_constructed_atlas_flushes_magenta_once() {
     assert!(atlas.flush().is_none());
 }
 
-/// The flush range covers exactly the rows touched since the last
-/// flush: one baked row → that single 2048-byte row at its own
-/// index; two scattered rows → the contiguous min..=max span
-/// (`(max - min + 1) × 2048` bytes starting at min); nothing dirty
-/// → `None`.
+/// The flush range covers exactly the touched rows: one row, the `min..=max`
+/// span for scattered rows, or `None` when clean.
 #[test]
 fn flush_range_covers_min_to_max_dirty_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
-    // Single row: range is exactly [row, row].
     let ra = atlas.register(&distinct_grad(10).ramp);
     {
         let f = atlas.flush().expect("one baked row must flush");
         assert_eq!(f.first_row, ra.0);
         assert_eq!(f.bytes.len(), size_of::<LutRowTexels>());
     }
-    // Two scattered rows: range spans min..=max, whole rows.
     let rb = atlas.register(&distinct_grad(20).ramp);
     let rc = atlas.register(&distinct_grad(30).ramp);
     let (min, max) = (rb.0.min(rc.0), rb.0.max(rc.0));
@@ -54,23 +45,16 @@ fn flush_range_covers_min_to_max_dirty_rows() {
             (max - min + 1) as usize * size_of::<LutRowTexels>(),
         );
     }
-    // Clean atlas: nothing to upload.
     assert!(atlas.flush().is_none());
 }
 
-/// What the span above *costs*, reported rather than left to be
-/// inferred from a byte length nothing reads back.
-///
-/// Two rows re-baked with a resident row between them upload three, and
-/// `rows_uploaded` against `bakes` is the only place that shows. The
-/// gap is what a scattered dirty set pays: the tracker is a `(min, max)`
-/// pair, so it can say "rows 1 through 3" and never "rows 1 and 3".
+/// Two rows re-baked around a resident one upload three; `rows_uploaded`
+/// against `bakes` is the only place that shows, as the tracker is a `(min, max)` pair.
 #[test]
 fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
 
-    // Three consecutive rows, then a flush that clears the dirty range.
     let a = atlas.register(&distinct_grad(10).ramp);
     let b = atlas.register(&distinct_grad(20).ramp);
     let c = atlas.register(&distinct_grad(30).ramp);
@@ -78,9 +62,7 @@ fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
     let _ = atlas.flush();
     let before = atlas.counters.counts();
 
-    // Re-bake only the outer two, by evicting them: register two fresh
-    // gradients after filling the table would be a bigger fixture, so
-    // dirty them directly through the one path that marks rows.
+    // Dirty the outer two directly through the one path that marks rows.
     atlas.mark_row_dirty(1);
     atlas.mark_row_dirty(3);
     let f = atlas.flush().expect("two dirtied rows must flush");
@@ -95,13 +77,7 @@ fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
     );
 }
 
-/// The headline steady-state property: a frame redrawing unchanged
-/// gradients bakes nothing. Every registration resolves from the index,
-/// nothing is evicted, and the atlas holds its size.
-///
-/// This is what the cache is *for*, and before the probe existed there
-/// was no way to tell it from a cache that re-baked every row and
-/// happened to return the same ids.
+/// A frame redrawing unchanged gradients bakes nothing, evicts nothing and holds the atlas size.
 #[test]
 fn steady_state_frames_never_rebake() {
     const GRADIENTS: u32 = 64;
@@ -143,19 +119,8 @@ fn steady_state_frames_never_rebake() {
     assert_eq!(atlas.capacity(), INITIAL_ATLAS_ROWS);
 }
 
-/// Churn across epochs evicts; it must never grow.
-///
-/// This is the ratchet guard. Growth is one-way — the atlas has no
-/// shrink path — so a workload that grows the table when it should have
-/// evicted permanently enlarges every structure the register path
-/// touches. A gradient animated per frame produces exactly this:
-/// a working set far larger than the table, none of it reused.
-///
-/// Cycling a set twice the table's size is LRU's worst case by
-/// construction, so every registration here is a miss. That is the
-/// point — it is the shape most likely to trip a grow-instead-of-evict
-/// bug, and each round crosses an epoch boundary the way a real frame
-/// does.
+/// Churn across epochs evicts but never grows, as growth is one-way. Cycling
+/// twice the table's size is LRU's worst case, so every registration misses.
 #[test]
 fn cross_epoch_churn_evicts_without_growing() {
     let working_set = (INITIAL_ATLAS_ROWS * 2) as usize;
@@ -179,26 +144,17 @@ fn cross_epoch_churn_evicts_without_growing() {
     let counts = atlas.counters.counts();
     assert_eq!(counts.registrations, registrations);
     assert_eq!(counts.growths, 0);
-    // Cyclic access over 2x the table never reuses a resident row, so
-    // every registration misses; the first INITIAL_ATLAS_ROWS - 1 take
-    // never-claimed rows and the rest evict.
+    // The first INITIAL_ATLAS_ROWS - 1 take never-claimed rows and the rest evict.
     assert_eq!(counts.hits, 0, "cyclic churn cannot hit");
     assert_eq!(counts.bakes, registrations);
     assert_eq!(counts.evictions, registrations - (INITIAL_ATLAS_ROWS - 1));
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 }
 
-/// A miss bakes exactly one row — never two.
-///
-/// The old table could bake a resident gradient a second time after a
-/// growth moved its probe base, which showed up only as a quietly
-/// wasted row. Pinning bakes against misses makes any repeat bake a
-/// failure rather than a slow leak.
+/// A miss bakes exactly one row; a growth once baked a resident gradient twice.
 #[test]
 fn every_miss_bakes_exactly_one_row() {
     let mut atlas = CpuGradientAtlas::default();
-    // Mixed traffic: fresh content, immediate repeats, and repeats of
-    // content registered several steps back.
     let content: Vec<_> = (0..40).map(|i| distinct_grad(i as u32)).collect();
     let sequence: Vec<usize> = (0..40).chain(0..40).chain([3, 3, 17, 39, 0]).collect();
 

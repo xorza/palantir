@@ -1,18 +1,4 @@
-//! What a hue drag costs: one field texture, filled.
-//!
-//! The field's texels are rebuilt on every frame the hue moves, and nothing
-//! else in the picker is close to that cost. The question this answers is
-//! whether the default divisor of 4 leaves the rebuild inside a frame — and
-//! what dropping to 2 or 1 would cost if the accuracy at 4 is ever judged
-//! short. See [`ColorField::texel_size`](crate::ColorField::texel_size) for
-//! the error each divisor buys.
-//!
-//! Both models run, because they are not the same work: Okhsv solves the
-//! gamut cusp once per field and then evaluates a rational map per texel,
-//! while HSV is six comparisons and three multiplies.
-//!
-//! Texel counts are the real ones — a 208 × 160 logical field at display
-//! scale 1.5 is 312 × 240 physical, which the divisor reduces from there.
+//! What a hue drag costs: one field texture, filled. Texels rebuild on every hue-moving frame; answers whether the default divisor of 4 fits a frame (see [`ColorField::texel_size`](crate::ColorField::texel_size)). Both models run: Okhsv solves the gamut cusp once per field, HSV is six comparisons and three multiplies. A 208 × 160 field at scale 1.5 is 312 × 240 physical, reduced by the divisor.
 
 use crate::bench::Run;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -22,8 +8,6 @@ use criterion::Criterion;
 use glam::UVec2;
 use std::hint::black_box;
 
-/// The field's physical size on the machine this was written for: the themed
-/// 208 × 160 at display scale 1.5.
 const PHYSICAL: UVec2 = UVec2::new(312, 240);
 
 const fn size_at(divisor: u32) -> UVec2 {

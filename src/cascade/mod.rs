@@ -1,16 +1,6 @@
 //! Per-frame post-arrange state.
 //!
-//! [`CascadeEngine`](engine::CascadeEngine) owns the walk scratch and
-//! updates a retained [`Cascade`]. While the structure holds — ids,
-//! nesting, flags, visibility, Tab order — geometry and paint changes
-//! refresh the moved rows in place; a structural change rebuilds all
-//! per-tree rows. Downstream phases (damage diff, input hit-test,
-//! renderer encoder) take `&Cascade` as their single frozen-state
-//! handle.
-//!
-//! Laid out like `layout`: this root holds the retained product, with
-//! the machinery in [`engine`], the row tables in [`entry`], and the
-//! paint arena in [`paint`].
+//! [`CascadeEngine`](engine::CascadeEngine) updates a retained [`Cascade`]: while structure holds, geometry and paint changes refresh moved rows in place; a structural change rebuilds all rows. Downstream phases take `&Cascade` as their frozen-state handle.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -36,21 +26,13 @@ use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use glam::Vec2;
 
-/// Read-only artifact of `CascadeEngine::run`. Holds per-layer
-/// cascade state (per-node rows, subtree rollups, paint arena — see
-/// [`LayerCascade`]) plus the [`Self::by_id`] hit-lookup snapshot.
+/// Read-only artifact of `CascadeEngine::run`: per-layer state ([`LayerCascade`]) plus the [`Self::by_id`] snapshot.
 #[derive(Debug, Default)]
 pub(crate) struct Cascade {
     pub(crate) layers: PerLayer<LayerCascade>,
-    /// One row per recorded node, node-aligned within each layer's
-    /// block (`layers[l].entries_base + node.0`). Read only by
-    /// per-widget response lookup, which gathers a whole row at one
-    /// index — see [`EntryRow`] for why it is AoS. Layers append in
-    /// paint order.
+    /// One row per recorded node, node-aligned within each layer's block (`layers[l].entries_base + node.0`); layers append in paint order. See [`EntryRow`].
     pub(crate) entries: Vec<EntryRow>,
-    /// Interactive rows only, in the same paint order as
-    /// [`Self::entries`]. Hit tests reverse-scan this table and read
-    /// nothing else — see [`HitRow`].
+    /// Interactive rows only, in paint order, reverse-scanned by hit tests; see [`HitRow`].
     hits: Vec<HitRow>,
     /// Declared input scopes in record order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
@@ -60,57 +42,27 @@ pub(crate) struct Cascade {
     pub(crate) roots: Vec<RootRow>,
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
-    /// `WidgetId → Endpoint` lookup for hit-test consumers
-    /// ([`crate::input::input_state::InputState::response_for`], capture / focus
-    /// eviction). **Invariant: equals the recorded entries of
-    /// `SeenIds.curr` as observed at the end of the most recent
-    /// `CascadeEngine::run`** — a full rebuild refills it from
-    /// `seen.curr`, and incremental runs and skips retain it because
-    /// [`Self::key`] includes every widget identity. The snapshot is
-    /// required (rather than reading `seen.curr` directly) because
-    /// `response_for` is called during
-    /// recording, and `SeenIds::pre_record` clears `curr` at the top
-    /// of every record pass — `request_relayout`'s second pass needs
-    /// to see pass A's entries while its own widgets are still being
-    /// recorded into the freshly-cleared `curr`. `seen.prev` is the
-    /// wrong fallback: it carries the previous *frame*'s data, not
-    /// the previous *pass*'s. Pays one O(N) memcpy per cascade run
-    /// on a full rebuild in exchange for not paying an O(N) hashmap
-    /// insert per widget.
+    /// `WidgetId → Endpoint` lookup. **Invariant: equals the recorded entries of `SeenIds.curr` at the end of the latest `CascadeEngine::run`.** A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record` cleared `curr`, and a relayout's second pass must still see pass A's entries; `seen.prev` holds the previous frame, not pass.
     pub(crate) by_id: WidgetIdMap<Endpoint>,
-    /// The inputs this cascade was built from; `None` before the first
-    /// run.
+    /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
 }
 
 impl Cascade {
-    /// Where `id` was recorded in the most recent cascade run — the
-    /// `(layer, node)` pair the per-node layout columns are indexed by —
-    /// or `None` if it isn't in that run.
-    ///
-    /// The handle half of a lookup whose other half lives on `Layout`
-    /// (see [`Layout::scroll_content`](crate::layout::Layout::scroll_content)):
-    /// neither table can answer alone, so a caller joins them, and this
-    /// is what keeps the map itself out of the join.
+    /// Where `id` was recorded in the latest run, as the `(layer, node)` pair layout columns are indexed by, or `None`.
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
         self.by_id.get(&id).copied()
     }
 
-    /// The entry row of the node at `endpoint`. Gated like its one
-    /// caller, the development-only collision overlay.
+    /// The entry row at `endpoint`. Gated like its one caller, the development-only collision overlay.
     #[cfg(debug_assertions)]
     #[inline]
     pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
         &self.entries[(self.layers[endpoint.layer].entries_base + endpoint.node.0) as usize]
     }
 
-    /// Both indexes a widget's per-frame rows are reached by, from one
-    /// `by_id` probe. `response_for` needs the entry index (for
-    /// [`Cascade::entries`]) *and* the endpoint (for the layout
-    /// columns, which are keyed by `(layer, node)`), once per widget per
-    /// frame — resolving them separately would double the hash lookups
-    /// on that path.
+    /// Both the entry index and the endpoint, from one `by_id` probe.
     #[inline]
     pub(crate) fn locate(&self, id: WidgetId) -> Option<WidgetLocation> {
         Some(self.location(*self.by_id.get(&id)?))
@@ -125,12 +77,7 @@ impl Cascade {
         }
     }
 
-    /// True when `descendant`'s most recent record sits inside
-    /// `ancestor`'s subtree — same layer, within the ancestor's
-    /// pre-order interval `[node, subtree_end)`. Self-inclusive:
-    /// `is_within(id, id)` is `true` for any recorded `id`. `false`
-    /// when either id wasn't in the most recent cascade run (layers
-    /// are separate trees, so a popup is never "within" its anchor).
+    /// True when `descendant` sits inside `ancestor`'s subtree: same layer, within `[node, subtree_end)`. Self-inclusive; `false` if either id is missing from the latest run.
     pub(crate) fn is_within(&self, descendant: WidgetId, ancestor: WidgetId) -> bool {
         let (Some(d), Some(a)) = (self.by_id.get(&descendant), self.by_id.get(&ancestor)) else {
             return false;
@@ -140,11 +87,7 @@ impl Cascade {
             && d.node.0 < self.layers[a.layer].subtree_ends[a.node.idx()]
     }
 
-    /// Interactive rows under `pos`, topmost first.
-    ///
-    /// The one reverse scan every hit test is built from: rows are pushed
-    /// in paint order, so walking back yields the topmost match first and
-    /// the caller stops when it has what it needs.
+    /// Interactive rows under `pos`, topmost first, by reverse scan of the paint-ordered table.
     #[inline]
     fn hits_under(&self, pos: Vec2) -> impl Iterator<Item = &HitRow> {
         self.hits
@@ -153,14 +96,7 @@ impl Cascade {
             .filter(move |row| row.rect.contains(pos))
     }
 
-    /// One reverse walk that finds the topmost hover, scroll and pinch
-    /// targets at once. Used on `PointerMoved` and at `post_record` to
-    /// recompute them all in a single pass.
-    /// [`Self::hit_test_press`] is the same shape for the press path.
-    /// The slots are independent: a `Sense::DRAG | Sense::SCROLL` widget
-    /// sits in the hover slot and both scroll slots if it's the topmost
-    /// match for each, and the two wheel axes may land on two rows.
-    /// Stops as soon as every slot is filled.
+    /// One reverse walk finding the topmost hover, scroll and pinch targets; [`Self::hit_test_press`] is the press twin. Slots are independent, and the walk stops once all are filled.
     pub(crate) fn hit_test_targets(&self, pos: Vec2) -> HitTargets {
         let mut targets = HitTargets::default();
         for row in self.hits_under(pos) {
@@ -187,17 +123,7 @@ impl Cascade {
         targets
     }
 
-    /// The press target and the focus target in one reverse walk — see
-    /// [`PressTargets`]. Same shape as [`Self::hit_test_targets`]: the
-    /// predicates are named here rather than passed, because there is one
-    /// press path and it wants `Sense::clicks` for the press itself and
-    /// `HitRow::focusable` for what the click focuses — different fields,
-    /// which is why one filter parameter could not have served both.
-    ///
-    /// The focus walk normally passes *through* the press target, which
-    /// is how clicking a `Button` inside a focusable group focuses the
-    /// group. A disabled target ends it instead: the press went no
-    /// further, so neither may the focus it would have moved.
+    /// The press and focus targets in one reverse walk; see [`PressTargets`]. The predicates differ (`Sense::clicks` vs `HitRow::focusable`). Focus passes through the press target to a focusable ancestor, but a disabled target ends both.
     pub(crate) fn hit_test_press(&self, pos: Vec2) -> PressTargets {
         let mut targets = PressTargets::default();
         for row in self.hits_under(pos) {
@@ -217,18 +143,7 @@ impl Cascade {
         targets
     }
 
-    /// The stop a Tab press moves focus to from `focused`, or `None` when
-    /// `domain` holds no stop.
-    ///
-    /// The stops of `domain` — [`Self::tab_domain`] — in ascending `index`, ties in
-    /// record order; `Next` takes the first after `focused` and `Previous`
-    /// the last before it, both wrapping. A `focused` outside the domain —
-    /// nothing focused, or a field behind an open modal — enters it at the
-    /// first stop, or at the last going back.
-    ///
-    /// One scan over the rows rather than a sort: a stop's order key is
-    /// `(index, record position)`, and the answer is a minimum or a
-    /// maximum over it.
+    /// The stop a Tab press moves focus to from `focused`, or `None` when `domain` holds no stop. Order is ascending `index`, ties in record order; `Next`/`Previous` wrap. A `focused` outside the domain enters at the first stop, or the last going back.
     pub(crate) fn next_tab_stop(
         &self,
         domain: TabDomain,
@@ -272,8 +187,7 @@ impl Cascade {
         }
     }
 
-    /// The innermost arrow group `focused` sits in, or `None`. Groups are
-    /// rows in pre-order, so the last one holding it is the innermost.
+    /// The innermost arrow group `focused` sits in, or `None`; groups are in pre-order, so the last match.
     pub(crate) fn arrow_group_of(&self, focused: WidgetId) -> Option<ArrowGroupRow> {
         self.arrow_groups
             .iter()
@@ -282,8 +196,7 @@ impl Cascade {
             .copied()
     }
 
-    /// The first stop in Tab order recorded under `ancestor`, or `None`
-    /// when it holds none or was not recorded.
+    /// The first stop in Tab order under `ancestor`, or `None`.
     pub(crate) fn first_tab_stop_within(&self, ancestor: WidgetId) -> Option<WidgetId> {
         self.tab_stops
             .iter()
@@ -293,16 +206,11 @@ impl Cascade {
             .map(|(_, row)| row.id)
     }
 
-    /// The stops a Tab press from `focused` may reach.
+    /// The stops a Tab press from `focused` may reach, by priority:
     ///
-    /// - A `Menu` root that holds the focus traps it: a menu is raised
-    ///   from whatever it sits above, modal included.
-    /// - Otherwise the topmost open `Modal` traps it — the last `Modal`
-    ///   root recorded — and a focus anywhere else is pulled into it.
-    /// - Otherwise a `Popup` root that holds the focus traps it. A popup
-    ///   that does not hold it — an autocomplete list under a focused
-    ///   field — takes nothing, so Tab moves on through the field's own
-    ///   layer, as ARIA's combobox does.
+    /// - A `Menu` root holding the focus traps it.
+    /// - Otherwise the topmost open `Modal` traps it, pulling focus in.
+    /// - Otherwise a `Popup` root holding the focus traps it; one that does not (an autocomplete list) takes nothing.
     /// - Otherwise every stop in `Main`.
     pub(crate) fn tab_domain(&self, focused: Option<WidgetId>) -> TabDomain {
         let modal = self
@@ -335,9 +243,7 @@ impl Cascade {
     }
 }
 
-// Reached only from the harness's aim assertions and the hit-index test:
-// production routes through the two fused walks above, each of which
-// answers its whole question in one pass.
+// Reached only from test harness assertions; production uses the fused walks above.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::cascade::Cascade;
@@ -359,8 +265,7 @@ pub(crate) mod internals {
     use crate::scene::tree::node_id::NodeId;
     use glam::Vec2;
 
-    /// One paint row with the widget that owns it — what the damage
-    /// oracle diffs between two frames.
+    /// One paint row with its owning widget; what the damage oracle diffs.
     #[cfg(test)]
     #[derive(Clone, Copy, Debug, PartialEq)]
     pub(crate) struct OwnedPaint {
@@ -376,8 +281,7 @@ pub(crate) mod internals {
         fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
             let arena = &self.paint_arena;
             let span = arena.node_spans[node.idx()];
-            // An invisible node's span is empty, and so is every one
-            // under it.
+            // An invisible node's span is empty, and so is every one under it.
             if span.len == 0 {
                 return;
             }
@@ -408,21 +312,13 @@ pub(crate) mod internals {
     }
 
     impl Cascade {
-        /// Every interactive row's widget, in paint order — the raw
-        /// contents of the hit table, for the tests that assert on which
-        /// widgets reached it rather than on what a point hits.
-        ///
-        /// Narrower than the module around it: every caller is an in-crate
-        /// unit test, so an `internals` build has none.
+        /// Every interactive row's widget in paint order, for tests asserting what reached the hit table.
         #[cfg(test)]
         pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {
             self.hits.iter().map(|row| row.widget_id)
         }
 
-        /// Append every row that paints, with the widget that owns it, in
-        /// the order the encoder draws them: layer by layer, root by root,
-        /// and inside a node its chrome, then each shape and child subtree
-        /// in record order. Child markers paint nothing and are left out.
+        /// Append every painting row with its widget in encoder draw order. Child markers are left out.
         #[cfg(test)]
         pub(crate) fn owned_paints(&self, forest: &Forest, out: &mut Vec<OwnedPaint>) {
             for (layer, tree) in forest.trees.iter_paint_order() {
@@ -432,12 +328,7 @@ pub(crate) mod internals {
             }
         }
 
-        /// Assert that this cascade — however it was reached, full or
-        /// incremental — equals `cold`, a full rebuild over the same
-        /// forest and layout. Compares every column a reader consumes,
-        /// per node, so a retained row that went stale is named. The id
-        /// lookup is not among them: it snapshots the live seen-id table,
-        /// which a rebuild after the frame no longer finds.
+        /// Assert this cascade equals `cold`, a full rebuild over the same forest and layout, per node and column. The id lookup is excluded since it snapshots live seen ids.
         #[cfg(test)]
         pub(crate) fn assert_same_as(&self, cold: &Cascade, forest: &Forest) {
             assert_eq!(self.entries, cold.entries, "entry rows");

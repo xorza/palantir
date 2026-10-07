@@ -2,15 +2,9 @@
 
 use crate::ui::frame_report::FrameReport;
 
-/// The values one frame's record closure returned, one per record pass
-/// in the order the passes ran, warmup excluded.
+/// The values one frame's record closure returned, one per record pass in run order, warmup excluded.
 ///
-/// Pass A is the input-observing pass: it sees the one-frame edges
-/// (`clicked`, `drag.started()`). Pass B, when there is one, runs after
-/// the edges were drained. Reading the right pass is the whole reason
-/// this type exists — a value captured into an outer variable keeps
-/// whichever pass ran last, which is pass B on exactly the frames an
-/// action made interesting.
+/// Pass A observes the one-frame edges (`clicked`, `drag.started()`); pass B, if any, runs after they are drained. An outer variable keeps the last pass, which is B on exactly the interesting frames.
 #[derive(Debug)]
 pub struct Passes<R> {
     values: Vec<R>,
@@ -52,8 +46,7 @@ impl<R> Passes<R> {
         self.values.is_empty()
     }
 
-    /// How many passes returned a value matching `pred`, so a signal
-    /// both passes reported reads as the double fire it is.
+    /// How many passes returned a value matching `pred`, so a signal both reported reads as a double fire.
     pub fn count_where(&self, pred: impl Fn(&R) -> bool) -> usize {
         self.values.iter().filter(|value| pred(value)).count()
     }

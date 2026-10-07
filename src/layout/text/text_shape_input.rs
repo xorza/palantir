@@ -11,37 +11,24 @@ use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::TextWrap;
 
-/// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
-/// [`Self::on_leaf`] and [`Self::on_container`]; named so the fields
-/// aren't a tuple.
+/// One `ShapeRecord::Text`'s layout-side inputs, from [`Self::on_leaf`] and [`Self::on_container`].
 #[derive(Debug)]
 pub(crate) struct TextShapeInput<'a> {
     pub(crate) ordinal: u16,
     pub(crate) text: &'a str,
-    /// Content hash retained on the [`RecordedText`] at record time —
-    /// [`Self::shape_request`] reuses it so shaping passes don't rescan
-    /// the source bytes.
+    /// Content hash kept on the [`RecordedText`] so [`Self::shape_request`] need not rescan the bytes.
     ///
     /// [`RecordedText`]: crate::primitives::text::recorded_text::RecordedText
     pub(crate) text_hash: u64,
-    /// The face this shapes in, carried whole from
-    /// [`ShapeRecord::Text`] so the record and the shaper cannot
-    /// disagree about what four separate fields meant.
     pub(crate) font: GlyphFont,
     pub(crate) wrap: TextWrap,
-    /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
-    /// bakes per-line offsets into the shaped buffer when wrap is on,
-    /// so the layout pass has to thread this all the way down to
-    /// `TextSystem::measure` (and into `TextShapeKey`) — two shapes with
-    /// identical text/size/wrap but different halign aren't
-    /// interchangeable.
+    /// From `Shape::Text.align`; with wrap on, cosmic-text bakes per-line offsets into the shaped buffer,
+    /// so it must reach `TextSystem::measure` and `TextShapeKey`.
     pub(crate) halign: HAlign,
 }
 
 impl<'a> TextShapeInput<'a> {
-    /// A recorded run always has bytes — `TextShape::is_noop` drops an
-    /// empty one before it becomes a `ShapeRecord` — so the shaping
-    /// boundary is a contract to assert here, not a case layout answers.
+    /// `TextShape::is_noop` drops empty runs before recording, so the boundary is asserted, not handled.
     pub(crate) fn shape_request(&self) -> TextShapeRequest<'a> {
         TextShapeRequest::for_key(
             self.text,
@@ -50,19 +37,12 @@ impl<'a> TextShapeInput<'a> {
         .expect("a recorded text run has bytes — `TextShape::is_noop` drops the empty one")
     }
 
-    /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth
-    /// for the layout-side leaf walk — `MeasureOp::leaf` drives wrap
-    /// shaping, `intrinsic::leaf` drives the unbounded content
-    /// axis. Filtering and destructuring happen here so neither side can
-    /// drift on which shape variants contribute to size.
+    /// Every text shape on a leaf: the one walk behind `MeasureOp::leaf` and `intrinsic::leaf`.
     pub(crate) fn on_leaf(
         tree: &'a Tree,
         interned_text: &'a InternedText<'_>,
         node: NodeId,
     ) -> impl Iterator<Item = TextShapeInput<'a>> {
-        // Direct slice into `tree.shapes` for `node`. Leaves have no
-        // children, so the `records.shape_span()[i]` span is exactly the
-        // leaf's own direct shapes — contiguous, no child boundaries to skip.
         debug_assert_eq!(
             tree.subtree_end_of(node.idx()),
             node.idx() + 1,
@@ -74,9 +54,6 @@ impl<'a> TextShapeInput<'a> {
         text_shape_inputs(tree.shapes.records[lo..hi].iter(), interned_text)
     }
 
-    /// Iterate the direct text shapes on a container, skipping text
-    /// belonging to descendant nodes while preserving this node's
-    /// within-owner record order.
     pub(crate) fn on_container(
         tree: &'a Tree,
         interned_text: &'a InternedText<'_>,
@@ -166,8 +143,6 @@ mod tests {
         slant: FontSlant::Normal,
     };
 
-    /// One recorded run, paired with whatever hash the caller claims for
-    /// its bytes.
     fn input(text_hash: u64) -> TextShapeInput<'static> {
         TextShapeInput {
             ordinal: 0,
@@ -190,13 +165,9 @@ mod tests {
         );
     }
 
-    /// A retained hash that no longer describes the bytes beside it would
-    /// let one run replay another's shaped buffer.
+    /// A retained hash that no longer matches its bytes would replay another run's shaped buffer.
     ///
-    /// Debug-only, and the crate's one pairing check that is:
-    /// `TextShapeRequest::for_key` re-hashes the run to compare, which is
-    /// `O(n)` in its bytes per run per frame. `ShapedTextRef::new` asks
-    /// the same question of two recorded hashes and holds in release.
+    /// Debug-only: `for_key` re-hashes the run (O(n) per run per frame).
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "text paired with a key minted from different bytes")]

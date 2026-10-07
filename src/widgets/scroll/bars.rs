@@ -1,6 +1,5 @@
-//! The scrollbar overlay: what it reserves out of the viewport, the
-//! per-axis track/thumb pair, and how a frame's bar interaction folds
-//! back into the scroll offset.
+//! The scrollbar overlay: what it reserves from the viewport, the per-axis
+//! track/thumb pair, and how bar interaction folds into the scroll offset.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
@@ -19,8 +18,8 @@ use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 
-/// One scrollbar axis: the two leaves the overlay records for it, and
-/// last frame's interaction on each.
+/// One scrollbar axis: the two overlay leaves and last frame's interaction on
+/// each.
 #[derive(Copy, Clone, Debug)]
 struct BarAxis {
     track_id: WidgetId,
@@ -30,22 +29,15 @@ struct BarAxis {
 }
 
 impl BarAxis {
-    /// Emit this axis's two nodes onto the overlay: a track leaf with
-    /// `Sense::CLICK` (one page per click, on release) and a thumb leaf with
-    /// `Sense::DRAG` painted on top. Neither carries a size or a
-    /// position — the overlay is a [`Widget::scrollbars`] container,
-    /// and its layout assigns both rects once measure has
-    /// produced the content extent they are a ratio of.
+    /// Emit this axis's track leaf (`Sense::CLICK`, one page per click on release)
+    /// and thumb leaf (`Sense::DRAG`, painted on top). Neither carries size or
+    /// position: the [`Widget::scrollbars`] container's layout assigns both once
+    /// measure has the content extent.
     ///
-    /// Both are recorded unconditionally, even on an axis showing no
-    /// bar: arrange collapses those to zero extent. Recording them
-    /// either way is what keeps the child list the same shape across an
-    /// overflow toggle, which is what lets the driver address children
-    /// positionally.
-    ///
-    /// Track stays a leaf even when `theme.track` alpha is 0 so the
-    /// click-to-page surface remains — the gutter is reserved either
-    /// way, matching OS scrollbar conventions.
+    /// Both are recorded unconditionally (arrange collapses an unused axis to zero),
+    /// keeping the child list's shape stable across overflow toggles so the driver
+    /// can address children positionally. The track stays a leaf even at zero alpha
+    /// so the click-to-page surface remains, as in OS scrollbars.
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
         let radius = Corners::all(theme.thickness * 0.5);
         let track = Widget::leaf().id(self.track_id).sense(Sense::CLICK);
@@ -66,9 +58,8 @@ impl BarAxis {
     }
 }
 
-/// Both scrollbars: their ids, last frame's interaction on each, and the
-/// theme they paint with. Read in full *before* the `&mut` state borrow
-/// that acts on them, because reading a response borrows all of `Ui`.
+/// Both scrollbars: ids, last frame's interaction, and the paint theme. Read
+/// before the `&mut` state borrow, since reading a response borrows all of `Ui`.
 #[derive(Debug)]
 pub(super) struct Bars {
     theme: ScrollbarTheme,
@@ -94,20 +85,16 @@ impl Bars {
         }
     }
 
-    /// The axes in the order the layout driver addresses their nodes:
-    /// vertical track + thumb, then horizontal.
+    /// The axes in the order the layout driver addresses their nodes: vertical
+    /// track + thumb, then horizontal.
     const fn axes(&self) -> [(Axis, &BarAxis); 2] {
         [(Axis::Y, &self.v), (Axis::X, &self.h)]
     }
 
-    /// Fold this frame's bar interaction into the offset: thumb drags
-    /// first, then track pages.
-    ///
-    /// Two passes, not one per axis: a page click reads the offset a
-    /// same-frame drag on the *other* axis already moved, and the drag
-    /// anchor is a single slot shared by both axes. Resolving each bar
-    /// immediately before it is applied is what keeps the thumb tracking
-    /// the cursor within the frame.
+    /// Fold this frame's bar interaction into the offset: thumb drags first, then
+    /// track pages. Two passes because a page click reads the offset a same-frame
+    /// drag on the *other* axis moved, and the drag anchor is one slot shared by
+    /// both axes.
     pub(super) fn drive(&self, state: &mut ScrollState, geom: ScrollGeometry) {
         let axes = geom.bars.axes;
         for (axis, bar) in self.axes() {
@@ -137,10 +124,9 @@ impl Bars {
     }
 
     /// Record the bar overlay as a sibling of the viewport `def` names: a
-    /// `scrollbars` container filling the outer rect, holding the four
-    /// leaves in the fixed order its driver addresses them by. Painted
-    /// after the viewport via record order, hit-tested above it via
-    /// cascade order.
+    /// `scrollbars` container filling the outer rect, holding four leaves in the
+    /// order its driver addresses them. Painted after the viewport by record order,
+    /// hit-tested above it by cascade order.
     pub(super) fn record(&self, ui: &mut Ui, def: ScrollbarsDef) {
         let mut overlay = Widget::scrollbars()
             .id(def.content.with("bars"))
@@ -156,19 +142,13 @@ impl Bars {
 
 /// How the scrollbars relate to the content area on the pan axes.
 ///
-/// - [`Self::Reserved`] (default): the gutter always takes a strip of
-///   the cross axis (`theme.scrollbar.thickness + gap`), and the bar is
-///   drawn inside that gutter only when content overflows. The
-///   reserved width is constant whether or not anything currently
-///   overflows — so a Hug ancestor of the scroll doesn't shift when
-///   overflow toggles.
-/// - [`Self::Overlay`]: no gutter is reserved. The content gets the
-///   full inner width, and the bar paints **over** the content's
-///   far-edge strip when overflow happens. Modern macOS-style scroll
-///   indicator behaviour.
-/// - [`Self::Hidden`]: no bar, no gutter. Wheel / touchpad / drag
-///   input still pans. Useful for canvas-style scopes (node graphs,
-///   infinite boards) where indicators would be noise.
+/// - [`Self::Reserved`] (default): the gutter always takes a strip of the cross
+///   axis (`theme.scrollbar.thickness + gap`), with the bar drawn inside only on
+///   overflow, so a Hug ancestor doesn't shift when overflow toggles.
+/// - [`Self::Overlay`]: no gutter; the bar paints **over** the content's
+///   far-edge strip on overflow (macOS-style).
+/// - [`Self::Hidden`]: no bar, no gutter; wheel / touchpad / drag still pan, for
+///   canvas-style scopes.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum BarMode {
     /// A gutter always reserved, with the bar drawn in it on overflow.
@@ -182,16 +162,11 @@ pub enum BarMode {
 }
 
 impl BarMode {
-    /// The gutter the bars take out of the widget's box: a strip of the
-    /// bar's thickness plus its gap along the far edge across each panned
-    /// axis, so the bar does not touch the visible content.
-    ///
-    /// Only [`Self::Reserved`] reserves. [`Self::Overlay`] paints the bar
-    /// over the content, and [`Self::Hidden`] has no bar at all. The strip
-    /// does not depend on overflow, so a `Hug` ancestor does not shift
-    /// when the content starts or stops fitting; the thumb itself still
-    /// shows only when the content overflows, which the overlay's layout
-    /// decides after measure.
+    /// The gutter the bars take out of the widget's box: a strip of bar thickness
+    /// plus gap along the far edge across each panned axis. Only [`Self::Reserved`]
+    /// reserves. It doesn't depend on overflow, so a `Hug` ancestor doesn't shift;
+    /// the thumb shows only on overflow, decided by the overlay's layout after
+    /// measure.
     pub(super) fn gutter(self, axes: ScrollAxes, theme: &ScrollbarTheme) -> Spacing {
         if self != Self::Reserved {
             return Spacing::ZERO;

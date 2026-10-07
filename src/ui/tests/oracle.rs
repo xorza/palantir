@@ -1,9 +1,4 @@
-//! A scene driven through one mutation per frame, with every retained
-//! result checked against a cold one after each frame — see
-//! [`Oracle`](crate::internals::harness::oracle::Oracle).
-//!
-//! One test per mutation, so a known gap is one `#[ignore]` naming the
-//! redesign step that closes it rather than a hole in a shared script.
+//! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::harness::oracle::Oracle)); one test per mutation.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -26,7 +21,6 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(480, 360);
 
-/// Everything the script can change, one field per mutation kind.
 #[derive(Clone, Copy, Debug)]
 struct Knobs {
     fill: RgbaF32,
@@ -151,10 +145,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     }
 }
 
-/// Run `script`, one knob set per frame, with every oracle after each
-/// frame. Two primed frames come first so the cascade and the damage
-/// baseline are warm, and the mutation then lands on the incremental
-/// paths it is meant to probe.
+/// Run `script`, one knob set per frame, with every oracle after each; two primed frames warm the baselines.
 fn run(script: &[Knobs]) {
     let mut h = UiHarness::new(SURFACE);
     let picture = h
@@ -231,9 +222,7 @@ fn shape_becomes_animated() {
     ]);
 }
 
-/// A 100 px image in a 40 px node switches to `ImageFit::None` and back:
-/// its row grows past the node, and the damage covers the overflow both
-/// ways.
+/// A 100 px image in a 40 px node switches to `ImageFit::None` and back: damage covers the overflow both ways.
 #[test]
 fn image_fit_overflows_its_node() {
     run(&[
@@ -245,8 +234,6 @@ fn image_fit_overflows_its_node() {
     ]);
 }
 
-/// Content-equal roots swapping order change no row's `(hash, screen)`:
-/// only the paint order of their overlap flips.
 #[test]
 fn roots_swap_order() {
     run(&[

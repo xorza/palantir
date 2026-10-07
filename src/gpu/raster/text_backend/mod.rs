@@ -1,31 +1,14 @@
-//! Palantir-native glyph atlas + text render pipeline.
+//! Glyph atlas and text render pipeline.
 //!
-//! Built to Palantir's contracts:
-//!
-//! - **Linear-premul end to end.** Straight-alpha linear f16 in,
-//!   shader writes `vec4(rgb*a, a)`, blend is
-//!   `PREMULTIPLIED_ALPHA_BLENDING`. No sRGB encode/decode round-trip.
-//! - **Scissor does the clipping.** No per-glyph CPU clip; composer
-//!   group scissor crops; cheap y-range pre-cull keeps off-screen
-//!   lines out of the atlas cache.
-//! - **One bind group, one atlas struct.** An `Rgba8UnormSrgb` colour
-//!   texture and an `R8Unorm` mask texture side by side; the content
-//!   type bits select in the shader.
-//! - **GPU-blit on atlas grow.** `copy_texture_to_texture` from old
-//!   to new; etagere preserves rects so the cache map stays intact —
-//!   no re-rasterization.
-//! - **Batched glyph uploads on cache miss.** Rasterized pixels queue
-//!   into a retained staging buffer and flush as one belt write + N
-//!   `copy_buffer_to_texture` commands on the main encoder, recorded
-//!   *after* any grow blit — encoder ordering is load-bearing
-//!   (`queue.write_texture` runs before all encoder commands in a
-//!   submit, so it could be clobbered by the blit).
-//! - **28-byte [`RasterQuad`](crate::gpu::raster::raster_atlas::raster_quad::RasterQuad)
-//!   instances.** The content type and the desaturate flag sit above `u`
-//!   in `uv_and_kind`.
-//! - **No atlas sizes in the shader.** It reads each texel by index, so
-//!   a grow changes the bind group alone — no uniform buffer, no
-//!   per-batch push.
+//! - Linear premultiplied end to end: the shader writes `vec4(rgb*a, a)`
+//!   with `PREMULTIPLIED_ALPHA_BLENDING`; no sRGB round-trip.
+//! - Scissor clips; no per-glyph CPU clip, only a y-range pre-cull.
+//! - One bind group: a colour texture and a mask texture side by side.
+//! - Atlas grow blits GPU-side; rects are preserved, so no re-rasterization.
+//! - Glyph uploads are staged and flushed after any grow blit, because
+//!   `queue.write_texture` runs before encoder commands and the blit could
+//!   clobber it.
+//! - The shader reads texels by index, so a grow changes only the bind group.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -51,10 +34,8 @@ pub(crate) struct TextBackend {
 }
 
 impl TextBackend {
-    /// Build the format-independent text resources (glyph atlas, shaper,
-    /// caches, shader, vertex buffer). The render pipelines are built per
-    /// format by [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
-    /// from [`RasterProgram::build_variants`].
+    /// Build the format-independent text resources; per-format pipelines come from
+    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(device: &wgpu::Device, program: &RasterProgram, shaper: TextShaper) -> Self {
         Self {
             shaper,
@@ -66,23 +47,14 @@ impl TextBackend {
                     vbuf: "palantir.text.vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.text",
-                        // Large enough to skip the 256->512->1024 grow
-                        // chain on the first frame with non-trivial text.
+                        // Skips the 256->512->1024 grow chain on the first text-heavy frame.
                         initial_mask_px: 1024,
-                        // Colour glyphs (emoji) are rare in UI text: 256^2 RGBA is
-                        // 256 KB and holds dozens at UI sizes, where matching the
-                        // mask side would pin 4 MB most sessions never touch.
+                        // Colour glyphs are rare: 256^2 RGBA holds dozens, vs 4 MB at mask size.
                         initial_color_px: 256,
-                        // 16 MiB is 2^24, and both `bytes_per_pixel` values are
-                        // powers of two, so the ceiling lands on an exact power-of-
-                        // two side either way: a 4096² mask or a 2048² colour
-                        // atlas. The measured `text_atlas/cache_churn` working set
-                        // is 3700 glyphs in a 2048² mask, so the mask ceiling is
-                        // roughly 4x the largest set any bench here produces.
+                        // 16 MiB lands on an exact power-of-two side: a 4096^2 mask or 2048^2
+                        // colour atlas, ~4x the largest `text_atlas/cache_churn` set.
                         max_bytes: 16 << 20,
-                        // 4 MiB is a 2048² mask or a 1024² colour atlas, and the
-                        // mask growing 1 MB -> 4 MB is what the measurement in
-                        // `eager_growth_bytes` cost.
+                        // 4 MiB is a 2048^2 mask or 1024^2 colour atlas; see `eager_growth_bytes`.
                         eager_growth_bytes: 4 << 20,
                     },
                     initial_instances: 4096,
@@ -91,9 +63,8 @@ impl TextBackend {
         }
     }
 
-    /// Append-mode prepare. Encoded-cache hits bypass shaping; the
-    /// first miss opens the exclusive glyph lease, and each miss
-    /// extracts and rasterizes its glyphs in place.
+    /// Append-mode prepare. Encoded-cache hits bypass shaping; the first miss
+    /// opens the exclusive glyph lease.
     pub(crate) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -105,9 +76,8 @@ impl TextBackend {
         self.encoder.sync_fonts(self.shaper.font_epoch());
         self.pass.open_batch(batch_idx);
 
-        // One walk: hits emit straight to `instances`; misses encode
-        // through the lazily-opened lease. An all-hit frame never
-        // cracks the RefCell or hits cosmic.
+        // One walk: hits emit directly, misses encode through the lazily opened
+        // lease, so an all-hit frame never touches cosmic.
         let mut glyphs = None;
         for r in runs {
             let run_key = EncodedRunKey::for_row(r, scale);
@@ -130,31 +100,18 @@ impl TextBackend {
         }
     }
 
-    /// The shaper this backend encodes against, for lending to a `GpuView`
-    /// through [`GpuInitContext`](crate::GpuInitContext) — the one the whole window is
-    /// already drawing text with.
+    /// The shaper this backend encodes against, lent to a `GpuView` through
+    /// [`GpuInitContext`](crate::GpuInitContext).
     pub(crate) const fn shaper(&self) -> &TextShaper {
         &self.shaper
     }
 
-    /// Frame teardown, run for every submit — including one that
-    /// prepared no text batch at all.
+    /// Frame teardown for every submit, even one with no text batch; the last step
+    /// of `WgpuBackend::submit`.
     ///
-    /// `end_frame`, not `post_record`: this runs as the last step of
-    /// `WgpuBackend::submit`, nowhere near a record pass, and the crate
-    /// spends `post_record` on the record half of a frame
-    /// (`FrameCycle`, `Forest`, `Tree`). It belongs with the other
-    /// frame-boundary teardowns instead — `TextSystem::end_frame` is its
-    /// opposite number on the record side.
-    ///
-    /// Both caches age against the shaper's clock
-    /// ([`TextShaper::frame`](crate::text::shaper::TextShaper::frame)),
-    /// so a text-free frame still sweeps — see
-    /// [`RasterPass::end_frame`].
-    ///
-    /// Returns that clock, for the icon atlas to age on as well: a keep
-    /// count then means the same span in either tenant of a
-    /// `RasterAtlas`.
+    /// Both caches age against the shaper's clock, so a text-free frame still
+    /// sweeps ([`RasterPass::end_frame`]). Returns that clock so the icon atlas
+    /// ages on the same span.
     pub(crate) fn end_frame(&mut self) -> u64 {
         let frame = self.shaper.frame();
         self.pass.end_frame(frame);
@@ -178,14 +135,9 @@ pub(crate) mod internals {
     use crate::gpu::raster::text_backend::TextBackend;
 
     impl TextBackend {
-        /// One frame boundary the way a window drives it: advance the
-        /// shared text clock — owned by the record pass in production,
-        /// where `TextSystem`'s frame teardown ticks it before the
-        /// submit — then sweep this side against it.
-        ///
-        /// Harnesses that drive a `TextBackend` with no `Ui` behind it
-        /// have no other way to age these caches, since
-        /// [`TextBackend::end_frame`] only *reads* the clock.
+        /// One frame boundary as a window drives it: tick the shared text clock
+        /// (owned by the record pass in production), then sweep this side. For
+        /// harnesses with no `Ui`, since [`TextBackend::end_frame`] only reads the clock.
         pub(crate) fn tick_frame(&mut self) {
             self.shaper.tick_frame();
             self.end_frame();

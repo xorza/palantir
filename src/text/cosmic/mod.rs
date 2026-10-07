@@ -1,24 +1,12 @@
-//! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer`
-//! per [`TextShapeKey`] — every input that affects shaping (text hash,
-//! font size, wrap width, line height, family, weight, line align, fit) —
-//! so steady-state measurement is a `HashMap` lookup only: no reshape,
-//! no allocation. What is resident and for how long belongs to
-//! [`shaped_buffer_cache`], which this file shapes into and reads back
-//! out of. Missing buffers are reconstructible from the retained text
-//! source at the backend boundary, so a continuous resize drag — every
-//! width unique, a fresh entry per run per frame — stays bounded
-//! without explicit cache ownership.
+//! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer` per
+//! [`TextShapeKey`], so steady-state measurement is a lookup with no reshape or
+//! allocation; residency belongs to [`shaped_buffer_cache`]. Render code never sees
+//! cosmic types: `TextShaper::glyphs` lends a `RefMut<CosmicMeasure>` whose
+//! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`] return
+//! palantir-native placements and bitmaps.
 //!
-//! The render side never sees cosmic types: `TextShaper::glyphs`
-//! lends a `RefMut<CosmicMeasure>` whose
-//! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`]
-//! translate shaped buffers into palantir-native placements and bitmaps;
-//! [`crate::text`] documents why there's no `TextMeasure` trait.
-//!
-//! Hash collisions are theoretically possible (we key on a 64-bit hash of the
-//! text rather than storing the full string), but at typical UI scales the
-//! cost of resolving them — verifying with the cached buffer's source string
-//! on every hit — outweighs the cost of accepting the negligible risk.
+//! The key holds a 64-bit text hash, not the string; verifying on every hit would
+//! cost more than the negligible collision risk.
 
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::content_type::ContentType;
@@ -64,40 +52,23 @@ pub(super) mod geometry;
 pub(super) mod glyph_ink;
 pub(super) mod shaped_buffer_cache;
 
-/// Faces [`CosmicMeasure::ellipsis`] remembers the "…" advance for.
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
 
-/// The cosmic face one key shapes at, in the two values cosmic asks
-/// for.
-///
-/// The inverse of [`TextShapeKey::unbounded`]'s fold: the key packed a
-/// `GlyphFont` in, and every shaping path unpacks it here rather than
-/// through four accessors of its own, so no two of them can shape one
-/// key against different faces.
+/// The cosmic face one key shapes at; inverts [`TextShapeKey::unbounded`]'s fold in one place.
 const fn metrics_of(key: TextShapeKey) -> Metrics {
     Metrics::new(key.font_size(), key.line_height())
 }
 
-/// The attributes a resolved family shapes under.
-///
-/// Takes the **resolved** name rather than a [`FontFamily`], because the
-/// resolution needs the database and this does not — which is what lets
-/// the startup warm-up and the per-shape path share one spelling of the
-/// attributes without sharing the memo.
-///
-/// Fake italic is cosmic's to add: `override_fake_italic` sets
-/// `CacheKeyFlags::FAKE_ITALIC` when the matched face is upright and the
-/// request was not, and the flag is part of the glyph cache key, so the
-/// atlas keeps the slanted raster apart from the upright one.
+/// The attributes a resolved family shapes under. Takes the resolved name so
+/// startup warm-up and the per-shape path share it. Fake italic is cosmic's
+/// (`override_fake_italic` sets `CacheKeyFlags::FAKE_ITALIC`, part of the glyph
+/// cache key, so the atlas keeps slanted rasters apart).
 const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -> Attrs<'static> {
-    // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
-    // CPU time, and at HiDPI / during animated zoom the visual difference
-    // is imperceptible.
+    // Skip TrueType hinting: skrifa's hint VM dominated zoom-frame CPU time and the difference is
+    // imperceptible.
     let base = Attrs::new()
         .cache_key_flags(CacheKeyFlags::DISABLE_HINTING)
         .family(Family::Name(name))
-        // fontdb instantiates the `wght` axis at this value on a variable
-        // face, and picks the nearest static face otherwise.
         .weight(Weight(weight.get()));
     match style {
         FontSlant::Normal => base,
@@ -105,30 +76,17 @@ const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -
     }
 }
 
-/// Whether any face in `db` answers to `name`.
-///
-/// A scan rather than `Database::query`, which allocates a candidate
-/// `Vec` to answer a question that only needs the name — and the caller
-/// memoizes the result, so this runs once per family.
+/// Whether any face in `db` answers to `name`; a scan, since `Database::query` allocates. The
+/// caller memoizes.
 fn family_present(db: &fontdb::Database, name: &str) -> bool {
     db.faces()
         .any(|face| face.families.iter().any(|(known, _)| known == name))
 }
 
-/// Build the match keys for `families`, at the weights and styles a theme
-/// actually asks for.
-///
-/// cosmic builds a `FontMatchKey` per face the first time a
-/// family/weight/style triple is shaped — O(faces), and otherwise paid on
-/// whichever frame first draws that face. See [`FontScope::build`] for
-/// why startup is where that belongs.
-///
-/// **Takes the families rather than walking the interned table**, which
-/// is not the same set: `CosmicMeasure::font_families` interns every name
-/// on the machine, and warming several hundred of them at O(faces) each
-/// would cost more than the misses it saves. The callers pass what will
-/// actually be shaped — the bundled pair at startup, and what the app has
-/// already drawn after a load.
+/// Build the match keys for `families` at the weights and styles themes ask for;
+/// cosmic otherwise pays O(faces) on whichever frame first draws a face (see
+/// [`FontScope::build`]). Takes families, not the interned table, which holds every
+/// name on the machine.
 pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]) {
     for &family in families {
         let present = family_present(font_system.db(), family.name());
@@ -141,11 +99,8 @@ pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]
     }
 }
 
-/// Whether a face answers to the family at one index of
-/// [`CosmicMeasure::resolved`].
-///
-/// Three states, named, rather than an `Option<bool>`: the third is
-/// "nothing has asked yet", which is what lets the table fill lazily.
+/// Whether a face answers to a family. Three states, not `Option<bool>`: the third is "not asked
+/// yet".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum FamilyResolution {
     #[default]
@@ -154,20 +109,9 @@ enum FamilyResolution {
     Missing,
 }
 
-/// The family a request for `family` actually shapes in, given whether a
-/// face answers to it: itself when one does, and [`FontFamily::SANS`]
-/// when none does.
-///
-/// **Never cosmic's platform fallback**, which is what an unresolved
-/// `Family::Name` reaches on its own: a missing family would then look
-/// like whatever the machine happens to have installed, and the same app
-/// would read differently on two machines. Falling back to the bundled
-/// default is a look the app can predict, and
-/// [`CosmicMeasure::has_font`] is how it asks in advance.
-///
-/// Takes the answer rather than the database, because the two callers
-/// hold it from different places — one memoized, one from a walk it is
-/// doing anyway — and the *rule* is what has to be stated once.
+/// The family a request shapes in: itself if a face answers, else
+/// [`FontFamily::SANS`]. Never cosmic's platform fallback, which would make a
+/// missing family look like whatever the machine has installed.
 fn shaping_name(family: FontFamily, present: bool) -> &'static str {
     if present {
         family.name()
@@ -176,10 +120,8 @@ fn shaping_name(family: FontFamily, present: bool) -> &'static str {
     }
 }
 
-/// Map the align a [`TextShapeKey`] stores to cosmic-text's per-line
-/// align. `Auto` maps to `None` — cosmic falls back to its
-/// left-or-rtl-aware default, which is what "no per-line align" means.
-/// Cosmic's `Justified` and `End` aren't surfaced.
+/// Map a stored align to cosmic's per-line align. `Auto` maps to `None`; `Justified` and `End` are
+/// not surfaced.
 const fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
     match align {
         LineAlign::Auto => None,
@@ -189,33 +131,23 @@ const fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
     }
 }
 
-/// Glyph sources [`CosmicMeasure::rasterize_glyph`] tries, in priority
-/// order: a layered colour outline, then a colour bitmap strike, then the
-/// plain scalable outline. Cosmic-text's own order — an emoji face has to
-/// meet one of the first two or it renders as a coverage mask.
+/// Glyph sources [`CosmicMeasure::rasterize_glyph`] tries, in cosmic-text's order. An emoji face
+/// must hit one of the first two or it renders as a coverage mask.
 const GLYPH_SOURCES: [Source; 3] = [
     Source::ColorOutline(0),
     Source::ColorBitmap(StrikeWith::BestFit),
     Source::Outline,
 ];
 
-/// The OpenType weight axis, for the variable faces whose weights are
-/// instances of one file rather than files of their own.
+/// The OpenType weight axis, for variable faces.
 const WGHT_AXIS: swash::Tag = u32::from_be_bytes(*b"wght");
 
-/// The angle a synthetic italic leans its glyphs by, rasterized and
-/// measured alike — cosmic's own.
+/// The angle a synthetic italic leans by, rasterized and measured alike; cosmic's own.
 const FAKE_ITALIC_SKEW_DEGREES: f32 = 14.0;
 
-/// The scaler a glyph of `font` is read through: at `size` pixels per em
-/// (zero reads font units), hinted or not, and instanced on [`WGHT_AXIS`]
-/// at `weight` where the face is variable.
-///
-/// **`normalized_coords` rather than `variations`.** The latter resizes
-/// the context's coordinate vector in place and leaves stale entries
-/// behind, so a bold glyph rendered before a regular one bleeds its
-/// weight into it — the context is retained across every glyph, which is
-/// exactly the case that exposes it.
+/// The scaler a glyph of `font` is read through, instanced on [`WGHT_AXIS`] for
+/// variable faces. Uses `normalized_coords`, not `variations`, which leaves stale
+/// entries in the retained context so a bold glyph bleeds into the next regular one.
 fn glyph_scaler<'a>(
     context: &'a mut ScaleContext,
     font: &'a Font,
@@ -234,11 +166,8 @@ fn glyph_scaler<'a>(
     builder.build()
 }
 
-/// The fractional pen offset `key` was binned at, as swash wants it.
-///
-/// A pixel font rounds its bins away: its bitmaps are authored on the
-/// pixel grid, and rendering one at a quarter-pixel offset resamples the
-/// artwork it exists to preserve.
+/// The fractional pen offset `key` was binned at. A pixel font rounds its bins away: sub-pixel
+/// offsets would resample pixel-grid artwork.
 const fn subpixel_offset(key: CacheKey) -> Vector {
     let (x, y) = (key.x_bin.as_float(), key.y_bin.as_float());
     if key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
@@ -248,94 +177,41 @@ const fn subpixel_offset(key: CacheKey) -> Vector {
     }
 }
 
-/// Real-shaping text measurer. Owns a [`FontSystem`] populated per
-/// [`FontScope`] and a cache of shaped `Buffer`s keyed on the inputs that
-/// affect shaping. Per-call face selection comes from [`FontFamily`],
-/// [`FontWeight`] and [`FontSlant`] on each measurement, resolved through
-/// [`Self::has_font`] and [`shaping_name`].
+/// Real-shaping text measurer: owns a [`FontSystem`] per [`FontScope`] and the shaped-buffer cache.
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
-    /// Whether a face answers to each [`FontFamily`] index, filled on
-    /// demand — see [`Self::has_font`] for why it is memoized.
-    ///
-    /// One byte an entry, and the shaping name is derived from it through
-    /// [`shaping_name`] rather than stored beside it: the two are the same
-    /// fact, and a name cached next to the flag it follows from is a name
-    /// that can disagree with it.
-    ///
-    /// A `Vec` indexed by the family's own index, not a map: the indices
-    /// are dense and start at zero, so a lookup is one bounds check rather
-    /// than a hash, and interning every family a machine has costs a few
-    /// hundred bytes.
+    /// Whether a face answers to each [`FontFamily`] index, filled on demand (see
+    /// [`Self::has_font`]). The shaping name derives from it via [`shaping_name`] so they cannot
+    /// disagree.
     resolved: Vec<FamilyResolution>,
-    /// Swash's own scaler caches and scratch, retained across glyphs —
-    /// building one per glyph re-reads and re-parses the face's tables.
+    /// Swash's scaler caches, retained across glyphs.
     scale_context: ScaleContext,
-    /// The image every glyph rasterizes into. Retained so
-    /// [`Self::rasterize_glyph`] reuses one buffer instead of allocating
-    /// a fresh one per glyph; the renderer's atlas is the real bitmap
-    /// cache, so nothing here outlives the insert that copies it.
+    /// The image every glyph rasterizes into, reused to avoid per-glyph allocation.
     glyph_image: SwashImage,
-    /// Which buffers are resident and how long each one stays — the
-    /// owner of the shared frame clock too, since the clock is what
-    /// its retention is measured in.
+    /// Which buffers are resident and for how long; also owns the shared frame clock.
     cache: ShapedBufferCache,
-    /// Trailing advance of "…" for the last few faces asked about.
-    ///
-    /// A fixed set of slots, not a map: a frame draws its ellipsized
-    /// labels in a handful of text styles, and a miss is a single glyph
-    /// through a recycled buffer. Nothing to bound, evict, or clear —
-    /// the round-robin victim is simply overwritten.
-    ///
-    /// Four of them, because one holds only the *last* face and any
-    /// record order that interleaves two — header and detail rows, a
-    /// tree sized per depth, regular beside bold in one row — then
-    /// misses on every truncation. Measured on
-    /// `text_shape/ellipsis_width_churn`: the `two_faces` arm runs
-    /// 2.77 µs on four slots against 3.85 µs on one, a 28% cut, while
-    /// `one_face` is unchanged inside noise — so the extra slots cost
-    /// nothing in the easy case. Four covers the interleavings a frame
-    /// actually produces, and a lookup is four compares against a
-    /// `Copy` struct.
-    ///
-    /// Newest first: a miss pushes to the front and drops the back, so
-    /// the entry evicted is the one shaped longest ago and the linear
-    /// scan meets the most recently shaped face first. With four
-    /// entries the shift is three 12-byte copies, cheaper than the
-    /// cursor an in-place ring would need.
+    /// Trailing advance of "…" for the last few faces asked about. Fixed slots, not a
+    /// map: one slot misses on every truncation when record order interleaves two faces
+    /// (`text_shape/ellipsis_width_churn`). Newest first: a miss pushes to the front and
+    /// drops the back.
     ellipsis: ArrayVec<[EllipsisMemo; ELLIPSIS_MEMO_SLOTS]>,
-    /// Retained scratch for the truncated string
-    /// [`Self::shape_truncated`] builds on a miss (cut prefix +
-    /// optional `…`). Misses are the hot case — a continuous width drag
-    /// mints a fresh quantized target per label per frame — so building
-    /// into a retained buffer keeps that path free of `String` allocs,
-    /// while the unbounded probe itself comes from `cache`.
+    /// Scratch for the truncated string built on a miss; misses are hot during a width drag.
     truncate_scratch: String,
-    /// Retained scratch for the unbounded shape's segment scan, so it
-    /// allocates nothing per miss.
     break_scratch: SegmentScratch,
-    /// Every shaped glyph's ink, which each shape folds into the extent
-    /// it caches.
     glyph_ink: GlyphInk,
-    /// Retained snapshot of the truncation probe's first layout run, in
-    /// the run's own visual order — [`ClusterGlyph::fitting_prefix`] is what sorts it
-    /// logically, in place. Copied out of the cache once per miss so the
-    /// back-off rounds need no cache borrow: the shaping between them
-    /// takes the measurer mutably, which a live borrow would forbid.
+    /// Snapshot of the truncation probe's first layout run in visual order, copied
+    /// once per miss so back-off rounds hold no cache borrow.
     cut_glyphs: Vec<ClusterGlyph>,
 }
 
 impl CosmicMeasure {
-    /// Build the database `scope` names — see [`FontScope`] for what each
-    /// one costs and what it makes resolvable.
     pub(super) fn new(scope: FontScope) -> Self {
         Self::over(scope.build())
     }
 
-    /// The measurer around a database somebody else built — the seam
-    /// [`FontScan`](crate::text::font_scan::FontScan) needs, since the
-    /// point of that type is that [`FontScope::build`] ran on another
-    /// thread.
+    /// The measurer around a database someone else built: the seam
+    /// [`FontScan`](crate::text::font_scan::FontScan) needs, since [`FontScope::build`] ran on
+    /// another thread.
     pub(super) fn over(font_system: FontSystem) -> Self {
         Self {
             font_system,
@@ -351,33 +227,20 @@ impl CosmicMeasure {
         }
     }
 
-    /// Register every face in `source`, and hand back the family of the
-    /// first one.
-    ///
-    /// A collection loads all of its faces, and each of their families
-    /// interns, so `FontFamily::named` reaches them too. There is no
-    /// unload: the atlas keys on cosmic's `font_id`, and fontdb never
-    /// reuses one.
+    /// Register every face in `source` and return the family of the first. No unload:
+    /// the atlas keys on cosmic's `font_id`, which fontdb never reuses.
     ///
     /// # Errors
     ///
     /// [`FontLoadError::Io`] when the file cannot be read or mapped,
-    /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse, and [`FontLoadError::FamilyTableFull`] when no family the
-    /// faces name fits the family table.
+    /// [`FontLoadError::NoFaces`] when the bytes hold no parsable face,
+    /// [`FontLoadError::FamilyTableFull`] when no named family fits the table.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
         let source = match source {
-            // The `Cow` goes into the `Arc` whole: it is `AsRef<[u8]>`,
-            // `Send` and `Sync`, so one arm covers borrowed and owned
-            // bytes alike and neither is copied.
             FontSource::Bytes(bytes) => fontdb::Source::Binary(Arc::new(bytes)),
             FontSource::File(path) => {
-                // Opened first only to answer *why* a bad path failed:
-                // `load_font_source` reports an unreadable file as zero
-                // faces, which reads as "not a font" rather than "not
-                // there". fontdb maps the file to parse its face table and
-                // then keeps the path, re-mapping on the rare later read
-                // of the face data.
+                // Opened first only to learn why a bad path failed: `load_font_source` reports an
+                // unreadable file as zero faces.
                 fs::File::open(&path).map_err(|source| FontLoadError::Io {
                     path: path.clone(),
                     source,
@@ -385,15 +248,9 @@ impl CosmicMeasure {
                 fontdb::Source::File(path)
             }
         };
-        // `db_mut` clears cosmic's own match cache, so the faces below are
-        // reachable to the next shape without any further prompting.
         let ids = self.font_system.db_mut().load_font_source(source);
-        // Names are collected before any of them is interned:
-        // `FontFamily::named` takes the name table's write lock, and the
-        // borrow of the database would otherwise still be live across it.
-        // fontdb rejects a face with no family name, so the first name
-        // here is the first face's, and an empty list means nothing
-        // parsed.
+        // Collected before interning: `FontFamily::named` takes the name table's write lock while
+        // the database borrow is live.
         let mut names: Vec<String> = Vec::new();
         for id in ids {
             let Some(face) = self.font_system.db().face(id) else {
@@ -403,14 +260,9 @@ impl CosmicMeasure {
         }
         let loaded = first_family(&names, FontFamily::named)?;
 
-        // Everything downstream of the database is now stale: a family
-        // that resolved to SANS may answer for itself, and every shaped
-        // buffer was laid out against the old resolution.
-        //
-        // The families already resolved are the ones on screen, so they
-        // are what the re-warm covers — `db_mut` dropped cosmic's match
-        // cache along with them, and the frame after a load re-shapes
-        // everything it draws.
+        // Everything downstream of the database is stale: a family that resolved to SANS
+        // may answer now. The families already resolved are the ones on screen, so the
+        // re-warm covers them.
         let mut warm: Vec<FontFamily> = self
             .resolved
             .iter()
@@ -428,15 +280,8 @@ impl CosmicMeasure {
         Ok(loaded)
     }
 
-    /// Whether a face answers to `family`, so an app can pick a family it
-    /// knows will be used rather than one that quietly resolves to
-    /// [`FontFamily::SANS`].
-    ///
-    /// Memoized, and the memo the shaping path reads too: an
-    /// immediate-mode app asks this inside a record pass, and the answer
-    /// costs a walk of every face in the database. Sharing it is also
-    /// what stops the answer and the face actually shaped from ever
-    /// disagreeing.
+    /// Whether a face answers to `family`. Memoized, and the shaping path reads the
+    /// same memo so the answer and the shaped face cannot disagree.
     pub(super) fn has_font(&mut self, family: FontFamily) -> bool {
         let index = usize::from(family.raw());
         match self.resolved.get(index).copied().unwrap_or_default() {
@@ -446,8 +291,6 @@ impl CosmicMeasure {
         }
         let present = family_present(self.font_system.db(), family.name());
         if !present {
-            // Worded for both callers: this one asks the question without
-            // going on to shape anything.
             tracing::warn!(
                 family = family.name(),
                 "no face answers to this font family; it resolves to {}",
@@ -465,14 +308,8 @@ impl CosmicMeasure {
         present
     }
 
-    /// Every family the database knows, system fonts included, interned
-    /// so the caller gets names it can hand straight back.
-    ///
-    /// A `Vec` rather than an iterator: the database sits behind the
-    /// shaper's `RefCell`, so a lending iterator would hold that borrow
-    /// across the caller's whole walk. Cold — a preferences picker asks
-    /// once. A name that no longer fits a full family table is left out:
-    /// the caller could not shape with it either.
+    /// Every family the database knows, interned. A `Vec` because the database sits behind the
+    /// shaper's `RefCell`. Cold.
     pub(super) fn font_families(&self) -> Vec<FontFamily> {
         let mut names: Vec<&str> = self
             .font_system
@@ -485,45 +322,31 @@ impl CosmicMeasure {
         names.into_iter().filter_map(FontFamily::named).collect()
     }
 
-    /// Drop every shaped buffer now — see
-    /// [`ShapedBufferCache::drop_all`], which [`Self::load_font`] owes
-    /// after the database moves under them.
     pub(super) fn drop_all_buffers(&mut self) {
         self.cache.drop_all();
     }
 
-    /// The attributes `key` shapes under, resolved family and all.
     fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
         let family = key.family();
         let name = shaping_name(family, self.has_font(family));
         attrs_named(name, key.weight(), key.slant())
     }
 
-    /// Whether a buffer is resident under `key`, and what it laid out
-    /// to — see [`ShapedBufferCache::shaped_run`].
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
         self.cache.shaped_run(key)
     }
 
-    /// The run's **unbounded** shape: the root every wrap policy reasons
-    /// from, shaped or served from the cache.
-    ///
-    /// `floor` opts into the segment scan behind
-    /// [`TextRoot::intrinsic_min`]. It takes no width because the floor is
-    /// a property of the unbounded root and of nothing else — which is why
-    /// [`Self::resolve`], the bounded half, has no such parameter to get
-    /// wrong.
+    /// The run's unbounded shape, the root every wrap policy reasons from. `floor`
+    /// opts into the segment scan behind [`TextRoot::intrinsic_min`]; it takes no width
+    /// because the floor belongs to the unbounded root.
     pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         let key = request.key;
         debug_assert!(
             key.max_width().is_none(),
             "a committed width has no unbounded root to answer with",
         );
-        // One lookup for the whole hit path, entry held across the
-        // backfill: a resident entry shaped by a policy that didn't want
-        // the floor still owes it to one that does, and reading the
-        // extent out first meant hashing the same key again to write it.
-        // This is the resize-drag path.
+        // One lookup for the whole hit path: a resident entry shaped without the floor still owes
+        // it to a policy that wants it. The resize-drag path.
         let breaks = &mut self.break_scratch;
         if let Some(entry) = self.cache.hit(key) {
             let root = entry.extent.root_mut();
@@ -535,12 +358,8 @@ impl CosmicMeasure {
         self.shape_wrapped(request, floor).root()
     }
 
-    /// The extent this run resolves to at the width its key commits,
-    /// routed to the wrapping or truncating path by the key's fit.
-    ///
-    /// An extent and its ink and nothing else, because that is all a
-    /// bounded shape has: it never scanned for a wrapping floor, and its
-    /// line count describes the resolve rather than the run.
+    /// The extent this run resolves to at its key's committed width, routed by the key's fit.
+    /// Extent and ink only.
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         let key = request.key;
         debug_assert!(
@@ -556,22 +375,12 @@ impl CosmicMeasure {
         }
     }
 
-    /// Shape `request` into a fresh buffer, file it under its key, and
-    /// hand back what the buffer laid out to. The one wrapping shape
-    /// path; [`Self::root`] and [`Self::resolve`] each check the cache
-    /// first and take their own kind out of the result.
+    /// Shape `request` into a fresh buffer and file it under its key. The one wrapping shape path.
     fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> CachedExtent {
         let key = request.key;
         let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width());
-        // Per-line alignment travels through cosmic's `set_text`
-        // `alignment` slot — that's the canonical entry point and
-        // applies the align to every parsed buffer line in one
-        // shot. Iterating `buffer.lines.iter_mut().set_align` after
-        // `set_text` is the older API surface and tends to no-op on
-        // freshly populated lines in 0.18+. Per-line align is only
-        // meaningful with a finite wrap target (cosmic uses it as the
-        // line width); without one we pass `None` so single-line
-        // editors keep their widget-side `dx` placement.
+        // Per-line alignment goes through `set_text`'s `alignment` slot (setting it afterwards
+        // tends to no-op). It needs a finite wrap target, else we pass `None`.
         let alignment = key.max_width().and_then(|_| cosmic_align(key.line_align()));
         let attrs = self.attrs_of(key);
         buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
@@ -581,8 +390,6 @@ impl CosmicMeasure {
         let extent = self
             .glyph_ink
             .extent(&buffer, &mut self.font_system, &geometry);
-        // Which kind the entry is follows from the key: a committed width
-        // means a bounded resolve, and nothing else can name that entry.
         let extent = match key.max_width() {
             None => CachedExtent::Root(geometry.root(extent)),
             Some(_) => CachedExtent::Bounded(extent),
@@ -591,21 +398,10 @@ impl CosmicMeasure {
         extent
     }
 
-    /// Restore a missing shaped buffer from the retained source text and
-    /// the canonical parameters encoded by `key`, and hand it back.
-    /// Truncated runs restore their unbounded probe first; callers never
-    /// manage that dependency. Any valid key is shaped on the spot, so
-    /// the final lookup doubles as the check that the restore landed
-    /// under its own key.
-    ///
-    /// A run with no shaped buffer never gets this far: a
-    /// [`TextShapeRequest`] cannot hold one, and the encoder drops the
-    /// runs that name no key before paint.
+    /// Restore a missing shaped buffer from the retained source text and `key`'s
+    /// parameters. Truncated runs restore their unbounded probe first. A
+    /// [`TextShapeRequest`] cannot hold a run with no shaped buffer.
     pub(super) fn ensure_buffer(&mut self, request: TextShapeRequest<'_>) -> ShapedRun<'_> {
-        // Residency is the whole point here, so the measurement is dropped
-        // either way — but the two paths shape differently, and the key is
-        // what says which one this run went through. Both open with the
-        // cache lookup, so a resident buffer costs one and no reshape.
         match request.key.max_width() {
             Some(_) => {
                 self.resolve(request);
@@ -627,16 +423,10 @@ impl CosmicMeasure {
         buffer
     }
 
-    /// Demote `key` to the probation window — see
-    /// [`ShapedBufferCache::supersede`], which `TextSystem` is the only
-    /// caller of.
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
         self.cache.supersede(key);
     }
 
-    /// The current reading of the shared frame clock, and the one call
-    /// that advances it — both the cache's, since its own retention is
-    /// what the clock measures.
     pub(super) const fn frame(&self) -> u64 {
         self.cache.frame()
     }
@@ -645,14 +435,10 @@ impl CosmicMeasure {
         self.cache.tick_frame();
     }
 
-    /// Resolve `request` to palantir-native glyph placements for the
-    /// renderer. Restores the shaped buffer if evicted (truncated runs
-    /// restore their unbounded probe internally), walks its layout runs,
-    /// y-culls whole lines against `placement.bounds`, and rewrites
-    /// `out` with one [`PlacedGlyph`] per surviving glyph. Returns
-    /// whether any line was culled — such partial extractions must not
-    /// become renderer cache templates (its encoded key carries no
-    /// bounds).
+    /// Resolve `request` to palantir-native glyph placements, restoring an evicted
+    /// buffer and y-culling whole lines against `placement.bounds`. Returns whether any
+    /// line was culled; such partial extractions must not become renderer cache
+    /// templates, since the encoded key carries no bounds.
     pub(super) fn extract_glyphs(
         &mut self,
         request: TextShapeRequest<'_>,
@@ -667,11 +453,8 @@ impl CosmicMeasure {
             scale,
             bounds,
         } = placement;
-        // `origin` positions the *measured block*, whose left edge is
-        // `left` in buffer space — so pull the origin back by it and the
-        // per-glyph offsets land where the measurement said they would.
-        // Folding it into the origin rather than into each `physical.x`
-        // keeps the subpixel binning consistent with the shift.
+        // `origin` positions the measured block whose left edge is `left`; folding the pull-back
+        // into the origin keeps subpixel binning consistent.
         let origin_x = origin.x - left * scale;
         let cull = bounds.map(|b| (b.min.y as f32, b.max().y as f32));
         let mut culled = false;
@@ -688,12 +471,8 @@ impl CosmicMeasure {
             }
             let line_y_px = (run.line_y * scale).fast_round() as i32;
             for glyph in run.glyphs {
-                // The renderer caches encoded runs on one uniform area
-                // colour — correct only while cosmic never produces a
-                // per-glyph override ([`attrs_named`] sets no per-span
-                // colour). If this fires, per-span colour was added
-                // without folding a colour fingerprint into the
-                // renderer's `EncodedKey`.
+                // The renderer caches encoded runs on one uniform area colour, valid only while
+                // cosmic produces no per-glyph override ([`attrs_named`] sets no per-span colour).
                 debug_assert!(
                     glyph.color_opt.is_none(),
                     "per-glyph colour override requires folding colour into EncodedKey",
@@ -709,14 +488,9 @@ impl CosmicMeasure {
         culled
     }
 
-    /// Rasterize one glyph via swash, uncached on the cosmic side — the
-    /// renderer's atlas is the real cache. `None` when swash cannot
-    /// produce an image for the key (e.g. a glyph the face lacks).
-    ///
-    /// The pixels stay in [`Self::glyph_image`] and the answer borrows
-    /// them, so the caller has to copy them into its atlas before it asks
-    /// for the next glyph. That is what makes a zoom rung — every visible
-    /// glyph re-rasterized at a fresh scale — cost no allocation at all.
+    /// Rasterize one glyph via swash, uncached here; the renderer's atlas is the
+    /// cache. `None` when swash cannot produce an image. The pixels stay in
+    /// [`Self::glyph_image`]; copy before the next call.
     pub(super) fn rasterize_glyph(&mut self, key: GlyphRasterKey) -> Option<RasterImage<'_>> {
         let cache_key = key.0;
         let font = self
@@ -729,10 +503,8 @@ impl CosmicMeasure {
             !cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING),
             cache_key.font_weight,
         );
-        // Cleared rather than overwritten: `render_into` resizes the data
-        // buffer and zero-fills only what the resize added, so a glyph
-        // smaller than the last one would read the last one's coverage in
-        // the bytes the mask never writes.
+        // Cleared, not overwritten: `render_into` zero-fills only what a resize added, so a smaller
+        // glyph would read the last one's coverage.
         self.glyph_image.clear();
         let rendered = Render::new(&GLYPH_SOURCES)
             .format(Format::Alpha)
@@ -764,50 +536,24 @@ impl CosmicMeasure {
         })
     }
 
-    /// Shape `text` as a single line truncated to fit `w`. Truncation is
-    /// cluster-precise: the cached unbounded shape gives per-glyph advances,
-    /// [`ClusterGlyph::fitting_prefix`] cuts after the last fully paid-for cluster, then we
-    /// shape the (possibly truncated) prefix on one **natural** line — no
-    /// per-line align. The committed width only decides the cut; the encoder
-    /// positions/aligns the single line, so the measured extent is the glyph
-    /// width, not `w` (binding to `w` + center align would inflate a
-    /// fits-anyway label to ~half the box). `LineFit::Ellipsis` reserves room
-    /// for and appends a trailing `…`; `LineFit::Clip` cuts flush to `w`
-    /// with no marker. The buffer caches under a fit-discriminated key (so it
-    /// can't collide with the wrapped buffer — or the other truncation mode —
-    /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
-    /// to nothing.
+    /// Shape `text` as a single line truncated to fit `w`. The cached unbounded shape
+    /// gives per-glyph advances, [`ClusterGlyph::fitting_prefix`] cuts after the last
+    /// fully paid-for cluster, and the prefix is shaped on one natural line with no
+    /// per-line align (the encoder positions it, so the extent is the glyph width, not
+    /// `w`). `LineFit::Ellipsis` reserves room for a trailing `…`; `LineFit::Clip` cuts
+    /// flush. `intrinsic_min` is 0.
     ///
-    /// The shaped prefix is verified against `w` and retires a further
-    /// cluster until it fits, so the measured extent never exceeds the
-    /// committed width — the cut alone cannot guarantee that, since
-    /// reshaping the prefix changes its shaping context.
+    /// The shaped prefix is verified against `w` and retires a further cluster until it
+    /// fits: reshaping changes the shaping context, so the cut alone cannot guarantee it.
     ///
     /// # Why not `Buffer::set_ellipsize`
     ///
-    /// Cosmic 0.19 can do this itself, and delegating to it deletes
-    /// roughly 290 lines: this function, [`ClusterGlyph::fitting_prefix`],
-    /// [`ClusterGlyph`], the ellipsis memo, and three retained scratch
-    /// fields. That was written, measured, and reverted — **4.9x slower**
-    /// on `text_shape/resize_drag_frame` (1.42 µs -> 7.13 µs per run per
-    /// frame).
-    ///
-    /// The reason is not the wrap mode (`Wrap::Glyph`, `Wrap::None` and a
-    /// one-line height cap all measure within 10% of each other) but how
-    /// much text is reshaped per committed width. Cosmic has to see the
-    /// whole string to decide where to cut, so every new width reshapes
-    /// all of it; shaping a 108-character label costs ~9x what its
-    /// seven-character cut prefix costs.
-    ///
-    /// **So the dependency on the cached unbounded probe is the point,
-    /// not a wart.** It is what a drag reuses: the full-string shape is
-    /// paid once, [`ClusterGlyph::fitting_prefix`] finds the cut by scanning glyphs
-    /// that are already there, and only the short prefix is reshaped per
-    /// frame. Anything that revisits this has to keep the full-string
-    /// shape cached across widths — cosmic allows that (`set_size`
-    /// re-lays-out without re-shaping), but one buffer holds one layout
-    /// and the cache is keyed per width, so it needs a different
-    /// buffer/key model rather than a different call.
+    /// Cosmic can truncate itself, but that was measured and reverted: about 4.9x slower
+    /// on `text_shape/resize_drag_frame`. Cosmic must see the whole string to cut, so
+    /// every new width reshapes all of it. The dependency on the cached unbounded probe
+    /// is the point: a drag pays the full-string shape once and reshapes only the short
+    /// prefix. Revisiting needs the full shape cached across widths, i.e. a different
+    /// buffer/key model.
     fn shape_truncated(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         let key = request.key;
         let fit = key.fit();
@@ -815,16 +561,11 @@ impl CosmicMeasure {
             .max_width()
             .expect("a truncating fit resolves against a committed width");
         let unbounded = request.unbounded_version();
-        // Residency *and* the measure, from one lookup. `ensure_buffer`
-        // answers the same question with a second lookup for a
-        // `ShapedRun` this drops, and the root it hands back below is
-        // exactly what the fit test wants — this is the resize-drag path,
-        // where the key was hashed three times over.
+        // Residency and the measure from one lookup; this is the resize-drag path.
         let root = self.root(unbounded, WrapFloor::Skip);
         let attrs = self.attrs_of(key);
-        // Reserve the ellipsis width only when we'll append one; a plain
-        // clip cuts flush to the full available width. Resolved before
-        // borrowing the probe, since shaping "…" needs `&mut self`.
+        // Reserve the ellipsis width only when one will be appended; resolved before borrowing the
+        // probe, since shaping "…" needs `&mut self`.
         let mut append_ellipsis = false;
         let avail = if matches!(fit, LineFit::Ellipsis) {
             let ellipsis_w = self.ellipsis_advance(key);
@@ -834,31 +575,20 @@ impl CosmicMeasure {
             width
         };
         let probe_key = unbounded.key;
-        // Same question `TextSystem::measure` asks before it ever gets
-        // here, against the same root — so it is asked the same way. The
-        // shape above already measured it, which is why this re-walks
-        // neither the glyphs nor the cache.
         let fits_whole = fit.resolves_to_unbounded(&root, width);
 
-        // Shape unbounded on one line: the cut already fit it to `w`, and the
-        // encoder owns single-line placement. Binding to `Some(w)` + align
-        // would measure the aligned glyph position, inflating a fits-anyway
-        // label toward the box width.
+        // Unbounded on one line: binding to `Some(w)` plus align would measure the aligned
+        // position, inflating a fits-anyway label.
         let mut buffer = self.acquire_buffer(metrics_of(key), None);
         let geometry = if fits_whole {
-            // Re-shaping the identical text reproduces the probe, so this
-            // branch cannot overrun `width`.
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
             shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
         } else {
-            // The cut spends advances measured in the *whole* run's shaping,
-            // but the prefix reshapes in its own context: a joining script's
-            // last letter is exposed at a new word end and takes a final form
-            // wider than the medial one the budget paid for. So verify the
-            // shaped result, and while it overruns, retire one more cluster.
-            // `max_end` makes every retry strictly shorter, so the sequence
-            // bottoms out at the empty prefix.
+            // The cut spends advances from the whole run's shaping, but the prefix reshapes
+            // in its own context (a joining script's last letter takes a wider final form). So
+            // verify and retire one more cluster while it overruns; `max_end` guarantees
+            // termination.
             self.cut_glyphs.clear();
             if let Some(run) = self.cache.probe(probe_key).buffer.layout_runs().next() {
                 self.cut_glyphs.reserve_exact(run.glyphs.len());
@@ -878,8 +608,6 @@ impl CosmicMeasure {
                 if append_ellipsis {
                     self.truncate_scratch.push('…');
                 }
-                // `set_text` resets the buffer in place, so a retry reuses
-                // the line, shaping, and layout allocations it just filled.
                 buffer.set_text(
                     self.truncate_scratch.as_str(),
                     &attrs,
@@ -903,16 +631,9 @@ impl CosmicMeasure {
         extent
     }
 
-    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized for
-    /// the last face asked about.
-    ///
-    /// Only the *opening* budget: [`Self::shape_truncated`] verifies the
-    /// shaped result against the committed width either way, so a stale or
-    /// imprecise reservation costs retries, never correctness. What it buys
-    /// is measured on `text_shape/ellipsis_width_churn`, whose arms hold
-    /// the width churning so every frame is a truncation miss and the
-    /// reservation is asked for again. See [`CosmicMeasure::ellipsis`]
-    /// for what the slot count buys there.
+    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized. Only the
+    /// opening budget: [`Self::shape_truncated`] verifies the result, so an imprecise
+    /// value costs retries, never correctness.
     fn ellipsis_advance(&mut self, key: TextShapeKey) -> f32 {
         let face = key.face();
         if let Some(advance) = self.ellipsis.iter().find_map(|memo| memo.advance_for(face)) {
@@ -925,7 +646,6 @@ impl CosmicMeasure {
         let advance = first_line_right(&buffer);
         self.cache.recycle(buffer);
         self.cache.counters.ellipsis_misses.bump();
-        // `insert` panics at capacity, so retire the oldest first.
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
         }
@@ -934,8 +654,7 @@ impl CosmicMeasure {
     }
 }
 
-// Manual: swash's `ScaleContext` and `Image` aren't `Debug`, and a
-// font database would be useless printed anyway.
+// Manual: swash's `ScaleContext` and `Image` aren't `Debug`.
 impl fmt::Debug for CosmicMeasure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CosmicMeasure")
@@ -945,14 +664,9 @@ impl fmt::Debug for CosmicMeasure {
     }
 }
 
-/// The first of a loaded file's family `names` that `intern` admits.
-///
-/// Every name interns, so a family the file shares with another load
-/// resolves to the same id. The names come from the file: a collection
-/// with enough distinct families to fill the table is bad font data, so a
-/// name that does not fit is skipped. No names at all means nothing parsed
-/// ([`FontLoadError::NoFaces`]); names of which none fits is
-/// [`FontLoadError::FamilyTableFull`].
+/// The first of a loaded file's family `names` that `intern` admits; a name that
+/// does not fit is skipped. No names means [`FontLoadError::NoFaces`]; names of which
+/// none fits is [`FontLoadError::FamilyTableFull`].
 pub(super) fn first_family(
     names: &[String],
     intern: impl Fn(&str) -> Option<FontFamily>,
@@ -983,9 +697,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::root::internals::TestMeasure;
 
-    /// A measurer over the bundled faces, which is what every fixture
-    /// here wants and what no production caller asks for — a shipping
-    /// build names its [`FontScope`] through `TextShaper`.
     impl Default for CosmicMeasure {
         fn default() -> Self {
             Self::new(FontScope::Bundled)
@@ -998,14 +709,6 @@ pub(crate) mod internals {
             self.measure_with_fit_key(shape.request(text, LineFit::Wrap))
         }
 
-        /// Shape `request` and pair the result with the key it shaped
-        /// under.
-        ///
-        /// The wrap-floor tests measure through this helper, so it asks
-        /// for the floor on every root it shapes — and a bounded request
-        /// takes the resolve path, which has no floor to ask for, exactly
-        /// as production does. The two answers differ in kind, so this
-        /// flattens them into the `TestMeasure` a case asserts on.
         #[cfg(test)]
         fn measure_with_fit_key(&mut self, request: TextShapeRequest<'_>) -> TestMeasure {
             let key = request.key;
@@ -1019,8 +722,6 @@ pub(crate) mod internals {
             }
         }
 
-        /// Truncating-fit measure. Named apart from the production
-        /// `shape_truncated` — inherent methods can't share a name.
         #[cfg(test)]
         pub(crate) fn measure_with_fit(
             &mut self,
@@ -1034,32 +735,22 @@ pub(crate) mod internals {
             self.measure_with_fit_key(request)
         }
 
-        /// Number of shaped buffers currently cached. Reach-in for the
-        /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {
             self.cache.len()
         }
 
-        /// Outstanding expiry tickets — see
-        /// [`ShapedBufferCache::pending_tickets`] for what the number
-        /// says.
         #[cfg(test)]
         pub(crate) fn pending_tickets(&self) -> usize {
             self.cache.pending_tickets()
         }
 
-        /// What the buffer filed under `key` measured to, if one is.
         #[cfg(test)]
         pub(crate) fn cached_extent(&self, key: TextShapeKey) -> Option<TextExtent> {
             self.cache.extent(key)
         }
 
-        /// A measurer over an empty database, so a case can watch a
-        /// family go from unresolvable to resolved.
-        ///
-        /// Every [`FontScope`] loads the bundled faces, which is what a
-        /// shipping app wants and what leaves no family for a load test
-        /// to introduce. Nothing production reaches this state.
+        /// A measurer over an empty database, so a case can watch a family go from unresolvable to
+        /// resolved.
         #[cfg(test)]
         pub(crate) fn with_no_fonts() -> Self {
             Self::over(FontSystem::new_with_locale_and_db(
@@ -1073,18 +764,13 @@ pub(crate) mod internals {
             self.cache.recycle_pool_stats()
         }
 
-        /// Snapshot of the cache's tallies, for `TextShaper::cache_counts`.
         #[cfg(test)]
         pub(crate) fn cache_counts(&self) -> CacheCounts {
             self.cache.counts()
         }
 
-        /// The face cosmic-text actually shaped `text` with, as its
-        /// database id.
-        ///
-        /// Proves the resolution maps a [`GlyphFont`] to the intended
-        /// physical face — a measured-width comparison can't, since two
-        /// different faces can share an advance.
+        /// The face cosmic-text shaped `text` with, as its database id; widths can't prove a font
+        /// mapping since two faces can share an advance.
         #[cfg(test)]
         fn shaped_face(&mut self, text: &str, face: GlyphFont) -> Option<fontdb::ID> {
             let key = TextShapeKey::for_text(text, face).expect("a fixture face is usable");
@@ -1095,7 +781,6 @@ pub(crate) mod internals {
             Some(buf.layout_runs().next()?.glyphs.first()?.font_id)
         }
 
-        /// The family name of [`Self::shaped_face`] — which family won.
         #[cfg(test)]
         pub(crate) fn resolved_family(&mut self, text: &str, face: GlyphFont) -> Option<String> {
             let id = self.shaped_face(text, face)?;
@@ -1105,9 +790,7 @@ pub(crate) mod internals {
                 .map(|f| f.families[0].0.clone())
         }
 
-        /// The PostScript name of [`Self::shaped_face`] — which *file*
-        /// won, which is the only thing that separates an italic face
-        /// from the upright one of the same family.
+        /// The PostScript name of [`Self::shaped_face`]: which file won.
         #[cfg(test)]
         pub(crate) fn resolved_post_script_name(
             &mut self,

@@ -3,10 +3,7 @@ use ::serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 use crate::primitives::packed::serde::{LaneCodec, deserialize_lanes};
 use std::iter;
 
-/// A codec with neutral lane names, so these tests pin the shared
-/// machinery rather than either real type's field spellings. The
-/// per-type halves — which 2-node shorthand a type emits and expands,
-/// and what its lanes are called — are pinned beside those types.
+/// A codec with neutral lane names, pinning the shared machinery; per-type lane names are pinned beside those types.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct TestLanes([f32; 4]);
 
@@ -36,8 +33,7 @@ impl LaneCodec for TestLanes {
     }
 }
 
-/// Every form runs its lanes through the type's rule: one bad lane in a
-/// scalar, a pair, a quad or a table is an error naming the rule.
+/// Every form runs its lanes through the type's rule: one bad lane in a scalar, pair, quad or table names the rule.
 #[test]
 fn every_form_rejects_a_lane_the_type_cannot_hold() {
     for values in [&[-1.0][..], &[1.0, -1.0], &[1.0, 2.0, 3.0, -4.0]] {
@@ -85,12 +81,7 @@ fn sequence_lengths_preserve_supported_forms_and_reject_others() {
     }
 }
 
-/// The four map outcomes, all decided by the shared visitor: an absent
-/// lane reads as the codec's `0.0` neutral, a repeated one is a
-/// duplicate, a name outside `FIELDS` is rejected rather than ignored,
-/// and a table naming nothing is rejected the way an empty array is.
-/// The unknown-name arm is what stops a typo in a theme file from
-/// silently reading as zero.
+/// The four map outcomes: an absent lane reads as `0.0`, a repeated one is a duplicate, a name outside `FIELDS` is rejected (so a theme typo can't read as zero), an empty table is rejected like an empty array.
 #[test]
 fn map_defaults_missing_lanes_and_rejects_duplicate_or_unknown_fields() {
     let missing = MapDeserializer::<_, Error>::new([("a", 1.0), ("c", 3.0)].into_iter());

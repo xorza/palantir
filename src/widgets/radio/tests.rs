@@ -13,18 +13,14 @@ enum Pick {
     C,
 }
 
-/// One frame of the three rows, in row order.
-///
-/// The rects are the click targets: a test has to hit the actually
-/// painted area, which font metrics decide.
+/// One frame of the three rows, in order; the rects are the click targets.
 #[derive(Debug)]
 struct Rows {
     rects: [Option<Rect>; 3],
     changed: [bool; 3],
 }
 
-/// `frame_value`, not `frame`: `changed` is a one-frame edge like
-/// `clicked()`, so only the input-observing pass reports it.
+/// `frame_value`, since `changed` is a one-frame edge reported only by the input-observing pass.
 fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
     h.frame_value(|ui| {
         let mut rows = Rows {
@@ -51,9 +47,7 @@ fn clicking_a_row_selects_it() {
     let mut h = UiHarness::new(surface);
     let mut sel = Pick::A;
 
-    // First frame lays out (rects come back as None because the
-    // response reads the *previous* frame's layout); ack, then a
-    // second frame returns the first frame's rects.
+    // The first frame lays out (rects read the previous layout); a second frame returns them.
     let _ = frame_rows(&mut h, &mut sel);
     let rows = frame_rows(&mut h, &mut sel);
     let row_b = rows.rects[1].expect("row B rect");
@@ -77,9 +71,7 @@ fn clicking_a_row_selects_it() {
     assert_eq!(sel, Pick::C, "click on row C selects C");
     assert_eq!(rows.changed, [false, false, true]);
 
-    // Why a radio reports `changed` beside its response: this frame
-    // is `clicked()` on row C and `changed == false`, and `Response`
-    // alone cannot tell the two apart.
+    // Why `changed` sits beside the response: `clicked()` is true but `changed` is false here, which `Response` alone can't tell apart.
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);
     let rows = frame_rows(&mut h, &mut sel);
     assert_eq!(sel, Pick::C, "re-click on selected row is no-op");

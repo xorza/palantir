@@ -2,10 +2,7 @@
 
 use crate::layout::drivers::grid::axis_scratch::AxisScratch;
 
-/// One grid's two axes of per-frame scratch. Capacity is retained
-/// across frames;
-/// [`GridDepthStack`](crate::layout::drivers::grid::grid_depth_stack::GridDepthStack)
-/// owns the per-depth pool these come from.
+/// One grid's two axes of per-frame scratch, capacity retained; the per-depth pool is [`GridDepthStack`](crate::layout::drivers::grid::grid_depth_stack::GridDepthStack).
 #[derive(Debug, Default)]
 pub(super) struct GridScratch {
     pub(super) col: AxisScratch,

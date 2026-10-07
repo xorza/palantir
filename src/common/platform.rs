@@ -1,17 +1,9 @@
 //! Compile-time platform tag.
 
-/// The host family the crate was compiled for.
-///
-/// Published because platform conventions are a widget's business, not
-/// only the framework's: which modifier starts word navigation, which
-/// chord submits, which corner a menu prefers. A widget outside this
-/// crate branches on the same three cases the bundled ones do, and
-/// reads them from [`PLATFORM`] rather than restating the `cfg`
-/// spelling at every site.
+/// The host family the crate was compiled for, published so widgets branch on [`PLATFORM`] instead of restating `cfg`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
-    /// macOS, where Cmd is the command modifier
-    /// [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
+    /// macOS, where Cmd is the command modifier [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
     Mac,
     /// Windows.
     Windows,
@@ -19,11 +11,7 @@ pub enum Platform {
     Linux,
 }
 
-/// The platform this build targets. Prefer it to
-/// `cfg!(target_os = "...")` wherever a three-way branch is what the
-/// site wants. Const-evaluable, so it works inside a `const fn` body.
-/// Everything that is neither macOS nor Windows reads as
-/// [`Platform::Linux`].
+/// The platform this build targets; const-evaluable. Anything but macOS and Windows reads as [`Platform::Linux`].
 pub const PLATFORM: Platform = {
     #[cfg(target_os = "macos")]
     {

@@ -1,9 +1,5 @@
-//! Gradients: one [`Gradient`] type parameterized by the geometry payload
-//! that distinguishes the linear, radial and conic kinds.
-//!
-//! Everything a gradient carries beside that payload — the colour ramp,
-//! the spread mode, the builder, the cache-key hash and the NaN screen —
-//! is identical across the three kinds and is written once here.
+//! Gradients: one [`Gradient`] type parameterized by the geometry payload that
+//! distinguishes linear, radial and conic; everything else is shared.
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
@@ -18,11 +14,11 @@ pub(crate) mod linear_geometry;
 pub(crate) mod radial_geometry;
 pub(crate) mod stops;
 
-/// How the gradient repeats outside the 0..1 parametric range.
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
+/// How a gradient fills past its ends.
 pub enum Spread {
     /// Clamp to nearest edge stop. CSS default.
     #[default]
@@ -33,33 +29,27 @@ pub enum Spread {
     Reflect = 2,
 }
 
-/// Colour space the interpolation runs in. Affects the perceived
-/// transition; doesn't change the stop colours themselves.
+/// Colour space the interpolation runs in; stop colours are unchanged.
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
 pub enum Interpolation {
-    /// Perceptually uniform; matches CSS RgbaF32 4 default. Avoids the
-    /// muddy midpoint of complementary-colour pairs (red↔green,
-    /// blue↔orange).
+    /// Perceptually uniform; the CSS Color 4 default. Avoids the muddy midpoint
+    /// of complementary pairs.
     #[default]
     Oklab,
-    /// Linear-RGB interpolation. Cheapest; what most rendering engines
-    /// do by default. Visible midpoint dip on saturated complementary
+    /// Linear-RGB. Cheapest, but dips at the midpoint of saturated complementary
     /// pairs.
     Linear,
 }
 
 /// The per-kind half of a gradient: the geometry the shader projects a
-/// fragment onto. One implementor per gradient kind — [`LinearGeometry`],
-/// [`RadialGeometry`] and [`ConicGeometry`] — each beside the [`Gradient`]
-/// alias it names.
+/// fragment onto. One implementor per kind ([`LinearGeometry`],
+/// [`RadialGeometry`], [`ConicGeometry`]).
 ///
-/// Sealed: the renderer draws exactly these three kinds, so an outside
-/// implementation could not paint. The items live on `sealed::Geometry`,
-/// in a module private to the crate; the public trait is only the bound on
-/// [`Gradient`].
+/// Sealed: the renderer draws exactly these kinds. The items live on the
+/// crate-private `sealed::Geometry`.
 ///
 /// [`LinearGeometry`]: crate::LinearGeometry
 /// [`RadialGeometry`]: crate::RadialGeometry
@@ -72,21 +62,16 @@ pub(crate) mod sealed {
     use crate::primitives::paint::brush::gradient::Interpolation;
     use std::hash;
 
-    /// The items behind [`GradientGeometry`](super::GradientGeometry): the
-    /// renderer's view of one gradient kind.
+    /// The renderer's view of one gradient kind.
     pub trait Geometry {
-        /// Interpolation space a freshly authored gradient of this kind
-        /// starts in, before `Gradient::with_interpolation` overrides it.
+        /// Interpolation space a new gradient of this kind starts in.
         const DEFAULT_INTERPOLATION: Interpolation;
 
-        /// The four axis lanes the shader reads, before `FillAxis` packs
-        /// them to f16. The layout is per-kind.
+        /// The four axis lanes the shader reads, before `FillAxis` packs them to f16.
         fn axis_lanes(&self) -> [f32; 4];
 
-        /// Fold the geometry into a cache key.
-        ///
-        /// f32 fields go through `float_hash::canon_bits`, so `-0.0` /
-        /// `+0.0` and NaN bit patterns don't fragment command-buffer dedup.
+        /// Fold the geometry into a cache key; f32 fields use `float_hash::canon_bits`
+        /// so `-0.0`/`+0.0` and NaN patterns don't fragment dedup.
         fn hash_geometry<H: hash::Hasher>(&self, state: &mut H);
 
         /// Whether the geometry holds a NaN.
@@ -94,29 +79,21 @@ pub(crate) mod sealed {
     }
 }
 
-/// A gradient of any kind: `geometry` maps each point of the fill to a
-/// value, `spread` folds values outside `0..=1` back in, and `ramp` maps
-/// the value to a colour. Only the geometry differs between the kinds.
+/// A gradient of any kind: `geometry` maps each fill point to a value,
+/// `spread` folds values outside `0..=1` back in, and `ramp` maps the value to
+/// a colour.
 ///
-/// Stops live inline via [`GradientStops`] so a gradient value is
-/// heap-free — 48 B for the linear kind, 60 B for the radial one.
-///
-/// **Not `Copy`** — the 40 B [`GradientStops`] made implicit per-frame
-/// copies expensive through the recording chain; see `Brush`'s comment
-/// for the auto-`Copy` audit story. `.clone()` is cheap (one inline
-/// memcpy) — just explicit.
-// `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last.
-// `Brush` stores its tag in values `interpolation` or `spread` never take, which
-// works only if that byte sits past the end of every smaller variant: in
-// the 60 B radial kind they are bytes 57 and 58, and the linear and conic
-// kinds are 48 B and 56 B. Free to reorder, rustc puts `interpolation` at byte
-// 16, and `Brush` needs 64 B.
+/// **Not `Copy`**: the inline [`GradientStops`] made implicit copies expensive
+/// through the recording chain (see `Brush`). `.clone()` is one memcpy.
+// `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last: `Brush`
+// stores its tag in values `interpolation` and `spread` never take, which only
+// works if that byte sits past the end of every smaller variant.
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 #[must_use]
 pub struct Gradient<G> {
-    /// Where the parametric axis runs — see the geometry type.
     #[serde(flatten)]
+    /// Where the gradient runs.
     pub geometry: G,
     /// The colours along that axis.
     #[serde(flatten)]
@@ -126,15 +103,13 @@ pub struct Gradient<G> {
 }
 
 impl<G> Gradient<G> {
-    /// Override how the gradient repeats outside the 0..1
-    /// parametric range. Builder-style.
+    /// Override how the gradient repeats outside 0..1.
     pub const fn with_spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
         self
     }
 
     /// Override the colour space interpolation runs in.
-    /// Builder-style.
     pub const fn with_interpolation(mut self, interpolation: Interpolation) -> Self {
         self.ramp.interpolation = interpolation;
         self
@@ -148,8 +123,8 @@ impl<G> Gradient<G> {
 }
 
 impl<G: GradientGeometry> Gradient<G> {
-    /// The one general constructor the per-kind `new` shorthands land in.
-    /// Asserts two through eight stops.
+    /// The one general constructor the per-kind `new` shorthands land in; asserts
+    /// two through eight stops.
     fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             geometry,
@@ -161,17 +136,15 @@ impl<G: GradientGeometry> Gradient<G> {
         }
     }
 
-    /// Gradient axis for the shader, packed to the GPU wire form.
     pub(crate) fn axis(&self) -> FillAxis {
         let [a, b, c, d] = self.geometry.axis_lanes();
         FillAxis::from_lanes(a, b, c, d)
     }
 }
 
-/// Hand-written rather than derived: the geometry needs canonical f32
-/// bit encoding, and the stops hash through their own packed form. Used
-/// by command-buffer dedup; the atlas keys its rows on the [`ColorRamp`]
-/// alone, which is kind-agnostic.
+/// Hand-written: the geometry needs canonical f32 bit encoding and the stops
+/// hash through their packed form. For command-buffer dedup; the atlas keys on
+/// the kind-agnostic [`ColorRamp`] alone.
 impl<G: GradientGeometry> hash::Hash for Gradient<G> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.geometry.hash_geometry(state);
@@ -180,8 +153,8 @@ impl<G: GradientGeometry> hash::Hash for Gradient<G> {
     }
 }
 
-/// Stop offsets and colours are integer-encoded (`Stop::offset_u8`,
-/// `SrgbaU8`), so a gradient's geometry is the only place a NaN can hide.
+/// Stop offsets and colours are integer-encoded, so the geometry is the only
+/// place a NaN can hide.
 impl<G: GradientGeometry> NanCheck for Gradient<G> {
     #[inline]
     fn has_nan(&self) -> bool {

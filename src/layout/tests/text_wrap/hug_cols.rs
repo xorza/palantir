@@ -17,13 +17,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
-/// Repro for the showcase "text layouts" first section: a Hug+Hug grid
-/// holding a wrapping paragraph in col 0 and a *non-wrapping* label in
-/// col 1, nested under FILL panels that inherit a finite surface width.
-/// As the surface narrows below the grid's natural intrinsic floor, the
-/// grid must clamp at that floor (col 0 = paragraph longest-word-or-line,
-/// col 1 = full label width). It must NOT keep shrinking col 1 below its
-/// label's natural width — non-wrapping text cannot be broken.
+/// Repro for the showcase "text layouts" section: a Hug+Hug grid with a wrapping paragraph in col 0 and a non-wrapping label in col 1, under FILL panels. As the surface narrows, the grid must clamp at its intrinsic floor, never shrinking col 1 below the label's natural width.
 #[test]
 fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
@@ -101,12 +95,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
         (grid_w, section_w)
     }
 
-    // Once the section panel stops shrinking (its intrinsic_min is
-    // pinned wider than the grid's alone — by the section title text
-    // here), the Hug grid inside must NOT keep shrinking. It should
-    // fill the section's committed cross extent, not the smaller
-    // surface-derived `available` the measure pass received before
-    // flooring.
+    // Once the section panel stops shrinking (floored by its title text), the Hug grid inside must fill the section's committed cross extent, not the smaller surface-derived `available`.
     let widths: [u32; 5] = [400, 300, 250, 200, 150];
     let (mut section_widths, mut grid_widths) = (Vec::new(), Vec::new());
     for w in widths {
@@ -114,22 +103,12 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
         section_widths.push(s);
         grid_widths.push(g);
     }
-    // At 400 the section fills 400 − 2·12 − 2·16 = 344. Below that it
-    // floors at its single-line title, 341 px at 12 px Inter, and the Hug
-    // grid inside fills the section's committed width rather than the
-    // narrower surface-derived `available`.
+    // At 400 the section fills 400 − 2·12 − 2·16 = 344; below that it floors at its 341 px single-line title (12 px Inter).
     assert_eq!(section_widths, [344.0, 341.0, 341.0, 341.0, 341.0]);
     assert_eq!(grid_widths, section_widths);
 }
 
-/// Pin: a non-wrapping `Text` reports MinContent on the X axis equal to
-/// its full unbroken width, not the longest-word width. Wrapping text
-/// reports the longest-word width, since it can break between words.
-/// A Hug+Hug grid containing a wrapping paragraph and a non-wrapping
-/// label must give the label its full natural width as a column floor —
-/// otherwise the layout solver's slack distribution shrinks the label
-/// column below the label's true width, and the label paint overflows
-/// its arranged cell.
+/// Pin: a non-wrapping `Text` reports MinContent on X equal to its full width; wrapping text reports the longest word. A Hug+Hug grid must floor the label column there, or slack distribution shrinks it and the paint overflows its cell.
 #[test]
 fn nonwrapping_text_minconent_equals_full_width() {
     let mut h = UiHarness::with_text(UVec2::new(400, 200));
@@ -149,12 +128,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
     );
 }
 
-/// Pin issue 1a: in a `Hug+Hug` grid, when the surface is too narrow
-/// to fit both columns at their natural max-content widths, the slack
-/// distribution must allocate enough to the non-wrapping label column
-/// for the label's full text to fit. The wrapping paragraph absorbs
-/// the squeeze; the label cell rect width stays >= the label's natural
-/// width.
+/// Pin: in a Hug+Hug grid too narrow for both max-content widths, the wrapping paragraph absorbs the squeeze and the label cell stays at least its natural width.
 #[test]
 fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     fn build(ui: &mut Ui) -> (NodeId, NodeId) {
@@ -188,15 +162,12 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         (paragraph_node.unwrap(), label_node.unwrap())
     }
 
-    // Probe label's natural unbroken width at an unconstrained surface.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(|ui| build(ui).1);
     let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
-    // At a surface narrower than the paragraph max-content but wider
-    // than the grid's intrinsic floor, slack distribution kicks in.
-    // The label cell must still get at least its full natural width.
+    // Between the grid's floor and the paragraph's max-content, slack distribution applies; the label cell still gets its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
         let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
         let label = h.frame_value(|ui| build(ui).1);
@@ -210,14 +181,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 }
 
-/// Regression for the showcase "two Hug columns" grid: a **bare** label
-/// (no `.text_wrap(...)`, so it takes the `Text` default) in a Hug+Hug grid
-/// next to a wrapping paragraph must keep its full natural width — the
-/// paragraph wraps to absorb the squeeze. This pins the default: `Text`
-/// defaults to `TextWrap::Overflow`, whose MinContent equals its full line,
-/// so the grid's Hug solver floors the label column at the label width and
-/// never shrinks it (a default reporting MinContent 0 would let the slack
-/// split clip "right column" → "right col").
+/// Regression: a bare label (default `TextWrap::Overflow`, MinContent equals its full line) in a Hug+Hug grid beside a wrapping paragraph keeps its full width; a default MinContent 0 would clip "right column" → "right col".
 #[test]
 fn two_hug_cols_default_label_hugs_full_width() {
     fn build(ui: &mut Ui) -> NodeId {
@@ -233,7 +197,6 @@ fn two_hug_cols_default_label_hugs_full_width() {
                   .text_wrap(TextWrap::WrapWithOverflow)
                   .grid_cell((0, 0))
                   .show(ui);
-              // No `.text_wrap(...)` — exercises the default.
               Text::new("right column")
                   .auto_id()
                   .font_size(14.0)
@@ -244,15 +207,12 @@ fn two_hug_cols_default_label_hugs_full_width() {
           .inner
     }
 
-    // Label's natural unbroken width, probed unconstrained.
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
     let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
-    // The long paragraph's max-content dwarfs these surfaces, so the grid
-    // is in the slack-distribution regime (paragraph wraps). The default
-    // label must still occupy its full width at each.
+    // The paragraph's max-content dwarfs these surfaces (slack regime); the default label must still occupy its full width.
     for surface_w in [600u32, 500, 400, 300] {
         let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
         let label = h.frame_value(build);

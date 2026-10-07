@@ -1,9 +1,4 @@
-//! [`LayerCtx`] — one layer's encode walk.
-//!
-//! [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode)
-//! builds one of these per tree in the scene forest and hands it its roots;
-//! everything from there down to the emitted paint commands is the recursion
-//! below.
+//! [`LayerCtx`]: one layer's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::damage::region::DamageRegion;
@@ -52,9 +47,7 @@ use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 use std::time::Duration;
 
-/// Per-layer encode context: the fixed inputs one layer's walk reads,
-/// bundled so [`Self::encode_node`]'s recursion carries one `&mut self`
-/// instead of a long argument list.
+/// The fixed inputs one layer's encode walk reads.
 #[derive(Debug)]
 pub(super) struct LayerCtx<'a, 'g> {
     pub(super) tree: &'a Tree,
@@ -63,16 +56,10 @@ pub(super) struct LayerCtx<'a, 'g> {
     pub(super) subtree_paint_rects: &'a [Rect],
     pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_anim_cursor: PaintAnimCursor<'a>,
-    /// Live `GpuView`s by `WidgetId`, one map across every layer. An
-    /// `ImageSource::GpuView` carries only its epoch; the arm looks the
-    /// view's stable `TextureId` + paint callback up here by the owner
-    /// node's id.
+    /// Live `GpuView`s by owner `WidgetId`, one map across layers; an `ImageSource::GpuView` carries only its epoch.
     pub(super) gpu_views: &'a GpuViews,
     pub(super) damage_filter: Option<&'a DamageRegion>,
-    /// Logical-px inflation applied to each node's `subtree_paint_rect`
-    /// before the damage-cull intersection test, so the cull covers the
-    /// AA-padded region the backend PreClears (see
-    /// [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode)).
+    /// Logical-px inflation of each `subtree_paint_rect` before the damage cull, covering the AA pad the backend PreClears.
     pub(super) damage_cull_margin: f32,
     pub(super) viewport: Rect,
     pub(super) now: Duration,
@@ -84,14 +71,11 @@ impl LayerCtx<'_, '_> {
         self.gradients.source(brush)
     }
 
-    /// The atlas row an interned ramp resolved to this pass.
     fn gradient_row(&mut self, id: GradientId) -> LutRow {
         self.gradients.resolve(id).lut_row
     }
 
-    /// Emit one of a node's shapes. Pulled out of `encode_node` so the
-    /// child-interleave loop can call it without duplicating the per-variant
-    /// match; `runs` is that node's [`TextRuns`] cursor, advanced here.
+    /// Emits one of a node's shapes; `runs` is that node's [`TextRuns`] cursor, advanced here.
     fn emit_one_shape(
         &mut self,
         id: NodeId,
@@ -100,51 +84,22 @@ impl LayerCtx<'_, '_> {
         runs: &mut TextRuns,
         out: &mut impl PaintSink,
     ) {
-        // **The lowered-shape invariant**, asserted at the one point every
-        // lowered shape passes through. `Shapes::add` is the single gate
-        // that decides NaN and it drops what it finds, so nothing carrying
-        // one can arrive here.
-        //
-        // This is what lets the tiers below stop re-asking. The only
-        // non-finite checks past this point guard a different source — the
-        // *transform* stack, whose scale can overflow independently of any
-        // shape input (see `urect_from_phys`) — not shape geometry.
-        //
-        // Deliberately not paired with a "not a no-op" assert: whether a
-        // record paints is not answerable here. `local_rect: None` means
-        // "the owner's arranged rect", and text's extent comes from the
-        // shaped measure, so both are layout outputs the record doesn't
-        // carry. That question belongs to `Draw*Payload::is_noop`, one tier
-        // down, which is the first place the resolved geometry exists.
+        // `Shapes::add` is the single NaN gate, so nothing non-finite reaches here; later non-finite checks guard the transform stack only.
+        // No "not a no-op" assert: that needs resolved geometry, which first exists in `Draw*Payload::is_noop`.
         debug_assert!(
             !shape.has_nan(),
             "a NaN reached the encoder — `Shapes::add`'s gate should have \
              dropped this shape: {shape:?}",
         );
-        // Ahead of the two gates below, because the cursor counts *records*:
-        // a run either of them drops still owns its slot in the node's span.
         let shaped = runs.shaped(shape, self.layout);
-        // Every emit below passes `alpha`, and the sink's `draw_*` folds it
-        // into whichever lane that payload carries its colour in. An
-        // early-out rather than the gate: the sink drops a fully faded
-        // payload anyway, but a shape animated to nothing should not pay
-        // for its geometry first. `paint_mod.rotation` rides the stroke
-        // arms instead, through `StrokeBounds`.
+        // Early-out so a shape animated to nothing doesn't pay for its geometry; `paint_mod.rotation` rides the stroke arms via `StrokeBounds`.
         let paint_mod = self.paint_anim_cursor.sample(shape_idx, self.now);
         if is_invisible(paint_mod.alpha) {
             return;
         }
         let alpha = paint_mod.alpha;
-        // The node's arranged rect, which every shape resolves its geometry
-        // against. Read here rather than passed in: it is `layout.rect[id]`,
-        // the same column this function already indexes for padding and text
-        // spans, so taking it as an argument only made two spellings of one
-        // value that could disagree.
         let owner_rect = self.layout.rect[id.idx()];
         match shape {
-            // The three quad-tier shapes resolve their geometry against the
-            // owner rect and hand it to the one `PaintSink` quad path; from
-            // the payload down they are a single draw.
             ShapeRecord::Quad(shape) => match shape {
                 QuadShape::Rect {
                     kind,
@@ -175,11 +130,7 @@ impl LayerCtx<'_, '_> {
                     border,
                     bbox: _,
                 } => {
-                    // Corner points are owner-local; the composer folds `origin` +
-                    // the active transform and derives the covering AABB. Solid
-                    // fill only — the reused quad lanes have no room for a gradient.
-                    // The border's noop-normalization happens inside
-                    // `DrawQuadPayload::triangle`, the single canonical gate.
+                    // Owner-local corner points; the composer folds in `origin` and the transform. Solid fill only: the reused quad lanes have no room for a gradient.
                     out.draw_quad(
                         DrawQuadPayload::triangle(
                             owner_rect.min,
@@ -204,20 +155,7 @@ impl LayerCtx<'_, '_> {
                     tracing::trace!(?shape, "encoder: dropping text that shaped no buffer");
                     return;
                 };
-                // Two paths share the same `DrawText` payload:
-                // - `local_rect: None` → encoder owns positioning. Place
-                //   the shaped bbox inside the owner's padded inner rect
-                //   via `Align::place_in`.
-                // - `local_rect: Some(origin)` → widget owns positioning.
-                //   Origin is `owner.min + origin`; bbox size is the
-                //   shaped measurement. `align`'s placement axes are
-                //   ignored (only `align.halign()` matters here, and
-                //   that's already baked into the shaped buffer's
-                //   per-line glyph offsets).
-                // Through the shared placement, then lifted — the
-                // cascade's paint rect for this same run is built from
-                // it, and the two have to name the same pixels or damage
-                // and paint disagree about where the glyphs are.
+                // `local_rect: None`: the encoder places the bbox in the owner's padded inner rect via `Align::place_in`; `Some(origin)`: the widget places it at `owner.min + origin`. Shared placement, so the cascade's paint rect and damage agree with paint.
                 let local = record::text_paint_bbox_local(
                     *local_origin,
                     *align,
@@ -246,9 +184,6 @@ impl LayerCtx<'_, '_> {
                 bbox,
                 content_hash: _,
             } => {
-                // Points + colors live in the window's RecordStore; spans
-                // are forwarded verbatim. Owner-local convention — the
-                // composer folds `origin` into the per-point transform.
                 out.draw_polyline(
                     DrawPolylinePayload {
                         bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
@@ -274,9 +209,6 @@ impl LayerCtx<'_, '_> {
                 bbox,
                 content_hash: _,
             } => {
-                // Verts live in the window's RecordStore owner-local;
-                // composer folds `origin` into the per-instance translate.
-                // No per-frame copy here.
                 let origin = geometry::resolve_local_rect(owner_rect, *local_rect).min;
                 out.draw_mesh(
                     DrawMeshPayload {
@@ -298,11 +230,7 @@ impl LayerCtx<'_, '_> {
                 bbox,
                 ramp,
             } => {
-                // Curves are owner-local; composer adds `origin` + active
-                // transform before scaling to physical px. The basis
-                // crosses verbatim — record and payload share the type, so
-                // both bases' cull, spin, and sub-instance sizing stay one
-                // code path from here through the composer.
+                // Owner-local; the basis crosses verbatim so cull, spin and sub-instance sizing stay one code path.
                 let ramp_row = match *ramp {
                     CurveRamp::None => None,
                     CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
@@ -347,14 +275,7 @@ impl LayerCtx<'_, '_> {
                 downsample,
             } => {
                 let base = geometry::resolve_local_rect(owner_rect, *local_rect);
-                // The one thing the two sources don't share: where the
-                // texture comes from. A registered image carries its id
-                // inline (no registry borrow); a `GpuView` looks its stable
-                // target up in `Ui::gpu_views` by the owner node's
-                // `WidgetId` and hands back the app paint callback, which
-                // rides alongside the payload so the sink can list the
-                // off-screen target in `frame_targets`, with the epoch that
-                // tells the backend whether the target's pixels are current.
+                // A registered image carries its id; a `GpuView` is looked up in `Ui::gpu_views` and its paint callback rides with the payload, with the epoch telling the backend whether the target is current.
                 let (handle, view) = match source {
                     ImageSource::Texture { id, .. } => (*id, None),
                     ImageSource::GpuView { epoch } => {
@@ -382,7 +303,6 @@ impl LayerCtx<'_, '_> {
                 if *mag_filter == ImageFilter::Nearest {
                     flags = flags.union(ImageFlags::MAG_NEAREST);
                 }
-                // At most one tap bit: the shader reads them as a mode, not a set.
                 flags = flags.union(match *downsample {
                     ImageDownsample::Single => ImageFlags::NONE,
                     ImageDownsample::Mean => ImageFlags::TAPS_MEAN,
@@ -406,42 +326,18 @@ impl LayerCtx<'_, '_> {
         }
     }
 
-    /// Paint `id` and its subtree, in paint order.
-    ///
-    /// Recursive, and the whole walk: the invisible and damage-cull gates,
-    /// chrome, the clip push/pop pair, and the interleave of a node's own
-    /// shapes with its children all happen here. Called once per root by
-    /// [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
+    /// Paints `id` and its subtree in paint order: the whole recursive walk, called once per root.
     pub(super) fn encode_node(&mut self, id: NodeId, out: &mut impl PaintSink) {
         if self.cascade_inputs[id.idx()].invisible() {
             return;
         }
 
-        // Off-screen subtree cull. Reads `LayerCascade::subtree_paint_rects`
-        // — the rolled-up paint bound that includes every descendant —
-        // so a Canvas-positioned child overflowing its parent's `Fixed`
-        // bound (or a shape with negative-margin overhang) doesn't get
-        // killed when the parent's own rect lies just outside the
-        // viewport. The parallel column is owner-local to this layer.
         let subtree_paint_rect = self.subtree_paint_rects[id.idx()];
         if !subtree_paint_rect.intersects(self.viewport) {
             return;
         }
 
-        // DamageEngine-aware subtree cull. Same shape as the viewport
-        // cull: if no damage rect intersects the subtree paint bound,
-        // the whole subtree contributes nothing this frame — skip
-        // recursion + Push/Pop emission entirely. `subtree_paint_rect`
-        // covers descendants too, so a horizontal pan that translates
-        // an overhanging port circle into the damage region still
-        // recurses through the (potentially own-rect-tight) ancestor.
-        //
-        // Inflate by `damage_cull_margin` so the cull covers the AA-padded
-        // region the backend PreClears, not just the raw damage rect. A
-        // node whose paint bound lands in that pad ring (near a moving
-        // shape's bbox edge — e.g. a bezier wire dragged past a node border
-        // or port circle) would otherwise be cleared but skipped here,
-        // leaving a hard cut along the wire's bbox boundary.
+        // Damage cull, inflated by `damage_cull_margin` to cover the AA pad the backend PreClears, else a node in the pad ring is cleared but skipped.
         if let Some(region) = self.damage_filter
             && !region.any_intersects(subtree_paint_rect.inflated(self.damage_cull_margin))
         {
@@ -450,45 +346,17 @@ impl LayerCtx<'_, '_> {
 
         let rect = self.layout.rect[id.idx()];
 
-        // Order: clip is in parent-of-panel space (pre-transform); transform
-        // applies inside the clip and only to children. The panel's own
-        // background paints under the clip but BEFORE the transform — matching
-        // WPF's `RenderTransform` convention.
-        //
-        // Chrome paints BEFORE the clip is pushed: `Tree::open_node` folds
-        // the chrome's border width into the padding that deflates the clip
-        // (and, for `ClipMode::Rounded`, insets the mask), so chrome's own
-        // border pixels sit outside the mask. Painting chrome first leaves it
-        // unclipped — it self-clips via its SDF — which preserves the border
-        // while children stay clipped to the inset interior.
-        //
-        // `Tree::open_node` drops chrome to `None` only when every paintable
-        // part is no-op. Both `DrawQuadPayload::rect` and
-        // `DrawQuadPayload::shadow` gate on their own `is_noop` internally,
-        // so a shadow-only or fill-only background here emits exactly one
-        // command.
+        // Clip is in parent space (pre-transform); the transform applies inside it, to children only. Chrome paints before the clip is pushed: `Tree::open_node` folds its border into the padding that deflates the clip, and chrome self-clips via its SDF. Chrome is `None` only when every part is no-op.
         let mode = self.tree.records.attrs()[id.idx()].clip_mode();
         let clip = mode.is_clip();
-        // Borrowed, not copied: `LayerCtx::tree` is a shared reference, so this
-        // borrows the `Tree` rather than `self` and does not collide with the
-        // `&mut self` that `brush_source` needs below. Copying instead cost a
-        // 64-byte `ChromeRow` per chromed node — most nodes in a real UI.
         let chrome = self.tree.chrome(id);
 
         if let Some(bg) = chrome {
-            // Every draw passes alpha `1.0`: a paint animation is registered
-            // against a shape, and chrome is the node's own, not one of them.
-            //
-            // CSS Backgrounds 3 §7.1 order: a drop shadow under the fill, an
-            // inset one over it, inside the border.
+            // Alpha `1.0`: chrome isn't a shape, so no paint animation. CSS Backgrounds 3 §7.1 order: drop shadow under the fill, inset over it.
             let src = self.brush_source(bg.fill);
             let fill = DrawQuadPayload::rect(rect, bg.corners, src, bg.border);
             if bg.shadow.inset() {
                 out.draw_quad(fill, 1.0);
-                // CSS draws the border over an inset shadow. Fill and border
-                // stay one quad, as two would blend a seam along their shared
-                // edge, so the shadow's edge pixels land on the border's inner
-                // anti-aliased ones instead.
                 let width = bg.border.width;
                 let padding_box = Rect {
                     min: Vec2::ZERO,
@@ -498,14 +366,10 @@ impl LayerCtx<'_, '_> {
                 let corners = bg.corners.deflated(rect.size, width);
                 emit_shadow(out, rect, Some(padding_box), corners, &bg.shadow, 1.0);
             } else {
-                // `local_rect = None`: the owner's full arranged rect, which
-                // `compute_paint_rect` mirrors so paint extent and damage
-                // extent stay in lockstep.
+                // `local_rect = None`: the owner's rect, as `compute_paint_rect` mirrors.
                 emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
                 out.draw_quad(fill, 1.0);
             }
-            // The focus ring, over the chrome on the same edge, and before
-            // the clip like the border it shares the edge with.
             if bg.ring {
                 let clear = self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT));
                 let ring = self.tree.focus_ring;
@@ -519,11 +383,7 @@ impl LayerCtx<'_, '_> {
             match mode {
                 ClipMode::Rect => out.push_clip(PushClipPayload::rect(mask_rect)),
                 ClipMode::Rounded => {
-                    // Per-corner reduction by the larger of the two
-                    // adjacent edge insets so the mask curve stays inside
-                    // both adjacent edges; radius can't honor concentricity
-                    // with the painted stroke on both axes when padding is
-                    // asymmetric.
+                    // Per-corner reduction by the larger adjacent edge inset, keeping the mask curve inside both edges.
                     let painted = chrome.map(|bg| bg.corners).expect(
                         "ClipMode::Rounded without chrome row — open_node invariant violated",
                     );
@@ -540,33 +400,13 @@ impl LayerCtx<'_, '_> {
                         corners: mask_radius,
                     });
                 }
-                // Unreachable under the gate above. Spelled out so a new
-                // `ClipMode` is a compile error here rather than a variant
-                // that silently clips nothing.
                 ClipMode::None => {}
             }
         }
 
-        // Clip culling (skipping leaves outside the active ancestor
-        // clip) intentionally does NOT live in the encoder: the scissor
-        // exists only in physical space on the composer, which culls each
-        // call as it arrives. Damage filtering happens at subtree
-        // granularity above (early
-        // return when no rect intersects this node's screen rect); leaves
-        // emit unconditionally once we're past that gate.
-
-        // `None` for an identity transform, which is why nothing below
-        // emits the Push/PopTransform pair for one: composing identity is
-        // a no-op, so the pair would waste two sink calls and a
-        // transform-stack push/pop in the composer.
         let transform = self.tree.anchored_transform(id, rect);
 
-        // Body (direct shapes + child subtrees) paints inside the node's
-        // own transform — chrome (drawn above this point) is the only
-        // thing that stays in parent space, so a panel's `transform` acts
-        // as a pure inner-content pan/zoom while its background remains
-        // anchored. Single push/pop wraps the whole body; the composer
-        // handles per-call transform composition.
+        // The body paints inside the node's transform; chrome stays in parent space, so a transform pans/zooms content while the background stays anchored.
         if let Some(t) = transform {
             out.push_transform(t);
         }
@@ -596,11 +436,7 @@ impl LayerCtx<'_, '_> {
     }
 }
 
-/// Shared shadow emit. Chrome branch (`Background::shadow`) and
-/// shape-buffer branch (`QuadShape::Shadow`) both route here. Either
-/// kind travels as its source rect and its stored geometry lanes: the
-/// composer grows a drop shadow from the source once it is in physical
-/// pixels, so the source lands on the same pixels as the fill it shadows.
+/// Shared shadow emit. The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
 fn emit_shadow(
     out: &mut impl PaintSink,
     owner_rect: Rect,
@@ -624,9 +460,7 @@ fn emit_shadow(
     } else {
         FillKind::SHADOW_DROP
     };
-    // The axis *is* the stored geometry, so it travels as the packed
-    // word — unpacking it to f32 and repacking would be an f16 round
-    // trip of identical bytes.
+    // The axis travels as the packed word; unpacking would round-trip identical bytes through f16.
     let fill_axis = FillAxis::from(shadow.geom_f16);
     out.draw_quad(
         DrawQuadPayload::shadow(source, corners, shadow.color, kind, fill_axis),

@@ -2,9 +2,7 @@ use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn backspace_deletes_whole_grapheme_cluster() {
-    // Buffer: 'a', e + combining-acute (one grapheme, two codepoints,
-    // 3 bytes), 'b'. Caret at end. One backspace must delete 'b',
-    // a second must delete *both* bytes of the combining grapheme.
+    // 'a', e + combining-acute (one grapheme, two codepoints, 3 bytes), 'b', caret at end: one backspace deletes 'b', a second both bytes of the grapheme.
     let mut s = String::from("ae\u{0301}b");
     let mut state = EditState {
         caret: s.len(),
@@ -23,8 +21,6 @@ fn backspace_deletes_whole_grapheme_cluster() {
 
 #[test]
 fn grapheme_boundary_helpers_step_whole_clusters() {
-    // ASCII / single-codepoint graphemes: boundaries match the
-    // codepoint walk one-for-one.
     let s = "héllo"; // NFC: é = U+00E9 = 2 bytes / 1 codepoint / 1 grapheme
     assert_eq!(next_grapheme_boundary(s, 0), 1);
     assert_eq!(next_grapheme_boundary(s, 1), 3);
@@ -32,9 +28,7 @@ fn grapheme_boundary_helpers_step_whole_clusters() {
     assert_eq!(next_grapheme_boundary(s, s.len()), s.len());
     assert_eq!(prev_grapheme_boundary(s, 0), 0);
 
-    // Combining mark: 'e' + U+0301 (combining acute) is one grapheme,
-    // two codepoints, 3 bytes. Walks must step over both codepoints
-    // in one shot — otherwise backspace would split the accent off.
+    // 'e' + U+0301 is one grapheme, two codepoints, 3 bytes; walks must step over both or backspace splits off the accent.
     let s = "ae\u{0301}b";
     assert_eq!(next_grapheme_boundary(s, 0), 1, "past 'a'");
     assert_eq!(
@@ -49,8 +43,7 @@ fn grapheme_boundary_helpers_step_whole_clusters() {
     );
     assert_eq!(next_grapheme_boundary(s, 4), 5, "past 'b'");
 
-    // ZWJ-joined family emoji: 7 codepoints, 1 grapheme cluster.
-    // U+1F468 ZWJ U+1F469 ZWJ U+1F467 = 18 bytes.
+    // ZWJ family emoji: 7 codepoints, 1 grapheme, 18 bytes (U+1F468 ZWJ U+1F469 ZWJ U+1F467).
     let s = "x👨\u{200D}👩\u{200D}👧y";
     let emoji_start = 1;
     let y_byte = s.find('y').unwrap();

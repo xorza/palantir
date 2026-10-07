@@ -19,11 +19,7 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
-/// The selection is an index coerced for display: one past the end of the
-/// list — a list that shrank under it — shows the last option, measured
-/// through the trigger label's width ("Longer" against "A"), and the bound
-/// index stays where the caller left it. An empty list shows an empty
-/// label rather than panicking.
+/// The selection is an index coerced for display: one past the end (a list that shrank) shows the last option, measured by the trigger label's width, and the bound index stays put. An empty list shows an empty label.
 #[test]
 fn a_stale_selection_shows_the_last_option_without_writing_back() {
     const OPTIONS: [&str; 2] = ["A", "Longer"];
@@ -52,17 +48,10 @@ fn a_stale_selection_shows_the_last_option_without_writing_back() {
     assert_eq!(none, 4);
 }
 
-/// `labeled` reads the row's projected field, not the row: a dropdown over
-/// records measures exactly as one over the string it projects, and not as
-/// one over the row's other string.
-///
-/// Asserted through the trigger label's width because that is the only
-/// thing the option text can reach from outside — and it is enough, since
-/// the two candidate fields differ in length.
+/// `labeled` reads the row's projected field, not the row: measured through the trigger label's width, since the two candidate fields differ in length.
 #[test]
 fn a_labeled_dropdown_reads_the_projected_field() {
-    /// A row that is not itself text: no `AsRef<str>` impl could pick
-    /// between these two, which is the case `labeled` exists for.
+    /// A row that is not text, which no `AsRef<str>` could pick between.
     #[derive(Debug)]
     struct Row {
         name: &'static str,
@@ -156,13 +145,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     );
 }
 
-/// The trigger's shape comes from `Theme::combo_box`, not from
-/// constants: the chevron node is sized from `arrow_size`, and the
-/// gutter between label and arrow from `gap`.
-///
-/// Hug-sized so `Justify::SpaceBetween` has no free space to
-/// distribute — the rendered gap is then exactly `gap`, which a
-/// fixed-width trigger would hide behind the justification slack.
+/// The trigger's shape comes from `Theme::combo_box`: the chevron from `arrow_size`, the gutter from `gap`. Hug-sized so `Justify::SpaceBetween` leaves no slack hiding `gap`.
 #[test]
 fn trigger_geometry_follows_the_combo_box_theme() {
     let options = ["One"];
@@ -196,15 +179,13 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
     assert_eq!(gap_a, 12.0, "gutter is gap, got {gap_a}");
 
-    // Both knobs move the layout — neither is baked in.
     let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0, None);
     assert_eq!(size_b, Vec2::new(20.0, 14.0));
     assert_eq!(gap_b, 30.0, "gutter is gap, got {gap_b}");
     assert_ne!(size_a, size_b);
     assert_ne!(gap_a, gap_b);
 
-    // The same two knobs through `style`, against a slot set the other
-    // way: the instance is what lands.
+    // The same knobs through `style`: the instance wins.
     let instance = ComboBoxTheme {
         arrow_size: Vec2::new(20.0, 14.0),
         gap: 30.0,
@@ -215,9 +196,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     assert_eq!(gap_c, gap_b, "`style` overrides the slot's gap");
 }
 
-/// The trigger paints in the button theme `button_style` names, and in
-/// `Theme::button` without one — read off the trigger's chrome on the
-/// frame it first records, where the look snaps to its rest state.
+/// The trigger paints in `button_style`'s button theme, else `Theme::button`, read off its chrome on the first-record frame (rest state).
 #[test]
 fn trigger_chrome_follows_button_style() {
     let options = ["One"];
@@ -261,15 +240,7 @@ fn trigger_chrome_follows_button_style() {
     }
 }
 
-/// The list is the context menu's panel, not merely its colour: it takes
-/// the menu theme's padding and row gap as well, so a combo and a
-/// right-click menu built from one theme read as one control. It applied
-/// only the background before, and rendered visibly tighter than the
-/// menu it claims to reuse.
-///
-/// Differential, against the same two options: the list's height grows by
-/// exactly the padding it gained on two edges plus the one gap between
-/// two rows.
+/// The list takes the context menu's padding and row gap as well as its colour, so a combo and a right-click menu from one theme read as one control. Its height grows by the padding on two edges plus one row gap.
 #[test]
 fn the_dropdown_takes_the_context_menu_theme_it_documents() {
     let list_height = |padding: f32, gap: f32| {
@@ -300,15 +271,13 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         h.rect(id.with("list")).expect("combo list arranged").size.h
     };
 
-    // Two edges of padding, and one gap between the two rows.
     assert_eq!(
         list_height(11.0, 7.0) - list_height(0.0, 0.0),
         2.0 * 11.0 + 7.0,
     );
 }
 
-/// Disabling an open ComboBox closes it: the next frame records no list,
-/// and a click where a row used to be picks nothing.
+/// Disabling an open ComboBox closes it: no list is recorded and a click where a row was picks nothing.
 #[test]
 fn disabling_an_open_trigger_closes_its_list() {
     let combo = WidgetId::from_hash("combo");
@@ -343,9 +312,7 @@ fn disabling_an_open_trigger_closes_its_list() {
     assert_eq!(selected, 0, "a click where a row was picks nothing");
 }
 
-/// A focused, closed combo box steps its pick with the arrows, stopping at
-/// the ends, and reports each step as a committed change; Enter, Space and
-/// Alt+Down open it, and the arrows step nothing while it is open.
+/// A focused, closed combo box steps its pick with the arrows (stopping at the ends, each a committed change); Enter, Space and Alt+Down open it, and the arrows step nothing while open.
 #[test]
 fn the_keys_step_a_closed_pick_and_open_the_list() {
     use crate::input::keyboard::key::Key;
@@ -398,11 +365,7 @@ fn the_keys_step_a_closed_pick_and_open_the_list() {
     }
 }
 
-/// The whole keyboard path through a dropdown: Enter on the focused combo
-/// box opens it with focus on the first row, Tab and the arrows walk the
-/// rows inside the list it traps, Enter picks the row it is on and closes
-/// the list, and
-/// focus goes back to the combo box.
+/// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.
 #[test]
 fn the_keyboard_alone_picks_from_the_dropdown() {
     use crate::input::keyboard::key::Key;

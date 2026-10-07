@@ -47,10 +47,8 @@ fn render_shadow(
         .image
 }
 
-/// `image` with every pixel in each of `holes` set to the clear colour. A
-/// drop shadow is clipped inside its source, so two renders whose sources
-/// differ also differ there; a comparison about the shadow's shape takes
-/// both sources out of both images.
+/// `image` with every pixel in each of `holes` set to the clear colour, so
+/// shadow shapes compare without their (clipped) sources.
 fn without(image: &RgbaImage, holes: &[Rect]) -> RgbaImage {
     let mut out = image.clone();
     for hole in holes {
@@ -101,8 +99,6 @@ fn inset_offset_matches_translated_zero_offset_pixels_inside_source() {
     let shifted = render_shadow(source, 11.0, pixel_offset.as_vec2(), 6.0, 8.0, true);
     let reference = render_shadow(source, 11.0, Vec2::ZERO, 6.0, 8.0, true);
 
-    // The shifted shadow at a region, against the unshifted one at the
-    // same region moved back by the offset.
     let region = Rect::new(60.0, 50.0, 85.0, 70.0);
     let unshifted = Rect {
         min: region.min - pixel_offset.as_vec2(),
@@ -115,10 +111,9 @@ fn inset_offset_matches_translated_zero_offset_pixels_inside_source() {
     );
 }
 
-/// A spread is the same shadow as a source grown or shrunk by it, with
-/// its radii moved by the CSS spread rule: a drop shadow's 11 px corners
-/// at spread −4 become `max(11 − 4, 0) = 7`, and an inset hole grown by 4
-/// rounds at `11 + 4 = 15`, since 11 ≥ 4.
+/// A spread is the same shadow as a source grown or shrunk by it, radii moved
+/// by the CSS spread rule: 11 px corners at spread −4 become `max(11 − 4, 0)
+/// = 7`; an inset hole grown by 4 rounds at `11 + 4 = 15`.
 #[test]
 fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
     let blur = 6.0;
@@ -155,31 +150,23 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
     );
 }
 
-/// Drop shadows with no blur, so each edge is a hard one a probe can
-/// read: the radius grows or shrinks with the spread by the CSS rule,
-/// then fits the shadow box. Every probe sits outside the source, which
-/// clips its own shadow.
+/// Drop shadows with no blur, so each edge is hard. The radius follows the
+/// spread by the CSS rule, then fits the shadow box. Probes sit outside the
+/// source, which clips its own shadow.
 ///
-/// A 40 px circle (corners 20) centred at (110, 90):
-/// - spread +6 → a 52 px box with radius 26, a circle. The probe 27.6 px
-///   out along the diagonal is past it; with the radius left at 20 the
-///   corner arc reached 6√2 + 20 = 28.5 there.
-/// - spread −6, moved 45 px down clear of the source → a 28 px box centred
-///   at (110, 135) with radius `max(20 − 6, 0) = 14`, a circle. The probe
-///   13.5 px straight down is inside it; with the radius left at 20 the
-///   shape was a squircle 13.6 px from the centre on that axis.
+/// 40 px circle (corners 20) at (110, 90):
+/// - spread +6: 52 px box, radius 26; the probe 27.6 px out on the diagonal is
+///   past it (radius 20 would reach 6√2 + 20 = 28.5).
+/// - spread −6, moved 45 px down: 28 px box at (110, 135), radius 14; the
+///   probe 13.5 px straight down is inside.
 ///
-/// A sharp 40 px box with spread +6 stays sharp: its 52 px shadow fills
-/// the corner pixel at (84.5, 64.5).
+/// A sharp 40 px box with spread +6 stays sharp: it fills (84.5, 64.5).
 ///
-/// A 60×40 box at (80, 70) with only its top-left corner rounded, at 60:
-/// the radius fits the box first, to 40 on its 40 px left side, then
-/// spreads by 6 to 46 on the 72×52 shadow box from (74, 64), centred at
-/// (120, 110). The pixel at (88.5, 78.5) is 44.5 px from that centre,
-/// inside the arc; (86.5, 76.5) is 47.4 px out, past it. Spread first,
-/// 66 fits the 52 px side to 52, centred at (126, 116), and the first
-/// probe falls 53.0 px out, past that arc. Both probes are more than
-/// 40 px from the source's own arc at (120, 110), so outside its clip.
+/// A 60×40 box at (80, 70) with only its top-left corner rounded, at 60: the
+/// radius fits the box first (40), then spreads to 46 on the 72×52 shadow box
+/// from (74, 64), centred at (120, 110). (88.5, 78.5) is 44.5 px out, inside;
+/// (86.5, 76.5) is 47.4 px, past. Spread first gives 66, fit to 52, centred
+/// at (126, 116), putting the first probe 53.0 px out.
 #[test]
 fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
     let circle = Rect::new(90.0, 70.0, 40.0, 40.0);
@@ -233,14 +220,12 @@ fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
 }
 
 /// An inset shadow on chrome paints over its opaque fill and inside its
-/// border, as CSS paints `box-shadow: inset`: the same pixels as the
-/// shadow left off the chrome and pushed as a shape after it, on the
-/// 140×100 box less the 4 px border, at radii `16 − 4 = 12`.
+/// border, as CSS `box-shadow: inset`: the same pixels as the shadow pushed
+/// as a shape after chrome without it, on the 140×100 box less the 4 px
+/// border, at radii `16 − 4 = 12`.
 ///
-/// The probe 0.5 px inside the padding edge reads the shadow. The hole's
-/// blurred coverage there is about Φ(0.5 / 4) = 0.55, so 0.45 of the
-/// 0.6-alpha black lands: the 0.9 sRGB fill, 0.787 linear, darkens to
-/// 0.787 × 0.73 = 0.575, sRGB 200. Under the fill it read the fill, 230.
+/// The probe 0.5 px inside the padding edge sees coverage Φ(0.5 / 4) = 0.55,
+/// so 0.45 of the 0.6-alpha black lands: 0.787 linear × 0.73 = 0.575, sRGB 200.
 #[test]
 fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
     let shadow = Shadow {
@@ -290,12 +275,10 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
     assert!(red(44, 90) < 215, "the padding edge is in shadow");
 }
 
-/// A drop shadow is clipped inside the box that casts it, as CSS clips an
-/// outer `box-shadow` inside the border box: under a 40 % fill, chrome or
-/// shape, every pixel 1 px or more inside the box is the fill over the
-/// clear colour alone, the same as the box drawn with no shadow. Bands
-/// stop the corner radius short of the ends, so they hold only pixels
-/// inside the rounded box. Below the box the shadow still darkens.
+/// A drop shadow is clipped inside its casting box, as CSS clips an outer
+/// `box-shadow`: under a 40 % fill, pixels 1 px or more inside the box equal
+/// the fill alone. Bands stop a corner radius short of the ends. Below the
+/// box the shadow still darkens.
 #[test]
 fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
     let source = Rect::new(40.0, 40.0, 140.0, 100.0);
@@ -351,7 +334,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
     }
 }
 
-/// `erf` to 1.5e-7 (Abramowitz & Stegun 7.1.26), in f64 for the reference.
+/// `erf` to 1.5e-7 (Abramowitz & Stegun 7.1.26), in f64.
 fn erf(x: f64) -> f64 {
     let t = 1.0 / (1.0 + 0.327_591_1 * x.abs());
     let poly = ((((1.061_405_429 * t - 1.453_152_027) * t + 1.421_413_741) * t - 0.284_496_736)
@@ -361,8 +344,8 @@ fn erf(x: f64) -> f64 {
     (1.0 - poly * (-x * x).exp()).copysign(x)
 }
 
-/// What one pixel sees of a blurred half-line below `u`: the Gaussian's
-/// CDF averaged across the pixel's 1 px box, by 64 midpoint samples.
+/// The Gaussian CDF averaged across a pixel's 1 px box, by 64 midpoint
+/// samples.
 fn pixel_cdf(u: f64, sigma: f64) -> f64 {
     const SAMPLES: u32 = 64;
     (0..SAMPLES)
@@ -374,11 +357,9 @@ fn pixel_cdf(u: f64, sigma: f64) -> f64 {
         / f64::from(SAMPLES)
 }
 
-/// The coverage, at the pixel centred on `p`, of the box `rect` with
-/// every corner rounded by `radius`, blurred by σ — summed row by row the
-/// long way: each 1/2000 of the box's height is a span whose two ends
-/// the pixel sees through `pixel_cdf`, weighted by how much of the
-/// kernel falls on that row.
+/// Coverage at the pixel centred on `p` of `rect` with every corner rounded
+/// by `radius`, blurred by σ. Summed in 1/2000-of-height rows through
+/// `pixel_cdf`, weighted by the kernel's share on each row.
 fn reference_coverage(p: Vec2, rect: Rect, radius: f32, sigma: f64) -> f64 {
     const ROWS: u32 = 2000;
     let (px, py) = (f64::from(p.x), f64::from(p.y));
@@ -406,23 +387,18 @@ fn reference_coverage(p: Vec2, rect: Rect, radius: f32, sigma: f64) -> f64 {
         .sum()
 }
 
-/// A blurred shadow is its box convolved with the Gaussian, pixel by
-/// pixel, against the reference integral above. 85 % black over white
-/// leaves `1 − 0.85·coverage` linear. Two 8-bit steps: one for the
-/// target's rounding, one for the shader's corner slices, which stay
-/// within 0.002 linear of the integral — at most 0.7 of a step on the
-/// darkest of these probes.
+/// A blurred shadow is its box convolved with the Gaussian, checked per pixel
+/// against the reference integral. 85 % black over white leaves
+/// `1 − 0.85·coverage` linear. Tolerance is two 8-bit steps: one for target
+/// rounding, one for the shader's corner slices (within 0.002 linear).
 ///
-/// The probes are where the blur of the box and an erf of its distance
-/// field part ways:
-/// - outside a sharp corner, where the blur is the product of the two
-///   edges' falloffs, 0.25 on the corner's own diagonal at the edge;
+/// Probes where the box blur and an erf of its distance field part ways:
+/// - outside a sharp corner (product of two edge falloffs, 0.25 on the
+///   diagonal at the edge);
 /// - outside a rounded one;
-/// - in a 4 px box under σ = 8, which the blur spreads to under 4 %;
-/// - in a drop shadow that spread −8 shrinks to nothing, which paints
-///   nothing;
-/// - in an inset shadow whose hole spread 25 closes, which is shadow
-///   throughout.
+/// - in a 4 px box under σ = 8, spread to under 4 %;
+/// - in a drop shadow that spread −8 shrinks to nothing;
+/// - in an inset shadow whose hole spread 25 closes, shadow throughout.
 #[test]
 fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
     let encode = |coverage: f64| {
@@ -478,10 +454,9 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
     }
 }
 
-/// An inset shadow takes its source's own edge ramp. With its hole closed
-/// by the spread, it covers the source exactly as a fill of its colour
-/// does, so the two renders match pixel for pixel, the rounded corners'
-/// partly covered pixels included.
+/// An inset shadow takes its source's own edge ramp: with its hole closed by
+/// the spread it matches a fill of its colour pixel for pixel, partly covered
+/// corner pixels included.
 #[test]
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
@@ -518,19 +493,15 @@ fn an_inset_shadow_shares_its_source_edge_ramp() {
     assert_same("shadow_inset_edge", &render(true), &render(false));
 }
 
-/// A drop shadow's quad holds every pixel its coverage reaches: the
-/// antialiasing ramp past a sharp edge, and the blurred tail out to where
-/// it no longer shows.
+/// A drop shadow's quad holds every pixel its coverage reaches.
 ///
-/// - A sharp shadow moved by (0.75, 50) from the source at x = 40 has its
-///   left edge at 40.75, a quarter pixel into column 40, and its right
-///   edge at 100.75, three quarters into column 100. 85 % black over
-///   white leaves `1 − 0.85·coverage` linear.
-/// - A white glow over black, σ = 8, is the box's convolution with the
-///   Gaussian out to its quad's edge, 4σ = 32 px past the box at x = 192,
-///   where it is under half an 8-bit step. At 3σ, x = 184, the tail is
-///   still about 4 steps up, and the reference holds that too. Near black
-///   one step is under 0.0002 linear, so the probes allow one step.
+/// - A sharp shadow moved by (0.75, 50) from the source at x = 40 has edges at
+///   40.75 and 100.75, so columns 40 and 100 are a quarter and three quarters
+///   covered. 85 % black over white leaves `1 − 0.85·coverage` linear.
+/// - A white glow over black, σ = 8, reaches its quad's edge at 4σ = 32 px
+///   past the box (x = 192), under half an 8-bit step; at 3σ (x = 184) it is
+///   about 4 steps up. One step near black is under 0.0002 linear, so probes
+///   allow one.
 #[test]
 fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     let img = render_shadow(
@@ -600,16 +571,13 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     }
 }
 
-/// A grid of shadows over the blurs and radii the corner cutout tables
-/// cover: drop shadows in the top four rows, inset ones below, each cell a
-/// 60 px source with some spread. Below it, at σ = 16, two shadows cross
-/// the viewport's edge with the corners on screen rounded 26, the grid's
-/// inset key, and those off it rounded to a key nothing else uses: 12 for
-/// the drop shadow, whose right corners' regions start at `905 − 12 − 64.5 =
-/// 828.5`, past x = 800, and 4 for the inset one, whose left corners' end
-/// at `−193 + 4 + 64.5 = −124.5`. Neither off-screen key gets a table, so
-/// both shadows draw through `fs_shadow_tables` with two corners it cuts
-/// nothing at.
+/// A grid of shadows over the blurs and radii the corner cutout tables cover:
+/// drop shadows in the top four rows, inset below. Under it, at σ = 16, two
+/// shadows cross the viewport's edge. On-screen corners round 26 (the grid's
+/// inset key); off-screen ones to keys nothing else uses: 12 (drop; right
+/// corners' regions start at `905 − 12 − 64.5 = 828.5`, past x = 800) and 4
+/// (inset; left corners' end at `−193 + 4 + 64.5 = −124.5`). Those get no
+/// table, so `fs_shadow_tables` draws them with two corners it cuts nothing at.
 fn cutout_grid(ui: &mut palantir::Ui) {
     const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
     const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
@@ -663,13 +631,10 @@ fn cutout_grid(ui: &mut palantir::Ui) {
         });
 }
 
-/// Baked cutout tables draw the shadows the shaded cutout does, to one
-/// 8-bit level in every channel: the tables err under 6e-4 of coverage
-/// against the shaded form's 0.0011, so the two can round apart by a level
-/// and no more. And they are in use: some pixel does round apart, which a
-/// frame that never read a table could not show. The same holds for the two
-/// shadows past the viewport's edge, whose off-screen corners read no table
-/// and no shaded cutout either.
+/// Baked cutout tables match the shaded cutout to one 8-bit level per
+/// channel (tables err under 6e-4 coverage, the shaded form 0.0011). Some
+/// pixel does round apart, proving the tables are in use. Likewise for the
+/// two shadows past the viewport's edge.
 #[test]
 fn baked_cutout_tables_match_the_shaded_cutout() {
     let size = UVec2::new(800, 1840);
@@ -690,7 +655,7 @@ fn baked_cutout_tables_match_the_shaded_cutout() {
     assert!(differing > 0, "no pixel read a table");
 }
 
-/// One shadow of the grid sweep: what it casts and how.
+/// One shadow of the grid sweep.
 #[derive(Clone, Copy, Debug)]
 struct GridCase {
     inset: bool,
@@ -702,15 +667,15 @@ struct GridCase {
 }
 
 /// A shadow cell of the sweep, in logical px: wide enough for the largest
-/// blur's reach (`4σ`, 72 px at σ = 18) and offset on both sides.
+/// blur's reach (`4σ`, 72 px at σ = 18) on both sides.
 const GRID_CELL: f32 = 360.0;
 const GRID_COLUMNS: usize = 6;
 
-/// The cases the grid's cells must agree with the full form on: drop and
-/// inset over σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18 and radius
-/// 0, 4 and 30; then the boxes whose corner cells meet or overlap (`2·(r +
-/// reach)` is 25 px at σ = 2, r = 4), offsets past `reach`, spreads either
-/// way, and radii larger than their box.
+/// Cases the grid's cells must agree with the full form on: drop and inset
+/// over σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18, radius 0, 4 and 30;
+/// then boxes whose corner cells meet or overlap (`2·(r + reach)` is 25 px at
+/// σ = 2, r = 4), offsets past `reach`, spreads either way, and radii larger
+/// than their box.
 fn grid_cases() -> Vec<GridCase> {
     let mut cases = Vec::new();
     for inset in [false, true] {
@@ -780,7 +745,6 @@ fn grid_cases() -> Vec<GridCase> {
     cases
 }
 
-/// The source rect of case `i`, centred in its cell.
 fn grid_case_rect(i: usize, case: GridCase) -> Rect {
     let cell = Vec2::new((i % GRID_COLUMNS) as f32, (i / GRID_COLUMNS) as f32) * GRID_CELL;
     let min = cell + (Vec2::splat(GRID_CELL) - case.size) * 0.5;
@@ -799,8 +763,8 @@ fn grid_case_shape(case: GridCase, at: Rect) -> ShadowShape {
     .corners(case.corners)
 }
 
-/// The sweep, then two shadows seen through clips: a scissor across the
-/// edge cells of one, a rounded clip (the stencil path) over another.
+/// The sweep, then two shadows seen through clips: a scissor across one's
+/// edge cells, a rounded (stencil) clip over another.
 fn grid_sweep(ui: &mut palantir::Ui) {
     let cases = grid_cases();
     Panel::canvas()
@@ -843,12 +807,10 @@ fn grid_sweep(ui: &mut palantir::Ui) {
         });
 }
 
-/// A shadow drawn as its grid of cells is the shadow the one-cell full form
-/// draws, to one 8-bit level in every channel: the cells take the Gaussian
-/// past `reach` as zero, at most 3.2e-5 of coverage. A pixel shaded by two
-/// cells would blend twice, moving the purple well past a level, so the
-/// tolerance also proves each pixel is shaded once. Inside each drop
-/// shadow's source, where the grid draws no cell, the two are equal.
+/// A shadow drawn as its grid of cells equals the one-cell full form to one
+/// 8-bit level per channel: cells treat the Gaussian past `reach` as zero (at
+/// most 3.2e-5 coverage). A pixel shaded by two cells would blend twice and
+/// move the purple past a level, so the tolerance proves each is shaded once.
 #[test]
 fn a_shadow_grid_matches_the_full_form() {
     let cases = grid_cases();

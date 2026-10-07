@@ -1,9 +1,6 @@
-//! The theme bundle every widget styles from: one submodule per widget's
-//! own theme, over the shared [`palette`], [`text_style`] and
-//! [`widget_look`](crate::widget_core::widget_look) vocabulary they are all built out of.
+//! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`] and [`widget_look`](crate::widget_core::widget_look) vocabulary.
 //!
-//! [`Theme`] aggregates them. A widget opts in by reading its own slice,
-//! so a bundle grows a field without any existing widget changing.
+//! [`Theme`] aggregates them; a widget reads only its own slice, so a bundle grows a field without changing existing widgets.
 
 pub(crate) mod button;
 pub(crate) mod color_picker;
@@ -53,133 +50,74 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
 
-/// Global theme. Aggregates per-widget themes. Widgets opt in by reading
-/// from `Ui::theme`.
+/// Global theme, aggregating per-widget themes. Widgets read it from `Ui::theme`.
 ///
 /// # Overriding a widget's look
 ///
-/// Every themed widget takes `.style(&XTheme)`, which replaces its whole
-/// bundle for that call. It is all-or-nothing by design — to move one
-/// axis, build the bundle from the theme:
-/// `SpinnerTheme { color: red, ..ui.theme().spinner.clone() }`.
+/// Every themed widget takes `.style(&XTheme)`, which replaces its whole bundle for that call. To move one axis, build from the theme: `SpinnerTheme { color: red, ..ui.theme().spinner.clone() }`.
 ///
-/// Some widgets additionally expose **one-axis hatches** —
-/// [`Separator::color`](crate::Separator::color) /
-/// [`thickness`](crate::Separator::thickness),
-/// [`Spinner::color`](crate::Spinner::color) /
-/// [`diameter`](crate::Spinner::diameter) /
-/// [`thickness`](crate::Spinner::thickness),
-/// [`Modal::backdrop`](crate::Modal::backdrop), and
-/// [`Text::bold`](crate::Text::bold). They are not a second styling
-/// system: each is an `Option<T>` merged over the *resolved* bundle at
-/// `show()`, so it composes with `.style(...)` rather than competing
-/// with it, and leaving it unset changes nothing.
-///
-/// The rule for adding one: the axis is a per-call property of *this*
-/// occurrence rather than of the app's look — one rule in a stack drawn
-/// heavier, one word in a paragraph bolded, one modal's scrim darkened.
-/// An axis a caller would set the same way everywhere belongs in the
-/// bundle, where it can be set once. A widget with no hatches simply has
-/// no axis that passes the test.
+/// Some widgets expose one-axis hatches (e.g. [`Separator::color`](crate::Separator::color), [`Text::bold`](crate::Text::bold)): an `Option<T>` merged over the resolved bundle at `show()`, for per-call properties of one occurrence. An axis set the same way everywhere belongs in the bundle.
 ///
 /// # Disabled state
 ///
-/// The framework does not auto-dim disabled subtrees — that's an
-/// app/theme concern. Widgets that want disabled-state visuals read the
-/// disabled flag themselves and pick their own colors at recording
-/// time.
+/// The framework does not auto-dim disabled subtrees; widgets read the disabled flag themselves.
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Theme {
-    /// What every [`crate::Button`] wears. [`crate::ComboBox`]'s trigger
-    /// and [`crate::DragValue`]'s chip both derive from it.
+    /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
     pub button: ButtonTheme,
-    /// The three toggle widgets share a theme *type* but not a *slot* —
-    /// restyling one leaves the other two alone.
+    /// Toggle widgets share a theme type, not a slot.
     pub checkbox: ToggleTheme,
     /// See [`Self::checkbox`].
     pub radio: ToggleTheme,
     /// See [`Self::checkbox`].
     pub switch: ToggleTheme,
-    /// The track and thumb every [`crate::Scroll`] paints, and the
-    /// gutter it reserves for them.
+    /// Track, thumb and gutter of every [`crate::Scroll`].
     pub scrollbar: ScrollbarTheme,
-    /// What every [`crate::TextEdit`] wears — caret and selection
-    /// included. [`Self::drag_value`]'s inline editor derives from it.
+    /// What every [`crate::TextEdit`] wears; [`Self::drag_value`]'s editor derives from it.
     pub text_edit: TextEditTheme,
-    /// Theme for [`crate::DragValue`] — the scrub chip plus its inline
-    /// editor. Both modes resolve from this bundle (`chip` at rest,
-    /// `editor` while editing), so restyling it moves them together.
-    /// The default derives both from `button` + `text_edit` via
-    /// [`DragValueTheme::from_chip`]; apps that restyle `button` and
-    /// want DragValue to match should rebuild this bundle the same way.
+    /// [`crate::DragValue`]'s chip and editor, derived from `button` + `text_edit` via [`DragValueTheme::from_chip`].
     pub drag_value: DragValueTheme,
-    /// The panel and rows of every [`crate::ContextMenu`], and of the
-    /// dropdown [`crate::ComboBox`] opens.
+    /// Panel and rows of every [`crate::ContextMenu`] and [`crate::ComboBox`] dropdown.
     pub context_menu: ContextMenuTheme,
-    /// Geometry for [`crate::ComboBox`]; its colours come from
-    /// [`Self::button`] and [`Self::context_menu`].
+    /// [`crate::ComboBox`] geometry; colours come from [`Self::button`] and [`Self::context_menu`].
     pub combo_box: ComboBoxTheme,
-    /// The panel and backdrop of every [`crate::Modal`].
+    /// Panel and backdrop of every [`crate::Modal`].
     pub modal: ModalTheme,
-    /// What the colour picker and its four parts wear, sizes included.
+    /// What the colour picker and its parts wear.
     pub color_picker: ColorPickerTheme,
-    /// The bubble every [`crate::Tooltip`] paints, and the delay before
-    /// it appears.
+    /// Bubble and delay of every [`crate::Tooltip`].
     pub tooltip: TooltipTheme,
-    /// The track and fill of every [`crate::ProgressBar`].
+    /// Track and fill of every [`crate::ProgressBar`].
     pub progress_bar: ProgressBarTheme,
-    /// The rule every [`crate::Separator`] paints, and the margin
-    /// around it.
+    /// Rule and margin of every [`crate::Separator`].
     pub separator: SeparatorTheme,
-    /// The track, fill and knob of every [`crate::Slider`].
+    /// Track, fill and knob of every [`crate::Slider`].
     pub slider: SliderTheme,
-    /// The arc every [`crate::Spinner`] sweeps, and how fast.
+    /// Arc and speed of every [`crate::Spinner`].
     pub spinner: SpinnerTheme,
-    /// The grab band and rule of every [`crate::Splitter`].
+    /// Grab band and rule of every [`crate::Splitter`].
     pub splitter: SplitterTheme,
-    /// What every [`crate::TabStrip`] wears — on its own, inside a
-    /// [`crate::TabbedView`], and on every [`crate::DockView`] pane.
-    /// Restyling it moves all three together, which is the point: a
-    /// docked pane's strip and a dialog's page strip are the same
-    /// control.
+    /// What every [`crate::TabStrip`], [`crate::TabbedView`] and [`crate::DockView`] pane wears.
     pub tabs: TabsTheme,
-    /// What [`crate::DockView`] paints that a strip does not — the drop
-    /// preview and the chip trailing the pointer. Its dividers read
-    /// [`Self::splitter`] and its panes read [`Self::tabs`].
+    /// [`crate::DockView`]'s drop preview and trailing chip; dividers read [`Self::splitter`], panes [`Self::tabs`].
     pub dock: DockTheme,
-    /// What [`crate::Expander`]'s header wears, and how far its body is
-    /// inset.
+    /// [`crate::Expander`] header and body inset.
     pub expander: ExpanderTheme,
-    /// The ring around the widget that holds keyboard focus, drawn by
-    /// the framework on every focusable widget alike.
+    /// Ring around the keyboard-focused widget.
     pub focus_ring: FocusRingTheme,
-    /// Ambient text style — size, colour, family, leading — that every
-    /// [`Text`](crate::Text) falls back to when its builder didn't
-    /// override the axis. Every other text slot in the theme — each widget
-    /// look, the tooltip's text, the colour picker's captions — is a
-    /// [`TextStyleOverrides`] over this, and inherits each axis it leaves
-    /// unset.
+    /// Ambient text style every [`Text`](crate::Text) falls back to; other text slots are [`TextStyleOverrides`] over this.
     pub text: TextStyle,
-    /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
+    /// Window/swapchain clear color, passed to `WgpuBackend::submit`.
     pub window_clear: RgbaF32,
-    /// Default chrome paint for container widgets (`Panel`, `Grid`,
-    /// `Popup`) that didn't set their own background.
-    /// `None` leaves containers unpainted by default. Setting
-    /// `Some(...)` lights up every unstyled container at once — useful
-    /// for prototyping or shipping a design-system default.
+    /// Default chrome for containers (`Panel`, `Grid`, `Popup`) without a background. `None` leaves them unpainted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_background: Option<Background>,
-    /// Default clip mode for container widgets that didn't call
-    /// `Configure::clip_rect` / `Configure::clip_rounded`. Pairs with
-    /// [`Self::panel_background`]; the chrome's `radius` supplies the
-    /// rounded-clip mask geometry.
+    /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_background`]'s `radius`.
     #[serde(default, skip_serializing_if = "is_clip_none")]
     pub panel_clip: ClipMode,
 }
 
-/// One text-bearing slot of a theme, as [`Theme::for_each_text`] hands it
-/// over: a whole style, or a look's overrides that fold onto
-/// [`Theme::text`].
+/// One text-bearing slot of a theme, as [`Theme::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
 #[derive(Debug)]
 pub(crate) enum ThemeText<'a> {
     Style(&'a mut TextStyle),
@@ -204,27 +142,11 @@ fn text_scale_is_valid(scale: f32) -> bool {
 }
 
 impl Theme {
-    /// Multiply every font size in the theme by `factor` — each
-    /// `TextStyle`, and each widget look that overrides the size.
-    ///
-    /// **Relative, and it composes**: `scale_text(1.25)` then
-    /// `scale_text(1.6)` lands at 2.0×. The theme stores font sizes and
-    /// nothing else — there is no scale factor beside them to fall out of
-    /// step with, which is why this is a multiply rather than an absolute
-    /// target. An app offering the user a "125% text" setting keeps that
-    /// number itself and applies it to a freshly built theme, the same way
-    /// it keeps which palette it built from.
-    ///
-    /// Affects only font sizes; colors / spacing / chrome are untouched.
+    /// Multiply every font size in the theme by `factor`. Relative and composing (`1.25` then `1.6` lands at 2.0×); colors, spacing and chrome are untouched.
     ///
     /// # Panics
     ///
-    /// Panics if `factor` is not finite and positive, or if it would drive
-    /// any font size or line height outside the range the shaper accepts.
-    /// A look's overrides are checked as folded onto the scaled
-    /// [`Self::text`], the face the widget would shape. Both checks run
-    /// before the first write, so a rejected factor leaves the theme
-    /// untouched.
+    /// Panics if `factor` is not finite and positive, or would push a font size or line height outside what the shaper accepts. Checked before the first write, so a rejection leaves the theme untouched.
     pub fn scale_text(&mut self, factor: f32) {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         let scale = |px: f32| px * factor;
@@ -250,21 +172,9 @@ impl Theme {
         });
     }
 
-    /// Visit every text-bearing slot in the theme. [`Self::scale_text`]
-    /// drives the walk; each sub-theme owns its own visit (see each
-    /// `for_each_text`).
+    /// Visit every text-bearing slot; [`Self::scale_text`] drives it.
     ///
-    /// **Every `for_each_text` in this module destructures its whole
-    /// struct**, binding the text-free fields to `_`, so a new field
-    /// anywhere in the theme tree fails to compile here until someone
-    /// classifies it as text-bearing or not. That is the guarantee; the
-    /// runtime backstop is
-    /// `tests::text_scale::scale_text_reaches_every_font_size`,
-    /// which scales a default theme and asserts over its serialized
-    /// form that every `font_size` moved. The test can only see
-    /// sizes the default theme materializes — a look's size override
-    /// left unset by default is invisible to it — which is exactly the
-    /// gap the destructuring closes.
+    /// Every `for_each_text` destructures its whole struct, so a new field fails to compile until classified.
     fn for_each_text(&mut self, mut f: impl FnMut(ThemeText<'_>)) {
         let Self {
             text,
@@ -280,7 +190,7 @@ impl Theme {
             dock,
             expander,
             color_picker,
-            // Chrome, geometry, and scalars — no text slot reachable.
+            // Chrome, geometry and scalars: no text slot.
             scrollbar: _,
             combo_box: _,
             modal: _,
@@ -310,11 +220,7 @@ impl Theme {
         color_picker.for_each_text(f);
     }
 
-    /// Assemble a full theme from a [`Palette`] — every widget recipe
-    /// recolored from one roster. This is the single source of the
-    /// recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`,
-    /// and apps with their own palettes (light themes, brand colors)
-    /// build here instead of hand-recoloring each sub-theme.
+    /// Assemble a full theme from a [`Palette`]. The single source of the recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             button: ButtonTheme::from_palette(p),

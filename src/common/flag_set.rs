@@ -1,41 +1,21 @@
 //! Declaring a bit-flag set: the macro, and the operations one gets.
 
-/// Declare a `u8` flag set with exactly the operations this crate asks of
-/// one, and no more.
+/// Declare a `u8` flag set with exactly the operations this crate asks of one.
 ///
-/// Every set gets `NONE`, `ALL`, its named flags, the set operations and
-/// `|`. A set declared `struct Name: packed` also gets the crate-private
-/// `bits` and `from_bits_truncate`, for packing into a wider word; the bit
-/// layout is never public.
+/// Every set gets `NONE`, `ALL`, its named flags, the set operations and `|`. `struct Name: packed` also gets crate-private `bits` and `from_bits_truncate`; the bit layout is never public.
 ///
-/// `bitflags` published a wider type than the crate wanted: `from_bits_retain`
-/// mints values with bits no arm handles, `iter` hands back a
-/// `bitflags::iter::Iter` a caller cannot name, and the `Flags` impl put that
-/// crate's `Internal` / `Bits` / `Primitive` into palantir's own surface — so
-/// a major bump there was a breaking change here. Nothing in the tree used any
-/// of it. What the sets do use is below, and every value of one is a union of
-/// its declared bits by construction.
+/// Replaces `bitflags`, whose public `from_bits_retain`, `iter` and `Flags` impl leaked its types into palantir's surface. Every value is a union of declared bits by construction.
 ///
-/// The one crate-wide macro, and the exception to the per-subtree rule the
-/// others follow: a flag set is a shape rather than a fact about a subsystem,
-/// and the sets that exist today sit under `input` only because that is where
-/// the vocabulary they describe happens to live. `#[macro_use]` on this module
-/// in `lib.rs` is what carries it, which is why that declaration comes first —
-/// textual scoping reaches only the modules declared after it.
+/// The one crate-wide macro: `#[macro_use]` in `lib.rs` carries it, so its declaration must precede the modules that use it.
 macro_rules! flag_set {
     (@packed $name:ident, packed) => {
         impl $name {
-            /// The raw bits, for packing into a wider word.
             #[inline]
             pub(crate) const fn bits(self) -> u8 {
                 self.0
             }
 
-            /// Rebuild from packed bits, dropping any that name no flag.
-            ///
-            /// Truncating rather than retaining: a set is the union of its
-            /// declared bits, and a word unpacked from a node's flag field
-            /// carries neighbouring fields the mask may not have cleared.
+            /// Rebuild from packed bits, dropping any that name no flag (a word unpacked from a node's flag field carries neighbouring fields).
             #[inline]
             pub(crate) const fn from_bits_truncate(bits: u8) -> Self {
                 Self(bits & Self::ALL.0)
@@ -133,8 +113,7 @@ macro_rules! flag_set {
         }
 
         impl std::fmt::Debug for $name {
-            /// Names, not the packed byte: `Sense(CLICK | DRAG)` is what a
-            /// failing assertion has to read out.
+            /// Names, not the packed byte, so a failing assertion reads `Sense(CLICK | DRAG)`.
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.write_str(concat!(stringify!($name), "("))?;
                 let mut first = true;
@@ -159,8 +138,7 @@ macro_rules! flag_set {
 #[cfg(test)]
 mod tests {
     flag_set! {
-        /// Bit 2 is skipped on purpose: the truncation test needs a gap
-        /// inside the declared range as well as the spare bits above it.
+        /// Bit 2 is skipped on purpose: the truncation test needs a gap inside the declared range.
         struct Fixture: packed {
             const A = 1 << 0;
             const B = 1 << 1;
@@ -168,15 +146,13 @@ mod tests {
         }
     }
 
-    /// Hand-written bit logic, so the set algebra is pinned against values
-    /// worked out by hand rather than trusted to read right.
+    /// Set algebra is pinned against hand-worked values.
     #[test]
     fn set_algebra_matches_the_bits_it_claims() {
         let ab = Fixture::A.union(Fixture::B);
         assert_eq!(ab.bits(), 0b0011);
 
-        // `contains` is "all of", `intersects` is "any of" — the pair that
-        // reads alike and must not.
+        // `contains` is "all of", `intersects` is "any of".
         assert!(ab.contains(Fixture::A));
         assert!(ab.contains(ab));
         assert!(!ab.contains(Fixture::A.union(Fixture::C)));
@@ -198,9 +174,7 @@ mod tests {
         assert_eq!(Fixture::default(), Fixture::NONE);
     }
 
-    /// The property the hand-written set buys over a generated one: no value
-    /// can hold a bit that names no flag, so every arm matching on a set is
-    /// exhaustive by construction.
+    /// No value can hold a bit that names no flag, so matches on a set are exhaustive.
     #[test]
     fn undeclared_bits_cannot_survive_a_round_trip() {
         // `Fixture` leaves bits 2 and 4..8 unnamed.
@@ -229,8 +203,7 @@ mod tests {
         assert_eq!(f, Fixture::C);
     }
 
-    /// Debug prints names, because that is what a failing assertion on a
-    /// mask has to read out.
+    /// Debug prints names, which a failing mask assertion needs.
     #[test]
     fn debug_names_the_flags_that_are_set() {
         assert_eq!(format!("{:?}", Fixture::NONE), "Fixture(empty)");

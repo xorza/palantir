@@ -17,10 +17,9 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// Pin: when a transformed parent's child changes authoring, the
-/// damage rect covers the child's *screen* rect (post-transform),
-/// not its layout rect. Without this, the backend scissor would
-/// clip the actual paint position and leave the screen unchanged.
+/// When a transformed parent's child changes authoring, the damage rect covers
+/// the child's screen rect (post-transform), not its layout rect, or the
+/// scissor would clip the real paint position.
 #[test]
 fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
@@ -47,10 +46,8 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     build(RgbaF32::srgb(0.2, 0.4, 0.8), &mut h, &mut child_node);
     build(RgbaF32::srgb(0.9, 0.4, 0.8), &mut h, &mut child_node);
 
-    // Layout rect of the child is at the parent's inner origin (0, 0
-    // in this layout). Screen rect after the parent's translate is at
-    // (100, 0) — that's where the GPU actually paints. The damage
-    // rect must cover *that* position, not the layout one.
+    // The child's layout rect is at (0, 0); its screen rect after the parent's
+    // translate is (100, 0), where the GPU paints. Damage must cover that.
     let child_layout_rect = h.ui.arranged_rect(Layer::Main, child_node.unwrap());
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
@@ -68,11 +65,9 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     assert_eq!(damage_rect, expected_screen_rect);
 }
 
-/// Pin: animating a parent's transform shifts every child's screen
-/// rect even though the children's authoring is unchanged. The
-/// damage union must cover both prev and curr screen rects so the
-/// backend repaints over the old positions too (otherwise the old
-/// frame's pixels would streak through `LoadOp::Load`).
+/// Animating a parent's transform shifts every child's screen rect with no
+/// authoring change. Damage must cover both prev and curr rects, or old pixels
+/// streak through `LoadOp::Load`.
 #[test]
 fn animated_parent_transform_unions_old_and_new_positions() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -98,13 +93,10 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     build(0.0, &mut h, &mut child_node);
     build(50.0, &mut h, &mut child_node);
 
-    // Child layout rect didn't change. Parent's transform shifted by
-    // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
-    // gap of 10 px between them. bbox = 90×40 = 3600, sum = 3200,
-    // SAH cost = 400 ≪ default budget — the merge rule collapses
-    // into one bbox. (A *much* larger distance would push cost over
-    // the budget; pinned by
-    // `transform_animation_keeps_far_positions_split`.)
+    // Layout unchanged; the transform shifted by (50, 0). Prev (0,0,40,40),
+    // curr (50,0,40,40), gap 10 px: bbox 90×40 = 3600, sum = 3200, SAH cost
+    // 400 is under the budget, so the merge collapses to one bbox (a far larger
+    // distance stays split; see `transform_animation_keeps_far_positions_split`).
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
@@ -113,13 +105,10 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         vec![prev.union(curr)],
         "near transform animation → one merged bbox",
     );
-    // The child is dirty: its authoring is unchanged but its screen
-    // rect moved (rect comparison catches this). The parent lands on
-    // the dirty list too — its self-transform is part of `node_hash`
-    // (panel extras), so the changed transform routes it to the
-    // changed-paints arm — but that arm emits nothing for it: its
-    // only row (the child marker) is unchanged and its own
-    // `cascade_input` is stable, so all damage comes from the child.
+    // The child is dirty: its screen rect moved. The parent is on the dirty
+    // list too (its transform is in `node_hash`), but its changed-paints arm
+    // emits nothing: its only row (the child marker) and `cascade_input` are
+    // unchanged, so all damage comes from the child.
     let dirty_widget_ids: Vec<WidgetId> = h
         .engines
         .damage
@@ -134,10 +123,9 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     );
 }
 
-/// Sister case to the test above: under a tight pass-budget, a
-/// far-apart transform animation keeps prev and curr screen rects
-/// split. Pinning both ends of the merge rule means a budget tweak
-/// can't silently flip behaviour without breaking a test.
+/// Under a tight pass-budget a far-apart transform animation keeps prev and
+/// curr screen rects split; pinning both ends of the merge rule stops a budget
+/// tweak flipping behaviour silently.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -163,10 +151,9 @@ fn transform_animation_keeps_far_positions_split() {
     build(0.0, &mut h, &mut child_node);
     build(200.0, &mut h, &mut child_node);
 
-    // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
-    // bbox 240×40 = 9600. SAH cost = 6400 — under the default
-    // 20 000 budget, this would merge; collapsing the frame's raw rects
-    // under a budget of 0 pins the strict-overlap-only branch.
+    // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600. bbox 240×40 =
+    // 9600, SAH cost 6400 would merge under the default 20 000 budget; a budget
+    // of 0 pins the strict-overlap-only branch.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
         &h.engines.damage.raw_rects,
         0.0,
@@ -181,28 +168,23 @@ fn transform_animation_keeps_far_positions_split() {
     assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
 }
 
-/// Soundness pin: when an ancestor's transform changes, a node whose
-/// own `paint_rect` is **clipped invariant** (because its direct
-/// shapes extend past the viewport / clip on every frame, so
-/// `clip_to(...)` saturates to the same rect both passes) must still
-/// contribute its `paint_rect` to damage. Otherwise the pixels of
-/// those shapes — which DID move with the parent transform — get
-/// stranded; the old positions never get cleared.
+/// Soundness pin: when an ancestor's transform changes, a node whose own
+/// `paint_rect` is clipped invariant (its direct shapes extend past the
+/// viewport on every frame, so `clip_to(...)` saturates to the same rect)
+/// must still contribute its `paint_rect` to damage, or the moved pixels'
+/// old positions are never cleared.
 ///
-/// Repro of darkroom's "panning Scroll over a node-graph Canvas
-/// leaves bezier trails": canvas's connection beziers are direct
-/// shapes; canvas is wider than the viewport so its clipped paint
-/// rect saturates; canvas's `node_hash` is stable but its
-/// `cascade_input` shifts every pan frame.
+/// Reproduces darkroom's "panning Scroll over a node-graph Canvas leaves
+/// bezier trails": the canvas's beziers are direct shapes, its clipped paint
+/// rect saturates, its `node_hash` is stable but `cascade_input` shifts each
+/// pan frame.
 #[test]
 fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let build = |dx: f32, h: &mut UiHarness| {
         h.frame(|ui| {
-            // Outermost clip pins descendants to the surface viewport
-            // — without it, `parent_clip = None` and inner's paint
-            // rect translates freely (the bug then doesn't manifest;
-            // damage catches the rect change via the normal path).
+            // The outermost clip pins descendants to the surface; without it
+            // `parent_clip = None` and the inner rect translates freely.
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
                 .clip_rect()
@@ -217,10 +199,9 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                 .id(WidgetId::from_hash("inner"))
                                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
-                                    // Shape wider than the surface so
-                                    // the clipped paint rect
-                                    // saturates and stays invariant
-                                    // under small `dx` translates.
+                                    // Wider than the surface so the clipped
+                                    // paint rect saturates and stays invariant
+                                    // under small `dx`.
                                     ui.add_shape(
                                         Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
                                             .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
@@ -234,9 +215,8 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
     build(5.0, &mut h);
     let region = h.damage_region();
     let covered = region.iter_rects().any(|r| {
-        // Damage must cover the inner node's clipped paint area
-        // (0..100 × 0..50) — that's where the shape's pixels live
-        // both before and after the small pan.
+        // Damage must cover the inner node's clipped paint area (0..100 ×
+        // 0..50), where the shape's pixels live before and after the pan.
         r.min.x <= 0.5 && r.min.y <= 0.5 && r.max().x >= 50.0 - 0.5 && r.max().y >= 50.0 - 0.5
     });
     assert!(
@@ -247,12 +227,10 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
     );
 }
 
-/// Sister test to the soundness pin above: the new "cascade_input
-/// shift on a direct-paint node → push `curr_rect`" branch in the
-/// damage diff must not trip `FULL_REPAINT_THRESHOLD` for a pan of a
-/// modestly-sized clip-saturated node. Same setup as that pin, but
-/// repeated for several pan ticks; each step's damage stays
-/// `Partial` and stays bounded to the inner clipped area.
+/// Sister test: the "cascade_input shift on a direct-paint node → push
+/// `curr_rect`" branch must not trip `FULL_REPAINT_THRESHOLD` for a pan of a
+/// modestly sized clip-saturated node. Same setup, several pan ticks; each
+/// step's damage stays `Partial` and bounded to the inner clipped area.
 #[test]
 fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
@@ -298,15 +276,11 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 }
 
 /// Reproduces the darkroom graph-canvas regression: a panel with
-/// `Panel::transform` and direct shapes (bezier connections) shifts
-/// its own transform every pan frame. Under the `Panel::transform`
-/// contract those shapes paint *inside* the self-transform, so their
-/// painted pixels move — but `cascade_input` only tracks
-/// ancestor state and stays put. The fix is at the source: own
-/// transform now folds into `node_hash`, so the diff's
-/// `e.get().hash == curr_node_hash` guard fails and the generic
-/// Occupied arm pushes both prev and curr rects, sweeping where the
-/// shapes were and are.
+/// `Panel::transform` and direct shapes shifts its own transform every pan
+/// frame. Those shapes paint inside the self-transform so their pixels move,
+/// but `cascade_input` tracks only ancestor state. The fix: own transform
+/// folds into `node_hash`, so the diff's `e.get().hash == curr_node_hash`
+/// guard fails and the Occupied arm pushes both prev and curr rects.
 #[test]
 fn self_transform_shift_damages_direct_shapes() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -321,9 +295,7 @@ fn self_transform_shift_damages_direct_shapes() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                         .show(ui, |ui| {
-                            // Direct shape on the transformed panel —
-                            // mirrors how darkroom adds connection
-                            // beziers on the inner canvas.
+                            // Direct shape on the transformed panel, as darkroom's beziers.
                             ui.add_shape(
                                 Shape::rect(Rect::new(40.0, 40.0, 30.0, 30.0))
                                     .fill(RgbaF32::srgb(0.2, 0.6, 0.9)),
@@ -336,10 +308,8 @@ fn self_transform_shift_damages_direct_shapes() {
     build(20.0, &mut h);
     let region = h.damage_region();
 
-    // After translating self by dx=20, the shape's prev pixels lived
-    // at [40, 70] × [40, 70] (translation 0) and the new pixels live
-    // at [60, 90] × [40, 70]. Damage must cover both — i.e. at least
-    // [40, 90] × [40, 70].
+    // Translating self by dx=20 moves the shape's pixels from [40, 70] ×
+    // [40, 70] to [60, 90] × [40, 70]. Damage covers at least [40, 90] × [40, 70].
     let covered = region.iter_rects().any(|r| {
         r.min.x <= 40.5 && r.min.y <= 40.5 && r.max().x >= 90.0 - 0.5 && r.max().y >= 70.0 - 0.5
     });
@@ -350,14 +320,12 @@ fn self_transform_shift_damages_direct_shapes() {
     );
 }
 
-/// Pin the moved-subtree tier (tier 1.5): a transformed parent over an
-/// authoring-identical subtree damages exactly `prev extent ∪ curr
-/// extent`, and — the load-bearing part — the bulk snapshot refresh
-/// leaves next frame's baseline intact:
+/// Pin the moved-subtree tier: a transformed parent over an
+/// authoring-identical subtree damages exactly `prev extent ∪ curr extent`,
+/// and the bulk snapshot refresh leaves next frame's baseline intact:
 ///
-/// - a second tick's damage is anchored at the *refreshed* positions
-///   (if the refresh forgot to copy the rows' screens, damage would
-///   still cover the original position);
+/// - a second tick's damage is anchored at the refreshed positions (a refresh
+///   that forgot the rows' screens would still cover the original position);
 /// - a still frame after the motion is a clean `Skip` (refreshed
 ///   `cascade_input` lets tier 1 skip at the subtree root).
 #[test]
@@ -386,13 +354,11 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
 
     build(0.0, &mut h);
 
-    // Tick 1: dx 0 → 30. "outer"'s own transform rides its node_hash
-    // (panel extras), so outer takes the changed-paints arm (child
-    // marker matches exactly — no damage); "inner"'s authoring is
-    // untouched but its cascade prefix moved → tier 1.5. Subtree
-    // extent = both 40×40 frames side by side: prev (0,0,80,40),
-    // curr (30,0,80,40) — intersecting, so the region merges them
-    // into one bbox.
+    // Tick 1: dx 0 → 30. "outer"'s transform rides its node_hash, so it takes
+    // the changed-paints arm (child marker matches, no damage); "inner"'s
+    // authoring is untouched but its cascade prefix moved, so it takes the
+    // moved-subtree tier. Extent = prev (0,0,80,40) and curr (30,0,80,40),
+    // intersecting, merged into one bbox.
     build(30.0, &mut h);
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
@@ -401,9 +367,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
         "tick 1: prev ∪ curr subtree extents",
     );
 
-    // Tick 2: dx 30 → 60. Damage must anchor at the tick-1 position —
-    // its left edge is 30, not 0 — proving the tier refreshed the
-    // rows' screens, not just `cascade_input`.
+    // Tick 2: dx 30 → 60. Damage must anchor at the tick-1 position (left
+    // edge 30, not 0), proving the refresh copied the rows' screens.
     build(60.0, &mut h);
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
@@ -412,9 +377,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
         "tick 2: damage anchored at the refreshed (tick-1) extent",
     );
 
-    // Still frame: identical dx → tier 1 skips at the root, no dirty
-    // nodes, clean Skip. Fails loudly if the bulk refresh corrupted
-    // any snapshot field.
+    // Still frame: identical dx, tier 1 skips at the root: no dirty nodes,
+    // clean Skip. Fails if the bulk refresh corrupted a snapshot field.
     build(60.0, &mut h);
     assert!(
         h.engines.damage.counters.dirty().is_empty(),
@@ -427,9 +391,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     );
 }
 
-/// Sister pin: a *content* change under a constant transform must not
-/// take the moved-subtree tier (`subtree_hash` differs) — the per-row
-/// diff still produces leaf-tight damage, not the subtree extent.
+/// A content change under a constant transform must not take the moved-subtree
+/// tier (`subtree_hash` differs): the per-row diff gives leaf-tight damage.
 #[test]
 fn content_change_under_constant_transform_stays_row_tight() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -458,9 +421,8 @@ fn content_change_under_constant_transform_stays_row_tight() {
     };
     build(BLUE, &mut h);
     build(RED, &mut h);
-    // Only "a" changed; damage is its screen rect (layout 0..40 + the
-    // 30 px transform), NOT the whole inner extent (which would reach
-    // x = 110 and cover the untouched "b").
+    // Only "a" changed: damage is its screen rect (layout 0..40 plus the 30 px
+    // transform), not the inner extent, which would reach x = 110 and cover "b".
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(
         rects,

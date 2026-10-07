@@ -1,21 +1,14 @@
-//! The transform in force during a compose pass, and the stack it comes
-//! off.
+//! The transform in force during a compose pass, and its stack.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 
-/// The walk transform: the live product every draw is placed by, plus the
-/// ancestors a `PopTransform` restores it from.
+/// The walk transform: the live product every draw is placed by, plus the ancestors a `PopTransform` restores.
 ///
-/// **One type, because they are one stack.** The product is what every
-/// handler reads and the saved ancestors are what a pop returns it to;
-/// holding the two apart made a pop a two-place operation and put the
-/// live value on the per-frame session while its own history stayed on
-/// the retained scratch. The `Vec` is the only allocation, and it is kept
-/// across frames for its capacity; [`Self::clear`] opens each pass.
+/// The `Vec` is kept across frames for capacity; [`Self::clear`] opens each pass.
 #[derive(Debug, Default)]
 pub(super) struct TransformStack {
-    /// Ancestor products, innermost last — what each pop restores.
+    /// Ancestor products, innermost last.
     saved: Vec<TranslateScale>,
     current: TranslateScale,
 }
@@ -27,8 +20,7 @@ impl TransformStack {
         self.current = TranslateScale::IDENTITY;
     }
 
-    /// The live product — for a handler that needs the whole value, or
-    /// its scale.
+    /// The live product.
     pub(super) const fn current(&self) -> TranslateScale {
         self.current
     }
@@ -46,8 +38,7 @@ impl TransformStack {
         self.current = self.current.compose(t);
     }
 
-    /// Panics on a `PopTransform` with no matching push — a malformed
-    /// paint stream, like its clip counterpart.
+    /// Panics on a `PopTransform` with no matching push (a malformed paint stream).
     pub(super) fn pop(&mut self) {
         self.current = self
             .saved

@@ -1,8 +1,4 @@
-//! Cache × full-frame integration: records widget trees across two
-//! frames at the same surface and asserts the warm-cache frame
-//! reproduces the cold-frame layout (and encoded commands). Catches
-//! per-frame engine state we forgot to snapshot/restore on a cache
-//! hit.
+//! Cache × full-frame integration: the warm-cache frame must reproduce the cold layout (and encoded commands).
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::font_scope::internals::INTER;
@@ -29,9 +25,7 @@ use crate::widgets::{
 };
 use glam::UVec2;
 
-/// Run `record` twice at `size` (cold then warm-from-cache) and assert
-/// every captured node's arranged rect matches across the two frames.
-/// `record` pushes the nodes whose rects matter into `capture`.
+/// Run `record` cold then warm and assert every captured node's rect matches. `record` pushes the nodes that matter into `capture`.
 fn assert_warm_rects_match_cold(
     h: &mut UiHarness,
     size: UVec2,
@@ -60,9 +54,7 @@ fn assert_warm_rects_match_cold(
         .map(|&n| h.ui.arranged_rect(Layer::Main, n))
         .collect();
 
-    // Guard against the test going inert: if hash stability ever
-    // regresses and the warm frame misses everywhere, cold == warm
-    // would pass vacuously while pinning nothing.
+    // Guard against going inert: if hash stability regresses and the warm frame misses everywhere, cold == warm passes vacuously.
     assert!(
         !h.engines.layout.scratch.counters.cache_hits().is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
@@ -70,14 +62,7 @@ fn assert_warm_rects_match_cold(
     assert_eq!(cold, warm, "{msg}");
 }
 
-/// Cross-frame measure-cache regression. When the cache hits at a
-/// Grid (or any ancestor), the grid driver's per-frame `GridTrackStore`
-/// scratch must be re-populated from the snapshot — otherwise arrange
-/// computes zero column widths, collapsing every cell to x=0.
-///
-/// Topologies pinned: a single grid, nested grids (outer + inner), and
-/// two sibling grids inside a vstack (cache hit must restore tracks for
-/// both, in pre-order).
+/// Regression: a cache hit at a Grid (or ancestor) must repopulate `GridTrackStore`, or every cell collapses to x=0. Pins single, nested and sibling grids.
 #[test]
 fn cache_hit_preserves_grid_cell_rects() {
     type Build = fn(&mut Ui, &mut Vec<NodeId>);
@@ -227,11 +212,7 @@ fn cache_hit_preserves_grid_cell_rects() {
             &format!("case: {label}"),
             *record,
         );
-        // The hit must land at the synthetic viewport root (an
-        // ancestor of every grid) — only then is the grid's measure
-        // skipped entirely and the hug-restore path actually
-        // exercised. A descendant-level hit would re-run grid measure
-        // and pin nothing.
+        // The hit must land at the viewport root so grid measure is skipped and the hug-restore path runs.
         assert!(
             h.engines
                 .layout
@@ -246,21 +227,7 @@ fn cache_hit_preserves_grid_cell_rects() {
     }
 }
 
-/// Per-driver cache-hit defense. Today only Grid retains per-subtree
-/// measure→arrange state (see `LayoutScratch` docs on the cache-hit
-/// contract); the other drivers drain their scratch on measure exit
-/// so a cache hit at an ancestor is structurally invisible to them.
-/// This test pins that property — any future driver that accidentally
-/// adds category-(2) state without wiring it through
-/// [`LayoutScratch::restore_after_cache_hit`] will desync these
-/// fixtures' warm rects from cold.
-///
-/// Each case builds a minimal subtree under the named driver, runs
-/// the same `record` cold then warm at the same surface, and asserts
-/// the captured leaf rects match. The cache is shared across the two
-/// frames inside one `Ui`, so the second frame's outer Panel cache
-/// hit forces the driver's measure to be skipped — if its arrange
-/// reads stale or zero state, the warm rect will diverge.
+/// Per-driver cache-hit defense. Only Grid retains measure→arrange state (see the `LayoutScratch` cache-hit contract); a driver adding some without [`LayoutScratch::restore_after_cache_hit`] desyncs warm from cold.
 #[test]
 fn cache_hit_preserves_per_driver_rects() {
     type Build = fn(&mut Ui, &mut Vec<NodeId>);
@@ -284,11 +251,7 @@ fn cache_hit_preserves_per_driver_rects() {
             });
         }),
         ("vstack_fill_freeze", |ui, capture| {
-            // Three Fill children with min-content floors that force
-            // the freeze loop. Stack measure pushes onto
-            // `stack.fill`; a cache hit at the outer panel skips
-            // the freeze entirely, so arrange must still read correct
-            // per-child slots from `desired` alone.
+            // Min-content floors force the freeze loop; a hit skips it, so arrange must read slots from `desired` alone.
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::vstack()
                     .id(WidgetId::from_hash("freeze"))
@@ -389,10 +352,7 @@ fn cache_hit_preserves_per_driver_rects() {
     }
 }
 
-/// Cache-correctness generalization: a measure-cache hit must not
-/// perturb ANY downstream consumer of per-frame engine state — so a
-/// the full paint-call sequence a warm frame encodes must be
-/// identical to a cold frame's, operation for operation.
+/// A measure-cache hit must not perturb the paint-call sequence: warm equals cold, operation for operation.
 #[test]
 fn encoded_buffer_stable_across_cache_hit_boundary() {
     let record = |ui: &mut Ui| {
@@ -468,31 +428,9 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     assert_same_capture(&cold, &warm);
 }
 
-/// Stress test: surface resizes on both axes force the cache through
-/// repeated hit/replace transitions. At each step, the warm cache's
-/// rects and text shapes must equal what a cold remeasure produces —
-/// clearing the measure cache is the ground-truth oracle.
-///
-/// Each child of the root is offered the whole surface, and each is a
-/// shape whose range the cache must get right: Hug content that holds
-/// past its offer, a Hug scroll whose cap binds below 400 px of rows, a
-/// wrap stack that breaks below 900 px, a Fill share, text bound to its
-/// width, a Fill canvas whose child's range moves out by its position —
-/// 400 px of rows 30 px down hold from 430, so 420 must miss, and the
-/// canvas's own Fill axis does not cover that for it — a grid whose text
-/// wraps at the narrow widths alone, a truncating label 700 px long that
-/// is cut below 700 and holds from 700 above it — Fill across, so its
-/// own axis does not cover that for it — and a Hug grid whose two
-/// 350 px Hug columns are squeezed below 700 and hold from 700 above it.
-/// A Fill hstack shares its width the same way before its two 350 px
-/// labels measure, and a vstack shares its height at arrange between a
-/// header and a scroll below 430.
-/// The sizes step both ways across each of those thresholds. Labels that
-/// fit — the Hug stack of buttons — hold under every surface, as fixed
-/// blocks do.
+/// Stress: resizes on both axes force repeated hit/replace transitions; warm rects and text shapes must equal a cold remeasure. Children probe thresholds, e.g. 400 px of rows 30 px down in a Fill canvas hold from 430, so 420 must miss.
 #[test]
 fn cache_rects_match_cold_oracle_across_resizes() {
-    // 100 cells of the mono metric's 7 px at 14 px: 700 px on one line.
     const LONG_LABEL: &str = "0123456789012345678901234567890123456789\
                               0123456789012345678901234567890123456789\
                               01234567890123456789";
@@ -660,8 +598,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
             .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
             .collect()
     };
-    // Rects alone can hide a stale measure: arrange places a stale run
-    // at the right rect while it paints the text it was shaped to.
+    // Rects alone can hide a stale measure: arrange places a stale run at the right rect while it paints the text it was shaped to.
     let shapes = |h: &UiHarness| -> Vec<_> {
         h.ui.layout(Layer::Main)
             .text_shapes
@@ -718,21 +655,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
     }
 }
 
-/// Registering a font invalidates the measure-cache snapshot, which no
-/// check inside the cache can reach on its own.
-///
-/// Every freshness test here asks whether the *inputs* moved — the
-/// subtree hash, the quantized available width — and a load moves
-/// neither while changing what every run in the tree measures to. A
-/// family that fell back to the bundled default keeps the same
-/// `TextShapeKey` once its own face arrives, so without the epoch check
-/// in `LayoutEngine::run` the snapshot replays widths measured against
-/// the old database for as long as the tree is unchanged, while the
-/// renderer paints the new face inside them.
-///
-/// Pinned on the shaper's dispatch count, which is what a *replayed*
-/// snapshot leaves flat: the cache short-circuits whole subtrees, so an
-/// unchanged run reaches neither `TextSystem` nor the shaper.
+/// Registering a font invalidates the measure-cache snapshot: it moves neither the subtree hash nor the width yet changes every measure, so `LayoutEngine::run` checks an epoch. Pinned on the shaper's dispatch count, which a replayed snapshot leaves flat.
 #[test]
 fn registering_a_font_forces_the_next_frame_to_remeasure() {
     let mut h = UiHarness::with_text(UVec2::new(400, 300));
@@ -760,12 +683,7 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
     );
 }
 
-/// O1 regression: a measure-cache hit restores the subtree root's
-/// intrinsics, so when a deep sibling changes and forces the ancestor
-/// chain to re-measure, the ancestor's `IntrinsicQuery::children_max` reads the
-/// unchanged sibling's cached intrinsic instead of cold-recursing through
-/// its whole subtree (which would re-probe the text cache per leaf).
-/// Pinned via the per-frame `intrinsic_computes` counter.
+/// O1 regression: a hit restores the subtree root's intrinsics, so a re-measuring ancestor reads them instead of re-walking the subtree. Pinned via `intrinsic_computes`.
 #[test]
 fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() {
     const HEAVY: usize = 30;
@@ -775,7 +693,6 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
             .auto_id()
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                // Unchanging heavy subtree: many text leaves.
                 Panel::vstack()
                     .id_salt("heavy")
                     .size((Sizing::HUG, Sizing::HUG))
@@ -784,9 +701,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
                             Text::new("lorem ipsum dolor").id_salt(("h", i)).show(ui);
                         }
                     });
-                // Tiny sibling whose text changes each frame. Constant
-                // width under the mono test shaper, so layout is stable
-                // and `heavy` stays a cache hit.
+                // Tiny sibling whose text changes each frame at constant mono width, so layout is stable and `heavy` stays a hit.
                 let label = ui.fmt(format_args!("tick {tick:04}"));
                 Text::new(label).id_salt("tiny").show(ui);
             });
@@ -795,7 +710,6 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     let size = UVec2::new(400, 600);
     let mut h = UiHarness::new(size);
 
-    // Cold frame computes intrinsics across the whole tree.
     h.frame(|ui| build(ui, 0));
     let cold = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
     assert!(
@@ -803,10 +717,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
         "cold frame should compute the whole tree's intrinsics, got {cold}",
     );
 
-    // Warm frame: only `tiny` changes. `heavy` hits the cache; its
-    // restored intrinsics keep the root re-measure from re-walking it, so
-    // the count collapses to the changed ancestor chain (~root + tiny),
-    // not ~2·HEAVY for a full sibling re-walk.
+    // `heavy` hits and its restored intrinsics skip a re-walk: the count is the changed chain (~root + tiny), not ~2·HEAVY.
     h.frame(|ui| build(ui, 1));
     let warm = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
     assert!(
@@ -817,15 +728,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     );
 }
 
-/// A measure-cache hit hands its subtree root's floor back to the parent
-/// that re-measures around it, as a cold measure would.
-///
-/// Shape: a Hug zstack under a 50 px bound holds a wrapped paragraph
-/// panel, the hit, and a label that changes each frame, which forces the
-/// zstack to re-measure. The paragraph wraps to three 14 px lines in 344
-/// px, 51 px tall (`layout::tests::support::lines_h(3, 14.0)`), so the zstack is floored at 51 rather than capped at
-/// the 50 its parent offers. Read from a hit that dropped the floor, it
-/// would take the 50.
+/// A hit hands its subtree root's floor back to a re-measuring parent: a Hug zstack under a 50 px bound holding a 51 px wrapped paragraph (`lines_h(3, 14.0)`) must floor at 51, not 50.
 #[test]
 fn measure_cache_hit_restores_the_floor_its_parent_reads() {
     let build = |ui: &mut Ui, tick: u32| {
@@ -874,18 +777,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
     );
 }
 
-/// A subtree whose slot **moves without resizing** replays its rects
-/// translated rather than re-running the drivers
-/// (`LayoutPass::replay_arranged`). This is the only replay branch that
-/// rewrites values instead of copying them verbatim, so it gets three
-/// independent assertions: the branch actually fired, the shift is exactly
-/// the header's growth on Y and zero on X, and the result still equals a
-/// cold remeasure.
-///
-/// Shape: a vstack whose fixed-height header grows, followed by an
-/// untouched nested subtree. Every node below the header shifts by the
-/// growth with its size intact — the "a sibling above grew, so everything
-/// below shifts by dy" case.
+/// A subtree whose slot moves without resizing replays its rects translated (`LayoutPass::replay_arranged`). Asserts the branch fired, the shift is exactly the header's growth on Y, and the result equals a cold remeasure.
 #[test]
 fn moved_subtree_replays_translated_rects() {
     const ROWS: usize = 4;
@@ -940,8 +832,6 @@ fn moved_subtree_replays_translated_rects() {
     h.frame(|ui| record(ui, 30.0, &mut after_nodes));
     let after = rects(&h.ui, &after_nodes);
 
-    // Non-vacuity: the translate branch must be the one that ran. Without
-    // this the test still passes if arrange re-derived every rect.
     assert!(
         h.engines
             .layout
@@ -954,8 +844,7 @@ fn moved_subtree_replays_translated_rects() {
         h.engines.layout.scratch.counters.arrange_replays(),
     );
 
-    // The header grew 10 → 30, so everything below shifts down exactly 20
-    // and keeps its size. Hand-computed, not a range check.
+    // The header grew 10 → 30, so everything below shifts down exactly 20 with its size intact. Hand-computed, not a range check.
     assert_eq!(before.len(), ROWS * 2);
     for (i, (b, a)) in before.iter().zip(&after).enumerate() {
         assert_eq!(a.size, b.size, "node {i} resized during a pure translation");
@@ -963,8 +852,6 @@ fn moved_subtree_replays_translated_rects() {
         assert_eq!(a.min.y, b.min.y + 20.0, "node {i} shifted by the wrong dy");
     }
 
-    // Ground truth: clearing the cache forces a full remeasure of the same
-    // frame, which must land on the identical geometry.
     h.engines.layout.cache.forget_all();
     let mut cold_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
@@ -975,18 +862,7 @@ fn moved_subtree_replays_translated_rects() {
     );
 }
 
-/// A translated replay lands bit for bit where a cold arrange does, frame
-/// after frame. Fractional heights, gaps, padding and margins make every
-/// position inexact in floating point, where `old + (new − old)` and the
-/// cold sum down the tree round differently; the replay instead rebuilds
-/// each rect from its slot origin in its parent's inner box with the adds
-/// arrange makes. One harness moves the subtree through forty fractional
-/// header heights, so any error a replay left would carry into the next,
-/// and each frame is held against a fresh harness's cold arrange.
-///
-/// Every inset differs per side, so a left taken for a top shows, and each
-/// row holds a collapsed cell with a margin and a child of its own, which
-/// a replay anchors at its slot without the inset a placed node takes.
+/// A translated replay lands bit for bit where a cold arrange does: fractional sizes make `old + (new − old)` round differently from the cold sum, so the replay rebuilds each rect from its slot origin. Forty fractional header heights run through one harness, each held against a fresh cold arrange.
 #[test]
 fn translated_replay_lands_where_a_cold_arrange_does() {
     let record = |ui: &mut Ui, header_h: f32| {
@@ -1067,13 +943,7 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
     }
 }
 
-/// A hit subtree whose root is arranged at a new size still replays the
-/// descendants that keep theirs. The `stable` panel fills a Hug ZStack
-/// whose width follows a sibling: measured against the ZStack's constant
-/// offer, it hits the cache, but it is arranged at the grown width, so its
-/// own driver runs. Its rows are a fixed 60×20 at the top-left of it and
-/// arranged unchanged, so each replays its cached rects instead of
-/// dispatching.
+/// A hit subtree whose root is arranged at a new size still replays descendants that keep theirs: the `stable` panel hits at a constant offer but is arranged wider, and its unchanged rows replay cached rects.
 #[test]
 fn a_resized_hit_root_replays_its_unchanged_descendants() {
     const ROWS: usize = 3;

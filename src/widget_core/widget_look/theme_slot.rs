@@ -1,5 +1,4 @@
-//! The bundle a widget wears whole: its per-state looks, and the rule that
-//! picks one of them from a response.
+//! The bundle a widget wears whole and the rule picking one look from a response.
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
@@ -8,14 +7,8 @@ use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::look_plan::LookPlan;
 use crate::widgets::theme::text_style::TextStyle;
 
-/// A theme bundle a widget wears whole: the per-state looks its response
-/// picks from, and the box defaults around them.
-///
-/// [`Self::plan`] is the route from a bundle to a [`LookPlan`], and
-/// [`LookPlan::apply`] the route from the plan to a painted look — the two
-/// calls every themed widget in the crate makes, and the two a widget of
-/// your own makes to wear a theme bundle the same way:
-///
+/// A theme bundle a widget wears whole: per-state looks plus box defaults.
+/// [`Self::plan`] then [`LookPlan::apply`] are the two calls every themed widget makes:
 /// ```
 /// # use palantir::widget::{ThemeSlot, Widget};
 /// # use palantir::Ui;
@@ -31,29 +24,21 @@ use crate::widgets::theme::text_style::TextStyle;
 /// # }
 /// ```
 ///
-/// A bundle that grows a fifth box default grows it in [`SlotDefaults`],
-/// and the compiler names every implementor.
+/// A new box default goes in [`SlotDefaults`]; the compiler names every implementor.
 pub trait ThemeSlot {
-    /// What the state pick needs past the response. `()` for the
-    /// press-driven and focus-driven bundles; the toggles pass their
-    /// checked flag, which selects between two four-state packs.
+    /// What the state pick needs past the response: `()` normally, the checked flag for toggles.
     type Pick: Copy;
 
-    /// The look this bundle holds for `response`'s state, under `pick`.
+    /// The look for the response state and pick.
     fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook;
 
-    /// The spacing and transition spec the bundle contributes to the node.
+    /// Slot defaults.
     fn defaults(&self) -> SlotDefaults;
 
-    /// Flatten into the owned plan [`LookPlan::apply`] consumes, folding
-    /// the picked look's text overrides onto the ambient `text`.
-    ///
-    /// Read under the theme borrow. The result owns everything it carries,
-    /// so the borrow ends here and the caller can reborrow the `Ui`
-    /// mutably to animate toward it.
-    // Same reason as `LookPlan::apply`, which this feeds: the chain crosses
-    // the theme/widget codegen-unit boundary, and the default inliner leaves
-    // the resolver and these accessors outlined in release builds.
+    /// Flattens into the owned plan [`LookPlan::apply`] consumes, folding the
+    /// picked look's text overrides onto the ambient `text`; the result owns
+    /// everything, so the theme borrow ends.
+    // Cross-codegen-unit chain like `LookPlan::apply`; the default inliner leaves it outlined.
     #[inline(always)]
     fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan {
         LookPlan {
@@ -63,29 +48,18 @@ pub trait ThemeSlot {
     }
 }
 
-/// What a themed widget contributes to the node rather than to the paint:
-/// the spacing a widget takes when its builder set none, and the spec the
-/// state transitions run under.
-///
-/// **Held by every themed bundle, not rebuilt from loose fields.** The
-/// four bundles that have one — button, text edit, menu item, toggle —
-/// carry this whole and `#[serde(flatten)]` it, so the triple is declared
-/// once, documented once, and reaches the record pass without a copy per
-/// field. Named fields rather than a constructor because `padding` and
-/// `margin` are the same type and adjacent — a positional one is a swap
-/// that compiles.
+/// What a themed widget contributes to the node rather than the paint: default
+/// spacing and the transition spec. Themed bundles `#[serde(flatten)]` it.
+/// Named fields because `padding` and `margin` share a type.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SlotDefaults {
-    /// Padding the widget takes when its builder set none. Applied at
-    /// `show()` time; explicit zero spacing overrides it.
+    /// Padding the widget takes when its builder set none; explicit zero overrides it.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
-    /// Margin the widget takes when its builder set none.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
+    /// Margin when the builder set none.
     pub margin: Spacing,
-    /// Spec the state transitions run under. `None` by default —
-    /// animation is opt-in. Round-trips through serde, so a theme file
-    /// configures motion.
+    /// Spec the state transitions run under; `None` (animation is opt-in) by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation: Option<AnimationSpec>,
 }

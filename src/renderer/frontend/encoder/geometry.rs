@@ -2,10 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 
-/// Resolve a shape's owner-relative `local_rect` against the owner's
-/// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`
-/// offsets `lr` by the owner's origin. Shared by the rectangle /
-/// `Image` arms so the offset convention can't drift.
+/// Resolve a shape's owner-relative `local_rect` against the owner's arranged rect: `None` is the owner's full rect, `Some(lr)` offsets `lr` by the owner's origin. Shared by the rectangle and `Image` arms.
 #[inline]
 pub(super) fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
     match local_rect {

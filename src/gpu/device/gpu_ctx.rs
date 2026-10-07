@@ -1,19 +1,11 @@
-//! Per-frame GPU-handle bundle: the four references every uploader
-//! and texture-write path needs, bundled so callers thread one
-//! `&mut GpuCtx` instead of `(&device, &queue, &mut belt, &mut encoder)`
-//! quadruples.
+//! Per-frame GPU handles bundled so callers thread one `&mut GpuCtx`.
 //!
-//! - `device` — lazy buffer / texture regrow.
-//! - `queue` — `write_texture` for the rare image-registry + gradient
-//!   atlas paths (staging-belt covers `write_buffer` only).
-//! - `belt` — sub-allocates mapped staging memory for buffer uploads.
-//! - `encoder` — records `copy_buffer_to_buffer` from staging to dst,
-//!   plus the user's render passes.
+//! - `device`: lazy buffer / texture regrow.
+//! - `queue`: `write_texture` for image-registry and gradient atlas paths (the belt covers `write_buffer` only).
+//! - `belt`: sub-allocates mapped staging memory.
+//! - `encoder`: records staging-to-destination copies and the user's render passes.
 //!
-//! Lifetimes are tied together so the renderer constructs one ctx
-//! right after creating the main encoder and passes `&mut ctx` to
-//! every uploader. Dropping the ctx releases all four borrows so
-//! render passes can resume using the encoder afterward.
+//! Built right after the main encoder; dropping it releases the borrows.
 
 use wgpu::util;
 #[derive(Debug)]
@@ -39,10 +31,7 @@ impl<'a> GpuCtx<'a> {
         }
     }
 
-    /// Schedule a belt-backed `copy_buffer_to_buffer` from staging to
-    /// `dst@offset`. Empty `bytes` is a no-op (wgpu's
-    /// `BufferSize::new` rejects zero). `offset` and `bytes.len()`
-    /// must both be multiples of `COPY_BUFFER_ALIGNMENT` (4).
+    /// Schedule a belt-backed copy from staging to `dst@offset`. Empty `bytes` is a no-op; `offset` and length must be multiples of `COPY_BUFFER_ALIGNMENT` (4).
     pub(crate) fn write(&mut self, dst: &wgpu::Buffer, offset: u64, bytes: &[u8]) {
         let Some(mut view) = self.write_view(dst, offset, bytes.len() as u64) else {
             return;
@@ -50,16 +39,7 @@ impl<'a> GpuCtx<'a> {
         view.copy_from_slice(bytes);
     }
 
-    /// [`Self::write`] without the source slice: the mapped staging
-    /// bytes themselves, for a caller that composes them in place.
-    ///
-    /// What that buys is one memcpy instead of two. A caller holding the
-    /// finished bytes already should use [`Self::write`] — this is for
-    /// one that would otherwise build a full-size copy just to hand it
-    /// over, which is the whole upload's worth of bytes staged twice.
-    /// Unwritten bytes of the view keep whatever the belt's chunk last
-    /// held, so a caller that leaves gaps owes it that they are never
-    /// read.
+    /// [`Self::write`] without the source slice: the mapped staging bytes, for a caller composing in place (one memcpy, not two). Unwritten bytes keep the belt chunk's old contents and must never be read.
     pub(crate) fn write_view(
         &mut self,
         dst: &wgpu::Buffer,

@@ -1,76 +1,44 @@
-//! Fixtures whose scene *changes* every frame.
+//! Fixtures whose scene changes every frame.
 //!
-//! Every other fixture in this suite paints the same tree over and over,
-//! which measures the steady-state path and nothing else. But the caches
-//! this crate is built around — the layout measure cache, the reuse
-//! rows, the shaped-buffer cache, the encoded-run cache, the glyph atlas
-//! — all short-circuit on a still frame. A scene that never changes
-//! never reaches their insert, supersede, or expiry paths, so an
-//! allocation introduced there would sail past the whole audit.
+//! Still-frame fixtures never reach the insert, supersede or expiry paths of
+//! the layout measure cache, reuse rows, shaped-buffer cache, encoded-run
+//! cache and glyph atlas. These drive the record-side shapes that do: a width
+//! drag, changing text, and rows entering and leaving. A scale ramp lives in
+//! `gates::on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`, since it
+//! needs a device.
 //!
-//! These drive the three shapes that reach them from the record side: a
-//! width drag, text whose content changes, and rows entering and leaving
-//! the tree. The fourth — a scale ramp — belongs to
-//! `gates::on_gpu::scale_ramp_rasterizes_at_a_flat_cost_per_frame`
-//! instead, because a zoom moves the *raster* scale and leaves the
-//! shaped buffer alone: what it churns is the glyph atlas and the
-//! encoded-run cache, and neither of those exists without a device.
-//!
-//! Budgets here are not all zero, and that is the measurement talking
-//! rather than a concession. Every allocation these fixtures see traces
-//! into `cosmic_text`'s `set_text` / `shape_until_scroll` — reshaping
-//! genuinely new content builds line, shape and layout runs, and roughly
-//! ten allocations per newly-shaped run is the floor this shaper has.
-//! Palantir's own scratch (`truncate_scratch`, `break_scratch`,
-//! `logical_order`, the recycle pool, the expiry wheels) stays quiet
-//! throughout.
-//!
-//! So what a budget pins here is not zero but *flatness*: the audit
-//! checks all 64 frames individually, and a cost that grew with how long
-//! the gesture had run — the failure every one of these caches exists to
-//! prevent — would blow a fixed ceiling long before the window closed.
-//! Tighten a number when a change makes it smaller; a number that has to
-//! *rise* is the regression this file exists to catch.
+//! Budgets are not all zero: reshaping new content costs roughly ten
+//! allocations per run inside `cosmic_text`, while Palantir's own scratch
+//! stays quiet. A budget pins flatness: all 64 frames are checked, so a cost
+//! growing with gesture length blows the ceiling. Tighten a number when a
+//! change lowers it; one that must rise is the regression to catch.
 
 use crate::harness::Audit;
 use palantir::{Configure, Panel, Sizing, Text, TextWrap};
 use std::fmt::Write as _;
 use std::hint;
 
-/// Labels per churning fixture — enough that a per-run leak shows up as
-/// a multiple rather than as noise.
+/// Labels per churning fixture.
 const ROWS: u32 = 8;
 
-/// What one frame of either width drag may allocate.
-///
-/// A band over the measured worst frame, not a pin on it: a ceiling
-/// set to what a drag costs today fails on a one-block shift, which
-/// reads as a regression and is not one. Sensitivity is unhurt — a
-/// leak of one allocation per run costs [`ROWS`] blocks, so this
-/// still catches the smallest regression the fixture is built to see,
-/// several times over.
-///
-/// One number for both, because the two are the same workload under
-/// two wrap policies and the comparison between them is the point.
+/// What one frame of either width drag may allocate: a band over the measured
+/// worst frame, so a one-block shift is not a failure. A leak of one
+/// allocation per run costs [`ROWS`] blocks, well above it. Shared because the
+/// two drags are one workload under two wrap policies.
 const DRAG_BLOCKS_PER_FRAME_MAX: u64 = 20;
 
-/// A resize drag: the committed width moves every frame, so every text
-/// run resolves to a fresh bounded key, supersedes the one it replaces,
-/// and mints a shaped buffer that nothing will ask for again.
-///
-/// This is the workload `shaped_buffer_cache::PROBATION_KEEP_FRAMES`
-/// exists for, and the one where a per-frame allocation would compound
-/// — a drag runs for hundreds of frames.
+/// A resize drag: the committed width moves every frame, so each run resolves
+/// to a fresh bounded key, supersedes the old one, and mints a shaped buffer
+/// nothing asks for again (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`).
 #[test]
 fn width_drag_stays_flat() {
     let mut step = 0u32;
-    // One shaped buffer per run, all of it inside cosmic.
+    // One shaped buffer per run, all inside cosmic.
     Audit::new()
         .text()
         .budget(DRAG_BLOCKS_PER_FRAME_MAX)
         .run(move |ui| {
-            // A whole pixel per frame, which is what a drag commits after
-            // the wrap width is quantized.
+            // A whole pixel per frame, as a drag commits after quantizing.
             let width = 240.0 + (step % 64) as f32;
             step += 1;
             Panel::vstack()
@@ -87,18 +55,14 @@ fn width_drag_stays_flat() {
         });
 }
 
-/// The same drag against a truncating policy, which takes the other
-/// branch: `measure_truncated` re-cuts against the cached unbounded
-/// probe and reshapes only the prefix, through retained scratch.
+/// The same drag against a truncating policy: `measure_truncated` re-cuts
+/// against the cached unbounded probe and reshapes only the prefix.
 #[test]
 fn ellipsis_width_drag_stays_flat() {
     let mut step = 0u32;
-    // Cheaper than the wrapping drag on a typical frame and dearer on
-    // its worst, which is why both gate on one band. The cut reshapes
-    // only the prefix, but `shape_truncated` verifies that prefix
-    // against the committed width and retires another cluster while it
-    // overruns, so a frame that takes the back-off reshapes several
-    // times.
+    // Cheaper than the wrapping drag typically, dearer at its worst:
+    // `shape_truncated` retires clusters while the prefix overruns, so a
+    // back-off frame reshapes several times.
     Audit::new()
         .text()
         .budget(DRAG_BLOCKS_PER_FRAME_MAX)
@@ -119,10 +83,9 @@ fn ellipsis_width_drag_stays_flat() {
         });
 }
 
-/// Rows entering and leaving the tree, the virtualized-list shape: each
-/// frame records a different window of ids, so the measure cache's
-/// descriptor sequence changes, reuse rows are swept against `removed`,
-/// and widget-keyed maps churn.
+/// Rows entering and leaving the tree (virtualized list): the measure cache's
+/// descriptor sequence changes, reuse rows are swept against `removed`, and
+/// widget-keyed maps churn.
 #[test]
 fn scrolling_row_window_alloc_free() {
     let mut first = 0u32;
@@ -142,23 +105,15 @@ fn scrolling_row_window_alloc_free() {
     });
 }
 
-/// Widget count oscillating rather than sliding: ids are added and
-/// removed rather than shifted, so `removed` is non-empty on the shrink
-/// frames and every per-widget map takes its eviction path.
+/// Widget count oscillating: ids are added and removed, so `removed` is
+/// non-empty on shrink frames and per-widget maps take their eviction path.
 #[test]
 fn widget_add_remove_stays_flat() {
     let mut step = 0u32;
-    // An explicit warmup rather than the probe: the
-    // row count oscillates with period ROWS, and the probe stops after
-    // two quiet frames - which it can find *within* one cycle, before
-    // the widest frame has ever been recorded. The audit window then
-    // catches that frame's one-off growth and reads it as a per-frame
-    // cost. Four full cycles of warmup is what makes the number honest.
-    // Budget 4, not 0, and the reason is a finding rather than a
-    // concession: `PaintSnapArena::maybe_compact` / `diff_changed_leg`
-    // allocate when the damage engine's snapshot arena compacts, which
-    // ratio-based amortization makes periodic rather than per-frame. A
-    // still frame never trips it, which is why nothing caught it before.
+    // Explicit warmup: the row count has period ROWS and the probe can stop
+    // within one cycle, before the widest frame is recorded. Four cycles.
+    // Budget 4, not 0: `PaintSnapArena::maybe_compact` / `diff_changed_leg`
+    // allocate when the damage snapshot arena compacts, periodically.
     Audit::new()
         .warmup(4 * ROWS as usize)
         .budget(4)
@@ -179,30 +134,19 @@ fn widget_add_remove_stays_flat() {
         });
 }
 
-/// Text whose *content* changes every frame — a clock, an FPS readout, a
-/// scrubbing timecode. Each frame mints a text hash nothing will ask for
-/// again, which is the churn that defeats a single-deadline cache and
-/// the reason the shaped-buffer cache carries a probation tier.
-///
-/// Interning genuinely new bytes has to write them somewhere, so this
-/// fixture's budget is whatever that costs — the guard is that it stays
-/// flat instead of growing with the frame count.
+/// Text whose content changes every frame (a clock, an FPS readout). Each
+/// frame mints a text hash nothing asks for again, which defeats a
+/// single-deadline cache; hence the shaped-buffer cache's probation tier.
+/// Interning new bytes must write them somewhere, so the guard is flatness.
 #[test]
 fn changing_label_text_stays_flat() {
     let mut step = 0u32;
-    // Formatted into a retained buffer, not `format!`: a `String` per
-    // label would be the *fixture* allocating, and the audit cannot tell
-    // that apart from the engine doing it.
+    // Formatted into a retained buffer: a `String` per label would be the
+    // fixture allocating.
     let mut buf = String::with_capacity(64);
-    // An explicit warmup for the same reason as `widget_add_remove`:
-    // this scene inserts eight shaped buffers a frame and expires them
-    // four frames later, so the caches keep resizing well past the two
-    // quiet frames the probe settles for. 128 frames is a long way past
-    // where they stop growing.
-    //
-    // Eight runs whose text is new every frame, at the ~10-per-run
-    // cosmic floor — the highest budget here, and rightly so: a fresh
-    // text hash cannot reuse anything.
+    // Explicit warmup: eight shaped buffers are inserted per frame and expire
+    // four frames later, so caches keep resizing past the probe's quiet frames.
+    // Eight new-text runs at the ~10-per-run cosmic floor: the highest budget.
     Audit::new().warmup(128).budget(112).run(move |ui| {
         step += 1;
         Panel::vstack()
@@ -218,19 +162,9 @@ fn changing_label_text_stays_flat() {
     });
 }
 
-/// Text re-interned every frame, which is the contract `InternedStr`
-/// now states: a handle is valid for the pass that minted it, so a
-/// steady scene interns the same bytes into the same arena frame after
-/// frame.
-///
-/// Budgeted at zero because `clear` keeps the arena's capacity. This
-/// used to be two fixtures measuring the opposite question — what it
-/// cost to *hold* a handle across frames — back when `TextStore`
-/// double-buffered arenas to keep an escaped handle's bytes alive. The
-/// one-generation arm rode the spare for free; the two-generation arm
-/// allocated a fresh arena every frame, forever, because both were
-/// pinned and there was nothing to swap to. Neither question exists now:
-/// a handle is `Copy`, owns nothing, and cannot outlive its pass.
+/// Text re-interned every frame: a handle is valid for the pass that minted
+/// it, so a steady scene interns the same bytes into the same arena each
+/// frame. Budget zero because `clear` keeps the arena's capacity.
 #[test]
 fn reinterned_text_alloc_free() {
     Audit::new().warmup(8).run(move |ui| {
@@ -243,11 +177,10 @@ fn reinterned_text_alloc_free() {
     });
 }
 
-/// One frame with many widgets, then a small scene whose layout moves
-/// every frame, so every cascade run is a full rebuild. The seen-id
-/// tables swap each frame, so the spike grows one of the two for good;
-/// the cascade's own id table must not follow them back and forth
-/// through a reallocation on each rebuild.
+/// One frame with many widgets, then a small scene whose layout moves every
+/// frame, so every cascade run is a full rebuild. The seen-id tables swap each
+/// frame and the spike grows one for good; the cascade's own id table must not
+/// reallocate to follow them.
 #[test]
 fn a_widget_count_spike_leaves_full_rebuilds_alloc_free() {
     let mut step = 0u32;

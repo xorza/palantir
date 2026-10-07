@@ -1,25 +1,15 @@
-//! The `v` two widgets draw as an arrow: the three points a polyline
-//! strokes or a triangle fills.
+//! The `v` arrow as three points a polyline strokes or a triangle fills.
 
 use glam::Vec2;
 
-/// An arrow in a box of `size`, with the origin at the box's top-left.
-///
-/// The shape one place rather than two: [`crate::ComboBoxTheme`] strokes
-/// it as a chevron pointing down under a dropdown, and
-/// [`crate::ExpanderTheme`] fills it as the disclosure triangle it turns
-/// from a closed section's `>` to an open one's `v`. They differ in how
-/// they paint it, never in the shape.
-///
-/// Points rather than a glyph, so it stays font-independent.
+/// An arrow in a box of `size`, origin top-left. [`crate::ComboBoxTheme`] strokes it as a chevron, [`crate::ExpanderTheme`] fills it as a triangle; font-independent.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Arrow {
     pub(crate) size: Vec2,
 }
 
 impl Arrow {
-    /// The three points, in box-local pixels. The middle one is the tip,
-    /// at the bottom edge.
+    /// The three points in box-local pixels; the middle one is the tip at the bottom edge.
     pub(crate) fn points(self) -> [Vec2; 3] {
         let Vec2 { x: w, y: h } = self.size;
         [
@@ -29,11 +19,7 @@ impl Arrow {
         ]
     }
 
-    /// [`Self::points`] turned `radians` about the box's centre.
-    ///
-    /// **Only square in a square box.** A quarter turn swaps the shape's
-    /// extents, so a box narrower than it is tall clips the turned arrow
-    /// on one axis and leaves a gap on the other.
+    /// [`Self::points`] turned `radians` about the box's centre. Only square in a square box: a quarter turn swaps extents, clipping one axis.
     pub(crate) fn rotated(self, radians: f32) -> [Vec2; 3] {
         let centre = self.size * 0.5;
         let (sin, cos) = radians.sin_cos();
@@ -43,18 +29,7 @@ impl Arrow {
         })
     }
 
-    /// [`Self::rotated`], as the vertices of a filled triangle whose
-    /// corners are rounded by `radius`.
-    ///
-    /// The renderer rounds a triangle by dilating it by the radius, so
-    /// the vertices sit one radius inside the box: the rounded shape
-    /// then fills the box exactly, instead of overrunning it on every
-    /// side. The turn is about the box's centre either way — the inset
-    /// is the same on every side, so the two boxes share it.
-    ///
-    /// A radius larger than half the box's shorter side is fitted to it,
-    /// the way overlapping CSS corner radii are scaled down: the arrow
-    /// then rounds as far as its box allows instead of turning inside out.
+    /// [`Self::rotated`] as a filled triangle's vertices with corners rounded by `radius`. The renderer rounds by dilating, so vertices sit one radius inside the box to fill it exactly. A radius over half the shorter side is fitted to it.
     pub(crate) fn rounded(self, radius: f32, radians: f32) -> [Vec2; 3] {
         let radius = radius.min(0.5 * self.size.min_element());
         let inset = Vec2::splat(radius);

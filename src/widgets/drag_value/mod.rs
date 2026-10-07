@@ -1,6 +1,4 @@
-//! The scrubbable number field — drag to change, click to type. Holds the
-//! widget, the integer-or-float target it writes through, the retained
-//! drag and edit state, and what a frame of either reports.
+//! The scrubbable number field: drag to change, click to type.
 
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::key::Key;
@@ -31,42 +29,26 @@ use std::mem;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
-/// One mutually exclusive interaction per [`DragValue`] id: a live
-/// [`Scrub`], or an edit whose draft outlives its focus until the chip
-/// can resolve it.
+/// One exclusive interaction per [`DragValue`] id: a live [`Scrub`], or an edit whose draft outlives its focus until the chip resolves it.
 #[derive(Debug, Default)]
 enum DragValueState {
     #[default]
     Idle,
     Scrubbing(Scrub),
-    /// `original` is the value the edit opened on, which Escape restores:
-    /// the buffer is parsed live, so by then the bound value holds the
-    /// typed text.
     Editing {
         buffer: String,
         original: Num,
     },
 }
 
-/// A live scrub: the value it began on, how fast it moves, and how far
-/// it has come.
-///
-/// The anchor is a [`Num`], since the gesture writes back through it.
-///
-/// Travel is retained rather than the value it produced. The stop edge
-/// carries no drag distance, so the release frame derives its result
-/// from the anchor again — reading the last stored value back instead
-/// would find whatever a deferred caller re-seeded there.
+/// A live scrub: starting value (a [`Num`]), speed and travel. Travel is retained, not the produced value: the stop edge carries no distance, and a deferred caller may have re-seeded the stored value.
 #[derive(Clone, Copy, Debug)]
 struct Scrub {
     anchor: Num,
     speed: f64,
-    /// Cumulative pointer travel of the last frame that wrote, in
-    /// logical pixels.
     travel: f32,
 }
 
-/// How the inline editor's frame ended the edit, if it did.
 #[derive(Clone, Copy, Debug)]
 struct EditEnd {
     submitted: bool,
@@ -74,37 +56,16 @@ struct EditEnd {
 }
 
 impl Scrub {
-    /// How far the anchor has moved, in value units.
     fn offset(self) -> f64 {
         f64::from(self.travel) * self.speed
     }
 }
 
-/// A numeric field you scrub by dragging horizontally (Blender / egui
-/// style): each pixel of horizontal left-button travel changes the value
-/// by `speed`, optionally clamped to a range. Binds either an `i64` or an
-/// `f64` (see [`DragNum`]) — the integer target rounds to the nearest whole
-/// step and a float drag snaps to `decimals`. Renders as a button-styled
-/// chip (theme slot `drag_value.chip`) with the formatted number centered
-/// inside.
+/// A numeric field you scrub by dragging horizontally: each pixel of left-button travel changes the value by `speed`, optionally clamped. Binds an `i64` (rounded) or `f64` (snapped to `decimals`), see [`DragNum`]. Chip theme slot `drag_value.chip`.
 ///
-/// With [`Self::editable`] the widget is a complete numeric editor: a plain
-/// click (no drag) focuses it and swaps the chip for an inline `TextEdit`
-/// (theme slot `drag_value.editor`, same box as the chip) for exact keyboard
-/// entry; Enter or clicking away commits and returns to the scrub chip, and
-/// Escape returns to it with the value the edit opened on. The editor holds the
-/// chip's width and **scrolls** a longer full-precision value inside it, so it
-/// stays put even in a content-hugging parent.
+/// With [`Self::editable`] a plain click swaps in an inline `TextEdit` (slot `drag_value.editor`, same box) for exact entry; Enter or click-away commits, Escape restores the opening value. The editor holds the chip's width and scrolls longer values.
 ///
-/// The value is written live — every scrub step and edit-mode reparse lands
-/// in the bound target — and [`ValueResponse`] reports both grains:
-/// `changed` per differing write, `committed` once per finished gesture
-/// (drag release, Enter, blur). An undo-aware caller can ignore `changed`,
-/// re-seed the bound value from its canonical source every frame, and apply
-/// it only on `committed`: the widget re-writes the gesture's final value on
-/// the commit frame, so the deferred caller still observes it. A gesture
-/// that ends while the widget is disabled (or, for a pending edit, no
-/// longer editable) is dropped, not committed.
+/// The value is written live; [`ValueResponse`] reports `changed` per differing write and `committed` once per gesture (release, Enter, blur). An undo-aware caller can re-seed every frame and apply on `committed`; the widget re-writes the final value on that frame. A gesture ending while disabled is dropped.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct DragValue<'a> {
@@ -120,14 +81,10 @@ pub struct DragValue<'a> {
 }
 
 impl<'a> DragValue<'a> {
-    /// A scrub chip bound to `value`, which takes a `&mut f64` or a
-    /// `&mut i64`. Unbounded until [`Self::range`].
+    /// A scrub chip bound to `value` (`&mut f64` or `&mut i64`). Unbounded until [`Self::range`].
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
-            // A Tab stop, as WAI-ARIA's spin button: the arrows step it, and
-            // typing and Enter open the editor — the `CARET` and `TEXT`
-            // classes.
             widget: Widget::leaf()
                 .focusable(true)
                 .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
@@ -142,8 +99,7 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Value change per logical pixel of horizontal drag, *positive*.
-    /// Default `1.0`.
+    /// Value change per logical pixel of horizontal drag. Default `1.0`.
     ///
     /// # Panics
     ///
@@ -154,13 +110,7 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Clamp the value into `range`. Default unbounded.
-    ///
-    /// A builder step here and a constructor argument on
-    /// [`Slider::new`](crate::Slider::new), which says why.
-    ///
-    /// An end may be infinite — that is the unbounded default — and a
-    /// reversed range is ordered.
+    /// Clamps the value into `range`; default unbounded. An end may be infinite and a reversed range is ordered. See [`Slider::new`](crate::Slider::new) for why this is a builder step here.
     ///
     /// # Panics
     ///
@@ -176,43 +126,25 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Digits after the decimal point. Governs both the scrub display *and*
-    /// the precision a float drag snaps to (so dragging never stores a long
-    /// tail — the value matches what's shown). Keyboard entry stays exact.
-    /// Ignored by the integer target. Default `2`.
+    /// Digits after the decimal point, for display and the precision a float drag snaps to; keyboard entry stays exact. Ignored by the integer target. Default `2`.
     pub const fn decimals(mut self, n: usize) -> Self {
         self.decimals = n;
         self
     }
 
-    /// Text appended after the number — a unit (`"px"`, `"%"`), or
-    /// whatever a locale table hands over: borrowed, owned, interned or
-    /// `fmt!` output, as every widget's text.
+    /// Text appended after the number, such as a unit.
     pub fn suffix(mut self, text: impl Into<TextInput<'a>>) -> Self {
         self.suffix = text.into();
         self
     }
 
-    /// Enable keyboard entry alongside drag-to-scrub. A click that latches
-    /// no drag, Enter on the focused chip, or a character typed into it
-    /// swaps the chip for an inline `TextEdit` — a typed character
-    /// replaces the value, as a spin button's does. Enter and click-away
-    /// commit, Escape reverts, and either leaves the chip focused.
-    /// Default off.
+    /// Enables keyboard entry: a click that latches no drag, Enter on the focused chip, or a typed character swaps in an inline `TextEdit`. Enter and click-away commit, Escape reverts. Default off.
     pub const fn editable(mut self, on: bool) -> Self {
         self.editable = on;
         self
     }
 
-    /// What the widget cannot work without: the scrub drag always, and
-    /// the click that opens the inline editor once [`Self::editable`] is
-    /// on.
-    ///
-    /// Read at [`Self::show`] and folded over whatever the caller sensed,
-    /// rather than written into the node by the setter. A setter would
-    /// make `editable` depend on the order it was chained in — it would
-    /// drop a `sense` set before it, keep the click after an
-    /// `editable(false)`, and lose to a `sense` set after it.
+    /// What the widget needs: the scrub drag, plus the click that opens the editor once [`Self::editable`] is on. Folded at [`Self::show`] rather than written by the setter, which would make `editable` depend on chain order.
     fn required_sense(&self) -> Sense {
         if self.editable {
             Sense::CLICK | Sense::DRAG
@@ -221,42 +153,27 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `drag_value`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// Covers both modes at once — the scrub chip and the inline editor.
+    /// Per-instance override of [`crate::Theme`]'s `drag_value`, covering the chip and the editor.
     pub fn style(mut self, s: impl Into<Option<&'a DragValueTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the chip, or its inline editor while one is open.
+    /// Records the chip, or its inline editor while open.
     ///
-    /// A focused chip is a spin button: Up and Down step the value by one
-    /// unit of its last decimal — one, for an integer — and ten units
-    /// with Shift, each step a committed edit. Focus alone opens no
-    /// editor, so the press that starts a scrub may focus the chip.
+    /// A focused chip is a spin button: Up/Down step by one unit of the last decimal (one for integers), ten with Shift, each a committed edit.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let required = self.required_sense();
         self.configure().add_sense(required);
         let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
 
-        // Focused + editable + enabled: the inline text editor owns the
-        // frame. Pass the chip's last *pre-transform* rect (logical px,
-        // matching min/max_size) so the editor holds that width instead of
-        // growing a content-hugging parent to fit the full-precision value —
-        // `rect` is post-zoom and would mismatch the sizing units under a
-        // scaled canvas. Disabled mid-edit falls through to the chip path,
-        // which kicks focus out and discards the pending draft below.
+        // Focused + editable + enabled: the editor owns the frame, given the chip's last pre-transform rect (`rect` is post-zoom) to hold its width. Disabled mid-edit falls to the chip path, which discards the draft.
         let focused = ui.focus() == Some(id);
         if self.editable && focused {
             if response.disabled {
                 ui.clear_focus();
             } else {
-                // An open draft keeps the editor; a character typed into
-                // the chip opens it this frame, so the editor takes that
-                // character itself and it replaces the selected value.
                 let editing = matches!(
                     ui.state::<DragValueState>(id),
                     Some(DragValueState::Editing { .. })
@@ -270,22 +187,12 @@ impl<'a> DragValue<'a> {
         let mut changed = false;
         let mut committed = false;
 
-        // Left-button scrub only — a right/middle drag is someone else's
-        // gesture (context menu, canvas pan) and must neither write nor
-        // commit. Capture the value + speed when the drag latches, then
-        // offset by the cumulative travel each frame and commit
-        // (snap / round / clamp). One state probe resolves a pending edit,
-        // begins a new scrub, and advances or finishes an existing scrub.
+        // Left-button scrub only: other buttons' drags (context menu, canvas pan) must neither write nor commit.
         let drag_started = response.left.drag.started();
         let drag_delta = response.left.drag.delta();
         let drag_stopped = response.left.drag.stopped();
-        // Probed first, so a chip that never scrubbed or edited stores no
-        // row.
         if drag_started || ui.state::<DragValueState>(id).is_some() {
             ui.with_state::<DragValueState, _>(id, |_, state| {
-                // A click-away reaches the chip with the edit draft still
-                // present. Resolve it while editable and enabled, otherwise drop
-                // it so a later focus cannot replay stale input.
                 if let DragValueState::Editing { buffer, .. } = state {
                     if self.editable && !response.disabled {
                         changed = self.value.parse_from(buffer, self.min, self.max);
@@ -320,9 +227,7 @@ impl<'a> DragValue<'a> {
                         stopped = Some(*scrub);
                     }
                 }
-                // The stop edge is the commit: the drag state is already gone on
-                // this frame, so the scrub's own travel carries the final value.
-                // Released while disabled, the gesture is dropped instead.
+                // The stop edge is the commit: the scrub's own travel carries the final value. Released while disabled, the gesture is dropped.
                 if let Some(scrub) = stopped {
                     *state = DragValueState::Idle;
                     if !response.disabled {
@@ -344,8 +249,6 @@ impl<'a> DragValue<'a> {
                 Num::I64(_) => 1.0,
                 Num::F64(_) => 1.0 / 10f64.powi(self.decimals.min(15) as i32),
             };
-            // Every chord sampled: `key_pressed` also keeps it subscribed
-            // for the wake gate.
             let mut moved = 0.0;
             for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
                 let coarse = self
@@ -367,14 +270,9 @@ impl<'a> DragValue<'a> {
             }
         }
 
-        // A plain enabled click (no drag latched), or Enter on the focused
-        // chip, opens keyboard entry on the next frame — Enter so the
-        // editor does not take the Enter that opened it as its submit.
         let enter = focused && self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
         if self.editable && !response.disabled && (response.clicked() || enter) {
             ui.set_focus(id);
-            // The probed snapshot predates the request, so without this
-            // the response denies the focus the widget just took.
             response.focused = true;
             ui.with_state::<DragValueState, _>(id, |_, s| {
                 *s = DragValueState::Editing {
@@ -387,8 +285,6 @@ impl<'a> DragValue<'a> {
         let text = match &self.suffix {
             TextInput::Borrowed(suffix) => label(ui, &self.value, self.decimals, suffix),
             TextInput::Owned(suffix) => label(ui, &self.value, self.decimals, suffix),
-            // The arena cannot be read while it is written, so an interned
-            // suffix goes through a retained copy.
             TextInput::Interned(suffix) => {
                 let (suffix, value, decimals) = (*suffix, &self.value, self.decimals);
                 ui.with_state::<SuffixScratch, _>(id, |ui, scratch| {
@@ -399,9 +295,6 @@ impl<'a> DragValue<'a> {
             }
         };
 
-        // The chip half of the bundle — the same one the edit mode's editor
-        // takes its half from, so the two modes stay in sync under a global
-        // restyle.
         let theme = ui.theme();
         let chip = &self.style.unwrap_or(&theme.drag_value).chip;
         let look = chip
@@ -423,48 +316,24 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Edit mode: render the inline `TextEdit` over the same `id`, centered
-    /// and same-styled as the chip (its box matches by theme, not by
-    /// measuring the chip), parse the buffer back into the value each frame,
-    /// and blur on Enter. Escape blurs itself and restores the value the edit
-    /// opened on; a click-away blurs itself and the chip path resolves the
-    /// pending [`DragValueState::Editing`] draft.
+    /// Edit mode: the inline `TextEdit` over the same `id`, parsed back each frame, blurring on Enter. Escape restores the opening value; click-away leaves the draft for the chip path.
     fn show_editing(
         mut self,
         ui: &mut Ui,
         id: WidgetId,
         prev_rect: Option<Rect>,
     ) -> ValueResponse<'_> {
-        // The editor has to wear the chip's box or the field resizes the moment
-        // it is clicked. `DragValueTheme::from_chip` mirrors the chip's padding
-        // onto `drag_value.editor` for exactly that; an *unstyled* `TextEdit`
-        // inherits `theme.text_edit` instead — a standalone field's box, whose
-        // padding is not the chip's — so the bundle has to be handed over
-        // rather than left to the field's own default.
-        //
-        // Held as a handle, because the borrow has to outlive the `&mut Ui`
-        // the field is shown with — a refcount bump rather than the ~700-byte
-        // `TextEditTheme` copy a plain borrow would have forced.
+        // The editor must wear the chip's box or the field resizes on click: `DragValueTheme::from_chip` mirrors the chip padding onto `drag_value.editor`, whereas an unstyled `TextEdit` inherits `theme.text_edit`. A handle avoids copying ~700 bytes of `TextEditTheme`.
         let ui_theme = Rc::clone(ui.theme());
         let editor = match self.style {
             Some(s) => &s.editor,
             None => &ui_theme.drag_value.editor,
         };
-        // Hold the editor at exactly the width the chip occupied last frame.
-        // The chip shows `decimals`-rounded text; the editor shows every digit
-        // and, as a `Scroll` field, reports zero content width — so nothing
-        // pulls a `Fill` field up to the chip's width and a plain cap would let
-        // it collapse to `min_size`. Pin the width with `Fixed` (floored at
-        // `min_size.w`) so a long value scrolls inside the chip's box instead
-        // of growing a content-hugging row. Before the first chip frame gives
-        // us a width to hold, fall back to the field's own width sizing.
+        // Hold the editor at the chip's last width: as a `Scroll` field it reports zero content width, so a plain cap would collapse to `min_size`. `Fixed` (floored at `min_size.w`) makes long values scroll. Before the first chip frame, use the field's own sizing.
         let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
         let sizes = self.widget.authored_size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or(sizes.w());
-        // Entry replaces any scrub state atomically, so its later release
-        // cannot overwrite the typed result. Existing edit frames move the
-        // same String through TextEdit without allocating a new buffer.
         let (mut buffer, original) =
             match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
                 DragValueState::Editing { buffer, original } => (buffer, original),
@@ -481,12 +350,6 @@ impl<'a> DragValue<'a> {
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
-            // The chip's placement has to survive the swap or the field
-            // visibly jumps mid-interaction. Its size does not travel with
-            // it: the width is pinned above to the chip's last rect, so a
-            // long value scrolls instead of growing the row, and
-            // `DragValueTheme::from_chip` mirrors the chip's padding onto
-            // the editor.
             let resp = edit.adopt_placement(&self.widget).show(ui);
             EditEnd {
                 submitted: resp.submitted,
@@ -505,8 +368,6 @@ impl<'a> DragValue<'a> {
                 DragValueState::Editing { buffer, original }
             }
         });
-        // The chip keeps focus once the edit ends, as a spin button does,
-        // so the keyboard goes on from it; Escape blurred the editor.
         if ended.canceled {
             ui.set_focus(id);
         }
@@ -525,9 +386,7 @@ impl Configure for DragValue<'_> {
     }
 }
 
-/// The chip's text: `value` at `decimals` places, then `suffix`.
-/// Whether a character was typed into the focused chip this frame — text
-/// a press produced, Space aside, which a spin button does not type.
+/// Whether a character was typed into the focused chip this frame; Space is excluded, as a spin button doesn't type it.
 fn typed(ui: &Ui) -> bool {
     ui.keyboard_events().iter().any(|press| {
         KeyClass::of(*press) == KeyClass::Text
@@ -536,6 +395,7 @@ fn typed(ui: &Ui) -> bool {
     })
 }
 
+/// The chip's text: `value` at `decimals` places, then `suffix`.
 fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> InternedStr {
     match value {
         DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
@@ -543,8 +403,7 @@ fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> Int
     }
 }
 
-/// An interned suffix's characters, copied out of the arena so the label
-/// can be formatted into it. Retained, so a steady suffix allocates once.
+/// An interned suffix's characters copied out of the arena for formatting; retained, so a steady suffix allocates once.
 #[derive(Debug, Default)]
 struct SuffixScratch(String);
 

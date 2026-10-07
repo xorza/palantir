@@ -1,8 +1,4 @@
-//! The color roster every theme recipe draws from. [`Palette`] is the
-//! public input to [`crate::Theme::from_palette`] — apps hand in their
-//! own swatches and every widget recolors from one source instead of
-//! re-deriving palantir's recipes per widget. [`Palette::DEFAULT`] is
-//! the built-in neutral dark grayscale with a single blue accent.
+//! The color roster every theme recipe draws from. [`Palette`] is the input to [`crate::Theme::from_palette`]; [`Palette::DEFAULT`] is the built-in neutral dark grayscale with a blue accent.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::background::Background;
@@ -11,16 +7,7 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use glam::Vec2;
 
-/// Semantic color roster for theme assembly. Fields are the roles the
-/// widget recipes key on; derived tints (the border ladder) and the one
-/// chrome recipe overlays share live as methods so a palette swap moves
-/// them automatically.
-///
-/// The three `element` rungs name a tier and never a widget state, because
-/// no one mapping holds: a standard button rests on `element_mid` and
-/// hovers to `element_strong`, while a menu row rests transparent and
-/// hovers to `element_mid`. A name saying "hover" would be one rung out of
-/// step for whichever widget disagreed.
+/// Semantic color roster for theme assembly. The three `element` rungs name a tier, never a widget state: a button rests on `element_mid` and hovers to `element_strong`, a menu row rests transparent and hovers to `element_mid`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Palette {
     /// Primary foreground / label ink.
@@ -29,9 +16,7 @@ pub struct Palette {
     pub text_muted: RgbaF32,
     /// Disabled-state foreground.
     pub text_disabled: RgbaF32,
-    /// Window background (`Theme::window_clear`). Also the active tab
-    /// chip's fill, so the chip reads as continuous with the page, and the
-    /// check and dot a toggle draws on its accent.
+    /// Window background (`Theme::window_clear`); also the active tab chip's fill.
     pub window_background: RgbaF32,
     /// Resting surface tier (disabled fills, menu panels).
     pub element: RgbaF32,
@@ -46,8 +31,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// Built-in neutral dark palette — the values `Theme::default`
-    /// assembles from.
+    /// Built-in neutral dark palette: the values `Theme::default` assembles from.
     pub const DEFAULT: Self = Self {
         text: RgbaF32::hex(0xffffff),
         text_muted: RgbaF32::hex(0xaaaaa8),
@@ -60,9 +44,7 @@ impl Palette {
         accent: RgbaF32::hex(0x9adbfb),
     };
 
-    // The border ladder — TEXT_MUTED tints, not grays: raw surface
-    // grays sit too close to `element`/`element_mid` to read as edges at
-    // 1 px.
+    // Border ladder: TEXT_MUTED tints, since surface grays are too close to `element` to read as 1 px edges.
     /// The faintest edge — a rule, a divider.
     pub const fn border_soft(&self) -> RgbaF32 {
         self.text_muted.with_alpha(0.18)
@@ -78,17 +60,7 @@ impl Palette {
         self.text_muted.with_alpha(0.35)
     }
 
-    /// Chrome for a body a [`crate::Popup`] drops from a trigger: a context
-    /// menu, a combo's list, a colour chip's picker. One recipe, so the three
-    /// read as one system wherever they open beside each other.
-    ///
-    /// Radius sits on the small-floating-overlay step shared with
-    /// [`TooltipTheme`](crate::TooltipTheme), not the modal's 12 — the same
-    /// corner that reads as "soft" on a dialog reads as a bubble on a stack
-    /// of 26 px rows. The shadow is what separates the body from what it
-    /// opened over: the fill is `element`, the same surface tier as the panels
-    /// and cards underneath, so a hairline alone leaves it looking glued
-    /// down.
+    /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. Radius is the small-overlay step shared with [`TooltipTheme`](crate::TooltipTheme); the shadow separates it from what it opened over, since its fill matches the panels beneath.
     pub fn popup_panel(&self) -> Background {
         Background::rounded(self.element, Corners::all(4.0))
             .with_border(Stroke::new(self.border_mid(), 1.0))

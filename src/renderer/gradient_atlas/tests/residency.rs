@@ -12,15 +12,12 @@ use crate::renderer::texture_limit::TextureLimit;
 use glam::Vec2;
 use std::collections::HashSet;
 
-/// Row 0 is reserved magenta. Created at construction; dirty list
-/// flags it so the first frame's GPU upload paints the fallback row.
-/// First real registration goes to row 1 (or wherever its hash lands
-/// in 1..INITIAL_ATLAS_ROWS).
+/// Row 0 is reserved magenta, created at construction and flagged dirty so the first frame's GPU
+/// upload paints the fallback row. The first real registration lands in `1..INITIAL_ATLAS_ROWS`.
 #[test]
 fn row_zero_reserved_as_magenta_fallback() {
     let atlas = CpuGradientAtlas::default();
-    // Row 0 is linear (1, 0, 1, 1) across all texels — encodes to
-    // #ff00ff on the sRGB framebuffer.
+    // Row 0 is linear (1, 0, 1, 1) across all texels, encoding to #ff00ff on the sRGB framebuffer.
     let magenta = RgbaF16::new(1.0, 0.0, 1.0, 1.0);
     assert!(atlas.baked[0].iter().all(|&t| t == magenta));
 }
@@ -32,8 +29,7 @@ fn register_same_gradient_twice_reuses_row() {
     let mut atlas = CpuGradientAtlas::default();
     let g = distinct_grad(50);
     let r1 = atlas.register(&g.ramp);
-    // Flush so subsequent registrations of the same content can
-    // be detected as no-ops.
+    // Flush so later registrations of the same content show as no-ops.
     let _ = atlas.flush();
     let r2 = atlas.register(&g.ramp);
     assert_eq!(r1, r2);
@@ -43,11 +39,10 @@ fn register_same_gradient_twice_reuses_row() {
     );
 }
 
-/// Keys differing in the smallest possible way — one stop byte, or
-/// only the interpolation space — must land on different rows. The
-/// index is keyed on the whole `ColorRamp`, so this is hashbrown's
-/// `Eq` doing the work rather than a hand-written confirm; the atlas
-/// still owns the claim that nothing *else* distinguishes a bake.
+/// Keys differing in the smallest possible way (one stop byte, or only the interpolation space) must
+/// land on different rows. The index is keyed on the whole `ColorRamp`, so this is hashbrown's `Eq`
+/// at work, not a hand-written confirm; the atlas still owns the claim that nothing *else*
+/// distinguishes a bake.
 #[test]
 fn near_identical_keys_never_share_a_row() {
     let mut atlas = CpuGradientAtlas::default();
@@ -71,11 +66,10 @@ fn near_identical_keys_never_share_a_row() {
     assert_ne!(first, second);
 }
 
-/// Filling the atlas one distinct gradient at a time hands out every
-/// real row exactly once — no key aliases another's row, and no row is
-/// skipped, so the whole table is reachable. Each registration marks
-/// its row dirty, and the magenta row 0 still waits from construction,
-/// so the dirty span runs from row 0 to the last row.
+/// Filling the atlas one distinct gradient at a time hands out every real row exactly once: no key
+/// aliases another's row and none is skipped, so the whole table is reachable. Each registration
+/// marks its row dirty and magenta row 0 still waits from construction, so the dirty span runs from
+/// row 0 to the last row.
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
@@ -95,10 +89,9 @@ fn register_many_distinct_gradients_all_unique_rows() {
     );
 }
 
-/// The atlas keys on the ramp alone, so a linear gradient, a radial
-/// gradient and a bare curve ramp with the same stops and interpolation share
-/// one row. Geometry differs in the shader (per-fragment `t`), but the
-/// LUT bake doesn't depend on it.
+/// The atlas keys on the ramp alone, so a linear gradient, a radial gradient and a bare curve ramp
+/// with the same stops and interpolation share one row: geometry differs in the shader, but the LUT
+/// bake doesn't depend on it.
 #[test]
 fn register_dedups_across_variants() {
     let mut atlas = CpuGradientAtlas::default();
@@ -123,9 +116,8 @@ fn register_dedups_across_variants() {
     assert_ne!(r_linear, r_other_interp);
 }
 
-/// The row ceiling is the *policy* cap, not the device's texture
-/// limit: growth never reverses, so a 16384-row adapter would let one
-/// pathological frame pin 32 MB for the life of the process.
+/// The row ceiling is the *policy* cap, not the device's texture limit: growth never reverses, so a
+/// 16384-row adapter would let one pathological frame pin 32 MB for the life of the process.
 #[test]
 fn shared_atlas_clamps_device_limit_to_the_policy_cap() {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;

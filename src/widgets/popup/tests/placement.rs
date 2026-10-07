@@ -1,5 +1,4 @@
-//! Where the body lands: sizing, the upward flip near an edge, and
-//! stability across frames.
+//! Where the body lands: sizing, the upward flip near an edge, and cross-frame stability.
 
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
@@ -18,14 +17,7 @@ use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::SURFACE;
 use glam::{UVec2, Vec2};
 
-/// Pin popup-body sizing + anchor placement under each `Sizing` mode.
-/// `Popup::show` measures against the full surface before resolving its
-/// shared edge-aware position.
-///
-/// - `Hug` / `Fixed` bodies fit at the raw anchor with room to spare.
-/// - `FILL` fills the full surface and the safety clamp
-///   shifts it to `(0, 0)` — the body is the size of the surface and
-///   can't sit at the anchor without overflowing.
+/// Popup-body sizing and anchor placement per `Sizing` mode. `Popup::show` measures against the full surface before the shared edge-aware position. `Hug`/`Fixed` fit at the raw anchor; `FILL` fills the surface and the safety clamp shifts it to `(0, 0)`.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
     let anchor = Vec2::new(20.0, 30.0);
@@ -108,8 +100,7 @@ fn popup_near_bottom_flips_upward() {
         body_rect.size, content,
         "body measured at full content size (anchor-independent available)",
     );
-    // Flip upward: anchor.y − body.h = 280 − 200 = 80, well inside
-    // the surface. The popup's top-left sits at `(anchor.x, 80)`.
+    // Flip upward: anchor.y − body.h = 280 − 200 = 80, so top-left is `(anchor.x, 80)`.
     assert_eq!(
         body_rect.min,
         Vec2::new(anchor.x, anchor.y - content.h),
@@ -117,8 +108,7 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
-/// A flip moves the root's arranged rect, which the cascade key holds, so
-/// the painted position stays synchronized with layout.
+/// A flip moves the root's arranged rect, which the cascade key holds, so the painted position stays in sync with layout.
 #[test]
 fn popup_flip_reaches_cascade_not_just_layout() {
     const SURF: UVec2 = UVec2::new(400, 300);
@@ -149,9 +139,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     let layout_min = body_rect(&h, body_id).min;
     assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
 
-    // The cascade-backed response rect is what the encoder paints. It
-    // must agree with the layout — a mismatch means the flip didn't
-    // propagate to paint (the reported clipping bug).
+    // The cascade-backed response rect is what the encoder paints; it must match layout, or the flip didn't reach paint.
     let painted_min = h
         .rect(body_id)
         .expect("popup body has a cascade rect after the opening frame")
@@ -168,8 +156,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
 fn popup_with_scroll_settles_in_one_frame() {
     use crate::Scroll;
     const SURF: UVec2 = UVec2::new(400, 400);
-    // Anchor near the right edge so any body-width change between
-    // passes would drift the placement.
+    // Anchor near the right edge so any body-width change between passes would drift.
     let anchor = Vec2::new(380.0, 20.0);
     let mut h = UiHarness::new(SURF);
     let scene = |ui: &mut Ui| {
@@ -210,7 +197,7 @@ fn popup_with_scroll_settles_in_one_frame() {
             .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.layer, Layer::Popup);
     assert_eq!(h.ui.scroll_content(viewport_id), Size::new(80.0, 300.0));
-    // Subsequent input frames must hit the same rect — no drift.
+    // Later input frames must hit the same rect.
     for _ in 0..3 {
         h.move_to(Vec2::new(50.0, 50.0));
         h.frame(scene);
@@ -249,7 +236,7 @@ fn popup_placement_is_stable_across_frames() {
     let body_id = WidgetId::from_hash("stable-popup");
     h.frame(scene);
     let first = body_rect(&h, body_id);
-    // Pretend an input arrived (cursor move over the popup).
+    // Simulate input arriving (cursor move over the popup).
     h.move_to(Vec2::new(50.0, 100.0));
     h.frame(scene);
     let second = body_rect(&h, body_id);

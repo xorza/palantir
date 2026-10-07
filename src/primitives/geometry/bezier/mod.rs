@@ -1,9 +1,4 @@
-//! Bezier-curve utilities. Curves are rendered natively on the GPU
-//! (see `gpu::curve_pipeline`); CPU flattening is no
-//! longer part of the pipeline. What remains: the quadratic→cubic
-//! promotion the curve-lowering path uses to feed a single shader code
-//! path, plus the curve-bbox helpers (`cubic_bbox` /
-//! `solve_quadratic`) that size the arena payload.
+//! Bezier helpers: quadratic→cubic promotion for curve lowering, and the curve-bbox helpers that size the arena payload.
 
 use crate::primitives::geometry::rect::Rect;
 use glam::Vec2;
@@ -15,11 +10,7 @@ pub(crate) struct CubicControls {
     pub(crate) c2: Vec2,
 }
 
-/// Promote a quadratic Bezier `(p0, c, p2)` to a cubic with the same
-/// curve trace. Standard reparameterization: lift the inner two control
-/// points to `p0 + 2/3·(c - p0)` and `p2 + 2/3·(c - p2)`. Exact, not an
-/// approximation — every t in `[0, 1]` evaluates to the same point on both
-/// forms.
+/// Promote a quadratic Bezier `(p0, c, p2)` to a cubic tracing the same curve exactly: inner points `p0 + 2/3·(c - p0)` and `p2 + 2/3·(c - p2)`.
 #[inline]
 pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
     CubicControls {
@@ -28,25 +19,13 @@ pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
     }
 }
 
-/// Tight axis-aligned bbox of the cubic Bezier curve trace (not the
-/// control polygon). The control-polygon hull is conservative but loose:
-/// when inner CPs point in opposite directions, it overstates the painted
-/// extent significantly. Solve `B'(t) = 0` per axis (a quadratic in t),
-/// keep roots in `(0, 1)`, and combine with the endpoints.
+/// Tight bbox of the cubic's curve trace, not its control polygon (which overstates the extent). Solve `B'(t) = 0` per axis, keep roots in `(0, 1)`, combine with the endpoints.
 ///
 /// `B'(t)/3 = (p1 - p0) + 2t(p0 - 2p1 + p2) + t²(-p0 + 3p1 - 3p2 + p3)`,
 /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
 /// `c = p1 - p0`.
 pub(crate) fn cubic_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
-    // Four fixed inputs, so the AABB NaN contract is cheapest as one
-    // up-front screen — no per-point flag to carry, and `min`/`max`
-    // below stay the plain laundering form. It has to be up front:
-    // `min`/`max` would drop a NaN endpoint, and an interior control
-    // point reaches neither that seed nor the extremum scan (the `t`
-    // filter rejects NaN roots, since NaN compares false). Folding the
-    // interior points into the bounds instead would catch them, but
-    // would also loosen the box to the control hull — the exact
-    // tightness this function exists for.
+    // One up-front NaN screen: `min`/`max` would drop a NaN endpoint and the `t` filter rejects NaN roots, so an interior control point would go unseen; folding it into the bounds would loosen the box to the control hull.
     if p0.is_nan() || p1.is_nan() || p2.is_nan() || p3.is_nan() {
         return Rect::NAN;
     }
@@ -77,28 +56,13 @@ pub(crate) fn cubic_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> Rect {
     Rect::from_min_max(lo, hi)
 }
 
-/// Real roots of `a·t² + b·t + c = 0`. Returns `[NaN, NaN]` when there
-/// are no real roots; the caller filters by `t ∈ (0, 1)` so NaNs drop
-/// out naturally (NaN comparisons are false).
+/// Real roots of `a·t² + b·t + c = 0`; `[NaN, NaN]` when none, which the caller's `t ∈ (0, 1)` filter drops.
 ///
-/// The cancellation-free form (Numerical Recipes §5.6): with
-/// `q = -½·(b + sign(b)·√disc)` the roots are `q/a` and `c/q`. The
-/// textbook `(-b ± √disc)/2a` subtracts two nearly equal numbers for the
-/// small root when `|a|` is small against `|b|` — which every quadratic
-/// promoted to a cubic is, its `a` being the rounding residue of the
-/// `2/3` blend — and the lost root then leaves the curve's extremum
-/// outside its bounding box.
+/// Cancellation-free form (Numerical Recipes §5.6): `q = -½·(b + sign(b)·√disc)`, roots `q/a` and `c/q`. The textbook form loses the small root when `|a|` is small against `|b|`, as it is for every promoted quadratic, leaving the extremum outside the bbox.
 fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
     /// Below this a coefficient carries no root worth recovering.
     ///
-    /// Not the crate's visual [`EPS`](crate::primitives::math::domain::EPS),
-    /// which answers a question about painted distance: these
-    /// coefficients are differences of control-point coordinates in a
-    /// derivative, so their scale is the curve's, not the screen's, and a
-    /// term this far below it is numerically absent. Dividing by it
-    /// manufactures a root out of rounding noise instead — which is what
-    /// the threshold exists to stop, and why it sits eight orders below
-    /// the visual one.
+    /// Not the visual `EPS`: these are differences of control-point coordinates, so dividing by a term this small manufactures a root from rounding noise.
     const NEGLIGIBLE_COEFF: f32 = 1.0e-12;
     if a.abs() < NEGLIGIBLE_COEFF {
         if b.abs() < NEGLIGIBLE_COEFF {
@@ -111,9 +75,7 @@ fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
         return [f32::NAN, f32::NAN];
     }
     let q = -0.5 * (b + disc.sqrt().copysign(b));
-    // `q` is zero only when `b` and `disc` both are, which with `a` above
-    // the floor means `c` is too: the double root at 0, which `q/a`
-    // gives and `c/q` reports as NaN.
+    // `q == 0` means the double root at 0: `q/a` gives it, `c/q` reports NaN.
     [q / a, c / q]
 }
 

@@ -7,11 +7,7 @@ use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::UVec2;
 
-/// A chip is a `swatch_size` square from the theme, or from the
-/// bundle `style` names. Opaque, it records one shape — the colour.
-/// Translucent, the checker goes behind it first: the light fill,
-/// then a dark cell on every other square of the `checker_cell` grid
-/// (24 / 6 = 4 cells a side, so two dark per row over four rows).
+/// A chip is a `swatch_size` square from the theme or the bundle `style` names. Opaque, it records one shape, the colour. Translucent, the checker goes behind first: the light fill, then a dark cell on every other square of the `checker_cell` grid (24 / 6 = 4 cells a side, two dark per row over four rows).
 #[test]
 fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
     let id = WidgetId::from_hash("chip");

@@ -6,13 +6,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
 
-/// The tick is themed, not baked in: `ToggleTheme::check_points` holds it
-/// in unit space and `check_polyline` scales it by `box_size`, so the
-/// drawn polyline tracks both.
-///
-/// Unit space is what removes the old `box_size / 16.0` reference — the
-/// shape no longer carries a size of its own that could drift from
-/// `box_size`.
+/// The tick is themed: `ToggleTheme::check_points` holds it in unit space and `check_polyline` scales it by `box_size`, so the drawn polyline tracks both.
 #[test]
 fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::scene::layer::Layer;
@@ -45,8 +39,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
         store.polyline_points[span.range()].to_vec()
     }
 
-    // Stock 16 px box: unit coords land back on the hand-tuned pixels
-    // they were derived from (3.5/16 * 16 = 3.5, and so on).
+    // Stock 16 px box: unit coords land on the hand-tuned pixels (3.5/16 * 16 = 3.5).
     let stock = ToggleTheme::checkbox(&Palette::DEFAULT);
     assert_eq!(stock.box_size, 16.0);
     assert_eq!(
@@ -58,8 +51,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
         ],
     );
 
-    // Double the box, double every coordinate — the tick keeps its
-    // proportions instead of sitting in a corner.
+    // Double the box, double every coordinate: the tick keeps its proportions.
     let big = ToggleTheme {
         box_size: 32.0,
         ..stock.clone()

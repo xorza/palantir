@@ -29,35 +29,28 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::combo_box::ComboBoxTheme;
 use std::rc::Rc;
 
-/// A dropdown selector: a button-styled trigger showing the current
-/// choice, which opens a [`crate::widgets::popup::Popup`] list of the
-/// options on click. Picking a row sets the `&mut usize` selection and
-/// closes; clicking outside or pressing Esc dismisses. Open/closed response
-/// lives in the response map keyed off the trigger id, so the caller only
-/// threads the selected index.
+/// A dropdown selector: a button-styled trigger showing the current choice,
+/// opening a [`crate::widgets::popup::Popup`] list on click. Picking a row sets
+/// the `&mut usize` selection and closes; clicking outside or Esc dismisses.
+/// Open state lives in the response map keyed off the trigger id.
 ///
-/// `*selected` is an *index* coerced for display: one past the end of
-/// `options` — a list that shrank under it — shows the last option, and an
-/// empty list shows an empty trigger. The bound index is not rewritten; it
-/// moves only when the user picks.
+/// `*selected` is an *index* coerced for display: past the end of `options`
+/// shows the last option, and an empty list shows an empty trigger. The bound
+/// index is rewritten only when the user picks.
 ///
-/// The trigger chrome reuses [`crate::Theme::button`]; the list reuses
-/// the context-menu panel + [`MenuItem`] rows
-/// ([`crate::Theme::context_menu`]).
+/// The trigger reuses [`crate::Theme::button`]; the list reuses the context-menu
+/// panel and [`MenuItem`] rows ([`crate::Theme::context_menu`]).
 ///
-/// `options` is the caller's own collection, handed over rather than
-/// projected: [`new`](Self::new) takes a slice whose elements *are* text
-/// (`&[&str]`, `&[String]`, `&[Cow<'_, str>]`) and
-/// [`labeled`](Self::labeled) one whose elements merely carry it. Either
-/// way nothing is copied to open a combo, and a closed one — nearly every
-/// frame — reads exactly one label.
+/// `options` is the caller's collection, uncopied: [`new`](Self::new) takes a
+/// slice whose elements *are* text (`&[&str]`, `&[String]`,
+/// `&[Cow<'_, str>]`), [`labeled`](Self::labeled) one whose elements carry it.
+/// A closed combo reads exactly one label.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ComboBox<'a, S, L> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
-    /// Reads one option's label. `new` fills this with `S::as_ref`.
     label: L,
     style: Option<&'a ComboBoxTheme>,
     button_style: Option<&'a ButtonTheme>,
@@ -72,19 +65,14 @@ impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str> {
 }
 
 impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
-    /// A dropdown over rows that *carry* a label rather than being one:
-    /// `label` reads each row's text.
-    ///
-    /// For an option type no `AsRef<str>` impl could serve — a record with
-    /// an id beside a display name, where picking between the two is the
-    /// call site's business, not the type's. `label` is any `Fn`, so a
-    /// projection may capture the table it reads through.
+    /// A dropdown over rows that *carry* a label: `label` reads each row's text.
+    /// For option types no `AsRef<str>` could serve, e.g. a record with an id beside
+    /// a display name. `label` is any `Fn`, so it may capture a table.
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            // A Tab stop: Space, Enter and Alt+Down open it, and the
-            // arrows step the pick while it is closed — `TEXT` and `CARET`
-            // are the classes those keys fall in.
+            // A Tab stop: Space, Enter and Alt+Down open it, and arrows step the pick
+            // while closed; `TEXT` and `CARET` are the key classes involved.
             widget: Widget::hstack()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -97,44 +85,35 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `combo_box`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// Restyles the widget's own geometry — the label/chevron gutter and
-    /// the chevron. [`Self::button_style`] restyles the trigger's chrome,
+    /// Per-instance override of [`crate::Theme`]'s `combo_box`, restyling the
+    /// widget's own geometry (label/chevron gutter and chevron). Takes an `Option`
+    /// as readily as a reference. [`Self::button_style`] restyles the trigger chrome
     /// and the dropdown reads [`crate::Theme::context_menu`].
     pub fn style(mut self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `button`, which is what
-    /// the trigger paints as.
-    ///
-    /// Separate from [`Self::style`] because a combo box is assembled out
-    /// of two other controls: the trigger is a button and the dropdown a
-    /// context menu, so restyling either moves the combo with it.
+    /// Per-instance override of [`crate::Theme`]'s `button`, which the trigger
+    /// paints as. Separate from [`Self::style`] because the combo is a button plus a
+    /// context menu.
     pub fn button_style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
         self.button_style = s.into();
         self
     }
 
-    /// Record the trigger, and the dropdown when it is open.
+    /// Record the trigger, and the dropdown when open.
     ///
-    /// The [`ValueResponse`]'s own `response` is the trigger's — read
-    /// `changed` for the pick, which commits at once. See [`ValueResponse`]
-    /// for why the two differ.
-    ///
-    /// Focused, it takes the keys of WAI-ARIA's select-only combobox: Space,
-    /// Enter and Alt+Down open the dropdown, and while it is closed the Up
-    /// and Down arrows step the pick, stopping at the ends.
+    /// The [`ValueResponse`]'s own `response` is the trigger's; read `changed` for
+    /// the pick, which commits at once. Focused, it takes the keys of WAI-ARIA's
+    /// select-only combobox: Space, Enter and Alt+Down open, and while closed the
+    /// Up and Down arrows step the pick, stopping at the ends.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         let mut stepped = false;
         if !response.disabled && ui.is_focus_within(id) {
-            // Every chord sampled: `key_pressed` also keeps it subscribed
-            // for the wake gate.
+            // Every chord is sampled: `key_pressed` also keeps it subscribed for the wake gate.
             let mut key = |shortcut| self.widget.key_pressed(ui, shortcut);
             let space = key(Shortcut::key(Key::Char(' ')));
             let enter = key(Shortcut::key(Key::Enter));
@@ -161,9 +140,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             }
         }
 
-        // Trigger chrome from the button theme (same flow as `Button`).
-        // One handle covers both reads: the geometry is read again inside
-        // the `record` closure below, which owns `ui` mutably.
+        // Trigger chrome from the button theme, as in `Button`. One handle covers both
+        // reads; the `record` closure below owns `ui` mutably.
         let theme = Rc::clone(ui.theme());
         let slot = self.button_style.unwrap_or(&theme.button);
         let look = slot
@@ -181,9 +159,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let text_style = look.text;
         let chosen = domain::index(*self.selected, self.options.len())
             .map_or("", |shown| (self.label)(&self.options[shown]));
-        // Intern the selected label into the frame buffer — an option
-        // borrows from the caller's collection rather than from `'static`,
-        // so it routes through `Ui::intern`.
+        // Intern the selected label: options borrow from the caller's collection, not
+        // `'static`.
         let label = ui.intern(chosen);
 
         self.widget.record(ui, Some(&look.background), |ui| {
@@ -214,14 +191,11 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             id,
             state: response,
         };
-        // The same menu theme `ContextMenu` fills its popup in from, so the
-        // two read as one control with two triggers. The one deliberate
-        // difference is the minimum: a dropdown is at least as wide as the
-        // trigger it drops from, which is an explicit set and so outranks
+        // The same menu theme as `ContextMenu`, except the minimum: a dropdown is at
+        // least as wide as its trigger, an explicit set that outranks
         // `ContextMenuTheme::min_width`. Esc closes through the popup.
         let resp = PopupTrigger::on(&trigger)
             .id(id.with("list"))
-            // Up and Down walk the rows of the open list.
             .arrow_focus(Axis::Y)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .default_background(ctx.panel.clone())

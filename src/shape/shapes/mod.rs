@@ -18,64 +18,38 @@ use std::hash::Hasher as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
 ///
-/// Each node owns a contiguous sub-range of `records` via
-/// `NodeRecord.shape_span`. The gaps between a node's children's spans
-/// hold that node's direct shapes in record order, which is what
-/// [`crate::scene::tree::iter::TreeItems`] interleaves.
-///
-/// Bulk variable-length payloads (mesh verts/indices, polyline
-/// points/colors, gradients) live on the `RecordStore` passed into
-/// [`Self::add`]; `ShapeRecord` variants reference them via spans /
-/// ids. `ShapeRecord::Text.text` holds a
-/// [`RecordedText`](crate::primitives::text::recorded_text::RecordedText)
-/// span and content hash after normalizing its source into the active
-/// text arena. Cleared per record pass, capacity retained.
+/// Each node owns a sub-range of `records` via `NodeRecord.shape_span`; the
+/// gaps between its children's spans hold its direct shapes in record order
+/// ([`crate::scene::tree::iter::TreeItems`] interleaves them). Variable-length
+/// payloads live on the `RecordStore` passed to [`Self::add`]; `ShapeRecord`
+/// variants reference them by span or id. Cleared per record pass, capacity
+/// retained.
 #[derive(Debug, Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
-    /// Per-shape authoring hash, parallel to `records`. Computed once
-    /// in [`Self::add`] at lowering time (the canonical value);
-    /// `Tree::compute_rollups` only folds the stored hash into the
-    /// owner's node hash, never recomputes it. Keys the per-shape
-    /// damage diff (`(WidgetId, ordinal)` identity) in
-    /// `DamageEngine::compute`, letting a single moved shape on a
-    /// multi-shape owner push only its own rect pair instead of the
-    /// owner's whole paint-rect union. Cleared per frame, capacity
-    /// retained.
+    /// Per-shape authoring hash, parallel to `records`, computed once in
+    /// [`Self::add`]; `Tree::compute_rollups` only folds it. Keys the per-shape
+    /// damage diff in `DamageEngine::compute`. Cleared per frame.
     pub(crate) hashes: Vec<ContentHash>,
 }
 
 impl Shapes {
     /// Lower a user-facing [`Shape`](crate::widget::Shape) and append it to
-    /// `records`: passthrough for rect/text, cubic promotion for beziers,
-    /// span-stamping for the variable-length variants (polyline / mesh)
-    /// whose payload bytes land on the [`RecordStore`].
+    /// `records`; variable-length payloads land on the [`RecordStore`].
     ///
-    /// Drops any shape whose authoring inputs would emit no visible
-    /// pixels, or that carries a NaN, **before lowering runs** — the
-    /// shape buffer's half of tier 2 (see
-    /// [`paint_sink`](crate::renderer::frontend::paint_sink) for the
-    /// policy). Saves the per-shape lowering cost — payload staging,
-    /// mesh hashing, text shaping downstream — which the emit-time gate
-    /// cannot, having already paid it.
-    /// Returns the index of the pushed `ShapeRecord` in `self.records`,
-    /// or `None` if the shape was dropped — the index is what
-    /// `Forest::add_shape_animated` keys its paint-anim row by.
+    /// Drops any shape whose authoring inputs would emit no pixels, or that
+    /// carries a NaN, **before lowering** (tier 2; see
+    /// [`paint_sink`](crate::renderer::frontend::paint_sink)), saving the lowering
+    /// cost the emit-time gate can't.
+    /// Returns the index of the pushed `ShapeRecord`, or `None` if dropped; the
+    /// index keys `Forest::add_shape_animated`'s paint-anim row.
     ///
-    /// **The one NaN gate on the shape path**, and it runs on the
-    /// *authored* shape rather than the lowered record. Lowering is what
-    /// stages mesh vertices, interns a gradient, and copies text into the
-    /// arena, so a record judged afterwards has already left those bytes
-    /// behind for the frame — and two of the authoring inputs
-    /// (a triangle's `radius`, a gradient's geometry) do not survive
-    /// lowering to be judged at all. [`Lower`]'s `has_nan` is `O(1)` for
-    /// every kind, so the screen stays in release, where it makes NaN
-    /// mean what the rest of the pipeline already means by "no-op": drop
-    /// the draw.
+    /// **The one NaN gate on the shape path**, on the *authored* shape: lowering
+    /// stages payloads, and some inputs (a triangle's `radius`, gradient geometry)
+    /// don't survive it. [`Lower`]'s `has_nan` is `O(1)`, so it stays in release,
+    /// where NaN means no-op.
     ///
-    /// Chrome does not come through here; `lower::background` is its
-    /// gate, and it sanitizes rather than drops. Those two are the whole
-    /// list.
+    /// Chrome is gated by `lower::background`, which sanitizes rather than drops.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
@@ -92,10 +66,8 @@ impl Shapes {
         Some(self.push(record))
     }
 
-    /// Fold `anim` into shape `idx`'s stored hash, so a shape that turns
-    /// animated, stops being animated, or changes what its animation
-    /// does reads as changed to every gate that keys on shape hashes —
-    /// the node and subtree rollups, the cascade's repair, damage.
+    /// Fold `anim` into shape `idx`'s stored hash, so starting, stopping or
+    /// changing an animation reads as a change to every hash-keyed gate.
     pub(crate) fn fold_paint_anim(&mut self, idx: u32, anim: &PaintAnimation) {
         let slot = &mut self.hashes[idx as usize];
         let mut h = Hasher::new();
@@ -113,17 +85,12 @@ impl Shapes {
         idx
     }
 
-    /// Append a [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`]
-    /// directly — assembled by `Ui::gpu_view`, not lowered from a
-    /// user-facing [`Shape`](crate::widget::Shape), so this bypasses the
-    /// [`Self::add`] lowering. The view's `id` + `paint` live in
-    /// `Ui::gpu_views` keyed by the owner's `WidgetId`; the record carries
-    /// only `epoch` (which the per-frame damage hash reads).
+    /// Append an [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`] directly,
+    /// bypassing [`Self::add`] lowering. The view's `id` + `paint` live in
+    /// `Ui::gpu_views` by the owner's `WidgetId`; the record carries only `epoch`.
     ///
-    /// The placement fields are the neutral ones that reproduce a
-    /// full-owner-rect composite: no sub-rect, untinted, and a `Fill`
-    /// fit which — against the all-zero intrinsic size the encoder hands
-    /// a view — resolves to the base rect at full UV.
+    /// Placement is neutral: no sub-rect, untinted, `Fill` fit, which resolves to
+    /// the base rect at full UV against the encoder's zero intrinsic size.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         let record = ShapeRecord::Image {
             local_rect: None,
@@ -132,19 +99,16 @@ impl Shapes {
             fit: ImageFit::Fill,
             min_filter: ImageFilter::Linear,
             mag_filter: ImageFilter::Linear,
-            // A view's target is allocated to the rect it composites into, so
-            // it is never minified and has no footprint to cover.
+            // A view's target is allocated to the rect it composites into, so it is
+            // never minified and has no footprint to cover.
             downsample: ImageDownsample::Single,
         };
         self.push(record);
     }
 }
 
-/// Report a shape [`Shapes::add`] dropped: loud in a debug build, silent
-/// in a release one.
-///
-/// Separate from the branch so the message — and the `Debug` render
-/// behind it — sits `#[cold]`, off the path every recorded shape takes.
+/// Report a shape [`Shapes::add`] dropped: loud in debug, silent in release.
+/// Separate so the message sits `#[cold]`, off the per-shape path.
 #[cold]
 #[inline(never)]
 fn nan_rejected(shape: &impl fmt::Debug) {

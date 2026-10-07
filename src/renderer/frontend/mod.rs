@@ -1,20 +1,5 @@
-//! Frontend (CPU) rendering pipeline.
-//!
-//! 1. [`Encoder`] — walks `&Tree` and paints logical-px operations into
-//!    a [`PaintSink`](paint_sink::PaintSink). Owns the encode scratch.
-//! 2. [`Composer`] — the production sink: scales, snaps, and groups each
-//!    operation into a `RenderBuffer` (physical-px quads + scissor
-//!    groups). Owns the compose scratch; the buffer it fills is lent to it
-//!    per pass by (3). No GPU handles.
-//! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. A host shares one frontend serially
-//!    across its windows: `WindowDriver` calls [`Frontend::build`] once per
-//!    painted frame and hands the composed buffer to the backend. The frontend
-//!    and backend hold capability-specific clones of the shared gradient atlas
-//!    and image registry.
-//!
-//! Output crosses into the backend as `&RenderBuffer` (defined one
-//! level up so it sits at the frontend↔backend contract line).
+//! CPU paint: the [`Encoder`] walks the tree into a [`Composer`] session that fills a
+//! `RenderBuffer` (physical-px quads and scissor groups). No GPU handles.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -38,7 +23,6 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::forest::Forest;
 use std::num::NonZeroU32;
 
-/// Frozen inputs consumed by the CPU renderer for one frame.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
@@ -50,14 +34,7 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) time: Duration,
 }
 
-/// CPU paint stage: tree → encoded commands → composed buffer. Owns
-/// every persistent allocation (the [`Encoder`], output `RenderBuffer`,
-/// and the [`Composer`] with its scratch).
-/// No GPU handles; its gradient-atlas handle shares state with the backend.
-///
-/// Owned once by the host and reused serially across its window drivers. The
-/// active driver builds into the staged [`Self::buffer`] immediately before GPU
-/// submission.
+/// CPU paint stage: tree to composed buffer, reused serially across window drivers.
 #[derive(Debug)]
 pub(crate) struct Frontend {
     encoder: Encoder,
@@ -66,9 +43,7 @@ pub(crate) struct Frontend {
 }
 
 impl Frontend {
-    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
-    /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
-    /// the [`Composer`] which uniformly downsamples oversized composited views.
+    /// `max_texture_dim` caps `GpuView` target sizes; the [`Composer`] downsamples larger views.
     pub(crate) fn new(max_texture_dim: NonZeroU32, gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
             encoder: Encoder::new(gradient_atlas),
@@ -77,11 +52,6 @@ impl Frontend {
         }
     }
 
-    /// Encode straight into the composer, filling the staged output
-    /// buffer. One pass: the encoder's paint calls land in a live
-    /// [`ComposeSession`](composer::session::ComposeSession) rather than an
-    /// intermediate command stream, so
-    /// nothing is serialized only to be read back a line later.
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
         tracy::zone!();
         let mut sink = self.composer.begin(
@@ -91,8 +61,6 @@ impl Frontend {
             &mut self.buffer,
         );
         self.encoder.encode(&scene, plan, &mut sink);
-        // Dropping the session closes the trailing batch and group;
-        // explicit because it also releases the `buffer` borrow.
         drop(sink);
         // Written after the session drops, since the composer's clear fold
         // discards scene columns mid-compose and this is not one.
@@ -108,13 +76,10 @@ pub(crate) mod internals {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use std::num::NonZeroU32;
 
-    /// Baseline `max_texture_dimension_2d` for deviceless test/bench
-    /// frontends — they have no `wgpu::Device` to query, and 8192 is the
-    /// downlevel-default cap real adapters meet or exceed.
+    /// No `wgpu::Device` to query; 8192 is the downlevel-default cap.
     pub(crate) const TEST_MAX_TEXTURE_DIM: NonZeroU32 = NonZeroU32::new(8192).unwrap();
 
     impl Frontend {
-        /// Deviceless frontend for tests and benchmarks.
         pub(crate) fn for_test() -> Self {
             Self::new(TEST_MAX_TEXTURE_DIM, SharedGradientAtlas::default())
         }

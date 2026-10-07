@@ -1,11 +1,4 @@
-//! Motion over time, from both ends of the API: `Ui::animate` driving
-//! value interpolation (the easing bars), and the drag lifecycle on a
-//! `Response` driving position directly (the cards).
-//!
-//! The bars double as the regression fixture for `Ui::animate`
-//! end-to-end — target, tick, record, repaint. The cards show that
-//! `drag.delta()` plus a latched anchor is the whole of drag handling:
-//! no caller-side pointer tracking, no per-frame delta accumulation.
+//! Motion over time: `Ui::animate` value interpolation (easing bars) and the drag lifecycle driving position (cards).
 
 use crate::support;
 use crate::support::{api, note, section};
@@ -109,10 +102,7 @@ fn bar(
         });
 }
 
-/// Three draggable cards on a Canvas. Each card stores its `Vec2` in
-/// per-id state; `drag.delta()` is applied to the position latched when
-/// the drag started, so no anchor bookkeeping leaks into the caller. The
-/// actively-dragged card records last so it paints over any overlap.
+/// Three draggable cards on a Canvas; `drag.delta()` applies to the position latched at drag start, and the dragged card records last to paint on top.
 fn drag(ui: &mut Ui) {
     let dragging = CARDS.iter().position(|(k, _, _)| {
         ui.state::<CardState>(WidgetId::from_hash(*k))
@@ -146,13 +136,9 @@ fn drag(ui: &mut Ui) {
 
 #[derive(Default, Debug)]
 struct CardState {
-    /// `None` until the card's first frame seeds it with its initial
-    /// position.
     pos: Option<Vec2>,
-    /// Position at the moment `drag_started` fired; reused every
-    /// subsequent frame as `pos = anchor + drag_delta`.
+    /// Position when `drag_started` fired; `pos = anchor + drag_delta`.
     anchor: Vec2,
-    /// `true` between latch and release. Drives the "record last" pick.
     dragging: bool,
 }
 

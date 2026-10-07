@@ -1,12 +1,6 @@
 //! Presenting onto a target that cannot be copied into.
 //!
-//! A GLES swapchain image *is* the default framebuffer, so EGL offers
-//! `RENDER_ATTACHMENT` alone and the renderer cannot copy its retained
-//! backbuffer onto it. It draws the backbuffer instead. Measured on a
-//! Raspberry Pi: `WGPU_BACKEND=gl` gives a V3D surface with exactly that one
-//! usage, and every frame the showcase paints goes through the draw.
-//!
-//! The draw stands in for a copy, so it has to *be* one.
+//! A GLES swapchain image is the default framebuffer, so EGL offers `RENDER_ATTACHMENT` alone and the renderer draws the retained backbuffer instead of copying it; the draw has to stand in for a copy exactly.
 
 use glam::UVec2;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
@@ -15,13 +9,7 @@ use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(220, 110);
 
-/// Text and a disclosure arrow, because antialiased edges are where a blit
-/// that is nearly right goes wrong. Sampling the backbuffer through the
-/// group-0 sampler — which is *linear*, shared with the image draws that snap
-/// their own UVs — put a fraction of each neighbour into every pixel beside an
-/// edge, lifting dark background from 16 to 26. Only a pixel comparison showed
-/// it, which is why this fixture exists rather than a unit test on the path
-/// selection.
+/// Text and a disclosure arrow: antialiased edges expose a nearly-right blit (sampling through the linear group-0 sampler once lifted dark background from 16 to 26).
 fn scene(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("well")

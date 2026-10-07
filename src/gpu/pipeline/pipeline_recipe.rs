@@ -1,26 +1,15 @@
-//! The render-pipeline descriptor recipe every pipeline module builds
-//! through, so they cannot drift on descriptor flags.
+//! The render-pipeline descriptor recipe every pipeline module builds through, so descriptor flags can't drift.
 
 use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
-/// Render-pipeline recipe. Threads the call-site fields each pipeline
-/// genuinely varies (label, shader, layout, entry points, override
-/// constants, vertex buffers, topology, color format, color writes,
-/// blend, optional depth-stencil) and lets [`Self::build`] fill in the
-/// rest with the project-wide defaults (single color target, no MSAA, no
-/// multiview).
-///
-/// `'a` is the lifetime of the references passed in; the returned
-/// [`wgpu::RenderPipeline`] retains its own internal references and
-/// outlives the recipe.
+/// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend, optional depth-stencil); [`Self::build`] fills the project-wide defaults (single color target, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
 #[derive(Debug)]
 pub(crate) struct PipelineRecipe<'a> {
     pub(super) label: &'static str,
     pub(super) shader: &'a wgpu::ShaderModule,
     pub(super) layout: &'a wgpu::PipelineLayout,
     pub(super) vertex_entry: &'static str,
-    /// Values for the shader's `override` constants, by name, in both
-    /// stages. Empty for the module's defaults.
+    /// Values for the shader's `override` constants, by name, in both stages; empty for defaults.
     pub(super) constants: &'a [(&'a str, f64)],
     pub(super) vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub(super) topology: wgpu::PrimitiveTopology,
@@ -32,10 +21,7 @@ pub(crate) struct PipelineRecipe<'a> {
 }
 
 impl PipelineRecipe<'_> {
-    /// Build the render pipeline this recipe describes. Sole source of
-    /// truth for the descriptor fields each pipeline doesn't vary —
-    /// sample count, multiview mask. Every quad / mesh / image / curve /
-    /// text pipeline goes through here.
+    /// Build the pipeline. Sole source of the descriptor fields pipelines don't vary (sample count, multiview mask).
     pub(super) fn build(self, device: &wgpu::Device) -> wgpu::RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label),
@@ -73,9 +59,7 @@ impl PipelineRecipe<'_> {
         })
     }
 
-    /// Build the pipeline layout a recipe's [`Self::layout`] field takes.
-    /// Every palantir pipeline declares the same immediate-region size,
-    /// [`IMMEDIATES_BYTES`], which the prelude's `Immediates` takes.
+    /// Build the layout a recipe's [`Self::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.
     pub(crate) fn pipeline_layout(
         device: &wgpu::Device,
         label: &'static str,

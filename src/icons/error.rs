@@ -4,9 +4,7 @@ use std::borrow::Cow;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 
-/// Why [`IconTable::from_svgs`](crate::IconTable::from_svgs) refused its
-/// sources. Icon files are data, so each flaw is an error rather than a
-/// panic or a silent drop.
+/// Why [`IconTable::from_svgs`](crate::IconTable::from_svgs) refused its sources; icon files are data, so each flaw is an error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IconTableError {
     /// A source does not parse as an SVG.
@@ -19,9 +17,7 @@ pub enum IconTableError {
         /// How many sources there were.
         count: usize,
     },
-    /// Two sources share a name, which
-    /// [`IconSet::by_name`](crate::IconSet::by_name) could then resolve to
-    /// either.
+    /// Two sources share a name, which [`IconSet::by_name`](crate::IconSet::by_name) could resolve to either.
     DuplicateName {
         /// The shared name.
         name: Cow<'static, str>,

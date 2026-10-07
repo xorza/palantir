@@ -1,9 +1,5 @@
-//! Device-side gradient LUT atlas and its shared CPU source.
-//!
-//! Owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend) and lent to the quad and
-//! curve pipelines (both render gradient brushes). Keeping the resource
-//! here — rather than on whichever pipeline happens to build first —
-//! means neither pipeline owns the other's input: each binds `&bg`.
+//! Device-side gradient LUT atlas, owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend)
+//! and lent to the quad and curve pipelines.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -13,51 +9,30 @@ use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use glam::UVec2;
 
-/// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
-/// Derived from the CPU-side `RgbaF16` row store
-/// (`gradient_atlas::LutRowTexels`) so the GPU upload row-pitch can't
-/// silently drift from the texel type the bake writes.
+/// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
-// A multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` (256), which
-// `write_texture` does *not* require — that rule belongs to
-// `copy_buffer_to_texture`. What it buys is the fast path inside wgpu:
-// a queue write whose pitch is already the aligned one is passed through
-// in a single copy, and one whose pitch is anything else is re-packed
-// row by row into an aligned staging buffer first. Guarded on the pitch
-// rather than on `LUT_ROW_TEXELS`, so changing the texel type has to
-// come back through here.
+// A multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` (256), which `write_texture`
+// does not require but wgpu passes through in one copy; any other pitch is
+// re-packed row by row.
 const _: () = assert!(
     ROW_PITCH.is_multiple_of(256),
     "gradient atlas row pitch must stay 256-aligned to keep write_texture on its single-copy path"
 );
 
-/// Shared CPU gradient source plus the texture and bind group consumed by
-/// the quad and curve pipelines. Format-independent: survives a
-/// swapchain format change untouched (only the pipelines carry the target).
+/// Shared CPU gradient source plus the texture and bind group both pipelines consume. Format-independent.
 #[derive(Debug)]
 pub(crate) struct GpuGradientAtlas {
     cpu: SharedGradientAtlas,
-    /// LUT atlas texture. 256 cols × N rows of `Rgba16Float`
-    /// (linear, no sampler decode — the LUT bake stores linear-RGB
-    /// directly via `From<RgbaF32> for RgbaF16`, so the GPU sees
-    /// ready-to-blend linear values; see `AGENTS.md` "Colour pipeline").
-    /// f16 over 8-bit linear: dark gradient stops linearise to tiny
-    /// values, and an 8-bit linear row crushes them onto a handful of
-    /// levels (visible banding) — see `gradient_atlas` module docs.
-    /// Uploaded each dirty frame by [`Self::upload`], which also
-    /// replaces the texture when the CPU atlas grew past its height.
+    /// LUT atlas texture: 256 cols × N rows of `Rgba16Float` linear values (8-bit
+    /// would band dark stops). [`Self::upload`] fills it and replaces it when the CPU atlas outgrew it.
     texture: wgpu::Texture,
-    /// The binding every sampled texture shares, retained to rebuild
-    /// [`Self::bg`] after a texture replacement. Height-independent, so a
-    /// grown atlas leaves every pipeline built against its layout valid.
+    /// The shared sampled-texture binding, kept to rebuild [`Self::bg`]; height-independent.
     binding: TextureBinding,
-    /// Group-0 bind group, bound by both pipelines at draw time.
+    /// Group-0 bind group for both pipelines.
     pub(crate) bg: wgpu::BindGroup,
 }
 
-/// Allocate the LUT atlas texture at `rows` rows. The shaders read the
-/// height back with `textureDimensions` rather than a baked-in
-/// constant, so this is free to change across the device's lifetime.
+/// Allocates the LUT atlas texture at `rows` rows; shaders read the height via `textureDimensions`.
 fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.gradient_atlas"),
@@ -83,8 +58,6 @@ impl GpuGradientAtlas {
     ) -> Self {
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // The shared sampler is linear inside a row, for smooth gradient
-        // interpolation.
         let bg = binding.bind_group(device, &view, "palantir.gradient.bg");
 
         Self {
@@ -95,26 +68,12 @@ impl GpuGradientAtlas {
         }
     }
 
-    /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
-    /// Idle frames (no new gradients) hit the early `None` return in
-    /// `flush_with` and do nothing. Dirty frames upload the atlas's dirty
-    /// row span in a single `write_texture`, sized to the range and
-    /// offset via `origin.y` — one call keeps the fixed API cost of the
-    /// old whole-atlas upload while an animated gradient re-baking one
-    /// row moves 2 KB per frame instead of 512 KB (see the dirty-range
-    /// note in `CpuGradientAtlas`). Called from `WgpuBackend::submit`
-    /// before the render pass starts.
-    ///
-    /// A frame that registers more distinct gradients than the atlas
-    /// holds grows it, which reports a new `total_rows` here: the
-    /// texture and its bind group are replaced at the new height before
-    /// the upload. Growth dirties every row, so the replacement texture
-    /// is refilled in the same `write_texture`, and the pipelines stay
-    /// valid because they bind through the height-independent shared
-    /// layout and read the height with `textureDimensions`.
+    /// Syncs the LUT atlas to the GPU if anything changed. A dirty frame
+    /// uploads the dirty row span in one `write_texture`. A grown atlas
+    /// replaces the texture and bind group first, and growth dirties every
+    /// row so the same upload refills it. Called from `WgpuBackend::submit`.
     pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
-        // Destructured so the resize below borrows the GPU-side fields
-        // while `flush_with` holds the CPU atlas.
+        // Destructured so the resize borrows the GPU fields while `flush_with` holds the CPU atlas.
         let Self {
             cpu,
             texture,
@@ -127,8 +86,6 @@ impl GpuGradientAtlas {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bg = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
             }
-            // Whole rows by the `FlushedRows` contract, so this divides
-            // exactly.
             let height = rows.bytes.len() as u32 / ROW_PITCH;
             TextureRegion {
                 texture,

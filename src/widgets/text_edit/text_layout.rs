@@ -19,41 +19,21 @@ pub(super) struct LayoutInput {
     pub(super) previous_block_offset: Vec2,
 }
 
-/// What is known **before** the shape probe runs: the box the text sits
-/// in and the parameters it will be shaped with.
-///
-/// The input pass reads this — it hit-tests a click against the layout
-/// the user was looking at, which is last frame's. Everything the probe
-/// itself produces lands in [`TextGeometry`](crate::widgets::text_edit::text_geometry::TextGeometry) instead, so neither type
-/// ever holds a field that isn't answered yet.
+/// What is known before the shape probe runs: the text box and its shaping parameters. The input pass hit-tests against this (last frame's layout); probe output lands in [`TextGeometry`](crate::widgets::text_edit::text_geometry::TextGeometry).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextLayout {
     pub(super) ctx: ShapeCtx,
     pub(super) text_align: Align,
-    /// The caret's drawn width, clamped — the one value the field
-    /// reserves room by. Read through [`Self::block_size`] and
-    /// [`Self::caret_reserve`], which are the two questions it answers.
+    /// The caret's drawn width, clamped; the room the field reserves by.
     pub(super) caret_room: f32,
-    /// The box the text is measured and scrolled inside — the field's
-    /// rect less its padding. `None` before the field has been arranged,
-    /// which is the same question `response_rect` answered and the reason
-    /// nothing downstream re-derives it.
+    /// The box the text is measured and scrolled inside: the field's rect less padding; `None` before it is arranged.
     pub(super) inner: Option<Rect>,
-    /// Where the shaped block sat when it was last painted. The click
-    /// that arrives this frame was aimed at *that* layout, so the
-    /// hit-test in `input` offsets by this rather than by the offset
-    /// this frame's probe is about to produce.
+    /// Where the shaped block sat when last painted; a click this frame was aimed at that layout, so hit-testing offsets by this.
     pub(super) prev_block_offset: Vec2,
 }
 
 impl TextLayout {
-    /// The alignment the block is placed by, on the axes the field
-    /// aligns: a multi-line field aligns its block vertically and lets the
-    /// shaper align each line inside it.
-    ///
-    /// One definition because both ends of the placement read it — the
-    /// block node hands it to the layout engine, and the record pass
-    /// undoes it to hit-test a click against last frame's placement.
+    /// The alignment the block is placed by; a multi-line field aligns vertically and lets the shaper align each line. Read by both the layout engine and the record pass's hit-test.
     pub(super) const fn block_align(&self) -> Align {
         if self.ctx.multiline {
             Align::v(self.text_align.valign())
@@ -62,18 +42,7 @@ impl TextLayout {
         }
     }
 
-    /// The box the block occupies for what is on show.
-    ///
-    /// Floored at one line so an empty field still has a caret's worth of
-    /// height to stand up in, and widened on a single line by the caret's
-    /// room so a caret at the end of the text falls *inside* the block it
-    /// belongs to instead of just past it. A wrapped block reserves
-    /// nothing — its caret has a next line to fall to.
-    ///
-    /// The shaper's line height rather than the theme's leading: the two
-    /// differ in the last thousandth of a pixel — the shaped one is
-    /// quantized to 1/64 px — and the field's box has to agree with the
-    /// run inside it.
+    /// The box the block occupies for what is on show: floored at one line, widened on a single line by the caret's room so an end-of-text caret falls inside the block (a wrapped block reserves none). Uses the shaper's line height, not the theme's leading, since it is quantized to 1/64 px.
     pub(super) fn block_size(&self, display: Size) -> Size {
         let room = if self.ctx.multiline {
             0.0
@@ -83,10 +52,7 @@ impl TextLayout {
         Size::new(display.w + room, display.h.max(self.ctx.font.line_height))
     }
 
-    /// Room a single line keeps for the caret past its glyphs, at both
-    /// ends: what the view can pan to, and what a Hug field reserves so it
-    /// never has to. A wrapped block reserves none, for the same reason
-    /// [`Self::block_size`] does not.
+    /// Room a single line keeps for the caret past its glyphs at both ends; none for a wrapped block.
     pub(super) fn caret_reserve(&self) -> f32 {
         if self.ctx.multiline {
             0.0
@@ -95,23 +61,15 @@ impl TextLayout {
         }
     }
 
-    /// [`Self::inner`]'s extent, collapsing the unarranged frame to
-    /// nothing — what the sizing math wants, where the scroll view wants
-    /// the absence itself.
+    /// [`Self::inner`]'s extent, collapsing the unarranged frame to nothing (sizing math; the scroll view wants the absence).
     pub(super) fn inner_size(&self) -> Size {
         self.inner.map_or(Size::ZERO, |rect| rect.size)
     }
 
-    /// Resolve the box the text sits in and the parameters it will be
-    /// shaped with, from the field's rect, padding, and font.
+    /// Resolve the text box and shaping parameters from the field's rect, padding, and font.
     pub(super) fn resolve(input: LayoutInput) -> Self {
         let caret_room = input.caret_width.max(0.0);
-        // One deflation, so the width the text wraps at and the box it
-        // is measured against cannot disagree. Spelled apart, the wrap
-        // target keeps a raw subtraction where the measured box clamps,
-        // and an over-constrained field commits a negative wrap width —
-        // the case `F32Px::canonical_px`'s own clamp catches one layer
-        // further down.
+        // One deflation, so the wrap width and the measured box cannot disagree (a raw subtraction would commit a negative wrap width on an over-constrained field).
         let inner = input
             .response_rect
             .map(|rect| rect.deflated_by(input.padding));

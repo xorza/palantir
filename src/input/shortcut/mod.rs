@@ -1,21 +1,12 @@
-//! Keyboard shortcuts. One value drives both display ("Ctrl+C") and
-//! matching against incoming [`KeyPress`] events, so call sites stop
-//! hardcoding the modifier vocabulary.
+//! Keyboard shortcuts: one value drives both display ("Ctrl+C") and matching
+//! against [`KeyPress`] events.
 //!
-//! ## Conventions
-//!
-//! - The primary command modifier (`ShortcutMods::ctrl`) maps to the
-//!   platform's convention: **Cmd on macOS, Ctrl on Windows/Linux** — one
-//!   binding fires on ⌘S on a Mac and Ctrl+S elsewhere. Raw Ctrl on
-//!   macOS is the rare case; match a `KeyPress` directly for it.
-//! - [`ShortcutMods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
-//!   (the event-state vocabulary, which keeps `ctrl` and `cmd` as
-//!   separate physical keys).
-//! - [`Shortcut::matches`] compares the modifier set *exactly*: Ctrl+A
-//!   does NOT match Ctrl+Shift+A. `Char` keys compare ignore-case
-//!   because [`Key::Char`] arrives post-shift-layout.
-//! - `Display` formats a platform-native label (`"Ctrl+C"` / `"⌘C"`).
-//!   Menu rows stream it into [`crate::Ui`]'s retained formatting storage.
+//! - The primary command modifier (`ShortcutMods::ctrl`) is **Cmd on macOS, Ctrl
+//!   elsewhere**, so one binding fires on ⌘S and Ctrl+S; for raw Ctrl on macOS
+//!   match a `KeyPress` directly.
+//! - [`Shortcut::matches`] compares modifiers *exactly* (Ctrl+A does not match
+//!   Ctrl+Shift+A); `Char` keys compare ignore-case since [`Key::Char`] arrives
+//!   post-shift-layout.
 //!
 //! [`KeyPress`]: crate::KeyPress
 
@@ -25,45 +16,33 @@ use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use std::fmt;
 
-/// Modifier set for declaring shortcuts. `ctrl` is the primary command
-/// key — Cmd on macOS, Ctrl on Windows/Linux (see its `From<Modifiers>`);
-/// `shift` and `alt` are literal.
-///
-/// Distinct from event-state [`Modifiers`] on purpose: that type also
-/// carries `mac_ctrl` (the raw macOS Control), which no chord declares.
-/// A held macOS Control is ignored by a chord that declares a command
-/// modifier and rejects every other one, as [`Modifiers::has_command`]
-/// classes it — so it cannot break ⌘Z, and a bare `Z` does not fire on
-/// Control+Z.
+/// Modifier set for declaring shortcuts: `ctrl` is the primary command key (Cmd on
+/// macOS, Ctrl elsewhere), `shift` and `alt` are literal. Distinct from event-state
+/// [`Modifiers`], which also carries `mac_ctrl`: a held macOS Control is ignored by
+/// a chord declaring a command modifier and rejects every other, as
+/// [`Modifiers::has_command`] classes it.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ShortcutMods {
-    /// The primary command key — Cmd on macOS, Ctrl on Windows and Linux.
+    /// The primary command key: Cmd on macOS, Ctrl on Windows and Linux.
     pub ctrl: bool,
     /// Shift, literally.
     pub shift: bool,
     /// Alt / Option, literally.
     pub alt: bool,
-    /// The Windows / Super key — never set by a chord meant for macOS,
-    /// where Command is [`Self::ctrl`].
+    /// The Windows / Super key; never set by a chord meant for macOS.
     pub meta: bool,
 }
 
-/// The named sets are the ones [`Modifiers`] names too; any other
-/// combination is a struct literal, which is all `ShortcutMods` is.
 impl ShortcutMods {
-    /// True if this chord declares any command modifier — the same
-    /// question [`Modifiers::has_command`](crate::Modifiers::has_command)
-    /// asks of what is *held*, on the side that declares it. Shift alone
-    /// does not count: `Shift+Z` is a capital Z, not a chord.
-    ///
-    /// No `mac_ctrl` here because a chord is declared once and matched on
-    /// every platform: `ctrl` *is* Cmd on macOS, and raw Control is a
-    /// thing a keyboard reports rather than a thing an app asks for.
+    /// True if this chord declares any command modifier, as
+    /// [`Modifiers::has_command`](crate::Modifiers::has_command) asks of what is
+    /// *held*. Shift alone does not count (`Shift+Z` is a capital Z). No
+    /// `mac_ctrl`: a chord is declared once for every platform.
     pub const fn has_command(self) -> bool {
         self.ctrl || self.alt || self.meta
     }
 
-    /// No modifiers — a bare key.
+    /// No modifiers: a bare key.
     pub const NONE: Self = Self {
         ctrl: false,
         shift: false,
@@ -100,17 +79,11 @@ impl ShortcutMods {
     };
 }
 
-/// Event-state [`Modifiers`] in shortcut vocabulary. A 1:1 copy —
-/// `Modifiers::ctrl` is already the platform-normalized primary command bit
-/// (Cmd on macOS, Ctrl elsewhere), folded in at the platform input
-/// boundary, so there's nothing to disambiguate here.
 impl From<Modifiers> for ShortcutMods {
     fn from(m: Modifiers) -> Self {
-        // Destructured exhaustively so a modifier added to `Modifiers`
-        // is a compile error here rather than one that silently never
-        // reaches shortcut matching. `mac_ctrl` is dropped on purpose —
-        // a `Shortcut` cannot express it, and [`Shortcut::matches`] reads
-        // it off the press instead.
+        // Exhaustive, so a new `Modifiers` field is a compile error here;
+        // `mac_ctrl` is dropped on purpose, [`Shortcut::matches`] reads it off the
+        // press.
         let Modifiers {
             ctrl,
             shift,
@@ -127,58 +100,47 @@ impl From<Modifiers> for ShortcutMods {
     }
 }
 
-/// A keyboard shortcut: modifier set + key. Construct via the
-/// `const fn` helpers ([`Shortcut::ctrl`], [`Shortcut::ctrl_shift`],
-/// [`Shortcut::new`]) so bindings can live in `const` items
-/// alongside menu definitions.
+/// A keyboard shortcut: modifier set + key; the `const fn` constructors let
+/// bindings live in `const` items.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Shortcut {
-    /// Modifier set. Matched **exactly** — `Ctrl+A` never fires on
-    /// `Ctrl+Shift+A`.
+    /// Modifier set, matched **exactly**.
     pub mods: ShortcutMods,
-    /// The key. `Char` compares ignore-case, since it arrives post-shift.
+    /// The key. `Char` compares ignore-case.
     pub key: Key,
 }
 
 impl Shortcut {
-    /// Any modifier set plus any key. The other constructors are shorthands
-    /// over this one.
+    /// Any modifier set plus any key; the other constructors are shorthands.
     pub const fn new(mods: ShortcutMods, key: Key) -> Self {
         Self { mods, key }
     }
 
-    /// Bare key, no modifiers. For watches like
-    /// `Shortcut::key(Key::Escape)` and event triggers like
-    /// `Shortcut::key(Key::Enter)` that don't carry a chord.
+    /// Bare key, no modifiers, e.g. `Shortcut::key(Key::Escape)`.
     pub const fn key(key: Key) -> Self {
         Self::new(ShortcutMods::NONE, key)
     }
 
-    /// `Ctrl+<c>`. `c` should be uppercase ASCII (matching is
-    /// case-insensitive, but the label uses what you pass).
+    /// `Ctrl+<c>`; `c` should be uppercase ASCII (matching ignores case, the label
+    /// uses what you pass).
     pub const fn ctrl(c: char) -> Self {
         Self::new(ShortcutMods::CTRL, Key::Char(c))
     }
 
-    /// `Ctrl+Shift+<c>`. Same casing convention as [`Self::ctrl`].
+    /// `Ctrl+Shift+<c>`; same casing as [`Self::ctrl`].
     pub const fn ctrl_shift(c: char) -> Self {
         Self::new(ShortcutMods::CTRL_SHIFT, Key::Char(c))
     }
 
-    /// True iff `press` matches this shortcut. Modifier comparison is
-    /// exact (`ctrl+a` ≠ `ctrl+shift+a`); `Char` keys compare
-    /// ignore-case to absorb shift-layout effects. The `repeat` flag is
-    /// ignored. A held macOS Control rejects a shortcut with no command
-    /// modifier — see [`ShortcutMods`].
+    /// True iff `press` matches. Modifiers compare exactly, `Char` keys
+    /// ignore-case, `repeat` is ignored, and a held macOS Control rejects a
+    /// shortcut with no command modifier.
     ///
-    /// Non-Latin-layout fallback: a command chord's letter key arrives as the
-    /// *active layout's* character (Cyrillic `'я'` for the physical Z on a
-    /// Russian layout), which never matches the ASCII shortcut. When the
-    /// logical key is a **non-ASCII** `Char` and the chord carries a command
-    /// modifier, retry against the layout-independent [physical key]
-    /// ([`KeyPress::physical`]) so `Cmd/Ctrl+Z` fires on any layout. The
-    /// non-ASCII gate leaves Dvorak / AZERTY untouched — their keys still
-    /// produce ASCII letters, in their own intended positions.
+    /// Non-Latin fallback: a command chord's letter arrives as the *active
+    /// layout's* character (Cyrillic `'я'` for the physical Z), which never matches
+    /// ASCII. For a **non-ASCII** `Char` with a command modifier, retry against the
+    /// layout-independent [physical key] ([`KeyPress::physical`]); Dvorak / AZERTY
+    /// still produce ASCII and are untouched.
     pub fn matches(self, press: KeyPress) -> bool {
         if press.mods.mac_ctrl && !self.mods.has_command() {
             return false;
@@ -192,11 +154,8 @@ impl Shortcut {
                 .is_some_and(|physical| self.matches_key(physical, press.mods))
     }
 
-    /// Logical-key match: exact modifiers + ignore-case `Char`, with **no**
-    /// layout fallback. The building block [`Self::matches`] layers the
-    /// non-Latin physical-key fallback onto. Crate-internal on purpose —
-    /// external callers go through [`Self::matches`] so they get the
-    /// layout-correct path rather than this logical-only one.
+    /// Logical-key match with **no** layout fallback; [`Self::matches`] layers that
+    /// on.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
         if ShortcutMods::from(mods) != self.mods {
             return false;
@@ -208,15 +167,12 @@ impl Shortcut {
     }
 }
 
-/// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
-/// Windows/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier renders
-/// as ⌘ on macOS (it *is* Cmd there).
+/// Platform-native label: macOS glyphs (`⌥⇧⌘<key>`), else `Ctrl+Shift+Alt+<key>`.
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if matches!(PLATFORM, Platform::Mac) {
-            // Canonical macOS order: ⌥ ⇧ ⌘ <key>. The primary command
-            // modifier (`mods.ctrl`) is Cmd on macOS, so it renders as
-            // ⌘ and sits last (right before the key).
+            // Canonical macOS order ⌥ ⇧ ⌘ <key>; the primary modifier is Cmd there,
+            // so it sits last.
             if self.mods.alt {
                 f.write_str("⌥")?;
             }

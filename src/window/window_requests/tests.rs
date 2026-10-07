@@ -5,10 +5,7 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
 
-/// A close request becomes the window's own close command unless app
-/// code vetoed it; the veto lasts one drain. The frame's commands move
-/// onto `out` behind whatever it already held, and the levels come
-/// back unchanged and stay with the recorder.
+/// A close request becomes the window's close command unless app code vetoed it (the veto lasts one drain). The frame's commands move onto `out` behind what it held; the levels come back unchanged and stay with the recorder.
 #[test]
 fn drain_settles_the_close_and_moves_the_commands() {
     let me = WindowToken(3);

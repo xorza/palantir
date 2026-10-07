@@ -7,11 +7,7 @@ use std::cell;
 
 #[test]
 fn one_clock_stamps_both_frames_and_input() {
-    // Rules 6 and 7. Time is frozen unless advanced, so two clicks at one
-    // point are always a double-click — and an `advance` is what
-    // separates them, with or without a frame after it. A host reads its
-    // own clock at both doors, and an event-driven one can idle for
-    // seconds between frames.
+    // Time is frozen unless advanced, so two clicks at one point are a double-click until `advance` separates them.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
 
@@ -36,8 +32,6 @@ fn one_clock_stamps_both_frames_and_input() {
         "past DOUBLE_CLICK_WINDOW the run restarts",
     );
 
-    // No frame between the advance and the click: the press is stamped
-    // when it arrives, so the gap separates the runs on its own.
     harness.advance(DOUBLE_CLICK_WINDOW * 2);
     harness.click_at(INSIDE);
     let fourth = harness.response_in(target(), button);
@@ -46,7 +40,6 @@ fn one_clock_stamps_both_frames_and_input() {
         "an advance reaches input timing without a frame to publish it",
     );
 
-    // `at` is the same clock, parked absolutely instead of stepped.
     let parked = harness.time + DOUBLE_CLICK_WINDOW * 2;
     harness.at(parked).frame(button);
     assert_eq!(harness.time, parked, "at parks the clock absolutely");
@@ -61,8 +54,7 @@ fn one_clock_stamps_both_frames_and_input() {
 
 #[test]
 fn advance_frames_rejects_a_step_that_would_be_clamped() {
-    // Rule 8. Animation dt is clamped to MAX_ANIM_DT per frame, so a
-    // larger step silently under-integrates instead of failing.
+    // Animation dt clamps to MAX_ANIM_DT per frame; a larger step silently under-integrates.
     let mut harness = UiHarness::new(SURFACE);
     harness.advance_frames(3, Duration::from_millis(16), button);
     assert_eq!(harness.time, Duration::from_millis(48));
@@ -81,9 +73,7 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
     use crate::animation::animation_spec::AnimationSpec;
     use crate::animation::easing::Easing;
 
-    // A 50 ms linear tween from rest: the retarget frame spends nothing,
-    // then 16, 32 and 48 ms are in flight and 64 ms passes the end, so
-    // the fourth frame after it is idle.
+    // 50 ms linear tween: the retarget frame spends nothing, 16/32/48 ms are in flight, 64 ms passes the end.
     let slot = AnimationSlot::new("idle-count");
     let tween = Some(AnimationSpec::duration(
         Duration::from_millis(50),
@@ -102,7 +92,6 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
     assert_eq!(harness.frames_until_idle(10, tick, &mut record), Some(4));
     assert_eq!(harness.time, tick * 4);
 
-    // Still moving when `max` runs out reports none.
     to.set(0.0);
     harness.frame(&mut record);
     assert_eq!(harness.frames_until_idle(2, tick, &mut record), None);

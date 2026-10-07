@@ -4,36 +4,23 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use tinyvec::ArrayVec;
 
-/// Recently committed colours, most recent first, seeded with a preset row.
-///
-/// Seeding is what makes "empty history shows presets" a stable row rather
-/// than a row that changes length on the first pick: the newest colour goes
-/// to the front and the oldest preset falls off the end.
-///
-/// Seeded on first use, not at construction: a picker's state is taken
-/// out and put back every frame, and a default that built the presets
-/// spent sixteen colour conversions a frame on a placeholder overwritten
-/// at once. A seeded row is never empty again, so empty means unseeded.
+/// Recently committed colours, most recent first, seeded with a preset row so it keeps its length; the newest
+/// goes to the front and the oldest preset falls off. Seeded on first use, not at construction: picker state is
+/// taken out and put back every frame, so a default that built the presets would pay sixteen conversions a frame.
 #[derive(Debug, Default)]
 pub(crate) struct History {
     colors: ArrayVec<[RgbaF32; History::CAP]>,
 }
 
 impl History {
-    /// Swatches the row holds. Twelve hues and four neutrals.
     const CAP: usize = 16;
 
-    /// Evenly spaced hues in the row. Even spacing in Okhsv hue is even
-    /// spacing to the eye, which is the whole argument for the model — so the
-    /// presets are derived from it rather than hand-picked.
+    /// Evenly spaced Okhsv hues in the row, derived rather than hand-picked.
     const HUES: usize = 12;
 
-    /// The neutrals filling the rest of the row: black, two greys, white.
     const NEUTRALS: [f32; 4] = [0.0, 0.35, 0.7, 1.0];
 
-    /// The preset row, computed once when a picker first opens its history.
-    /// `Okhsv::to_color` is not `const`, so this is built rather than baked;
-    /// sixteen conversions is not a cost worth a lazy static.
+    /// The preset row, computed when a picker first opens its history (`Okhsv::to_color` is not `const`).
     fn presets() -> Self {
         let mut colors = ArrayVec::new();
         for step in 0..Self::HUES {
@@ -46,7 +33,6 @@ impl History {
         Self { colors }
     }
 
-    /// The row, most recent first.
     pub(crate) fn colors(&mut self) -> &[RgbaF32] {
         self.seed();
         &self.colors
@@ -58,12 +44,7 @@ impl History {
         }
     }
 
-    /// Put `color` at the front, dropping any earlier copy of it and the
-    /// oldest entry once the row is full.
-    ///
-    /// De-duplicating is what keeps a drag from filling the row with sixteen
-    /// shades of one colour: a gesture commits once, but a session picking
-    /// the same swatch twice should not lose fourteen others to it.
+    /// Puts `color` at the front, dropping any earlier copy and the oldest entry once full.
     pub(crate) fn push(&mut self, color: RgbaF32) {
         self.seed();
         if self.colors.first() == Some(&color) {
@@ -77,8 +58,6 @@ impl History {
     }
 }
 
-/// Reach-in for the picker's tests, which read the row a picker kept
-/// without seeding one where it has not.
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::primitives::paint::color::RgbaF32;
@@ -96,8 +75,7 @@ mod tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::widgets::color_picker::history::History;
 
-    /// The row starts full, so it never changes length as colours arrive —
-    /// though a default history holds nothing until the row is first read.
+    /// The row starts full so it never changes length, though a default history holds nothing until first read.
     #[test]
     fn presets_fill_the_row() {
         let mut history = History::default();
@@ -105,9 +83,7 @@ mod tests {
         assert_eq!(history.colors().len(), History::CAP);
     }
 
-    /// The presets are the derived list, not a hand-typed one: the last hue
-    /// is eleven twelfths round the circle, and the four neutrals close the
-    /// row at black and white.
+    /// The presets are the derived list: hue 11/12 last, then the neutrals ending at black and white.
     #[test]
     fn presets_are_the_derived_list() {
         use crate::primitives::paint::color::okhsv::Okhsv;
@@ -129,8 +105,6 @@ mod tests {
         assert!(!history.colors().contains(&last), "the oldest fell off");
     }
 
-    /// Picking a colour already in the row moves it rather than adding it, so
-    /// the row cannot fill with one colour.
     #[test]
     fn a_repeat_pick_moves_instead_of_growing() {
         let mut history = History::default();

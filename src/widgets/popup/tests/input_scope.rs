@@ -14,13 +14,8 @@ use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, fra
 use crate::{Sense, Ui};
 use glam::Vec2;
 
-/// Pin: pointer gestures over the area outside the popup body must be
-/// absorbed by the eater — not leak through to a `Main` widget below
-/// that senses the same gesture. Earlier the eater only sensed
-/// `CLICK`, so a graph canvas underneath would still receive scroll /
-/// pinch / drag while the popup was open. `PassThrough` is the control
-/// row: the same burst reaches `Main` there, so the `Block` row cannot
-/// pass for want of an eater.
+/// Pointer gestures outside the popup body must be absorbed by the eater, not
+/// leak to a `Main` widget. `PassThrough` is the control: the burst reaches `Main` there.
 #[test]
 fn outside_pointer_gestures_do_not_leak_to_main() {
     for (mode, leaks) in [
@@ -30,7 +25,6 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         let mut h = UiHarness::new(SURFACE);
         let bg_id = WidgetId::from_hash("scroll-bg");
         let scene = |ui: &mut Ui| {
-            // Main-layer background that senses everything pan/zoom-shaped.
             Panel::vstack()
                 .id(bg_id)
                 .size((Sizing::FILL, Sizing::FILL))
@@ -50,8 +44,6 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         };
         h.frame(scene);
 
-        // Move pointer well outside the popup body, then send a scroll
-        // + zoom burst and start a middle-drag.
         let outside = Vec2::new(300.0, 300.0);
         h.scroll_pixels_at(outside, Vec2::new(0.0, 25.0));
         h.scroll_lines(Vec2::new(0.0, 3.0));
@@ -90,13 +82,7 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
     );
 }
 
-/// The whole outside-press contract in one table, because the parameter
-/// has to *matter*: asserting only `PassThrough`'s half would pass just as
-/// well if the eater had been dropped from every mode.
-///
-/// `signals` is `dismissed` — `Dismiss` is the only mode that reports the
-/// press it ate, and `PassThrough` never reports one because it never
-/// takes it.
+/// The whole outside-press contract in one table; `signals` is `dismissed`, which only `Dismiss` reports.
 #[test]
 fn each_click_outside_mode_decides_whether_main_sees_the_press() {
     for (mode, reaches_main, signals) in [
@@ -120,11 +106,8 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
     }
 }
 
-/// The key-scope claim is the *other* capture, and `PassThrough` drops it
-/// too. Worth its own test: a host that could be clicked but not typed
-/// into would be just as dead, and the eater cannot be seen from here —
-/// `KeyFilter::ALL` silences the layers below whether or not a pointer
-/// ever moves.
+/// The key-scope claim is the other capture, and `PassThrough` drops it too:
+/// a host that can be clicked but not typed into is just as dead.
 #[test]
 fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
     use crate::input::shortcut::Shortcut;
@@ -140,10 +123,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    // Read from `Main`, under the popup's layer. `F5` rather
-                    // than Esc: Esc is the dismiss key the popup itself
-                    // consumes, so it could not tell "scope silenced Main"
-                    // from "the popup handled it".
+                    // Read from `Main`; `F5`, not Esc, which the popup itself consumes.
                     let saw = ui.key_pressed(Shortcut::key(Key::F5));
                     Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
@@ -171,21 +151,10 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
     }
 }
 
-/// A text field inside a popup must be typeable.
-///
-/// It was not, and the way it failed is worth keeping: `Popup::show`
-/// claims the keyboard for its whole body, and `TextEdit` drains the
-/// stream that claim gates, so a popup that silenced its own body threw
-/// away every keystroke aimed at the field inside it. Nothing in the tree
-/// exercised the combination, so it went unnoticed.
-///
-/// It works because the popup's `KeyFilter::ALL` scope is recorded on
-/// `Layer::Popup` — the same layer as its body — and `Scopes::silences`
-/// cuts off layers *strictly* below the active one. Same layer, so the
-/// body reads on. Both halves are load-bearing: widening that comparison
-/// to `>=`, or hoisting the scope onto a layer above the body it wraps,
-/// silently breaks typing again, which is what this test is here to
-/// catch.
+/// A text field inside a popup must be typeable. The `KeyFilter::ALL` scope is
+/// recorded on `Layer::Popup`, the body's layer, and `Scopes::silences` cuts
+/// off only strictly lower layers; `>=`, or hoisting the scope above the body,
+/// breaks typing.
 #[test]
 fn text_edit_inside_a_popup_receives_typing() {
     use crate::widgets::text_edit::TextEdit;
@@ -215,20 +184,12 @@ fn text_edit_inside_a_popup_receives_typing() {
     );
 }
 
-/// Escape resolves to the innermost scope that claims it — so a focused
-/// field inside a popup decides, per field, whether one press closes the
-/// popup or just blurs the field.
-///
-/// Both directions are pinned together because the failure mode is a
-/// swap: a filter field that keeps `ESCAPE` leaves the popup open around
-/// a search box the user can no longer type into, and an inline editor
-/// that gives it up loses its cancel *and* tears down the surface behind
-/// it. Neither is visible from the widget alone — it takes a popup, a
-/// focused field, and one keypress.
+/// Escape resolves to the innermost scope that claims it, so a focused field
+/// in a popup decides whether one press closes the popup or only blurs the
+/// field. Both directions are pinned since the failure is a swap.
 #[test]
 fn a_field_decides_whether_escape_closes_the_popup_around_it() {
-    /// One popup holding one focused field, returning whether the popup
-    /// dismissed this frame. `falls_through` picks the archetype.
+    /// One popup with one focused field; returns whether it dismissed. `falls_through` picks the archetype.
     fn open(falls_through: bool) -> (bool, Option<WidgetId>) {
         let field = WidgetId::from_hash("filter-field");
         let mut buf = String::new();
@@ -256,9 +217,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
             scene(ui, &mut buf);
         });
         h.set_focus(field);
-        // Two settling frames: the scope path resolves against the
-        // previous frame's cascade, so the filter this field declares has
-        // to have been recorded once before the press reads it.
+        // Two settling frames: the scope resolves from the previous cascade.
         h.frame(|ui| {
             scene(ui, &mut buf);
         });
@@ -277,7 +236,6 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
 
     let field = WidgetId::from_hash("filter-field");
 
-    // Default: the field owns Escape. It blurs, and the popup stays open.
     let (dismissed, focused) = open(false);
     assert!(
         !dismissed,
@@ -285,7 +243,6 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
     );
     assert_eq!(focused, None, "…it blurs the field instead");
 
-    // Opted out: Escape walks past the field to the popup's own scope.
     let (dismissed, focused) = open(true);
     assert!(dismissed, "a filter field's Esc closes the popup");
     assert_eq!(

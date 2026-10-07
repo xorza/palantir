@@ -13,27 +13,14 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
-/// The magenta outlines the encoder emitted for this frame's explicit-id
-/// collisions, in physical pixels.
-///
-/// Development-build only, which is why every caller is gated:
-/// `encoder::collision_overlay` is `cfg(debug_assertions)`, because a
-/// shipped app wants neither magenta over its UI nor the branch that
-/// tests for it. `Forest.collisions` carries the pairing in every
-/// profile, and `Forest::report_explicit_collision`'s `tracing::error!`
-/// carries the diagnosis there.
-///
-/// Selected by stroke width: the overlay is the only 3 px stroke the
-/// encoder emits.
+/// The magenta outlines the encoder emitted for this frame's explicit-id collisions, in physical pixels. Debug-build only (`encoder::collision_overlay` is `cfg(debug_assertions)`); selected by stroke width, the only 3 px stroke the encoder emits.
 #[cfg(debug_assertions)]
 fn collision_outlines(ui: &Ui) -> Vec<Rect> {
     use crate::damage::Damage;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::render_plan::RenderPlan;
 
-    // Share Ui's record store so any mesh/polyline bytes pushed at
-    // record time are visible at compose / upload — the WindowDriver
-    // wiring for real apps.
+    // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
     frontend.build(
         ui.frame_scene(),
@@ -51,8 +38,7 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
         .collect()
 }
 
-/// Two buttons in one frame, both claiming `"dup"`. The second is
-/// disambiguated rather than allowed to corrupt every per-id store.
+/// Two buttons in one frame both claiming `"dup"`; the second is disambiguated.
 fn record_duplicate_ids(h: &mut UiHarness) -> (WidgetId, NodeId) {
     let button_node = Cell::new(NodeId(0));
     let duplicate_id = WidgetId::from_hash("dup");
@@ -66,8 +52,7 @@ fn record_duplicate_ids(h: &mut UiHarness) -> (WidgetId, NodeId) {
     (duplicate_id, button_node.get())
 }
 
-/// One `"dup"` in `Main` and one in `Popup`. Ids are per-layer, so the
-/// pair still collides.
+/// One `"dup"` in `Main` and one in `Popup`.
 fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -79,16 +64,12 @@ fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
     });
 }
 
-/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently
-/// corrupt every per-id store. Instead of panicking, `SeenIds::record`
-/// disambiguates the second one (same path as auto-id collisions) and
-/// `Forest` pairs both colliding nodes via `Forest.collisions`.
+/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame: `SeenIds::record` disambiguates the second and `Forest` pairs both nodes via `Forest.collisions` instead of panicking.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let (duplicate_id, _) = record_duplicate_ids(&mut h);
-    // One collision pair should be recorded, survives until the next
-    // `pre_record` so the encoder can read it.
+    // One collision pair is recorded and survives until the next `pre_record`.
     assert_eq!(
         h.ui.forest.collisions.len(),
         1,
@@ -101,8 +82,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     );
 }
 
-/// The overlay a developer sees: one magenta rect per colliding node,
-/// at that node's arranged rect (physical px == logical at scale 1).
+/// The overlay: one magenta rect per colliding node at its arranged rect.
 #[cfg(debug_assertions)]
 #[test]
 fn duplicate_explicit_widget_ids_are_outlined() {
@@ -123,11 +103,7 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     );
 }
 
-/// Under a panned and zoomed panel the outline follows the node to where
-/// it paints, not where it was laid out. The canvas translates by (30, 20)
-/// and scales by 0.5; each duplicate is a 40 px block, at canvas-local
-/// (10, 10) and (60, 10). On screen: (10·0.5 + 30, 10·0.5 + 20) =
-/// (35, 25) and (60·0.5 + 30, 25) = (60, 25), each 20 px square.
+/// Under a panned and zoomed panel the outline follows where the node paints: canvas translate (30, 20), scale 0.5, 40 px blocks at (10, 10) and (60, 10) land at (35, 25) and (60, 25), 20 px square.
 #[cfg(debug_assertions)]
 #[test]
 fn a_collision_under_a_transform_is_outlined_where_it_paints() {
@@ -161,8 +137,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
     );
 }
 
-/// An explicit id is per-layer, so `Main` and `Popup` each keep their own
-/// resolved id — and the pair records which layer each endpoint sat in.
+/// An explicit id is per-layer: `Main` and `Popup` keep their own ids and the pair records each endpoint's layer.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let mut h = UiHarness::new(SURFACE);
@@ -187,9 +162,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     );
 }
 
-/// Each endpoint's outline comes from its own layer's `LayerLayout`, so a
-/// cross-layer pair outlines two rects in two different coordinate
-/// sources rather than one twice.
+/// Each endpoint's outline comes from its own layer's `LayerLayout`.
 #[cfg(debug_assertions)]
 #[test]
 fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
@@ -276,9 +249,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     );
 }
 
-/// Pin: the encoder-direct overlay path leaves `Layer::Debug` empty
-/// (no sink node recorded) — guards against silent regression back to
-/// the prior "sink in Debug" approach.
+/// Pin: the encoder-direct overlay path leaves `Layer::Debug` empty.
 #[test]
 fn collisions_do_not_record_into_debug_layer() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
@@ -303,8 +274,7 @@ fn collisions_do_not_record_into_debug_layer() {
     );
 }
 
-/// Auto-generated ids (call-site hash) silently disambiguate when the same
-/// site fires more than once per frame — the "loop / closure helper" case.
+/// Auto ids (call-site hash) silently disambiguate when one site fires more than once per frame.
 #[test]
 fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut Ui) {
@@ -336,8 +306,7 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     });
     let a = h.frame_value(|ui| {
         Block::new().id(WidgetId::from_hash("a")).show(ui);
-        // Reading state during recording so the row is touched while
-        // its widget is still seen.
+        // Reading state during recording touches the row while its widget is still seen.
         ui.with_state::<u32, _>(id_a, |_, n| *n)
     });
     assert_eq!(a, 11);
@@ -351,11 +320,7 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     );
 }
 
-/// Two widgets from one call site that both resolve before either
-/// records — the shape of reading `.state(ui)` on each, then showing
-/// both. The second resolution sees the first's reservation, so they
-/// get distinct ids and both open instead of the second hitting the
-/// duplicate-record panic.
+/// Two widgets from one call site that both resolve before either records (`.state(ui)` on each, then show) get distinct ids, instead of the second hitting the duplicate-record panic.
 #[test]
 fn two_widgets_resolved_before_recording_get_distinct_ids() {
     use crate::widget_core::widget::Widget;

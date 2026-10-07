@@ -1,10 +1,4 @@
-//! Viewport: CPU damage-rect → physical scissor math, plus the
-//! [`ViewportPush`] carrier every shader's shared `Immediates`
-//! region reads as `imm.viewport_size` (offset 0). The whole quad /
-//! curve / mesh / image / text family shares the same immediate layout
-//! ([`crate::gpu::pipeline::IMMEDIATES_BYTES`]), and the backend pushes
-//! the viewport after every pipeline bind — no bind group, no uniform
-//! buffer.
+//! Viewport: CPU damage-rect → physical scissor math, and the [`ViewportPush`] carrier for `imm.viewport_size` (offset 0 of the shared immediates, [`crate::gpu::pipeline::IMMEDIATES_BYTES`]).
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
@@ -21,15 +15,7 @@ pub(crate) enum RepaintScissors {
     Partial(PartialScissors),
 }
 
-/// The non-empty scissor list a `Partial` repaint walks, one pass walk
-/// per rect.
-///
-/// Non-emptiness is a real invariant — a `Partial` plan with nothing to
-/// scissor would load the backbuffer and draw nothing — but it is carried
-/// by the constructor's `debug_assert!` rather than the field layout: the
-/// constructor runs every partial frame. Splitting a `first` off the
-/// array would restate the same guarantee while costing an O(n) shift to
-/// build and a chained iterator to read.
+/// The non-empty scissor list a `Partial` repaint walks. Non-emptiness is the constructor's `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
 #[derive(Debug)]
 pub(crate) struct PartialScissors {
     rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
@@ -53,14 +39,7 @@ impl PartialScissors {
     }
 }
 
-/// Convert a logical-px damage rect to a physical-px scissor, padded
-/// by [`RenderPlan::AA_PADDING`] on every side and clamped to the viewport.
-/// Returns `None` if the result clamps to zero area — callers degrade
-/// that case to "loaded but not drawn" inside the pass.
-///
-/// `scaled_by` snaps the edges, so [`URect::covering`] has nothing to
-/// round here — it is this crate's spelling of "the pixels a float rect
-/// occupies", not a widening.
+/// Convert a logical-px damage rect to a physical-px scissor, padded by [`RenderPlan::AA_PADDING`] and clamped to the viewport; `None` if it clamps to zero area.
 fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
     let phys = r.scaled_by(buffer.display.scale_factor(), true);
     let padded = phys.inflated(RenderPlan::AA_PADDING as f32);
@@ -68,13 +47,7 @@ fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect>
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
 }
 
-/// Build the physical-px repaint shape for this frame. `Full` stays
-/// distinct from `Partial`, which carries one or more scissors after
-/// physical-px scaling, AA padding, and viewport clamping. Region rects
-/// arrive surface-clipped and non-empty
-/// (`DamageRegion::collapse_from`) and the AA padding keeps their
-/// scissors nonzero. An empty result means the plan and composed draw
-/// list disagree; it must not degrade to a full clear.
+/// Build the physical-px repaint shape: `Full`, or `Partial` with scissors after scaling, AA padding and clamping. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
 pub(crate) fn build_repaint_scissors(damage: Damage, buffer: &RenderBuffer) -> RepaintScissors {
     match damage {
         Damage::Full => RepaintScissors::Full,
@@ -90,9 +63,7 @@ pub(crate) fn build_repaint_scissors(damage: Damage, buffer: &RenderBuffer) -> R
     }
 }
 
-/// Viewport size as it appears in the shared immediate. 8 bytes;
-/// occupies offset 0 of every pipeline's immediate region (see
-/// `Immediates` in `prelude.wgsl`, the shaders' one declaration of it).
+/// Viewport size as it appears in the shared immediate (8 bytes, offset 0; see `Immediates` in `prelude.wgsl`).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ViewportPush {
@@ -101,13 +72,10 @@ pub(crate) struct ViewportPush {
 
 impl ViewportPush {
     pub(crate) const BYTES: usize = size_of::<Self>();
-    /// Offset inside the per-pipeline immediate region. Locked at 0
-    /// because the shared prelude puts `viewport_size` first.
+    /// Offset 0: the shared prelude puts `viewport_size` first.
     pub(super) const OFFSET: u32 = 0;
 
-    /// The viewport every pass of one frame pushes. One definition of
-    /// the recipe, so the main pass and the two overlay passes cannot
-    /// disagree about which size the shaders divide by.
+    /// The viewport every pass of one frame pushes, so main and overlay passes agree.
     pub(crate) fn for_buffer(buffer: &RenderBuffer) -> Self {
         Self {
             size: buffer.display.physical.as_vec2(),
@@ -118,9 +86,7 @@ impl ViewportPush {
         bytemuck::cast(self)
     }
 
-    /// Push this viewport into the active pipeline's immediate region.
-    /// Caller must ensure a pipeline is already bound — wgpu's
-    /// `set_immediates` validation rejects an unbound pipeline.
+    /// Push this viewport into the active pipeline's immediate region; a pipeline must be bound.
     pub(crate) fn push_into(self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_immediates(Self::OFFSET, &self.encode());
     }
@@ -189,8 +155,7 @@ mod tests {
         let RepaintScissors::Partial(rects) = repaint else {
             panic!("partial plan produced a full repaint");
         };
-        // At 2x, the rects are (10,10)-(20,20) and (60,40)-(80,50).
-        // Extending each edge by the 2px AA pad gives these exact scissors.
+        // At 2x the rects are (10,10)-(20,20) and (60,40)-(80,50); the 2px AA pad extends each edge.
         assert_eq!(
             rects.iter().collect::<Vec<_>>(),
             [URect::new(8, 8, 14, 14), URect::new(58, 38, 24, 14),]

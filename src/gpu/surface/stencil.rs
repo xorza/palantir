@@ -1,52 +1,29 @@
-//! The per-window stencil attachment, its format, and the
-//! stencil-test depth/stencil state every rounded-clip-aware pipeline
-//! shares.
-//!
-//! The rounded-clip masks stamp as a depth-counted stack (via
-//! `QuadPipeline`'s `mask_stamp` variant — chain level `k` writes
-//! `k + 1` where the stencil already equals `k`), then every color
-//! draw inside the clipped region runs through this state at
-//! `stencil_reference = chain depth`. Sole source of truth so the
-//! quad / mesh / image / curve stencil-test twins and the
-//! stencil-aware text renderer all agree on `read_mask`, `compare`,
-//! and the face ops — mismatched bits would silently mis-clip text or
-//! images under a rounded panel.
+//! The per-window stencil attachment and the stencil-test state shared by every
+//! rounded-clip-aware pipeline. Masks stamp as a depth-counted stack
+//! (`mask_stamp`: level `k` writes `k + 1` where the stencil equals `k`), and
+//! colour draws test at `stencil_reference = chain depth`.
 
 use crate::gpu::surface::render_target;
 use glam::UVec2;
 
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 
-/// Per-window stencil attachment for rounded-clip masking, allocated lazily on
-/// the first rounded-clip frame and resized to match the render target. Kept
-/// separate from [`Backbuffer`](crate::gpu::surface::backbuffer::Backbuffer) so the direct-present path can have a stencil
-/// without paying for a backbuffer color texture it never uses. Transient:
-/// cleared at pass open, never read across frames. Owned per-window by
-/// `WindowDriver`.
+/// Per-window stencil attachment for rounded-clip masking, created lazily and
+/// resized to the render target. Separate from
+/// [`Backbuffer`](crate::gpu::surface::backbuffer::Backbuffer); owned by `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Stencil {
-    /// Held for its extent, which [`Self::ensure`] compares against the
-    /// target's before reusing the attachment. The view keeps the
-    /// texture alive either way, so this is a handle, not a second
-    /// record of a size the texture already knows.
+    /// Held for its extent, which [`Self::ensure`] compares before reuse.
     tex: wgpu::Texture,
     view: wgpu::TextureView,
 }
 
 impl Stencil {
-    /// Format used for the lazy stencil attachment. `Stencil8` is the
-    /// minimum that satisfies the rounded-clip mask path; no depth
-    /// component is needed (UI is 2D, no z-test).
+    /// `Stencil8` suffices for the mask path; UI is 2D.
     pub(super) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
 
-    /// Depth/stencil state for one rounded-clip pipeline.
-    ///
-    /// `compare`, `pass_op` and `write_mask` are the whole difference
-    /// between the three states below. `fail_op` and `depth_fail_op` are
-    /// `Keep` throughout — a fragment that fails the test writes nothing
-    /// — the two faces always match, and there is no depth component to
-    /// vary. Stating the rest once is what keeps a stamp and the test
-    /// that reads it agreeing on which bits are the chain.
+    /// Depth/stencil state for one rounded-clip pipeline; only `compare`,
+    /// `pass_op` and `write_mask` differ, so the rest is stated once.
     fn state(
         compare: wgpu::CompareFunction,
         pass_op: wgpu::StencilOperation,
@@ -72,11 +49,8 @@ impl Stencil {
         }
     }
 
-    /// The stencil-test color pipelines (quad / mesh / image / curve /
-    /// text). Stencil ref is set per-draw by the schedule
-    /// (`SetStencilRef(0)` outside masks, the chain depth inside) and
-    /// compared with `Equal`; `write_mask = 0` keeps the stamped masks
-    /// intact across the color draws.
+    /// The stencil-test colour pipelines: ref 0 outside masks, chain depth
+    /// inside, compared `Equal`; `write_mask = 0` keeps the stamped masks.
     pub(crate) fn test_state() -> wgpu::DepthStencilState {
         Self::state(
             wgpu::CompareFunction::Equal,
@@ -85,12 +59,8 @@ impl Stencil {
         )
     }
 
-    /// The mask-stamp variant, drawn once per chain level at
-    /// `stencil_reference = level`: writes `level + 1` only where the
-    /// SDF passes AND the stencil already equals `level`. So the
-    /// outermost mask stamps ref 0 onto the cleared stencil and each
-    /// inner one deepens only inside its ancestors, which is what makes
-    /// nested masks intersect.
+    /// The mask-stamp variant, drawn per level at `stencil_reference = level`:
+    /// writes `level + 1` where the SDF passes and the stencil equals `level`.
     pub(crate) fn stamp_state() -> wgpu::DepthStencilState {
         Self::state(
             wgpu::CompareFunction::Equal,
@@ -99,10 +69,7 @@ impl Stencil {
         )
     }
 
-    /// The mask-clear variant, drawn at `stencil_reference = 0` to reset
-    /// a stamped chain. One draw of the chain's *outermost* quad
-    /// suffices: inner stamps only ever incremented inside the outer's
-    /// SDF, so every nonzero stencil pixel lies under it.
+    /// The mask-clear variant, drawn at reference 0; the outermost quad suffices.
     pub(crate) fn clear_state() -> wgpu::DepthStencilState {
         Self::state(
             wgpu::CompareFunction::Always,
@@ -111,16 +78,9 @@ impl Stencil {
         )
     }
 
-    /// The window's stencil attachment at `size`, building it if the
-    /// slot is empty or holds a differently-sized one. Lazily created on
-    /// the first rounded-clip frame and recreated when the render
-    /// target's size changes — a mismatched-size attachment fails wgpu
-    /// validation.
-    ///
-    /// Hands the attachment back rather than only filling the slot, on
-    /// the terms
-    /// [`Backbuffer::ensure`](crate::gpu::surface::backbuffer::Backbuffer::ensure)
-    /// states.
+    /// The window's stencil attachment at `size`, built if the slot is empty or
+    /// differently sized; returns it like
+    /// [`Backbuffer::ensure`](crate::gpu::surface::backbuffer::Backbuffer::ensure).
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
         device: &wgpu::Device,
@@ -133,15 +93,12 @@ impl Stencil {
         slot.get_or_insert_with(|| Self::new(device, size))
     }
 
-    /// The attachment view, for the pass that stamps and tests against
-    /// it. Behind an accessor like
-    /// [`Backbuffer::view`](super::backbuffer::Backbuffer::view), so a
-    /// caller holding a `&Stencil` cannot reach the texture beside it.
+    /// The attachment view, behind an accessor so a `&Stencil` holder cannot reach the texture.
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
 
-    /// Private, so [`Self::ensure`] is the only way to one.
+    /// Private: [`Self::ensure`] is the only way to one.
     fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),

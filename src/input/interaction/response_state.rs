@@ -1,5 +1,4 @@
-//! Everything a widget asks about itself for one frame: where it arranged,
-//! and what the pointer and the keyboard did to it.
+//! Everything a widget asks about itself for one frame: where it arranged, and what the pointer and keyboard did to it.
 
 use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::scroll_delta::ScrollDelta;
@@ -10,113 +9,44 @@ use crate::primitives::math::domain::vec2;
 use glam::Vec2;
 
 /// Snapshot of one widget's interaction state for the current frame.
-/// `rect` is the widget's last-frame visible surface-space rect (`None`
-/// on first frame), after ancestor transforms and clipping.
 ///
-/// `disabled` is the **cascaded** disabled flag (the widget OR any
-/// ancestor), read from the previous frame's cascade — one-frame stale,
-/// like hover/press. The widget's own `NodeFlags::is_disabled` is folded on top
-/// by `Widget::response`, through the same fold `Ui::response_for` runs,
-/// so a widget disabled *this* frame reads and paints as disabled
-/// without waiting for the cascade.
-///
-/// `focused` is `true` when this widget currently holds keyboard focus
-/// (`Ui::focus() == Some(id)`). Updated synchronously with focus
-/// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
-/// a widget that just called `ui.set_focus(id)` reads `true` on
-/// the same frame.
+/// `disabled` is the cascaded flag (self or any ancestor), one frame stale, with the widget's own `NodeFlags::is_disabled` folded on top by `Widget::response`. `focused` is current, not stale.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ResponseState {
-    /// Last frame's *visible* rect in surface space — after ancestor
-    /// transforms and clipping, so it is what the pointer actually hit.
-    /// `None` on the widget's first frame, before it has been arranged.
-    /// For the untrimmed geometry use [`Self::layout_rect`].
+    /// Last frame's *visible* rect in surface space, after ancestor transforms and clipping; `None` on the first frame. See [`Self::layout_rect`] for untrimmed geometry.
     pub rect: Option<Rect>,
-    /// Pre-transform, unclipped layout rect in world coords — the
-    /// widget's arranged position before any ancestor `transform`
-    /// (scroll pan/zoom) or `clip` is applied. Use when you need a
-    /// widget's true position regardless of how its parent scrolls
-    /// or clips it; subtract two such rects to get one widget's
-    /// owner-local offset under another.
+    /// Pre-transform, unclipped layout rect in world coords: a widget's true position regardless of parent scroll or clip.
     pub layout_rect: Option<Rect>,
-    /// Cumulative ancestor transform mapping this widget's `layout_rect`
-    /// into unclipped surface space. The visible [`Self::rect`] may be
-    /// smaller when an ancestor clips the widget.
-    /// [`TranslateScale::IDENTITY`] when the widget sits under no transform.
+    /// Cumulative ancestor transform mapping `layout_rect` into unclipped surface space; identity under none.
     pub transform: TranslateScale,
-    /// Cursor position in pre-transform widget-local logical coordinates,
-    /// relative to [`Self::layout_rect`]'s origin. `None` when the pointer
-    /// is off-surface or the widget didn't arrange. This remains relative
-    /// to the full widget when ancestor clipping trims [`Self::rect`].
+    /// Cursor position in widget-local logical coordinates relative to [`Self::layout_rect`]'s origin; `None` when off-surface or unarranged.
     pub pointer_local: Option<Vec2>,
-    /// Pointer is over this widget's visible rect, and nothing above it
-    /// took the pointer first. Read from the previous frame's cascade,
-    /// so it lags input by one frame.
+    /// Pointer is over this widget's visible rect and nothing above took it (previous frame's cascade).
     ///
-    /// **The observation, where [`Self::hovered`] is the reaction.** A
-    /// disabled widget still covers what is behind it and the pointer
-    /// still rests on it, which is what a tooltip explaining *why* it is
-    /// disabled needs to know — so this survives the disabled fold and
-    /// [`Self::hovered`] does not. For an enabled widget the two answer
-    /// alike.
+    /// **The observation; [`Self::hovered`] is the reaction.** A disabled widget still covers what is behind it, which a tooltip explaining why it is disabled needs, so this survives the disabled fold and `hovered` does not.
     pub pointer_over: bool,
-    /// Disabled — this widget *or* any ancestor. The cascaded half is
-    /// one frame stale; the widget's own flag is folded in on top by the
-    /// time it reads this.
+    /// Disabled: this widget or any ancestor.
     ///
-    /// **`true` empties the interaction half.** [`Self::left`],
-    /// [`Self::right`], [`Self::middle`] and [`Self::scroll`] are all at
-    /// their default, so `clicked()`, `held()`, `pressed()` and every
-    /// drag read `false` on their own. Guarding a click with
-    /// `!state.disabled &&` is therefore dead code, not safety.
-    ///
-    /// [`Self::pointer_over`], [`Self::rect`] and [`Self::pointer_local`]
-    /// survive the fold — they are geometry, not something the widget was
-    /// allowed to do, and a tooltip explaining *why* a control is
-    /// disabled needs them.
+    /// **`true` empties the interaction half:** `left`, `right`, `middle` and `scroll` are default, so `clicked()`, `held()`, `pressed()` and drags read `false`; guarding with `!state.disabled &&` is dead code. `pointer_over`, `rect` and `pointer_local` survive as geometry.
     pub disabled: bool,
-    /// This widget holds keyboard focus. Unlike the other flags this is
-    /// current, not one frame stale.
+    /// This widget holds keyboard focus; current, not one frame stale.
     pub focused: bool,
-    /// Primary-button state. The classic single-pointer surface
-    /// (`clicked`, `held`, press runs, drags) lives here.
+    /// Primary-button state (`clicked`, `held`, press runs, drags).
     pub left: ButtonState,
-    /// Secondary-button state — `right.clicked` is the context-menu
-    /// trigger.
+    /// Secondary-button state; `right.clicked` is the context-menu trigger.
     pub right: ButtonState,
-    /// Middle / wheel-button state, with the same surface as
-    /// [`Self::left`] — press runs and drags included.
+    /// Middle / wheel-button state, same surface as [`Self::left`].
     pub middle: ButtonState,
     /// Wheel / touchpad / pinch deltas routed to this widget.
     pub scroll: ScrollDelta,
 }
 
 impl ResponseState {
-    /// Fold one source of "disabled" in, and drop the interaction half
-    /// once any of them says so.
+    /// Folds one source of "disabled" in, dropping the interaction half once any says so.
     ///
-    /// **Three sources reach a widget's state, at three different
-    /// times**: the cascade's effective flag (ancestor-or-self, one frame
-    /// stale), this frame's ancestor scratch, and the widget's own
-    /// `NodeFlags::is_disabled` — which only `Widget::response` can see. Folding
-    /// them by hand let a widget disabled *this* frame report `disabled`
-    /// beside `hovered` and `left.clicked()`, because the reset ran
-    /// between the second source and the third.
+    /// Three sources arrive at different times (cascade flag, this frame's ancestor scratch, the widget's own flag, visible only to `Widget::response`); folding by hand let a widget disabled this frame report `disabled` beside `hovered` and `left.clicked()`. Idempotent: a later `false` re-enables nothing.
     ///
-    /// Idempotent, so it holds after *every* fold rather than only the
-    /// last: the interaction half is already gone when a later source
-    /// arrives, and a later `false` cannot re-enable anything.
-    ///
-    /// **This fold is the whole of what disabling does.** The cascade
-    /// keeps a disabled widget in the hit index with the sense it
-    /// declared, so the pointer, the press and the wheel all still route
-    /// to it — it covers what is behind it. Emptying what it reads is
-    /// what turns that routing into nothing happening.
-    ///
-    /// [`Self::pointer_over`] is not part of the half that goes: it is
-    /// the observation, and a tooltip explaining *why* the widget is
-    /// disabled needs it. [`Self::hovered`] goes by reading
-    /// [`Self::disabled`] rather than by being cleared here.
+    /// **This is the whole of what disabling does:** the cascade keeps a disabled widget in the hit index, so input still routes to it, and emptying what it reads makes that nothing happen. `pointer_over` stays; `hovered` goes by reading `disabled`.
     #[inline]
     pub(crate) fn merge_disabled(&mut self, disabled: bool) {
         self.disabled |= disabled;
@@ -125,17 +55,7 @@ impl ResponseState {
         }
     }
 
-    /// Everything the pointer and the wheel contributed this frame, back
-    /// to its default.
-    ///
-    /// Named rather than spelled as a struct literal listing what to
-    /// *keep*: the literal quietly dropped `pointer_local` too, which
-    /// [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local) went on
-    /// answering — so the same question had two answers depending on
-    /// which one a caller asked. `pointer_local` is geometry ("where is
-    /// the cursor relative to me"), not something the widget was allowed
-    /// to do, so it stays with `rect` and `transform` —
-    /// [`Self::pointer_over`] with them, for the same reason.
+    /// Everything the pointer and wheel contributed this frame, back to default. `pointer_local` is geometry and stays (a literal listing what to *keep* once dropped it, so [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local) disagreed), as do `rect`, `transform` and `pointer_over`.
     #[inline]
     fn clear_interaction(&mut self) {
         self.left = ButtonState::default();
@@ -144,51 +64,27 @@ impl ResponseState {
         self.scroll = ScrollDelta::default();
     }
 
-    /// Pointer is over this widget and this widget can react to it.
-    ///
-    /// [`Self::pointer_over`] minus every widget that cannot act: a
-    /// disabled widget is never hovered. Derived rather than stored, so
-    /// the two can never disagree — a widget disabled part-way through
-    /// the frame stops reading as hovered at the same moment, whichever
-    /// of the three sources of `disabled` said so.
+    /// Pointer is over this widget and it can react: `pointer_over` minus disabled widgets. Derived, so the two can't disagree.
     #[inline]
     pub const fn hovered(&self) -> bool {
         self.pointer_over && !self.disabled
     }
 
-    /// One-frame edge: a primary-button press+release landed on the
-    /// widget, without latching a drag.
+    /// One-frame edge: a primary-button press+release landed on the widget without latching a drag.
     ///
-    /// **The activation predicate** — the one an application branches a
-    /// button, a menu row, or a tab on. Reads `left`, the same button
-    /// [`Self::pressed`] and [`Self::press_fraction`] report, so the
-    /// three name one gesture between them.
-    ///
-    /// No `disabled` guard here, and none needed at a call site: a
-    /// disabled widget's button slices are already empty — see
-    /// [`Self::disabled`].
+    /// The activation predicate for buttons, menu rows and tabs, reading `left` like [`Self::pressed`] and [`Self::press_fraction`]. A disabled widget's slices are empty, so no `disabled` guard is needed.
     #[inline]
     pub const fn clicked(&self) -> bool {
         self.left.clicked()
     }
 
-    /// One-frame edge: this primary-button click completed a double.
-    ///
-    /// [`Self::clicked`] fires on the same frame — a double is a click
-    /// whose press was the second in its run, not a separate event. Read
-    /// [`ButtonState::click_count`] for triple and beyond.
+    /// One-frame edge: this primary click completed a double; [`Self::clicked`] fires too. See [`ButtonState::click_count`] for triple and beyond.
     #[inline]
     pub const fn double_clicked(&self) -> bool {
         self.left.double_clicked()
     }
 
-    /// One-frame edge: a press+release landed on the widget on **any**
-    /// button, without latching a drag.
-    ///
-    /// The dismissal question every overlay backdrop asks. [`Self::clicked`]
-    /// leaves a menu opened by a secondary button un-closable by that same
-    /// button, and spelling it `left || right || middle` at each site
-    /// leaves the next button silently unhandled.
+    /// One-frame edge: a press+release landed on the widget on **any** button without latching a drag; the dismissal question for overlay backdrops, where `clicked` would leave a menu opened by a secondary button un-closable by it.
     #[inline]
     pub const fn any_clicked(&self) -> bool {
         let mut i = 0;
@@ -201,12 +97,7 @@ impl ResponseState {
         false
     }
 
-    /// The per-button slice for a **runtime** `button` value — the one
-    /// thing the public fields can't express. For a compile-time-known
-    /// button read the field directly (`state.left`, not
-    /// `state.button(PointerButton::Left)`); reach for this only when
-    /// the button is a variable (configurable gesture bindings, loops
-    /// over every [`PointerButton`]).
+    /// The per-button slice for a **runtime** `button`; for a known button read the field directly (`state.left`).
     #[inline]
     pub const fn button(&self, button: PointerButton) -> &ButtonState {
         match button {
@@ -216,17 +107,7 @@ impl ResponseState {
         }
     }
 
-    /// [`Self::button`], mutably — the one way the router writes a
-    /// button's slot.
-    ///
-    /// Routing through a `[ButtonState; COUNT]` indexed by
-    /// `PointerButton::idx()` and landed with
-    /// `[left, right, middle] = buttons` would make the enum's
-    /// declaration order a silent part of the wire: reorder two variants
-    /// and every button routes to the wrong field, with nothing in the
-    /// type system objecting. Going through this match means the two
-    /// directions read the same mapping, so the order stops being a
-    /// contract anyone has to remember.
+    /// [`Self::button`], mutably; the one way the router writes a slot. Indexing by `PointerButton::idx()` would make the enum's declaration order a silent contract.
     #[inline]
     pub(crate) const fn button_mut(&mut self, button: PointerButton) -> &mut ButtonState {
         match button {
@@ -236,31 +117,15 @@ impl ResponseState {
         }
     }
 
-    /// Primary-button press with the pointer still over the widget — the
-    /// "shows pressed visuals" predicate. Derived: `left.held &&
-    /// hovered` (a held press whose pointer wandered off reports
-    /// `left.held` but not `pressed`). The cross-field derivation that
-    /// [`Self::clicked`] and [`Self::press_fraction`] read the same
-    /// button as — anything else per-button reads its slot directly:
-    /// `state.left.drag.delta()`, `state.right.clicked()`.
+    /// Primary-button press with the pointer still over the widget ("shows pressed visuals"): `left.held && hovered`.
     #[inline]
     pub const fn pressed(&self) -> bool {
         self.left.held() && self.hovered()
     }
 
-    /// Where the primary button's gesture sits across the widget, as a
-    /// `0..1` share of each axis: on the press, on every drag frame, and
-    /// on the release. `None` on any other frame, while disabled, and
-    /// before the widget has arranged.
+    /// Where the primary button's gesture sits across the widget, a `0..1` share per axis, on the press, every drag frame and the release; `None` otherwise, while disabled, and before arrangement.
     ///
-    /// One answer for every widget a pointer drives along an axis — a
-    /// slider, a colour field, a bar — so the frames a gesture writes on
-    /// are named once. `band` is the width of a centred thing the pointer
-    /// drags, a knob, and comes off each end before the division; pass
-    /// zero when the pointer itself is the position — see
-    /// [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped,
-    /// so a pointer past an edge reports that edge, which is the only way
-    /// a drag reaches an axis end.
+    /// Shared by pointer-driven axis widgets. `band` is the width of a centred knob that comes off each end (zero when the pointer is the position), see [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped.
     #[inline]
     pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
         let in_gesture = self.pressed() || self.left.drag.is_live() || self.left.released();

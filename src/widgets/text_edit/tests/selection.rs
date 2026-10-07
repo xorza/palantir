@@ -15,7 +15,6 @@ struct SelCase {
 #[test]
 fn selection_state_transitions() {
     let cases: &[SelCase] = &[
-        // shift+arrow latches anchor + extends
         SelCase {
             label: "shift_right_latches",
             buf: "hello",
@@ -46,7 +45,6 @@ fn selection_state_transitions() {
             want_caret: 0,
             want_sel: None,
         },
-        // plain arrows collapse selection to its bounds
         SelCase {
             label: "right_collapses_to_end",
             buf: "hello",
@@ -67,7 +65,6 @@ fn selection_state_transitions() {
             want_caret: 1,
             want_sel: None,
         },
-        // home/end
         SelCase {
             label: "shift_home_extends_to_zero",
             buf: "hello",
@@ -98,7 +95,6 @@ fn selection_state_transitions() {
             want_caret: 0,
             want_sel: None,
         },
-        // edits replace selection
         SelCase {
             label: "char_replaces_selection",
             buf: "hello",
@@ -129,7 +125,6 @@ fn selection_state_transitions() {
             want_caret: 1,
             want_sel: None,
         },
-        // ctrl+a select-all
         SelCase {
             label: "ctrl_a_selects_all",
             buf: "hello",

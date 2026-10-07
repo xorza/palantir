@@ -1,5 +1,4 @@
-//! The model-tagged triple a picker drives, so no widget branches on the
-//! model.
+//! The model-tagged axis triple a picker drives, so no widget branches on the model.
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -7,28 +6,17 @@ use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::hsv::Hsv;
 use crate::primitives::paint::color::okhsv::Okhsv;
 
-/// A picker's three axes together with the model they belong to.
-///
-/// The tag is the discriminant rather than a field beside a bare triple, so a
-/// coordinate can never be read against the wrong model. Every widget drives
-/// the axes through the accessors below and none of them matches on the
-/// model.
-///
-/// A picker retains this between frames instead of re-deriving it from the
-/// bound colour. Black has no hue and grey has no saturation, so a picker
-/// that re-derived every frame would lose the hue the moment the value
-/// reached zero.
+/// A picker's three axes with their model, retained between frames: black has no hue and grey no
+/// saturation, so re-deriving from the bound colour would lose the hue.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub enum ColorCoords {
-    /// Coordinates in [`ColorModel::Okhsv`].
+    /// Okhsv coordinates.
     Okhsv(Okhsv),
-    /// Coordinates in [`ColorModel::Hsv`].
+    /// HSV coordinates.
     Hsv(Hsv),
 }
 
-/// Black in the default model — what a picker holds before its first frame
-/// reads the bound colour.
 impl Default for ColorCoords {
     fn default() -> Self {
         Self::Okhsv(Okhsv::default())
@@ -36,9 +24,7 @@ impl Default for ColorCoords {
 }
 
 impl ColorCoords {
-    /// The axes of `color` in `model`.
-    ///
-    /// `fallback_hue` answers grey, which has no hue of its own.
+    /// Coordinates of `color` in `model`; `fallback_hue` stands in where hue is undefined.
     pub fn new(model: ColorModel, color: RgbaF32, fallback_hue: f32) -> Self {
         match model {
             ColorModel::Okhsv => Self::Okhsv(Okhsv::from_color(color, fallback_hue)),
@@ -46,7 +32,7 @@ impl ColorCoords {
         }
     }
 
-    /// Which model these axes belong to.
+    /// The colour model.
     pub const fn model(self) -> ColorModel {
         match self {
             Self::Okhsv(_) => ColorModel::Okhsv,
@@ -54,8 +40,7 @@ impl ColorCoords {
         }
     }
 
-    /// The opaque colour these axes name. A caller carrying alpha applies it
-    /// with [`RgbaF32::with_alpha`].
+    /// The colour these coordinates give.
     pub fn to_color(self) -> RgbaF32 {
         match self {
             Self::Okhsv(c) => c.to_color(),
@@ -63,11 +48,7 @@ impl ColorCoords {
         }
     }
 
-    /// The same colour, read in `model` instead.
-    ///
-    /// Goes through [`Self::to_color`], so the colour survives the switch and
-    /// only the handles move. Grey keeps its hue, because the current hue is
-    /// what answers as the fallback.
+    /// The same colour read in `model`; only the handles move, grey keeps its hue.
     pub fn with_model(self, model: ColorModel) -> Self {
         if model == self.model() {
             return self;
@@ -75,9 +56,7 @@ impl ColorCoords {
         Self::new(model, self.to_color(), self.hue())
     }
 
-    /// Hue, read as the *turn* [`Self::to_color`] paints: a hue outside
-    /// `0..=1` wraps, and a non-finite one reads as `0`. A hue of `1` stays
-    /// `1`, for the reason [`Self::set_hue`] keeps it.
+    /// Hue as the turn [`Self::to_color`] paints: wraps outside `0..=1`, non-finite reads `0`.
     pub const fn hue(self) -> f32 {
         let h = match self {
             Self::Okhsv(c) => c.h,
@@ -90,8 +69,7 @@ impl ColorCoords {
         }
     }
 
-    /// Saturation, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
-    /// the model holds as non-finite.
+    /// Clamped to `0..=1`, `0` if non-finite.
     pub const fn saturation(self) -> f32 {
         domain::fraction(match self {
             Self::Okhsv(c) => c.s,
@@ -99,8 +77,7 @@ impl ColorCoords {
         })
     }
 
-    /// Value, read as a *fraction*: clamped to `0..=1`, and `0` for an axis
-    /// the model holds as non-finite.
+    /// Clamped to `0..=1`, `0` if non-finite.
     pub const fn value(self) -> f32 {
         domain::fraction(match self {
             Self::Okhsv(c) => c.v,
@@ -108,11 +85,8 @@ impl ColorCoords {
         })
     }
 
-    /// Set the hue, as a *fraction* — clamped to `0..=1`, and `0` when it is
-    /// not finite. Both ends name red, and both are kept: a hue bar dragged
-    /// to its right edge reads 1 and draws its marker there, where a wrap
-    /// to 0 jumped it to the left. A caller stepping round the circle wraps
-    /// its own arithmetic.
+    /// Sets the hue as a fraction: clamped to `0..=1`, `0` if non-finite. Both ends name red and
+    /// both are kept, so a hue bar dragged to its right edge keeps its marker there.
     pub const fn set_hue(&mut self, h: f32) {
         let h = domain::fraction(h);
         match self {
@@ -121,7 +95,7 @@ impl ColorCoords {
         }
     }
 
-    /// Set the saturation, as a *fraction*.
+    /// Sets saturation.
     pub const fn set_saturation(&mut self, s: f32) {
         let s = domain::fraction(s);
         match self {
@@ -130,7 +104,7 @@ impl ColorCoords {
         }
     }
 
-    /// Set the value, as a *fraction*.
+    /// Sets value.
     pub const fn set_value(&mut self, v: f32) {
         let v = domain::fraction(v);
         match self {

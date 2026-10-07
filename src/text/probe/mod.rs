@@ -1,15 +1,7 @@
-//! The public text-geometry surface: the answers half of
-//! [`TextRun`](crate::text::run::TextRun).
-//!
-//! Read-only geometry over one shaped text layout — caret placement, pixel
-//! hit-testing, and selection rects. Reached by widgets through
-//! [`Ui::probe_text`](crate::Ui::probe_text), never by the shaping hot path.
-//! Placing a measured block inside its leaf rect is plain box alignment with
-//! no text state, so it lives with `Align` as
-//! [`crate::primitives::layout::align::Align::place_in`].
-//!
-//! Nothing shaped escapes `src/text/`: [`TextProbe`] answers in plain
-//! geometry and the cosmic-text buffer behind it stays private to this file.
+//! The public text-geometry surface: read-only caret placement, hit-testing and
+//! selection rects over one shaped layout, reached through
+//! [`Ui::probe_text`](crate::Ui::probe_text). Nothing shaped escapes `src/text/`;
+//! the cosmic-text buffer stays private to this file.
 
 use crate::common::hash;
 use crate::primitives::geometry::rect::Rect;
@@ -26,41 +18,20 @@ use unicode_segmentation::UnicodeSegmentation;
 /// Geometry queries over one shaped run, minted by
 /// [`Ui::probe_text`](crate::Ui::probe_text).
 ///
-/// **A live probe holds the shaper's exclusive borrow**, which is why it
-/// borrows the `Ui` mutably: two overlapping probes are then E0499 at
-/// compile time rather than a `RefCell` panic in someone's running app.
-/// Two *sequential* probes are fine — end the first with a block, or let
-/// a temporary drop at the end of its statement. Re-entering the shaper
-/// while a probe is alive is a logic error the `RefCell` catches at
-/// runtime.
-///
-/// One lifetime, though the borrow of the shaper and the borrow of the
-/// run's text are separately tracked inside: nothing here hands back a
-/// borrow of either, so collapsing them costs nothing and spares every
-/// caller a second `'_`.
+/// **A live probe holds the shaper's exclusive borrow**, so it borrows the `Ui`
+/// mutably: overlapping probes are E0499 at compile time, not a `RefCell` panic.
+/// Sequential probes are fine.
 #[derive(Debug)]
 pub struct TextProbe<'a> {
-    /// Extent of the shaped run. `Size::ZERO` for empty text.
     size: Size,
-    /// The run's source bytes — what byte↔grapheme conversion walks.
     text: &'a str,
-    /// Key of the buffer this probe answers against. Carried even where
-    /// no buffer was shaped (empty text, the gated mono metric), because
-    /// the metrics every answer is expressed in live on it.
-    ///
-    /// `None` only for a face the shaper cannot be asked for. That face
-    /// names no metrics either, so the answers below fall back to a
-    /// zero-height band — see [`Self::line_height`].
+    /// Key of the buffer this probe answers against; carried even where nothing was
+    /// shaped, since the metrics live on it. `None` only for a face the shaper can't
+    /// be asked for, which gives a zero-height band ([`Self::line_height`]).
     key: Option<TextShapeKey>,
-    /// The run's authored horizontal alignment.
-    ///
-    /// Not read off `key`, although the key carries one: the align bits of
-    /// its `face_q` are a *cache discriminator*, projected onto what
-    /// shaping actually varies on — an unbounded key stores `Auto` for
-    /// every alignment, because an unbounded shape has no per-line offsets
-    /// to vary. Asked where a glyphless line's caret sits, it would answer
-    /// `Auto` for a right-aligned run and put the caret at the block's left
-    /// edge.
+    /// The run's authored horizontal alignment. Not read off `key`: an unbounded key
+    /// stores `Auto` for every alignment, which would put a right-aligned glyphless
+    /// line's caret at the block's left edge.
     halign: HAlign,
     inner: RefMut<'a, ShaperInner>,
 }
@@ -87,27 +58,16 @@ impl<'a> TextProbe<'a> {
         self.size
     }
 
-    /// 64-bit hash of the run's text, as the shaping cache keys it —
-    /// for a caller comparing "is this the same string as last frame?"
-    /// without retaining a copy of it.
-    ///
-    /// `None` where the run's face names no size the shaper can be asked
-    /// for. Nothing was hashed there, and answering a plausible zero
-    /// would read as one buffer's identity to a caller comparing two.
+    /// 64-bit hash of the run's text as the shaping cache keys it, for "same string as
+    /// last frame?" without a copy. `None` where the face names no size the shaper can
+    /// be asked for.
     pub fn text_hash(&self) -> Option<NonZeroU64> {
         Some(self.key?.text_hash)
     }
 
-    /// What [`Self::text_hash`] would answer for `text`, without shaping
-    /// it.
-    ///
-    /// The two agree exactly, and that is the whole point: a caller that
-    /// tracks a buffer's identity across frames reads the probe's hash on
-    /// the frames it probes, and mints its own on the frames it does not
-    /// — an input pass that edits before anything is shaped, say. A
-    /// disagreement between the two reads as *the buffer was replaced*,
-    /// which is not a conclusion to reach by accident. `TextEdit` wipes
-    /// its undo stack on it.
+    /// What [`Self::text_hash`] would answer for `text`, without shaping. A caller
+    /// tracking a buffer's identity mixes both sources, so they must agree exactly; a
+    /// mismatch reads as "buffer replaced" (`TextEdit` wipes its undo stack).
     ///
     /// ```
     /// # use palantir::widget::TextProbe;
@@ -118,30 +78,15 @@ impl<'a> TextProbe<'a> {
         TextShapeKey::content_hash(hash::hash_str(text))
     }
 
-    /// The band every unshaped answer below reports on: the leading this
-    /// run was asked for, quantized, or zero where its face named none.
     fn line_height(&self) -> f32 {
         self.key.map_or(0.0, TextShapeKey::line_height)
     }
 
-    /// Shaped run behind this layout; `None` on the gated mono metric,
-    /// for empty text (an unshaped request), and for a face the shaper
-    /// cannot be asked for.
-    ///
-    /// The last names no key at all, so it never reaches the cache — the
-    /// `?` below is where that case stops.
-    ///
-    /// **Mono is refused rather than missed.** A probe's key is a real
-    /// one whichever metric measured it — only `TextSystem` withholds
-    /// one — so a mono run whose key some other caller had shaped
-    /// through [`TextGlyphs`](crate::widget::TextGlyphs) would find that buffer
-    /// and answer cosmic geometry against a mono extent. Every answer a
-    /// probe gives has to come from the metric that measured it.
-    ///
-    /// Every query below reports in *block-local* coordinates — the same
-    /// space [`Self::size`] measures and the encoder places — so each one
-    /// takes [`ShapedRun::left`] off the buffer's own x, or adds it back
-    /// when going the other way.
+    /// Shaped run behind this layout; `None` on the mono metric, for empty text, and
+    /// for a face the shaper can't be asked for. Mono is refused rather than missed:
+    /// its key is real, so a buffer another caller shaped under it would give cosmic
+    /// geometry against a mono extent. Every query reports in block-local coordinates,
+    /// so each subtracts [`ShapedRun::left`] from the buffer's x, or adds it back.
     fn shaped(&self) -> Option<ShapedRun<'_>> {
         if self.inner.is_mono() {
             return None;
@@ -149,41 +94,19 @@ impl<'a> TextProbe<'a> {
         self.inner.cosmic().shaped_run(self.key?)
     }
 
-    /// True where this run had nothing to shape — no bytes, or a face
-    /// with no usable size. Those are the two runs
-    /// [`TextShapeRequest`](crate::text::request::TextShapeRequest) mints
-    /// nothing for, and between them the whole of what production can
-    /// reach the unshaped answers below with.
-    ///
-    /// Named because both of those answers assert on it, and a rule
-    /// spelled at each is one that can be changed in only one.
+    /// True where this run had nothing to shape (no bytes, or a face with no usable
+    /// size).
     const fn shapes_nothing(&self) -> bool {
         self.text.is_empty() || self.key.is_none()
     }
 
-    /// Caret-x for a layout with no shaped buffer.
-    ///
-    /// Production reaches this for the two runs that shape nothing —
-    /// empty text, and text whose face names no size the shaper can be
-    /// asked for (no key at all). Either way the block is zero-width:
-    /// the only position in it is its own origin, and the owner is what
-    /// places that block against an alignment. The gated mono metric also
-    /// lands here, with real text, which is the arm `mono` answers —
-    /// reached by full path because the module it lives in is gated away
-    /// in a production build.
-    ///
-    /// Anything else is a wiring bug, not a case to answer with a
-    /// plausible zero: [`TextShaper::layout`](crate::text::shaper::TextShaper)
-    /// shapes non-empty text before minting the probe, and the probe
-    /// holds the shaper's borrow for its whole life, so no sweep can
-    /// evict that buffer out from under it.
-    ///
-    /// **The gate asks which metric measured the run, not whether the
-    /// text is empty.** Those are different questions, and gating on
-    /// emptiness put the mono arm in front of the assertion below — so
-    /// under the very builds that compile the assertion, a cosmic run
-    /// that had somehow lost its buffer took a mono estimate instead of
-    /// tripping it.
+    /// Caret-x for a layout with no shaped buffer. Production reaches this for runs
+    /// that shape nothing: the block is zero-width and the only position is its
+    /// origin. The mono metric also lands here, answered by `mono` (named by full
+    /// path; its module is gated out of production). Anything else is a wiring bug.
+    /// The gate asks which metric measured the run, not whether the text is empty, so
+    /// a cosmic run that lost its buffer trips the assertion instead of taking a mono
+    /// estimate.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
         #[cfg(any(test, feature = "internals"))]
         #[expect(
@@ -201,9 +124,7 @@ impl<'a> TextProbe<'a> {
         0.0
     }
 
-    /// [`Self::unshaped_caret_x`]'s inverse, and unreachable on the same
-    /// terms — including which question the gate asks. Empty text has
-    /// exactly one position, so production always answers 0.
+    /// [`Self::unshaped_caret_x`]'s inverse; production answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
         #[cfg(any(test, feature = "internals"))]
         #[expect(
@@ -221,27 +142,16 @@ impl<'a> TextProbe<'a> {
         0
     }
 
-    /// Where the caret sits at `byte_offset`: (x, y_top, line_height).
-    /// Multi-line aware via cosmic-text layout runs (each `\n` and each
-    /// soft-wrap segment becomes a distinct visual line). Mono fallback /
-    /// empty-text path collapses to a 1D layout — `y_top = 0`, `x` from a
-    /// flat mono per-byte estimate — usable for tests / headless.
-    ///
-    /// Horizontal placement defers to `LayoutRun::cursor_position`, the
-    /// same geometry `Buffer::hit` inverts, so a hit-test → caret round
-    /// trip lands back where it started. It resolves the two cases a
-    /// glyph-start scan cannot: an RTL glyph carries the caret at its
-    /// right edge, and an offset interior to a ligature or Indic cluster
-    /// interpolates across the cluster instead of jumping to its far end.
-    ///
-    /// `byte_offset` is clamped to the run, the way
-    /// [`Self::byte_at`] clamps a point: past the end answers the end.
+    /// Where the caret sits at `byte_offset`. Multi-line aware; the mono and
+    /// empty-text path is 1D (`y_top = 0`, flat per-byte `x`). Horizontal placement
+    /// uses `LayoutRun::cursor_position`, the geometry `Buffer::hit` inverts, so
+    /// hit-test then caret round-trips; it handles RTL glyphs and offsets inside
+    /// ligature or Indic clusters. `byte_offset` is clamped to the run.
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
         let line_height = self.line_height();
         let halign = self.halign;
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
-            // No shaped buffer means empty text (block-local x is 0, and
-            // the owner aligns the empty block itself) or the mono metric.
+            // No shaped buffer: empty text or the mono metric.
             return Caret {
                 x: self.unshaped_caret_x(byte_offset),
                 y_top: 0.0,
@@ -260,10 +170,8 @@ impl<'a> TextProbe<'a> {
                 y_top: run.line_top,
                 line_height: run.line_height,
             };
-            // A glyphless visual line has nothing to hang the caret on and
-            // cosmic reports x = 0; place it where per-line align will put
-            // the first typed glyph instead. That answer is block-local
-            // already, so it skips the correction the buffer's own x needs.
+            // A glyphless line has no glyph to hang the caret on and cosmic reports x = 0;
+            // place it where per-line align puts the first typed glyph (already block-local).
             if run.glyphs.is_empty() {
                 return Caret {
                     x: empty_line_x(self.size.w, halign),
@@ -273,8 +181,7 @@ impl<'a> TextProbe<'a> {
             }
             match run.cursor_position(&target) {
                 Some(x) => return at(x),
-                // Soft wrap splits one logical line across runs, so a miss
-                // here just means the offset belongs to a later run.
+                // Soft wrap splits a logical line across runs; a miss means a later run.
                 None => {
                     last_in_line = Some(at(run.glyphs.last().map_or(0.0, |g| g.x + g.w)));
                 }
@@ -287,20 +194,12 @@ impl<'a> TextProbe<'a> {
         })
     }
 
-    /// The byte offset a point lands on, in run-local coordinates —
-    /// click-to-caret. Clamped to the run, so a point outside it answers
-    /// the nearest end rather than nothing.
-    ///
-    /// Multi-line aware on the cosmic path via `Buffer::hit`. Mono /
-    /// empty-text falls back to a 1D `(x ÷ 0.5·font_size)` scan over char
-    /// boundaries — enough for headless single-line click tests, ignores
-    /// `y` entirely.
+    /// The byte offset a point lands on, in run-local coordinates (click-to-caret),
+    /// clamped to the run. Multi-line via `Buffer::hit`; the mono and empty-text path
+    /// scans one dimension by `x ÷ 0.5·font_size` and ignores `y`.
     pub fn byte_at(&self, x: f32, y: f32) -> usize {
         match self.shaped() {
-            // `x` arrives block-local, so put it back into buffer space
-            // before asking cosmic — the exact inverse of what
-            // [`Self::caret_at`] subtracts, which is what keeps the
-            // hit-test → caret round trip landing where it started.
+            // `x` is block-local; add it back to buffer space (inverse of [`Self::caret_at`]).
             Some(ShapedRun { buffer, left }) => {
                 buffer.hit(x + left, y).map_or(self.text.len(), |cursor| {
                     LineMap::new(buffer, self.text).byte(cursor)
@@ -310,24 +209,15 @@ impl<'a> TextProbe<'a> {
         }
     }
 
-    /// Every rect covering `range`, one per visual line, in run-local
-    /// coordinates.
-    ///
-    /// `range` is clamped to the run at both ends, as
-    /// [`Self::caret_at`] clamps its offset.
-    ///
-    /// A callback rather than a returned collection: the rects are
-    /// consumed immediately (painted, or unioned) and a caller that wants
-    /// to retain them can push into a buffer it already owns, so nothing
-    /// here allocates per frame — which the
-    /// `long_multiline_selection_alloc_free` audit is what pins.
+    /// Every rect covering `range`, one per visual line, in run-local coordinates;
+    /// `range` is clamped. A callback so nothing allocates per frame
+    /// (`long_multiline_selection_alloc_free` pins it).
     pub fn selection_rects(&self, range: Range<usize>, mut out: impl FnMut(Rect)) {
         if range.is_empty() {
             return;
         }
         let Some(ShapedRun { buffer, left }) = self.shaped() else {
-            // No shaped buffer to wash: mono lays the band out 1D, and
-            // empty text collapses it to nothing.
+            // No shaped buffer: mono lays the band out 1D, empty text collapses it.
             let x0 = self.unshaped_caret_x(range.start);
             let x1 = self.unshaped_caret_x(range.end);
             out(Rect::new(x0, 0.0, x1 - x0, self.line_height()));
@@ -341,32 +231,22 @@ impl<'a> TextProbe<'a> {
     }
 }
 
-/// Where a caret sits inside a run: top-left in run-local pixels, plus
-/// the height of the visual line it landed on.
-///
-/// That height is what the line was actually laid out at, which is not
-/// always the requested `line_height` — font fallback shifts ascent
-/// and descent — so a caret sized from this matches the glyphs beside it
-/// rather than the metric that was asked for.
+/// Where a caret sits inside a run: top-left in run-local pixels plus its visual
+/// line's height as laid out (font fallback shifts ascent and descent), so it
+/// matches the glyphs beside it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Caret {
     /// Horizontal position in the block's local logical pixels.
     pub x: f32,
     /// Top of the caret, on the same axes.
     pub y_top: f32,
-    /// Height of the line the caret sits on, as it was laid out.
+    /// Height of the line the caret sits on, as laid out.
     pub line_height: f32,
 }
 
-/// Where the caret on a zero-glyph line sits inside a block `block_w`
-/// wide. Cosmic reports `x = 0` for a glyphless line whatever the
-/// alignment, so without this an empty line in a right-aligned block
-/// would take its caret to the block's left edge instead of the edge the
-/// first typed glyph will land on.
-///
-/// Measured against the *block*, not the wrap width: the block is what
-/// the owner aligns inside the leaf rect, so aligning against the wrap
-/// width here would place the caret as if that alignment happened twice.
+/// Where the caret on a zero-glyph line sits in a block `block_w` wide (cosmic
+/// reports `x = 0`). Measured against the block, not the wrap width, or the
+/// owner's alignment would apply twice.
 fn empty_line_x(block_w: f32, halign: HAlign) -> f32 {
     match halign {
         HAlign::Center => block_w * 0.5,
@@ -375,7 +255,6 @@ fn empty_line_x(block_w: f32, halign: HAlign) -> f32 {
     }
 }
 
-// `LayoutRun::highlight` builds a temporary `Vec` per run, so stream its spans directly.
 fn push_run_selection_rects(
     run: &cosmic_text::LayoutRun<'_>,
     cursor_start: cosmic_text::Cursor,
@@ -383,10 +262,9 @@ fn push_run_selection_rects(
     left: f32,
     out: &mut impl FnMut(Rect),
 ) {
-    // The per-grapheme test below (ported from `LayoutRun::highlight`) treats a
-    // run whose line differs from both cursors as fully selected, so runs on
-    // lines outside the selected range must be rejected up front — the same
-    // guard cosmic-text's editor applies before calling `highlight`.
+    // Runs outside the selected lines are rejected first, as cosmic-text's editor
+    // does: the per-grapheme test below treats a run whose line differs from both
+    // cursors as fully selected.
     if run.line_i < cursor_start.line || run.line_i > cursor_end.line {
         return;
     }
@@ -429,24 +307,14 @@ fn push_run_selection_rects(
     flush(&mut selected);
 }
 
-/// Byte offsets into a run's source text, and cosmic `Cursor`s into the
-/// buffer shaped from it, mapped through the buffer's own lines.
-///
-/// The lines are what cosmic split the text at — `\n`, `\r`, `\r\n` and
-/// `\n\r` alike — so a map built from them cannot disagree with the
-/// cursors cosmic hands back. Counting `\n` alone put every line after a
-/// `\r` one line early.
-///
-/// A truncated run shapes `prefix + "…"`, not its source: the shown text
-/// matches the source only up to [`Self::shown`]. Offsets inside that
-/// prefix map one to one; an offset past it maps to its end, so a hit on
-/// the ellipsis answers the cut and never a byte inside a character the
-/// buffer does not hold.
+/// Byte offsets into a run's source text and cosmic `Cursor`s into its buffer,
+/// mapped through the buffer's own lines (split at `\n`, `\r`, `\r\n`, `\n\r`).
+/// A truncated run shapes `prefix + "…"`, so the shown text matches the source
+/// only up to [`Self::shown`]; an offset past it maps to its end.
 #[derive(Debug)]
 struct LineMap<'a> {
     buffer: &'a cosmic_text::Buffer,
-    /// Source bytes the buffer shows, from the start: the whole text, or
-    /// a truncated run's kept prefix. Always a char boundary.
+    /// Source bytes the buffer shows from the start; always a char boundary.
     shown: usize,
 }
 
@@ -474,9 +342,6 @@ impl<'a> LineMap<'a> {
     }
 
     /// The cursor at `byte_offset`, clamped to what the buffer shows.
-    /// `byte_offset` arrives from a caller's own arithmetic — a caret
-    /// index, the end of a selection range — so an offset past the end is
-    /// an input case rather than a logic error.
     fn cursor(&self, byte_offset: usize) -> cosmic_text::Cursor {
         let byte_offset = byte_offset.min(self.shown);
         let last = self.buffer.lines.len().saturating_sub(1);
@@ -485,7 +350,6 @@ impl<'a> LineMap<'a> {
             let len = line.text().len();
             let next = start + len + line.ending().as_str().len();
             if byte_offset < next || index == last {
-                // An offset inside the line ending sits at the line's end.
                 return cosmic_text::Cursor::new(index, (byte_offset - start).min(len));
             }
             start = next;
@@ -493,7 +357,6 @@ impl<'a> LineMap<'a> {
         cosmic_text::Cursor::new(0, 0)
     }
 
-    /// The source byte `cursor` stands for — [`Self::cursor`]'s inverse.
     fn byte(&self, cursor: cosmic_text::Cursor) -> usize {
         let mut start = 0;
         for line in self.buffer.lines.iter().take(cursor.line) {
@@ -513,27 +376,18 @@ pub(crate) mod internals {
     use super::*;
 
     impl TextProbe<'_> {
-        /// Raw shaped buffer, reach-in for the in-tree cross-checks
-        /// against cosmic's own geometry (`run.highlight`). Test-only
-        /// so production builds expose no cosmic types outside
-        /// `src/text/`.
+        /// Raw shaped buffer for in-tree cross-checks; test-only so no cosmic types leak.
         pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
             self.shaped().map(|shaped| shaped.buffer)
         }
 
-        /// The key a caller can replay this run through, or `None` where
-        /// no buffer backs it — empty text, an unusable face, or the
-        /// gated mono metric. Derived from whether a buffer is actually
-        /// resident rather than from a second reading of the three
-        /// conditions that produce one.
+        /// The key a caller can replay this run through, or `None` where no buffer backs it.
         pub(crate) fn shaped_key(&self) -> Option<TextShapeKey> {
             self.shaped().and(self.key)
         }
     }
 
-    /// The byte↔`Cursor` mapping over a shaped `buffer`, which
-    /// `text::tests::geometry` drives both as a round trip and as the
-    /// oracle its selection cross-check builds cosmic cursors with.
+    /// The byte/`Cursor` mapping over a shaped `buffer`, for `text::tests::geometry`.
     pub(crate) fn cursor_from_byte(
         buffer: &cosmic_text::Buffer,
         text: &str,
@@ -542,7 +396,6 @@ pub(crate) mod internals {
         LineMap::new(buffer, text).cursor(byte_offset)
     }
 
-    /// [`cursor_from_byte`]'s inverse — see there.
     pub(crate) fn cursor_to_byte(
         buffer: &cosmic_text::Buffer,
         text: &str,

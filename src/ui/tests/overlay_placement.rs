@@ -1,5 +1,4 @@
-//! Anchored side-layer placement through the published surface — the
-//! path a widget written outside this crate takes.
+//! Anchored side-layer placement through the published surface, as an outside widget would use it.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -23,8 +22,7 @@ fn body(ui: &mut Ui) {
         .show(ui, |_| {});
 }
 
-/// Record `place` under a full-surface main panel and report where the
-/// popup layer's root landed.
+/// Record `place` under a full-surface main panel and report where the popup layer's root landed.
 fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
@@ -37,18 +35,11 @@ fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
     h.ui.layout(Layer::Popup).rect[root]
 }
 
-/// The three answers `Anchor` gives for one 120x100 body,
-/// hand-computed against a 400x300 surface:
+/// `Anchor`'s three answers for a 120x100 body on a 400x300 surface:
 ///
-/// - Anchor `(20, 30, 100, 20)`, no gap: the body fits below, so its top
-///   is the anchor's bottom, `30 + 20 = 50`, and the cross axis starts
-///   at the anchor's left, `20`.
-/// - The same anchor with a gap of 8: `50 + 8 = 58`. The gap is the only
-///   difference between the two rows, so they prove it reaches the
-///   resolver.
-/// - Anchor `(20, 250, 100, 20)`: below would put the top at `270` and
-///   the bottom at `370`, past the surface, so the body flips above —
-///   `250 - 100 = 150`, which fits.
+/// - Anchor `(20, 30, 100, 20)`, no gap: fits below, top = `30 + 20 = 50`, cross axis starts at `20`.
+/// - Same with gap 8: `58`; the gap is the only difference, so it reaches the resolver.
+/// - Anchor `(20, 250, 100, 20)`: below would end at `370`, past the surface, so it flips above: `250 - 100 = 150`.
 #[test]
 fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     let cases: &[(Rect, f32, Vec2)] = &[
@@ -80,10 +71,7 @@ fn an_anchored_layer_takes_the_gap_and_flips_to_fit() {
     }
 }
 
-/// `at` is the other origin form and it does not move. The same
-/// near-bottom point that made `anchor` flip leaves a fixed layer
-/// hanging off the surface, which is what makes the two distinct
-/// answers rather than one with a tolerance.
+/// `at` doesn't flip: the near-bottom point that made `anchor` flip leaves a fixed layer hanging off the surface, so the two are distinct answers.
 #[test]
 fn a_fixed_layer_stays_where_it_was_put() {
     let rect = placed(|ui| {
@@ -94,10 +82,7 @@ fn a_fixed_layer_stays_where_it_was_put() {
     assert_eq!(rect.min, Vec2::new(20.0, 250.0));
 }
 
-/// A side layer raised inside a disabled scope is disabled with it: a
-/// button in a popup raised from a disabled panel reads disabled on the
-/// first frame, and its cascade row is disabled too, so a click on it does
-/// nothing. A popup raised from an enabled panel stays live.
+/// A side layer raised in a disabled scope is disabled with it: a popup button from a disabled panel reads disabled on frame 1 and its cascade row is disabled, so a click does nothing. One from an enabled panel stays live.
 #[test]
 fn a_layer_raised_from_a_disabled_scope_is_disabled() {
     use crate::widgets::button::Button;

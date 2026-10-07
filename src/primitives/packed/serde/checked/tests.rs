@@ -11,10 +11,7 @@ fn check<T>(
     validator(&mut deserializer).map_err(|error| error.to_string())
 }
 
-/// Each scalar rule at its ends: the last value it takes and the first it
-/// refuses, and the non-finite values every rule refuses. A refusal states
-/// the same rule the call-site kind panics with. 65504 is the largest f16;
-/// 65505 packs to infinity.
+/// Each scalar rule at its ends: the last value it takes, the first it refuses, and the non-finite values every rule refuses, stating the same rule the call-site kind panics with. 65504 is the largest f16; 65505 packs to infinity.
 #[test]
 fn each_scalar_rule_holds_its_ends() {
     type Rule = fn(&mut ron::Deserializer<'static>) -> Result<f32, ron::Error>;

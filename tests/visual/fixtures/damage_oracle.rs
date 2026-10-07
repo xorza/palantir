@@ -1,12 +1,6 @@
-//! The pixel damage oracle: a frame repainted only where it was damaged
-//! must equal the same frame painted in full, bit for bit.
+//! The pixel damage oracle: a frame repainted only where damaged must equal the same frame painted in full, bit for bit.
 //!
-//! The CPU oracle (`internals::harness::oracle`) checks that damage covers every
-//! paint row that changed. This one checks the pixels themselves, so it
-//! also sees what no row describes. Each script runs through two renderers
-//! side by side: one repaints only the damage, the other is told before
-//! every frame that its target's contents are gone, so it paints
-//! everything.
+//! Complements the CPU oracle (`internals::harness::oracle`), which checks damage covers changed paint rows; this checks pixels, so it sees what no row describes. Each script runs through two renderers: one repaints damage only, the other is told its target is lost each frame and paints everything.
 
 use std::time::Duration;
 
@@ -52,9 +46,7 @@ impl Knobs {
 }
 
 fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
-    // Translucent and varying in both axes, so every damaged pixel blends a
-    // value of its own over the clear: a partial repaint over its pre-clear,
-    // a full one over its `LoadOp::Clear`.
+    // Translucent and varying in both axes, so every damaged pixel blends a value of its own over the clear.
     let veil = RadialGradient::two_stop(
         RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
         RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
@@ -158,17 +150,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
     shadows(ui, k);
 }
 
-/// Shadows above the scene, each in a node of its own, so a partial frame
-/// culls the ones its damage misses and plans them from the census. A large
-/// one, σ = 16 and rounded 26, whose corners pay for their table alone. And
-/// `cards` small ones along the top, σ = 4 and rounded 8, under the swatch
-/// and the popups that other scripts damage: their 40×30 sources show about
-/// 40.5² px of each corner's region, so a card's four corners cost 78.7k
-/// nodes to shade against 259.6k to bake the `(8, 4)` table, which 4 cards
-/// pay for and 3 do not. A frame that repaints one card reads the table
-/// only through the census of the others, and one that removes or adds a
-/// card leaves the rest unrepainted under a key that has just lost or
-/// gained its table.
+/// Shadows above the scene, each in its own node, so a partial frame culls those its damage misses and plans them from the census: one large (σ = 16, radius 26) whose corners pay for their table alone, and `cards` small ones (σ = 4, radius 8) whose `(8, 4)` table 4 cards pay for and 3 do not (78.7k nodes to shade vs 259.6k to bake per card). A frame repainting one card reads the table through the others' census; adding or removing a card leaves the rest unrepainted under a key that just gained or lost its table.
 fn shadows(ui: &mut palantir::Ui, k: Knobs) {
     let shadow = |blur| Shadow {
         color: RgbaF32::srgba(0.1, 0.0, 0.2, 0.7),
@@ -204,7 +186,7 @@ fn shadows(ui: &mut palantir::Ui, k: Knobs) {
     });
 }
 
-/// A 60 px checker, so an image drawn past its node is visible.
+/// A 60 px checker, so an image drawn past its node shows.
 fn picture(h: &mut Harness) -> ImageHandle {
     let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|x, y| {
@@ -229,7 +211,7 @@ fn run(name: &str, script: &[Knobs]) {
             .size(SURFACE)
             .frame(|ui| scene(ui, *k, &full_picture))
             .image;
-        // Frame `n` is the script's entry `n - 2`, after the two base frames.
+        // Frame `n` is script entry `n - 2`, after two base frames.
         assert_same(&format!("{name}_frame_{frame}"), &repainted, &painted);
     }
 }

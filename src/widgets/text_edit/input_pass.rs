@@ -15,52 +15,37 @@ use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
 
-/// Result of one frame's input pass over a TextEdit: the caret byte,
-/// the (sorted) selection range for the painter, and the edge signals
-/// `show()` folds into [`crate::widgets::text_edit::TextEditResponse`].
+/// Result of one frame's input pass: edge signals `show()` folds into
+/// [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Escape canceled the edit, which also blurs before view
-    /// recording.
+    /// Escape canceled the edit; blurs before view recording.
     pub(super) canceled: bool,
     /// Enter accepted a single-line value this frame.
     pub(super) submitted: bool,
-    /// The buffer was mutated this frame (typing, delete, paste, cut,
-    /// undo/redo). Reported by the mutation choke points, so it's
-    /// content-accurate — a same-length overwrite still counts, unlike
-    /// a length-delta proxy.
+    /// The buffer was mutated this frame. Set by the mutation choke points, so
+    /// a same-length overwrite counts.
     pub(super) edited: bool,
 }
 
-/// What the builder configured about *accepting* input, as opposed to
-/// rendering it. The three travel together because they are set on the
-/// same builder and read at the same call.
-///
-/// Not to be confused with [`crate::InputPolicy`], which is unrelated —
-/// that one gates whether a frame re-records at all. This is per-widget
-/// and concerns which keystrokes a field takes.
+/// What the builder configured about accepting input, as opposed to
+/// rendering it. Unrelated to [`crate::InputPolicy`], which gates re-recording.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AcceptPolicy {
     /// Cap on buffer length; `None` is unbounded.
     pub(super) max_chars: Option<usize>,
     /// Select everything when focus lands without a same-frame press.
     pub(super) select_all_on_focus: bool,
-    /// The key classes this field consumes — the same value its scope
-    /// declares, so what it tells other readers it takes and what it
-    /// acts on cannot drift apart.
+    /// The key classes this field consumes: the value its scope declares, so
+    /// the two cannot drift.
     pub(super) filter: KeyFilter,
 }
 
-/// Everything one frame's input pass reads or writes, bundled the way
-/// this module's [`LayoutInput`](super::text_layout::LayoutInput) and
-/// [`GeometryInput`](super::text_geometry::GeometryInput) siblings are.
+/// Everything one frame's input pass reads or writes.
 ///
-/// Holds the state row as a plain `&mut` rather than reaching for it
-/// through `ui`. `Editor` holds it mutably across the keyboard drain,
-/// and the drain hands `&mut Ui` back to each handler, so a row borrowed
-/// *from* `ui` could not survive it. `TextEdit::show` moves the row out
-/// once for the whole pass, which is what makes this possible *and* is
-/// why the caller's write-back has to be unconditional.
+/// The state row is a plain `&mut` because `Editor` holds it across the
+/// keyboard drain, which hands `&mut Ui` to each handler. `TextEdit::show`
+/// moves the row out for the pass, so its write-back must be unconditional.
 #[derive(Debug)]
 pub(super) struct InputPass<'a> {
     pub(super) resp_state: &'a ResponseState,
@@ -72,11 +57,8 @@ pub(super) struct InputPass<'a> {
 }
 
 impl InputPass<'_> {
-    /// Process this frame's pointer + keyboard input and return the
-    /// caret + selection to render plus the frame's edge signals.
-    /// Separate from `TextEdit::show` so the borrow choreography stays
-    /// contained: this touches the input streams and text probes, never
-    /// the shape/tree storage.
+    /// Process this frame's pointer and keyboard input; returns the edge
+    /// signals. Touches input streams and text probes, never shape/tree storage.
     pub(super) fn run(self, ui: &mut Ui) -> InputResult {
         let InputPass {
             resp_state,
@@ -99,8 +81,7 @@ impl InputPass<'_> {
         let TextEditState {
             edit,
             view,
-            // Filled by the geometry pass after this one, and read only by the
-            // painter — the input pass has no business in it.
+            // Filled by the geometry pass after this one.
             selection_rects: _,
             placeholder: _,
             commit_pending: _,
@@ -110,48 +91,30 @@ impl InputPass<'_> {
             composing: _,
         } = state;
         let was_focused = view.was_focused();
-        // Repair persisted byte offsets before any range/slice operation.
-        // Application code may have replaced `*text` with a same-length or
-        // longer string whose UTF-8 boundaries differ from the prior frame.
+        // Repair persisted byte offsets: application code may have replaced
+        // `*text` with a string whose UTF-8 boundaries differ.
         edit.normalize(text);
         let mut ed = Editor::new(text, edit, ctx.multiline, max_chars);
         ed.enforce_single_line();
 
-        // Select-all-on-focus: the frame focus lands (and no press this frame — a
-        // press falls through to place the caret below).
+        // Select all on the frame focus lands, unless a press places the caret.
         if select_all_on_focus && is_focused && !was_focused && !resp_state.left.held() {
             ed.select_all();
         }
 
-        // Click + drag-to-select. What each edge means to the selection is
-        // `Editor::press` / `drag_to` / `end_drag`; what reaches them is
-        // here.
-        //
-        // Gated on `held` (capture-based), not `pressed` (which also demands
-        // the pointer stay *over* the widget): a drag-select must keep
-        // tracking — and keep its anchor — while the pointer drags outside
-        // the editor's rect or off the surface. `held` stays true from press
-        // to release regardless of pointer position, so the caret follows the
-        // clamped hit (byte 0 / end-of-text) and the selection grows instead
-        // of freezing and dropping the anchor at the edge. When the pointer
-        // has left the surface (`pointer_local == None`) the inner `let` fails
-        // and we fall through *without* clearing the anchor — the gesture is
-        // still live, just position-less this frame.
+        // Click and drag-to-select. Gated on `held`, not `pressed`: a drag must
+        // keep its anchor while the pointer is outside the rect or off the
+        // surface. With no `pointer_local` the anchor is kept, not cleared.
         if resp_state.left.held()
             && let Some(pointer_offset) = resp_state.pointer_local
         {
-            // Hit-test runs against the *unscrolled* shaped layout, so we
-            // add last frame's scroll back into the pointer's local coords.
-            // Both offsets are last frame's for the same reason: the user
-            // clicked on what they saw, and this frame's block offset and
-            // scroll are computed after this pass returns.
+            // Hit-testing runs against the unscrolled layout, so add back last
+            // frame's scroll and block offset: the user clicked on what they saw.
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             let block = layout.prev_block_offset;
             let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset.x;
             let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset.y;
-            // `byte_at_xy` handles both axes; single-line probes at
-            // `y=0` (against an unwrapped layout) collapse to cosmic's
-            // 1D `Buffer::hit` walk — one shaped lookup.
+            // Single-line probes at `y=0`.
             let hit = ui
                 .probe_text(ctx.run(ed.text()))
                 .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
@@ -174,19 +137,14 @@ impl InputPass<'_> {
             };
         }
 
-        // Drain this frame's presses in arrival order: shared edit actions
-        // first (clipboard / undo), then `apply_key` (edit / nav).
-        // Walked by index because the vertical and line-edge outcomes probe
-        // the text inline, and iterating the queue would hold a borrow of
-        // `ui` across every one of those probes.
+        // Drain presses in arrival order, by index so probes can borrow `ui`:
+        // shared edit actions first, then `apply_key`.
         for i in 0..ui.keyboard_events().len() {
             let kp = ui.keyboard_events()[i];
             if !filter.takes_press(kp) {
                 continue;
             }
-            // Single-line Enter is a *submit* signal, not an edit: the buffer
-            // is left untouched (multi-line handles `\n` in `apply_key`), but
-            // the caller learns the user accepted the value.
+            // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 submitted = true;
                 assert_only_repeats_after(ui.keyboard_events(), i);
@@ -221,12 +179,9 @@ impl InputPass<'_> {
     }
 }
 
-/// Assert that only repeats of the key at `terminal` follow it. The field
-/// stops reading keys at a submit or a cancel: what follows belongs to
-/// whoever owns focus next. `InputQueue` already holds every key press
-/// after a command key for the next frame, so only repeats of that key can
-/// follow it here; the assert keeps a change to that rule from silently
-/// typing into a field that just let go.
+/// Assert that only repeats of the key at `terminal` follow it. `InputQueue`
+/// holds every press after a command key for the next frame, so only repeats
+/// can follow; the assert catches a change to that rule.
 fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
     let key = events[terminal].key;
     debug_assert!(
@@ -255,8 +210,7 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         }
         Key::ArrowLeft if line_nav => editor.move_caret(0, extend),
         Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), extend),
-        // The document's ends: Ctrl+Home / Ctrl+End everywhere, and
-        // Cmd+Up / Cmd+Down on macOS.
+        // Document ends: Ctrl+Home/End, and Cmd+Up/Down on macOS.
         Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, extend),
         Key::End | Key::ArrowDown if is_document_nav(keypress) => {
             editor.move_caret(editor.text().len(), extend);
@@ -270,33 +224,22 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
             return KeyOutcome::Vertical { up: false, extend };
         }
         Key::Enter if editor.multiline() => editor.replace_selection("\n", EditKind::Other),
-        // A multi-line editor's Home / End belong to the *visual* line,
-        // like the arrows above — jumping to the buffer's ends is what a
-        // single-line field means by them, and there the two agree.
+        // Multi-line Home / End mean the visual line.
         Key::Home if editor.multiline() => return KeyOutcome::LineEdge { end: false, extend },
         Key::End if editor.multiline() => return KeyOutcome::LineEdge { end: true, extend },
         Key::Home => editor.move_caret(0, extend),
         Key::End => editor.move_caret(editor.text().len(), extend),
-        // Escape peels one layer: a selection first, the focus only
-        // when there was none.
+        // Escape peels one layer: selection first, then focus.
         Key::Escape => {
             let had_selection = editor.collapse_selection();
             if !had_selection {
                 return KeyOutcome::Blur;
             }
         }
-        // Whatever the key, what the press *produced* is what gets
-        // typed: the platform resolved the layout, the dead keys and the
-        // modifiers, and a field has nothing better to go on. The named
-        // keys above are the ones that mean something other than their
-        // text, so they answer first — Enter reports `"\r"`, which
-        // `KeyText` drops on the way in, and a multi-line editor writes
-        // its own newline above.
-        //
-        // Command chords type nothing, whatever the platform reports
-        // under them: macOS gives Cmd+A the text `"a"`. Which modifiers
-        // compose and which command is `KeyPress::types_text`, the rule
-        // the key classifier reads too.
+        // The press's text is what gets typed (the platform resolved layout,
+        // dead keys and modifiers). Named keys above answer first. Command
+        // chords type nothing even if the platform reports text, as macOS
+        // does for Cmd+A (`KeyPress::types_text`).
         _ if keypress.types_text() => {
             editor.insert_str(keypress.text.as_str());
         }
@@ -305,14 +248,8 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
     KeyOutcome::None
 }
 
-/// Move the caret to the offset `target` picks from a point relative to
-/// where it sits now.
-///
-/// Both queries sit under one `probe_text`: the caret position and the
-/// hit resolve under a single shaper borrow and one cache dispatch, which
-/// is exactly what the scoped probe is for. Every caret motion that needs
-/// the shaped buffer — the ones a byte scan cannot answer — goes through
-/// here, so none of them re-states that discipline.
+/// Move the caret to the offset `target` picks from the caret's current
+/// position. Both queries share one `probe_text` borrow and cache dispatch.
 fn move_caret_by_probe(
     editor: &mut Editor<'_>,
     ui: &mut Ui,
@@ -342,12 +279,8 @@ fn resolve_vertical(editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx, up: bo
     });
 }
 
-/// Home / End on the visual line the caret sits on.
-///
-/// A soft-wrapped line has no `\n` to scan for, so its edges are a probe
-/// question the way [`resolve_vertical`]'s target is: hit-test past each
-/// end of the caret's own row, which `byte_at` clamps back to that row's
-/// first or last offset.
+/// Home / End on the visual line: a soft-wrapped line has no `\n` to scan for,
+/// so hit-test past each end of the caret's row, which `byte_at` clamps.
 fn resolve_line_edge(
     editor: &mut Editor<'_>,
     ui: &mut Ui,
@@ -363,15 +296,13 @@ fn resolve_line_edge(
     });
 }
 
-/// macOS's line chords: Cmd+Left / Right to the line's edges, and
-/// Cmd+Backspace to its start. `Modifiers::ctrl` is Cmd there. Elsewhere
-/// Home / End say this, and Ctrl+Arrow is the word chord.
+/// macOS line chords: Cmd+Left / Right and Cmd+Backspace (`Modifiers::ctrl`
+/// is Cmd there).
 fn is_line_nav(modifiers: Modifiers) -> bool {
     PLATFORM == Platform::Mac && modifiers.ctrl && !modifiers.alt
 }
 
-/// The chord that jumps to the document's start or end: Ctrl with Home or
-/// End on every platform, and Cmd with Up or Down on macOS.
+/// Ctrl with Home / End everywhere, Cmd with Up / Down on macOS.
 fn is_document_nav(keypress: KeyPress) -> bool {
     let mods = keypress.mods;
     if !mods.ctrl || mods.alt {
@@ -384,8 +315,7 @@ fn is_document_nav(keypress: KeyPress) -> bool {
     }
 }
 
-/// The chord that moves by word with an arrow: Alt on macOS, where Cmd
-/// is the line chord, and Ctrl elsewhere.
+/// Alt on macOS (Cmd is the line chord), Ctrl elsewhere.
 const WORD_NAV: Modifiers = match PLATFORM {
     Platform::Mac => Modifiers::ALT,
     _ => Modifiers::CTRL,
@@ -404,8 +334,7 @@ pub(super) enum KeyOutcome {
         up: bool,
         extend: bool,
     },
-    /// Home / End in a multi-line editor: the visual line's edge, which
-    /// only the shaped buffer knows.
+    /// Home / End in a multi-line editor: the visual line's edge.
     LineEdge {
         end: bool,
         extend: bool,

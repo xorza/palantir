@@ -1,47 +1,27 @@
-//! One key-down as the input queue carries it: which key, which
-//! modifiers, and whether it repeated.
+//! One key-down as the input queue carries it: key, modifiers, repeat.
 
 use crate::common::platform::PLATFORM;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 
-/// One entry of the per-frame keyboard queue — key, modifier snapshot at
-/// push time, repeat flag. Modifiers and key events arrive
-/// interleaved over the wire, so snapshotting at drain time would
-/// mis-attribute mods on rapid chord input — `mods` is captured
-/// when the event was pushed.
+/// One entry of the per-frame keyboard queue. `mods` is captured when the event was pushed: key and modifier events arrive interleaved, so snapshotting at drain time mis-attributes mods on rapid chords.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyPress {
-    /// The **logical** key, after the active layout and Shift have been
-    /// applied — Shift+'a' arrives as `Char('A')`. For layout-independent
-    /// chord matching use [`Self::physical`].
+    /// The **logical** key, after layout and Shift (Shift+'a' arrives as `Char('A')`); for layout-independent matching use [`Self::physical`].
     pub key: Key,
-    /// Modifier state captured when the event was pushed, not when it was
-    /// drained — rapid chord input would otherwise mis-attribute mods.
+    /// Modifiers when the event was pushed, not drained.
     pub mods: Modifiers,
-    /// `true` for OS-level key-repeat re-emissions; `false` for the
-    /// initial press. Editors typically treat both the same; some
-    /// commands (e.g. focus-cycle on Tab) only fire on `!repeat`.
+    /// `true` for OS key-repeat re-emissions; some commands (focus-cycle on Tab) fire only on `!repeat`.
     pub repeat: bool,
-    /// The key at this physical position, identified **independent of the
-    /// active layout** — `Char('z')` for the physical Z key whatever the layout
-    /// maps it to, `Enter` / `ArrowLeft` / … for named keys, `Other` for an
-    /// unidentified position. Lets [`crate::Shortcut`] recover a command chord
-    /// whose logical [`key`](Self::key) arrived as a non-Latin character
-    /// (Cyrillic `'я'` for the physical Z on a Russian layout — see
-    /// [`crate::Shortcut::matches`]).
+    /// The key at this physical position, independent of layout (`Char('z')` for the physical Z key whatever the layout maps it to); lets [`crate::Shortcut`] match a chord whose logical [`key`](Self::key) is non-Latin (Cyrillic `'я'`, see [`crate::Shortcut::matches`]).
     pub physical: Key,
-    /// What this press produced to *type*, where the key is what it
-    /// produced to *match* — see [`KeyText`]. Empty for a named key, for
-    /// a chord, and for a dead key still waiting on the press that
-    /// completes it.
+    /// What this press produced to type, where `key` is what it produced to match, see [`KeyText`]; empty for a named key, a chord, or a pending dead key.
     pub text: KeyText,
 }
 
 impl KeyPress {
-    /// A press that typed `text` and is no key — how an IME commit enters
-    /// the stream. No modifiers: a commit is text whatever keys are held.
+    /// A press that typed `text` and is no key (an IME commit); no modifiers.
     pub(crate) const fn typed(text: KeyText) -> Self {
         Self {
             key: Key::Other,
@@ -52,25 +32,12 @@ impl KeyPress {
         }
     }
 
-    /// The layout-independent key to retry a chord against, when the
-    /// logical one is not Latin.
-    ///
-    /// A non-Latin layout still puts `Z` where a US keyboard does, so a
-    /// chord declared on `Z` has to be matched against
-    /// [`Self::physical`] — but only there. Dvorak and AZERTY already
-    /// produce ASCII letters, in their own intended positions, and
-    /// retrying would fire the wrong chord.
-    ///
-    /// One rule, read by [`Shortcut::matches`](crate::Shortcut::matches)
-    /// and by `KeyClass`'s edit chords, so the two cannot disagree about
-    /// what `Ctrl+Z` is.
+    /// The layout-independent key to retry a chord against when the logical key is not Latin. Dvorak and AZERTY already produce ASCII, so retrying there would fire the wrong chord. Shared by [`Shortcut::matches`](crate::Shortcut::matches) and `KeyClass`'s edit chords.
     pub(crate) fn layout_retry(self) -> Option<Key> {
         matches!(self.key, Key::Char(c) if !c.is_ascii()).then_some(self.physical)
     }
 
-    /// Whether this press typed its [`Self::text`] — the one rule the
-    /// key classifier and a text field both read, so they cannot disagree
-    /// about what a press wrote.
+    /// Whether this press typed its [`Self::text`], the one rule the key classifier and text fields share.
     pub(crate) fn types_text(self) -> bool {
         !self.text.is_empty() && self.mods.compose_text(PLATFORM)
     }
@@ -84,10 +51,7 @@ pub(crate) mod internals {
     use crate::input::keyboard::modifiers::Modifiers;
 
     impl KeyPress {
-        /// A first press of `key` under `mods`, typing what the key types
-        /// on a plain layout. `physical` is [`Key::Other`]: only a
-        /// non-ASCII `Char` under a command modifier consults it, and a
-        /// case that needs a real position spells the press out.
+        /// A first press of `key` under `mods`, typing what the key types on a plain layout; `physical` is [`Key::Other`] (only a non-ASCII `Char` under a command modifier consults it).
         pub(crate) fn with(key: Key, mods: Modifiers) -> Self {
             Self {
                 key,

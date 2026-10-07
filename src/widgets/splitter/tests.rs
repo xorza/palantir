@@ -1,6 +1,4 @@
-//! Splitter divider drag: pointer→ratio mapping through last frame's
-//! arranged extent, clamping at explicit and content-driven stops,
-//! the resulting pane re-layout, and the resize-cursor request.
+//! Splitter divider drag: pointer→ratio mapping, clamping at stops, pane re-layout, and the resize cursor.
 
 use crate::internals::harness::UiHarness;
 use crate::internals::harness::passes::Passes;
@@ -25,14 +23,9 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// One frame: a 401×100 row splitter at the surface origin.
-/// Default theme reserves the 1 px rule, so the free span is 400 —
-/// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
-/// straddling it. Tests run two warm-up frames before interacting so
-/// the divider has arranged geometry for hit-testing.
+/// One frame: a 401×100 row splitter at the origin; the 1 px rule leaves a 400 span, seam centre at ratio · 400 + 0.5, grab bar 6 px.
 ///
-/// One snapshot per record pass: a frame with action input records
-/// twice, and a signal fires on pass A, the one that saw the input.
+/// One snapshot per record pass: action input records twice, signals fire on pass A.
 const QUIET: ValueEdges = ValueEdges {
     changed: false,
     committed: false,
@@ -60,9 +53,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
 
-    // ratio 0.5 → first pane [0, 200), rule [200, 201), grab bar
-    // [197.5, 203.5). Press the seam center and drag 100 px right:
-    // pointer 300.5 → first = 300 → 0.75.
+    // Ratio 0.5: grab bar [197.5, 203.5). Drag 100 px right: pointer 300.5 → first = 300 → 0.75.
     h.press_at(Vec2::new(200.5, 50.0));
     h.drag_to(Vec2::new(300.5, 50.0));
     let moved = frame_with(&mut h, &mut ratio);
@@ -70,15 +61,11 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         ratio, 0.75,
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
-    // Pass A lays the panes out at the pointer; the binding takes the
-    // arranged ratio on the next record, pass B of this same frame. One
-    // write, in one pass, and no commit.
+    // Pass A lays panes out at the pointer; the binding takes the arranged ratio on pass B.
     assert_eq!(*moved.a(), QUIET, "{moved:?}");
     assert_eq!(moved.b(), Some(&CHANGED), "{moved:?}");
 
-    // A later drag movement records once. Layout follows the current
-    // pointer immediately, while the caller still receives the prior
-    // arranged ratio until the next record.
+    // A later drag movement records once; the caller gets the prior ratio until the next record.
     h.drag_to(Vec2::new(999.0, 50.0));
     let held = frame_with(&mut h, &mut ratio);
     assert_eq!(held.len(), 1);
@@ -103,14 +90,11 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     );
     assert_eq!(*caught_up.a(), CHANGED);
 
-    // Release ends the gesture and commits the ratio it holds; further
-    // pointer motion leaves the ratio alone and commits nothing more.
+    // Release commits the held ratio.
     h.release();
     h.move_to(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
     assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
-    // A release is action input, so the frame records twice; the
-    // commit is pass A's edge alone.
     assert_eq!(
         *released.a(),
         ValueEdges {
@@ -123,13 +107,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let after = frame_with(&mut h, &mut ratio);
     assert_eq!((after.len(), *after.a()), (1, QUIET));
 
-    // A double-click on the divider — its seam now at 350.5 — resets to
-    // the centre. Layout takes 0.5 on the first pass, and the binding
-    // takes the arranged result on the next record, which commits it. A
-    // double-click is action input, so that record is the frame's second
-    // pass and the reset lands within the one frame.
-    // Each press and release lands in its own frame (`InputQueue`); the
-    // frame measured is the second release's, which is the double-click.
+    // Double-click (seam at 350.5) resets to the centre: layout takes 0.5 on pass A, the binding commits on pass B.
     let seam = Vec2::new(350.5, 50.0);
     h.press_at(seam);
     frame_with(&mut h, &mut ratio);
@@ -141,8 +119,6 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
     assert_eq!(ratio, 0.5, "the reset writes the centre, got {ratio}");
-    // The same sync as a drag, so the write and its commit land on
-    // pass B together.
     assert_eq!(*reset.a(), QUIET, "{reset:?}");
     assert_eq!(
         reset.b(),
@@ -180,8 +156,7 @@ fn divider_drag_is_scale_invariant() {
         frame(&mut h, &mut ratio);
 
         h.press_on(split_id().with("divider"));
-        // Drag targets along the splitter's own x, read before the drag
-        // moves anything. Unchecked: the pane under one need not sense.
+        // Drag targets along the splitter's x, read before the drag.
         let layout = h.arranged(split_id());
         let transform = h.transform(split_id());
         let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
@@ -360,8 +335,7 @@ fn divider_requests_the_resize_cursor() {
         "idle frame keeps the arrow"
     );
 
-    // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
-    // horizontal-resize cursor.
+    // Hovering the grab bar requests the horizontal-resize cursor.
     h.move_onto(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
@@ -370,8 +344,7 @@ fn divider_requests_the_resize_cursor() {
         "hover shows resize"
     );
 
-    // Mid-drag the pointer leaves the thin bar; the cursor must hold
-    // until release (drag-first, since `hovered` is capture-gated).
+    // Mid-drag the cursor holds after the pointer leaves the bar.
     h.press_on(split_id().with("divider"));
     h.drag_to(Vec2::new(320.0, 50.0));
     frame_with(&mut h, &mut ratio);
@@ -381,8 +354,7 @@ fn divider_requests_the_resize_cursor() {
         "drag holds resize off-bar"
     );
 
-    // Release with the pointer over a pane: the per-record-pass reset
-    // returns the arrow because nothing re-requests.
+    // Release over a pane resets the cursor to the arrow.
     h.release();
     h.move_to(Vec2::new(50.0, 50.0));
     frame_with(&mut h, &mut ratio);
@@ -449,10 +421,8 @@ fn divider_requests_the_resize_cursor() {
 
 #[test]
 fn pointer_to_ratio_maps_center_edges_and_floors() {
-    // extent 406, reserved 6 → span 400; seam center at
-    // pointer, so pointer 203 → first = 200 → ratio 0.5.
+    // extent 406, reserved 6 → span 400; pointer 203 → first = 200 → ratio 0.5.
     let cases = [
-        // (pos, extent, reserved, min_pane, want)
         (203.0, 406.0, 6.0, 0.0, 0.5),
         (3.0, 406.0, 6.0, 0.0, 0.0),   // at the left stop
         (403.0, 406.0, 6.0, 0.0, 1.0), // at the right stop
@@ -504,12 +474,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
     }
 }
 
-/// A focused divider takes the window splitter's keys, each placed through
-/// the drag's mapping and so held by `min_pane`. On the 400 px span with a
-/// 1 px rule, a seam at ratio `r` sits at `400 r + 0.5`: an arrow moves it
-/// 10 px, so `r` moves by `10 / 400 = 0.025`; End asks for x = 401, held at
-/// `1 − 50 / 400 = 0.875`; Home for x = 0, held at `0.125`. Each key commits
-/// once, on the frame the arranged ratio comes back.
+/// A focused divider takes the window splitter's keys through the drag's mapping, held by `min_pane`. Seam at `400 r + 0.5`: an arrow moves `r` by 10 / 400 = 0.025; End holds at 1 − 50 / 400 = 0.875; Home at 0.125. Each key commits once.
 #[test]
 fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     use crate::input::keyboard::key::Key;
@@ -532,7 +497,6 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);
         assert!(domain::approx_eq(ratio, want), "{key:?}: {ratio} != {want}");
-        // Over every pass: the sync that commits may be a frame's second.
         let commits = [&first, &second]
             .iter()
             .map(|passes| passes.count_where(|edges| edges.committed))

@@ -1,5 +1,4 @@
-//! The device Palantir draws with, and the one place it asks a driver for
-//! one.
+//! The device Palantir draws with, and the one place it asks a driver for one.
 
 use std::num::NonZeroU32;
 
@@ -9,17 +8,12 @@ use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 
-/// A graphics device and its queue, as Palantir holds them.
+/// A graphics device and its queue.
 ///
-/// The one way a device reaches a host. An application that opened its own
-/// wraps the pair here and hands it to
+/// An application that opened its own wraps the pair here for
 /// [`OffscreenHost::builder`](crate::OffscreenHost::builder); a host that
-/// opened its own through [`RequestedGpu`] finds it on the
-/// [`gpu`](RequestedGpu::gpu) field. Either way the host layer holds a device
-/// without naming a graphics-API type.
-///
-/// Cloning clones the handles, not the device. Every clone addresses the one
-/// device the application owns.
+/// used [`RequestedGpu`] finds it in [`gpu`](RequestedGpu::gpu). Cloning
+/// clones the handles, not the device.
 #[derive(Clone, Debug)]
 pub struct Gpu {
     pub(crate) device: wgpu::Device,
@@ -27,11 +21,8 @@ pub struct Gpu {
 }
 
 impl Gpu {
-    /// Draw through a device the caller owns.
-    ///
-    /// It has to have been requested with what Palantir needs — see
-    /// [`DeviceRequirements`]. [`OffscreenHost::builder`](crate::OffscreenHost::builder)
-    /// checks that before it builds anything.
+    /// Draw through a device the caller owns. It must have been requested with
+    /// [`DeviceRequirements`]; the host builders check that.
     pub const fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self { device, queue }
     }
@@ -40,16 +31,11 @@ impl Gpu {
         DeviceRequirements::met_by(&self.device)
     }
 
-    /// The device's `max_texture_dimension_2d`, which every host has to read
-    /// and hand on: it is the ceiling on a registered image, on a `GpuView`
-    /// target, and on the glyph and gradient atlases.
+    /// The device's `max_texture_dimension_2d`: the ceiling on registered
+    /// images, `GpuView` targets, and the glyph and gradient atlases.
     ///
-    /// Here rather than at each host, because both spelled the same
-    /// `NonZeroU32::new(..).expect(..)` with the same message. A zero limit is
-    /// not a device Palantir can draw on at all, so it panics rather than
-    /// joining [`DeviceRequirements::met_by`]'s `Result`: no adapter reports
-    /// one, and threading an error for it would put a match on every host's
-    /// startup path for a case that cannot arise.
+    /// A zero limit panics rather than joining [`DeviceRequirements::met_by`]'s
+    /// `Result`: no adapter reports one.
     pub(crate) fn max_texture_dim(&self) -> NonZeroU32 {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
@@ -58,17 +44,10 @@ impl Gpu {
 
 /// An adapter and the device opened on it, meeting [`DeviceRequirements`].
 ///
-/// [`OffscreenHost`](crate::OffscreenHost) renders to a texture and so needs
-/// no window, but it still needs a device, and the features that device must
-/// carry are Palantir's business rather than the caller's.
-/// [`Self::headless`] is the short way to a usable one: screenshots,
-/// thumbnails, server-side compositing, and tests that want a frame without a
-/// compositor in the loop. The windowed host opens its own the same way,
-/// with the window's surface attached.
-///
-/// An application that already owns a device should keep it and go through
-/// [`DeviceRequirements::negotiate`] instead — Palantir's needs fold into its
-/// own request rather than replacing it.
+/// [`Self::headless`] is the short way to a device for screenshots,
+/// thumbnails, server-side compositing and tests. An application that owns a
+/// device should use [`DeviceRequirements::negotiate`] instead, so Palantir's
+/// needs fold into its own request.
 #[derive(Debug)]
 pub struct RequestedGpu {
     /// The adapter that answered the request.
@@ -79,10 +58,7 @@ pub struct RequestedGpu {
 
 impl RequestedGpu {
     /// Open one with no surface attached, taking the `optional` features that
-    /// turn out to be available.
-    ///
-    /// Blocks. Adapter and device requests are futures that resolve against
-    /// the driver rather than an async runtime, so there is nothing here for a
+    /// are available. Blocks.
     /// caller's executor to interleave with.
     pub fn headless(
         power_preference: PowerPreference,
@@ -99,63 +75,28 @@ impl RequestedGpu {
     }
 }
 
-/// What to ask a driver for, and the steps that ask it.
-///
-/// Both hosts want the same five: check that a backend is compiled in, build
-/// an instance, pick an adapter, negotiate what to require of it, open the
-/// device. Written once per host they drifted in every step that had a
-/// choice — one applied `WGPU_BACKEND` through the `_from_env` descriptor
-/// while the other hand-applied two of the three env hooks; one asked for
-/// `MemoryHints::Performance` and the other took the default; one logged the
-/// adapter it picked and the other did not; and each raised its own error
-/// enum with its own wording for the same four failures.
-///
-/// The surface is the only thing that genuinely differs, and it is a field.
+/// What to ask a driver for, and the steps that ask it: backend check,
+/// instance, adapter, requirements negotiation, device. Shared by both hosts
+/// so they cannot drift; only the surface differs.
 #[derive(Debug)]
 pub(crate) struct GpuRequest<'a> {
-    /// Names the device in a debugger and in wgpu's own messages.
+    /// Names the device in a debugger and in wgpu's messages.
     pub(crate) label: &'static str,
     pub(crate) power_preference: PowerPreference,
-    /// Taken when the adapter has them, dropped when it does not — see
-    /// [`DeviceRequirements::negotiate`].
+    /// Taken when the adapter has them; see [`DeviceRequirements::negotiate`].
     pub(crate) optional: wgpu::Features,
-    /// The surface the adapter has to be able to present to. `None` is the
-    /// headless case, where nothing constrains the pick but the power policy.
+    /// The surface the adapter must present to; `None` when headless.
     pub(crate) compatible_surface: Option<&'a wgpu::Surface<'static>>,
 }
 
 impl GpuRequest<'_> {
-    /// The instance every host requests through.
+    /// The instance every host requests through, built from the environment
+    /// so `WGPU_BACKEND` selects a backend. Without a display handle, GLES
+    /// falls back to `EGL_MESA_platform_surfaceless`, which suits the
+    /// offscreen and bench hosts.
     ///
-    /// Built from the environment, which is what makes `WGPU_BACKEND=dx12` a
-    /// usable A/B when a session's frame times or artifacts look
-    /// backend-specific. Without the backends half every backend wgpu was
-    /// built with is enumerated and the pick is whatever the adapter sort
-    /// lands on — on Windows that is Vulkan before Dx12, with a *stable* sort,
-    /// so a tie between two same-device-type adapters is decided by
-    /// enumeration order and nothing else.
-    ///
-    /// A windowed host passes its window's display handle, and on Linux that
-    /// is not a nicety. The GLES backend picks its EGL display from this
-    /// handle: given an Xlib or Wayland one it calls `eglGetPlatformDisplay`
-    /// for that platform, and given none it falls to
-    /// `EGL_MESA_platform_surfaceless`, which enumerates DRM render nodes. The
-    /// adapter that comes back then belongs to a different display than the
-    /// window, and adapter selection rejects it with "gl not compatible with
-    /// provided surface".
-    ///
-    /// Reported from an Orange Pi 5 Plus, where surfaceless can never work: the
-    /// Mali sits behind the vendor kbase driver at `/dev/mali0` and is not a
-    /// DRM node at all, so the only nodes to enumerate are the display
-    /// controller and the NPU. Vulkan, Metal and Dx12 ignore the handle, so
-    /// passing it costs them nothing.
-    ///
-    /// The offscreen and bench hosts pass `None`: they have no display, and
-    /// surfaceless is what they want.
-    ///
-    /// Separate from [`Self::open`] because the windowed host has to create
-    /// its surface from the instance before it can ask for an adapter that
-    /// presents to it.
+    /// Separate from [`Self::open`] because a windowed host needs the instance
+    /// to create its surface first.
     pub(crate) fn instance() -> Result<wgpu::Instance, GpuRequestError> {
         Self::check_backend()?;
         Ok(wgpu::Instance::new(
@@ -166,19 +107,9 @@ impl GpuRequest<'_> {
     /// The instance a windowed host requests through, carrying the display
     /// `window` lives on.
     ///
-    /// The handle is not a nicety on Linux. The GLES backend picks its EGL
-    /// display from it: given an Xlib or Wayland handle it calls
-    /// `eglGetPlatformDisplay` for that platform, and given none it falls to
-    /// `EGL_MESA_platform_surfaceless`, which enumerates DRM render nodes. The
-    /// adapter that comes back then belongs to a different display than the
-    /// window, and adapter selection rejects it with "gl not compatible with
-    /// provided surface".
-    ///
-    /// Reported from an Orange Pi 5 Plus, where surfaceless can never work: the
-    /// Mali sits behind the vendor kbase driver at `/dev/mali0` and is not a
-    /// DRM node at all, so the only nodes to enumerate are the display
-    /// controller and the NPU. Vulkan, Metal and Dx12 ignore the handle, so
-    /// passing it costs a working backend nothing.
+    /// GLES picks its EGL display from the handle; without it the adapter
+    /// comes from a surfaceless display and is rejected as incompatible with
+    /// the window's surface. Other backends ignore it.
     #[cfg(feature = "winit")]
     #[expect(
         clippy::absolute_paths,
@@ -219,13 +150,9 @@ impl GpuRequest<'_> {
                 source: DriverError::new(source),
             })?;
 
-        // Which physical GPU and backend won the `power_preference` sort is
-        // the single most load-bearing fact about a session's frame times, and
-        // nothing else reports it: on a hybrid laptop the "wrong" pick renders
-        // on the iGPU while the display hangs off the dGPU, so every present
-        // becomes a cross-adapter copy. Log it once, wherever the device came
-        // from — a headless bench that picked the software rasterizer is the
-        // same surprise as a window that did.
+        // Which GPU won the `power_preference` sort decides a session's frame
+        // times (a hybrid laptop's wrong pick means cross-adapter copies), and
+        // nothing else reports it.
         let info = adapter.get_info();
         tracing::info!(
             name = %info.name,
@@ -245,10 +172,8 @@ impl GpuRequest<'_> {
                 required_features: requirements.features,
                 required_limits: requirements.limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
-                // Palantir keeps long-lived atlases, vertex buffers and a
-                // staging belt, and re-uses all three every frame. That is
-                // the shape `Performance` is for, whether the frames go to a
-                // swapchain or to a texture.
+                // Long-lived atlases, buffers and a staging belt reused every
+                // frame: the shape `Performance` is for.
                 memory_hints: wgpu::MemoryHints::Performance,
                 trace: wgpu::Trace::Off,
             })
@@ -264,10 +189,8 @@ impl GpuRequest<'_> {
     }
 }
 
-/// [`PowerPreference`] in the driver's own vocabulary.
-///
-/// A free function rather than a `From` impl: the target type is foreign, and
-/// this crate does not implement a foreign trait for a foreign type.
+/// [`PowerPreference`] in the driver's own vocabulary. Not a `From` impl:
+/// the target type is foreign.
 const fn adapter_policy(preference: PowerPreference) -> wgpu::PowerPreference {
     match preference {
         PowerPreference::Any => wgpu::PowerPreference::None,

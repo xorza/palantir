@@ -14,7 +14,6 @@ pub(crate) struct ShapeStroke {
 }
 
 impl ShapeStroke {
-    /// This stroke with its colour's alpha scaled by `by`.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         Self {
@@ -23,15 +22,12 @@ impl ShapeStroke {
         }
     }
 
-    /// The stroke a no-op normalizes to, and what a payload's
-    /// "no stroke here" reads as.
+    /// The stroke a no-op normalizes to, read as "no stroke here" in a payload.
     pub(crate) const NONE: Self = Self {
         width: 0.0,
         color: RgbaF16::TRANSPARENT,
     };
 
-    /// Feed the colour and the width's raw bits, as two words straight
-    /// from registers.
     #[inline]
     pub(crate) fn hash_into<H: Hasher>(self, h: &mut H) {
         h.write_u64(self.color.as_u64());
@@ -43,19 +39,8 @@ impl ShapeStroke {
         is_invisible(self.width) || self.color.is_noop()
     }
 
-    /// Collapse a no-op stroke to [`Self::NONE`]; pass anything else
-    /// through verbatim.
-    ///
-    /// Every quad-tier draw normalizes here, and that is what lets
-    /// `DrawQuadPayload::is_noop` test the stroke by colour alone: a
-    /// transparent stroke colour in a payload means exactly "the stroke
-    /// was a no-op".
-    ///
-    /// A NaN width normalizes away like any other non-painting width —
-    /// `is_invisible` classifies it as invisible. Catching a NaN *loudly* is
-    /// `Shapes::add`'s job, at the authoring boundary
-    /// where the value still has a call site; by the time it reaches
-    /// here the useful thing to do is fail safe.
+    /// Collapses a no-op stroke to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the stroke by colour alone.
+    /// A NaN width normalizes away like any non-painting width; catching it loudly is `Shapes::add`'s job.
     #[inline]
     pub(crate) const fn normalized(self) -> Self {
         if self.is_noop() { Self::NONE } else { self }
@@ -63,14 +48,8 @@ impl ShapeStroke {
 }
 
 impl From<&Stroke> for ShapeStroke {
-    /// Normalized on the way in, so a lowered stroke is canonical
-    /// wherever it lands afterwards.
-    ///
-    /// Here rather than at each consumer, because a record's raw bytes
-    /// are a hash key: `-0.0`, a sub-`EPS` hair, and a wide-but-invisible
-    /// ink all paint nothing, and every one of them reaching the hash as
-    /// its own bit pattern would split the damage and measure keys for a
-    /// difference nothing can see.
+    /// Normalized on the way in: a record's raw bytes are a hash key, and `-0.0`, a sub-`EPS` hair or invisible ink
+    /// would each hash apart while painting nothing.
     #[inline]
     fn from(stroke: &Stroke) -> Self {
         Self {
@@ -101,10 +80,7 @@ mod tests {
     use crate::primitives::paint::stroke::Stroke;
     use crate::shape::paint::shape_stroke::ShapeStroke;
 
-    /// Every stroke that paints nothing lowers to one value, so the
-    /// record bytes a hash reads cannot split on an invisible
-    /// difference. A `-0.0` width, a hair below `EPS`, and a wide stroke
-    /// in transparent ink are three spellings of the same nothing.
+    /// Every stroke that paints nothing (`-0.0` width, a hair below `EPS`, transparent ink) lowers to one value.
     #[test]
     fn every_invisible_stroke_lowers_to_one_value() {
         let cases = [
@@ -120,7 +96,6 @@ mod tests {
                 "{stroke:?} paints nothing",
             );
         }
-        // …and a stroke that does paint crosses verbatim.
         let visible = Stroke::new(RgbaF32::WHITE, 2.0);
         assert_eq!(
             ShapeStroke::from(&visible),

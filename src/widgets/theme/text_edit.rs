@@ -1,5 +1,5 @@
 //! What a text field wears in each of its four states, plus the caret and
-//! selection colours that have no state of their own.
+//! selection colours that have no state.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
@@ -16,36 +16,28 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
-/// Four-state TextEdit theme: a [`StatefulLook`] where `active` =
-/// **focused** (the editor's engaged state), picked with the uniform
-/// disabled > active > hovered > normal precedence. The default
-/// `hovered` look equals `normal`, so hover feedback is opt-in.
+/// Four-state TextEdit theme: a [`StatefulLook`] where `active` is **focused**,
+/// with disabled > active > hovered > normal precedence. The default `hovered`
+/// equals `normal`, so hover feedback is opt-in.
 ///
 /// State-independent fields (`caret`, `caret_width`, `placeholder`,
-/// `selection`, `padding`, `margin`) live flat on the theme — they
-/// aren't state-varying in any plausible v1.x design.
-///
-/// `padding`/`margin` apply when the user didn't call
-/// `.padding(...)` / `.margin(...)` on the builder. Explicit zero spacing
-/// overrides the theme like any other value.
+/// `selection`, `padding`, `margin`) are flat on the theme. `padding`/`margin`
+/// apply when the builder didn't set them; an explicit zero overrides.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
-    /// The four per-state looks (`active` = focused). `flatten` keeps
-    /// theme files flat (`[text_edit.active]`, not
-    /// `[text_edit.looks.active]`).
+    /// The four per-state looks (`active` = focused). `flatten` keeps theme files
+    /// flat (`[text_edit.active]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
     /// Ink for the placeholder text an empty field shows.
     pub placeholder: RgbaF32,
     /// Ink for the caret.
     pub caret: RgbaF32,
-    /// Width of the caret rect in logical px. The caret is painted as
-    /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
-    /// a hairline, two as a chunkier i-beam. Default 1.5 px.
+    /// Width of the caret rect in logical px, painted as a thin Overlay rect at the
+    /// caret's prefix-x. Default 1.5 px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
-    /// Selection highlight fill, painted as a wash behind the selected
-    /// glyphs (see `TextEdit::show`).
+    /// Selection highlight fill, a wash behind the selected glyphs.
     pub selection: RgbaF32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]
@@ -53,10 +45,9 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
-    /// `placeholder` / `caret` / `selection` are bare `RgbaF32`s, not
-    /// `TextStyle`s — they take their size from the resolved look.
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// `placeholder` / `caret` / `selection` are bare `RgbaF32`s that take their
+    /// size from the resolved look. Destructured so a new field fails to compile
+    /// here; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             looks,
@@ -69,51 +60,36 @@ impl TextEditTheme {
         looks.for_each_text(f);
     }
 
-    /// Where a field must put its own corner for a run measuring `text` to come
-    /// out centred on `at`.
+    /// Where a field must put its own corner for a run measuring `text` to come out
+    /// centred on `at`.
     ///
-    /// **What keeps a value from moving as it becomes editable.** An
-    /// application that edits something in place draws it, then stands a field
-    /// where it was — and a field is a box *around* a run rather than the run
-    /// itself, so a corner set at the run's own corner lays the glyphs a
-    /// padding, a stroke and a caret's room off the pixels they were read at.
-    /// Which is a jump on the frame the field opens, in a direction nothing
-    /// about the value explains.
+    /// Keeps a value from jumping when it becomes editable: a field is a box
+    /// *around* the run, so placing it at the run's corner offsets the glyphs by
+    /// padding, stroke and caret room.
     ///
-    /// The answer for a field that **hugs its content, centres it, and holds
-    /// one line** — which is what an in-place edit is. Anything wider has room
-    /// its alignment spends rather than its theme, and a theme could not say
-    /// where that went.
+    /// Valid for a field that **hugs its content, centres it, and holds one line**,
+    /// as an in-place edit does; wider fields spend alignment the theme can't know.
     ///
-    /// The run's own width cancels — the field centres the same text on the
-    /// same point — but the caret's room does not: it is reserved at the
-    /// trailing edge alone and the run is centred in what is left, so the
-    /// glyphs sit half a caret to the leading side of the box's own middle.
+    /// The run's width cancels, but the caret's room does not: it is reserved at the
+    /// trailing edge alone, so the glyphs sit half a caret to the leading side of
+    /// the box's middle.
     pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2 {
         let [left, top, ..] = self.defaults.padding.as_array();
-        // `Tree::open_node` folds the chrome's border into the padding, so the
-        // inner rect a run is laid in sits inside the ring as well — and
-        // `TextEdit::show` mirrors that fold rather than reading the node back.
-        //
-        // Off `normal`, and safe to be: the width is one number across all four
-        // states so that focus changes a field's colour without moving its
-        // text — see [`TextEditTheme::from_palette`].
+        // `Tree::open_node` folds the chrome's border into the padding, so the inner
+        // rect sits inside the ring, and `TextEdit::show` mirrors that fold. Off
+        // `normal`: the width is one number across states (see
+        // [`TextEditTheme::from_palette`]).
         let ring = self.looks.normal.background.border_inset();
         at - Vec2::new(text.w, text.h) * 0.5
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
 
-    /// A field whose stroke changes colour on focus but never width — see
-    /// the comment below for why the width is pinned.
+    /// A field whose stroke changes colour on focus but never width.
     pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
-        // Stroke width stays constant across states — color is the
-        // only thing that changes on focus. `Tree::open_node` folds
-        // stroke width into padding so a width change between
-        // normal/focused would shift the inner rect by half the
-        // delta on each side, jittering the text the instant focus
-        // lands. Picking 1.5 px gives focused its emphasis without
-        // the layout shift.
+        // Constant stroke width across states: `Tree::open_node` folds it into
+        // padding, so a change would shift the inner rect and jitter the text on
+        // focus. 1.5 px gives focus emphasis without the shift.
         let stroke_w = 1.5;
         let normal_bg = Background::rounded(p.element_mid, radius)
             .with_border(Stroke::new(p.border_soft(), stroke_w));
@@ -121,12 +97,9 @@ impl TextEditTheme {
             .with_border(Stroke::new(p.border_focused, stroke_w));
         let disabled_bg = Background::rounded(p.element, radius)
             .with_border(Stroke::new(p.border_soft(), stroke_w));
-        // Selection = accent at ~25% alpha — readable wash that doesn't
-        // obscure the glyphs underneath.
+        // Selection = accent at ~25% alpha: a wash that leaves glyphs readable.
         let selection = p.accent.with_alpha(0.25);
-        // `hovered` defaults to the `normal` look — editors don't give
-        // hover feedback out of the box; the slot exists for themes
-        // that want it.
+        // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {
             background: normal_bg,
             text: TextStyleOverrides::NONE,
@@ -160,8 +133,7 @@ impl TextEditTheme {
 impl ThemeSlot for TextEditTheme {
     type Pick = ();
 
-    /// `active` = focused. Disabled wins over focused, focused over
-    /// hovered; otherwise normal.
+    /// `active` = focused. Disabled beats focused, focused beats hovered.
     #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
         self.looks.pick(response, response.focused)

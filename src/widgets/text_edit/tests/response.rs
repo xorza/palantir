@@ -5,10 +5,8 @@ use crate::widgets::text_edit::tests::*;
 
 const EDITOR: &str = "response-editor";
 
-/// Drive one frame and keep each record pass's edges. `Ui::frame`
-/// re-records on relayout, and the second pass sees a drained input
-/// queue — the *buffer* survives (it's cross-frame state), but a
-/// per-frame edge only shows in pass A.
+/// Drives one frame and keeps each record pass's edges: `Ui::frame` re-records on relayout, so a per-frame edge
+/// shows only in pass A.
 fn frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
     h.frame_passes(|ui| {
         Panel::hstack()
@@ -74,9 +72,7 @@ fn reports_submitted_on_single_line_enter() {
     assert_eq!(buf, "hi", "buffer untouched by the submit");
 }
 
-/// `committed` fires once per finished edit, against sequences written
-/// out by hand. Each case focuses the editor and settles a frame first;
-/// then every step is one frame, and the row lists `committed` per step.
+/// `committed` fires once per finished edit, against hand-written sequences; each step is one frame.
 #[test]
 fn committed_fires_once_per_finished_edit() {
     #[derive(Clone, Copy, Debug)]
@@ -169,9 +165,7 @@ fn escape_reports_focus_lost_on_the_blur_frame() {
     );
 }
 
-/// A same-length overwrite (select the buffer, type a replacement) must
-/// still report `changed` — the signal comes from the mutation choke
-/// points, not a length delta ("a" → "b" keeps len 1).
+/// A same-length overwrite must still report `changed`: the signal comes from the mutation choke points, not a length delta.
 #[test]
 fn reports_changed_on_same_length_overwrite() {
     let mut h = UiHarness::with_text(SMALL);
@@ -180,7 +174,6 @@ fn reports_changed_on_same_length_overwrite() {
 
     h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
-    // Ctrl+A select-all, then type the replacement.
     h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
@@ -191,10 +184,7 @@ fn reports_changed_on_same_length_overwrite() {
     assert!(sig.a().changed, "same-length overwrite reports changed");
 }
 
-/// Disabling a focused editor kicks focus out on the disable frame
-/// (`focus_lost` fires) and the same frame's keystrokes are dropped —
-/// behavior agrees with the disabled visuals instead of silently
-/// routing typing into the host's buffer.
+/// Disabling a focused editor kicks focus out on the disable frame and drops that frame's keystrokes.
 #[test]
 fn disabling_a_focused_editor_blurs_and_drops_input() {
     fn disabled_frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
@@ -228,14 +218,8 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
     assert!(h.focus().is_none(), "focus was kicked out");
 }
 
-/// Every chord `TextEdit` binds as an editing action must classify as
-/// [`KeyClass::Edit`], or a focused editor stops taking it and the app
-/// steals it mid-edit.
-///
-/// The pin behind `key_class::EDIT_CHORDS`, which is a hand-kept list
-/// living one crate-module away from this one. A seventh `EditAction`
-/// that forgets to extend it fails here rather than silently becoming an
-/// accelerator.
+/// Every chord `TextEdit` binds as an editing action must classify as [`KeyClass::Edit`], or a focused editor
+/// stops taking it and the app steals it mid-edit; pins the hand-kept `key_class::EDIT_CHORDS`.
 #[test]
 fn every_edit_action_chord_is_edit_class() {
     use crate::KeyClass;
@@ -257,8 +241,7 @@ fn every_edit_action_chord_is_edit_class() {
         let Some(shortcut) = action.shortcut() else {
             continue;
         };
-        // `Shortcut` matches on the physical key, so classify the press
-        // the same way the router will see it.
+        // `Shortcut` matches on the physical key, so classify the press as the router sees it.
         let press = KeyPress {
             key: shortcut.key,
             mods: Modifiers {
@@ -282,12 +265,8 @@ fn every_edit_action_chord_is_edit_class() {
     assert_eq!(checked, 6, "six of the seven actions carry a chord");
 }
 
-/// A focused field takes only the keys it acts on. The arrows and Home /
-/// End move its caret, so an app root reading them misses; Tab, Shift+Tab,
-/// the page keys and Ctrl+Tab do nothing in a field, so they reach the
-/// root's own scope. The root declares one — without it, the root would
-/// read as the layer's outermost scope, the field's, and see every key —
-/// and takes `FOCUS`, without which bare Tab would move focus instead.
+/// A focused field takes only the keys it acts on: arrows and Home/End move its caret, so an app root misses them;
+/// Tab, Shift+Tab, page keys and Ctrl+Tab reach the root's own scope (which must declare one and take `FOCUS`).
 #[test]
 fn a_focused_field_yields_the_keys_it_does_not_act_on() {
     use crate::KeyFilter;
@@ -325,8 +304,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
             scene(ui, &mut buf, probe);
         });
         h.set_focus(field);
-        // Settles the scope path, which resolves against the previous
-        // frame's cascade.
+        // Settles the scope path, which resolves against the previous frame's cascade.
         h.frame(|ui| {
             scene(ui, &mut buf, probe);
         });

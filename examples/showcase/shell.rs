@@ -1,11 +1,6 @@
-//! The showcase chrome: a grouped nav rail on the left, a titled page
-//! card on the right, and the table that drives both.
-//!
-//! [`PAGES`] is the single source of truth — nav label, group, the blurb
-//! and key hints rendered under the page title, whether the page
-//! scrolls, and how its body is built. Adding a page is one row here
-//! plus one module under `pages/`; nothing else in the shell knows page
-//! names.
+//! The showcase chrome: a grouped nav rail and a titled page card, both
+//! driven by [`PAGES`], the single source of truth for each page's label,
+//! group, blurb, key hints, scrolling and builder.
 
 use palantir::SlotDefaults;
 use palantir::{
@@ -19,17 +14,11 @@ use crate::pages;
 use crate::pages::state::AppState;
 use crate::support;
 
-/// Token for the bootstrap window (the showcase itself).
 pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
-/// Token for the optional secondary window that mirrors the counter
-/// from the `state` page in its own OS window.
+/// Optional second window mirroring the `state` page's counter.
 pub(crate) const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 
-/// Open the inspector, or close it if it is already up.
-///
-/// The live window set is the source of truth for which of the two this
-/// is, so both the F8 shortcut and the `state` page's button ask it here
-/// rather than each tracking a bool of its own.
+/// Open the inspector, or close it if up; the live window set decides.
 pub(crate) fn toggle_inspector(ui: &mut Ui) {
     if ui.is_window_open(INSPECTOR_WINDOW) {
         ui.close_window(INSPECTOR_WINDOW);
@@ -40,8 +29,7 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
 
 const SIDEBAR_W: f32 = 196.0;
 
-/// A heading in the nav rail. Pages of one group are adjacent in
-/// [`PAGES`]; the rail emits a heading whenever the group changes.
+/// A nav rail heading; pages of one group are adjacent in [`PAGES`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Group {
     Widgets,
@@ -49,8 +37,7 @@ enum Group {
     Layout,
     Paint,
     Runtime,
-    /// Regression content and the bench viewer: kept in reach, drawn in
-    /// quieter ink, so they don't read as part of the tour.
+    /// Regression content and the bench viewer, drawn in quieter ink.
     Diagnostics,
 }
 
@@ -74,12 +61,9 @@ impl Group {
 /// How the shell hosts a page's body.
 #[derive(Clone, Copy, Debug)]
 enum Flow {
-    /// Body is wrapped in a vertical `Scroll`, so it may be taller than
-    /// the window. The default — a page that hugs its content works at
-    /// any window size this way.
+    /// Wrapped in a vertical `Scroll`, so it may exceed the window. The default.
     Scroll,
-    /// Body is handed the card's leftover height directly. For the
-    /// handful of pages whose demo *is* a viewport and must fill.
+    /// Handed the card's leftover height, for pages whose demo is a viewport.
     Fill,
 }
 
@@ -87,14 +71,11 @@ enum Flow {
 struct Page {
     group: Group,
     label: &'static str,
-    /// One line under the page title saying what the page shows.
     blurb: &'static str,
-    /// The keys and gestures the page answers to, set as keycaps under
-    /// the blurb.
+    /// Keys and gestures the page answers to, shown as keycaps.
     keys: &'static [&'static str],
     flow: Flow,
-    /// Every page takes the app state, so one table row drives every
-    /// page; the pages that don't read it take it as `_`.
+    /// Every page takes the app state; pages that ignore it take `_`.
     build: fn(&mut Ui, &mut AppState),
 }
 
@@ -309,7 +290,6 @@ const PAGES: &[Page] = &[
     },
 ];
 
-/// State the showcase binary carries across frames.
 #[derive(Debug)]
 pub(crate) struct State {
     active: usize,
@@ -319,8 +299,7 @@ pub(crate) struct State {
 impl State {
     pub(crate) fn new(ui: &mut Ui) -> Self {
         let mut theme = Theme::from_palette(&showcase_palette());
-        // Library default is no button animation (`anim = None`). The
-        // showcase exists to demo the animation primitive — opt in.
+        // The library default is no button animation; the showcase demos it.
         theme.button.defaults.animation = Some(AnimationSpec::SPRING);
         ui.set_theme(theme);
         State {
@@ -331,8 +310,7 @@ impl State {
 
     fn build(&mut self, ui: &mut Ui) {
         handle_shortcuts(ui);
-        // The focus page sets its own policy after this; every other page
-        // gets the default back, so the choice made there stays there.
+        // The focus page sets its own policy; every other page gets the default.
         ui.set_focus_policy(FocusPolicy::default());
 
         Panel::hstack()
@@ -349,9 +327,8 @@ impl State {
         pages::dialogs::intercept(ui, MAIN_WINDOW);
     }
 
-    /// The nav rail: brand, grouped page list, debug-overlay footer. The
-    /// list is an arrow group: one Tab lands in it, and ↑ / ↓ walk the
-    /// pages from there.
+    /// The nav rail: brand, grouped page list, debug-overlay footer. The list
+    /// is an arrow group, so one Tab lands in it.
     fn rail(&mut self, ui: &mut Ui) {
         let idle = nav_style(NavLook::Idle);
         let quiet = nav_style(NavLook::Quiet);
@@ -397,8 +374,7 @@ impl State {
             });
     }
 
-    /// The page card: title, blurb, key hints, rule, then the active
-    /// page's body.
+    /// The page card: title, blurb, key hints, rule, then the active page's body.
     fn card(&mut self, ui: &mut Ui) {
         let page = PAGES[self.active];
         Panel::vstack()
@@ -416,8 +392,7 @@ impl State {
                     .clip_rounded()
                     .show(ui, |ui| {
                         page_header(ui, &page);
-                        // Keyed by page, so one page's scroll offset never
-                        // carries over to the next.
+                        // Keyed by page so scroll offsets don't carry over.
                         match page.flow {
                             Flow::Scroll => {
                                 Scroll::vertical()
@@ -425,8 +400,7 @@ impl State {
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .overlay_bars()
                                     .gap(support::PAGE_GAP)
-                                    // Room for the overlay bar, so it never
-                                    // sits over a page's right edge.
+                                    // Keeps the overlay bar off the page's right edge.
                                     .padding((0.0, 0.0, 14.0, 0.0))
                                     .show(ui, |ui| (page.build)(ui, &mut self.app));
                             }
@@ -499,8 +473,7 @@ fn group_heading(ui: &mut Ui, group: Group, first: bool) {
         .show(ui);
 }
 
-/// The rail footer, where each control mirrors its shortcut so the keys
-/// are discoverable instead of living only in a comment.
+/// The rail footer; each control mirrors its shortcut.
 fn debug_toggles(ui: &mut Ui) {
     Block::new()
         .size((Sizing::FILL, Sizing::fixed(1.0)))
@@ -521,8 +494,7 @@ fn debug_toggles(ui: &mut Ui) {
             Checkbox::new(&mut overlay.frame_stats)
                 .label("frame stats  F9")
                 .show(ui);
-            // Paired with `frame stats` on purpose: turning vsync off is
-            // visible there as the frame rate coming off the refresh cap.
+            // Turning vsync off shows in `frame stats` as the rate leaving the refresh cap.
             Checkbox::new(&mut vsync_on).label("vsync").show(ui);
             ui_scale_row(ui);
         });
@@ -530,12 +502,8 @@ fn debug_toggles(ui: &mut Ui) {
     ui.set_debug_overlay(overlay);
 }
 
-/// The UI-scale stepper: `−  100%  +`, flat against the rail.
-///
-/// The two signs walk [`UserScale`]'s ladder, and the readout only reads.
-/// A scrubbable value belongs to a setting that does not move its own
-/// widget: this one lays the row out again under the pointer mid-drag,
-/// so the gesture chased itself off the number it had hold of.
+/// The UI-scale stepper: `−  100%  +`. The readout only reads: a
+/// scrubbable value would re-lay-out under the pointer mid-drag.
 fn ui_scale_row(ui: &mut Ui) {
     let scale = ui.user_scale();
     let step = scale_step_style();
@@ -551,9 +519,7 @@ fn ui_scale_row(ui: &mut Ui) {
             if Button::new().style(&step).label("−").show(ui).clicked() {
                 next = scale.stepped_down();
             }
-            // Fixed width, mono face: the readout is three characters at
-            // 90% and four at 100%, and the signs must not shuffle sideways
-            // as it steps between them.
+            // Fixed width, mono: the readout's width changes between 90% and 100%.
             Text::new(fmt!(ui, "{}%", scale.percent()))
                 .family(FontFamily::MONO)
                 .font_size(12.0)
@@ -572,9 +538,8 @@ fn ui_scale_row(ui: &mut Ui) {
     ui.set_user_scale(next);
 }
 
-/// The rail's flat button, with a bigger glyph. `−` and `+` are single
-/// marks rather than words, and at the nav items' label size they read as
-/// specks beside the readout.
+/// The rail's flat button with a bigger glyph; `−` and `+` read as specks at
+/// label size.
 fn scale_step_style() -> ButtonTheme {
     let mut style = nav_style(NavLook::Idle);
     let grow = |look: &mut WidgetLook| {
@@ -611,8 +576,7 @@ fn page_header(ui: &mut Ui, page: &Page) {
         });
 }
 
-/// Cool-neutral recolor of the stock palette so widget chrome and the
-/// showcase's own surfaces come from one ladder.
+/// Cool-neutral recolor of the stock palette for chrome and surfaces.
 pub(crate) const fn showcase_palette() -> Palette {
     Palette {
         text: support::INK,
@@ -637,8 +601,8 @@ enum NavLook {
     Selected,
 }
 
-/// Flat rail button: transparent at rest, accent-washed when it's the
-/// open page. Worn by the nav items and by the UI-scale stepper.
+/// Flat rail button: transparent at rest, accent-washed when open. Used by
+/// nav items and the UI-scale stepper.
 fn nav_style(look: NavLook) -> ButtonTheme {
     let label = |c: RgbaF32| TextStyleOverrides::NONE.with_font_size(12.0).with_color(c);
     let wash = |alpha: f32, c: RgbaF32| Background::rounded(c.with_alpha(alpha), Corners::all(5.0));
@@ -674,11 +638,9 @@ fn nav_style(look: NavLook) -> ButtonTheme {
     }
 }
 
-/// ⌘Q / Ctrl+Q quits — palantir drops winit's default macOS menu (so its
-/// Quit item can't hard-terminate past a close-request veto), which also
-/// removes the native ⌘Q, so wire it here. F8 mirrors the `state` page's
-/// inspector button; F9 / F10 / F12 mirror the rail's overlay switches,
-/// and Ctrl+`-` / Ctrl+`=` / Ctrl+`0` its UI-scale stepper.
+/// ⌘Q / Ctrl+Q quits (palantir drops winit's default macOS menu, and with it
+/// the native ⌘Q). F8 mirrors the inspector button; F9 / F10 / F12 the rail's
+/// overlay switches; Ctrl+`-` / `=` / `0` the UI-scale stepper.
 fn handle_shortcuts(ui: &mut Ui) {
     if ui.key_pressed(Shortcut::ctrl('Q')) {
         ui.close_window(MAIN_WINDOW);
@@ -686,24 +648,16 @@ fn handle_shortcuts(ui: &mut Ui) {
     if ui.key_pressed(Shortcut::key(Key::F8)) {
         toggle_inspector(ui);
     }
-    // One read and one write for all three: `^= pressed` is "toggle if the
-    // key fired", and every `key_pressed` was evaluated on this path anyway.
+    // `^= pressed` toggles when the key fired.
     let mut overlay = ui.debug_overlay();
     overlay.damage_rect ^= ui.key_pressed(Shortcut::key(Key::F12));
     overlay.dim_undamaged ^= ui.key_pressed(Shortcut::key(Key::F10));
     overlay.frame_stats ^= ui.key_pressed(Shortcut::key(Key::F9));
     ui.set_debug_overlay(overlay);
 
-    // The browser bindings, on the ladder `UserScale` carries. Written
-    // unconditionally: `set_user_scale` ignores the value already in
-    // force, so the no-key case costs a comparison.
-    //
-    // Three chords step up, because "ctrl and plus" is three different
-    // key presses depending on the layout: `=` unshifted where `+` is
-    // its shifted twin (US), `+` unshifted where the layout gives it a
-    // key of its own (German), and the shifted `+` itself. Each carries
-    // its own modifier set, and `Shortcut::matches` compares those
-    // exactly, so one binding cannot stand for the others.
+    // Browser bindings. Ctrl+plus is three presses by layout (`=` on US, `+` on
+    // German, shifted `+`), and `Shortcut::matches` compares modifiers exactly,
+    // so each needs its own binding.
     let mut scale = ui.user_scale();
     let up = ui.key_pressed(Shortcut::ctrl('='))
         || ui.key_pressed(Shortcut::ctrl('+'))

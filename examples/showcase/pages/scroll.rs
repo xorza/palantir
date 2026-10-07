@@ -1,7 +1,4 @@
-//! Scroll viewports hosted inside splitter panes — both widgets doing
-//! real work in one layout. The outer horizontal splitter holds a
-//! vertical scroll list; its right half splits again vertically into a
-//! horizontal scroll strip and a two-axis scroll grid.
+//! Scroll viewports in splitter panes. The outer horizontal splitter holds a vertical scroll list; its right half splits vertically into a horizontal strip and a two-axis grid.
 
 use crate::support;
 use crate::support::{on_swatch_style, readout, swatch_bg, well_bg};
@@ -106,10 +103,7 @@ fn col(ui: &mut Ui, i: u32) {
 }
 
 fn grid(ui: &mut Ui) {
-    // Single Hug-sized child holding a 12×16 colored grid via nested
-    // VStack/HStack. Both-axes Scroll measures with INF on both axes, so
-    // the inner stacks size to natural content and overflow the viewport
-    // on both sides.
+    // One Hug-sized child holding a 12×16 grid of nested stacks; both-axes Scroll measures with INF, so the stacks size to content and overflow both sides.
     Panel::vstack().gap(4.0).show(ui, |ui| {
         for r in 0..16u32 {
             Panel::hstack().id_salt(r).gap(4.0).show(ui, |ui| {
@@ -131,9 +125,7 @@ fn grid(ui: &mut Ui) {
     });
 }
 
-/// Teal → purple → orange sweep across the scrollable items, so panning
-/// shows visible progress. These colors aren't theme — they ARE the demo
-/// content, and they stay in the swatch palette's hues.
+/// Teal → purple → orange sweep so panning shows progress; these colours are demo content, not theme, in the swatch palette's hues.
 fn ramp(i: u32) -> RgbaF32 {
     let t = (i % 40) as f32 / 40.0;
     let (from, to, u) = if t < 0.5 {

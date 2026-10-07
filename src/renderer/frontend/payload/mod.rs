@@ -1,12 +1,6 @@
-//! Lowered paint payloads — the values the encoder hands a
-//! [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink),
-//! one per paint operation.
+//! Lowered paint payloads: the values the encoder hands a [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink), one per paint operation.
 //!
-//! Plain value types. Nothing serializes them — the sink consumes each
-//! payload inline — so the layout is the compiler's to choose, and
-//! fields are ordinary enums rather than the `u8` newtypes,
-//! `#[repr(C)]`, and injected trailing padding a `bytemuck::Pod` command
-//! arena would require.
+//! Plain value types, consumed inline and never serialized, so layout is the compiler's and fields are ordinary enums, not `u8` newtypes with `#[repr(C)]` and padding a `bytemuck::Pod` arena would need.
 
 pub(crate) mod brush_source;
 pub(crate) mod draw_curve_payload;

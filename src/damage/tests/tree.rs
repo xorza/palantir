@@ -18,30 +18,15 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::Vec2;
 
-/// Pin: removing a child of a fixed-size canvas that paints its own
-/// direct shapes must **not** re-damage those shapes. A node's
-/// `node_hash` folds in a per-immediate-child marker (`compute_rollups`),
-/// so dropping a child flips the parent's `node_hash` and routes it to
-/// the per-shape diff arm — but with `cascade_input` unchanged and every
-/// own `Paint` bit-identical, the parent's pixels didn't move. Only the
-/// vacated child's footprint is damage. Regression: darkroom deleting a
-/// node redrew every canvas connection, because the all-rows-matched
-/// fallback repainted the union of all direct shapes on any `node_hash`
-/// flip rather than only on a `cascade_input` change.
+/// Removing a child of a fixed-size canvas must not re-damage the canvas's own direct shapes (child markers flip `node_hash`, but `cascade_input` and every own `Paint` are unchanged); only the vacated child's footprint is damage.
 #[test]
 fn removing_canvas_child_does_not_redamage_sibling_shapes() {
-    // Direct shape lives far from both children so its potential
-    // (buggy) re-damage is geometrically distinguishable from the
-    // legitimate vacated-child damage.
     const LINE_PROBE: Rect = Rect::new(140.0, 140.0, 20.0, 20.0);
     const REMOVED_CHILD: Rect = Rect::new(60.0, 10.0, 20.0, 20.0);
 
     let canvas = |ui: &mut Ui, n_children: usize| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
-            // Fixed size (not the default hug) so dropping a child can't
-            // change the canvas's own rect — isolating the `node_hash`
-            // path from any `cascade_input` change.
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(
@@ -79,16 +64,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
     );
 }
 
-/// Regression: two panels at fixed canvas positions, each with an
-/// auto-id painting leaf recorded from a shared helper (one call site →
-/// one auto base id). Only the draw order flips between frames;
-/// positions + content are identical, so nothing visible changes and
-/// damage must be empty. Before auto ids were parent-scoped, the leaf's
-/// id was disambiguated by *global* occurrence order, so reordering the
-/// nodes shuffled which node each disambiguated id mapped to and
-/// spuriously damaged both — darkroom's "selecting/raising a node
-/// rerenders untouched nodes" bug. Parent-scoping ties each leaf to its
-/// own stable-id node body, so a reorder can't churn its identity.
+/// Two panels each with an auto-id leaf from one call site; only draw order flips, so damage is empty. Auto ids are parent-scoped, so reordering can't churn identity.
 #[test]
 fn reordering_nodes_does_not_damage_unchanged_leaves() {
     fn node(ui: &mut Ui, key: &str, pos: (f32, f32)) {
@@ -97,8 +73,6 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
             .position(pos)
             .size((Sizing::fixed(30.0), Sizing::fixed(30.0)))
             .show(ui, |ui| {
-                // Auto id — no `.id`/`.id_salt`; same call site for every
-                // node, so it collides across nodes and is disambiguated.
                 Block::new()
                     .size(10.0)
                     .background(Background::fill(RED))
@@ -120,7 +94,6 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     let b = ("b", (120.0, 120.0));
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, [a, b]));
-    // Same positions + content, only draw order flips.
     frame(&mut h, |ui| canvas(ui, [b, a]));
 
     assert!(
@@ -130,23 +103,11 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     );
 }
 
-/// Regression: raising an **overlapping** painting node (moving it to
-/// the front of the paint order) flips which node shows in the overlap
-/// even though the raised node's own rect / content / ancestor state
-/// are untouched. A node the raised one doesn't overlap (`c`) stays
-/// clean, and so does the part of `a` outside the overlap — the reorder
-/// damages overlaps only.
-///
-/// Two arrangements, one answer. As canvas children, the reordered child
-/// markers flip the canvas's `node_hash`, and its row matcher damages
-/// each inverted pair's overlap. As roots of one layer, there is no
-/// parent node: `RootOrder` keeps the layer's root list and does the same
-/// for it.
+/// Raising an overlapping painting node damages only the overlap; `c` and the rest of `a` stay clean. As canvas children, the reordered markers flip `node_hash` and the row matcher damages each inverted pair's overlap; as roots of one layer, `RootOrder` does the same.
 #[test]
 fn raising_an_overlapping_node_redamages_only_the_overlap() {
     type Record<'a> = &'a dyn Fn(&mut Ui, Order<'_>);
 
-    // `a` and `b` overlap; `c` sits far from both.
     const A: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);
     const B: Rect = Rect::new(30.0, 30.0, 40.0, 40.0);
     const OVERLAP: Rect = Rect::new(32.0, 32.0, 4.0, 4.0);
@@ -190,7 +151,6 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     for (label, record) in arrangements {
         let mut h = UiHarness::new(DISPLAY.physical);
         frame(&mut h, |ui| record(ui, [a, b, c]));
-        // Raise `a` to the front (drawn last) — same positions + content.
         frame(&mut h, |ui| record(ui, [b, c, a]));
 
         let region = h.damage_region();
@@ -208,9 +168,6 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
             "{label}: the non-overlapping node `c` must stay clean; region = {rects:?}",
         );
 
-        // The reorder costs exactly the frame it happens on: once the
-        // retained order is the new one, the inversion pass is never
-        // entered again.
         frame(&mut h, |ui| record(ui, [b, c, a]));
         assert!(
             h.damage_region().is_empty(),
@@ -220,22 +177,10 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     }
 }
 
-/// Regression: two **text**-bearing nodes scrolled fully off the left
-/// edge of a clipped canvas (bodies clip to zero width). Only their draw
-/// order flips. Their labels are entirely off-screen, so they must
-/// contribute nothing — but `inflate_text_damage` used to re-grow each
-/// already-clipped (zero-width) run by its ladder-snap pad, pushing the
-/// box back across the clip edge to `[0, pad_w]`. Those fabricated
-/// sub-pixel slivers then intersected in the reorder scan into a thin,
-/// tall "shadow" of damage pinned to the window edge — the real bug (a
-/// `~0.28px` red strip at the canvas edge cast by nodes that are
-/// completely off-screen). With the run left empty, each node's extent is
-/// zero-width and can't overlap anything, so the reorder is zero damage.
+/// Two text nodes scrolled fully off a clipped canvas, with only draw order flipping, cause zero damage: their clipped runs are empty, so inflation must not re-grow them into edge slivers.
 #[test]
 fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
     fn node(ui: &mut Ui, key: &str, y: f32) {
-        // Fully off-screen (x = -300): the body and every glyph clip
-        // entirely away; only text-damage inflation could fake a sliver.
         Button::new()
             .id(WidgetId::from_hash(key))
             .label("Node label")
@@ -254,7 +199,6 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
             });
     };
 
-    // Overlapping Y so their (formerly-inflated) label boxes would meet.
     let a = ("a", 40.0);
     let b = ("b", 44.0);
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -269,11 +213,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
     );
 }
 
-/// Pin: a **sequential stack** re-lays its children by record order, so
-/// swapping two moves both — the normal position-based per-node diff
-/// damages their old+new footprints. The stack's row matcher also sees
-/// the marker swap but the children land at disjoint extents, so the
-/// order scan adds nothing; the position diff must carry the damage.
+/// A sequential stack re-lays children by record order, so swapping two moves both; the position diff carries the damage.
 #[test]
 fn reordering_a_stack_is_damaged_by_the_position_diff() {
     fn child(ui: &mut Ui, key: &str, fill: RgbaF32) {
@@ -299,8 +239,6 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
     frame(&mut h, |ui| stack(ui, [a, b])); // a in the top slot, b below
     frame(&mut h, |ui| stack(ui, [b, a])); // swapped
 
-    // Both slots changed content (colours swapped), so both must be
-    // damaged — top slot y=[0,20], bottom y=[20,40].
     let region = h.damage_region();
     assert!(
         region.any_intersects(Rect::new(0.0, 5.0, 40.0, 5.0))
@@ -309,25 +247,9 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
     );
 }
 
-/// Regression: a direct shape whose content + screen rect are unchanged
-/// but which moves from *above* a child subtree to *below* it (its
-/// interleave position relative to the child flips) changes the
-/// composited pixels — the shape now paints under the child instead of
-/// over it. The content-keyed per-shape diff used to pair the two
-/// byte-identical `Paint`s and emit nothing, so the old on-top pixels
-/// stayed stranded over the child. Mirrors darkroom committing an
-/// in-flight connection preview (drawn over the nodes) into a
-/// byte-identical wire drawn under them: same curve, flipped z-order.
-/// The row matcher sees the shape↔child-marker inversion and damages
-/// their extent overlap — and *only* the overlap: the stretch of the
-/// line outside the child paints the same pixels in either order, so
-/// the far end must stay clean (an inversion is not a full-shape
-/// repaint).
+/// A direct shape moving from above a child subtree to below it changes composited pixels: the row matcher sees the shape/child-marker inversion and damages only their overlap, not the far end of the line.
 #[test]
 fn shape_crossing_child_boundary_is_redamaged() {
-    // The line overlaps the child, so a stale on-top draw would visibly
-    // cover it. Probe a point inside both the line strip and the child;
-    // FAR_PROBE sits on the line but outside the child.
     const CHILD: Rect = Rect::new(20.0, 20.0, 40.0, 40.0);
     const PROBE: Rect = Rect::new(30.0, 39.0, 2.0, 2.0);
     const FAR_PROBE: Rect = Rect::new(64.0, 39.0, 2.0, 2.0);
@@ -350,10 +272,6 @@ fn shape_crossing_child_boundary_is_redamaged() {
             .background(Background::fill(RED))
             .show(ui);
     };
-    // `over`: line recorded after the child → paints on top. `under`:
-    // identical line recorded before the child → paints beneath.
-    // Fixed-size canvas so its own rect (and thus `cascade_input`)
-    // can't change between the two.
     let over = |ui: &mut Ui| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
@@ -390,16 +308,9 @@ fn shape_crossing_child_boundary_is_redamaged() {
     );
 }
 
-/// Regression: two overlapping direct shapes of the *same* node swap
-/// record order — the visible top color flips, but every content key
-/// stays put: both `(screen, hash)` pairs still exist (pass 1 of
-/// `diff_changed_leg` pairs them exactly), no child is involved, and
-/// the node's `cascade_input` is untouched. Only the leg's span-local
-/// inversion check sees it. This was a silent stale-pixel hole before
-/// the order check covered exact-matched pairs.
+/// Two overlapping direct shapes of one node swap record order: every content key survives, so only the span-local inversion check sees it.
 #[test]
 fn overlapping_direct_shape_swap_is_redamaged() {
-    // Coincident lines, so the overlap is the whole strip.
     const PROBE: Rect = Rect::new(38.0, 29.0, 2.0, 2.0);
     let line = |ui: &mut Ui, color: RgbaF32| {
         ui.add_shape(
@@ -432,17 +343,11 @@ fn overlapping_direct_shape_swap_is_redamaged() {
     );
 }
 
-/// Pin the survivor rule of the order check: inserting a child shifts
-/// every later row's position in the parent's paint span, but the
-/// survivors keep their *relative* order, so an unchanged shape drawn
-/// after the children must contribute no damage — only the new child
-/// does. (The old `child_rank` hash salt re-keyed every after-a-child
-/// shape on insert and spuriously re-damaged its full extent.)
+/// Inserting a child shifts later rows' positions but survivors keep their relative order, so an unchanged shape after the children contributes no damage.
 #[test]
 fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     const CHILD_A: Rect = Rect::new(10.0, 10.0, 30.0, 30.0);
     const CHILD_B: Rect = Rect::new(120.0, 10.0, 30.0, 30.0);
-    // On the line, far below both children.
     const LINE_PROBE: Rect = Rect::new(30.0, 99.0, 2.0, 2.0);
 
     fn node(ui: &mut Ui, key: &str, r: Rect) {
@@ -488,18 +393,10 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     );
 }
 
-/// Pin the re-key tradeoff: child identity lives in `node_hash` (via
-/// the child markers `compute_rollups` folds), so re-keying a child —
-/// same content, new `WidgetId` — flips its parent's hash and routes
-/// the parent to the changed-paints arm. That arm must emit nothing
-/// for the parent itself: the swapped marker rows are paint-empty, and
-/// the re-keyed child's own pixels are damaged by its old id's
-/// eviction plus its new id's insert. An unchanged sibling shape stays
-/// clean.
+/// Re-keying a child (same content, new `WidgetId`) flips its parent's hash into the changed-paints arm, which must emit nothing for the parent; the child's pixels are damaged by its old id's eviction plus its new id's insert.
 #[test]
 fn rekeying_a_child_damages_only_the_child() {
     const CHILD: Rect = Rect::new(10.0, 10.0, 30.0, 30.0);
-    // On the line, far below the child.
     const LINE_PROBE: Rect = Rect::new(30.0, 99.0, 2.0, 2.0);
 
     let canvas = |ui: &mut Ui, key: &str| {
@@ -539,17 +436,7 @@ fn rekeying_a_child_damages_only_the_child() {
     );
 }
 
-/// Ordinal shift: when the user removes a shape from the middle of a
-/// widget's authoring (e.g., deletes a connection in the middle of a
-/// connection list), the per-shape diff sees the trailing ordinals as
-/// "different" because they now align with a *different* prev shape.
-/// The contract: damage stays correct (the removed shape's pixels +
-/// the shifted shapes' old+new positions all enter the region), and
-/// the snapshot tail is trimmed via the `drain(ord..)` branch in the
-/// Occupied-changed arm.
-///
-/// This is the degraded-coarsening behaviour mentioned in the design
-/// doc — frame stays correct, one frame of over-paint, settles next.
+/// Removing a middle shape shifts trailing ordinals; damage covers the removed pixels plus shifted shapes' old and new positions, and the snapshot tail is trimmed via `drain(ord..)`.
 #[test]
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
     use crate::widget::Shape;
@@ -579,9 +466,6 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     frame(&mut h, |ui| build(true, ui));
     frame(&mut h, |ui| build(true, ui)); // settle
 
-    // Snapshot the prev rects for shapes 0/1/2 so we can verify the
-    // post-delete damage region.
-    // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
     let prev_shapes = h
         .engines
         .damage
@@ -590,10 +474,6 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
 
-    // Delete the middle shape. Content-keyed matching pairs red→red
-    // and blue→blue between frames (same `(screen, hash)` despite the
-    // ordinal shift); only the green paint is unmatched. Damage covers
-    // green's prev rect and nothing else.
     frame(&mut h, |ui| build(false, ui));
 
     let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
@@ -606,16 +486,11 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
 
-    // The deleted shape's pixels must be in damage (cleared this frame).
     assert!(
         intersects(prev_middle_rect),
         "deleted shape's prev rect must enter damage; \
          prev_middle = {prev_middle_rect:?}, region = {rects:?}",
     );
-    // The blue shape never moved (positioned absolutely via local_rect)
-    // and its content is unchanged — content-keyed matching detects
-    // this and excludes it from damage. The damaged region must NOT
-    // intersect blue's rect.
     assert!(
         !intersects(prev_blue_rect),
         "unmoved blue shape must not enter damage; \
@@ -623,10 +498,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     );
 }
 
-/// Symmetric to `shape_removed_from_middle_…`: inserting a new shape
-/// between two existing ones shifts every trailing ordinal, but with
-/// content-keyed matching the existing shapes pair with their prev
-/// counterparts and only the new shape contributes damage.
+/// Inserting a shape between two shifts trailing ordinals, but content-keyed matching pairs the existing shapes, so only the new one damages.
 #[test]
 fn shape_added_in_middle_damages_only_new() {
     use crate::widget::Shape;
@@ -674,8 +546,6 @@ fn shape_added_in_middle_damages_only_new() {
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
 
-    // Green has no prev counterpart — its curr screen rect enters
-    // damage as "added."
     let green_screen = curr_shapes
         .iter()
         .find(|p| !prev_shapes.iter().any(|pp| pp == *p))
@@ -686,9 +556,6 @@ fn shape_added_in_middle_damages_only_new() {
         "newly inserted shape must enter damage; \
          green = {green_screen:?}, region = {rects:?}",
     );
-    // Red and blue paints are bit-identical between frames (same
-    // `(screen, hash)`); content-keyed matching pairs them off and
-    // they must not enter damage despite their ordinal shifting.
     assert!(
         !intersects(prev_red_screen),
         "unmoved red shape must not enter damage; region = {rects:?}",
@@ -700,12 +567,7 @@ fn shape_added_in_middle_damages_only_new() {
     );
 }
 
-/// The fixture both reparent tests drive: one leaf of identical content
-/// at an identical rect, under `A` or under `B`, which are chromeless
-/// full-surface ZStacks. The leaf's arranged rect, authoring hash and
-/// cascade input are bit-identical across the move — only its
-/// compositing position changes (`NodeSnapshot::parent_key`). `hidden`
-/// hides both parents, so the same move happens with nothing painting.
+/// One leaf of identical content and rect under `A` or `B` (chromeless full-surface ZStacks); only its compositing position changes (`NodeSnapshot::parent_key`). `hidden` hides both parents.
 fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
     let leaf = |ui: &mut Ui| {
         Block::new()
@@ -735,10 +597,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
         });
 }
 
-/// Pin: reparenting a widget at an identical rect with identical content
-/// must damage its painted extent. The pre-fix tier-1 skip treated the
-/// leaf as unchanged and the frame classified Skip, leaving stale overlap
-/// pixels wherever the leaf's z-order against outside content flipped.
+/// Reparenting a widget at an identical rect and content must damage its painted extent, since its z-order against outside content flips.
 #[test]
 fn reparent_at_same_rect_damages_moved_subtree() {
     const LEAF_PROBE: Rect = Rect::new(10.0, 10.0, 2.0, 2.0);
@@ -751,19 +610,11 @@ fn reparent_at_same_rect_damages_moved_subtree() {
         region.any_intersects(LEAF_PROBE),
         "moved leaf's extent must be damaged; region = {region:?}",
     );
-    // Follow-up frame with no further move settles back to Skip — the
-    // refreshed snapshot carries the new parent_key.
     let settled = frame(&mut h, |ui| build(ui, true));
     assert_eq!(settled, None, "reparent damage must not repeat");
 }
 
-/// Pin: the same move under a hidden ancestor damages nothing.
-///
-/// The leaf's own visibility is `Visible`, so a walk reading that alone
-/// would hand the move real screen rects and repaint pixels no pass
-/// paints. The cascade reads the inherited answer instead: the subtree
-/// owns no paint rows and its rolled-up column is seeded at
-/// `Rect::ZERO`, which is what makes a hidden reparent free.
+/// The same move under a hidden ancestor damages nothing: the cascade reads inherited visibility, so the subtree owns no paint rows.
 #[test]
 fn reparenting_a_hidden_subtree_damages_nothing() {
     let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, true);
@@ -776,10 +627,7 @@ fn reparenting_a_hidden_subtree_damages_nothing() {
     );
 }
 
-/// Pin: inserting one shape at the FRONT of a node's record stream
-/// (every row shifts by one) damages only the new shape — the shifted
-/// rows exact-match by content through the keyed merge and their
-/// relative order is preserved, so no inversion overlap fires either.
+/// Inserting a shape at the front of a node's record stream damages only the new shape; shifted rows match by content and keep their relative order.
 #[test]
 fn front_insert_damages_only_the_new_shape() {
     const NEW_PROBE: Rect = Rect::new(150.0, 149.0, 2.0, 2.0);
@@ -828,15 +676,7 @@ fn front_insert_damages_only_the_new_shape() {
     );
 }
 
-/// A hidden container keeps its slot in layout, and the cascade writes
-/// an empty paint span for it and for every node under it — so none of
-/// them may enter the snapshot map, which holds only nodes with rows.
-///
-/// The child carries chrome of its own and its own `Visible`, so it is
-/// the case that separates the cascaded reading from the node's own.
-/// The visible sibling beside the container is the control: it takes an
-/// entry, so the frame is one the map was filled from and the two
-/// absences are the classification, not an empty pass.
+/// A hidden container and everything under it have empty paint spans, so none may enter the snapshot map. The child has its own chrome and `Visible`, separating the cascaded reading from its own; the visible sibling is the control.
 #[test]
 fn a_hidden_container_takes_no_snapshot() {
     let hidden = WidgetId::from_hash("hidden-box");
@@ -875,11 +715,7 @@ fn a_hidden_container_takes_no_snapshot() {
     );
 }
 
-/// Pin: a chromeless container that stops painting takes its painted
-/// descendants' pixels with it. The descendants keep their authoring,
-/// so they reach the moved-subtree leg with no rows; that leg must
-/// evict them, or the frame reports no damage and they stay on screen.
-/// The frame that shows the container again repaints both.
+/// A chromeless container that stops painting takes its painted descendants' pixels with it (the moved-subtree leg must evict them); showing it again repaints both.
 #[test]
 fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
     const CHILD_PROBE: Rect = Rect::new(45.0, 45.0, 2.0, 2.0);
@@ -935,11 +771,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
     }
 }
 
-/// Reversing a deck costs one damage rect per card, not one per pair.
-/// 200 equal cards at one rect on a canvas, then the same cards in the
-/// reverse order: every card after the first now paints over cards that
-/// painted over it, so each of those 199 pushes its whole rect once —
-/// where a rect per inverted pair pushed `200 × 199 / 2 = 19 900`.
+/// Reversing a deck of 200 equal cards at one rect costs one damage rect per card, not one per inverted pair (19 900).
 #[test]
 fn reversing_a_deck_pushes_one_rect_per_card() {
     const CARD: Rect = Rect::new(10.0, 10.0, 40.0, 40.0);

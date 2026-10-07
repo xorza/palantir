@@ -1,31 +1,21 @@
 //! Paint-only animations: the per-shape contract (`PaintAnimation` /
 //! `PaintMod`) and the per-tree registry that stores it.
 //!
-//! Paint anims are declarative shape-level animations that don't affect
-//! layout, hit-test, or tree structure. Widgets register a `PaintAnimation`
-//! against a freshly-added shape via `Ui::add_shape_animated`; the
-//! encoder samples it at paint time and folds the resulting [`PaintMod`]
-//! (an alpha multiplier today; transform mod once the renderer can
-//! express it) into the per-shape brush. `Forest::min_paint_anim_wake`,
-//! which `FrameCycle::run` calls every frame, folds each anim's
-//! `next_wake` into the `Ui` frame runtime's wake queue, so widget code
-//! never calls `request_repaint_after` for these shapes.
+//! They don't affect layout, hit-test or structure. Widgets register one via
+//! `Ui::add_shape_animated`; the encoder samples it at paint time and folds
+//! the [`PaintMod`] into the shape's brush. `Forest::min_paint_anim_wake`
+//! (called by `FrameCycle::run`) feeds each `next_wake` to the wake queue, so
+//! widgets never call `request_repaint_after` for them.
 //!
-//! Unlike the value-interpolation animations in `crate::animation`
-//! (record-time readback, keyed `(WidgetId, AnimationSlot)`), paint anims are
-//! sampled at *encode* time and stored on the `Tree`. They share no code
-//! with that system — sampling is a pure function of `now`, with no
-//! accumulator state, so dropped frames / irregular `dt` don't drift.
+//! Unlike `crate::animation`, sampling is a pure function of `now` at encode
+//! time, so irregular `dt` doesn't drift.
 //!
-//! The registry stores only live entries and their sorted shape indices.
-//! Encoder traversal is monotonic in shape index, so a cursor advances
-//! across both visited shapes and ranges skipped by subtree culling without
-//! retaining a reverse-index slot for every preceding static shape.
+//! The registry stores only live entries, sorted by shape index; the
+//! encoder's monotonic cursor skips culled ranges.
 //!
-//! An animation drives alpha, rotation, or both. Translation and scale
-//! would need the cascade to bound the *swept union over the path*, which
-//! it cannot compute without sampling — where a rotation's cover is the
-//! same square at every angle.
+//! An animation drives alpha, rotation, or both. Translation and scale would
+//! need a swept union the cascade can't bound without sampling; a rotation's
+//! cover is the same square at every angle.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -44,41 +34,27 @@ const CURSOR_END: u64 = u64::MAX;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnimation,
-    /// Index into `Tree::shapes.records` of the animated shape. Strictly
-    /// increasing across [`PaintAnims::entries`], because registration
-    /// follows append-only shape recording — which is what lets
-    /// [`PaintAnims::rotates`] binary-search it and [`PaintAnimCursor`]
-    /// walk it in one direction.
+    /// Index into `Tree::shapes.records`. Strictly increasing across
+    /// [`PaintAnims::entries`] (append-only recording), which enables
+    /// [`PaintAnims::rotates`]'s binary search and [`PaintAnimCursor`].
     pub(crate) shape_idx: u32,
-    /// Paint-arena row of the animated shape inside its owner's
-    /// `node_spans` span — the chrome offset plus the shape's position
-    /// in the owner's `TreeItems` stream, captured from
-    /// `OpenFrame::paint_rows` at `add_shape_animated` time. Lets
-    /// damage's `extend_predamaged` index the shape's screen rect as
-    /// `paint_arena.rows[node_span.start + row]` with no per-frame
-    /// `TreeItems` walk.
+    /// Paint-arena row of the shape inside its owner's `node_spans` span, from
+    /// `OpenFrame::paint_rows` at registration, so damage can index
+    /// `paint_arena.rows[node_span.start + row]` directly.
     pub(crate) row: u32,
-    /// The node that owns this shape — the open node at
-    /// `add_shape_animated` time. Lets the damage lookup index
-    /// `node_spans[node]` directly without needing a per-frame
-    /// `shape_idx → paint_idx` reverse map.
+    /// The node owning the shape, for direct `node_spans[node]` lookup.
     pub(crate) node: NodeId,
 }
 
 /// Per-tree sparse paint-animation registry, cleared per frame.
 #[derive(Debug, Default)]
 pub(crate) struct PaintAnims {
-    /// Live anim entries, in registration order — which is shape order,
-    /// so `shape_idx` increases down the column. Iterated by
-    /// `Forest::min_paint_anim_wake` (next-wake fold) and
-    /// `DamageEngine::compute` (anim-damage union), searched by
-    /// [`Self::rotates`], and walked in step by [`PaintAnimCursor`].
+    /// Live entries in registration (shape) order, so `shape_idx` increases.
     pub(crate) entries: Vec<PaintAnimEntry>,
 }
 
 impl PaintAnims {
-    /// Reset for a fresh recording frame. Capacity retained — same
-    /// lifecycle as every other per-frame tree column.
+    /// Reset for a fresh recording frame; capacity retained.
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
     }
@@ -94,13 +70,8 @@ impl PaintAnims {
         self.entries.push(entry);
     }
 
-    /// Whether the shape at `shape_idx` paints under a rotation.
-    ///
-    /// The cascade's question, and it asks it without a `now`: what a
-    /// rotating shape is culled and damaged against is the square it
-    /// sweeps, which is the same at every angle. `entries` is ordered by
-    /// `shape_idx` and holds only the handful of shapes a frame
-    /// animates, so the search is over a list that is usually empty.
+    /// Whether the shape at `shape_idx` paints under a rotation. Needs no `now`:
+    /// culling and damage use the swept square, identical at every angle.
     pub(crate) fn rotates(&self, shape_idx: u32) -> bool {
         self.entries
             .binary_search_by_key(&shape_idx, |entry| entry.shape_idx)
@@ -132,14 +103,9 @@ pub(crate) struct PaintAnimCursor<'a> {
     entries: &'a [PaintAnimEntry],
     next: usize,
     next_shape: u64,
-    /// Previous [`Self::sample`] argument, so the monotonicity
-    /// precondition is checked in debug rather than trusted.
-    ///
-    /// A backwards walk has no failure signal of its own: the cursor
-    /// answers `IDENTITY`, which is also what an unanimated shape gets,
-    /// and the registration it already stepped past stays consumed. The
-    /// recording half asserts the same ordering in
-    /// [`PaintAnims::push_entry`]; this is the reading half of it.
+    /// Previous [`Self::sample`] argument, checking monotonicity in debug. A
+    /// backwards walk gives no failure signal: it answers `IDENTITY` and leaves
+    /// the skipped registration consumed.
     #[cfg(debug_assertions)]
     last_sampled: Option<u32>,
 }
@@ -164,13 +130,9 @@ impl PaintAnimCursor<'_> {
         while shape_idx > self.next_shape {
             self.advance();
         }
-        // The loop lands on the first registration at or past `shape_idx`;
-        // only an exact hit is this shape's. A jump that skips over one
-        // registration and stops short of the next must not hand out the
-        // next one's sample — and must not consume it either, or the
-        // shape that owns it would then paint unanimated. `CURSOR_END`
-        // is `u64::MAX`, which no `u32` index can equal, so an exhausted
-        // cursor falls out here too.
+        // Lands on the first registration at or past `shape_idx`; only an exact hit
+        // is this shape's. A jump past one registration must neither sample nor
+        // consume the next. `CURSOR_END` (`u64::MAX`) matches no `u32` index.
         if shape_idx != self.next_shape {
             return PaintMod::IDENTITY;
         }

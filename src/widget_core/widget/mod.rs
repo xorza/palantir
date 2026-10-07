@@ -1,11 +1,6 @@
-//! The one authoring entity: a layout record with an identity, which a
-//! widget configures, reads its last-frame state through, and records.
-//!
-//! Identity resolves on the widget's first contact with [`Ui`] —
-//! [`Widget::resolve`], [`Widget::response`], or [`Widget::record`],
-//! whichever comes first — and stays put from then on, unless an
-//! identity setter replaces it. A widget that records without reading
-//! first never names its id at all.
+//! The one authoring entity: a layout record with an identity, which a widget
+//! configures, reads its last-frame state through, and records. Identity resolves
+//! on first contact with [`Ui`] and stays put unless an identity setter replaces it.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
@@ -37,30 +32,20 @@ use crate::widget_core::response::{InnerResponse, Response};
 use glam::Vec2;
 use std::panic::Location;
 
-/// What a widget records: its identity, and the node the tree reads.
-/// Every widget builder owns one, chains the [`Configure`] setters on it,
-/// and hands it to [`Self::record`] in its `show`. A widget author builds
-/// the children the same way — `Widget::leaf().id(id.with("knob"))` —
-/// so one type carries the whole authoring surface.
+/// What a widget records: its identity, and the node the tree reads. Every widget
+/// builder owns one, chains the [`Configure`] setters on it, and hands it to
+/// [`Self::record`] in its `show`.
 ///
-/// Three steps, in order, and the middle one is optional:
+/// 1. **Create and configure.** The constructor's `#[track_caller]` gives the
+///    default identity.
+/// 2. **Read** (optional). [`Self::resolve`] fixes the id this frame records
+///    under; [`Self::response`] is the usual read.
+/// 3. **Record.** [`Self::record`] opens the node, runs the body and closes it. It
+///    takes `self`, so a second record is a compile error, not a duplicate-endpoint
+///    panic; hence no `Copy` or `Clone`.
 ///
-/// 1. **Create and configure.** The constructors take the layout mode,
-///    the setters take everything else, and the `#[track_caller]` on
-///    the constructor is what gives the widget its default identity.
-/// 2. **Read.** [`Self::resolve`] turns the identity recipe into the
-///    id this frame records under, and keeps it. [`Self::response`] is
-///    the read most widgets make with it. Neither is needed by a
-///    widget that only records.
-/// 3. **Record.** [`Self::record`] opens the node, runs the body, and
-///    closes it. It takes `self`, so a second record is a use-after-move
-///    the compiler rejects rather than a duplicate-endpoint panic at
-///    frame time — which is why this is neither `Copy` nor `Clone`.
-///
-/// The parent context an identity resolves against is the
-/// most-recently-opened node in the current layer, so a widget resolves
-/// under the node whose body it is recorded in. Resolve and record in
-/// the same body.
+/// Identity resolves against the most recently opened node in the current layer,
+/// so resolve and record in the same body.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show` or `record`"]
 pub struct Widget {
@@ -87,9 +72,7 @@ impl Widget {
         Self::new(NodeMode::Resolved(LayoutMode::Stack(Axis::Y)))
     }
 
-    /// Stack container along `axis`: [`Self::hstack`] for [`Axis::X`],
-    /// [`Self::vstack`] for [`Axis::Y`]. For code that picks the
-    /// direction at run time.
+    /// Stack container along `axis`, for a direction picked at run time.
     #[track_caller]
     pub fn stack(axis: Axis) -> Self {
         Self::new(NodeMode::Resolved(LayoutMode::Stack(axis)))
@@ -120,41 +103,30 @@ impl Widget {
     }
 
     /// Grid container for custom widgets. Its tracks arrive through
-    /// [`Self::grid_tracks`] once a `Ui` is at hand; recording it without
-    /// them panics.
+    /// [`Self::grid_tracks`]; recording without them panics.
     #[track_caller]
     pub fn grid() -> Self {
         Self::new(NodeMode::PendingGrid)
     }
 
-    /// Scroll viewport. Its children measure unbounded on the axes `axes`
-    /// pans, so they report their full extent, and [`Ui::scroll_content`]
-    /// reads that extent back on the next frame.
-    ///
-    /// The viewport moves nothing by itself: pan the children with a
-    /// [`transform`](ConfigureWidget::transform) of the negated offset,
-    /// and clip them with [`clip_rect`](ConfigureWidget::clip_rect), as
+    /// Scroll viewport. Children measure unbounded on the axes `axes` pans, and
+    /// [`Ui::scroll_content`] reads their extent back next frame. It moves nothing
+    /// itself: pan with a [`transform`](ConfigureWidget::transform) of the negated
+    /// offset and clip with [`clip_rect`](ConfigureWidget::clip_rect), as
     /// [`crate::Scroll`] does. [`Self::scrollbars`] records bars for it.
     #[track_caller]
     pub(crate) fn scroll(axes: ScrollAxes) -> Self {
         Self::new(NodeMode::Resolved(LayoutMode::Scroll(axes)))
     }
 
-    /// Bar-overlay container for a [`Self::scroll`] viewport. Its bars
-    /// arrive through [`Self::scrollbar_def`] once a `Ui` is at hand, as a
-    /// grid's tracks do; recording it without them panics.
+    /// Bar-overlay container for a [`Self::scroll`] viewport. Its bars arrive through
+    /// [`Self::scrollbar_def`]; recording without them panics.
     ///
-    /// Record it after the viewport, on the same layer — typically as the
-    /// viewport's sibling in a z-stack that holds both, filling it. It
-    /// places its children after measure, which is the only point the
-    /// content extent they size against exists, and reports no size of its
-    /// own.
-    ///
-    /// It takes exactly four leaves, in this order: the vertical track,
-    /// the vertical thumb, the horizontal track, the horizontal thumb.
-    /// Record all four every frame. An axis that shows no bar arranges its
-    /// two at zero size, which keeps the child list, and so each leaf's
-    /// state, the same while the content starts and stops fitting.
+    /// Record it after the viewport on the same layer, typically as its z-stack
+    /// sibling. It places its children after measure, when the content extent exists,
+    /// and reports no size. It takes exactly four leaves: vertical track, vertical
+    /// thumb, horizontal track, horizontal thumb, recorded every frame; an axis with no
+    /// bar arranges its two at zero size so leaf state survives.
     #[track_caller]
     pub(crate) fn scrollbars() -> Self {
         Self::new(NodeMode::PendingScrollbars)
@@ -168,31 +140,20 @@ impl Widget {
         }
     }
 
-    /// The id this widget records under, resolved on the first call and
-    /// kept for every later one.
+    /// The id this widget records under, resolved on the first call and kept. Call it
+    /// before `record` when you need the id first: to read last frame's state
+    /// ([`Ui::response_for`], [`Ui::with_state`]), key an animation slot, or derive
+    /// child ids ([`WidgetId::with`]).
     ///
-    /// The step a widget takes before `record` when it needs its id
-    /// first: to read last frame's state through [`Ui::response_for`]
-    /// or [`Ui::with_state`], to key an animation slot, or to derive
-    /// child ids with [`WidgetId::with`]. A widget that needs none of
-    /// those never calls it — [`Self::record`] resolves on its own.
-    ///
-    /// An auto call-site id and an `id_salt` hash both
-    /// resolve to `parent.with(id)`, so identity tracks tree position
-    /// rather than record order; an explicit `.id(id)` resolves
-    /// verbatim. A raw id a sibling already opened this frame is bumped
-    /// to a fresh occurrence, so what this returns is what the tree, the
-    /// cascade, and `response_for` will see. Kept rather than re-derived
-    /// at record because that bump is not repeatable: a sibling opening
-    /// the same raw id between this call and the record would move the
-    /// record to a second occurrence, and the reads made here would have
-    /// keyed the first.
+    /// An auto call-site id and an `id_salt` hash resolve to `parent.with(id)`, so
+    /// identity tracks tree position; an explicit `.id(id)` resolves verbatim. A raw id
+    /// a sibling already opened is bumped to a fresh occurrence; the result is kept
+    /// because that bump isn't repeatable.
     pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId {
         self.resolved(ui).id()
     }
 
-    /// [`Self::resolve`], keeping the entry the id holds in the pass's id
-    /// table, which [`Self::record`] hands to the open.
+    /// [`Self::resolve`], keeping the id table entry that [`Self::record`] hands to the open.
     fn resolved(&mut self, ui: &mut Ui) -> ResolvedId {
         match self.ident {
             Ident::Resolved(resolved) => resolved,
@@ -204,60 +165,31 @@ impl Widget {
         }
     }
 
-    /// This frame's interaction state, folding in the widget's own
-    /// `disabled` bit so a widget disabled *this* frame reads and paints
-    /// as disabled without waiting for the cascade to catch up.
-    ///
-    /// Resolves the identity if nothing did yet. The eager half of the
-    /// API, for widgets that act on input: decorative ones never call
-    /// this and never pay for the `response_for` lookup.
-    ///
-    /// Returns a plain owned [`ResponseState`], not a borrowing
-    /// [`Response`]: everything a widget does after probing — theme
-    /// resolution, [`Self::record`], the body closure — needs
-    /// `&mut Ui`, and a `Response` holds `&Ui` for its lazy cache.
-    /// Owned state is what lets the probe outlive all of it and become
-    /// the widget's [`Response::new`] at the end.
+    /// This frame's interaction state, folding in the widget's own `disabled` bit so a
+    /// widget disabled this frame paints as disabled before the cascade catches up.
+    /// Resolves the identity if needed. Returns an owned [`ResponseState`], not a
+    /// [`Response`], which holds `&Ui` while the body needs `&mut Ui`; it becomes the
+    /// widget's [`Response::new`] at the end.
     pub fn response(&mut self, ui: &mut Ui) -> ResponseState {
         let id = self.resolve(ui);
         let mut state = ui.response_for(id);
-        // The third and last source of `disabled`, and the only one that
-        // needs the node — which is why the interaction half is dropped
-        // by the fold rather than by the caller before it.
         state.merge_disabled(self.node.flags.is_disabled());
         state
     }
 
-    /// Whether `shortcut` was pressed and granted to this widget — read as
-    /// the widget itself, for a widget that reads its keys before it
-    /// opens its node. Resolves the identity if nothing did yet.
-    ///
-    /// [`Ui::key_pressed`] reads as the place a record has reached, which
-    /// before this node opens is the node around it. A widget that
-    /// declares an [`input_scope`](Configure::input_scope) is granted the
-    /// keys of its classes while it holds focus, so that read misses them
-    /// whenever another scope encloses it — a popup, an application root.
-    /// This one does not. Like [`Ui::key_pressed`], it keeps the chord
-    /// subscribed for the wake gate.
+    /// Whether `shortcut` was pressed and granted to this widget, for a widget that
+    /// reads keys before opening its node. Unlike [`Ui::key_pressed`], which reads as
+    /// the enclosing node, it sees keys granted by the widget's own
+    /// [`input_scope`](Configure::input_scope) even when another scope (a popup)
+    /// encloses it. Keeps the chord subscribed for the wake gate.
     pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool {
         let id = self.resolve(ui);
         ui.key_pressed_as(id, shortcut)
     }
 
-    /// Open this widget's node, run its body, and close it. Resolves the
-    /// identity if nothing did yet.
-    ///
-    /// **The crate's one opener.** Every widget reaches the tree here,
-    /// so the open/close pairing lives in a single place.
-    ///
-    /// `chrome` is `None` for the common layout-only / text-leaf /
-    /// chrome-less path and `Some(bg)` when the widget paints a
-    /// background — container widgets resolve an explicit-or-theme
-    /// `Option<Background>` and pass `chrome.as_ref()`. Both it and the
-    /// node travel by reference from here down `Ui::open_node` →
-    /// `Forest::open_node` → `Tree::open_node` → `Node::columns`,
-    /// so neither the `Background` nor the 100-byte `Node` is re-copied
-    /// per hop — structurally, not by inlining.
+    /// Open this widget's node, run its body, and close it; the crate's one opener.
+    /// `chrome` is `None` for chrome-less widgets, `Some(bg)` for a background; both it
+    /// and the node pass by reference down to `Node::columns`.
     pub fn record<R>(
         mut self,
         ui: &mut Ui,
@@ -271,18 +203,9 @@ impl Widget {
         r
     }
 
-    /// [`Self::record`] plus a lazy [`Response`] for the node just
-    /// recorded — the whole tail of a decorative widget's `show()`.
-    ///
-    /// A convenience over the opener, not a second way to open: a widget
-    /// that acts on input needs the state *before* it records — to pick
-    /// chrome, to apply a click to a bound value — so it opens with
-    /// [`Self::response`] and closes with [`Response::new`], with the
-    /// probe in hand throughout — including `ToggleChrome::record_row`,
-    /// which takes it once on behalf of the three toggles. There is
-    /// deliberately no helper for it: the response comes off the widget
-    /// before `record` consumes it, so a packager would save one line
-    /// and cost a type.
+    /// [`Self::record`] plus a lazy [`Response`] for the node just recorded, for
+    /// decorative widgets. A widget that acts on input opens with [`Self::response`]
+    /// and closes with [`Response::new`] instead.
     pub fn show<'a, R>(
         mut self,
         ui: &'a mut Ui,
@@ -297,102 +220,81 @@ impl Widget {
         }
     }
 
-    /// The size the caller authored, or `None` where they stayed silent.
-    ///
-    /// The read half of authoring. A widget layers its themed default
-    /// under the caller's choice with [`ThemeDefaults::default_size`](crate::widget::ThemeDefaults::default_size) and
-    /// friends, but a widget whose default *depends* on whether the
-    /// caller spoke has to ask, and this is how. `None` is the whole
-    /// answer: it is what the themable fields mean by "unset".
-    ///
-    /// Named `authored_*` rather than after the field: an inherent
-    /// `size(&self)` would shadow [`Configure::size`] and break every
-    /// builder chain.
+    /// The size the caller authored, or `None` where they stayed silent. A widget whose
+    /// default depends on whether the caller spoke must ask. Named `authored_*` because
+    /// an inherent `size(&self)` would shadow [`Configure::size`].
     #[inline]
     pub const fn authored_size(&self) -> Option<SizeSpec> {
         self.node.size
     }
 
-    /// The lower size bound the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The lower size bound the caller authored, or `None`.
     #[inline]
     pub const fn authored_min_size(&self) -> Option<Size> {
         self.node.min_size
     }
 
-    /// The upper size bound the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The upper size bound the caller authored, or `None`.
     #[inline]
     pub const fn authored_max_size(&self) -> Option<Size> {
         self.node.max_size
     }
 
-    /// The padding the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The padding the caller authored, or `None`.
     #[inline]
     pub const fn authored_padding(&self) -> Option<Spacing> {
         self.node.padding
     }
 
-    /// The margin the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The margin the caller authored, or `None`.
     #[inline]
     pub const fn authored_margin(&self) -> Option<Spacing> {
         self.node.margin
     }
 
-    /// The paint transform the caller authored,
-    /// [`TranslateScale::IDENTITY`] where they authored none.
+    /// The paint transform the caller authored; identity if none.
     #[inline]
     pub const fn authored_transform(&self) -> TranslateScale {
         self.node.transform
     }
 
-    /// The `Canvas`-parent position the caller authored, `Vec2::ZERO`
-    /// where they authored none. Read by no other parent kind.
+    /// The `Canvas`-parent position the caller authored; `Vec2::ZERO` if none.
     #[inline]
     pub const fn authored_position(&self) -> Vec2 {
         self.node.position
     }
 
-    /// The grid slot the caller named. A default [`GridCell`] means they
-    /// named none, and is read only under a grid parent.
+    /// The grid slot the caller named; a default [`GridCell`] means none.
     #[inline]
     pub const fn authored_grid_cell(&self) -> GridCell {
         self.node.grid
     }
 
-    /// The sibling gap the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The sibling gap the caller authored, or `None`.
     #[inline]
     pub fn authored_gap(&self) -> Option<f32> {
         self.node.gaps.gap()
     }
 
-    /// The line gap the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The line gap the caller authored, or `None`.
     #[inline]
     pub fn authored_line_gap(&self) -> Option<f32> {
         self.node.gaps.line_gap()
     }
 
-    /// The main-axis distribution the caller authored, `Justify::Start`
-    /// where they stayed silent.
+    /// The main-axis distribution the caller authored; `Justify::Start` if silent.
     #[inline]
     pub const fn authored_justify(&self) -> Justify {
         self.node.justify
     }
 
-    /// How the caller aligned this widget inside its parent, `Auto` on
-    /// each axis they left alone. The self-alignment half of
-    /// [`Self::authored_child_align`].
+    /// How the caller aligned this widget in its parent; `Auto` per axis if silent.
     #[inline]
     pub const fn authored_align(&self) -> Align {
         self.node.align
     }
 
-    /// The child alignment the caller authored, `Auto` on each axis they
-    /// left alone.
+    /// The child alignment the caller authored; `Auto` per axis if silent.
     #[inline]
     pub const fn authored_child_align(&self) -> Align {
         self.node.child_align
@@ -416,15 +318,13 @@ impl Widget {
         self.node.flags.is_focusable()
     }
 
-    /// Whether the caller kept this widget a Tab stop. See
-    /// [`Configure::tab_stop`].
+    /// Whether the caller kept this widget a Tab stop ([`Configure::tab_stop`]).
     #[inline]
     pub const fn authored_tab_stop(&self) -> bool {
         self.node.flags.is_tab_stop()
     }
 
-    /// The axis the caller made this widget an arrow group along, or
-    /// `None`. See [`Configure::arrow_focus`].
+    /// The axis the caller made this widget an arrow group along, or `None`.
     #[inline]
     pub const fn authored_arrow_focus(&self) -> Option<Axis> {
         self.node.flags.arrow_focus()
@@ -436,34 +336,27 @@ impl Widget {
         self.node.tab_index
     }
 
-    /// The input scope the caller declared, empty where they declared
-    /// none. See [`Configure::input_scope`].
+    /// The input scope the caller declared; empty if none.
     #[inline]
     pub const fn authored_input_scope(&self) -> KeyFilter {
         self.node.flags.key_filter()
     }
 
-    /// What the caller set this widget's visibility to,
-    /// [`Visibility::Visible`] where they left it alone.
+    /// The visibility the caller set; [`Visibility::Visible`] if silent.
     #[inline]
     pub const fn authored_visibility(&self) -> Visibility {
         self.node.visibility
     }
 
-    /// The clip mode the caller authored, or `None`. See
-    /// [`Self::authored_size`].
+    /// The clip mode the caller authored, or `None`.
     #[inline]
     pub const fn authored_clip(&self) -> Option<ClipMode> {
         self.node.clip
     }
 
-    /// Install this grid's tracks: `rows` and `cols` are interned into the
-    /// current layer's tree, and the widget lays its children out on them.
-    ///
-    /// The definition lives in the tree rather than on the widget because
-    /// a layout mode packs into 16 bits, and a track list does not. That
-    /// is why this needs the `Ui`, and why it cannot be a [`Configure`]
-    /// setter.
+    /// Install this grid's tracks, interned into the current layer's tree. They live
+    /// there because a layout mode packs into 16 bits, so this needs the `Ui` and
+    /// can't be a [`Configure`] setter.
     ///
     /// # Panics
     ///
@@ -473,28 +366,22 @@ impl Widget {
         self.node.set_mode(LayoutMode::Grid(id));
     }
 
-    /// Install this bar overlay's definition: `def` is interned into the
-    /// current layer's tree, and the overlay places its bars from it once
-    /// the viewport `def.content` names has measured.
-    ///
-    /// The definition lives in the tree for the reason a grid's tracks
-    /// do — see [`Self::grid_tracks`].
+    /// Install this bar overlay's definition, interned into the current layer's tree;
+    /// the overlay places its bars from it once the viewport `def.content` names has
+    /// measured.
     ///
     /// # Panics
     ///
-    /// Panics on a widget that is not a [`Self::scrollbars`], and when
-    /// the viewport `def.content` names was not recorded earlier this
-    /// frame.
+    /// Panics on a widget that is not a [`Self::scrollbars`], or when the viewport
+    /// `def.content` names was not recorded earlier this frame.
     pub(crate) fn scrollbar_def(&mut self, ui: &mut Ui, def: ScrollbarsDef) {
         let id = ui.push_scrollbars_def(def);
         self.node.set_mode(LayoutMode::Scrollbars(id));
     }
 
-    /// Identity's half of "explicit wins, the theme fills in the rest".
-    /// Its "caller stayed silent" test is [`Ident::is_explicit`] rather
-    /// than an `Option`, because every widget carries a `#[track_caller]`
-    /// auto id from the moment it is built — silence is an id the caller
-    /// did not choose, not the absence of one.
+    /// Identity's half of "explicit wins, the theme fills in the rest". Silence is
+    /// [`Ident::is_explicit`], not an `Option`: every widget carries an auto id from
+    /// construction.
     #[inline]
     pub(crate) const fn fill_id(&mut self, id: WidgetId) {
         if !self.ident.is_explicit() {

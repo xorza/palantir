@@ -1,5 +1,4 @@
-//! A cell covering several tracks, and the internal gaps it measures
-//! against.
+//! A cell covering several tracks, and the internal gaps it measures against.
 
 use crate::primitives::layout::axis::Axis;
 
@@ -17,13 +16,10 @@ use crate::widgets::{block::Block, grid::Grid};
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 
-/// A grid reads its spacing from the node column `line_gap` and `gap`
-/// write, so the rows and the columns each measure against the value
-/// their own setter named.
+/// Rows and columns each measure against their own setter's gap (`line_gap` vs `gap`).
 #[test]
 fn grid_span_covers_multiple_tracks_with_gap() {
-    // 3 fixed primary tracks of 100 with gap 10 → spanning all = 320.
-    // Body sits in track (1,1) → 110 offset on primary, 50 on secondary.
+    // 3 fixed tracks of 100 with gap 10: spanning all = 320; a body in track (1,1) sits at 110 primary, 50 secondary.
     let cases: &[(&str, bool)] = &[("col_span", false), ("row_span", true)];
     for (label, swap) in cases {
         let surface = if *swap {
@@ -232,7 +228,6 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
     }
 }
 
-/// Pin: 2-D span (row + col) covers the rectangular union with gaps.
 #[test]
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

@@ -33,11 +33,7 @@ fn click_inside_popup_does_not_dismiss() {
     );
 }
 
-/// Every pointer button dismisses, not just the primary. The secondary
-/// case is the one users hit: a context menu opens on right-click, so
-/// right-clicking elsewhere is the natural way to move or drop it — and
-/// while only `left` was read, that press was absorbed by the eater and
-/// then ignored, leaving the menu stuck open.
+/// Every pointer button dismisses, not just the primary: a right-click elsewhere must drop a context menu rather than be absorbed by the eater.
 #[test]
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
     for button in PointerButton::ALL {
@@ -68,8 +64,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
         "Esc dismisses a `Dismiss` popup",
     );
 
-    // `Block`: Esc is ignored (stop-the-world prompts close only on the
-    // host's terms).
+    // `Block`: Esc is ignored.
     let mut h = UiHarness::new(SURFACE);
     frame_body(&mut h, ClickOutside::Block);
     h.key(Key::Escape);
@@ -79,11 +74,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     );
 }
 
-/// `Ui::frame` settles popup dismissal in a single host call.
-/// Pass 1 records the open popup, sees the eater click, sets
-/// `dismissed = true`, host flips `open = false`. Pass 2 sees
-/// `open == false` and records no popup. The painted tree (pass 2)
-/// has no popup-layer widgets — no stale frame ever reaches submit.
+/// `Ui::frame` settles dismissal in one host call: pass 1 sees the eater click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
     let mut h = UiHarness::new(SURFACE);
@@ -120,15 +111,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     );
 }
 
-/// A dismissed popup hands input back on the very next frame.
-///
-/// The case `PopupHandle`'s close has always been *for* and, until the
-/// frame stamp on `Scopes::closed`, never actually did: a dismissal is
-/// action input, so its frame records twice, and pass B used to wipe
-/// pass A's close without being able to re-issue it — the dismissing
-/// edge is drained between the passes. `Main` then stayed cut off for a
-/// frame, long enough to swallow the keystroke or scroll that lands
-/// where the popup used to be.
+/// A dismissed popup hands input back the very next frame. A dismissal is action input, so its frame records twice; pass B must not wipe pass A's close (the edge is drained between passes), or `Main` stays cut off and swallows the next keystroke or scroll.
 #[test]
 fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     use crate::scene::layer::Layer;
@@ -159,7 +142,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
         build(ui, true);
     });
 
-    // Escape dismisses it. Focus makes the wake-gate deliver the chord.
+    // Escape dismisses it; focus makes the wake-gate deliver the chord.
     h.ui.input_mut().set_focus(Some(content));
     h.key(Key::Escape);
     assert!(
@@ -167,10 +150,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
         "escape must dismiss a ClickOutside::Dismiss popup"
     );
 
-    // Host stops showing it. `Main` must read again immediately — the
-    // popup is still in last frame's cascade, so only the close makes
-    // this true. Counted inside the record, the only place the queue is
-    // live.
+    // Host stops showing it. `Main` must read again at once, though the popup is still in last frame's cascade; counted inside the record, the only place the queue is live.
     h.ui.input_mut()
         .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);

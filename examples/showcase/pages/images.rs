@@ -1,7 +1,4 @@
-//! Image drawing: fit modes against a 64×64 checkerboard, tint and
-//! alpha on a gradient source, tiled repeat (UVs wrapped with `fract`
-//! in-shader), linear vs nearest sampling under both magnification
-//! and minification, and the minification tap modes on a starfield.
+//! Image drawing: fit modes on a 64×64 checkerboard, tint and alpha on a gradient source, tiled repeat (`fract` in-shader), linear vs nearest under magnification and minification, and the minification tap modes on a starfield.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -29,8 +26,7 @@ fn checker() -> Image {
     Image::from_srgba8(UVec2::new(N, N), pixels).expect("the demo pixels match their size")
 }
 
-/// 64×64 vertical magenta-to-cyan gradient — exercises the tint path
-/// and gives a visually distinct second image.
+/// 64×64 vertical magenta-to-cyan gradient; exercises tint and gives a distinct second image.
 fn gradient() -> Image {
     const W: u32 = 64;
     const H: u32 = 64;
@@ -46,8 +42,7 @@ fn gradient() -> Image {
     Image::from_srgba8(UVec2::new(W, H), pixels).expect("the demo pixels match their size")
 }
 
-/// 4×4 primary-colour sprite — small enough that any tile-sized draw is
-/// a heavy upscale, making the linear-vs-nearest difference obvious.
+/// 4×4 primary-colour sprite: any tile-sized draw is a heavy upscale, making linear vs nearest obvious.
 fn sprite() -> Image {
     let px: [[u8; 4]; 16] = [
         [230, 60, 60, 255],
@@ -71,14 +66,7 @@ fn sprite() -> Image {
         .expect("the demo pixels match their size")
 }
 
-/// 512×512 of near-black with scattered one-pixel stars — the worst case
-/// for minification, and what [`ImageDownsample`] exists for. Drawn into a
-/// demo cell it shrinks about 5×, so one bilinear tap reads roughly 4 of each
-/// pixel's 27 source texels: most stars miss the sample grid entirely, and the
-/// ones that land on it move as the image does.
-///
-/// Deterministic (xorshift over a fixed seed) so the page draws the same sky
-/// every run.
+/// 512×512 near-black with one-pixel stars: the worst case for minification and what [`ImageDownsample`] is for. In a demo cell it shrinks ~5×, so one bilinear tap reads ~4 of each pixel's 27 source texels and most stars miss it. Deterministic (xorshift, fixed seed).
 fn starfield() -> Image {
     const N: u32 = 512;
     const STARS: usize = 900;
@@ -97,8 +85,7 @@ fn starfield() -> Image {
         let r = next();
         let x = (r % u64::from(N)) as u32;
         let y = ((r >> 20) % u64::from(N)) as u32;
-        // A spread of magnitudes, and a warm/cool split, so `Peak` picking a
-        // whole tap rather than a per-channel max is visible as colour kept.
+        // Varied magnitudes and a warm/cool split, so `Peak` picking a whole tap (not a per-channel max) shows as kept colour.
         let mag = 90 + ((r >> 40) % 166) as u8;
         let warm = (r >> 48) & 1 == 0;
         let (rr, gg, bb) = if warm {
@@ -112,9 +99,7 @@ fn starfield() -> Image {
     Image::from_srgba8(UVec2::new(N, N), pixels).expect("the demo pixels match their size")
 }
 
-/// The four demo images, registered once and parked in a state row — the
-/// GPU textures live as long as these handles do. This is what a real app
-/// does with them, and dropping the row is how it frees the VRAM.
+/// The four demo images, registered once and parked in a state row; their GPU textures live as long as these handles, and dropping the row frees the VRAM.
 #[derive(Clone, Debug)]
 struct Sources {
     checker: ImageHandle,

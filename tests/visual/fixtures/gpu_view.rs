@@ -1,6 +1,4 @@
-//! `GpuView` fixture: proves the end-to-end pipe — an app `GpuPaint`
-//! callback renders into the framework-owned off-screen target, which is
-//! then composited into the UI through the image pipeline.
+//! `GpuView` fixture: an app `GpuPaint` callback renders into the framework-owned target, composited through the image pipeline.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -20,8 +18,7 @@ use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Panel, Sizing, Tra
 use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 
-/// Clears the off-screen target to opaque red via the app's own render
-/// pass on the framework-supplied encoder + target.
+/// Clears the target to opaque red via the app's own render pass.
 #[derive(Debug)]
 struct RedClear;
 
@@ -51,10 +48,7 @@ impl GpuPaint for RedClear {
     }
 }
 
-/// A full-surface `GpuView` whose renderer clears to red must land red on
-/// screen. Pure red is gamma-invariant (sRGB encode/decode fixes 0 and 1),
-/// so the texture→composite→backbuffer chain round-trips it exactly —
-/// no golden needed, the value is hand-known.
+/// A full-surface `GpuView` clearing to red lands red on screen. Pure red survives the sRGB round trip exactly, so no golden.
 #[test]
 fn gpu_view_clear_red_reaches_screen() {
     let mut h = Harness::new();
@@ -64,12 +58,12 @@ fn gpu_view_clear_red_reaches_screen() {
     let img = h
         .size(size)
         .frame(|ui| {
-            // Default sizing fills the surface; the whole frame is the view.
+            // Default sizing fills the surface.
             GpuView::new(&p).show(ui);
         })
         .image;
 
-    // Interior samples (skip the 1px edge to dodge boundary AA).
+    // Interior samples, skipping the 1px edge's AA.
     for y in [16u32, 32, 48] {
         for x in [16u32, 32, 48] {
             assert_px(
@@ -82,11 +76,7 @@ fn gpu_view_clear_red_reaches_screen() {
     }
 }
 
-/// A `GpuPaint` that builds a real render pipeline + depth attachment and
-/// draws a fullscreen green triangle — the same GPU surface the `cube`
-/// showcase exercises (pipeline, vertex buffer, depth-stencil state,
-/// `draw`), minus the matrices. Guards against wgpu-validation regressions
-/// in that path, which the clear-only fixture above can't reach.
+/// A `GpuPaint` with a real pipeline, vertex buffer, depth attachment and draw (as the `cube` showcase), guarding wgpu validation the clear-only fixture can't reach.
 #[derive(Debug)]
 struct DepthTriangle {
     pipeline: Option<wgpu::RenderPipeline>,
@@ -190,8 +180,7 @@ impl GpuPaint for DepthTriangle {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    // Clear the whole (capacity) target to BLUE — the slack
-                    // outside `physical_size` must NOT show up in the composite.
+                    // Clear the whole capacity target to BLUE; slack outside `physical_size` must not show in the composite.
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
                     store: wgpu::StoreOp::Store,
                 },
@@ -222,13 +211,7 @@ impl GpuPaint for DepthTriangle {
     }
 }
 
-/// The pipeline + depth + draw path (what the cube uses), through a
-/// GpuView, **and** the √2 capacity ladder's UV crop. A 64×64 view
-/// allocates a 67×67 capacity texture (16,23,33,47,67 rungs), so the
-/// bottom/right 3px are BLUE slack the renderer never touches. The green
-/// triangle fills only the `physical_size` sub-rect; the composite must sample
-/// `used/capacity` so the whole 64×64 widget reads green — including the
-/// far corner, which would sample blue slack if the crop were wrong.
+/// The draw path through a GpuView plus the √2 capacity ladder's UV crop. A 64×64 view gets a 67×67 texture, so 3px of BLUE slack the renderer never touches; the composite must sample `used/capacity` and read green throughout.
 #[test]
 fn gpu_view_pipeline_depth_and_capacity_crop() {
     let mut h = Harness::new();
@@ -249,9 +232,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
             GpuView::new(&p).show(ui);
         })
         .image;
-    // (63,63) is the discriminating pixel: with the correct `used/capacity`
-    // crop it samples inside the green sub-rect; with a full-[0,1] UV it
-    // would sample the blue slack at texel ≈66.
+    // (63,63) discriminates: a full [0,1] UV would sample blue slack at texel ≈66.
     for &(x, y) in &[(32u32, 32u32), (63, 63), (0, 63), (63, 0)] {
         assert_px(
             img.get_pixel(x, y).0,

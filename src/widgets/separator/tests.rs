@@ -12,15 +12,7 @@ use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
 use glam::UVec2;
 
-/// `Separator` gained the per-instance `.style(&SeparatorTheme)`
-/// every other themed widget already had — which is what lets
-/// `MenuSeparator` hand its slot down whole instead of unpacking it
-/// field by field.
-///
-/// `margin` came with it, so the bundle also has to fill in where
-/// the builder stayed silent and lose where it didn't: the menu slot
-/// holds its rule off the rows around it, the in-flow slot leaves it
-/// at zero, and a caller who says `.margin(...)` beats both.
+/// `Separator` takes a per-instance `.style(&SeparatorTheme)` so `MenuSeparator` can hand its slot down whole. `margin` fills in where the builder is silent and loses where it isn't: the menu slot holds the rule off the rows, the in-flow slot is zero, `.margin(...)` beats both.
 #[test]
 fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     let styled = SeparatorTheme {
@@ -29,7 +21,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         ..SeparatorTheme::default()
     };
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    // Loudly different global slot — a styled rule must not reach it.
+    // Loudly different global slot; a styled rule must not reach it.
     h.ui.theme_mut().separator.thickness = 11.0;
     h.ui.theme_mut().separator.margin = Spacing::all(9.0);
 
@@ -83,9 +75,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     );
 }
 
-/// Explicit `.size(...)` replaces the Hug+Stretch/thickness default
-/// entirely, and an untouched horizontal rule still stretches across
-/// the 400-wide FILL column at the theme thickness of 1.
+/// Explicit `.size(...)` replaces the Hug+Stretch default; an untouched horizontal rule stretches across the 400-wide FILL column at thickness 1.
 #[test]
 fn explicit_size_overrides_stretch_default() {
     let trio = SizeTrio::of((Sizing::fixed(50.0), Sizing::fixed(3.0)), |ui, size| {
@@ -105,15 +95,7 @@ fn explicit_size_overrides_stretch_default() {
     );
 }
 
-/// The `Hug + Stretch` default is per-axis, so it fills in only the axis
-/// the caller left `Auto`.
-///
-/// In a 400x300 `ZStack` both axes are cross axes. Untouched, the rule
-/// stretches to the full 400 at the theme thickness of 1. A caller's
-/// `HAlign::Center` keeps the width at `Hug`'s 0, centered at
-/// `(400 - 0) / 2`. A caller's `VAlign::Bottom` leaves the horizontal
-/// axis `Auto`, so the stretch still fills it in, and pins the rule's
-/// top at `300 - 1`.
+/// The `Hug + Stretch` default is per-axis: in a 400x300 `ZStack` untouched, the rule stretches to 400 at thickness 1. `HAlign::Center` keeps width at `Hug`'s 0, centered at `(400 - 0) / 2`. `VAlign::Bottom` leaves the horizontal axis `Auto`, still stretched, and pins the top at `300 - 1`.
 #[test]
 fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
     let mut h = UiHarness::new(UVec2::new(400, 300));

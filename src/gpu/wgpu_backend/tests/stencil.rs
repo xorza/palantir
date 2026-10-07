@@ -1,5 +1,4 @@
-//! Rounded-clip mask stamping: when a chain writes, dedups, restamps, or
-//! clears.
+//! Rounded-clip mask stamping: when a chain writes, dedups, restamps, or clears.
 
 use crate::common::span::Span;
 use crate::gpu::frame::schedule::MaskPlan;
@@ -16,15 +15,7 @@ use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use glam::Vec2;
 
-/// Pin: a stencil-clipped group stamps its mask before its draws so
-/// fragments inside the rounded SDF pass `Equal(1)`, and the walk ends
-/// with a tail `MaskClear` — the pass clears the stencil once (not per
-/// damage rect) and padded damage scissors can overlap, so a stamped
-/// mask must never survive a walk. Raw steps additionally pin the
-/// depth-1 grammar: the stamp draws at ref 0 (no `SetStencilRef`
-/// before it — the pass opens at 0), content follows at ref 1, and the
-/// group, its text batch, and the tail clear — all wanting the same
-/// rect — share a single `SetScissor`.
+/// A stencil-clipped group stamps its mask before its draws, and the walk ends with a tail `MaskClear` (the pass clears stencil once and padded damage scissors can overlap). Raw steps pin the depth-1 grammar: stamp at ref 0, content at ref 1, one shared `SetScissor`.
 #[test]
 fn stencil_group_brackets_draws_with_mask_write() {
     let mut buf = buf_with_batches(
@@ -64,18 +55,12 @@ fn stencil_group_brackets_draws_with_mask_write() {
             RenderStep::Quads {
                 range: Span::new(0, 2),
             },
-            // Batch drain: same chain, batch scissor inside the stamp's
-            // — elided, text draws under the still-stamped mask at ref 1.
-            // Its scissor request equals the group's, so no transition.
+            // Batch drain: same chain and scissor, so no transition; text at ref 1 under the stamp.
             RenderStep::Text { batch: 0 },
-            // Tail clear, still under the stamp-time scissor: the walk
-            // never left it, so only the ref transition is emitted.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
         ],
     );
-    // Group, batch drain, and tail clear all want the same rect — one
-    // transition covers the whole walk.
     assert_eq!(scissor_count(&steps), 1);
     assert_eq!(
         mask_scissors(&steps),
@@ -92,22 +77,15 @@ fn stencil_group_brackets_draws_with_mask_write() {
     );
 }
 
-/// Pin: in a stencil-attached pass, a *non-rounded* group still runs
-/// at `stencil_ref = 0` (matches the cleared stencil so `Equal(0)`
-/// passes everywhere) but emits no mask quads. Mixed in with a
-/// rounded sibling, each retains its own bracket — the rounded
-/// group's mask write/clear must not bleed into the non-rounded
-/// neighbor.
+/// A non-rounded group in a stencil pass runs at `stencil_ref = 0` with no mask quads; beside a rounded sibling, each keeps its own bracket.
 #[test]
 fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     let mut buf = buf_with_batches(
         vec![
-            // Group 0: rounded clip
             DrawGroup {
                 rounded_clips: Span::new(0, 1),
                 ..group(Span::new(0, 1))
             },
-            // Group 1: plain (no rounded clip), with text
             group(Span::new(1, 1)),
         ],
         vec![text_batch(Span::new(0, 1), 1)],
@@ -118,33 +96,19 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     assert_eq!(
         simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
-            // Rounded bracket
             DrawOp::MaskWrite(0),
             DrawOp::Quads(0),
             DrawOp::MaskClear(0),
-            // Plain group: no mask write/clear, just draw
             DrawOp::Quads(1),
-            // Only group 1 has text → single batch idx 0.
             DrawOp::Text(0),
         ],
     );
 }
 
-/// End-to-end pin of the same-mask elision: `MaskPlan::build` (the
-/// CPU half of mask staging) dedups consecutive value-equal chains
-/// onto one shared mask-quad run (common: a rect clip nested in a
-/// rounded ancestor inherits the ancestor's chain verbatim, and
-/// quad-budget flushes split groups without changing clip), and the
-/// schedule then elides the clear + re-stamp between the sharing
-/// groups — the mask stays stamped, both draw under ref=1. A third
-/// group with a different clip still triggers the full
-/// clear-then-write transition, and the walk tail-clears the last
-/// stamped mask.
+/// `MaskPlan::build` dedups value-equal chains onto one mask-quad run and the schedule elides the clear and re-stamp between sharing groups; a differing clip does the full transition, and the walk tail-clears the last mask.
 #[test]
 fn stencil_consecutive_same_mask_groups_dedup_writes() {
     let mut buf = buf_with(vec![
-        // Groups 0 and 1: identical chain values (same span, as the
-        // composer emits while the chain is unchanged).
         DrawGroup {
             rounded_clips: Span::new(0, 1),
             ..group(Span::new(0, 1))
@@ -153,7 +117,6 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
             rounded_clips: Span::new(0, 1),
             ..group(Span::new(1, 1))
         },
-        // Group 2: different clip — full transition required.
         DrawGroup {
             rounded_clips: Span::new(1, 1),
             ..group(Span::new(2, 1))
@@ -161,8 +124,6 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0), rounded(50.0, 50.0, 4.0)];
     let mi = mask_ix(&buf);
-    // Groups 0+1 dedup onto mask 0 (one uploaded instance); group 2
-    // gets its own.
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 1), Span::new(0, 1), Span::new(1, 1)]
@@ -173,22 +134,16 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     assert_eq!(
         simplify(&buf, &steps),
         vec![
-            // Group 0: stamp mask 0.
             DrawOp::MaskWrite(0),
             DrawOp::Quads(0),
-            // Group 1: same mask — no bracket, just draw.
             DrawOp::Quads(1),
-            // Group 2: clear 0 (under its stamp scissor), stamp 1.
             DrawOp::MaskClear(0),
             DrawOp::MaskWrite(1),
             DrawOp::Quads(2),
-            // Walk end: mask 1 still stamped — tail clear.
             DrawOp::MaskClear(1),
         ],
     );
-    // Elision at raw-step level: the sharing groups also share a
-    // scissor, so *nothing at all* separates their quads — no
-    // SetStencilRef, no mask quad, and no repeated SetScissor.
+    // The sharing groups share a scissor, so nothing separates their quads.
     let q0 = steps
         .iter()
         .position(|s| matches!(s, RenderStep::Quads { range } if *range == Span::new(0, 1)))
@@ -202,17 +157,10 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
         "same-mask groups sharing a scissor need no steps between their quads; got {:?}",
         &steps[q0 + 1..q1],
     );
-    // All three groups carry the same scissor: one transition total.
     assert_eq!(scissor_count(&steps), 1);
 }
 
-/// Counter-pin on the same-mask elision: sharing a mask index is only
-/// safe while each group's scissor stays inside the stamp's. Group 0
-/// stamps mask 0 inside a half-width scissor; group 1 carries the
-/// same clip but a wider scissor, so pixels in the exposed half still
-/// hold stencil 0 and would wrongly fail `Equal(1)` — the schedule
-/// must clear and re-stamp (same mask index) under the wider scissor
-/// instead of eliding.
+/// Sharing a mask index is only safe while each group's scissor stays inside the stamp's: a wider scissor exposes stencil 0 that would fail `Equal(1)`, so the schedule clears and re-stamps.
 #[test]
 fn stencil_same_mask_wider_scissor_restamps() {
     let mut buf = buf_with(vec![
@@ -228,11 +176,9 @@ fn stencil_same_mask_wider_scissor_restamps() {
     ]);
     buf.rounded_clips = vec![rounded(100.0, 100.0, 8.0)];
     let mi = mask_ix(&buf);
-    // Identical clips still dedup to one uploaded mask instance...
     assert_eq!(mi.groups, vec![Span::new(0, 1), Span::new(0, 1)]);
     assert_eq!(mi.quads().len(), 1);
-    // ...but the schedule re-brackets: clear under the stamp's
-    // (0,0,50,100), re-stamp mask 0 under (0,0,100,100), tail clear.
+    // but the schedule re-brackets: clear under (0,0,50,100), re-stamp under (0,0,100,100), tail clear.
     assert_eq!(
         simplify(&buf, &collect(&buf, None, Some(&mi))),
         vec![
@@ -246,10 +192,7 @@ fn stencil_same_mask_wider_scissor_restamps() {
     );
 }
 
-/// Pin: a stencil-pass group with text but no quads still emits the
-/// mask write. Without it, the text would render unstenciled —
-/// rounded clip would silently leak past the mask boundary. The walk
-/// then tail-clears the stamped mask.
+/// A stencil-pass group with text but no quads still emits the mask write, else the text leaks past the clip.
 #[test]
 fn stencil_text_only_group_still_writes_mask() {
     let mut buf = buf_with_batches(
@@ -272,14 +215,7 @@ fn stencil_text_only_group_still_writes_mask() {
     );
 }
 
-/// Reproduce the old stale-residue bug shape: rounded group A stamps
-/// its mask inside scissor SA, then group B has a *disjoint* scissor
-/// SB. The old order emitted `SetScissor(SB)` first and then cleared
-/// A's mask — inside SB, where the stamp never wrote — leaving
-/// stencil-1 residue across SA ∩ SDF for the rest of the pass. Pin:
-/// the clear replays under SA *before* B's `SetScissor`, and a walk
-/// whose last group is masked tail-clears so nothing leaks into the
-/// next damage rect's walk (padded rect scissors can overlap).
+/// Group A stamps inside SA, then B has a disjoint SB. The clear must replay under SA before B's `SetScissor`, else it runs where the stamp never wrote and leaves residue; a masked last group tail-clears.
 #[test]
 fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     let sa = URect::new(0, 0, 40, 40);
@@ -306,42 +242,29 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     assert_eq!(
         steps,
         vec![
-            // Group A: narrow to SA, stamp mask 0 at ref 0 (pass opens
-            // at 0), content at ref 1.
             RenderStep::SetScissor(sa),
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
                 range: Span::new(0, 1),
             },
-            // A→B transition: clear A's mask under SA — the scissor the
-            // stamp ran under, which the walk still holds — BEFORE any
-            // SetScissor(SB). SA ∩ SB is empty, so a clear inside SB
-            // (the old order) would touch none of the stamped pixels.
+            // A to B: clear under SA (still held) before SetScissor(SB); SA and SB are disjoint.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
-            // Group B: narrow to SB, stamp mask 1 (ref still 0 after
-            // the clear), draw at ref 1.
             RenderStep::SetScissor(sb),
             RenderStep::MaskStamp(1),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
                 range: Span::new(1, 1),
             },
-            // B→C transition: clear B's mask under SB (still held); the
-            // clear left ref at 0, which is what unmasked group C needs.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(1),
             RenderStep::SetScissor(sc),
             RenderStep::Quads {
                 range: Span::new(2, 1),
             },
-            // C is unmasked: stencil already clean, no tail clear.
         ],
     );
-    // The load-bearing invariant, read off the running scissor rather
-    // than step adjacency: each mask draw ran under its own group's rect
-    // and every clear matched its stamp.
     assert_eq!(
         mask_scissors(&steps),
         vec![
@@ -363,12 +286,9 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             },
         ],
     );
-    // Three distinct group scissors, three transitions — the clears add
-    // none of their own.
     assert_eq!(scissor_count(&steps), 3);
 
-    // Same walk minus C: it now ends with mask 1 stamped, so a tail
-    // clear (again under SB, the stamp scissor) must close the walk.
+    // Without C the walk ends with mask 1 stamped, so a tail clear under SB closes it.
     let mut buf = buf_with(vec![
         clipped(sa, Span::new(0, 1), 0),
         clipped(sb, Span::new(1, 1), 1),
@@ -389,17 +309,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
     );
 }
 
-/// Depth-2 chain grammar, hand-derived end to end. Group 0 nests two
-/// rounded clips (outer mask 0, inner mask 1): the stamp ladder runs
-/// outer at ref 0 → stencil 1, inner at ref 1 → stencil 2 (only
-/// inside the outer), content at ref 2. Group 1 carries a value-equal
-/// chain in a *different* span (pop/re-push of identical clips) —
-/// `MaskPlan::build` dedups by value, so the schedule elides and —
-/// since both groups also share a scissor — nothing at all separates
-/// the two groups' quads. Group 2
-/// is unmasked: ONE clear of the outermost mask resets the whole
-/// chain (inner stamps only incremented inside the outer's SDF).
-/// Second walk (groups 0+1 only) pins the depth-2 tail clear.
+/// Depth-2 chain grammar. Group 0 nests two rounded clips: outer at ref 0 gives stencil 1, inner at ref 1 gives stencil 2, content at ref 2. Group 1 has a value-equal chain in another span and elides. Group 2 is unmasked: one clear of the outermost mask resets the chain. A second walk (groups 0+1) pins the tail clear.
 #[test]
 fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     let e = URect::new(0, 0, 100, 100);
@@ -417,7 +327,6 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     ]);
     buf.rounded_clips = vec![outer, inner, outer, inner];
     let mi = mask_ix(&buf);
-    // Value-equal chains share one mask-quad run: two quads total.
     assert_eq!(
         mi.groups,
         vec![Span::new(0, 2), Span::new(0, 2), Span::default()]
@@ -427,8 +336,6 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     assert_eq!(
         steps,
         vec![
-            // Group 0: ladder — outer at ref 0, inner at ref 1,
-            // content at ref 2.
             RenderStep::SetScissor(e),
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
@@ -437,13 +344,9 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             RenderStep::Quads {
                 range: Span::new(0, 1),
             },
-            // Group 1: identical chain, same scissor — elided down to
-            // nothing but its own draw.
             RenderStep::Quads {
                 range: Span::new(1, 1),
             },
-            // Group 2: one clear of the OUTERMOST quad resets both
-            // levels; content at ref 0.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
             RenderStep::Quads {
@@ -451,11 +354,8 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             },
         ],
     );
-    // Every group shares the viewport rect: one transition for the walk.
     assert_eq!(scissor_count(&steps), 1);
 
-    // Walk ending at depth 2: tail clear is still the single
-    // outermost-quad draw under the stamp-time scissor.
     let mut buf = buf_with(vec![
         clipped(Span::new(0, 2), 0),
         clipped(Span::new(2, 2), 1),
@@ -476,18 +376,9 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
     );
 }
 
-/// Fix-2 pin: a rounded batch drained while NO group painted this
-/// walk (both its groups sit outside the damage rect, but the batch's
-/// bounds-union rect pokes into it) must stamp ITS OWN mask before
-/// its `Text` step — previously it drew under whatever stencil state
-/// was active at the drain point (here: none, so `Equal(0)` would
-/// have let its glyphs paint square outside the rounded corners).
-/// The walk then tail-clears the batch's stamp.
+/// A rounded batch drained while no group painted (its groups sit outside the damage but the batch's bounds union pokes in) must stamp its own mask before its `Text` step, then tail-clear it.
 ///
-/// Geometry: groups at (0,0,40,40) and (50,50,40,40) share one chain;
-/// the batch's scissor is the bounds union (0,0,90,90). Damage
-/// (60,0,30,40) intersects neither group's scissor but does intersect
-/// the union.
+/// Groups at (0,0,40,40) and (50,50,40,40) share a chain; the batch scissor is (0,0,90,90); damage (60,0,30,40) misses both groups but hits the union.
 #[test]
 fn stencil_drained_batch_stamps_own_mask_before_text() {
     let chain = Span::new(0, 1);
@@ -515,8 +406,7 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
     let mi = mask_ix(&buf);
     assert_eq!(mi.batches, vec![Span::new(0, 1)]);
     let damage = URect::new(60, 0, 30, 40);
-    // Batch scissor ∩ damage = (60,0,30,40) — the damage rect itself,
-    // so the batch's scissor request is already satisfied.
+    // Batch scissor and damage intersect at the damage rect.
     let s = URect::new(60, 0, 30, 40);
     let steps = collect(&buf, Some(damage), Some(&mi));
     assert_eq!(
@@ -524,12 +414,9 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
-            // Trailing drain: the batch establishes its own chain
-            // (stamp at ref 0, text at ref 1) under its own scissor.
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Text { batch: 0 },
-            // Tail clear of the batch's stamp.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
         ],
@@ -549,11 +436,7 @@ fn stencil_drained_batch_stamps_own_mask_before_text() {
     );
 }
 
-/// Fix-2 pin, drain at a later group: a batch anchored in a
-/// damage-skipped group whose chain is STILL STAMPED (group 0 shares
-/// it, scissor contains the batch's) elides — its text draws under
-/// the live mask at ref 1 — and the unmasked group that follows
-/// restores its own state with the usual clear.
+/// A batch anchored in a damage-skipped group whose chain is still stamped elides: text at ref 1 under the live mask, and the unmasked group after it restores with the usual clear.
 #[test]
 fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
     let chain = Span::new(0, 1);
@@ -565,13 +448,11 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
                 rounded_clips: chain,
                 ..group(Span::new(0, 1))
             },
-            // Anchor group: same chain, below the damage rect.
             DrawGroup {
                 scissor: Some(URect::new(0, 50, 40, 40)),
                 rounded_clips: chain,
                 ..group(Span::new(1, 1))
             },
-            // Plain group after the skipped anchor — the drain point.
             DrawGroup {
                 scissor: Some(URect::new(45, 0, 50, 40)),
                 ..group(Span::new(2, 1))
@@ -587,25 +468,20 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
     buf.rounded_clips = vec![rounded(40.0, 40.0, 8.0)];
     let mi = mask_ix(&buf);
     let damage = URect::new(0, 0, 100, 40);
-    // Batch scissor ∩ damage = (0,0,40,40) = group 0's stamp scissor.
+    // Batch scissor and damage intersect at (0,0,40,40), group 0's stamp scissor.
     assert_eq!(
         collect(&buf, Some(damage), Some(&mi)),
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
-            // Group 0 stamps the shared chain.
             RenderStep::SetScissor(sa),
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
                 range: Span::new(0, 1),
             },
-            // Group 1 skipped; its batch drains before group 2: same
-            // chain, and its scissor ∩ damage is exactly group 0's —
-            // elided whole, text at ref 1 under the still-stamped mask.
             RenderStep::Text { batch: 0 },
-            // Group 2 (unmasked) restores: clear under the stamp-time
-            // scissor (still held), then its own scissor + quads at ref 0.
+            // Group 2 (unmasked): clear under the stamp-time scissor, then its own scissor and quads at ref 0.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(URect::new(45, 0, 50, 40)),
@@ -616,10 +492,7 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
     );
 }
 
-/// Fix-2 counter-pin: an UNMASKED batch drained while a mask is
-/// active must clear that mask before its `Text` step — otherwise the
-/// glyphs would stencil-test `Equal(ref)` against the foreign stamp
-/// and vanish outside it (missing text on partial-repaint frames).
+/// An unmasked batch drained while a mask is active must clear it before its `Text` step, else glyphs fail `Equal(ref)` against the foreign stamp.
 #[test]
 fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
     let sa = URect::new(0, 0, 40, 40);
@@ -630,7 +503,6 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
                 rounded_clips: Span::new(0, 1),
                 ..group(Span::new(0, 1))
             },
-            // Plain anchor group, outside the damage rect.
             DrawGroup {
                 scissor: Some(URect::new(50, 0, 40, 40)),
                 ..group(Span::new(1, 1))
@@ -651,17 +523,13 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
         vec![
             RenderStep::SetScissor(damage),
             RenderStep::PreClear,
-            // Group 0 stamps its mask; group 1 is damage-skipped.
             RenderStep::SetScissor(sa),
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
                 range: Span::new(0, 1),
             },
-            // Trailing drain: the unmasked batch clears group 0's
-            // stamp (under the stamp-time scissor, which the walk still
-            // holds) before drawing at ref 0 under its own scissor.
-            // Stencil is clean at walk end — no tail clear.
+            // Trailing drain: the unmasked batch clears group 0's stamp under the stamp-time scissor, then draws at ref 0.
             RenderStep::SetStencilRef(0),
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(URect::new(0, 0, 45, 40)),
@@ -670,12 +538,7 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
     );
 }
 
-/// Pin: the staging dedups against every chain seen this frame, not
-/// against the previous group. Groups 0 and 2 carry value-equal chains
-/// in different spans with a foreign chain between them, so the three
-/// groups stage two mask quads and group 2 reuses group 0's run. The
-/// walk still brackets group 2 — group 1's chain displaced the stamp —
-/// so what a neighbour-only dedup costs here is one uploaded quad.
+/// Staging dedups against every chain seen this frame, not just the previous group: groups 0 and 2 share a run across a foreign chain, so three groups stage two mask quads.
 #[test]
 fn stencil_dedups_a_chain_seen_before_the_previous_group() {
     let e = URect::new(0, 0, 100, 100);
@@ -720,16 +583,7 @@ fn stencil_dedups_a_chain_seen_before_the_previous_group() {
     );
 }
 
-/// Pin: a group the walk skips costs the group after it nothing. Group
-/// 1's scissor misses the damage rect, so the walk emits no step for it
-/// and group 0's chain is still stamped when group 2 arrives. Group 2
-/// carries the same chain in a *different* source span, and draws under
-/// the live stamp — one `MaskWrite` for the whole walk.
-///
-/// This is what the frame-wide dedup buys. Staging group 2's chain
-/// separately would make the spans differ, and the walk reads the span
-/// as the chain — so it would clear a mask that was already correct and
-/// stamp an identical one back.
+/// A skipped group costs the next nothing: group 1 misses the damage, so group 0's chain is still stamped when group 2 arrives with the same chain in another span. One `MaskWrite`; separate staging would clear a correct mask.
 #[test]
 fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
     let e = URect::new(0, 0, 100, 100);
@@ -741,7 +595,7 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
             rounded_clips: Span::new(0, 1),
             ..group(Span::new(0, 1))
         },
-        // Entirely outside the damage rect below, so the walk skips it.
+        // Outside the damage rect, so the walk skips it.
         DrawGroup {
             scissor: Some(URect::new(200, 200, 10, 10)),
             rounded_clips: Span::new(1, 1),
@@ -773,26 +627,21 @@ fn stencil_keeps_a_chain_stamped_across_a_skipped_group() {
     );
 }
 
-/// Run the real mask staging (CPU half) over `buf`, returning the
-/// per-group / per-batch mask spans and the deduped mask quads.
+/// Runs the real mask staging (CPU half) over `buf`.
 fn mask_ix(buf: &RenderBuffer) -> MaskPlan {
     let mut mi = MaskPlan::default();
     mi.build(buf);
     mi
 }
 
-/// A mask draw plus the scissor rect the pass held when it ran.
+/// A mask draw plus the scissor the pass held when it ran.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MaskUnderScissor {
     step: RenderStep,
     scissor: URect,
 }
 
-/// Replay `steps`, pairing every mask draw with the scissor in force at
-/// that point. `SetScissor` is a deduplicated transition, so the rect a
-/// mask runs under is the last distinct one emitted before it — the
-/// "clear replays under its stamp-time scissor" invariant can't be read
-/// off the immediately preceding step.
+/// Replays `steps`, pairing each mask draw with the scissor in force (`SetScissor` is deduplicated, so not necessarily the preceding step).
 fn mask_scissors(steps: &[RenderStep]) -> Vec<MaskUnderScissor> {
     let mut scissor = None;
     let mut out = Vec::new();

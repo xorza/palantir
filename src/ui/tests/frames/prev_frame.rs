@@ -17,11 +17,7 @@ fn prev_frame_empty_before_first_frame() {
     assert!(h.engines.damage.prev.is_empty());
 }
 
-/// Pin the row invariant: after the first frame, widgets with paint
-/// rows land in `prev` — painting widgets with their arranged rect and
-/// authoring hash, and chromeless parents via their child-marker rows
-/// (paint-order tracking), whose all-zero screens union to no paint
-/// extent. A rowless node (childless Panel without chrome) stays out.
+/// After the first frame, painting widgets land in `prev` with their arranged rect and hash, chromeless parents via child-marker rows (union of paint-empty screens); a rowless node stays out.
 #[test]
 fn prev_frame_captures_nodes_with_rows() {
     let mut h = UiHarness::new(SURFACE);
@@ -42,10 +38,6 @@ fn prev_frame_captures_nodes_with_rows() {
 
     assert!(prev.contains_key(&WidgetId::from_hash("root")));
     assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
-    // Tracked, and painting nothing: the child-marker rows are all
-    // paint-empty and fold through `Rect::union`'s identity, so "no paint
-    // extent" is `Rect::ZERO` here as it is everywhere else in the
-    // pipeline. `contains_key` above is what answers "is it tracked".
     assert_eq!(
         h.engines
             .damage
@@ -118,10 +110,7 @@ fn prev_frame_updates_on_authoring_change() {
     assert_ne!(h1, h2);
 }
 
-/// The scale a host divides an event's position by is the one the
-/// current cascade was laid out at: a user-scale write moves it only when
-/// a frame lays out at the new scale. Before any frame there is no
-/// layout, and nothing to report.
+/// A host divides event positions by the scale the current cascade was laid out at: a user-scale write moves it only once a frame lays out at the new scale.
 #[test]
 fn the_laid_out_scale_moves_with_the_frame_not_the_write() {
     use crate::display::user_scale::UserScale;

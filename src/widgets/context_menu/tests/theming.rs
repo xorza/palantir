@@ -1,5 +1,4 @@
-//! Row pitch, the shortcut gutter, separators, radius — and per-instance
-//! overrides of each.
+//! Row pitch, the shortcut gutter, separators, radius, and per-instance overrides of each.
 
 use crate::Ui;
 use crate::input::shortcut::Shortcut;
@@ -25,11 +24,7 @@ use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
 use glam::Vec2;
 
-/// Both menu gutters are theme knobs, not literals baked into the
-/// widget: `context_menu.gap` is the row-to-row pitch and
-/// `context_menu.item.gap` the floor holding a row's label apart from
-/// its shortcut hint. Each moves arranged geometry by exactly its own
-/// delta and leaves the other axis alone.
+/// Both menu gutters are theme knobs: `context_menu.gap` is the row pitch, `context_menu.item.gap` the label-to-shortcut floor; each moves only its own axis.
 #[test]
 fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     fn menu(ui: &mut Ui) {
@@ -42,8 +37,7 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     }
 
     let mut h = UiHarness::new(SURFACE);
-    // Hug the content: the theme's 160 px floor would otherwise absorb
-    // the widened shortcut gutter instead of letting the row grow.
+    // Hug the content, or the theme's 160 px floor absorbs the widened gutter.
     h.ui.theme_mut().context_menu.min_width = 0.0;
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
@@ -55,8 +49,6 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     h.frame(menu);
     let after = menu_rows(&h, trigger_id());
 
-    // Only the row carrying a shortcut has a gutter to widen, but rows
-    // stretch to the body's content width, so both follow it.
     for (i, (a, b)) in after.iter().zip(&before).enumerate() {
         assert_eq!(a.rect.size.w - b.rect.size.w, 10.0, "row {i} width");
         assert_eq!(a.rect.size.h, b.rect.size.h, "row {i} height");
@@ -70,10 +62,7 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     );
 }
 
-/// An explicit `.gap(0.0)` is not the same as never setting one — the
-/// theme fills in only the untouched case, which is what
-/// `AuthoredGaps`'s unset lane buys. Rows sit flush at `0.0`, and a
-/// theme gap apart when the caller sets nothing.
+/// An explicit `.gap(0.0)` differs from never setting one: flush rows at `0.0`, the theme gap otherwise.
 #[test]
 fn an_explicit_zero_gap_beats_the_theme_default() {
     fn rows(h: &mut UiHarness, gap: Option<f32>) -> Vec<MenuRow> {
@@ -94,20 +83,16 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     h.ui.theme_mut().context_menu.gap = 7.0;
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
 
-    // Untouched: the theme's 7 px lands between the rows.
     let unset = rows(&mut h, None);
     assert_eq!(unset.len(), 2);
     let unset_pitch = unset[1].rect.min.y - unset[0].rect.min.y;
     assert_eq!(unset_pitch, unset[0].rect.size.h + 7.0, "themed pitch");
 
-    // Explicit zero: rows sit flush, theme gap ignored.
     let zeroed = rows(&mut h, Some(0.0));
     let zero_pitch = zeroed[1].rect.min.y - zeroed[0].rect.min.y;
     assert_eq!(zero_pitch, zeroed[0].rect.size.h, "explicit 0.0 pitch");
     assert_ne!(unset_pitch, zero_pitch);
 
-    // And a non-zero explicit value still wins over the theme, so the
-    // fallback keys on "set at all", not on "non-zero".
     let wide = rows(&mut h, Some(20.0));
     let wide_pitch = wide[1].rect.min.y - wide[0].rect.min.y;
     assert_eq!(
@@ -117,10 +102,7 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     );
 }
 
-/// `MenuSeparator` wears `context_menu.separator`, never the app-wide
-/// `theme.separator`: thickness is the rule's arranged height, margin
-/// the space it holds off the rows on either side, and color reaches
-/// the recorded chrome.
+/// `MenuSeparator` wears `context_menu.separator`, never `theme.separator`.
 #[test]
 fn menu_separator_theme_drives_rule_geometry_and_color() {
     fn menu(ui: &mut Ui) {
@@ -138,7 +120,6 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         thickness: 3.0,
         margin: Spacing::xy(0.0, 7.0),
     };
-    // Loudly different app-wide rule — the menu must not reach for it.
     h.ui.theme_mut().separator.thickness = 11.0;
     h.ui.theme_mut().separator.color = RgbaF32::hex(0x00ff00);
 
@@ -170,16 +151,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     assert_eq!(fill, RgbaF16::from(rule), "rule color comes off the menu");
 }
 
-/// `.style(...)` beats the global slot on every menu widget and writes
-/// nothing back to it. The panel takes the whole bundle; the rows and
-/// the rule — recorded by the caller's closure, not by `ContextMenu` —
-/// take their own halves.
-///
-/// Rows resolve their box through the shared `WidgetTheme::plan`, so both
-/// halves of that contract hold: the theme's `padding` / `margin` fill
-/// in where the builder was silent, and an explicit value wins. The
-/// second was not true while `MenuItem` stamped `node.padding`
-/// unconditionally — a caller's `.padding(...)` vanished.
+/// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve through `WidgetTheme::plan`, so theme `padding`/`margin` fill where the builder was silent and an explicit value wins.
 #[test]
 fn per_instance_style_overrides_global_menu_theme() {
     let custom = ContextMenuTheme {
@@ -188,8 +160,6 @@ fn per_instance_style_overrides_global_menu_theme() {
         item: MenuItemTheme {
             defaults: SlotDefaults {
                 padding: Spacing::all(9.0),
-                // Asymmetric, and distinct from the padding, so a
-                // padding/margin mix-up can't read as a pass.
                 margin: Spacing::xy(2.0, 6.0),
                 ..MenuItemTheme::default().defaults
             },
@@ -222,8 +192,7 @@ fn per_instance_style_overrides_global_menu_theme() {
     let rows = menu_rows(&h, trigger_id());
     let tree = h.ui.tree(Layer::Menu);
     let layout = tree.records.layout();
-    // The recorded padding is the styled 13 plus the panel's 1 px
-    // stroke, which `Tree` folds in so content clears the stroke band.
+    // Recorded padding is the styled 13 plus the panel's 1 px stroke, which `Tree` folds in.
     assert_eq!(
         layout[body.idx()].padding,
         Spacing::all(14.0),
@@ -245,7 +214,6 @@ fn per_instance_style_overrides_global_menu_theme() {
         "row margin"
     );
     assert_eq!(rows[1].rect.size.h, 5.0, "rule thickness");
-    // Same styled bundle, but this row set both itself.
     assert_eq!(
         layout[rows[2].node.idx()].padding,
         Spacing::ZERO,
@@ -257,7 +225,6 @@ fn per_instance_style_overrides_global_menu_theme() {
         "explicit row margin wins over the theme's 2/6"
     );
 
-    // Nothing about `.style` writes back to the global slot.
     let default = ContextMenuTheme::default();
     let global = &h.ui.theme().context_menu;
     assert_eq!(global.padding, default.padding);
@@ -266,14 +233,7 @@ fn per_instance_style_overrides_global_menu_theme() {
     assert_eq!(global.separator.thickness, default.separator.thickness);
 }
 
-/// The menu body takes its box from [`Configure`] — `ContextMenu` used
-/// to hand-roll `size` / `min_size` / `max_size` / `padding` and offer
-/// nothing else, so `margin` here is a setter it simply did not have.
-///
-/// Identity is the other half: the body id derives from the trigger,
-/// because a menu has no call site of its own worth keying on — but an
-/// explicit `.id(...)` has to win, the same way explicit spacing wins
-/// over the theme.
+/// The menu body takes its box from [`Configure`] (including `margin`); the id derives from the trigger, but an explicit `.id(...)` must win.
 #[test]
 fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let mut h = UiHarness::new(SURFACE);
@@ -296,7 +256,6 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
     assert_eq!(tree.bounds(menu.node).min_size, Size::ZERO);
 
-    // Same trigger, caller-set id: the derived one must not appear.
     let explicit = WidgetId::from_hash("my-own-menu-body");
     let mut h = UiHarness::new(SURFACE);
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
@@ -317,9 +276,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     );
 }
 
-/// Every widget constructor is `#[track_caller]`, the separator included:
-/// two separators written on two lines take two call-site ids, rather
-/// than one id and its second occurrence.
+/// Every widget constructor is `#[track_caller]`, the separator included: two separators on two lines take two call-site ids.
 #[test]
 fn separators_take_their_call_site_ids() {
     use crate::widgets::panel::Panel;

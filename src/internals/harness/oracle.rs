@@ -1,16 +1,4 @@
-//! Differential oracles: every retained result checked against the same
-//! result computed from scratch.
-//!
-//! The measure cache, the incremental cascade and the damage diff each
-//! skip work when a gate says nothing changed. A gate that misses an
-//! input reuses a stale result, and nothing fails — the frame just paints
-//! old pixels. [`Oracle::check_frame`] closes that gap by construction:
-//! after a frame it lays the same forest out with a cold engine, rebuilds
-//! the cascade in full, and diffs every paint row against the previous
-//! frame's, then asserts the retained results match and the damage covers
-//! every row that changed. A scene driven through a mutation script with
-//! this check after each frame finds a missed input without anyone having
-//! to think of it.
+//! Differential oracles: each retained result (measure cache, incremental cascade, damage diff) checked against one computed from scratch, since a gate that misses an input paints stale pixels silently. [`Oracle::check_frame`] runs them after a frame.
 
 use crate::cascade::Cascade;
 use crate::cascade::cascade_key::CascadeKey;
@@ -33,14 +21,12 @@ use std::mem;
 pub(crate) struct Oracle {
     prev: Vec<OwnedPaint>,
     curr: Vec<OwnedPaint>,
-    /// Whether `prev` holds a frame yet. The first checked frame has
-    /// nothing to diff against.
+    /// Whether `prev` holds a frame yet; the first checked frame has nothing to diff.
     primed: bool,
 }
 
 impl Oracle {
-    /// Run every oracle against the frame `h` just ran, which produced
-    /// `report`.
+    /// Run every oracle against the frame `h` just ran, which produced `report`.
     ///
     /// # Panics
     ///
@@ -52,13 +38,7 @@ impl Oracle {
         self.check_damage(h, report);
     }
 
-    /// Every paint row that is in one frame and not the other must sit
-    /// inside the damage the frame painted, and so must the overlap of
-    /// two rows in both frames whose paint order flipped.
-    ///
-    /// Rows are compared per owner as a multiset of `(hash, screen)`. A
-    /// row's paint order matters only where it overlaps another row, so
-    /// the order check asks about overlaps, not positions.
+    /// Rows in one frame and not the other, and overlaps whose paint order flipped, must sit inside the painted damage; compared per owner as a multiset of `(hash, screen)`.
     fn check_damage(&mut self, h: &UiHarness, report: &FrameReport) {
         self.curr.clear();
         h.ui.cascade().owned_paints(h.ui.forest(), &mut self.curr);
@@ -117,9 +97,7 @@ impl Oracle {
     }
 }
 
-/// Lay the harness's forest out again with a cold engine — no measure
-/// cache, no retained text rows — and assert every node's result equals
-/// the one the frame produced.
+/// Lay the forest out again with a cold engine and assert every node's result equals the frame's.
 fn assert_layout_matches_cold(h: &UiHarness) {
     let mut engine = LayoutEngine::new(h.ui.shaper().clone());
     let mut cold = Layout::default();
@@ -153,10 +131,7 @@ fn assert_layout_matches_cold(h: &UiHarness) {
     }
 }
 
-/// Rebuild the cascade in full over the frame's forest and the frame's
-/// own layout, and assert the retained cascade — incremental or skipped —
-/// equals it. Against the frame's layout rather than the cold one so a
-/// layout disagreement is reported once, by the layout oracle.
+/// Rebuild the cascade in full over the frame's layout and assert the retained one equals it; the layout oracle reports layout disagreements.
 fn assert_cascade_matches_cold(h: &UiHarness) {
     let key = CascadeKey::new(
         h.ui.forest(),
@@ -189,8 +164,7 @@ fn sort_rows(rows: &mut [OwnedPaint]) {
     rows.sort_unstable_by_key(row_key);
 }
 
-/// The order two frames' rows merge in: owner, then content, then the
-/// exact screen rect.
+/// The order two frames' rows merge in: owner, content, exact screen rect.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct RowKey {
     owner: u64,
@@ -219,10 +193,8 @@ struct KeptRow {
     curr_rank: u32,
 }
 
-/// What two frames' rows hold in common and what they do not.
 #[derive(Debug)]
 struct RowDiff<'a> {
-    /// Rows one frame lacks, each tagged with the frame it came from.
     changed: Vec<(&'a OwnedPaint, &'static str)>,
     kept: Vec<KeptRow>,
 }
@@ -269,9 +241,7 @@ fn diff_rows<'a>(prev: &'a [OwnedPaint], curr: &'a [OwnedPaint]) -> RowDiff<'a> 
     diff
 }
 
-/// Whether `rect` lies inside the union of `cover`. Exact: each covering
-/// rect that overlaps is subtracted, and the up-to-four pieces left over
-/// are checked against the rest.
+/// Whether `rect` lies inside the union of `cover`, exactly.
 fn covered(rect: Rect, cover: &[Rect]) -> bool {
     if rect.size.w <= 0.0 || rect.size.h <= 0.0 {
         return true;

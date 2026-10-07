@@ -1,5 +1,4 @@
-//! What a modal wears: the dialog surface, and the backdrop that dims
-//! everything behind it.
+//! What a modal wears: the dialog surface and the dimming backdrop.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -8,23 +7,17 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::widgets::modal::Modal`]: the centered dialog
-/// panel plus the dimming backdrop behind it. Builder overrides
-/// (`.background(...)` / `.backdrop(...)`) win; otherwise these defaults
-/// fill in, so an app's design-system theme can restyle modals the same
-/// way it restyles tooltips and context menus.
+/// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.background(...)` / `.backdrop(...)`) win; these defaults fill in.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ModalTheme {
-    /// Dialog panel chrome (fill + stroke + radius + optional shadow).
+    /// Dialog panel chrome.
     pub panel: Background,
-    /// Dimming scrim painted behind the panel. Straight-alpha linear —
-    /// black at partial alpha reads as a neutral dim.
+    /// Dimming scrim; straight-alpha linear.
     pub backdrop: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
-    /// Minimum panel width in logical px (the panel hugs its content
-    /// above this floor).
+    /// Minimum panel width in logical px; the panel hugs its content above it.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
 }
@@ -36,8 +29,7 @@ impl ModalTheme {
             .with_border(Stroke::new(p.border_mid(), 1.0));
         Self {
             panel,
-            // Straight-alpha linear black at 50% — a dim scrim. Black is
-            // identical in sRGB and linear, so `RgbaF32::new` is exact.
+            // Black is identical in sRGB and linear, so `RgbaF32::new` is exact.
             backdrop: RgbaF32::new(0.0, 0.0, 0.0, 0.5),
             padding: Spacing::all(20.0),
             min_width: 280.0,

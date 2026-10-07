@@ -1,5 +1,5 @@
-//! What a widget hands back: the lazy interaction handle, its owned
-//! snapshot, and the body-value pairing for widgets that take a closure.
+//! What a widget hands back: the lazy [`Response`], its owned snapshot, and
+//! the body-value pairing.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -8,63 +8,33 @@ use std::cell::OnceCell;
 use std::fmt;
 use std::ops;
 
-/// Lazy handle to a widget's per-frame interaction state. Holds a
-/// `WidgetId` plus a shared borrow of `Ui`; the first deref probes
-/// `ui.response_for(self.id)` and memoizes the result. Dropping the
-/// handle without touching it skips the probe entirely — the common
-/// case for decorative widgets (Text, Block, Panel chrome, etc.).
+/// Lazy handle to a widget's per-frame interaction state. The first deref
+/// probes `ui.response_for(id)` and memoizes; an untouched handle skips the
+/// probe.
 ///
-/// There is **no accessor surface of its own**: `Response` derefs to
-/// [`ResponseState`], so everything reads exactly like the state —
-/// `r.hovered()`, `r.pressed()`, `r.clicked()`,
-/// `r.left.drag.delta()`, `r.scroll.pixels`. One API, defined once.
-/// Deref-copy (`*r`) hands out the owned `Copy` state.
-///
-/// Widgets that already had to call `ui.response_for(id)` for their
-/// own theme-picking / interaction logic (Button, Checkbox, …) hand
-/// the already-paid-for state to [`Response::new`] so callers
-/// inherit the cached result without a second probe.
-///
-/// To detach from the `&Ui` borrow (e.g. before calling another
-/// `&mut Ui` op while still holding the state), use
-/// [`Response::snapshot`] to materialize a [`ResponseSnapshot`].
+/// It derefs to [`ResponseState`], so `r.hovered()`, `r.clicked()` etc. read
+/// like the state. Widgets that already probed pass their state to
+/// [`Response::new`] to avoid a second probe. [`Response::snapshot`] detaches
+/// from the `&Ui` borrow.
 ///
 /// # Reaching one out of a richer result
 ///
-/// A widget that owes the caller more than interaction returns a wrapper
-/// holding this in a `response` field — [`InnerResponse`],
-/// [`ValueResponse`](crate::ValueResponse),
-/// [`TextEditResponse`](crate::TextEditResponse) and the rest. **None of
-/// them derefs to it**, so interaction is always spelled
-/// `r.response.clicked()` there where a plain response spells
-/// `r.clicked()`.
-///
-/// That is deliberate, and pinned by a test. A wrapper carries two things
-/// a call site has to keep apart — what the body returned, or what the
-/// value did, beside what the pointer did. Deref would let either be
-/// read without saying which was meant. This type derefs to
-/// [`ResponseState`] because it *is* a handle to one; a wrapper merely
-/// contains a response, and says so.
+/// Wrappers ([`InnerResponse`], [`ValueResponse`](crate::ValueResponse),
+/// [`TextEditResponse`](crate::TextEditResponse), ...) hold a `response`
+/// field and **none derefs to it**: `r.response.clicked()`, not
+/// `r.clicked()`. A wrapper carries a body or value result beside the
+/// pointer state, and deref would blur which is read. Pinned by a test.
 pub struct Response<'a> {
-    /// Widget id of the originating widget. Stable across frames as
-    /// long as the call-site / explicit-key inputs don't change.
-    /// Cheap — reading it never probes.
+    /// Widget id of the originating widget; reading it never probes.
     pub id: WidgetId,
     ui: &'a Ui,
-    /// `OnceCell` so `deref` can lend `&ResponseState` out of the
-    /// lazily-filled cache. The state survives later reads — a
-    /// `Tooltip` / `Scroll` body that asks for `hovered()`, `pressed()`,
-    /// and `drag_delta()` in sequence pays for exactly one
-    /// `response_for` probe.
+    /// Filled on first deref.
     cached: OnceCell<ResponseState>,
 }
 
 impl<'a> Response<'a> {
-    /// Empty-cache constructor — the first deref triggers
-    /// `response_for`. Used by widgets that don't otherwise consume
-    /// the response state during `.show()` (decorative widgets:
-    /// Text, Block, Panel, Grid). External widget authors reach this
-    /// through [`Widget::show`](crate::widget::Widget::show).
+    /// Empty-cache constructor; the first deref probes. For widgets that don't
+    /// otherwise read the state (reached through [`Widget::show`](crate::widget::Widget::show)).
     #[inline]
     pub(crate) const fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
@@ -74,15 +44,9 @@ impl<'a> Response<'a> {
         }
     }
 
-    /// Pre-filled-cache constructor — bypasses the first-deref probe by
-    /// handing in the already-known `ResponseState`.
-    ///
-    /// **The closing half of the eager path.** An interactive widget
-    /// needs its response before it records — theme picking reads it,
-    /// and a value-writing widget acts on it — so it probes once through
-    /// `Widget::response`, carries the owned state across `record`, and
-    /// hands it back here rather than letting the caller re-probe. `Widget::show` packages
-    /// the lazy path for widgets that need none of that.
+    /// Pre-filled-cache constructor from an already-probed `state`, so the
+    /// caller doesn't re-probe. For interactive widgets that need their
+    /// response before recording.
     #[inline]
     pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
         Self {
@@ -92,12 +56,8 @@ impl<'a> Response<'a> {
         }
     }
 
-    /// Materialize the state into an owned [`ResponseSnapshot`],
-    /// releasing the `&Ui` borrow. Use this before any `&mut Ui` op
-    /// that needs to interleave with reads from this response — e.g.
-    /// `let r = btn.show(ui).snapshot(); …other_widget.show(ui); if
-    /// r.clicked() {…}`. The cache fills on first deref either
-    /// way, so this is purely a borrow-shape conversion.
+    /// Materialize the state into an owned [`ResponseSnapshot`], releasing the
+    /// `&Ui` borrow so `&mut Ui` calls can interleave with later reads.
     #[inline]
     pub fn snapshot(&self) -> ResponseSnapshot {
         ResponseSnapshot {
@@ -109,8 +69,7 @@ impl<'a> Response<'a> {
 
 impl ops::Deref for Response<'_> {
     type Target = ResponseState;
-    /// The lazy probe: first touch resolves `response_for`, later
-    /// touches read the memoized state.
+
     #[inline]
     fn deref(&self) -> &ResponseState {
         self.cached.get_or_init(|| self.ui.response_for(self.id))
@@ -126,17 +85,14 @@ impl fmt::Debug for Response<'_> {
     }
 }
 
-/// Owned snapshot of a widget's response state — what [`Response::snapshot`]
-/// produces. Same deref surface as [`Response`] but doesn't borrow `Ui`,
-/// so it can be stored across `&mut Ui` operations and passed to
-/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::on`]
-/// that need a stable trigger anchor.
+/// Owned snapshot of a response, from [`Response::snapshot`]. Derefs like
+/// [`Response`] but doesn't borrow `Ui`, so it can anchor
+/// [`crate::Tooltip::on`] / [`crate::ContextMenu::on`].
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseSnapshot {
     /// Widget id of the originating widget.
     pub id: WidgetId,
-    /// The state as it stood when the snapshot was taken. Also reached
-    /// through this type's [`Deref`](std::ops::Deref).
+    /// The state as it stood when the snapshot was taken.
     pub state: ResponseState,
 }
 
@@ -148,10 +104,8 @@ impl ops::Deref for ResponseSnapshot {
     }
 }
 
-/// [`Response`] plus a value returned by the body closure of widgets
-/// that take one (`Panel`/`Grid`/`Scroll`). Interaction state is
-/// available through [`Self::response`]; the body result is available
-/// through [`Self::inner`].
+/// [`Response`] plus the value returned by the body closure of widgets that
+/// take one (`Panel`/`Grid`/`Scroll`).
 #[derive(Debug)]
 pub struct InnerResponse<'a, R> {
     /// The container's own pointer/click/hover [`Response`].
@@ -184,9 +138,7 @@ mod tests {
     use static_assertions::assert_not_impl_any;
     use std::ops::Deref;
 
-    // Pins the rule `Response`'s own doc states, under "Reaching one out
-    // of a richer result" — every wrapper, so the doc's "none of them"
-    // cannot drift into "three of them".
+    // Pins the rule in `Response`'s doc: no wrapper derefs to it.
     assert_not_impl_any!(InnerResponse<'static, ()>: Deref);
     assert_not_impl_any!(ValueResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);

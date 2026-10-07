@@ -1,11 +1,5 @@
-//! The recorder: [`Ui`], the single handle a widget or a host authors a
-//! frame through, and the retained state that frame reads and writes.
-//!
-//! Everything a frame needs that is not an engine lives here — the forest,
-//! the theme, per-widget state, input, animation, the display, and the frame
-//! clock. The engines that consume a recording (layout, cascade, damage) sit
-//! on a [`FrameEngines`] the frame driver owns, so nothing reachable
-//! from `Ui` can reach them.
+//! The recorder: [`Ui`], the handle a widget or host authors a frame through,
+//! and the retained state that frame reads and writes.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -105,68 +99,35 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// Recorder + input/response broker. All public coordinates are
-/// logical pixels (DIPs); `Display::scale_factor` — the platform's factor
-/// times [`Ui::set_user_scale`]'s — converts to physical at the wgpu
-/// boundary. Frame scheduling state is retained internally.
-///
-/// **Every field is private, and that is the boundary.** Everything outside
-/// this module — widgets, the host, the encoder — reaches this state through
-/// a method, so the surface a caller's own widget has is the surface every
-/// widget in this crate is built on, and it cannot quietly become
-/// insufficient without a widget in here noticing first. An open field is not
-/// a shortcut but a second, unnamed API: it exposes its type's whole surface
-/// transitively, and the reach it invites is silent. The rule binds inside
-/// this module too, where the fields *are* reachable: a field in scope is
-/// shorter than the [`Self::now`] / [`Self::display`] /
-/// [`Self::debug_overlay`] that answers the same question, so the bypass
-/// happens without anyone deciding on it.
-///
-/// The in-crate suites reach past this through the test-gated `internals`
-/// mod at the end of this file, which does not exist in a shipped build. The
-/// layout, cascade and damage engines are not reachable at all: they live on
-/// a `FrameEngines`, which the frame driver owns.
+/// Recorder + input/response broker. Coordinates are logical pixels;
+/// `Display::scale_factor` converts to physical at the wgpu boundary. Fields are
+/// private so widgets, host and encoder share one method surface.
 #[derive(Debug)]
 pub struct Ui {
     forest: Forest,
-    /// Refcounted, deliberately: a widget that styles *from the theme*
-    /// has to hold the bundle across the `&mut Ui` its own `show` takes,
-    /// and a plain `&ui.theme` borrow cannot survive that reborrow. The
-    /// `Rc` so that laundering the borrow is a refcount bump:
-    /// [`Self::theme`] hands out the handle, [`Self::set_theme`] is the
-    /// write side. Owning the bundle directly instead makes every such
-    /// site clone one — 640 B for a `ButtonTheme`, 692 B for a
-    /// `TextEditTheme`, per widget per frame.
+    /// Refcounted so a widget can hold the theme across the `&mut Ui` its `show`
+    /// takes; cloning the bundle per widget per frame would be a large copy.
     theme: Rc<Theme>,
-    /// Cross-frame widget state: per-type dense stores keyed by
-    /// `WidgetId` (see [`StateMap`]).
+    /// Cross-frame widget state, keyed by `WidgetId`.
     state: StateMap,
-    /// State shared across every instance of a kind of widget — see
-    /// [`Singletons`].
+    /// State shared across all instances of a widget kind.
     singletons: Singletons,
-    /// Live `GpuView`s — the only `GpuView` bookkeeping on the `Ui`. The
-    /// shape records only the redraw epoch, and the encoder looks the view
-    /// up here by the node's `WidgetId`. Swept by the same `removed` set
-    /// as [`StateMap`].
+    /// Live `GpuView`s. The shape records only the redraw epoch; the encoder
+    /// looks the view up by the node's `WidgetId`. Swept with [`StateMap`].
     gpu_views: GpuViews,
     resources: UiResources,
     layout: Layout,
-    /// Cascaded clip/disabled/invisible/transform per node + global
-    /// hit index. Written by `CascadeEngine::run` in the paint phase
-    /// and read by the encoder, input dispatch, and damage compute.
+    /// Cascaded clip/disabled/invisible/transform per node plus the hit index.
+    /// Written in the paint phase; read by the encoder, input dispatch and damage.
     cascade: Cascade,
-    /// Whether [`Self::cascade`] is the last painted frame's: true from the
-    /// rollover that ends a frame until the next cascade run, which a
-    /// discarded pass makes before the final one. Only then does
+    /// Whether [`Self::cascade`] is the last painted frame's; only then does
     /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
     /// name a row of it.
     cascade_is_last_frame: bool,
     input: InputState,
     display: Display,
     anim: AnimMap,
-    /// Retained frame clock, wake queue, repaint/relayout flags, and prior-frame
-    /// validity state — the scheduling half of a frame, as against the
-    /// authored tables above.
+    /// Frame clock, wake queue, repaint/relayout flags and prior-frame validity.
     frame_runtime: FrameRuntime,
     /// Recorder-to-host requests retained across frames.
     window_requests: WindowRequests,
@@ -174,19 +135,7 @@ pub struct Ui {
     window_frame: WindowFrameState,
 }
 
-/// The widget- and host-facing authoring API: input feed, watches,
-/// repaint/relayout requests, shape recording, per-widget state, and
-/// animation, plus the crate-facing handles a host needs
-/// (construction, `Self::frame`, `Self::frame_scene`) and the four-method
-/// recorder↔host seam.
-///
-/// Wide by design. Most of what follows is a one-line delegation, and that is
-/// the shape an immediate-mode recorder wants: one namespace a widget author
-/// types, over subsystems that stay sealed behind it.
-///
-/// The frame lifecycle those handles start — record / measure /
-/// arrange / cascade / finalize, and the resets between them — is
-/// `FrameCycle`'s, and user code never reaches it.
+/// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
 impl Ui {
     pub(crate) const fn frame_scene(&self) -> FrameScene<'_> {
         FrameScene {
@@ -199,9 +148,7 @@ impl Ui {
         }
     }
 
-    /// Construct a per-window `Ui` from its app-global capabilities. Each `Ui`
-    /// creates its own [`Forest`], whose retained record payloads
-    /// remain isolated from other windows' record passes.
+    /// Construct a per-window `Ui`; each owns its own [`Forest`].
     pub(crate) fn new(resources: UiResources) -> Self {
         Self {
             resources,
@@ -222,15 +169,8 @@ impl Ui {
         }
     }
 
-    /// The active theme. Reads go straight through the `Rc` —
-    /// `ui.theme().button.padding` — and `.clone()` on the result is a
-    /// refcount bump, **not** a copy of the ~9 KB bundle tree, which is
-    /// why this hands back the handle rather than a plain `&Theme`.
-    ///
-    /// That handle is what a widget builder needs when a style reference
-    /// has to stay valid across the `show(ui)` that consumes it — the
-    /// `&mut Ui` reborrow would otherwise end a plain `&ui.theme()`
-    /// borrow, and the alternative is cloning the whole bundle:
+    /// The active theme. `.clone()` is a refcount bump, so a style can outlive the
+    /// `show(ui)` reborrow:
     ///
     /// ```ignore
     /// let theme = ui.theme().clone();
@@ -241,24 +181,15 @@ impl Ui {
         &self.theme
     }
 
-    /// Replace the whole theme. Takes the `Rc` so an app swapping
-    /// between prebuilt themes (light/dark, a preferences apply) hands
-    /// over a handle instead of copying ~9 KB.
+    /// Replace the whole theme; takes an `Rc` so swapping prebuilt themes copies nothing.
     #[inline]
     pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>) {
         self.theme = theme.into();
     }
 
-    /// Drive one application frame for `win`, delegating to
-    /// [`FrameCycle`] — see there for the pass order and what each pass
-    /// resets. `stamp.time` is monotonic host time.
-    ///
-    /// `engines` is the caller's, not this recorder's: measure, cascade and
-    /// damage all run incrementally off caches that belong to whoever drives
-    /// frames, and keeping them off `Ui` is what puts them out of authoring
-    /// code's reach. Pass the same one every frame — a fresh set discards the
-    /// measure cache, the previous cascade and the damage baseline, so the
-    /// next frame repaints in full.
+    /// Drive one application frame for `win` via [`FrameCycle`]. Pass the same
+    /// `engines` every frame; a fresh set discards the measure cache, cascade and
+    /// damage baseline, forcing a full repaint.
     pub(crate) fn frame<T: App>(
         &mut self,
         engines: &mut FrameEngines,
@@ -269,9 +200,8 @@ impl Ui {
         FrameCycle::new(self, engines).run(input, win, app)
     }
 
-    /// The scale the current cascade was laid out at — what a host
-    /// divides an event's position by, since that cascade is what the
-    /// event is hit-tested against. `None` before the first frame.
+    /// The scale the current cascade was laid out at; a host divides event
+    /// positions by it. `None` before the first frame.
     #[cfg(any(test, feature = "winit"))]
     pub(crate) fn laid_out_scale(&self) -> Option<f32> {
         self.frame_runtime
@@ -279,53 +209,18 @@ impl Ui {
             .map(|stamp| stamp.display.scale_factor())
     }
 
-    /// Feed an event that arrived at `now`. Returns an [`InputDelta`] the
-    /// host reads to decide whether to request a redraw — pointer moves
-    /// over inert surfaces leave `repaint_requested` false so the host can
-    /// skip the frame entirely. Animation/tooltip-delay wakes still drive
-    /// paints independently via `FrameReport::repaint_after`.
-    ///
-    /// Half of the host contract, and crate-private for the same reason
-    /// [`Self::frame`] is: nothing outside this crate can hold a [`Ui`]
-    /// to drive. A host reaches it through its own door —
-    /// [`OffscreenHost::on_input`](crate::OffscreenHost::on_input) for the
-    /// headless one, the event pump for the windowed one.
-    ///
-    /// `now` is when the event arrived, on the clock the host also drives
-    /// frames with. It is the host's to read because only the host is
-    /// awake when an event lands: a frame clock stands still between
-    /// frames, so two presses either side of an idle gap would be timed
-    /// against the frames that carried them rather than against each
-    /// other, and the second could never be a double click. A host that
-    /// wants reproducible input timing hands over a clock it controls,
-    /// exactly as it does for frames.
+    /// Feed an event that arrived at `now`, on the host's frame clock (a frame
+    /// clock stands still between frames, which would break double clicks across an
+    /// idle gap). The [`InputDelta`] says whether to redraw.
     #[inline]
     pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
         self.input.on_input(event, &self.cascade, now)
     }
 
-    // The input surface has three verbs, and every method below is one
-    // of them:
-    //
-    // - `peek_*` reads live state and commits to nothing. `&self`. Use
-    //   it when something that already woke this frame gated the read —
-    //   the modifier held during a click, the pointer position at a
-    //   press.
-    // - `watch_*`, and any plain read that isn't a `peek_*`, reads *and*
-    //   declares "wake me when this changes". `&mut self`. This is the
-    //   default because forgetting it is a silent visual bug: paint
-    //   derived from the pointer freezes on screen until some unrelated
-    //   event forces a frame. Forgetting a peek only costs frames.
-    // - `input_scope`, and `release_input_scope`, take authority over a stream for
-    //   the ambient layer, silencing readers strictly below it.
-    //
-    // A plain read auto-watches exactly what its own result depends on:
-    // `pointer_pos` → `MOVE`, `modifiers` → `MODIFIER`,
-    // `key_pressed(sc)` → that chord. The event streams don't, because
-    // which category should wake you isn't inferable from a
-    // `&[PointerEvent]` — that's what the explicit `watch_*` flags are
-    // for. Watches are idempotent and cleared pre-record: re-call each
-    // active frame, stop calling to drop the wake.
+    // `peek_*` reads without declaring a wake. `watch_*` and plain reads declare
+    // "wake me when this changes"; forgetting that freezes pointer-derived paint,
+    // while forgetting a peek only costs frames. Watches are cleared pre-record:
+    // re-call each active frame.
 
     /// Declare interest in off-target pointer events of `flags`.
     #[inline]
@@ -333,57 +228,35 @@ impl Ui {
         self.input.watch_pointer(flags);
     }
 
-    /// Declare interest in off-focus keyboard categories. Hotkey
-    /// recorders, accel-underline UIs, command palettes that record
-    /// before focus. Specific chords use [`Self::watch_key`].
+    /// Declare interest in off-focus keyboard categories; specific chords use
+    /// [`Self::watch_key`].
     #[inline]
     pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.input.watch_keyboard(flags);
     }
 
-    /// Declare interest in one specific shortcut (e.g.
-    /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
-    /// Duplicate watchers collapse.
+    /// Declare interest in one shortcut. Duplicate watchers collapse.
     #[inline]
     pub fn watch_key(&mut self, shortcut: Shortcut) {
         self.input.watch_key(shortcut);
     }
 
-    /// Unified pointer event stream captured this frame. Empty when
-    /// no [`PointerWake`] watcher is active. Watchers `match`
-    /// and filter by rect / button.
-    ///
-    /// Layer-gated like [`Self::keyboard_events`]: an overlay's scope
-    /// empties the stream for every layer strictly below it, and for no
-    /// other. Watches deliberately bypass hit-testing, so without this
-    /// the scrim that blocks routed input would let a `Main`-layer
-    /// pan/zoom watcher keep acting under an open modal.
+    /// Pointer events captured this frame; empty without a [`PointerWake`] watcher.
+    /// Layer-gated like [`Self::keyboard_events`]: an overlay's scope empties it for
+    /// layers strictly below, since watches bypass hit-testing.
     #[inline]
     pub fn pointer_events(&self) -> &[PointerEvent] {
         self.input.pointer_events(self.forest.current_layer())
     }
 
-    /// This frame's presses, in arrival order.
-    ///
-    /// Layer-gated exactly like [`Self::pointer_events`]: an overlay's
-    /// scope empties the stream for every layer strictly below, and for
-    /// no other — so the claiming overlay's own body keeps reading, which
-    /// is what lets a `TextEdit` inside a popup be typed into. The claim
-    /// owner reads its scoped stream through its own layer.
+    /// This frame's presses, in arrival order. Layer-gated like [`Self::pointer_events`].
     #[inline]
     pub fn keyboard_events(&self) -> &[KeyPress] {
         self.input.keyboard_events(self.forest.current_layer())
     }
 
-    /// `true` if any press this frame matches
-    /// `shortcut`. Iterates [`Self::keyboard_events`]; for repeat or
-    /// stateful logic, iterate directly instead.
-    ///
-    /// Side-effect: auto-watches the chord for wake-up. Without
-    /// this, palantir's keyboard wake-gate parks off-focus presses until the
-    /// next unrelated frame, and the caller sees the event one gesture late.
-    /// Pair with the call-it-every-frame discipline that the
-    /// watch system already requires.
+    /// `true` if any press this frame matches `shortcut`. Auto-watches the chord,
+    /// else the keyboard wake-gate parks off-focus presses until the next frame.
     #[inline]
     pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
         let layer = self.forest.current_layer();
@@ -392,9 +265,7 @@ impl Ui {
             .key_pressed(layer, parent, &self.cascade, shortcut)
     }
 
-    /// [`Self::key_pressed`] read as `reader` rather than as the record
-    /// position — what [`Widget::key_pressed`](crate::widget::Widget::key_pressed)
-    /// asks with the widget's own id.
+    /// [`Self::key_pressed`] read as `reader` rather than the record position.
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
         let layer = self.forest.current_layer();
@@ -402,30 +273,16 @@ impl Ui {
             .key_pressed(layer, Some(reader), &self.cascade, shortcut)
     }
 
-    /// Re-record this frame after measure runs, for authoring code that
-    /// realizes its record-time inputs were stale. Capped at one
-    /// re-record per frame — so it cannot converge a feedback loop, only
-    /// give a single retry.
-    ///
-    /// **The whole second pass is the record closure**, which makes this
-    /// roughly a 2× frame; measure and arrange are ~2% of it. No widget
-    /// this crate ships calls it any more. `Scroll` was the last, and it
-    /// now resolves its bar geometry in the `layout::drivers::scrollbars` driver
-    /// after measure instead. Prefer that shape — or handling the edge in
-    /// [`App::update`], which runs before any
-    /// recording — and reach for this only when neither fits.
+    /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
+    /// a layout driver or [`App::update`].
     ///
     /// # Panics
     ///
-    /// Panics outside a record pass, where there is no record to retry.
+    /// Panics outside a record pass.
     #[track_caller]
     pub fn request_relayout(&mut self) {
-        // Record-pass only. `FrameCycle::run` clears the flag before
-        // handing the `Ui` to the app, so a call from outside a record —
-        // an input handler, or `App::update` — sets a bit the very next
-        // line drops, and the retry never happens. The assert is what
-        // makes that loud. `App::update` already runs before recording,
-        // so code reaching for this from there wants no retry at all.
+        // `FrameCycle::run` clears the flag before the app runs, so a call outside a
+        // record would be dropped silently.
         assert!(
             self.forest.is_recording(),
             "Ui::request_relayout outside a record pass: it re-runs *this* \
@@ -435,80 +292,41 @@ impl Ui {
         self.frame_runtime.relayout_requested = true;
     }
 
-    /// Monotonic time of the current frame, accumulated from the
-    /// per-frame `dt`s the host feeds in. Starts at zero on the first
-    /// frame and only moves forward. Read-only on purpose: the clock is
-    /// host-driven, and a direct write would desync it from the wake
-    /// queue. Use for time-driven animation that needs a continuous
-    /// clock rather than a tween toward a fixed target; pair with
-    /// [`Self::request_repaint`] to keep the host awake. (Shape-level
-    /// continuous motion like `Spinner`'s rides `PaintAnimation` instead —
-    /// sampled at encode time, no record-time clock read.)
+    /// Monotonic time of the current frame, accumulated from host `dt`s. Pair with
+    /// [`Self::request_repaint`] for continuous animation.
     #[inline]
     pub const fn now(&self) -> Duration {
         self.frame_runtime.time
     }
 
-    /// Request the mouse cursor shown for this window. Per record pass,
-    /// last writer wins — record order is z-order, so the topmost
-    /// interested widget's request lands. Reset to
-    /// [`CursorIcon::Default`] at the top of every record pass; a widget
-    /// that still wants a non-default cursor re-requests it each frame
-    /// (typically off its hover/drag response). The host applies it
-    /// after the frame, only on change; ignored in headless contexts.
+    /// Request the mouse cursor. Last writer wins; reset to [`CursorIcon::Default`]
+    /// each record pass, so re-request every frame. Ignored headless.
     #[inline]
     pub const fn set_cursor(&mut self, cursor: CursorIcon) {
         self.window_requests.levels.cursor = cursor;
     }
 
-    /// The cursor requested so far this record pass, or
-    /// [`CursorIcon::Default`] before anything asked.
-    ///
-    /// Frame-scoped, unlike the [`Self::vsync`] / [`Self::set_vsync`] pair
-    /// beside it: the request resets at the top of every record pass, so
-    /// this answers "what has the tree asked for up to here", not "what is
-    /// the window showing". A widget that wants to defer to a request
-    /// already made reads it before writing its own.
+    /// The cursor requested so far this record pass. Frame-scoped, unlike
+    /// [`Self::vsync`].
     #[inline]
     pub const fn cursor(&self) -> CursorIcon {
         self.window_requests.levels.cursor
     }
 
-    /// Set this window's presentation pacing.
-    ///
-    /// A **level**, retained across frames — [`Self::vsync`] reads it back,
-    /// so this is the source of truth for "is vsync on?" rather than
-    /// something app code mirrors. Setting the mode already in force costs
-    /// nothing: the host diffs against the swapchain it has open and only
-    /// then reconfigures, so a control can write its checkbox's value every
-    /// frame.
-    ///
-    /// Applying a real change recreates the swapchain, which waits for the
-    /// GPU to go idle. The host does that after the frame and schedules the
-    /// repaint that carries it, so an idle window still picks the change up.
-    /// Inert on hosts with no swapchain, which is every headless one — the
-    /// level is still recorded and still reads back.
+    /// Set this window's presentation pacing, a retained level. Setting the mode in
+    /// force is free; a real change recreates the swapchain after the frame.
     #[inline]
     pub const fn set_vsync(&mut self, vsync: Vsync) {
         self.window_requests.levels.vsync = vsync;
     }
 
-    /// This window's presentation pacing, as last set by
-    /// [`Self::set_vsync`] or as the host opened the swapchain with.
-    ///
-    /// Read it as the source of truth instead of mirroring the setting in
-    /// app code — the same position [`Self::is_window_open`] takes for window
-    /// liveness. A host launched with an explicit backend present mode
-    /// reports whichever of the two states that mode paces like.
+    /// This window's presentation pacing, as last set or as the swapchain was opened.
     #[inline]
     pub const fn vsync(&self) -> Vsync {
         self.window_requests.levels.vsync
     }
 
-    /// Ask the host to schedule another frame after this one. Cleared
-    /// at the top of every `frame`; widgets/showcases that need
-    /// continuous animation call this each frame to keep the host
-    /// awake.
+    /// Ask the host for another frame after this one. Cleared at the top of every `frame`.
     pub fn request_repaint(&mut self) {
         tracing::trace!(
             target: "palantir.repaint",
@@ -518,14 +336,7 @@ impl Ui {
         self.frame_runtime.repaint_requested = true;
     }
 
-    /// Schedule a one-shot wake at `now + after`. The entry persists
-    /// across frames; the frame lifecycle drains entries whose deadline
-    /// has fired at the top of each frame. Duplicate deadlines collapse
-    /// (sorted + dedup'd), so re-requesting the same wake is a no-op.
-    ///
-    /// Callers don't need to re-request each frame. To cancel, schedule
-    /// nothing else — the wake will fire once, the next frame will run
-    /// briefly, and the queue drains.
+    /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
     pub fn request_repaint_after(&mut self, after: Duration) {
         tracing::trace!(
             target: "palantir.repaint",
@@ -541,58 +352,30 @@ impl Ui {
         );
     }
 
-    /// Open a new top-level OS window addressed by `token`. The window
-    /// gets its own independent UI tree; [`App::update`] and
-    /// [`App::record`] receive its `token`, and you can later poke it via
-    /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint)
-    /// or close it with [`Self::close_window`].
-    ///
-    /// Creation is deferred, not inline: the request is queued and the
-    /// host (`WinitHost`) creates the real window on the event-loop
-    /// thread right after this frame, so it's safe to call mid-record.
-    /// Idempotent within a frame — record passes replay (cold-start
-    /// warmup, double-layout pass B), so repeat calls for one `token`
-    /// collapse to a single request with the last `config` winning. A
-    /// `token` already in use by a live window is ignored with a
-    /// warning. If native creation later fails,
-    /// [`WinitHost::run`](crate::WinitHost::run) exits and returns the error.
-    ///
-    /// `token` is yours to define — an enum discriminant, an index, a
-    /// document-id hash. It must be unique across live windows. `config`
-    /// is the backend-agnostic [`WindowConfig`] (title + size); the
-    /// window inherits the app-global GPU settings from startup.
+    /// Open a top-level OS window addressed by `token`, unique among live windows.
+    /// Deferred to the host after this frame; repeat calls in a frame collapse, last
+    /// `config` winning. A live `token` is ignored with a warning.
     ///
     /// # Panics
     ///
-    /// Panics on a host with no window lifecycle. The
-    /// [`OffscreenHost`](crate::OffscreenHost) drives one window and cannot
-    /// service the request, and dropping it silently would leave you believing
-    /// a window appeared — an app that opens windows needs
-    /// [`WinitHost`](crate::WinitHost).
+    /// Panics on a host with no window lifecycle ([`OffscreenHost`](crate::OffscreenHost)).
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         self.window_requests.commands.open(token, config);
     }
 
-    /// Request that the window addressed by `token` close. Deferred like
-    /// [`Self::open_window`] — the host removes it after this frame. The
-    /// last window closing exits the event loop. No-op if `token` names
-    /// no live window.
+    /// Request that the window addressed by `token` close, deferred like
+    /// [`Self::open_window`]. No-op for an unknown `token`.
     ///
     /// # Panics
     ///
-    /// Panics on a host with no window lifecycle, for the reason given on
-    /// [`Self::open_window`]. Drop an
-    /// [`OffscreenHost`](crate::OffscreenHost) to release its streams.
+    /// Panics on a host with no window lifecycle.
     #[inline]
     pub fn close_window(&mut self, token: WindowToken) {
         self.window_requests.commands.close(token);
     }
 
-    /// `true` for the single frame where the OS asked to close this window
-    /// (titlebar X). The window auto-closes after this frame **unless** you
-    /// call [`Self::keep_open`] — so a simple app needs no close handling
-    /// at all (X just works), while an app that wants a "save changes?"
-    /// prompt vetoes the auto-close and shows a dialog:
+    /// `true` for the frame where the OS asked to close this window. It auto-closes
+    /// after the frame unless you call [`Self::keep_open`]:
     ///
     /// ```
     /// # use palantir::{Ui, WindowToken};
@@ -609,37 +392,22 @@ impl Ui {
     /// # }
     /// ```
     ///
-    /// Always `false` in headless / offscreen contexts (no OS window).
+    /// Always `false` headless.
     #[inline]
     pub const fn close_requested(&self) -> bool {
         self.window_frame.close_requested
     }
 
-    /// Veto the auto-close pending from this frame's [`Self::close_requested`].
-    /// The window stays open past this frame; close it for real later with
-    /// [`Self::close_window`]. A no-op when no close was requested.
+    /// Veto the auto-close pending from [`Self::close_requested`].
     #[inline]
     pub const fn keep_open(&mut self) {
         self.window_requests.close_vetoed = true;
     }
 
-    // The recorder↔host seam. Four methods, and between them they are the
-    // whole contract: two the host writes before a frame, two the host reads
-    // after one. Nothing else on a host may touch recorder state — that is
-    // what keeps `window_requests` / `window_frame` / the record arena
-    // private, and what stopped the driver reading `display.physical` and
-    // the debug-overlay flags off their fields when `Ui::display` and
-    // `Ui::debug_overlay` already answered both.
+    // The recorder-host seam: two methods the host writes before a frame, two it reads after.
 
-    /// Publish this frame's window-manager facts, refreshed by the host
-    /// before it runs the frame.
-    ///
-    /// Asserts the previous frame's close veto did not survive:
-    /// [`Self::drain_window_output`] clears it on the way out and every
-    /// windowed frame reaches that drain, occluded ones included, so a veto
-    /// still standing here means the drain was skipped. Checked rather than
-    /// cleared — a second clear would be a write that can never change
-    /// anything, while the check fails if that ever stops holding.
+    /// Publish this frame's window-manager facts. Asserts the previous close veto
+    /// did not survive; [`Self::drain_window_output`] clears it.
     #[cfg(feature = "winit")]
     pub(crate) fn set_window_facts(&mut self, facts: WindowFrameState) {
         debug_assert!(
@@ -649,21 +417,16 @@ impl Ui {
         self.window_frame = facts;
     }
 
-    /// Seed the pacing level from the swapchain the host actually opened, so
-    /// [`Self::vsync`] is truthful before any frame runs and a control
-    /// writing its own value back does not reconfigure an explicitly
-    /// configured present mode out from under the host.
+    /// Seed the pacing level from the swapchain the host opened, so a control
+    /// writing its value back does not override an explicit present mode.
     #[cfg(feature = "winit")]
     #[inline]
     pub(crate) const fn seed_vsync(&mut self, vsync: Vsync) {
         self.window_requests.levels.vsync = vsync;
     }
 
-    /// Drain this frame's window scratch into `commands` and return the
-    /// levels the host applies afterwards — see
-    /// [`WindowRequests::drain`], which owns the close settlement and the
-    /// veto's one-frame life. This clears the frame-scoped window state
-    /// beside it.
+    /// Drain this frame's window scratch into `commands` and return the levels the
+    /// host applies afterwards; see [`WindowRequests::drain`].
     pub(crate) fn drain_window_output(
         &mut self,
         token: WindowToken,
@@ -675,28 +438,16 @@ impl Ui {
         levels
     }
 
-    /// This frame's record payloads, for the GPU submit that dereferences the
-    /// indices the draw list carries. Valid until the next record pass
-    /// refills the arena.
+    /// This frame's record payloads, valid until the next record pass refills the arena.
     #[inline]
     pub(crate) const fn record_store(&self) -> &RecordStore {
         &self.forest.record_store
     }
 
-    /// This window's live geometry for persist-and-restore across launches.
-    /// A computed view, not stored state: the inner size comes from
-    /// [`Self::display`] (the single source of truth for surface size), and
-    /// the placement from the host-refreshed window-manager facts. Feed it
-    /// back through [`WindowConfig::with_placement`](crate::WindowConfig) and
-    /// `inner_size` on the next launch to reopen where the user left off.
-    /// The placement's position is `None` on platforms that don't report
-    /// one (Wayland). All-zero / `None` in headless contexts.
-    ///
-    /// **In the window manager's logical pixels**, not the UI's — see
-    /// [`Display::system_logical_size`]. This size is going back to the
-    /// platform, which never hears about [`Self::set_user_scale`], so
-    /// dividing by the product instead would shrink the window by the user
-    /// scale on every launch.
+    /// This window's live geometry for persist-and-restore. Placement position is
+    /// `None` where the platform reports none (Wayland). In the window manager's
+    /// logical pixels (see [`Display::system_logical_size`]), since the platform never
+    /// hears about [`Self::set_user_scale`].
     #[expect(
         clippy::cast_sign_loss,
         reason = "a display's logical size is non-negative"
@@ -712,12 +463,7 @@ impl Ui {
         }
     }
 
-    /// This app's debug-overlay flags, by value.
-    ///
-    /// Read-modify-write through [`Self::set_debug_overlay`] rather than
-    /// through a borrow guard: the config is a handful of `Copy` flags, and
-    /// a guard could not survive the widget calls that sit between reading
-    /// a toggle's current value and writing back what the user chose.
+    /// This app's debug-overlay flags, by value; modify then [`Self::set_debug_overlay`].
     ///
     /// ```
     /// # use palantir::{Checkbox, Configure, Ui};
@@ -733,20 +479,13 @@ impl Ui {
         self.resources.diagnostics().overlay.get()
     }
 
-    /// Replace this app's debug-overlay flags. The overlay is app-global:
-    /// the write is visible to every window at once, and the host repaints
-    /// idle windows so it shows everywhere — not just the window that
-    /// handled the key.
+    /// Replace this app's debug-overlay flags, visible in every window.
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
         self.resources.diagnostics().overlay.set(overlay);
     }
 
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
-    ///
-    /// The overlay is an ordinary widget: it reaches `Layer::Debug` through
-    /// the same `&mut Ui` every other widget takes, and so has no path of its
-    /// own to the frame clock or the GPU handle these come off.
     ///
     /// [`frame_stats`]: crate::diagnostics::frame_stats
     pub(crate) fn frame_stats(&self) -> FrameStats {
@@ -759,290 +498,140 @@ impl Ui {
         }
     }
 
-    /// Whether a window addressed by `token` is currently live. Reflects
-    /// the set as of this frame's *start*, so a window opened or closed
-    /// earlier *this* frame isn't reflected until the next one (the host
-    /// drains [`Self::open_window`] / [`Self::close_window`] between
-    /// frames). Use it as the source of truth for "is this window up?"
-    /// instead of mirroring the state in app code — a window the user
-    /// closed via its titlebar drops out of this set automatically.
+    /// Whether the window addressed by `token` is live, as of this frame's start;
+    /// changes made this frame show next frame.
     #[inline]
     pub fn is_window_open(&self, token: WindowToken) -> bool {
         self.resources.windows().contains(token)
     }
 
-    /// The app-global live-window set this recorder answers
-    /// [`Self::is_window_open`] from.
-    ///
-    /// For `WindowDriver`'s `Drop`, which retires its own token: the
-    /// driver owns this `Ui` and the directory is the only thing it needs
-    /// off the shared resources, so it asks by name rather than reaching
-    /// through the field.
+    /// The app-global live-window set behind [`Self::is_window_open`].
     #[inline]
     pub(crate) const fn window_directory(&self) -> &WindowDirectory {
         self.resources.windows()
     }
 
-    /// Attach a paint primitive to the active node. Direct text contributes to
-    /// layout only on a leaf; container-owned text is an overlay shaped against
-    /// that container's final padded width.
+    /// Attach a paint primitive to the active node. Direct text counts toward
+    /// layout only on a leaf; container-owned text is an overlay shaped against the
+    /// container's padded width.
     pub fn add_shape<S: Lower>(&mut self, shape: S) {
         self.forest.add_shape(shape);
     }
 
-    /// Load an icon set and get back an owning [`IconSet`] to draw from.
-    ///
-    /// **Hold the set.** It owns everything the host caches for those icons —
-    /// the data, the SVG parses, the atlas rasters — and dropping the last
-    /// clone unloads all three at the next submit. Park it in your state and
-    /// clone it where it needs to live.
-    ///
-    /// Loading is cheap and idempotent *while a set is held*: registering an
-    /// `Rc` a live `IconSet` already covers hands back a clone of that set
-    /// rather than a second entry, so an immediate-mode caller may re-load on
-    /// every frame if that reads better than threading the handle through —
-    /// as long as what comes back outlives the frame. No parsing and no GPU
-    /// work happen here.
-    ///
-    /// Each icon's SVG is parsed the first time that icon is rasterized, and
-    /// each raster happens at the exact physical pixel size the icon is drawn
-    /// at — so a set the session never draws from costs nothing beyond its
-    /// bytes.
-    ///
-    /// No `Result`, unlike [`Self::load_image`] and [`Self::load_font`]:
-    /// registration parses nothing and asks the device nothing, so there is
-    /// no point here at which it could fail. A malformed icon is reported
-    /// when it is first drawn.
+    /// Load an icon set and get back an owning [`IconSet`]. Hold it: dropping the
+    /// last clone unloads the data and rasters at the next submit. Idempotent while a
+    /// set is held. No `Result`: a malformed icon is reported when drawn.
     #[inline]
     pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet {
         self.resources.icons().register(table.into())
     }
 
-    /// Load an image and get back an owning [`ImageHandle`]. **Hold
-    /// the handle** to keep the GPU texture resident — dropping the last
-    /// clone frees it, and there is no unload. Reference it in
-    /// [`Shape::image`](crate::widget::Shape::image) every frame (`clone` it where it
-    /// needs to live).
-    ///
-    /// The bytes are copied into wgpu staging before this returns; the next
-    /// queue submission uploads them before drawing. No CPU copy is retained
-    /// by the registry. Keep `image` to refill it for [`ImageHandle::update`].
+    /// Load an image and get back an owning [`ImageHandle`]; dropping the last clone
+    /// frees the GPU texture. Keep `image` to refill it for [`ImageHandle::update`].
     ///
     /// # Errors
     ///
-    /// Returns an error when an image axis exceeds the selected device's 2D
-    /// texture limit. A rejected image never reaches the GPU. Standalone
-    /// CPU recorders have no device limit and retain the original dimensions.
+    /// An image axis exceeds the device's 2D texture limit.
     #[inline]
     pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
         self.resources.load_image(image)
     }
 
-    /// Register a font and get back the [`FontFamily`] its first face
-    /// belongs to.
-    ///
-    /// Additive and permanent: there is no unload, because the glyph
-    /// atlas keys on the database's face id and fontdb never reuses one.
-    /// A collection registers every face it holds, and each of their
-    /// families becomes reachable through
-    /// [`FontFamily::named`](crate::FontFamily::named). The returned
-    /// family is `Copy` and always valid, so — unlike
-    /// [`Self::load_icons`] and [`Self::load_image`] — nothing has to
-    /// be held to keep it alive.
-    ///
-    /// A load invalidates every shaped buffer, every reuse row, the
-    /// layout measure snapshot and every encoded glyph template — and
-    /// **this frame** re-shapes the text on screen, not the next one.
-    ///
-    /// So it schedules nothing, and needs no `&mut self` to do it. An app
-    /// holds a `Ui` only inside [`App::update`] and [`App::record`], both
-    /// of which run on a recorded frame *before* that frame measures and
-    /// before it submits — and measuring and submitting are the two steps
-    /// that re-read the font database. Loads are cold events; one remeasured frame is the
-    /// whole cost.
+    /// Register a font and return the [`FontFamily`] of its first face. Permanent
+    /// (fontdb face ids are never reused). A collection registers every face, reachable
+    /// via [`FontFamily::named`](crate::FontFamily::named). Re-shapes this frame's text.
     ///
     /// ```ignore
     /// let mono = ui.load_font(include_bytes!("../assets/Iosevka.ttf"))?;
     /// let sans = ui.load_font("/usr/share/fonts/TTF/Charter.ttf")?;
     /// ```
     ///
-    /// A `&str` is a **path**, never a family name — naming an installed
-    /// family is [`FontFamily::named`](crate::FontFamily::named), which
-    /// needs no load at all when the host asked for
-    /// [`FontScope::System`](crate::FontScope::System).
+    /// A `&str` is a path, never a family name.
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read,
-    /// [`FontLoadError::NoFaces`] when the bytes hold no face fontdb can
-    /// parse,
-    /// and [`FontLoadError::FamilyTableFull`] when the family table is full.
+    /// [`FontLoadError::Io`] when the file cannot be read, [`FontLoadError::NoFaces`]
+    /// when it holds no parsable face, [`FontLoadError::FamilyTableFull`] when the
+    /// family table is full.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)
     }
 
-    /// Whether a face answers to `family`.
-    ///
-    /// A family with no face resolves to
-    /// [`FontFamily::SANS`](crate::FontFamily::SANS) at shaping time and
-    /// warns once — never to whatever the machine happens to have
-    /// installed. Ask here to choose deterministically instead.
+    /// Whether a face answers to `family`. Without one, shaping falls back to
+    /// [`FontFamily::SANS`](crate::FontFamily::SANS) and warns once.
     #[inline]
     pub fn has_font(&self, family: FontFamily) -> bool {
         self.resources.text().has_font(family)
     }
 
-    /// Every family the shaper's database knows, system fonts included —
-    /// what a preferences picker lists.
-    ///
-    /// Cold: it walks every face and interns every name it has not seen.
+    /// Every family the shaper's database knows, system fonts included. Cold.
     #[inline]
     pub fn font_families(&self) -> Vec<FontFamily> {
         self.resources.text().font_families()
     }
 
-    /// The largest width or height [`Self::load_image`] accepts — the
-    /// selected device's `max_texture_dimension_2d`, and the *only* ceiling on
-    /// a loaded image, since palantir imposes none of its own. `None` for
-    /// a standalone CPU recorder, which has no device to ask.
-    ///
-    /// Read it when deriving a texture from a larger source, so the downscale
-    /// is sized against the device actually in use rather than a constant
-    /// picked to stay under every device's limit. Registration *rejects* an
-    /// over-limit image rather than shrinking it, so a host that wants the
-    /// biggest texture a machine will take has to ask first.
-    ///
-    /// `NonZeroU32` rather than the bare `u32` the rest of the surface
-    /// speaks, so that the two ways of having no answer stay distinct: a
-    /// recorder with no device answers `None`, and a device that answered
-    /// cannot have answered zero.
+    /// The largest width or height [`Self::load_image`] accepts (the device's
+    /// `max_texture_dimension_2d`); `None` for a CPU recorder. Larger images are
+    /// rejected, not shrunk.
     #[inline]
     pub const fn max_image_dimension(&self) -> Option<NonZeroU32> {
         self.resources.texture_limit().max_dimension()
     }
 
-    /// A handle on the host's clipboard.
+    /// A handle on the host's clipboard, shared by every window of that host. A
+    /// clone, since a widget reads it inside a keyboard walk already holding `&mut Ui`.
     ///
-    /// One clipboard per host, shared by every window that host opens and
-    /// isolated from every other host's.
-    ///
-    /// Hands back a clone rather than a borrow because that is what the
-    /// caller shape needs: a widget reads the clipboard from inside a
-    /// keyboard-event walk that already holds `&mut Ui`, so a borrow out of
-    /// `self` could not survive to the paste. The handle is an `Rc` inside,
-    /// so the clone is a refcount bump — take one before the walk and pass
-    /// it to whatever handles the action.
-    ///
-    /// `&self` on [`Self::load_font`]'s terms: the clipboard is a
-    /// host-global resource and touching it schedules no frame work.
-    ///
-    /// # What is behind it
-    ///
-    /// The OS clipboard, plus an in-process fallback that takes over when
-    /// the system backend refuses a write. A copy is therefore never
-    /// silently lost, and a paste after such a refusal returns the last
-    /// text the user actually copied rather than stale system content.
-    ///
-    /// [`WinitHost`](crate::WinitHost) always reaches for the OS
-    /// clipboard. [`OffscreenHost`](crate::OffscreenHost) does not until
-    /// asked, through
-    /// [`OffscreenHostBuilder::system_clipboard`](crate::OffscreenHostBuilder::system_clipboard),
-    /// because a thumbnailer should not touch the desktop's clipboard on
-    /// its caller's behalf.
-    ///
-    /// Without the `system-clipboard` feature the in-process buffer is
-    /// all there is. [`Clipboard::set_text`] then [`Clipboard::text`]
-    /// round-trips, and nothing reaches the OS.
-    ///
-    /// On Linux the copied text is served by the running process, so it
-    /// goes when the app exits unless a desktop clipboard manager took a
-    /// copy of its own. That is how X11 and Wayland selections work.
+    /// Backed by the OS clipboard plus an in-process fallback for refused writes.
+    /// [`WinitHost`](crate::WinitHost) uses the OS clipboard;
+    /// [`OffscreenHost`](crate::OffscreenHost) only when asked via
+    /// [`OffscreenHostBuilder::system_clipboard`](crate::OffscreenHostBuilder::system_clipboard).
+    /// Without the `system-clipboard` feature only the in-process buffer exists.
     #[inline]
     pub fn clipboard(&self) -> Clipboard {
         self.resources.clipboard().clone()
     }
 
-    /// Record a `GpuView` for widget `id`: refresh its row in
-    /// [`Self::gpu_views`], then append a
-    /// [`ShapeRecord::Image`](crate::shape::record::ShapeRecord::Image)
-    /// sourced from an
-    /// [`ImageSource::GpuView`](crate::shape::paint::image_source::ImageSource::GpuView)
-    /// carrying the row's `epoch` to the active node — the encoder
-    /// recovers id and paint from the store by `id`.
-    ///
-    /// The mint / epoch / sweep policy is [`GpuViews`]' business,
-    /// `repaint` included.
+    /// Record a `GpuView` for widget `id`: refresh its row in [`Self::gpu_views`] and
+    /// append an image shape carrying the row's `epoch` to the active node.
     pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
         let frame = self.frame_runtime.render_frame_id;
         let epoch = self.gpu_views.record(id, paint, repaint, frame);
         self.forest.add_gpu_view(epoch);
     }
 
-    /// Format `args` directly into the record-pass text storage and return
-    /// an arena-backed [`InternedStr`]. Pass the returned value to
-    /// any text-taking widget. The bytes are already in the destination
-    /// buffer, so same-arena lowering is zero-copy and steady-state authoring
-    /// of dynamic labels skips per-call `String` allocations.
+    /// Format `args` into the record-pass text storage and return an arena-backed
+    /// [`InternedStr`]. Usually reached through [`fmt!`](crate::fmt).
     ///
-    /// Call sites normally reach for [`fmt!`](crate::fmt), which is this over
-    /// `format_args!` — `fmt!(ui, "clicks: {n}")`.
-    ///
-    /// **Valid only for the pass that minted it.** Lower it here, in this
-    /// window; holding it into a later frame, into the second pass of a
-    /// double-layout frame, or into another window panics — the bytes it
-    /// spans are gone by then. Persistent application text should stay in
-    /// its source `String` and be interned again each frame, which costs
-    /// the one `memcpy` the borrowed path pays anyway.
+    /// Valid only for the pass that minted it, in this window; holding it into a later
+    /// pass or another window panics.
     #[must_use]
     #[inline]
     pub fn fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
         self.forest.record_store.intern_fmt(args)
     }
 
-    /// Normalize borrowed, owned, or already-interned text into an
-    /// [`InternedStr`]. Borrowed and owned inputs are copied into the
-    /// record-pass text arena; an [`InternedStr`] this pass minted passes
-    /// through unchanged, and one from an earlier pass or another window
-    /// panics here rather than resolving against bytes that are gone.
-    /// Format-less twin of [`Self::fmt`] with the same retention rules.
+    /// Normalize borrowed, owned or interned text into an [`InternedStr`]. An
+    /// [`InternedStr`] from an earlier pass or another window panics.
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
         self.forest.record_store.intern(text.into())
     }
 
-    /// The characters of `text`, a handle this pass interned — how a widget
-    /// reads text a caller handed it as an [`InternedStr`].
-    ///
-    /// The borrow holds `self`, so a widget that also needs `&mut Ui` while
-    /// it reads the text (to measure it with [`Self::probe_text`], or to
-    /// format it into a new string with [`Self::fmt`]) copies it into a
-    /// scratch `String` it keeps in its state first.
+    /// The characters of `text`, a handle this pass interned. The borrow holds
+    /// `self`; copy to a scratch `String` first if you also need `&mut Ui`.
     ///
     /// # Panics
     ///
-    /// Panics when `text` was interned by an earlier pass or another
-    /// window, as [`Self::intern`] does.
+    /// Panics when `text` was interned by an earlier pass or another window.
     #[must_use]
     pub fn text(&self, text: InternedStr) -> &str {
         self.forest.record_store.text(text)
     }
 
-    /// Append `shape` to the active node and animate it at **paint**
-    /// time.
-    ///
-    /// The recorded shape is byte-identical every frame — the encoder
-    /// samples `animation` one pass later and folds the result into the
-    /// brush — so the widget never re-records and its layout cache entry
-    /// survives. [`Self::animate`] plus [`Self::request_repaint`] paint
-    /// the same pixels at the cost of a record pass per frame.
-    ///
-    /// Every frame folds the animation's next wake into the repaint
-    /// queue, so a caller schedules nothing of its own.
-    ///
-    /// Drops silently if the shape itself was noop-collapsed — zero
-    /// stroke and transparent fill, say. An animation cannot make a zero
-    /// shape paintable.
+    /// Append `shape` to the active node and animate it at paint time. The recorded
+    /// shape is identical every frame, so the widget never re-records. Drops silently
+    /// if the shape was noop-collapsed.
     ///
     /// ```
     /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
@@ -1062,48 +651,29 @@ impl Ui {
         self.forest.add_shape_animated(shape, animation);
     }
 
-    /// Open a side layer — an arena that paints above the `Main` tree,
-    /// escapes ancestor clip, and hit-tests on top of it. Configure the
-    /// placement on the returned [`LayerScope`] and terminate with
-    /// [`LayerScope::show`]; the defaults anchor at the surface origin
-    /// with the whole surface available.
-    ///
-    /// Recordable from the `Main` baseline or nested inside a
-    /// higher-ranked side layer's body (a tooltip raised from a popup or
-    /// modal).
+    /// Open a side layer that paints above `Main`, escapes ancestor clip and
+    /// hit-tests on top. Configure on the returned [`LayerScope`] and finish with
+    /// [`LayerScope::show`].
     ///
     /// # Panics
     ///
-    /// Panics unless a nested layer sits strictly above the current scope
-    /// in `Layer::PAINT_ORDER`. A lower-or-equal nest records fine and
-    /// then paints under the parent it was raised from, un-hittable, so
-    /// it is rejected where it is asked for rather than left to show up
-    /// as a scope that quietly stopped working.
+    /// Panics unless a nested layer sits strictly above the current scope in
+    /// `Layer::PAINT_ORDER`; otherwise it would paint under its parent, un-hittable.
     #[inline]
     pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
         LayerScope::new(self, layer)
     }
 
-    /// Withdraw an [`input_scope`](crate::Configure::input_scope) this
-    /// pass recorded, so the next resolution does not see it. The
-    /// withdrawal holds through the end of the next frame.
-    ///
-    /// **The pass you call it in is unaffected.** A scope path is
-    /// resolved once at pass start against a cascade that is one frame
-    /// old, so an overlay that decides it is closing has already
-    /// recorded its scope and would go on owning input for the frame
-    /// after it is gone — long enough to swallow the click that lands
-    /// where it used to be. Call it on the frame the overlay resolves
-    /// that it closed; a scope that simply stops recording needs
-    /// nothing.
+    /// Withdraw an [`input_scope`](crate::Configure::input_scope) this pass recorded.
+    /// Holds through the end of the next frame; the current pass is unaffected, since
+    /// scope paths resolve at pass start against a one-frame-old cascade.
     #[inline]
     pub fn release_input_scope(&mut self, id: WidgetId) {
         self.input.release_input_scope(id);
     }
 
-    /// Resolve a widget's identity recipe against the currently-open
-    /// parent into the id it records under. [`Widget::resolve`] is the
-    /// one caller, and it keeps the answer on the widget.
+    /// Resolve a widget's identity recipe against the open parent into its record
+    /// id. [`Widget::resolve`] is the one caller.
     ///
     /// [`Widget::resolve`]: crate::widget::Widget::resolve
     #[inline]
@@ -1111,17 +681,9 @@ impl Ui {
         self.forest.widget_id(ident)
     }
 
-    /// Open `node` under the id `resolved` names, painting `chrome` behind
-    /// it, and the theme's focus ring over that when the id holds focus
-    /// that came from the keyboard. Pairs with [`Self::close_node`].
-    ///
-    /// Two callers, and no third: [`Widget::record`], which is how every
-    /// widget in the crate reaches the tree, and `FrameCycle`'s synthetic
-    /// `Layer::Main` viewport, which has no `Widget` to record through and
-    /// resolves its fixed id itself.
-    /// Widget code calls `Widget::record`, never this.
-    ///
-    /// [`Widget::record`]: crate::widget::Widget::record
+    /// Open `node` under `resolved`, painting `chrome` and, for keyboard-sourced
+    /// focus, the theme's focus ring. Pairs with [`Self::close_node`]. Widget code
+    /// calls `Widget::record`, never this.
     #[inline]
     #[track_caller]
     pub(crate) fn open_node(
@@ -1144,11 +706,7 @@ impl Ui {
         self.forest.close_node();
     }
 
-    /// Intern a grid's track definition into the current layer and hand back
-    /// the id a `Node` carries it by. Called by [`Widget::grid_tracks`],
-    /// which is the whole reason it is on `Ui`: a widget that becomes a
-    /// grid references a definition the tree owns, and should not have to
-    /// name the tree to do it.
+    /// Intern a grid's track definition into the current layer. Called by [`Widget::grid_tracks`].
     ///
     /// [`Widget::grid_tracks`]: crate::widget::Widget::grid_tracks
     #[inline]
@@ -1156,10 +714,8 @@ impl Ui {
         self.forest.push_grid_def(rows, cols)
     }
 
-    /// Intern a bar overlay's definition into the current layer, with the
-    /// viewport it names resolved to this pass's node. Called by
-    /// [`Widget::scrollbar_def`], for the reason [`Self::push_grid_def`] is
-    /// on `Ui`.
+    /// Intern a bar overlay's definition into the current layer. Called by
+    /// [`Widget::scrollbar_def`].
     ///
     /// [`Widget::scrollbar_def`]: crate::widget::Widget::scrollbar_def
     #[inline]
@@ -1167,55 +723,34 @@ impl Ui {
         self.forest.push_scrollbars_def(def)
     }
 
-    /// The content extent the scroll viewport `id` measured last frame,
-    /// before zoom: how far its children reach on each axis. `Size::ZERO`
-    /// for a widget that is not a
-    /// [`Widget::scroll`](crate::widget::Widget::scroll) viewport, or that
-    /// has not been laid out yet.
-    ///
-    /// Last frame's, like [`Self::response_for`], which is the lag a scroll
-    /// widget wants: its bars describe the content the user is looking at.
+    /// The content extent the scroll viewport `id` measured last frame, before
+    /// zoom. `Size::ZERO` for a non-viewport or a widget not yet laid out.
     #[inline]
     pub(crate) fn scroll_content(&self, id: WidgetId) -> Size {
-        // A bridge: `Layout` keys the extent by `(layer, node)`, the caller
-        // holds a `WidgetId`, and `Cascade` maps between them. `Ui` is the
-        // one thing holding both tables.
+        // Bridge: `Layout` keys by `(layer, node)`, callers hold a `WidgetId`.
         self.cascade
             .endpoint(id)
             .map_or(Size::ZERO, |endpoint| self.layout.scroll_content(endpoint))
     }
 
-    /// Snapshot of input/cascade state for a widget. `rect` and
-    /// `disabled` are from the previous frame's cascade; the interaction
-    /// fields (`pressed`, `hovered`, `drag_started`, `drag_delta`, …) are
-    /// computed against this frame's input state.
-    ///
-    /// **Read it during the frame's record** — as every widget does. The
-    /// interaction half is gated on a `frame_quiescent` snapshot taken
-    /// before `App::update` and at each record-pass start, so a read taken
-    /// *between* frames would reflect the previous frame's input, not
-    /// events fed since. Reading earlier in the same record than the
-    /// widget's own node is fine — e.g. baking a drag delta into a widget's
-    /// position before recording it.
-    /// The widget's own `NodeFlags::is_disabled` is **not** folded in here — only
-    /// `Widget::response` can see it. Both fold through
-    /// `ResponseState::merge_disabled`, which is idempotent, so the
-    /// interaction half is gone by the time either of them returns.
+    /// Snapshot of input/cascade state for a widget. `rect` and `disabled` are last
+    /// frame's; interaction fields are computed against this frame's input, so read it
+    /// during record. The widget's own `NodeFlags::is_disabled` is folded in by
+    /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
         let loc = self.last_frame_location(id);
         let mut state = self
             .input
             .response_for(id, loc, &self.cascade, &self.layout);
-        // Cascade lags one frame; fold this frame's ancestor-disabled so
-        // a freshly-disabled subtree paints disabled on its first frame.
+        // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
+        // disabled subtree paints disabled at once.
         state.merge_disabled(self.forest.ancestor_disabled());
         state
     }
 
-    /// Where the most recent cascade run put `id`. While that run is the
-    /// last painted frame's and `id` is the newest id of a pass in step,
+    /// Where the most recent cascade run put `id`; uses
     /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
-    /// names its row by position; otherwise this probes `Cascade::by_id`.
+    /// when valid, else `Cascade::by_id`.
     #[inline]
     fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
         let endpoint = match self.forest.ids.last_frame_endpoint(id) {
@@ -1231,18 +766,14 @@ impl Ui {
         endpoint.map(|endpoint| self.cascade.location(endpoint))
     }
 
-    /// The cross-frame state row for `id`, or `None` when nothing has been
-    /// stored for `(id, S)` yet. Stores nothing, so it is the read for a
-    /// probe that must not create a row, and the one a `&Ui` caller has —
-    /// "is this menu open?". Every write goes through [`Self::with_state`].
+    /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored.
+    /// Creates nothing.
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
         self.state.try_get::<S>(id)
     }
 
-    /// Lend the cross-frame state row for `id` to `body`, **alongside** the
-    /// `Ui`: the row is moved out for the call and moved back after, so a
-    /// widget writes its state, and a page or panel holds its own across
-    /// the widget calls it makes. The row is `S::default()` on first use.
+    /// Lend the cross-frame state row for `id` to `body` alongside the `Ui`
+    /// (`S::default()` on first use).
     ///
     /// ```
     /// # use palantir::{Button, Configure, Text, Ui, WidgetId};
@@ -1258,21 +789,9 @@ impl Ui {
     /// # }
     /// ```
     ///
-    /// **A row lives as long as a node records under `id`.** When a frame
-    /// that recorded `id` is followed by one that does not, the row is
-    /// dropped, once per `Ui::frame` after its final record pass. A row
-    /// under an id no node ever records is therefore never dropped: it
-    /// lives as long as the `Ui`, which is what an application wants for
-    /// a page's state and what a widget must not do — a widget keys its
-    /// state by its own id, and keeps state that no instance owns with
-    /// [`Self::with_singleton`].
-    ///
-    /// Each type lives in its own store, so one widget keeps several
-    /// kinds of state under its one id. Two call sites storing the *same*
-    /// type at one id share a row, which nothing detects. Re-entering the
-    /// same `(id, S)` from within `body` sees a default row whose writes
-    /// are overwritten when the outer call restores; nesting *different*
-    /// rows is what makes this compose down a tree.
+    /// A row is dropped after a frame that recorded `id` is followed by one that does
+    /// not; a row under an id no node records lives as long as the `Ui`. Re-entering
+    /// the same `(id, S)` inside `body` sees a default row, overwritten on restore.
     pub fn with_state<S: Default + 'static, R>(
         &mut self,
         id: WidgetId,
@@ -1280,31 +799,19 @@ impl Ui {
     ) -> R {
         let mut value = mem::take(self.state.get_or_insert_with(id, S::default));
         let out = body(self, &mut value);
-        // Re-probed rather than held: `body` may have inserted rows of the
-        // same `S` at other ids, which can reallocate the store's data vec.
+        // Re-probed: `body` may have inserted rows of the same `S`, reallocating the store.
         *self.state.get_or_insert_with(id, S::default) = value;
         out
     }
 
-    /// The one `S` this `Ui` holds, or `None` until something stores it.
-    ///
-    /// For state a kind of widget shares across all its instances rather
-    /// than state one widget owns — the clock that lets one tooltip after
-    /// another show at once. Keyed by type, so a widget's private type
-    /// cannot collide with anyone else's, and never swept: it lives as
-    /// long as the `Ui`. Stores nothing; every write goes through
-    /// [`Self::with_singleton`]. A widget's own state belongs under its
-    /// id, in [`Self::with_state`].
+    /// The one `S` this `Ui` holds, or `None`. For state a widget kind shares across
+    /// instances; keyed by type, never swept.
     pub fn singleton<S: 'static>(&self) -> Option<&S> {
         self.singletons.get::<S>()
     }
 
-    /// Lend the one `S` to `body` beside the `Ui`, as [`Self::with_state`]
-    /// lends a widget's row: moved out, `body` runs with both, moved back.
-    /// Stored as `S::default()` on first use.
-    ///
-    /// A nested call for the same `S` sees the default, and its writes
-    /// are lost when the outer one restores.
+    /// Lend the one `S` to `body` beside the `Ui`, as [`Self::with_state`]. A nested
+    /// call for the same `S` sees the default and its writes are lost.
     pub fn with_singleton<S: Default + 'static, R>(
         &mut self,
         body: impl FnOnce(&mut Self, &mut S) -> R,
@@ -1315,17 +822,11 @@ impl Ui {
         out
     }
 
-    /// Advance an animation row keyed by `(id, slot)` and return the
-    /// current value.
-    ///
-    /// `spec` takes an [`AnimationSpec`] as readily as an `Option<AnimationSpec>`, so
-    /// a themed slot's `Option` goes straight in and a call site that means
-    /// one motion names it. [`AnimationSpec::SNAP`] and `None` are the same
-    /// answer — land on `target` this frame, drop any stale row, and
+    /// Advance an animation row keyed by `(id, slot)` and return the current value.
+    /// [`AnimationSpec::SNAP`] and `None` land on `target` now, drop any stale row and
     /// request no repaint.
-    // Generic and reached through cross-module widget helpers. Keep the
-    // dominant no-map/no-spec return in the widget's block so a static theme
-    // doesn't pay an outlined call plus a large `V` return-slot handoff.
+    // Keep the no-map/no-spec return in the widget's block so a static theme does
+    // not pay an outlined call plus a large `V` return-slot handoff.
     #[inline(always)]
     pub fn animate<V: Animatable>(
         &mut self,
@@ -1354,14 +855,9 @@ impl Ui {
         self.input.focused()
     }
 
-    /// True when keyboard focus sits on `ancestor` or any widget
-    /// recorded inside its subtree — per the most recent cascade run,
-    /// i.e. one frame of lag, the same timing as [`Self::response_for`].
-    /// `false` when nothing is focused or `ancestor` wasn't recorded.
-    /// Layers are separate trees, so focus on a popup never counts as
-    /// within the popup's anchor. Lets a caller that skips recording
-    /// off-screen subtrees keep the one holding an in-progress edit
-    /// alive without enumerating every focusable widget it contains.
+    /// True when focus sits on `ancestor` or in its subtree, per the most recent
+    /// cascade (one frame of lag). Layers are separate trees, so popup focus is not
+    /// within its anchor.
     #[inline]
     pub fn is_focus_within(&self, ancestor: WidgetId) -> bool {
         self.input
@@ -1369,15 +865,8 @@ impl Ui {
             .is_some_and(|f| self.cascade.is_within(f, ancestor))
     }
 
-    /// True when the pointer's hover target is `ancestor` or any widget
-    /// recorded inside its subtree — the hover sibling of
-    /// [`Self::is_focus_within`], same cascade timing and layer caveats.
-    /// Prefer this over testing `Self::pointer_pos` against a rect for
-    /// "is the pointer on me" styling: it's occlusion-aware (a panel
-    /// stacked on top wins the pointer), and because it's a pure
-    /// function of the hover *target*, its value can only change when
-    /// the target changes — which is exactly when a repaint is already
-    /// scheduled, so no `MOVE` watch is needed to stay fresh.
+    /// True when the pointer's hover target is `ancestor` or in its subtree.
+    /// Occlusion-aware, and changes only when a repaint is already scheduled.
     #[inline]
     pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
@@ -1385,37 +874,21 @@ impl Ui {
             .is_some_and(|h| self.cascade.is_within(h, ancestor))
     }
 
-    /// Active `Display` (physical surface size + both scale factors). Read
-    /// by example/demo code that wants to inject synthetic input
-    /// coordinates without threading window dimensions through itself.
+    /// Active `Display` (physical surface size and both scale factors).
     #[inline]
     pub const fn display(&self) -> Display {
         self.display
     }
 
-    /// The application's own scale, multiplied onto the scale the platform
-    /// reported. `UserScale::ONE` until something sets it.
-    ///
-    /// The source of truth, rather than something app code mirrors — the
-    /// same position [`Self::vsync`] takes. Reads back what
-    /// [`Self::set_user_scale`] last wrote, from the first frame, in every
-    /// window.
+    /// The application's own scale, multiplied onto the platform's. `UserScale::ONE`
+    /// until set.
     #[inline]
     pub fn user_scale(&self) -> UserScale {
         self.resources.user_scale().get()
     }
 
-    /// Scale the whole UI by `scale` on top of the platform's own factor.
-    ///
-    /// **App-global**, like [`Self::set_debug_overlay`] and for the same
-    /// reason: the per-monitor case is already answered by the platform
-    /// factor, so what is left is a preference, and the host repaints idle
-    /// windows so a change from one shows everywhere.
-    ///
-    /// Takes effect on the next frame, because the host mints each frame's
-    /// [`Display`] before running it. This frame's [`Self::display`] still
-    /// reports the old value, and the frame after relayouts and repaints in
-    /// full — the same path a monitor move takes.
+    /// Scale the whole UI by `scale` on top of the platform factor. App-global;
+    /// takes effect next frame, so this frame's [`Self::display`] reports the old value.
     ///
     /// ```
     /// # use palantir::{Ui, UserScale};
@@ -1426,140 +899,62 @@ impl Ui {
     /// # }
     /// ```
     ///
-    /// Writing the value already in force costs nothing, so a control may
-    /// write its own state back every frame.
-    ///
-    /// **Restore a persisted preference from the app factory** — the
-    /// closure [`WinitHostBuilder::build`](crate::WinitHostBuilder::build)
-    /// hands a `&mut Ui`, and it runs before the first frame, so the first
-    /// window opens at the right size. That is the same place a
-    /// [`Theme`] is restored, and there is no host setting
-    /// for either.
-    ///
-    /// Each distinct scale re-rasterizes every glyph on screen — see
-    /// [`UserScale`], which is also where the ladder the steppers walk
-    /// lives.
+    /// Restore a persisted value from the
+    /// [`WinitHostBuilder::build`](crate::WinitHostBuilder::build) factory. Each
+    /// distinct scale re-rasterizes every glyph; see [`UserScale`].
     #[inline]
     pub fn set_user_scale(&mut self, scale: UserScale) {
         self.resources.user_scale().set(scale);
     }
 
-    /// This frame's monotonic index, counting the frames authoring code
-    /// actually ran on — the clock retained state stamps to notice it was
-    /// *skipped*.
-    ///
-    /// Code that runs only while its surface is on screen stamps this and
-    /// compares on the next run: a gap tells it the surface was away,
-    /// without anything having to run while it was. Consecutive values, and
-    /// repeats within one frame, both mean "still here" — a settling second
-    /// pass observes the same value as the first, and a paint-only frame
-    /// (which records nothing, so no such code ran) advances nothing.
-    /// [`Self::render_frame_id`] is the peer that counts painted frames.
+    /// This frame's monotonic index over frames authoring code ran on. Retained
+    /// state stamps it to notice a gap (it was skipped); paint-only frames advance
+    /// nothing. See [`Self::render_frame_id`].
     #[inline]
     pub const fn frame_id(&self) -> u64 {
         self.frame_runtime.frame_id
     }
 
-    /// This frame's monotonic index among the frames that reached the
-    /// screen, bumped once per `Self::frame` before either record pass —
-    /// so both passes of one frame observe the same value.
-    ///
-    /// For code measuring what the display saw. It counts paint-only frames
-    /// too, so a gap in it does *not* mean the reader was skipped: an idle
-    /// window painting a caret blink advances this while no record pass runs
-    /// at all. Anything asking "was I skipped" wants [`Self::frame_id`].
+    /// This frame's monotonic index among frames that reached the screen. Counts
+    /// paint-only frames, so use [`Self::frame_id`] to detect a skipped reader.
     #[inline]
     pub const fn render_frame_id(&self) -> u64 {
         self.frame_runtime.render_frame_id
     }
 
-    /// Shape `run` and return its geometry — caret positions,
-    /// click-to-offset, selection rects.
-    ///
-    /// Only for the byte↔position mapping. **Measuring and painting text
-    /// need nothing from here**: record a `Shape::Text` and layout shapes
-    /// it, contributing its size like any other content.
-    ///
-    /// **`&mut self` is a choice, not a requirement.** The shaper carries
-    /// its own interior mutability, so `&self` compiles perfectly well —
-    /// it just moves where this fails.
-    ///
-    /// Probing is not read-only: a cache miss shapes the run, and an
-    /// evicted buffer is rebuilt on the spot. So the returned probe holds
-    /// the shaper's *exclusive* lease until it drops, and borrowing `Ui`
-    /// mutably is what makes the compiler's idea of exclusivity agree
-    /// with the `RefCell`'s — a second overlapping probe becomes E0499 at
-    /// build time instead of a panic in a running app. The cost is that
-    /// the borrow is coarse: it locks all of `Ui`, not just the shaper,
-    /// because a method signature cannot say "exclusive on this field".
-    ///
-    /// Sequential probes are fine — end one with a block, or let a
-    /// temporary drop at the end of its statement, before taking the
-    /// next.
-    ///
-    /// Cheap to call repeatedly on a stable run: shaped buffers are
-    /// cached by the run's own parameters, so a per-frame probe of
-    /// unchanged text is a lookup, not a reshape.
+    /// Shape `run` and return its geometry (caret positions, click-to-offset,
+    /// selection rects). `&mut self` so an overlapping second probe is a compile error
+    /// (the probe holds the shaper's exclusive lease) rather than a runtime panic.
     #[inline]
     pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a> {
         self.resources.text().layout(&run)
     }
 
-    /// Every edge the pointer produced this frame, widget by widget.
-    ///
-    /// **The collation half of the input API**, against
-    /// [`Self::response_for`]'s polling half. Poll when a widget wants its own
-    /// state — that is what every widget in this crate does, and what a
-    /// `Response` is for. Reach for this when the *application* wants to know
-    /// what the pointer did without naming everything it could have done it to:
-    /// a list whose ids come from data rather than from call sites, a router
-    /// that dispatches by what was hit, a log.
-    ///
-    /// **Edges, not levels.** A drag's travel is a level, and this reports only
-    /// that a drag started and on what — take the id and poll that one widget
-    /// for as long as the gesture lasts. See
-    /// [`PointerEdge`](crate::PointerEdge).
-    ///
-    /// Read it during the frame's record, for the reason
-    /// [`Self::response_for`] gives: the edges are one-frame state cleared
-    /// between frames, and routed against a snapshot taken when the pass opened.
-    /// Order is by button, then press before release; two widgets touched by
-    /// two buttons in one frame both appear.
+    /// Every edge the pointer produced this frame, widget by widget: the collation
+    /// counterpart to [`Self::response_for`]'s polling. Edges, not levels (see
+    /// [`PointerEdge`](crate::PointerEdge)). Read during record.
     #[inline]
     pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
         self.input.pointer_actions()
     }
 
-    /// Move keyboard focus to `id`. Bypasses [`FocusPolicy`], and takes
-    /// effect at once rather than asking anything.
-    ///
-    /// [`Self::focus`] reads back immediately, but key-class routing
-    /// does not move until the next record pass: this pass's keystrokes
-    /// were already routed by the scope path resolved at its start. A
-    /// widget that blurs itself on Escape therefore does not also hand
-    /// that Escape to the overlay around it.
+    /// Move keyboard focus to `id` now, bypassing [`FocusPolicy`]. Key-class routing
+    /// moves next record pass, so a widget that blurs on Escape does not also hand it
+    /// to the overlay around it.
     #[inline]
     pub const fn set_focus(&mut self, id: WidgetId) {
         self.input.set_focus(Some(id));
     }
 
-    /// Leave nothing focused. The clearing half of [`Self::set_focus`],
-    /// and subject to the same routing lag.
+    /// Leave nothing focused; same routing lag as [`Self::set_focus`].
     #[inline]
     pub const fn clear_focus(&mut self) {
         self.input.set_focus(None);
     }
 
-    /// Ask for IME text this frame, with `caret` — in the frame's logical
-    /// px, as [`ResponseState::rect`](crate::ResponseState) is — where the
-    /// platform places its candidate list.
-    ///
-    /// A level asked for on every frame it is wanted, like
-    /// [`Self::set_cursor`]: a frame with no call turns IME off, so a
-    /// widget that loses focus, or stops recording, releases it without
-    /// saying so. The focused text widget calls it; while it does, an
-    /// input method's composition arrives through [`Self::ime_preedit`]
-    /// and its commits among [`Self::keyboard_events`].
+    /// Ask for IME text this frame, with `caret` (logical px) where the platform
+    /// places its candidate list. A level asked for every frame it is wanted; a frame
+    /// with no call turns IME off.
     ///
     /// # Panics
     ///
@@ -1572,79 +967,41 @@ impl Ui {
         self.window_requests.levels.ime = Some(caret);
     }
 
-    /// The input method's uncommitted text, for the focused widget to draw
-    /// at its caret — `None` when no composition is live, or when it
-    /// belongs to a widget that has since lost focus.
-    ///
-    /// A widget receives it only while it asks for IME text with
-    /// [`Self::request_ime`]. The committed text arrives separately, among
-    /// [`Self::keyboard_events`], typed in place.
+    /// The input method's uncommitted text, for the focused widget to draw at its
+    /// caret; `None` when no composition is live.
     #[inline]
     pub fn ime_preedit(&self) -> Option<ImePreedit<'_>> {
         self.input.ime_preedit()
     }
 
-    /// Whether the focus came from the keyboard — the focus ring is
-    /// showing — rather than from a press: CSS's `:focus-visible`. A Tab
-    /// move sets it and a left press clears it; [`Self::set_focus`] keeps
-    /// whichever the last input chose.
-    ///
-    /// What an opener reads to tell a keyboard open from a click, so that
-    /// only the keyboard's moves focus into what it opened.
+    /// Whether focus came from the keyboard (focus ring showing) rather than a
+    /// press, like CSS `:focus-visible`.
     #[inline]
     pub const fn is_focus_visible(&self) -> bool {
         self.input.focus_visible()
     }
 
-    /// Move keyboard focus to the first Tab stop recorded under
-    /// `ancestor`, as a popup opened from the keyboard does — the twin of
-    /// [`Self::is_focus_within`]. A dialog needs no call: focus moves into
-    /// every [`Layer::Modal`] root on the frame it appears.
-    ///
-    /// Takes effect at the end of this frame, against the tree this frame
-    /// recorded, so an overlay that opens and asks on the same frame is
-    /// found. Nothing moves when `ancestor` holds no stop or was not
-    /// recorded.
-    ///
-    /// Focus goes back to the widget that held it when `ancestor` leaves
-    /// the tree, as an overlay does when it closes — the framework keeps
-    /// that, so the overlay does not have to.
+    /// Move focus to the first Tab stop under `ancestor`, as a popup opened from the
+    /// keyboard does. Takes effect at the end of this frame; focus returns to the
+    /// previous holder when `ancestor` leaves the tree.
     #[inline]
     pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
         self.input.focus_first_within(ancestor);
     }
 
-    /// Current pointer position in logical pixels (surface space), or
-    /// `None` if the pointer has left the surface.
-    ///
-    /// `&mut` because reading it auto-asserts a [`PointerWake::MOVE`]
-    /// watch: output derived from the raw pointer may change on any
-    /// move, so moves must keep triggering repaints even when the hover
-    /// target doesn't change — otherwise pointer-derived paint (e.g. a
-    /// proximity highlight) goes stale on screen until an unrelated
-    /// event forces a frame. Like every watch, it lapses as soon as a
-    /// record pass stops reading. Use [`Self::pointer_local`] when the
-    /// output should be relative to a widget, and
-    /// [`Self::peek_pointer_pos`] when this frame is already awake for
-    /// another reason.
-    ///
-    /// This is the *raw* pointer, so it ignores who owns input. For "is
-    /// the pointer on me" styling prefer [`Self::is_hover_within`], which
-    /// routes through the hit index and is therefore occlusion- and
-    /// overlay-aware.
+    /// Pointer position in logical pixels (surface space), or `None` off-surface.
+    /// `&mut` because reading auto-asserts a [`PointerWake::MOVE`] watch so
+    /// pointer-derived paint keeps repainting. For hover styling prefer
+    /// [`Self::is_hover_within`].
     #[inline]
     pub const fn pointer_pos(&mut self) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos()
     }
 
-    /// Current pointer position in `id`'s pre-transform local logical
-    /// coordinates. `None` when the pointer is off-surface or the
-    /// widget did not arrange in the previous frame.
-    ///
-    /// Reading auto-asserts a [`PointerWake::MOVE`] watch, keeping
-    /// pointer-local paint reactive while the cursor moves within one
-    /// hover target. [`Self::peek_pointer_local`] is the unwatched read.
+    /// Pointer position in `id`'s pre-transform local coordinates. `None` when
+    /// off-surface or the widget did not arrange last frame. Auto-watches
+    /// [`PointerWake::MOVE`]; see [`Self::peek_pointer_local`].
     #[inline]
     pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
@@ -1652,57 +1009,37 @@ impl Ui {
             .pointer_local_for(id, &self.cascade, &self.layout)
     }
 
-    /// Currently-held modifier keys. State persists across frames; only
-    /// `ModifiersChanged` events mutate it.
-    ///
-    /// Reading auto-asserts a [`KeyboardWake::MODIFIER`] watch, so
-    /// modifier-dependent paint updates on both press and release
-    /// without another input event. When the read is instead gated on
-    /// something that already woke this frame — the overwhelmingly
-    /// common `if response.clicked() { … }` — use
-    /// [`Self::peek_modifiers`] and don't pay for the wake.
+    /// Currently held modifier keys. Auto-watches [`KeyboardWake::MODIFIER`]; when
+    /// gated on something that already woke the frame, use [`Self::peek_modifiers`].
     #[inline]
     pub const fn modifiers(&mut self) -> Modifiers {
         self.watch_keyboard(KeyboardWake::MODIFIER);
         self.input.modifiers()
     }
 
-    /// [`Self::pointer_pos`] without the [`PointerWake::MOVE`] watch.
-    ///
-    /// Correct exactly when something else already guarantees a frame
-    /// whenever this value could matter — reading the press position
-    /// inside a click branch, say. Wrong when paint is derived from it
-    /// continuously: the pointer will move, no frame will run, and the
-    /// stale result stays on screen.
+    /// [`Self::pointer_pos`] without the [`PointerWake::MOVE`] watch. Right only
+    /// when another event guarantees the frame; stale for continuously derived paint.
     #[inline]
     pub const fn peek_pointer_pos(&self) -> Option<Vec2> {
         self.input.pointer_pos()
     }
 
-    /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch.
-    /// Same caveat as [`Self::peek_pointer_pos`].
+    /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch; same caveat as
+    /// [`Self::peek_pointer_pos`].
     #[inline]
     pub fn peek_pointer_local(&self, id: WidgetId) -> Option<Vec2> {
         self.input
             .pointer_local_for(id, &self.cascade, &self.layout)
     }
 
-    /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch
-    /// — "which modifiers were held when the thing that woke this frame
-    /// happened", the shape almost every modifier read actually wants.
-    ///
-    /// Use [`Self::modifiers`] instead when a bare modifier press or
-    /// release must repaint on its own, with nothing else happening: an
-    /// accel-underline overlay that appears on Alt, a modifier-state
-    /// debug readout, a drag whose snap targets change under Ctrl while
-    /// the pointer holds still.
+    /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch. Use the
+    /// watched read when a bare modifier press must repaint on its own.
     #[inline]
     pub const fn peek_modifiers(&self) -> Modifiers {
         self.input.modifiers()
     }
 
-    /// What a press on a non-focusable widget does to focus. See
-    /// [`FocusPolicy`].
+    /// What a press on a non-focusable widget does to focus. See [`FocusPolicy`].
     #[inline]
     pub const fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy()
@@ -1714,39 +1051,22 @@ impl Ui {
         self.input.set_focus_policy(p);
     }
 
-    /// Which "did input arrive?" signal the frame gate consults before
-    /// it commits to a full record pass. See [`InputPolicy`].
+    /// Which input signal gates a full record pass. See [`InputPolicy`].
     #[inline]
     pub const fn input_policy(&self) -> InputPolicy {
         self.input.input_policy()
     }
 
-    /// Set the record gate's input signal. Default
-    /// [`InputPolicy::OnDelta`] skips record on inert pointer moves and
-    /// scroll-over-nothing; [`InputPolicy::Always`] is for telemetry /
-    /// custom canvases that need every event.
+    /// Set the record gate's input signal. [`InputPolicy::OnDelta`] skips inert
+    /// pointer moves; [`InputPolicy::Always`] sees every event.
     #[inline]
     pub const fn set_input_policy(&mut self, p: InputPolicy) {
         self.input.set_input_policy(p);
     }
 }
 
-/// The doors past [`Ui`]'s private fields, and the only ones.
-///
-/// Every field is private so that production code outside this module reaches
-/// the state through a named method — see the type's own doc for why. The
-/// white-box suites need more than that surface: they assert on tree
-/// contents, measure-cache descriptors, cascade rows and routing state that
-/// no widget has any business reading. They reach it here, in a module that
-/// does not exist in a shipped build: `pub` items for the integration suites
-/// outside the crate, `pub(crate)` ones for this crate's own tests, benches
-/// and harness.
-///
-/// None of these carry `#[inline]`, unlike the one-line façade above. Nothing
-/// here reaches an optimized build that would want it: `cfg(test)` compiles
-/// under `dev` at `opt-level = 0`, where the attribute changes nothing, and
-/// the bench profile is fat-LTO with one codegen unit, which inlines across
-/// the crate regardless.
+/// The doors past [`Ui`]'s private fields, for white-box suites and benches.
+/// No `#[inline]`: nothing here reaches an optimized build that would want it.
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::widgets::theme::Theme;
@@ -1783,12 +1103,9 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
 
-    /// What the frame harness reads and seeds: it drives frames the way a
-    /// host does, and asserts on the routing a host never sees.
+    /// What the frame harness reads and seeds.
     impl Ui {
-        /// The input machine itself, for tests that assert on routing
-        /// state the public surface deliberately does not expose —
-        /// capture targets, the raw per-layer streams, the action flag.
+        /// The input machine, for tests asserting routing state the public surface hides.
         pub(crate) const fn input(&self) -> &InputState {
             &self.input
         }
@@ -1801,39 +1118,32 @@ pub(crate) mod internals {
             &self.frame_runtime
         }
 
-        /// Set the last frame's stamp. `Some` makes the next frame warm, so
-        /// it skips the warmup pass. `None` makes it a cold start.
+        /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
+        /// cold start.
         pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
             self.frame_runtime.prev_stamp = stamp;
         }
 
-        /// Replace the display the next frame lays out at, as the window
-        /// driver does before each frame.
+        /// Replace the display the next frame lays out at, as the window driver does.
         pub(crate) const fn set_display(&mut self, display: Display) {
             self.display = display;
         }
     }
 
-    /// What the benches read as well as the tests: the tree walkers and
-    /// measure-cache cases take `Self::forest`, and the cascade bench runs
-    /// its engine over both tables.
+    /// Read by benches as well as tests.
     #[cfg(any(test, feature = "bench"))]
     impl Ui {
-        /// The whole forest, for the callers that re-run a pass over it —
-        /// the cascade engine and the measure cache both walk every layer.
+        /// The whole forest, for callers that re-run a pass over every layer.
         pub(crate) const fn forest(&self) -> &Forest {
             &self.forest
         }
 
-        /// The font database's epoch, for the tests and benches that
-        /// re-compute a reuse key this `Ui` folds it into.
+        /// The font database's epoch, for recomputing a reuse key this `Ui` folds it into.
         pub(crate) fn font_epoch(&self) -> u32 {
             self.resources.text().font_epoch()
         }
 
-        /// The whole layout table, for the handful of callers that re-run a
-        /// pass over it — the cascade engine and `InputState::response_for`
-        /// both walk every layer, so neither can take one layer's columns.
+        /// The whole layout table, for callers that walk every layer.
         pub(crate) const fn layout_tables(&self) -> &Layout {
             &self.layout
         }
@@ -1842,62 +1152,39 @@ pub(crate) mod internals {
     /// Only this crate's own tests call these.
     #[cfg(test)]
     impl Ui {
-        /// [`Self::input`], mutably — for tests that *drive* routing
-        /// state rather than assert on it (planting focus, taking the
-        /// action flag).
+        /// [`Self::input`], mutably, for tests that drive routing state.
         pub(crate) fn input_mut(&mut self) -> &mut InputState {
             &mut self.input
         }
 
-        /// One layer's recorded tree — its `records` columns, `rollups`,
-        /// `shapes`, `paint_anims` and `roots`.
-        ///
-        /// The [`Self::layout`] of the scene side, and for the same reason:
-        /// indexing `forest().trees[layer]` was what all but a handful of
-        /// assertions did with a [`Forest`].
+        /// One layer's recorded tree.
         pub(crate) fn tree(&self, layer: Layer) -> &Tree {
             &self.forest.trees[layer]
         }
 
-        /// One layer's arranged columns — `text_shapes`, `text_spans`,
-        /// `rect_hash`, and the `rect` column [`Self::arranged_rect`] reads
-        /// one cell of.
-        ///
-        /// Takes the layer rather than handing the whole table back for a
-        /// caller to index, because one layer's columns is what all but a
-        /// handful of assertions want, and a call reads better there than a
-        /// call followed by an index. The six callers that want the table
-        /// itself take [`Self::layout_tables`].
+        /// One layer's arranged columns. Callers wanting the whole table use
+        /// [`Self::layout_tables`].
         pub(crate) fn layout(&self, layer: Layer) -> &LayerLayout {
             &self.layout[layer]
         }
 
-        /// `node`'s arranged rect on `layer` — pre-transform, unclipped,
-        /// world coords.
-        ///
-        /// The commonest thing a layout assertion asks, and it routes through
-        /// [`Layout::arranged_rect`] so a test reads the rect the same way
-        /// `ResponseState::layout_rect` does. Takes the pair rather than an
-        /// [`Endpoint`] because a test holding a `NodeId` off a record
-        /// closure has no endpoint to hand over.
+        /// `node`'s arranged rect on `layer`: pre-transform, unclipped, world coords.
         pub(crate) fn arranged_rect(&self, layer: Layer, node: NodeId) -> Rect {
             self.layout.arranged_rect(Endpoint { layer, node })
         }
 
-        /// The shaper the recorder measures and paints text with — the one
-        /// piece of [`UiResources`](crate::ui::resources::UiResources) any
-        /// test asks for, and all it gets: the cache-population and
-        /// measure-count probes the text suites assert on.
+        /// The shaper the recorder measures and paints text with, for cache and measure-count
+        /// probes.
         pub(crate) fn shaper(&self) -> &TextShaper {
             self.resources.text()
         }
 
-        /// The animation rows, for the tests that count what is resident.
+        /// The animation rows, for tests that count what is resident.
         pub(crate) fn anim_mut(&mut self) -> &mut AnimMap {
             &mut self.anim
         }
 
-        /// Narrower again: only the winit host's own tests write here.
+        /// Only the winit host's own tests write here.
         #[cfg(feature = "winit")]
         pub(crate) fn frame_runtime_mut(&mut self) -> &mut FrameRuntime {
             &mut self.frame_runtime
@@ -1907,7 +1194,7 @@ pub(crate) mod internals {
             &self.window_requests
         }
 
-        /// Narrower again: only the winit host's own tests write here.
+        /// Only the winit host's own tests write here.
         #[cfg(feature = "winit")]
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
@@ -1915,19 +1202,9 @@ pub(crate) mod internals {
     }
 
     impl Ui {
-        /// The active theme, for in-place edits
-        /// (`ui.theme_mut().button.defaults.animation = …`).
-        ///
-        /// Gated, because in-place mutation is a fixture affordance
-        /// rather than how an app dresses a `Ui`: build the [`Theme`]
-        /// you want and hand it over with
-        /// [`set_theme`](Ui::set_theme) — which is what every caller in
-        /// this workspace does, and what the `winit` module's example
-        /// shows. This exists so a test can nudge one axis of an
-        /// already-running harness without rebuilding the bundle.
-        ///
-        /// Copy-on-write, so a handle taken from [`Ui::theme`] keeps the
-        /// values it was taken with and the `Ui` moves on alone.
+        /// The active theme, for in-place edits. Gated: apps build a [`Theme`] and call
+        /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
+        /// keeps its values.
         #[inline]
         pub fn theme_mut(&mut self) -> &mut Theme {
             Rc::make_mut(&mut self.theme)

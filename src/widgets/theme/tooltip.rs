@@ -1,5 +1,4 @@
-//! What a tooltip wears, and how long a hover has to last before it
-//! appears.
+//! What a tooltip wears, and how long a hover must last before it appears.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
@@ -14,10 +13,7 @@ use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 use std::time::Duration;
 
-/// Visuals + timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles
-/// paint into `Layer::Tooltip` after the pointer has hovered a trigger
-/// for `delay` seconds; the `warmup` window keeps subsequent tooltips
-/// instant for a short period after one was dismissed.
+/// Visuals and timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles paint into `Layer::Tooltip` after `delay` of hover; the `warmup` window keeps later tooltips instant after one is dismissed.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
@@ -28,18 +24,12 @@ pub struct TooltipTheme {
     /// Padding between chrome and the text.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
-    /// Cap on the bubble's outer size. Width gates wrap; height is
-    /// usually `INF` so tall tooltips just keep growing. Builder
-    /// callers override via `.max_size(...)`. The
-    /// infinite height axis round-trips because `Size`'s serde maps
-    /// non-finite axes to `None`.
+    /// Cap on the bubble's outer size. Width gates wrap; height is usually `INF`. Override via `.max_size(...)`. Infinite axes round-trip because `Size`'s serde maps non-finite to `None`.
     pub max_size: Size,
-    /// Seconds the pointer must rest on the trigger before the bubble
-    /// shows (cold start).
+    /// Seconds the pointer must rest on the trigger before the bubble shows (cold start).
     #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub delay: Duration,
-    /// Seconds after a tooltip is dismissed during which the next
-    /// tooltip appears instantly (warmup). Set to 0 to disable.
+    /// Seconds after a dismissal during which the next tooltip is instant; 0 disables.
     #[serde(with = "crate::widgets::theme::serde::duration_seconds")]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
@@ -48,9 +38,7 @@ pub struct TooltipTheme {
 }
 
 impl TooltipTheme {
-    /// Visit every text slot this theme owns — drives `Theme::scale_text`.
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Visit every text slot this theme owns, driving `Theme::scale_text`. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             text,

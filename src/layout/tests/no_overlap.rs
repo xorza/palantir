@@ -1,7 +1,4 @@
-//! Showcase regressions where two cells from a Grid (or two
-//! back-to-back grids inside a vstack) ended up painting on top of
-//! each other. Pinned via arranged-rect order plus a render-pass
-//! check on emitted `DrawText` x positions.
+//! Showcase regressions where two Grid cells (or back-to-back grids in a vstack) painted over each other, pinned by arranged-rect order and `DrawText` x positions.
 use crate::Ui;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
@@ -45,10 +42,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         });
 }
 
-/// Showcase regressions: two cells in a Grid with a wrapping text column
-/// must not paint on top of each other. Pinned across two topologies:
-/// a default-sized Grid with two Hug cols, and a FILL-sized Grid with
-/// Hug + Fill cols (the property-grid pattern).
+/// Two cells in a Grid with a wrapping text column must not overlap, across a default-sized Grid with two Hug cols and a FILL Grid with Hug + Fill cols (the property-grid pattern).
 #[test]
 fn grid_columns_with_wrapping_text_do_not_overlap() {
     type Case = (&'static str, Option<Sizing>, [Track; 2], (f32, f32));
@@ -117,9 +111,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
             lr.max().x + gaps.1,
             "case: {label_id}: the right cell starts one gap past the left",
         );
-        // The wrapping column takes what the right one leaves: all of it
-        // past the label and the gap. A Fill column's floor is its
-        // min-content, reserved before the Hug column grows.
+        // The wrapping column takes what the right one leaves, past the label and gap; a Fill column's floor is its min-content, reserved before the Hug column grows.
         assert_eq!(lr.size.w, 800.0 - gaps.1 - 84.0, "case: {label_id}");
     }
 }
@@ -206,11 +198,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let l2 = layout.rect[prop_label.unwrap().idx()];
     let r2 = layout.rect[prop_value.unwrap().idx()];
 
-    // Mono at 14 px is 7 px a char, inside a section inset 8 + 1 px by
-    // its padding and border, so 1500 − 18 = 1482 wide. Two Hug columns:
-    // the 122-char paragraph fits on one line, 854 px, then the 16 px gap.
-    // The property grid: "Title:" is 42, and the Fill value column takes
-    // the rest, 1482 − 42 − 16 = 1424.
+    // Mono 14 px is 7 px a char, in a section inset 8 + 1 px by padding and border: 1500 − 18 = 1482 wide. Two Hug columns: the 122-char paragraph fits one line, 854 px, then the 16 px gap. Property grid: "Title:" is 42, the Fill value column takes 1482 − 42 − 16 = 1424.
     assert_eq!([l1.min.x, l1.size.w], [9.0, 854.0], "two-hug-columns: left");
     assert_eq!(
         [r1.min.x, r1.size.w],
@@ -225,8 +213,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     );
 }
 
-/// Render-pass repro: build the property-grid pattern and inspect
-/// the emitted `DrawText` commands directly.
+/// Render-pass repro: the property-grid pattern, inspecting emitted `DrawText` commands.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
     let mut h = UiHarness::with_text(UVec2::new(1500, 900));
@@ -281,8 +268,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
     );
 }
 
-/// Diagnostic: full showcase repro. Catches the screenshot bug where
-/// two distinct texts emit `DrawText` at the same (x, y).
+/// Diagnostic full-showcase repro for the bug where two texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
     let mut h = UiHarness::new(UVec2::new(1620, 980));

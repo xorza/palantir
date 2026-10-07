@@ -23,9 +23,7 @@ impl PanelExtras {
         transform: TranslateScale::IDENTITY,
     };
 
-    /// Feed what measure and arrange read: the gaps, the justification
-    /// and the child alignment. The transform is left out, because it
-    /// moves no rect — see [`Self::hash_transform`].
+    /// Feed what measure and arrange read: gaps, justification, child alignment. The transform moves no rect, so it is left out; see [`Self::hash_transform`].
     #[inline]
     pub(crate) fn hash_layout<H: hash::Hasher>(&self, h: &mut H) {
         let gaps_u32 = self.gaps.as_u32();
@@ -35,9 +33,7 @@ impl PanelExtras {
         h.write_u64(packed);
     }
 
-    /// Feed the transform under visual canonicalization. The caller
-    /// feeds nothing for an identity transform, which is what a node
-    /// without a panel row carries too.
+    /// Feed the transform under visual canonicalization. Callers feed nothing for an identity transform, which is what a node without a panel row carries.
     #[inline]
     pub(crate) fn hash_transform<H: hash::Hasher>(&self, h: &mut H) {
         self.transform.translation.hash_visual(h);

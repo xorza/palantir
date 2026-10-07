@@ -17,23 +17,10 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
-/// `DamageRegion::collapse_from` intersects each input rect with the
-/// surface before folding it into the region. Without this, a
-/// paint_rect whose bounds extend past the viewport (root-level
-/// transformed canvas with no clip ancestor, plus high zoom —
-/// `parent_clip` stays `None` so `cascade::compute_paint_rect` never
-/// clips down) would inflate `total_area` past the threshold despite
-/// only a tiny visible fraction. Reproduces the darkroom graph
-/// pan/zoom regression where a few zoomed-up node panels off-screen
-/// would force `Damage::Full` each pan tick.
+/// `DamageRegion::collapse_from` clips each rect to the surface, so a huge rect with a tiny visible part doesn't force `Full`.
 #[test]
 fn partial_when_oversized_rect_lies_mostly_off_surface() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
-    // 1000×1000 paint_rect anchored at (90, 90): only a 10×10 corner
-    // pokes into the surface, the rest sticks off-screen. Pre-fix:
-    // rect.area() = 1e6, ratio = 1e6 / 1e4 = 100 ⇒ Full. Post-fix:
-    // collapse_from clips to (90,90,10,10), area = 100, ratio = 0.01
-    // ≪ 0.7 ⇒ Partial.
     let oversized = Rect::new(90.0, 90.0, 1000.0, 1000.0);
     assert_eq!(
         oversized.clamp_to(surface),
@@ -41,7 +28,6 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
         "sanity: 1000×1000 rect at (90,90) intersects surface in a 10×10 corner",
     );
     let collapsed = DamageRegion::collapse_from(&[oversized], f32::INFINITY, surface);
-    // Region stores the clipped rect, not the raw input.
     let stored: Vec<_> = collapsed.region.iter_rects().collect();
     assert_eq!(
         stored,
@@ -55,11 +41,7 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
     );
 }
 
-/// Sister to the above: a rect that *fully* covers the surface
-/// (regardless of how much extends past) still trips Full. The intent
-/// of the surface-clamp is "don't count pixels that can't be painted,"
-/// not "don't ever Full" — when the visible portion is the whole
-/// viewport, Full is still the right call.
+/// A rect fully covering the surface still trips Full, however far it overflows.
 #[test]
 fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
@@ -74,9 +56,7 @@ fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     );
 }
 
-/// A rect that lies entirely off the surface contributes nothing to
-/// the region (zero-area after clipping, dropped). Pins the "early-out
-/// on degenerate clip" branch in `collapse_from`.
+/// A rect entirely off the surface is dropped from the region.
 #[test]
 fn fully_off_surface_rect_is_dropped_from_region() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
@@ -88,13 +68,7 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     );
 }
 
-/// First-seen Vacant arm short-circuits when `curr_rect` lies entirely
-/// off the surface. The hashmap insert and rect push would both be
-/// wasted: the rect is dropped by `collapse_from`'s surface-clip
-/// downstream, and the prev entry would just describe an invisible
-/// snapshot that the next frame's diff would have to evict. Pins the
-/// pan/zoom workload where a node panned past the viewport edge
-/// contributes nothing useful to damage bookkeeping.
+/// A first-seen node entirely off the surface skips the `prev` insert, as `collapse_from` would drop its rect.
 #[test]
 fn off_surface_first_seen_node_skips_prev_insert() {
     let straddling = [
@@ -114,11 +88,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
 
     let mut h = UiHarness::new(DISPLAY.physical);
     frame(&mut h, |ui| {
-        // Wrap in a transformed parent: `Panel::transform` applies to
-        // the body (children), so the inner panel's chrome paint_rect
-        // = parent_transform.apply_rect(inner.layout_rect). With a
-        // (+500,+500) parent translate over a 200×200 surface, the
-        // inner panel's chrome lands at (500,500,50,50) — wholly off.
+        // `Panel::transform` applies to the body, so the chrome lands wholly off a 200×200 surface.
         Panel::canvas()
             .id(WidgetId::from_hash("outer"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -148,28 +118,16 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     );
 }
 
-// DamageEngine rects must be in *screen space*. When an ancestor has a
-// transform, the rendered position of a node differs from its layout
-// rect; the damage rect, the prev_frame snapshot, and the encoder/
-// backend scissor all need to track that screen-space position.
+// Damage rects are in screen space.
 
-/// Soundness pin for the tier's entry-less leg: a node skipped by the
-/// Vacant-arm off-surface filter (no `prev` snapshot) that scrolls
-/// *into* view under tier 1.5 is covered by the curr-extent push and
-/// gets its snapshot inserted in the same pass, a following still
-/// frame is a clean Skip (tier 1 at the subtree root), a second move
-/// clears its previous position (the inserted snapshot feeds the
-/// prev-extent fold), a content change on it lands its rect, and
-/// removing it while visible clears its pixels (the eviction tail
-/// finds the snapshot). The last two legs regress without the tier-1.5
-/// insert: the second move smears (old pixels stay) and the removal
-/// computes no damage outright.
+/// A node skipped by the first-seen off-surface filter that scrolls into view
+/// is covered by the curr-extent push and snapshotted in the same pass. A still
+/// frame then Skips, a move clears its old position, a content change lands its
+/// rect, and removal clears its pixels. The last two regress without the insert.
 #[test]
 fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    // Surface is 200×200 (test DISPLAY). Three 100-wide frames: "c"
-    // starts at x = 200 — exactly off-surface (edge-touching rects
-    // don't intersect), so its Vacant visit skips the snapshot insert.
+    // "c" starts at x = 200, exactly off-surface (edge-touching rects don't intersect).
     let build = |dx: f32, c_fill: Option<RgbaF32>, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("outer"))
@@ -192,10 +150,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     };
     frame(&mut h, |ui| build(0.0, Some(RED), ui));
 
-    // Scroll left: "c" enters at (100..200). Tier 1.5 fires at
-    // "inner"; "c" had no snapshot (off-surface skip last frame) — the
-    // curr-extent push covers its pixels and the insert leg snapshots
-    // it now that it's visible.
+    // Scroll left: "c" enters at 100..200; the push covers it and the insert snapshots it.
     let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
     let region = Damage::expect_partial(damage);
     let covers_c = region
@@ -206,13 +161,10 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         "curr-extent push must cover the newly revealed node. region = {region:?}",
     );
 
-    // Still frame: nothing changed — tier 1 skips at the root.
     let damage = frame(&mut h, |ui| build(-100.0, Some(RED), ui));
     assert_eq!(damage, None, "still frame after the move");
 
-    // Second move: "c" shifts to (0..100). Its just-inserted snapshot
-    // joins the prev-extent fold, so its old pixels at (100..200)
-    // repaint alongside the new position.
+    // Second move: "c" at 0..100; its snapshot joins the prev-extent fold, repainting 100..200.
     let damage = frame(&mut h, |ui| build(-200.0, Some(RED), ui));
     let region = Damage::expect_partial(damage);
     for (label, probe) in [
@@ -225,8 +177,6 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         );
     }
 
-    // Content change on "c" (now snapshotted, at 0..100): the walk
-    // descends and the changed-paints arm damages its rect.
     let damage = frame(&mut h, |ui| build(-200.0, Some(BLUE), ui));
     let region = Damage::expect_partial(damage);
     let rects: Vec<Rect> = region.iter_rects().collect();
@@ -236,8 +186,6 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         "content change on the revealed node damages its rect",
     );
 
-    // Remove "c" while visible: the eviction tail finds the inserted
-    // snapshot and clears its pixels.
     let damage = frame(&mut h, |ui| build(-200.0, None, ui));
     let covers_removed = match damage {
         Some(Damage::Full) => true,

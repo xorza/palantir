@@ -3,23 +3,11 @@
 use crate::window::window_placement::WindowPlacement;
 use glam::UVec2;
 
-/// A window's live geometry, assembled on demand by
-/// [`Ui::window_geometry`](crate::Ui::window_geometry) so the app can
-/// persist and restore size and placement across launches. A computed
-/// view, not stored state: the size comes from the frame's `Display` (the
-/// single source of truth for surface size) and the placement from the
-/// host's window-manager facts. Backend-agnostic (no winit types), and it
-/// shares [`WindowPlacement`] with
-/// [`WindowConfig`](crate::window::window_config::WindowConfig) rather
-/// than restating it, so the restore is a copy.
+/// A window's live geometry, assembled by [`Ui::window_geometry`](crate::Ui::window_geometry) for persisting and restoring; shares [`WindowPlacement`] with [`WindowConfig`](crate::window::window_config::WindowConfig), so restore is a copy.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WindowGeometry {
-    /// Inner (content) size in logical pixels — DPI-independent, so it
-    /// round-trips through [`WindowConfig::with_inner_size()`](crate::window::window_config::WindowConfig::with_inner_size) unchanged across
-    /// monitors of different scale.
+    /// Inner (content) size in logical pixels.
     pub inner_size: UVec2,
-    /// Where the window sits, as
-    /// [`WindowConfig::with_placement`](crate::window::window_config::WindowConfig::with_placement)
-    /// takes it back on restore.
+    /// Where the window sits.
     pub placement: WindowPlacement,
 }

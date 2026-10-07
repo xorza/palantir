@@ -1,56 +1,30 @@
-//! The per-paint-row arena: one [`Paint`] per pixel-producing
-//! contribution, plus the per-node index into it.
-//!
-//! Apart from the rest of the cascade product because these rows are
-//! read on a different schedule — only damage's per-shape legs touch
-//! them, behind a `node_spans[i]` indirection its subtree-skip fast path
-//! never follows.
+//! The per-paint-row arena: one [`Paint`] per pixel-producing contribution,
+//! plus the per-node index into it. Split from the rest of the cascade
+//! because only damage's per-shape legs read it.
 
 use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 
-/// One row of a node's paint span — chrome (row 0 when the node has
-/// chrome), one direct shape, or a child marker, in record order.
-/// Single source of truth for "did this pixel-producer change since
-/// last frame?" — including paint *order*: child markers put the
-/// shape/child interleave into the span, so the damage diff's row
-/// matcher sees z-order changes (a raised node, a shape crossing a
-/// child boundary) as row reorders, not silent no-ops.
+/// One row of a node's paint span: chrome (row 0), one direct shape, or a
+/// child marker, in record order. Child markers put shape/child interleave
+/// into the span so damage sees z-order changes as row reorders.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Paint {
-    /// Screen-space rect after parent transform + clip. Child markers
-    /// carry `Rect::ZERO` — they produce no pixels themselves (the
-    /// child's own rows do); damage computes a child's painted extent
-    /// on demand from its subtree's rows when an order check needs it.
+    /// Screen-space rect after parent transform + clip. Child markers carry
+    /// `Rect::ZERO`.
     pub(crate) screen: Rect,
-    /// Authoring hash. For chrome: the owner's `ChromeRow::hash`.
-    /// For shape: `Tree.shapes.hashes[shape_idx]`. For a child marker:
-    /// the child's `WidgetId` bits — its stable identity across
-    /// reorders.
+    /// Authoring hash: the chrome row hash, the shape hash, or for a child
+    /// marker the child's `WidgetId` bits.
     pub(crate) hash: ContentHash,
 }
 
-/// The link rides in `hash` because a free block is not a paint row:
-/// nothing reads any field of these slots until the block is
-/// re-allocated, and re-allocation overwrites them.
-///
-/// This is the *damage* arena's element, not this module's `rows` — that
-/// one is cleared and refilled wholesale every frame and needs no
-/// allocator. The impl lives here because the type does.
+/// The free-list link rides in `hash`; free blocks are never read as rows.
+/// This is the damage arena's element, not `PaintArena::rows`.
 impl BlockSlot for Paint {
-    /// Exact fit. A node's paint span is short — one chrome row plus a
-    /// shape or child marker each, so a handful of rows for almost every
-    /// widget — and against 24-byte rows a 4-slot granule wastes up to
-    /// 96 bytes per span. Measured on `damage/workload/shape_churn_*`
-    /// that inflated the arena by 20-30% and cost 2.9% and 6.8% of the
-    /// two arms purely in lost cache density, because the diff reads
-    /// these spans back every frame.
-    ///
-    /// Exact fit mints a class per distinct row count, which is what
-    /// makes it affordable here: row counts are small integers drawn
-    /// from a bounded set, not the hundreds a glyph run can reach.
+    /// Exact fit: paint spans are a handful of rows, and a larger granule
+    /// measurably cost cache density on `damage/workload/shape_churn_*`.
     const GRANULE: u32 = 1;
 
     fn free_link(next: u32) -> Self {
@@ -65,50 +39,27 @@ impl BlockSlot for Paint {
     }
 }
 
-/// Per-layer paint state: the unified [`Paint`] arena plus a per-node
-/// index into it. A full cascade rebuild resets it; an incremental
-/// pass copies changed spans into retained rows.
+/// Per-layer paint state: the [`Paint`] arena plus a per-node index into it.
 #[derive(Debug, Default)]
 pub(crate) struct PaintArena {
-    /// One [`Paint`] row per chrome contribution (row 0 of a node's
-    /// span when present), direct shape, or immediate-child marker,
-    /// in record order per node. Pushed in pre-order paint order;
-    /// cleared by [`Self::reset_for`].
+    /// One row per chrome contribution, direct shape, or child marker, in
+    /// pre-order paint order.
     pub(crate) rows: Vec<Paint>,
-    /// Per-node [`Span`] into [`Self::rows`]. Empty span
-    /// (`Span::default()`) means the node paints nothing, so this column
-    /// answers "does it paint?" as well as "where are its rows?" — no
-    /// separate presence bitset.
+    /// Per-node [`Span`] into [`Self::rows`]; an empty span means the node
+    /// paints nothing.
     pub(crate) node_spans: Vec<Span>,
 }
 
 impl PaintArena {
-    /// The rows node `i` painted.
-    ///
-    /// The one place a node span is turned into its slice. On the arena
-    /// rather than on the damage walk that reads it most, because the
-    /// walk mutates its own fields while it holds the slice, and a helper
-    /// taking `&self` there would borrow the whole walk.
+    /// The rows node `i` painted. On the arena so the damage walk can hold the
+    /// slice without borrowing itself.
     #[inline]
     pub(crate) fn rows_of(&self, i: usize) -> &[Paint] {
         &self.rows[self.node_spans[i].range()]
     }
 
-    /// Reset both columns for a new frame. `n_nodes` resizes `node_spans`;
-    /// every retained slot is overwritten by
-    /// [`compute_paint_rect`](super::paint_rect::compute_paint_rect).
-    ///
-    /// `rows` is cleared and seeded with `n_nodes` — a rough seed, not a
-    /// bound in either direction. The row count tracks chrome rows,
-    /// shapes and edges rather than nodes, and an invisible node emits
-    /// none at all, so a content-bearing tree lands near `2 * n_nodes`
-    /// while a chromeless, shapeless container tree lands at
-    /// `n_nodes - 1` (child markers only). Since `rows` is cleared and
-    /// never shrunk, capacity converges on the high-water mark after
-    /// warmup and the seed stops mattering; the true upper bound
-    /// (`chrome_table.len() + shapes.records.len() + n_nodes - roots.len()`)
-    /// is not worth threading in for the warmup reallocs alone, and
-    /// would over-reserve whenever a large subtree is hidden.
+    /// Resets both columns for a new frame; `rows` is only seeded with
+    /// `n_nodes`, as capacity converges after warmup.
     pub(super) fn reset_for(&mut self, n_nodes: usize) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
@@ -116,24 +67,13 @@ impl PaintArena {
     }
 }
 
-/// Slice-level reads over a run of paint rows.
-///
-/// Both stores holding `Paint`s hand out bare slices — the cascade's live
-/// [`PaintArena::rows`] and the damage diff's retained
-/// `DamageEngine::paints` — so these belong on the slice rather than on
-/// either owner, which is what kept them scattered as free functions
-/// across two damage files.
+/// Slice-level reads over a run of paint rows, shared by the cascade's
+/// [`PaintArena::rows`] and the damage diff's retained paints.
 pub(crate) trait PaintRows {
-    /// The rows that actually produce pixels, in row order. Child markers
-    /// and fully clipped-away shapes carry a paint-empty screen and drop
-    /// out here.
+    /// Rows that produce pixels, in row order.
     fn screens(&self) -> impl Iterator<Item = Rect>;
 
-    /// Screen-space union of [`Self::screens`], [`Rect::ZERO`] when no
-    /// row produces pixels. The empty ones drop out through
-    /// [`Rect::union`]'s identity: a child marker's zero box cannot drag
-    /// the union to the origin, nor a clipped-away shape's to the clip
-    /// edge.
+    /// Union of [`Self::screens`], [`Rect::ZERO`] when empty.
     fn union_screens(&self) -> Rect;
 
     /// Whether any row produces visible pixels on `surface`.

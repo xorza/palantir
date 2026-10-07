@@ -1,5 +1,4 @@
-//! Chip identity, the reserved badge box, close-over-activate ordering,
-//! keyboard travel, and the page binding a tabbed view writes.
+//! Chip identity, badge box, close-over-activate, keyboard travel, page binding.
 
 use glam::{UVec2, Vec2};
 
@@ -29,8 +28,7 @@ fn strip_id() -> WidgetId {
     WidgetId::from_hash("test.strip")
 }
 
-/// Three chips, keyed 10 / 20 / 30 so a key can never be mistaken for a
-/// slot.
+/// Three chips keyed 10 / 20 / 30 so a key can't be mistaken for a slot.
 fn items(ui: &mut Ui, badge: TabBadge) -> Vec<TabItem> {
     [(10u64, "alpha"), (20, "beta"), (30, "gamma")]
         .into_iter()
@@ -52,9 +50,7 @@ fn strip_frame(h: &mut UiHarness, selected: usize, badge: TabBadge) {
     });
 }
 
-/// Chip ids come from the item key, never from the slot. A strip that
-/// reorders between frames must hand the *same* id to the same tab, or a
-/// click read one phase later would land on whatever slid into the slot.
+/// Chip ids come from the item key, not the slot, across reorders.
 #[test]
 fn chip_ids_follow_the_key_and_not_the_slot() {
     let mut h = UiHarness::new(SURFACE);
@@ -65,8 +61,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
     let alpha = TabStrip::chip_id(strip_id(), 10);
     let before = h.rect(alpha).expect("alpha arranged");
 
-    // The same three items, reversed. Alpha keeps its id and moves from
-    // the leading slot to the trailing one.
+    // Reversed; alpha keeps its id.
     h.prime(2, |ui| {
         let mut items = items(ui, TabBadge::None);
         items.reverse();
@@ -94,9 +89,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
     );
 }
 
-/// The badge is a visibility change, never a layout one: inking the dot
-/// must leave the chip exactly the size it was, or every chip to its
-/// right would shift.
+/// The badge changes visibility, never layout.
 #[test]
 fn the_badge_reserves_the_same_box_idle_and_inked() {
     let mut h = UiHarness::new(SURFACE);
@@ -138,8 +131,7 @@ fn the_badge_reserves_the_same_box_idle_and_inked() {
     );
 }
 
-/// The selection cap adds no height. The selected chip lifts its inner
-/// top inset by exactly the cap, so both chips measure the same.
+/// The selection cap adds no height.
 #[test]
 fn the_selection_cap_adds_no_height() {
     let mut h = UiHarness::new(SURFACE);
@@ -153,9 +145,7 @@ fn the_selection_cap_adds_no_height() {
     );
 }
 
-/// The close button sits inside the chip, so one press reaches both. The
-/// close has to win, or closing a background tab would activate it on
-/// the way out.
+/// Close wins over activate when one press reaches both.
 #[test]
 fn a_close_click_reports_a_close_and_not_a_click() {
     let mut h = UiHarness::new(SURFACE);
@@ -191,9 +181,7 @@ fn a_chip_click_reports_its_slot() {
     assert_eq!(hit, (Some(2), None, Some(2), None));
 }
 
-/// Keyboard travel on the WAI-ARIA tab pattern. Reported apart from a
-/// pointer click, because a caller that polls the chips itself one phase
-/// earlier already holds the click and would otherwise act on it twice.
+/// Keyboard travel (WAI-ARIA tabs), reported apart from a pointer click.
 #[test]
 fn arrows_home_and_end_travel_and_wrap() {
     let mut h = UiHarness::new(SURFACE);
@@ -253,8 +241,7 @@ fn arrows_home_and_end_travel_and_wrap() {
         Some(1),
         "Ctrl+Tab cycles forward"
     );
-    // The two Tab chords are told apart by an exact modifier match, so
-    // the shift variant must not fall into the plain one's arm.
+    // Exact modifier match: the shift variant must not hit the plain arm.
     let ctrl_shift = Modifiers {
         ctrl: true,
         shift: true,
@@ -277,9 +264,7 @@ fn arrows_home_and_end_travel_and_wrap() {
     }
 }
 
-/// A keyboard move to a chip out of sight pans the band to it on the next
-/// frame: End in a strip too narrow for its last chip leaves that chip
-/// inside the band's clip — the band's rect deflated by its padding.
+/// A keyboard move to an out-of-sight chip pans the band to it next frame.
 #[test]
 fn a_keyboard_move_pans_the_band_to_the_chip() {
     use crate::primitives::math::domain::EPS;
@@ -318,17 +303,13 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
     assert!(in_clip(&mut h), "the band panned to the chip End selected");
 }
 
-/// An overflowing strip pans on a horizontal wheel — the Shift+wheel a
-/// Linux or Windows host turns into one, too — and hands a vertical one
-/// to the page behind it while the page can scroll. Over a page that
-/// fits, nothing else pans y, so the strip takes the vertical turn as
-/// horizontal movement.
+/// An overflowing strip pans on horizontal wheel (and Shift+wheel), passes
+/// vertical wheel to a scrollable page, and otherwise turns it horizontal.
 #[test]
 fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
     let page = WidgetId::from_hash("page");
     let band = strip_id().with("band");
-    // (case, page content height, page offset and band offset after the
-    // vertical turn of 25 px)
+    // (case, page content height, page offset and band offset after a 25 px vertical turn)
     let cases: [(&str, f32, f32, f32); 2] = [
         ("the page scrolls, so it takes y", 600.0, 25.0, 30.0),
         ("the page fits, so the strip takes y", 50.0, 0.0, 55.0),
@@ -362,8 +343,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
             20.0,
             "{label}: wheel x"
         );
-        // What the host makes of Shift+wheel y on Linux: the swap is
-        // pinned with the host's input translation.
+        // What a Linux host makes of Shift+wheel y.
         h.scroll_pixels(Vec2::new(10.0, 0.0));
         h.frame(build);
         assert_eq!(
@@ -387,8 +367,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
     }
 }
 
-/// Travel is scoped to focus: the same press with the strip unfocused
-/// moves nothing, so an application's own arrow handling keeps working.
+/// Travel is scoped to focus.
 #[test]
 fn travel_needs_focus_inside_the_strip() {
     let mut h = UiHarness::new(SURFACE);
@@ -407,10 +386,7 @@ fn travel_needs_focus_inside_the_strip() {
     assert_eq!(keyed, None);
 }
 
-/// A focused strip takes Ctrl+Tab, which it cycles on, and lets bare Tab
-/// walk past to an app root that takes `FOCUS` itself — the strip has no
-/// use for traversal, so claiming it would cut the app's traversal off at
-/// the chips.
+/// A focused strip takes Ctrl+Tab and lets bare Tab pass to the app root.
 #[test]
 fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     use crate::KeyFilter;
@@ -455,8 +431,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     }
 }
 
-/// The insertion rule is a pure count of the chip centres the pointer
-/// has passed, so it is checked against hand-placed rects.
+/// Insertion is a count of chip centres passed; checked on hand-placed rects.
 #[test]
 fn the_insertion_slot_counts_the_centres_passed() {
     let chips = [
@@ -480,8 +455,7 @@ fn the_insertion_slot_counts_the_centres_passed() {
 
 const PAGES: [&str; 3] = ["Colour", "Geometry", "Metadata"];
 
-/// Clicking a chip writes the bound index and records the new page on
-/// the same frame — the view owns its selection, so nothing lags.
+/// Clicking a chip writes the bound index and records the page the same frame.
 #[test]
 fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     let mut h = UiHarness::new(SURFACE);
@@ -518,9 +492,8 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     );
 }
 
-/// The page index is an index coerced for display: one past the end
-/// shows the last page and leaves the binding alone, and an empty page
-/// list records its strip with no page under it.
+/// An out-of-range page index shows the last page without rewriting the binding;
+/// an empty list records a strip with no page.
 #[test]
 fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     let mut h = UiHarness::new(SURFACE);
@@ -547,8 +520,7 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     );
 }
 
-/// A strip's selection is coerced the same way: an index past the end caps
-/// the last chip and no other.
+/// A strip's selection is coerced the same way.
 #[test]
 fn a_stale_strip_selection_caps_the_last_chip() {
     let mut h = UiHarness::new(SURFACE);
@@ -563,10 +535,9 @@ fn a_stale_strip_selection_caps_the_last_chip() {
     assert_eq!([10, 20, 30].map(capped), [false, false, true]);
 }
 
-/// A drag that releases over another slot reports the move rather than
-/// making it — the view holds a shared slice and cannot reorder it — and
-/// moves the bound index with the page it named. A release in either gap
-/// beside the chip is no move, and a release off the strip is no drop.
+/// A drag release over another slot reports the move (the view can't reorder
+/// a shared slice) and moves the bound index with it; gaps beside the chip
+/// are no move, off-strip is no drop.
 #[test]
 fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     type Release = fn(&UiHarness, WidgetId) -> Vec2;
@@ -632,11 +603,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     }
 }
 
-/// A keyed view names each chip by its page, not its slot: after the
-/// first page goes, "Geometry"'s chip keeps its id and moves to the left
-/// edge, where an index-keyed view would hand slot 1's id to "Metadata".
-/// A drag reads the same keys: "Colour" dropped past the last chip is the
-/// append, exactly as on an index-keyed view.
+/// A keyed view names chips by page, not slot, for ids and drags.
 #[test]
 fn a_keyed_view_keeps_each_chip_with_its_page() {
     let view = WidgetId::from_hash("test.keyed");
@@ -694,9 +661,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     assert_eq!(page, 2, "the bound page followed Colour to the end");
 }
 
-/// Where an index lands when `from` moves into the gap `to`, for pages
-/// [A, B, C, D]. Moving A to the end (gap 4) puts it at 3 and shifts the
-/// others down; moving D to the front (gap 0) shifts the others up.
+/// Where an index lands when `from` moves into gap `to`, for pages [A, B, C, D].
 #[test]
 fn a_move_carries_every_index_with_its_page() {
     use crate::widgets::tabs::tabbed_view::internals::moved_index;
@@ -715,15 +680,8 @@ fn a_move_carries_every_index_with_its_page() {
     }
 }
 
-/// The chevron has to appear while a chip is *partly* out of sight, not
-/// only once one is wholly gone — the half a reader cannot see is the
-/// half the menu exists to reach.
-///
-/// Self-calibrating, because a chip hugs its label and the theme's
-/// padding: measure the strip's chips at a width that fits them all,
-/// then cut the band to halfway through the last one. That chip then
-/// starts inside the band and ends outside it, which is the case a
-/// clipped rect cannot tell from a chip wholly inside.
+/// The chevron appears while a chip is *partly* out of sight. Self-calibrating:
+/// measure the chips, then cut the band halfway through the last one.
 #[test]
 fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     let build = |width: f32| {
@@ -750,9 +708,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         "premise: nothing is hidden, so nothing offers a menu",
     );
 
-    // Half of that chip, and no more: it starts inside the band and ends
-    // past it. Measured from the strip's own left edge, since that is
-    // what the width below is a width of.
+    // Half of the last chip, measured from the strip's own left edge.
     let half_way = whole.min.x + whole.size.w * 0.5 - strip_left;
     let mut h = UiHarness::new(SURFACE);
     h.prime(2, build(half_way));
@@ -761,9 +717,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         "a chip cut in half is a chip the strip cannot show whole",
     );
 
-    // The hidden chip is one pick away: the chevron opens the menu, and
-    // its row reports the chip as a menu pick, which `activated` merges
-    // with a click and a keyboard move.
+    // The chevron opens the menu; its row reports a menu pick, which `activated` merges.
     h.click_on(chevron);
     h.frame(build(half_way));
     h.click_on(strip_id().with("overflow").with(30u64));
@@ -779,8 +733,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     });
     assert_eq!(picked, (Some(2), None, Some(2)));
 
-    // The menu's state is the chevron's: a strip that leaves while its
-    // menu is open takes the menu with it, and comes back closed.
+    // Menu state is the chevron's: it comes back closed.
     h.click_on(chevron);
     h.frame(build(half_way));
     assert!(

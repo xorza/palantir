@@ -14,12 +14,10 @@ use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
 
-/// A [`Popup`] dropped below a trigger: a click on the trigger opens it, a
-/// second click, an outside press, Escape or a [`CloseHandle`] closes it.
-///
-/// The whole open/close protocol of a dropdown control in one place — a
-/// [`ComboBox`](crate::ComboBox), a [`ColorButton`](crate::ColorButton), or
-/// an app's own panel that drops from a button:
+/// A [`Popup`] dropped below a trigger: a click opens it; a second click, an
+/// outside press, Escape or a [`CloseHandle`] closes it. The whole protocol of a
+/// dropdown control ([`ComboBox`](crate::ComboBox),
+/// [`ColorButton`](crate::ColorButton), or an app's own panel):
 ///
 /// ```
 /// # use palantir::{Button, Configure, PopupTrigger, Text, Ui};
@@ -32,31 +30,25 @@ use crate::widgets::popup::Popup;
 /// ```
 ///
 /// Open state lives in the state map keyed off the trigger's id, as
-/// [`ContextMenu`](crate::ContextMenu)'s does, and is written back only on
-/// the frame it flips — a closed trigger, nearly every frame, keeps no row.
-/// A disabled trigger closes its popup, as a native one does: the popup is
-/// a tree of its own, and would go on taking input for a control that
-/// refuses it.
+/// [`ContextMenu`](crate::ContextMenu)'s does, and is written only on the frame
+/// it flips. A disabled trigger closes its popup, since the popup is a tree of
+/// its own and would keep taking input.
 ///
-/// Implements [`Configure`], forwarding to the popup, so `.id(...)`,
-/// `.min_size(...)` and `.padding(...)` shape the panel. Its identity
-/// defaults to one derived from the trigger's.
+/// Implements [`Configure`], forwarding to the popup; identity defaults to one
+/// derived from the trigger's.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct PopupTrigger {
     for_id: WidgetId,
-    /// The trigger's state on the frame the snapshot was taken: its click
-    /// toggles the popup, its rect anchors it, and its disabled flag
-    /// closes it.
+    /// The trigger's state when the snapshot was taken: its click toggles the
+    /// popup, its rect anchors it, its disabled flag closes it.
     trigger: ResponseState,
-    /// The popup this trigger drops. Its anchor is a placeholder until
-    /// `show` re-anchors it below the trigger's rect.
+    /// The popup this trigger drops; its anchor is a placeholder until `show`.
     popup: Popup,
 }
 
-/// One trigger's popup, keyed off the trigger's id: whether it is open,
-/// and whether it was on show last frame — so the frame it first shows is
-/// known, however it was opened.
+/// One trigger's popup state, keyed off the trigger's id: whether it is open
+/// and was on show last frame.
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 struct PopupTriggerState {
     open: bool,
@@ -64,8 +56,7 @@ struct PopupTriggerState {
 }
 
 impl PopupTrigger {
-    /// Attach a popup to the trigger `snapshot` was taken from. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui` borrow.
+    /// Attach a popup to the trigger `snapshot` was taken from.
     pub fn on(snapshot: &ResponseSnapshot) -> Self {
         Self {
             for_id: snapshot.id,
@@ -97,19 +88,17 @@ impl PopupTrigger {
         self
     }
 
-    /// Toggle the open flag on a trigger click, close it on a disabled
-    /// trigger, and record the popup below the trigger while it is open.
+    /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
+    /// record the popup below the trigger while open.
     ///
-    /// The popup's own [`OverlayResponse`], as
-    /// [`ContextMenu::show`](crate::ContextMenu::show) returns it: its
-    /// `inner` is `None` on a frame the popup is closed and the body does
-    /// not run.
+    /// Returns the popup's [`OverlayResponse`] as
+    /// [`ContextMenu::show`](crate::ContextMenu::show) does; `inner` is `None` while
+    /// closed.
     ///
-    /// A popup opened from the keyboard — Space or Enter on a focused
-    /// trigger, or [`Self::open`] while focus came from the keyboard —
-    /// takes focus on its first stop as it shows, as WAI-ARIA's menu
-    /// button does; one opened by a click leaves focus on the trigger.
-    /// Focus goes back to the trigger when it closes.
+    /// A popup opened from the keyboard (Space or Enter on the focused trigger, or
+    /// [`Self::open`] with keyboard focus) takes focus on its first stop, as
+    /// WAI-ARIA's menu button does; a click leaves focus on the trigger. Focus
+    /// returns to the trigger on close.
     pub fn show<R>(
         self,
         ui: &mut Ui,
@@ -151,8 +140,8 @@ impl PopupTrigger {
         resp
     }
 
-    /// Open the popup of the trigger `for_id`, for a programmatic open — a
-    /// keyboard shortcut. It records on that trigger's next `show`.
+    /// Open the popup of the trigger `for_id`, e.g. from a keyboard shortcut; it
+    /// records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, for_id: WidgetId) {
         ui.with_state::<PopupTriggerState, _>(for_id, |_, s| s.open = true);
     }
@@ -168,16 +157,15 @@ impl PopupTrigger {
         }
     }
 
-    /// `true` while the popup of the trigger `for_id` is open. A probe: no
-    /// row is allocated for a trigger that has never been opened.
+    /// `true` while the popup of the trigger `for_id` is open. No row is allocated
+    /// for a never-opened trigger.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
         ui.state::<PopupTriggerState>(for_id)
             .is_some_and(|state| state.open)
     }
 }
 
-/// Forwards to the popup this trigger drops, so `.min_size(...)` and the
-/// rest shape the panel.
+/// Forwards to the popup this trigger drops.
 impl Configure for PopupTrigger {
     #[inline]
     fn configure(&mut self) -> ConfigureWidget<'_> {

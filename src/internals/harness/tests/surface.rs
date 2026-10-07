@@ -7,10 +7,7 @@ use crate::ui::frame_report::FramePaint;
 
 #[test]
 fn resize_and_set_display_move_the_surface_between_frames() {
-    // The harness owns the `Display`, so a frame never takes one — these
-    // two are the whole surface-mutation surface. Both must land on the
-    // `Ui` and must read as a display change, which is what forces the
-    // full repaint asserted below.
+    // These two are the whole surface-mutation surface; both must read as a display change.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
     assert_eq!(harness.display.physical, SURFACE);
@@ -24,8 +21,7 @@ fn resize_and_set_display_move_the_surface_between_frames() {
     assert_eq!(harness.display.physical, bigger);
     assert_eq!(harness.ui.display().physical, bigger);
 
-    // A DPI move changes `physical` and `system_scale` together, leaving
-    // `logical_rect` identical — `resize` alone cannot express it.
+    // A DPI move changes `physical` and `system_scale` together, which `resize` can't express.
     let dpi_move = Display {
         physical: bigger * 2,
         system_scale: 2.0,
@@ -46,8 +42,6 @@ fn resize_and_set_display_move_the_surface_between_frames() {
 
 #[test]
 fn scale_makes_the_surface_physical_and_positions_logical() {
-    // Rule 10. At dpr 2 a 200×120 physical surface is 100×60 logical,
-    // and pointer positions are in the latter.
     let harness = UiHarness::new(SURFACE).scale(2.0);
     let display = harness.display;
 
@@ -57,9 +51,7 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
     assert_eq!(display.logical_size().h, 60.0);
 }
 
-/// The user scale multiplies onto the dpr, so the two together divide the
-/// surface once. At dpr 2 and 125% the 200×120 surface is 80×48 logical,
-/// while the window manager still sees 100×60.
+/// At dpr 2 and 125% the 200×120 surface is 80×48 logical; the window manager sees 100×60.
 #[test]
 fn user_scale_multiplies_onto_the_dpr() {
     let mut harness = UiHarness::new(SURFACE)
@@ -71,13 +63,10 @@ fn user_scale_multiplies_onto_the_dpr() {
     assert_eq!(display.logical_size(), Size::new(80.0, 48.0));
     assert_eq!(display.system_logical_size(), Size::new(100.0, 60.0));
 
-    // The setting is the one home: a change made inside a frame stamps
-    // the next frame, as the window driver derives it.
     harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5).unwrap()));
     harness.frame(button);
     assert_eq!(harness.ui.display().scale_factor(), 3.0);
 
-    // And a display swapped in carries its scale onto the setting.
     let swapped = Display {
         user_scale: UserScale::new(2.0).unwrap(),
         ..harness.ui.display()
@@ -87,8 +76,6 @@ fn user_scale_multiplies_onto_the_dpr() {
     assert_eq!(harness.ui.display().scale_factor(), 4.0);
 }
 
-/// A user-scale move between frames must escalate to a full repaint, the
-/// same way a DPI move does — it is the same rasterization change.
 #[test]
 fn a_user_scale_move_repaints_in_full() {
     let mut harness = UiHarness::new(SURFACE);

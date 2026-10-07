@@ -1,20 +1,11 @@
-//! Demonstrates the carrier-only state model: the host owns `AppState`
-//! and threads `&mut AppState` into the builder closure alongside
-//! `&mut Ui`. Widgets that need to read or mutate caller state take it
-//! as an explicit parameter — no ambient slot, no borrow conflicts with
-//! collection iteration.
-//!
-//! The second window is the point: it records an entirely separate UI
-//! tree from the same `&mut AppState`, so the two counters are one
-//! value rather than copies that have to be kept in sync.
+//! The carrier-only state model: the host threads `&mut AppState` into the builder closure beside `&mut Ui`. The second window records a separate tree from the same `AppState`, so both counters are one value.
 
 use crate::shell;
 use crate::support;
 use crate::support::{api, note, section};
 use palantir::{Align, App, Button, Configure, Text, Ui, fmt};
 
-/// State threaded through the entire showcase frame. Lives on the
-/// shell's `State` and is handed to [`build`] by the page dispatcher.
+/// State threaded through the whole showcase frame.
 #[derive(Debug)]
 pub(crate) struct AppState {
     pub(crate) counter: i32,
@@ -55,8 +46,7 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
     );
 }
 
-/// The counter itself — recorded by this page and, unchanged, by the
-/// inspector window.
+/// The counter, recorded by this page and the inspector window.
 pub(crate) fn counter(ui: &mut Ui, app: &mut AppState) {
     support::row(ui, |ui| {
         if Button::new()

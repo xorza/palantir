@@ -20,8 +20,8 @@ fn build_clickable(ui: &mut Ui) {
 }
 
 fn build_draggable(ui: &mut Ui) {
-    // Wider sense so press routing accepts non-left buttons. `clicks()`
-    // is true for both CLICK and DRAG, so this still captures.
+    // Wider sense so press routing accepts non-left buttons; `clicks()` is true for
+    // CLICK and DRAG.
     Panel::hstack()
         .id(WidgetId::from_hash("target"))
         .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -33,8 +33,8 @@ fn id() -> WidgetId {
     WidgetId::from_hash("target")
 }
 
-/// The drag target beside a second draggable that the press does not
-/// land on, so an isolation test asks about a widget that recorded.
+/// The drag target beside a second draggable the press does not land on, for
+/// isolation tests.
 fn build_target_and_bystander(ui: &mut Ui) {
     Panel::hstack().auto_id().show(ui, |ui| {
         for name in ["target", "other"] {
@@ -91,15 +91,13 @@ fn drag_delta_persists_when_pointer_leaves_widget_rect() {
 
 #[test]
 fn held_is_rect_independent_unlike_pressed() {
-    // `held` reports "the left press is latched on this widget" regardless
-    // of where the pointer has moved — unlike `pressed`, which also demands
-    // the pointer stay over the widget. This is the signal drag-select
-    // rides so it keeps tracking after the pointer leaves the editor.
+    // `held` is "the left press is latched on this widget" wherever the pointer has
+    // gone, unlike `pressed`; drag-select rides it to keep tracking after the
+    // pointer leaves the editor.
     let s = UVec2::new(400, 400);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
 
-    // Idle over the widget: neither pressed nor held.
     h.move_to(Vec2::new(50.0, 50.0));
     let r = h.response_in(id(), build_clickable);
     assert!(
@@ -107,7 +105,6 @@ fn held_is_rect_independent_unlike_pressed() {
         "hover without press is neither"
     );
 
-    // Press inside: both live, pointer is over the widget.
     h.press();
     let r = h.response_in(id(), build_clickable);
     assert!(
@@ -115,8 +112,7 @@ fn held_is_rect_independent_unlike_pressed() {
         "press over the widget sets both"
     );
 
-    // Drag well outside the 100×100 rect: `pressed` drops (no longer
-    // hovered), `held` stays — the capture is still latched.
+    // Drag well outside the 100×100 rect: `pressed` drops, `held` stays.
     h.drag_to(Vec2::new(300.0, 300.0));
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.held(), "held survives the pointer leaving the rect");
@@ -125,7 +121,6 @@ fn held_is_rect_independent_unlike_pressed() {
         "pressed dies once the pointer leaves the rect"
     );
 
-    // Release ends the capture: held clears.
     h.release();
     let r = h.response_in(id(), build_clickable);
     assert!(!r.left.held() && !r.pressed(), "release clears the capture");
@@ -152,15 +147,11 @@ fn drag_delta_clears_on_release() {
     );
 }
 
-/// Leaving the surface mid-drag is the gesture working, not ending: the
-/// capture stays latched, so the drag keeps reporting the travel it had
-/// and no stop edge fires. A commit-on-release gesture must not commit on
-/// a window-exit — that would split one scrub into two undo entries.
-///
-/// The travel is read off the press rather than the live pointer, which
-/// is what lets it survive a pointer that is `None`. Denying the drag
-/// here would also put this reader at odds with `pointer_actions`, which
-/// reads the latch and would go on reporting the same drag.
+/// Leaving the surface mid-drag is the gesture working, not ending: the capture
+/// stays latched, the drag keeps reporting its travel and no stop edge fires, so a
+/// commit-on-release gesture does not split one scrub into two undo entries. The
+/// travel is read off the press, not the live pointer, so it survives a `None`
+/// pointer (and agrees with `pointer_actions`, which reads the latch).
 #[test]
 fn a_drag_survives_the_pointer_leaving_the_surface() {
     let s = UVec2::new(200, 200);
@@ -170,7 +161,6 @@ fn a_drag_survives_the_pointer_leaving_the_surface() {
     h.drag_to(Vec2::new(90.0, 40.0));
     h.pointer_left();
 
-    // 90 - 40 = 50 px of travel, held across the leave.
     let r = h.response_in(id(), build_clickable);
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(50.0, 0.0)));
     assert!(r.left.drag.is_live(), "the capture is still latched");
@@ -179,8 +169,8 @@ fn a_drag_survives_the_pointer_leaving_the_surface() {
         "pointer-left is not a release; the stop edge must wait for it",
     );
 
-    // Re-enter with the button still held: the same drag resumes
-    // (no new start edge), and the real release fires the stop edge.
+    // Re-entering with the button held resumes the same drag; the real release
+    // fires the stop edge.
     h.move_to(Vec2::new(100.0, 40.0));
     let r = h.response_in(id(), build_clickable);
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(60.0, 0.0)));
@@ -199,27 +189,23 @@ fn drag_stopped_edge_fires_once_on_release() {
     h.press_button_at(PointerButton::Middle, Vec2::new(30.0, 30.0));
     h.drag_to(Vec2::new(70.0, 30.0));
 
-    // Mid-drag: no stop edge, drag observable.
     let r = h.response_in(id(), build_draggable);
     assert!(r.middle.drag.is_live() && !r.middle.drag.stopped());
 
-    // Release frame: the drag itself is gone, only the edge remains,
-    // and it carries the button.
     h.release_button(PointerButton::Middle);
     let r = h.response_in(id(), build_draggable);
     assert!(!r.middle.drag.is_live(), "release destroys the drag state");
     assert!(r.middle.drag.stopped());
     assert!(!r.left.drag.stopped(), "edge is button-filtered");
 
-    // One-frame edge: gone the next frame.
     let r = h.response_in(id(), build_draggable);
     assert!(!r.middle.drag.stopped());
 }
 
 #[test]
 fn sub_threshold_release_fires_click_not_drag_stopped() {
-    // A press+release without crossing DRAG_THRESHOLD is a click; no
-    // drag ever latched, so no stop edge may fire.
+    // A press+release without crossing DRAG_THRESHOLD is a click: no drag latched,
+    // no stop edge.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_clickable);
@@ -250,9 +236,8 @@ fn drag_delta_only_for_active_widget() {
 
 #[test]
 fn middle_drag_tracks_pointer_minus_press_after_latch() {
-    // Middle-button press anchors at (20, 30); pointer moves to
-    // (80, 70). Travel = sqrt(60^2 + 40^2) = 72.1 px > DRAG_THRESHOLD
-    // (4 px) so the drag latches.
+    // Middle press at (20, 30), pointer to (80, 70): travel 72.1 px >
+    // DRAG_THRESHOLD (4 px).
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -270,8 +255,7 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
 
 #[test]
 fn middle_drag_does_not_expose_delta_below_threshold() {
-    // Press + 3 px wiggle = no latch. `started` stays false and
-    // `delta` is `None`, mirroring left-button semantics.
+    // Press + 3 px wiggle = no latch: `started` false, `delta` `None`.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -286,11 +270,8 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
 
 #[test]
 fn drag_started_is_one_frame_edge_then_clears_on_the_next_frame() {
-    // The `started` flag is a single-frame edge: true on the frame that
-    // observes the latching move, false on the next frame even while the
-    // drag continues. Each `response_in` runs one frame, so the first
-    // observes the edge, its frame's end clears it, and the second sees
-    // it gone.
+    // `started` is a single-frame edge: true on the frame observing the latching
+    // move, false the next.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -313,8 +294,6 @@ fn drag_started_is_one_frame_edge_then_clears_on_the_next_frame() {
 
 #[test]
 fn right_button_drag_also_latches() {
-    // The drag-latch loop iterates every PointerButton, so right
-    // drag works the same as left/middle.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -328,10 +307,8 @@ fn right_button_drag_also_latches() {
 
 #[test]
 fn left_wins_over_simultaneously_latched_middle() {
-    // Both left and middle are latched on the same widget. Only one
-    // drag is reported — the priority-first in `PointerButton::ALL`
-    // (left). `dragged_by(Middle)` is false even though the middle
-    // press is still captured.
+    // Left and middle are both latched; only the priority-first in
+    // `PointerButton::ALL` (left) is reported.
     let s = UVec2::new(300, 300);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -342,7 +319,6 @@ fn left_wins_over_simultaneously_latched_middle() {
 
     let r = h.response_in(id(), build_draggable);
     let d = r.left.drag.delta().expect("a drag must be active");
-    // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d, Vec2::new(80.0, 40.0));
     assert!(r.left.drag.is_live());
     assert!(
@@ -353,9 +329,8 @@ fn left_wins_over_simultaneously_latched_middle() {
 
 #[test]
 fn releasing_priority_button_promotes_lower_priority() {
-    // After releasing left while middle is still held + latched, the
-    // active drag transitions to middle without the user lifting
-    // anything else.
+    // Releasing left while middle is held and latched moves the active drag to
+    // middle.
     let s = UVec2::new(300, 300);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -372,15 +347,13 @@ fn releasing_priority_button_promotes_lower_priority() {
         "releasing left must promote middle to the active drag",
     );
     assert!(!r.left.drag.is_live());
-    // Middle's anchor is the middle press position (same frame as
-    // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
+    // Middle's anchor is its own press position (20, 20); delta = current (80, 60)
+    // - press.
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
 }
 
 #[test]
 fn drag_zero_state_for_uncaptured_widget() {
-    // A widget that didn't capture the press sees the zero state
-    // regardless of which button is being dragged elsewhere.
     let s = UVec2::new(200, 200);
     let mut h = UiHarness::new(s);
     h.frame(build_target_and_bystander);
@@ -399,7 +372,7 @@ fn drag_zero_state_for_uncaptured_widget() {
 
 #[test]
 fn drag_delta_none_when_press_missed_all_widgets() {
-    // Outer non-clickable wraps a small clickable so the root doesn't
+    // The outer non-clickable wraps a small clickable so the root does not
     // auto-fill the surface and swallow the press.
     let surface = UVec2::new(400, 400);
     let build = |ui: &mut Ui| {
@@ -418,13 +391,10 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     assert_eq!(h.response_in(id(), build).left.drag.delta(), None);
 }
 
-// Drag-on-canvas composition, driven through the widget-facing
-// `Response` API: callers snapshot an `anchor` on `r.drag_started()`
-// and compose `pos = anchor + r.drag_delta()` each frame. `Ui::frame`
-// re-records on action input, so the dragged position lands in the
-// same frame as the move event. The `Card` fixture drives that
-// pattern end-to-end: threshold latch, position tracking,
-// click-suppression-after-drag, multi-widget isolation.
+// Drag-on-canvas composition through the widget-facing `Response` API: callers
+// snapshot an `anchor` on `r.drag_started()` and compose `pos = anchor +
+// r.drag_delta()`. The `Card` fixture drives threshold latch, position tracking,
+// click-suppression-after-drag and multi-widget isolation.
 const CARD_SIZE: f32 = 60.0;
 const SURFACE: UVec2 = UVec2::new(400, 400);
 
@@ -437,9 +407,8 @@ struct Card {
     label: &'static str,
     pos: Vec2,
     anchor: Vec2,
-    /// Clicks seen across every pass of every frame — a count rather
-    /// than a flag, so a click reported by both passes of one frame
-    /// reads as the double fire it is.
+    /// Clicks seen across every pass of every frame, so a click reported by both
+    /// passes reads as a double fire.
     clicks: u32,
 }
 
@@ -463,8 +432,7 @@ impl Card {
         self.fold(&r);
     }
 
-    // Runs on every pass, as an app's handler does: pass B sees the
-    // edges drained, so it re-anchors nothing and clicks nothing.
+    // Runs on every pass as an app's handler does: pass B sees the edges drained.
     fn fold(&mut self, r: &Response<'_>) {
         if r.left.drag.started() {
             self.anchor = self.pos;
@@ -580,7 +548,6 @@ fn drag_started_fires_only_on_latch_frame() {
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     let mut started = vec![];
 
-    // How many of the frame's passes saw the latch.
     let mut step = |h: &mut UiHarness, a: &mut Card| {
         let latches = h
             .frame_passes(|ui| {
@@ -622,8 +589,6 @@ fn drag_started_fires_only_on_latch_frame() {
 
 #[test]
 fn canvas_rearranges_with_dragged_child_position() {
-    // `Ui::frame` re-records on action input, so pass-2 picks up the
-    // dragged position and the same-frame layout reflects it.
     let mut h = UiHarness::new(SURFACE);
     let mut a = Card::new("a", Vec2::new(40.0, 40.0));
     frame_with(&mut h, |ui| a.record(ui));
@@ -658,14 +623,10 @@ fn canvas_rearranges_with_dragged_child_position() {
     assert_eq!(a.pos.x, 130.0, "pos = anchor(40) + delta(90)");
 }
 
-/// A capture evicted because its widget left the tree still ends through
-/// a release edge, so the gesture finishes for everyone reading it.
-///
-/// Dropping the press on its own ends it for the state machine alone: no
-/// `Drag::Stopped`, no `ButtonPhase::Up`, no `PointerEdge::DragStopped`,
-/// and the later real release finds nothing left to report. `Slider` and
-/// `DragValue` commit on `drag.stopped()`, so a widget that skips one
-/// frame mid-drag silently loses the commit.
+/// A capture evicted because its widget left the tree still ends through a release
+/// edge. Dropping the press alone would end it for the state machine only, so
+/// `Slider` and `DragValue`, which commit on `drag.stopped()`, would lose the
+/// commit when a widget skips a frame mid-drag.
 #[test]
 fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -677,10 +638,8 @@ fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
         "the drag is live before the widget goes away",
     );
 
-    // The widget skips a frame. `end_frame` evicts the capture.
     h.frame(|_| {});
 
-    // It comes back, and reads the edge its gesture owed it.
     let r = h.response_in(id(), build_clickable);
     assert!(r.left.drag.stopped(), "eviction owes the stop edge");
     assert!(!r.left.drag.is_live(), "and the drag itself is over");
@@ -691,8 +650,7 @@ fn a_capture_evicted_mid_drag_still_ends_with_its_stop_edge() {
     );
 }
 
-/// A sub-threshold press evicted the same way dissolves without claiming
-/// a click — nothing landed on a widget that is not there.
+/// A sub-threshold press evicted the same way dissolves without claiming a click.
 #[test]
 fn a_capture_evicted_before_the_drag_threshold_reports_no_click() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -706,12 +664,8 @@ fn a_capture_evicted_before_the_drag_threshold_reports_no_click() {
     assert!(!r.left.held(), "the capture is gone");
 }
 
-/// Losing surface focus ends every gesture and forgets the modifiers.
-///
-/// The platform stops reporting to an unfocused surface, so the release
-/// and the modifier drop that happen over there are never seen. Without
-/// this the press stays latched and the first click back into the window
-/// completes a gesture the user abandoned.
+/// Losing surface focus ends every gesture and forgets the modifiers: an unfocused
+/// surface never reports the release, so the press would stay latched.
 #[test]
 fn surface_focus_loss_ends_every_capture_and_clears_modifiers() {
     use crate::input::input_event::InputEvent;

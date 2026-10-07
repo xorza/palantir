@@ -1,50 +1,22 @@
 //! Register-path scaling benchmark for the gradient LUT atlas.
 //!
-//! The property under test is **flatness, not speed**: `register`
-//! must not get more expensive as the atlas grows. It used to — lookup
-//! was an open-addressed probe over the row table whose eviction arm
-//! broke the probe invariant, so correctness required scanning every
-//! row and a miss cost O(capacity) twice over (the probe sweep plus an
-//! LRU scan). Capacity only ever grows, so one gradient-heavy frame
-//! made that permanent.
+//! Tests **flatness, not speed**: `register` must not get more expensive as
+//! the atlas grows. Each arm runs at two capacities; compare the ratio
+//! between them from a single quiet run, not absolutes (256 rows stay
+//! cache-resident, 2048 spill). `miss/*` is the arm to watch for per-row walks.
 //!
-//! Each arm runs at two capacities and the reading that matters is the
-//! *ratio between them*. `miss/*` is the arm that carried the cliff and
-//! is the one to watch: a regression reintroducing any per-row walk
-//! shows up there as `2048` diverging from `256` long before it looks
-//! wrong in isolation.
+//! Both arms hold the working set fixed and vary only the table size;
+//! scaling the working set with capacity confounds lookup cost with memory
+//! touched.
 //!
-//! Read the absolute numbers with care. Both arms stay resident in
-//! cache at 256 rows and spill at 2048, so a capacity-shaped term
-//! survives even with the algorithm flat, and all four are sensitive to
-//! whatever else is loading the machine's memory bandwidth. Compare
-//! ratios from a single quiet run; do not compare absolutes across
-//! runs.
+//! - `hit/*`: a fixed [`WORKING_SET`] of resident gradients re-registered, as
+//!   a frame redrawing unchanged chrome does.
+//! - `miss/*`: a never-seen gradient every iteration, so it misses, evicts and
+//!   re-bakes regardless of table size.
 //!
-//! **Both arms hold the working set fixed and vary only the table
-//! size**, which is what isolates the claim. Scaling the working set
-//! with the capacity — the obvious way to write this — confounds
-//! "lookup got slower" with "the fixture touches 8× more memory", and
-//! reports ~1.9× for an algorithm that didn't change.
-//!
-//! Two workloads:
-//!
-//! - `hit/*` — a fixed [`WORKING_SET`] of already-resident gradients,
-//!   re-registered the way a frame redrawing unchanged chrome does. The
-//!   steady-state path, and the one a probing table degrades on with load
-//!   factor (1.1 probes at 25 % occupancy, 11.6 at 99 %). The table is
-//!   filled to one row short of full either way, so clustering would be
-//!   at its worst.
-//! - `miss/*` — a gradient never seen before on every single iteration,
-//!   so it misses, evicts, and re-bakes regardless of table size. This
-//!   is what a per-frame animated gradient produces, and the arm the
-//!   old O(capacity) probe-plus-LRU-scan dominated.
-//!
-//! Both arms assert against
-//! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) before
-//! measuring, so a fixture that quietly stopped doing what its name says
-//! fails loudly instead of reporting a plausible-looking time. `miss/*` in
-//! particular would read as a *speedup* if it started hitting.
+//! Both assert against
+//! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
+//! a fixture that stops doing what its name says fails loudly.
 //!
 //! Run with `cargo bench --features bench --bench criterion -- gradient_atlas`.
 
@@ -64,30 +36,21 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
 use std::time::Duration;
 
-/// Capacities compared. 256 is the initial size; 2048 is three
-/// doublings up, which a probe walking every row makes 8× more expensive
-/// per miss.
+/// Capacities compared: the initial size and three doublings up.
 const CAPACITIES: [u32; 2] = [256, 2048];
 
-/// Resident gradients the `hit` arms cycle through. Fixed across
-/// capacities on purpose — see the module doc.
+/// Resident gradients the `hit` arms cycle through; fixed across capacities.
 const WORKING_SET: u32 = 128;
 
-/// Seed base for the `miss` arms, past anything [`filled`] uses.
 const CHURN_BASE: u32 = 1_000_000;
 
-/// Distinct ramp per seed, walking the colour cube directly so every
-/// seed is a distinct bake key.
+/// Distinct ramp per seed, walking the colour cube so every seed is a distinct
+/// bake key.
 ///
-/// Deliberately *structured* rather than pre-mixed: whole channels stay
-/// constant across a run, which is what a real themed palette looks
-/// like and what `GradientStops::hash` has to spread. These arms ran at
-/// 232 ns and 615 ns per hit while that hash packed colour into the high
-/// half of its word; keeping the naive fixture makes them an end-to-end
-/// guard on the layout as well as on the atlas.
-///
-/// Built from the sRGB bytes a stop stores, which decode and re-encode
-/// exactly, so distinct seeds stay distinct keys.
+/// Deliberately structured, not pre-mixed: constant channels across a run are
+/// what a themed palette looks like and what `GradientStops::hash` must
+/// spread, so this also guards that hash. Built from sRGB bytes, which
+/// round-trip exactly.
 fn gradient_for(seed: u32) -> ColorRamp {
     let a = SrgbaU8::rgb(seed as u8, (seed >> 8) as u8, (seed >> 16) as u8);
     let b = SrgbaU8::rgb((seed >> 4) as u8, (seed >> 12) as u8, 0x40);
@@ -99,10 +62,8 @@ fn gradient_for(seed: u32) -> ColorRamp {
 
 /// Atlas grown to `capacity` and filled to one row short of full.
 ///
-/// Filling happens inside a single epoch so the table *grows* to the
-/// target rather than evicting its way around a smaller one, then a
-/// `flush` releases the epoch protection so the measured registrations
-/// are free to evict.
+/// Fills in a single epoch so the table grows rather than evicting, then
+/// `flush` frees the rows for eviction.
 fn filled(capacity: u32) -> CpuGradientAtlas {
     let mut atlas = CpuGradientAtlas::new(capacity);
     let mut seed = 0u32;
@@ -124,9 +85,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.throughput(Throughput::Elements(1));
 
     for capacity in CAPACITIES {
-        // Steady state: the most recently filled `WORKING_SET` rows are
-        // resident whatever the capacity, so only the table around them
-        // differs between arms.
+        // Steady state: the most recent `WORKING_SET` rows are resident at any capacity.
         let mut atlas = filled(capacity);
         let resident: Vec<ColorRamp> = (capacity - WORKING_SET..capacity)
             .map(gradient_for)
@@ -150,9 +109,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             });
         });
 
-        // Churn: a gradient never registered before, every iteration.
-        // Missing is then independent of the table size, so the arms
-        // differ only in how much table the miss has to work against.
+        // Churn: a never-registered gradient every iteration, so a miss is
+        // independent of table size.
         let mut atlas = filled(capacity);
         let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
         for k in 0..16 {
@@ -174,9 +132,8 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut seed = CHURN_BASE + 16;
         group.bench_with_input(BenchmarkId::new("miss", capacity), &capacity, |b, _| {
             b.iter(|| {
-                // `flush` is the epoch boundary; without it the rows this
-                // arm just claimed stay eviction-exempt and the atlas
-                // grows instead of churning.
+                // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and
+                // the atlas grows instead of churning.
                 atlas.flush();
                 seed = seed.wrapping_add(1);
                 black_box(atlas.register(&gradient_for(seed)))

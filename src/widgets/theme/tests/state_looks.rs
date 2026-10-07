@@ -96,13 +96,7 @@ fn text_edit_theme_pick_precedence() {
     }
 }
 
-/// [`ToggleTheme`] is the one `WidgetTheme` whose pick needs an input
-/// the response can't supply: `Mode = bool` chooses the look *pack*, and
-/// the usual four-state precedence then runs inside it. Both halves are
-/// asserted — the pack switching on `checked`, and the state precedence
-/// still applying within each — plus that the two packs never resolve to
-/// the same slot, which is what makes the `Mode` parameter load-bearing
-/// rather than decorative.
+/// [`ToggleTheme`] is the one `WidgetTheme` whose pick needs an input the response can't supply: `Mode = bool` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on `checked`, the precedence within each, and that the packs never resolve to the same slot (so `Mode` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
     let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
@@ -164,7 +158,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
         );
     }
 
-    // The checked flag decides the answer on its own: one state, two packs.
+    // `checked` alone decides: one state, two packs.
     let idle = state(false, false, false);
     assert!(
         !ptr::eq(theme.look(&idle, false), theme.look(&idle, true)),
@@ -188,10 +182,7 @@ fn animated_look_line_height_delegates_to_text_style() {
     assert_eq!(look.text.font().line_height, 24.0);
 }
 
-/// The picker's channel values keep `DragValueTheme`'s promise: the editor
-/// a value turns into is the chip, look for look and padding for padding,
-/// so a value that becomes editable keeps its box and its text in place.
-/// The picker's text names its face and size and inherits the rest.
+/// The picker's channel values keep `DragValueTheme`'s promise: the editor a value turns into is the chip, look for look and padding for padding. The picker's text names face and size and inherits the rest.
 #[test]
 fn the_picker_value_editor_is_its_chip() {
     use crate::widgets::theme::Theme;
@@ -213,12 +204,7 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names the colour at most,
-/// so its size, face and leading follow `Theme::text` even when an app
-/// sets that after `from_palette`. The exceptions are by design, in walk
-/// order: the tooltip's 13 px; the picker's mono 13 px values on the value
-/// chip, its editor and the hex field, four states each; and the picker's
-/// mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the colour, so size, face and leading follow `Theme::text` even when set after `from_palette`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
 #[test]
 fn bundled_text_inherits_every_axis_but_colour() {
     use crate::widgets::theme::{Theme, ThemeText};
@@ -243,8 +229,7 @@ fn bundled_text_inherits_every_axis_but_colour() {
     });
     assert_eq!(named, expected);
 
-    // The reported case: an app at 13 px. An inactive tab names a muted
-    // colour at rest and none when pressed, and both shape at 13 px.
+    // The reported case: an app at 13 px. An inactive tab names a muted colour at rest and none when pressed; both shape at 13 px.
     theme.text = theme.text.with_font_size(13.0);
     let p = Palette::DEFAULT;
     let rest = theme.tabs.inactive.normal.to_animated(theme.text).text;

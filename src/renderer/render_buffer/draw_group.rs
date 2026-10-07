@@ -1,12 +1,9 @@
-//! One scissor + rounded-clip scope's worth of quads, the unit the
-//! backend replays a render pass in.
+//! One scissor and rounded-clip scope's quads, the unit the backend replays a pass in.
 
 use crate::common::span::Span;
 use crate::primitives::geometry::urect::URect;
 
-/// A contiguous quad range sharing one clip scope. The composer opens a
-/// new group whenever the scissor or the rounded-mask chain changes, so
-/// the backend sets clip state once per group and then draws.
+/// A contiguous quad range sharing one clip scope; the composer opens a new group when the scissor or rounded-mask chain changes, so the backend sets clip state once per group.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawGroup {
     pub(crate) scissor: Option<URect>,

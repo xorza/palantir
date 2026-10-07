@@ -1,6 +1,4 @@
-//! What the three two-state toggles wear. One theme serves all of them,
-//! because a checkbox, a radio and a switch differ in what they draw
-//! rather than in what they can be told.
+//! What the three two-state toggles wear; one theme serves checkbox, radio and switch.
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
@@ -17,50 +15,31 @@ use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 
-/// Visuals for two-state toggles — [`crate::Checkbox`],
-/// [`crate::RadioButton`] and [`crate::Switch`]. Holds a full 4-state
-/// look pack per checked branch plus the geometry knobs the widget
-/// would otherwise hardcode.
-///
-/// The chrome painted on the small box/pip comes from
-/// `checked` or `unchecked` by state; the indicator
-/// (check polyline, radio dot) uses [`Self::indicator`]. The label
-/// reads through the picked look's `text` overrides (defaults: none on
-/// active states, so they inherit `Theme::text`; `disabled` names the
-/// palette's `text_disabled` colour alone) — same flow as Button.
+/// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToggleTheme {
-    /// Chrome for the box or pip while the value is `false`.
+    /// Look when unchecked.
     pub unchecked: StatefulLook,
-    /// Chrome for it while the value is `true`.
+    /// Look when checked.
     pub checked: StatefulLook,
-    /// RgbaF32 of the check polyline (Checkbox) or filled dot
-    /// (RadioButton). Painted on top of the `checked` chrome.
+    /// Colour of the check polyline or radio dot, painted over the `checked` chrome.
     pub indicator: RgbaF32,
-    /// Outer box/pip square side in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    /// Box side.
     pub box_size: f32,
-    /// Stroke width of the check polyline (Checkbox).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    /// Stroke width of the indicator.
     pub indicator_width: f32,
-    /// The check polyline's three points (Checkbox only), as fractions
-    /// of [`Self::box_size`] — origin top-left, `1.0` the far edge. Unit
-    /// space rather than pixels so the tick keeps its proportions at any
-    /// box size, and so the shape carries no reference size of its own
-    /// to fall out of step with `box_size`.
+    /// The check polyline's three points (Checkbox only) as fractions of [`Self::box_size`], so the tick keeps its proportions at any size.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset_points3")]
     pub check_points: [Vec2; 3],
-    /// Inset of the filled dot inside the pip (RadioButton).
-    /// Dot side = `box_size - 2 * indicator_inset`.
+    /// Inset of the filled dot inside the pip (RadioButton); dot side is `box_size - 2 * indicator_inset`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_inset: f32,
-    /// Gap between the box/pip and the label.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    /// Gap between box and label.
     pub gap: f32,
-    /// Track width as a multiple of its height — [`crate::Switch`]
-    /// only, where `box_size` is the track height. A switch reads as a
-    /// switch (rather than a checkbox) at roughly 7:4. `1.0` on the
-    /// checkbox and radio bundles, whose box is square.
+    /// Track width as a multiple of its height ([`crate::Switch`] only, ~7:4); `1.0` for the square checkbox and radio.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub track_aspect: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
@@ -88,14 +67,12 @@ impl ToggleTheme {
         checked.for_each_text(f);
     }
 
-    /// [`Self::check_points`] scaled to [`Self::box_size`] — the polyline
-    /// [`crate::Checkbox`] draws, in box-local pixels.
+    /// [`Self::check_points`] scaled to [`Self::box_size`], in box-local pixels.
     pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
         self.check_points.map(|p| p * self.box_size)
     }
 
-    /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
-    /// corner radius and a `window_background` check.
+    /// Defaults for [`crate::Checkbox`]: 16 px box, 3 px corner radius.
     pub fn checkbox(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -108,8 +85,7 @@ impl ToggleTheme {
         )
     }
 
-    /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
-    /// radius (`box_size * 0.5`) and a `window_background` dot.
+    /// Defaults for [`crate::RadioButton`]: 16 px pip with pill radius.
     pub fn radio(p: &Palette) -> Self {
         Self::built(
             ToggleGeometry {
@@ -122,11 +98,7 @@ impl ToggleTheme {
         )
     }
 
-    /// Defaults sized for [`crate::Switch`] — a 20 px-tall pill
-    /// track with a white sliding knob. `box_size` is the track height;
-    /// the knob diameter is `box_size - 2 * indicator_inset`. Unlike the
-    /// checkbox/radio, the switch defaults to an animated knob slide +
-    /// track cross-fade — the motion is the point of the control.
+    /// Defaults for [`crate::Switch`]: a 20 px-tall pill track with a white knob, animated slide and cross-fade; `box_size` is the track height.
     pub fn switch(p: &Palette) -> Self {
         let mut t = Self::built(
             ToggleGeometry {
@@ -213,13 +185,10 @@ impl ToggleTheme {
     }
 }
 
-/// The three same-typed lengths [`ToggleTheme::built`] would otherwise
-/// take positionally, where any two of them swap and still compile —
-/// the reason [`SlotDefaults`] is a struct too.
+/// The three same-typed lengths [`ToggleTheme::built`] would otherwise take positionally, where any two swap and still compile.
 #[derive(Clone, Copy, Debug)]
 struct ToggleGeometry {
-    /// Corner radius of the box/pip chrome in logical px. `box_size / 2`
-    /// makes the pill the radio and the switch need.
+    /// Corner radius of the box/pip chrome; `box_size / 2` makes the pill.
     corner: f32,
     box_size: f32,
     indicator_inset: f32,
@@ -228,8 +197,7 @@ struct ToggleGeometry {
 impl ThemeSlot for ToggleTheme {
     type Pick = bool;
 
-    /// The checked or the unchecked pack, then its state (`active` =
-    /// pressed).
+    /// The checked or unchecked pack, then its state (`active` = pressed).
     fn look(&self, response: &ResponseState, checked: bool) -> &WidgetLook {
         let pack = if checked {
             &self.checked

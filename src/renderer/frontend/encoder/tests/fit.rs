@@ -8,19 +8,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-/// Pin: each [`ImageDownsample`] mode reaches the shader as its own flag
-/// bit,
-/// and `Single` as none.
-///
-/// The bits are how the mode survives the trip — the record is gone by the
-/// time
-/// the fragment shader runs, so a mode that encoded to zero would silently
-/// draw
-/// as the default, and two modes sharing a bit would draw as each other.
-/// The
-/// tap bits also have to stay clear of the filter ones, since one `flags`
-/// word
-/// carries both and the shader masks them apart.
+/// Each [`ImageDownsample`] mode reaches the shader as its own flag bit, `Single` as none. The record is gone by the fragment stage, so a zero encoding would draw as the default and a shared bit as another mode; tap bits must stay clear of the filter bits in the same `flags` word.
 #[test]
 fn downsample_modes_encode_to_distinct_tap_flags() {
     use crate::primitives::paint::image::{Image, ImageDownsample};
@@ -38,8 +26,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
         .ui()
         .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]).unwrap())
         .unwrap();
-    // Three shapes on one node: they all paint the same rect, and record order
-    // is what pairs each draw back up with the mode that asked for it.
+    // Three shapes on one node paint the same rect; record order pairs each draw with its mode.
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
@@ -65,11 +52,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     }
 }
 
-/// The cascade bounds an image by the rect the encoder draws, under every
-/// fit — so an `ImageFit::None` image larger than its node, which
-/// overflows it, is damaged and culled where it paints. A 200×100 image
-/// in a 100×100 node at (40, 40), no transform and no clip, so the
-/// cascade's screen rect and the draw rect are in one space.
+/// The cascade bounds an image by the rect the encoder draws under every fit, so an `ImageFit::None` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
 #[test]
 fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
     use crate::primitives::identity::widget_id::WidgetId;
@@ -86,9 +69,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
             scale: Vec2::splat(2.0),
         },
     ];
-    // Drawn rects, hand-computed: Contain scales by min(100/200, 100/100)
-    // = 0.5 → 100×50, centred at y = 40 + 25; None paints 200×100 centred,
-    // x = 40 + (100 - 200)/2 = -10, y = 40.
+    // Hand-computed: Contain scales min(100/200, 100/100) = 0.5 → 100×50, centred at y = 40 + 25; None paints 200×100 centred, x = 40 + (100 - 200)/2 = -10, y = 40.
     let node = Rect::new(40.0, 40.0, 100.0, 100.0);
     let drawn = [
         node,

@@ -11,12 +11,7 @@ pub(crate) struct GradientId(pub(crate) u32);
 #[derive(Default, Debug)]
 pub(crate) struct RecordedGradients {
     pub(crate) records: Vec<RecordedGradient>,
-    /// `content_hash → the record last minted under it`. The hash comes
-    /// from the caller, which computed it anyway to stamp on the shape
-    /// record — so interning costs a probe, not a second hash of the
-    /// gradient's contents. `RecordedGradient` cannot key an index
-    /// itself: it is float-bearing, so it has a `PartialEq` and no
-    /// `Eq`/`Hash`.
+    /// `content_hash → the record last minted under it`; the caller's hash is reused, as `RecordedGradient` is float-bearing and has no `Eq`/`Hash`.
     index: GradientIndex,
 }
 
@@ -44,40 +39,25 @@ impl RecordedGradients {
     }
 }
 
-/// Slots the table holds per record it indexes, so a frame's gradients
-/// sit at half load and collisions stay rare.
+/// Slots per indexed record, so the table sits at half load.
 const SLOTS_PER_RECORD: usize = 2;
 
-/// Smallest table, so the first gradient of a session does not mint a
-/// two-slot one and then widen it on every gradient after.
+/// Smallest table, so the first gradient does not mint a two-slot one.
 const MIN_SLOTS: usize = 64;
 
-/// `content_hash → the record last minted under it`, direct-mapped and
-/// stamped with the frame that wrote each slot.
+/// `content_hash → the record last minted under it`, direct-mapped and stamped with the frame that wrote each slot.
 ///
-/// **One candidate per slot, not a chain of them.** A hit is still
-/// confirmed by equality, because being wrong there means a shape painted
-/// with someone else's gradient. What a collision costs is only the
-/// *dedup*: both gradients keep minting their own record, which is a
-/// duplicate atlas row and nothing more. That is what makes direct
-/// mapping the right shape — a probe chain would buy exact dedup in a
-/// case that does not occur, at a walk on every intern.
+/// **One candidate per slot.** A hit is confirmed by equality; a collision only costs dedup (a duplicate atlas row), which a probe chain would not repay.
 ///
-/// **Stamped rather than cleared**, because this index is built from
-/// nothing every frame. A hash map's `clear` walks the whole table, and
-/// the table is sized by the session's peak gradient count — so every
-/// frame pays for the busiest one to discover the index is empty. A stamp
-/// makes the reset one integer.
+/// **Stamped rather than cleared**: a table sized by the session's peak would make every frame pay to clear it; a stamp makes the reset one integer.
 #[derive(Debug)]
 struct GradientIndex {
     slots: Vec<GradientSlot>,
-    /// Serial of the current frame, never zero — so a zeroed slot reads
-    /// as absent and a fresh or widened table needs no writing.
+    /// Serial of the current frame, never zero, so zeroed slots read as absent.
     stamp: u32,
 }
 
-/// One direct-mapped slot: the record it names and the frame that wrote
-/// it.
+/// One direct-mapped slot: the record it names and the frame that wrote it.
 #[derive(Clone, Copy, Debug, Default)]
 struct GradientSlot {
     stamp: u32,
@@ -110,8 +90,7 @@ impl GradientIndex {
         };
     }
 
-    /// The caller's hash is a full 64-bit content hash, so the low bits
-    /// are as good a slot as any and need no mixing.
+    /// The hash is a full 64-bit content hash, so its low bits need no mixing.
     #[inline]
     fn at(&self, content_hash: u64) -> usize {
         debug_assert!(
@@ -121,16 +100,7 @@ impl GradientIndex {
         content_hash as usize & (self.slots.len() - 1)
     }
 
-    /// Widen to index `records` records at [`SLOTS_PER_RECORD`], unless
-    /// the table already does.
-    ///
-    /// The widened table starts empty. Nothing here can carry the old
-    /// hints across, because a record does not keep the hash it was
-    /// minted under — so what a widening costs is the dedup for the rest
-    /// of the frame that triggered it, which is the same duplicate record
-    /// a collision costs and which this index already treats as the
-    /// acceptable outcome. The next frame indexes at the new width from
-    /// its first gradient.
+    /// Widen to index `records` records at [`SLOTS_PER_RECORD`], unless the table already does. The widened table starts empty (a record keeps no hash), costing only dedup for the rest of the frame.
     fn widen_for(&mut self, records: usize) {
         let want = (records * SLOTS_PER_RECORD)
             .max(MIN_SLOTS)
@@ -146,10 +116,7 @@ impl GradientIndex {
     fn reset(&mut self) {
         self.stamp = self.stamp.wrapping_add(1);
         if self.stamp == 0 {
-            // Four billion frames on, a slot left by the frame that last
-            // held this serial would read as ours and hand back an id
-            // past the end of `records`. One walk makes the wrap
-            // unreachable instead of merely unlikely.
+            // Four billion frames on, a stale slot would read as ours and hand back an id past `records`; one walk makes the wrap unreachable.
             self.slots.fill(GradientSlot::default());
             self.stamp = 1;
         }
@@ -161,8 +128,7 @@ pub(crate) mod internals {
     use crate::scene::record_store::recorded_gradients::RecordedGradients;
 
     impl RecordedGradients {
-        /// Wind the index's frame serial to its last value, so one
-        /// `clear` steps it over the wrap.
+        /// Wind the frame serial to its last value so one `clear` steps over the wrap.
         pub(crate) fn wind_index_to_last_frame(&mut self) {
             self.index.stamp = u32::MAX;
         }

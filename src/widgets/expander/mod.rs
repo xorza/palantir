@@ -23,8 +23,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::expander::ExpanderTheme;
 use std::rc::Rc;
 
-/// A header that reveals or hides a body — `<details>` / `<summary>` in
-/// HTML, an `Expander` in WPF and GTK, a `CollapsingHeader` in egui.
+/// A header that reveals or hides a body, like HTML `<details>`.
 ///
 /// ```
 /// # use palantir::{Expander, Text, Ui};
@@ -37,18 +36,12 @@ use std::rc::Rc;
 /// # }
 /// ```
 ///
-/// **The body does not record while closed**, so every cross-frame row
-/// inside it is swept — a [`TextEdit`](crate::TextEdit)'s unsent edit, a
-/// [`Scroll`](crate::Scroll)'s offset, a nested expander's own flag. A
-/// section holding any of those wants [`Self::keep_body`], which records
-/// it collapsed instead: live ids and zero size, at the price of a full
-/// record on every frame.
-///
-/// The open flag lives on the widget's own id and is `false` until
-/// [`Self::start_open`] says otherwise, so a section nobody touches
-/// keeps no state row at all. An application that owns the flag itself —
-/// a restored layout, an "expand all" — binds it with [`Self::open`]
-/// instead.
+/// **The body does not record while closed**, so cross-frame rows inside it (a
+/// [`TextEdit`](crate::TextEdit)'s unsent edit, a [`Scroll`](crate::Scroll)'s
+/// offset) are swept; a section holding any wants [`Self::keep_body`], at the price
+/// of a full record every frame. The open flag lives on the widget's id and is
+/// `false` until [`Self::start_open`] says otherwise, so an untouched section keeps
+/// no state row; an application owning the flag binds it with [`Self::open`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Expander<'a> {
@@ -60,12 +53,11 @@ pub struct Expander<'a> {
     style: Option<&'a ExpanderTheme>,
 }
 
-/// The reveal's `0..1` tween, on the header's id.
 const SLOT_OPEN: AnimationSlot = AnimationSlot::new("open");
 
 impl<'a> Expander<'a> {
-    /// A header labelled `label`, closed on its first frame. The widget
-    /// owns the open state until [`Self::open`] takes it over.
+    /// A header labelled `label`, closed on its first frame; the widget owns the
+    /// open state until [`Self::open`] takes it over.
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
@@ -78,45 +70,36 @@ impl<'a> Expander<'a> {
         }
     }
 
-    /// Whether the section starts open. Read on the first frame only —
-    /// after that the widget's own flag answers. Ignored entirely when
+    /// Whether the section starts open; read on the first frame only, ignored when
     /// [`Self::open`] binds the flag.
     pub const fn start_open(mut self, open: bool) -> Self {
         self.start_open = open;
         self
     }
 
-    /// Bind the open flag to the caller's own `bool`, for an application
-    /// that persists it or drives it from elsewhere. Wins over
-    /// [`Self::start_open`], and the widget writes every toggle back
-    /// through it.
+    /// Bind the open flag to the caller's own `bool`; wins over
+    /// [`Self::start_open`], and every toggle is written back.
     pub const fn open(mut self, open: &'a mut bool) -> Self {
         self.open = Some(open);
         self
     }
 
     /// Record the body even while closed, under
-    /// [`Visibility::Collapsed`](crate::Visibility::Collapsed) — laid out
-    /// as if absent, painted and hit-tested not at all.
-    ///
-    /// The reason to pay for it is state: Palantir sweeps the
-    /// cross-frame row of any widget that stops being recorded, so a
-    /// skipped body loses everything inside it. Default `false`, because
-    /// costing nothing while closed is what the control is for.
+    /// [`Visibility::Collapsed`](crate::Visibility::Collapsed). Palantir sweeps the
+    /// cross-frame row of any widget no longer recorded, so this keeps the body's
+    /// state; default `false`, since costing nothing while closed is the point.
     pub const fn keep_body(mut self, keep: bool) -> Self {
         self.keep_body = keep;
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `expander`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `expander`.
     pub fn style(mut self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the header, and the body under it while the section is
-    /// open.
+    /// Record the header, and the body under it while open.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.expander);
@@ -154,22 +137,19 @@ impl<'a> Expander<'a> {
                 .child_align(Align::v(VAlign::Center))
                 .sense(Sense::CLICK)
                 .focusable(true)
-                // Enter and Space classify as `KeyClass::Text`, so taking
-                // them means claiming that class — which is right for a
-                // focused header: it is not a typing target, and nothing
-                // behind it should read the keys either.
+                // Enter and Space classify as `KeyClass::Text`, so taking them
+                // claims that class; right for a focused header, which is no typing
+                // target.
                 .input_scope(KeyFilter::TEXT);
             let state = header.response(ui);
             let look = t.plan(&state, (), ambient).apply(ui, &mut header);
 
-            // The click half needs no `disabled` guard — a disabled
-            // widget's button slices are already empty. The key half
-            // does: keyboard events never pass through that fold.
+            // A disabled widget's button slices are already empty, but key events
+            // skip that fold.
             let activated = state.clicked() || (!state.disabled && activation_key(ui, &mut header));
             let now_open = was_open != activated;
-            // No measured height yet, so a tween would have nothing to
-            // clip against. Snap instead of guessing one, and animate
-            // every reveal after it.
+            // With no measured height there is nothing to clip against: snap, then
+            // animate every later reveal.
             let spec = if now_open && height.is_none() {
                 None
             } else {
@@ -199,12 +179,10 @@ impl<'a> Expander<'a> {
             });
 
             if showing || keep_body {
-                // The body records whole inside a wrapper, and the
-                // wrapper's clip is what reveals it. Laying the body out
-                // at a fraction of its height instead would reflow its
-                // text on every frame of the tween, and would leave the
-                // body's own rect clipped, so no frame of the tween could
-                // measure the height the next one clips against.
+                // The body records whole inside a wrapper whose clip reveals it;
+                // laying it out at a fraction of its height would reflow its text
+                // each tween frame and clip its own rect, so no frame could measure
+                // the height the next clips against.
                 let mut reveal = Widget::vstack()
                     .id(body_id.with("reveal"))
                     .size((Sizing::FILL, Sizing::HUG))
@@ -231,9 +209,8 @@ impl<'a> Expander<'a> {
         if let Some(flag) = open {
             *flag = now_open;
         }
-        // The body lays out whole whenever it shows, clipped or not, so
-        // last frame's rect is its height whenever last frame showed it.
-        // A collapsed or unrecorded one has none to give.
+        // The body lays out whole whenever it shows, so last frame's rect is its
+        // height; a collapsed or unrecorded one has none.
         let measured = stored
             .is_some_and(|s| s.shown)
             .then(|| ui.response_for(body_id).layout_rect.map(|r| r.size.h))
@@ -243,13 +220,9 @@ impl<'a> Expander<'a> {
             height: measured.or(height),
             shown: pass.openness > 0.0,
         };
-        // Written only on a change, so a section nobody has opened mints
-        // no row at all — the same probe-don't-insert path `ComboBox`
-        // takes for its own open flag. An absent row *is* the state the
-        // widget resolved from, which is why the comparison is against
-        // that rather than against `ExpanderState::default`: a section
-        // opened by `start_open` and left alone has nothing to record
-        // either.
+        // Written only on a change, so an unopened section mints no row (the
+        // probe-don't-insert path `ComboBox` takes); an absent row *is* the
+        // resolved state, hence the comparison against it.
         let current = stored.unwrap_or(ExpanderState {
             open: was_open,
             height: None,
@@ -275,7 +248,6 @@ impl Configure for Expander<'_> {
     }
 }
 
-/// What the record pass hands back out of its closure.
 #[derive(Debug)]
 struct Pass<R> {
     header: ResponseState,
@@ -284,15 +256,9 @@ struct Pass<R> {
     inner: Option<R>,
 }
 
-/// The open flag, and the body height the reveal clips against.
-///
-/// The height lives here rather than being re-read from the body's own
-/// response because a skipped body has none: the row hangs off the
-/// *header*, which is recorded on every frame, so a section reopened
-/// later still animates.
-///
-/// `shown` is whether the body laid out showing, which is when its rect
-/// is its height.
+/// The open flag and the body height the reveal clips against. The height lives on
+/// the *header*, recorded every frame, because a skipped body has no response;
+/// `shown` is whether the body laid out showing.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ExpanderState {
     open: bool,
@@ -300,11 +266,8 @@ struct ExpanderState {
     shown: bool,
 }
 
-/// Whether an activation key fired on the focused header.
-///
-/// Both are sampled, never short-circuited: `key_pressed` also keeps the
-/// chord subscribed for the wake gate, so one firing must not drop the
-/// other's subscription that frame.
+/// Whether an activation key fired on the focused header; both are sampled, not
+/// short-circuited, as `key_pressed` keeps the chord subscribed for the wake gate.
 fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
     let id = header.resolve(ui);
     if !ui.is_focus_within(id) {
@@ -318,14 +281,13 @@ fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
 /// What one pass over an [`Expander`] produced.
 #[derive(Debug)]
 pub struct ExpanderResponse<'a, R> {
-    /// The header's response — the whole row is the hit target.
+    /// The header's response; the whole row is the hit target.
     pub response: Response<'a>,
-    /// What the body closure returned, or `None` on a frame the body did
-    /// not record. A collapsed [`Expander::keep_body`](crate::Expander::keep_body) section still
-    /// records, so it still answers `Some`.
+    /// What the body closure returned, or `None` on a frame the body did not
+    /// record; a collapsed [`keep_body`](crate::Expander::keep_body) section still
+    /// records.
     pub inner: Option<R>,
-    /// The header was activated this frame, by click or by key, so the
-    /// section flipped open or closed.
+    /// The header was activated this frame, by click or key, flipping the section.
     pub changed: bool,
     /// `0.0` closed, `1.0` open, in between while the reveal animates.
     pub openness: f32,

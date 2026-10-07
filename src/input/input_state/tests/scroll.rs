@@ -52,22 +52,11 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     assert_eq!(state.frame_target_deltas.capacity(), capacity);
 }
 
-/// A non-finite payload is refused at the door, so it never reaches
-/// retained state.
-///
-/// It used to reach it: `pan_delta.x != 0.0` is true for NaN,
-/// `f32::clamp` hands a NaN input straight back, and the poisoned scroll
-/// offset then failed `TranslateScale::new`'s finite-translation assert a
-/// pass later — a release panic, from whatever the platform put on the
-/// wheel. The accumulated delta and the pointer position both have to
-/// survive the refusal untouched, since a rejected event mutates nothing.
+/// A non-finite payload is refused at the door and never reaches retained state: NaN passes `pan_delta.x != 0.0` and `f32::clamp`, and the poisoned offset later trips `TranslateScale::new`'s finite assert. A refused event mutates nothing.
 #[test]
 fn non_finite_payloads_are_refused_before_they_reach_retained_state() {
     let mut state = InputState::default();
     let id = WidgetId::from_hash("scroll");
-    // The pointer move first: it re-resolves the targets against the
-    // cascade, and this one is empty. Routing is stamped in after it, the
-    // way the other cases here do.
     state.feed(InputEvent::PointerMoved(Vec2::new(7.0, 11.0)));
     state.scroll_targets = ScrollTargets::both(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
@@ -92,7 +81,5 @@ fn non_finite_payloads_are_refused_before_they_reach_retained_state() {
     assert_eq!(delta.pixels, Vec2::new(0.0, 5.0), "good pixels stand");
     assert_eq!(delta.lines, Vec2::new(1.0, 0.0), "good lines stand");
     assert_eq!(state.pointer_pos, Some(Vec2::new(7.0, 11.0)));
-    // A refused pointer move re-resolves nothing either, so the routing
-    // the good events accumulated against is still the routing in force.
     assert_eq!(state.scroll_targets, ScrollTargets::both(id));
 }

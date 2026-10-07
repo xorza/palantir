@@ -10,21 +10,14 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;
 use soa_rs::Soars;
 
-/// One mesh draw within a group. Vertex/index slices live in the
-/// recording's [`RecordStore::meshes`](crate::scene::record_store::RecordStore::meshes);
-/// the per-instance transform + tint live alongside as
-/// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
+/// One mesh draw within a group; vertex/index slices live in the recording's [`RecordStore::meshes`](crate::scene::record_store::RecordStore::meshes), transform and tint in [`MeshDrawRow::instance`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,
     pub(crate) indices: Span,
 }
 
-/// One mesh draw row. SoA split keeps span info (`draw`) and Pod
-/// instance state (`instance`) in their own contiguous columns so
-/// the backend can upload `rows.instance()` as a single
-/// `write_buffer` while still walking `rows.draw()` for per-draw
-/// vertex/index span issue.
+/// One mesh draw row; the SoA split lets the backend upload `rows.instance()` in one `write_buffer`.
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct MeshDrawRow {
@@ -32,10 +25,7 @@ pub(crate) struct MeshDrawRow {
     pub(crate) instance: MeshInstance,
 }
 
-/// Per-mesh GPU state, uploaded to a `step_mode: Instance` vertex
-/// buffer. The shader composes `physical = pos * scale + translate`
-/// and `out_color = vertex.color * tint`. `Pod`-shaped so the upload
-/// is a single `write_buffer` of `bytemuck::cast_slice(instances)`.
+/// Per-mesh GPU state in a `step_mode: Instance` buffer: `physical = pos * scale + translate`, `out_color = vertex.color * tint`.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]

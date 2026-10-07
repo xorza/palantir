@@ -1,10 +1,7 @@
 use crate::common::clipboard::internals;
 use crate::widgets::text_edit::tests::*;
 
-/// Default context menu wires Cut / Copy / Paste / Clear against
-/// the host buffer. Drives the menu end-to-end: right-click opens
-/// it on the next frame, clicking a row mutates the buffer + the
-/// clipboard, and the menu auto-closes.
+/// Default context menu wires Cut / Copy / Paste / Clear against the host buffer, end to end; the menu auto-closes.
 #[test]
 fn context_menu_cut_copy_paste_clear() {
     use crate::widgets::context_menu::ContextMenu;
@@ -26,12 +23,7 @@ fn context_menu_cut_copy_paste_clear() {
         h.frame(|ui| body(ui, buf));
     }
 
-    /// Click the center of the open menu's `row_idx`-th row (record
-    /// order, separators included), then run a frame so the click is
-    /// observed by `MenuItem::show`. Rows are the menu body's direct
-    /// children, so their arranged rects are read straight off the tree
-    /// — a fixed row pitch would silently start clicking the neighbour
-    /// the moment the theme's row padding moved.
+    /// Click the centre of the open menu's `row_idx`-th row (separators included) and run a frame; rects are read off the tree, not a fixed pitch.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
         let menu = h
             .node_of(editor_id().with("body"))
@@ -56,8 +48,7 @@ fn context_menu_cut_copy_paste_clear() {
         st.edit.selection = Some(1);
     });
 
-    // Copy → clipboard holds "ell", buffer unchanged. Menu closes
-    // on click.
+    // Copy: clipboard holds "ell", buffer unchanged, menu closes.
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 1); // row 1 == Copy
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
@@ -87,18 +78,14 @@ fn context_menu_cut_copy_paste_clear() {
     let st = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 4, "caret advances past pasted text");
 
-    // Clear → buffer wiped, caret reset. Row 3 is the separator,
-    // row 4 is Select All, and row 5 is Clear.
+    // Clear: row 5 (3 is the separator, 4 Select All).
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 5);
     assert_eq!(buf, "");
     let st = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(st.edit.caret, 0);
 
-    // Regression: pasting `\n`-bearing clipboard via the menu must
-    // sanitize the same way the Cmd+V keypress does — otherwise the
-    // single-line buffer ends up with literal line breaks it can't
-    // render or hit-test. Earlier menu code lacked the sanitize call.
+    // Regression: a `\n`-bearing clipboard pasted via the menu is sanitized like Cmd+V.
     h.set_clipboard_text("foo\nbar");
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 2); // Paste
@@ -107,8 +94,7 @@ fn context_menu_cut_copy_paste_clear() {
         "menu Paste must sanitize newlines for single-line editor"
     );
 
-    // Select All is menu-owned while the popup is open. The captured
-    // command stream executes it once and closes the popup.
+    // Select All is menu-owned while the popup is open; the command stream executes it once and closes.
     open_menu_and_record(&mut h, &mut buf);
     h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
@@ -121,14 +107,10 @@ fn context_menu_cut_copy_paste_clear() {
     );
 }
 
-/// Platform clipboard shortcuts — only the *platform-primary*
-/// command modifier triggers (Cmd on macOS, Ctrl elsewhere); the
-/// other does not. Sweeps copy/cut/paste through one keypress shape
-/// per platform.
+/// Only the platform-primary command modifier triggers clipboard shortcuts (Cmd on macOS, Ctrl elsewhere).
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    // Primary command modifier (`Modifiers::ctrl` is platform-
-    // normalized — Cmd on macOS, Ctrl elsewhere).
+    // Primary command modifier (`Modifiers::ctrl` is platform-normalized).
     fn primary(c: char) -> KeyPress {
         KeyPress::with(Key::Char(c), Modifiers::CTRL)
     }
@@ -148,26 +130,21 @@ fn clipboard_shortcuts_apply_keypresses() {
         ..EditState::default()
     };
 
-    // Copy: clipboard ← "ell", buffer unchanged.
     apply_key_with_clipboard(&mut text, &mut state, primary('c'), &clipboard);
     assert_eq!(text, "hello");
     assert_eq!(clipboard.text().unwrap(), "ell");
 
-    // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
     apply_key_with_clipboard(&mut text, &mut state, primary('x'), &clipboard);
     assert_eq!(text, "ho");
     assert_eq!(clipboard.text().unwrap(), "ell");
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
-    // Paste: insert clipboard at caret → "hello".
     apply_key_with_clipboard(&mut text, &mut state, primary('v'), &clipboard);
     assert_eq!(text, "hello");
     assert_eq!(state.caret, 4);
 
-    // Non-primary modifier must NOT trigger any clipboard action.
-    // (On macOS, raw Ctrl+C is not Copy; on Windows/Linux, Super+C is
-    // not Copy.) Reset state and verify a no-op.
+    // Non-primary modifier triggers nothing (raw Ctrl+C on macOS, Super+C elsewhere); reset and verify a no-op.
     clipboard.set_text("CLIP").unwrap();
     let mut text2 = String::from("hello");
     let mut state2 = EditState {
@@ -182,9 +159,7 @@ fn clipboard_shortcuts_apply_keypresses() {
         "non-primary must not copy"
     );
     apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
-    // Option composes text on macOS, so there each key types its
-    // character: `c` over the selected "ell", then `v` after it. Alt alone
-    // types nothing elsewhere. Neither pastes "CLIP".
+    // Option composes text on macOS, so `c` then `v` type characters; Alt alone types nothing elsewhere. Neither pastes "CLIP".
     let typed = if PLATFORM == Platform::Mac {
         "hcvo"
     } else {
@@ -210,8 +185,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert_eq!(rejected_state.selection, Some(1));
     assert!(rejected_state.undo.is_empty());
 
-    // A clipboard that cannot answer is not an empty one: the paste is
-    // dropped whole, and the selection it was asked to replace stays.
+    // A clipboard that cannot answer is not empty: the paste is dropped whole and the selection stays.
     apply_key_with_clipboard(
         &mut rejected_text,
         &mut rejected_state,
@@ -224,11 +198,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert!(rejected_state.undo.is_empty());
 }
 
-/// Paste of multi-line clipboard content collapses every newline run
-/// (`\n`, `\r`, `\r\n`, repeated breaks) into a single space — the
-/// single-line buffer can't render or hit-test newlines so they get
-/// scrubbed at the input boundary. Pinning both the menu Paste and
-/// the Cmd/Ctrl+V shortcut.
+/// Multi-line clipboard content collapses every newline run into one space, for both menu Paste and the Cmd/Ctrl+V shortcut.
 #[test]
 fn paste_strips_newlines() {
     use crate::widgets::text_edit::unicode::sanitize_single_line;
@@ -248,9 +218,7 @@ fn paste_strips_newlines() {
         );
     }
 
-    // End-to-end via Cmd+V (Ctrl+V on non-Mac): a multi-line
-    // clipboard string lands in the buffer as a single
-    // space-separated line.
+    // End-to-end via Cmd/Ctrl+V: a multi-line clipboard lands as one space-separated line.
     let clipboard = Clipboard::memory();
     clipboard.set_text("first\r\nsecond\nthird").unwrap();
     let mut text = String::new();
@@ -265,8 +233,7 @@ fn paste_strips_newlines() {
     assert_eq!(state.caret, text.len());
 }
 
-/// `ctrl+c` etc. should NOT also insert the character — confirms the
-/// shortcut branch suppresses the printable-char insert path.
+/// `ctrl+c` etc. must not also insert the character.
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
     let clipboard = Clipboard::memory();
@@ -287,8 +254,7 @@ fn clipboard_shortcut_does_not_insert_char() {
     assert_eq!(state.caret, 2);
 }
 
-/// Right-click on the editor opens the menu — pins the secondary-
-/// click → `ContextMenu::on` wiring.
+/// Right-click on the editor opens the menu (secondary click → `ContextMenu::on`).
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     fn body(ui: &mut Ui, buf: &mut String) {

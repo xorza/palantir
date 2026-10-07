@@ -40,8 +40,7 @@ fn flag_setters_round_trip_each_field_independently() {
         f.set_clip(*clip);
         assert!(f.is_tab_stop(), "case: {label}: a stop by default");
         f.set_focusable(*focusable);
-        // The opposite of `focusable`, so every row tells the two bits
-        // apart.
+        // The opposite of `focusable`, so every row tells the two bits apart.
         f.set_tab_stop(!*focusable);
         assert_eq!(f.sense(), *sense, "case: {label} sense");
         assert_eq!(f.is_disabled(), *disabled, "case: {label} disabled");
@@ -51,8 +50,7 @@ fn flag_setters_round_trip_each_field_independently() {
     }
 }
 
-/// A node that adopts another's placement takes its place in the Tab
-/// order too — the stop bit and the index — and none of its other flags.
+/// A node adopting another's placement takes its Tab-order stop bit and index, and none of its other flags.
 #[test]
 fn adopt_placement_carries_the_tab_order() {
     let from = Widget::leaf()
@@ -107,10 +105,7 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(columns.bounds, BoundsExtras::DEFAULT);
 }
 
-/// `set_mode` refines a node; it never re-kinds one. A pending grid or
-/// bar overlay takes only its own definition, and a resolved mode only a
-/// fresh payload of its own kind — which is what lets one method serve
-/// both deferred definitions.
+/// `set_mode` refines a node, never re-kinds it: a pending grid or bar overlay takes only its own definition, a resolved mode only a fresh payload of its own kind.
 #[test]
 fn set_mode_refines_a_node_and_never_rekinds_it() {
     let mut grid = Node::new(NodeMode::PendingGrid);
@@ -245,8 +240,7 @@ fn layout_core_round_trips_mode_align_visibility() {
     }
 }
 
-/// The theme fills in only where the caller stayed silent, and an
-/// authored bound still faces its own check.
+/// The theme fills in only where the caller stayed silent; an authored bound still faces its own check.
 #[test]
 fn an_authored_value_wins_over_the_theme_default() {
     let mut node = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
@@ -259,12 +253,7 @@ fn an_authored_value_wins_over_the_theme_default() {
     assert_eq!(untouched.padding, Some(Spacing::all(9.0)), "theme fills in");
 }
 
-/// A themed default never contradicts what the caller authored: a default
-/// minimum above an authored maximum is clamped to it, a default maximum
-/// below an authored minimum is raised to it, per axis. Two authored
-/// bounds that conflict resolve as CSS resolves them — the minimum wins —
-/// and a NaN default still reaches the check rather than being clamped
-/// away.
+/// A themed default never contradicts the caller: a default min above an authored max is clamped to it, a default max below an authored min is raised to it, per axis. Conflicting authored bounds resolve as in CSS (min wins), and a NaN default still reaches the check.
 #[test]
 fn themed_bounds_yield_to_authored_ones() {
     let leaf = || Node::new(NodeMode::Resolved(LayoutMode::Leaf));

@@ -1,162 +1,60 @@
-//! Frame-driving test harness — the intended single entry point for
-//! driving a [`Ui`] with synthetic input, in-crate and from consumers.
+//! Frame-driving test harness: drives a [`Ui`] with synthetic input.
 //!
 //! # The one fact everything follows from
 //!
-//! `Ui::frame` calls the record closure **one, two, or three times**,
-//! and each call sees different input:
+//! `Ui::frame` calls the record closure one, two or three times, each seeing
+//! different input:
 //!
 //! | pass | when it runs | what it sees |
 //! |---|---|---|
-//! | warmup | `prev_stamp.is_none()` — the very first frame | `InputState` swapped for an empty one: no pointer, no keys. Purely to build the cascade so pass A hit-tests against something. |
-//! | A | always (except `PaintOnly`) | The real input, including one-frame edges — `clicked`, `drag.started()`. |
-//! | B | `frame_had_action` \|\| `relayout_requested` | Post-`drain_per_frame_queues`: the edges are **gone**. Capped at one retry. |
+//! | warmup | `prev_stamp.is_none()`, the very first frame | `InputState` swapped for an empty one. Builds the cascade so pass A has something to hit-test. |
+//! | A | always (except `PaintOnly`) | The real input, including one-frame edges (`clicked`, `drag.started()`). |
+//! | B | `frame_had_action` \|\| `relayout_requested` | Post-`drain_per_frame_queues`: the edges are gone. At most one retry. |
 //!
-//! `FrameProcessing` reports `SingleLayout` / `DoubleLayout` — it counts
-//! A and B, not the warmup. `PaintOnly` is a fourth case that runs
-//! **zero** record passes. Every rule below is a corollary, and this
-//! type holds the display, the clock, and the press origin so they can
-//! be *enforced* rather than documented. It deliberately holds *no*
-//! copy of anything `InputState` already owns — the pointer position
-//! and the modifier set are read back out of it, because a mirror
-//! desyncs the moment one event goes through [`UiHarness::on_input`].
-//!
-//! Holding them is also why there is one frame driver and not a matrix:
-//! a caller changes the surface with [`UiHarness::resize`] and the clock
-//! with [`UiHarness::at`], then calls [`UiHarness::frame`]. Passing a
-//! `Display` per frame only ever let a test disagree with itself about
-//! what it was rendering at.
+//! `PaintOnly` runs zero record passes. The harness keeps no copy of pointer
+//! position or modifiers (a mirror desyncs once an event goes through
+//! [`UiHarness::on_input`]).
 //!
 //! # The protocol rules
 //!
-//! None of these appear in a signature. They are what a caller driving
-//! frames by hand gets silently wrong.
-//!
-//! ## Passes
-//!
-//! 1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the
-//!    warmup pass; seeding `prev_stamp` skips it. That is the split
-//!    between the test-gated `UiHarness::cold` and every other
-//!    constructor. On a cold recorder "the first pass" means the
-//!    input-blind one, so rules 3–4 resolve to the wrong pass.
-//! 2. **Prime before reading.** `response_for`'s `rect` / `layout_rect`
-//!    / `hovered` / `disabled` come from *last* frame's cascade. Any
-//!    input assertion needs a prior frame; a stable arranged rect needs
-//!    two ([`UiHarness::prime`]). Content sized only after arrange
-//!    (scroll thumbs, container text) can need a third — pass the count
-//!    you need rather than guessing two.
-//! 3. **Read the response inside the record.** Between frames you get
-//!    the prior frame's input — the `frame_quiescent` snapshot is taken
-//!    at record-pass start. That is what [`UiHarness::response_in`] is.
-//! 4. **Read the first record pass.** Pass B runs after
-//!    `drain_per_frame_queues`, which clears the one-frame edges, so
-//!    [`UiHarness::frame_value`] keeps pass A's value while still
-//!    recording both.
-//! 5. **The closure's *side effects* run once per pass too.** The
-//!    write-direction peer of 3–4, and the easiest to miss: a closure
-//!    that pushes into a `Vec` or drains an intent queue does it twice
-//!    on an action frame and twice on frame 1. Anything accumulating
-//!    *across* frames must read pass one only or be idempotent.
-//!
-//! ## Clocks — there are two, and they diverge
-//!
-//! 6. **One clock, read at two doors.** [`advance`](UiHarness::advance)
-//!    and [`at`](UiHarness::at) move `UiHarness::time`, which stamps the
-//!    frames this harness drives *and* the input events it feeds — the
-//!    way a host reads its own clock at both. So an `advance` reaches
-//!    input timing with no frame in between, and a frame with no
-//!    `advance` moves nothing.
-//! 7. **A frozen clock makes every click simultaneous.**
-//!    `DOUBLE_CLICK_WINDOW` is 500 ms against that clock, so without an
-//!    `advance` a second `click_at` within `DOUBLE_CLICK_RADIUS` (5 px)
-//!    *always* reports `double_clicked`. Two deliberately separate
-//!    clicks need an `advance` past the window — which is what
-//!    [`advance_past_double_click`](UiHarness::advance_past_double_click)
-//!    spells — or >5 px of travel.
-//! 8. **Animation time is not the frame clock.** `advance_clock` clamps
-//!    per-frame animation dt to `MAX_ANIM_DT` (0.1 s) and quantizes
-//!    through an accumulator at `ANIM_SUBSTEP_DT` (1/240 s). One frame
-//!    at +500 ms moves the double-click clock 500 ms and animations
-//!    100 ms; one at +1 ms moves animations not at all. Use
+//! 1. **Warm the recorder.** A bare `Ui` is cold, so frame 1 runs the warmup pass;
+//!    only the test-gated `UiHarness::cold` leaves it cold.
+//! 2. **Prime before reading.** `response_for` reads last frame's cascade: input
+//!    assertions need one prior frame, a stable arranged rect two
+//!    ([`UiHarness::prime`]).
+//! 3. **Read the response inside the record** ([`UiHarness::response_in`]).
+//! 4. **Read the first record pass.** Pass B has no edges, so
+//!    [`UiHarness::frame_value`] keeps pass A's value.
+//! 5. **The closure's side effects run once per pass too.** Anything accumulating
+//!    across frames must read pass one only or be idempotent.
+//! 6. **One clock, two doors.** [`advance`](UiHarness::advance) and
+//!    [`at`](UiHarness::at) move `UiHarness::time`, which stamps both frames and
+//!    fed events.
+//! 7. **A frozen clock makes every click simultaneous**: `DOUBLE_CLICK_WINDOW` is
+//!    500 ms and `DOUBLE_CLICK_RADIUS` 5 px, so use
+//!    [`advance_past_double_click`](UiHarness::advance_past_double_click) between
+//!    separate clicks.
+//! 8. **Animation time is not the frame clock.** Per-frame animation dt is clamped
+//!    to `MAX_ANIM_DT` (0.1 s) and quantized at `ANIM_SUBSTEP_DT` (1/240 s). Use
 //!    [`advance_frames`](UiHarness::advance_frames).
-//! 9. **A frame can run no record pass.** `FrameProcessing::PaintOnly`
-//!    fires when a paint-anim wake is the frame's only cause. A focused
-//!    `TextEdit` is enough — its caret blink re-queues an `ANIM` wake
-//!    every frame for 30 s. [`frame_value`](UiHarness::frame_value)
-//!    panics on such a frame; [`frame_passes`](UiHarness::frame_passes)
-//!    reports it as no passes.
+//! 9. **A frame can run no record pass.** A focused `TextEdit`'s caret blink keeps
+//!    `PaintOnly` frames coming for 30 s. [`frame_value`](UiHarness::frame_value)
+//!    panics on one; [`frame_passes`](UiHarness::frame_passes) reports no passes.
+//! 10. **Surface size is physical; pointer positions are logical** (`physical /
+//!     dpr`).
+//! 11. **Keyboard events are discarded at ingress when nothing is focused**
+//!     (`InputState::on_input` gates `KeyDown` on
+//!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`). Focus first.
+//! 12. **One change of a kind per frame.** A second press or release of one button,
+//!     or a key press after the frame's command key, waits for the next frame
+//!     (`InputQueue`), so `click_at` is a press frame then a release frame.
+//!     [`UiHarness::frame`] runs the frames held input owes first and answers from
+//!     the last; [`UiHarness::step`] steps one at a time.
 //!
-//! ## Coordinates, text, routing
-//!
-//! 10. **Surface size is physical; pointer positions are logical.**
-//!     `Display::from_physical` derives logical as `physical / dpr`. At
-//!     `dpr = 1.0` they coincide, which is why a DPI test can look right
-//!     and not be.
-//! 11. **Mono vs. real text.** [`UiHarness::new`] uses the mono fallback
-//!     shaper; [`UiHarness::with_text`] shapes with the four bundled faces
-//!     (`FontScope::Bundled`) and nothing from the machine, so its metrics
-//!     are the same everywhere and a test may pin exact widths. Anything
-//!     whose width follows its label measures wrong under mono.
-//! 12. **Scroll and pinch route to the widget under the pointer at
-//!     event time.** They carry no position of their own; `InputState`
-//!     resolves them against the last `PointerMoved`. Hence each comes
-//!     in two forms: [`pinch`](UiHarness::pinch) and friends fire at
-//!     wherever the pointer already is, and the `_at` peers move it
-//!     first. Signs follow winit: positive `y` scrolls content down.
-//! 13. **Modifiers are sticky state, not per-event.**
-//!     `ModifiersChanged` carries a snapshot that persists, so a chord
-//!     set through [`set_modifiers`](UiHarness::set_modifiers) is still
-//!     held by the *next* key until it is set back.
-//!     `Modifiers.ctrl` is platform-normalized — Cmd on macOS.
-//! 14. **A field types a press's `text`, not its key.** The harness
-//!     reports one the way a window does — a printable key carries the
-//!     character it produced, a named key carries none — so
-//!     [`type_text`](UiHarness::type_text) and [`key`](UiHarness::key)
-//!     both type. A case that needs several characters from one press,
-//!     or a character on an unnamed key, builds the event through
-//!     [`on_input`](UiHarness::on_input).
-//! 15. **Keyboard events are discarded at ingress when nothing is
-//!     focused.** `InputState::on_input` gates `KeyDown` on
-//!     `focused.is_some() || subs.matches_press(kp) || keyboard_mask`,
-//!     and drops what is not observable rather than queueing it. A
-//!     keyboard test must establish focus first — by clicking, or via
-//!     `Ui::set_focus` — or it asserts on a queue that can never
-//!     fill.
-//! 16. **One change of a kind per frame.** A second press or release
-//!     of one button, or a key press after the frame's command key,
-//!     waits for the next frame (`InputQueue`) — so `click_at` is a
-//!     press frame and then a release frame. [`UiHarness::frame`] and
-//!     every reader built on it run the frames held input owes before
-//!     their own, with the same closure, and answer from the last one:
-//!     `click_at` then `frame_value` reads the click. A test of the
-//!     spread itself steps one frame at a time with [`UiHarness::step`].
-//!
-//! **Three tiers, one per block.** The whole module is already
-//! `#[cfg(any(test, feature = "internals"))]`; the tiers say *who inside
-//! that* a given method is for.
-//!
-//! 1. `impl UiHarness` (`pub`) — the surface that leaves the crate
-//!    through `palantir::internals::harness`, addressing widgets by
-//!    [`WidgetId`] and nothing else.
-//! 2. `impl UiHarness` (`pub(crate)`) — construction, with
-//!    `from_resources` there because tier 1's constructors call it. The
-//!    two damage reads the **benches** make, `collapsed_damage` and
-//!    `damage_region`, sit in `mod internals`: benches compile under
-//!    `bench` without `cfg(test)`, so they cannot drop to tier 3.
-//! 3. `mod unit` (`#[cfg(test)]`) — what only the *in-tree* suite calls:
-//!    the tree/encoder reach-ins, the cold constructor, the
-//!    no-baseline frame driver.
-//!
-//! Tier 3's extra gate is not about encapsulation — `pub(crate)` already
-//! stops all of this leaving the crate. It is the only way to say "the
-//! benches don't use this": under `--features bench` alone, tier 3
-//! simply isn't compiled, so nothing is spuriously unused and a
-//! genuinely dead method in tiers 2 and 3 still gets reported.
-//!
-//! No block here carries a lint allow. This module is `pub` under
-//! `palantir::internals`, so tier 1 is reachable in every build that
-//! compiles it. Being `pub`, a tier-1 method nobody calls is invisible
-//! to `dead_code`, so one is pruned when its last caller goes.
+//! Tiers: `impl UiHarness` (`pub`) leaves the crate through
+//! `palantir::internals::harness`; `impl UiHarness` (`pub(crate)`) is construction;
+//! `mod unit` (`#[cfg(test)]`) is for in-tree suites only, so `bench` builds do not
+//! see it as unused.
 
 use crate::app::App;
 use crate::common::time::MAX_ANIM_DT;
@@ -193,75 +91,53 @@ pub mod passes;
 #[cfg(test)]
 pub(crate) mod size_trio;
 
-/// Surface for [`UiHarness::arena`]. Never framed, so the value only has
-/// to be non-degenerate.
+/// Never framed; the value only has to be non-degenerate.
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
-/// Drives a [`Ui`] through frames with synthetic input. See the module
-/// doc for the pass model every helper here is built around.
+/// Drives a [`Ui`] through frames with synthetic input; see the module doc for the pass model.
 #[derive(Debug)]
 #[must_use]
 pub struct UiHarness {
-    /// `pub(crate)` rather than behind an accessor: the recorder state the
-    /// in-crate suites assert on is reached through `Ui`'s own gated
-    /// accessors (`h.ui.cascade()`, `h.ui.forest()`), so wrapping the field
-    /// too would only add a hop. Consumers cannot see it and go through
+    /// `pub(crate)` so in-crate suites assert through `Ui`'s gated accessors; consumers use
     /// [`Self::ui`].
     pub(crate) ui: Ui,
-    /// The engines this harness's frames run on. `pub(crate)` for the same
-    /// reason [`Self::ui`] is: in-crate damage and layout tests assert on
-    /// engine internals, and `Ui` does not hold the engines.
+    /// The engines this harness's frames run on; `pub(crate)` for in-crate damage and layout tests.
     pub(crate) engines: FrameEngines,
-    /// What every frame stamps with — the harness owns it so no caller
-    /// has to rebuild one. `physical` is in physical pixels; pointer
-    /// positions are logical (see [`Self::scale`]). Its `user_scale` is
-    /// not read: a frame takes [`Ui::user_scale`], as the window driver
-    /// does.
+    /// What every frame stamps with. `physical` is physical pixels; pointer positions are logical.
+    /// Its `user_scale` is not read: a frame takes [`Ui::user_scale`].
     display: Display,
-    /// Absolute; each frame stamps with it. Only moves on
-    /// [`Self::advance`] / [`Self::at`].
+    /// Absolute; moves only on [`Self::advance`] / [`Self::at`].
     time: Duration,
-    /// Which buttons this harness has pressed and not released, with the
-    /// pointer position each press landed at. Per button, and written
-    /// only in [`Self::on_input`], so a press fed through the raw door
-    /// counts the same as one fed through a typed helper.
+    /// Buttons pressed and not released, with the press position; written only in
+    /// [`Self::on_input`].
     held: [Option<PressOrigin>; PointerButton::COUNT],
 }
 
-/// Where a held button went down: `None` when the pointer was off the
-/// surface at the press.
+/// Where a held button went down; `None` when the pointer was off-surface.
 #[derive(Clone, Copy, Debug)]
 struct PressOrigin {
     at: Option<Vec2>,
 }
 
-/// Tier 1 — the surface that leaves the crate.
 impl UiHarness {
-    /// `UiResources::isolated_mono` — mono-fallback text: fast,
-    /// deterministic, and wrong for width-follows-label assertions.
+    /// Mono-fallback text: deterministic, wrong for width-follows-label assertions.
     pub fn new(surface: UVec2) -> Self {
         Self::from_resources(UiResources::isolated_mono(), surface)
     }
 
-    /// Real cosmic shaping over the bundled faces, through a shaper of
-    /// this harness's own. Use when anything under test sizes to its text.
-    /// The bundled faces are all it sees, so metrics are identical on every
-    /// machine and exact widths are fair to assert.
+    /// Real cosmic shaping over the bundled faces only, so metrics and exact widths are
+    /// machine-independent.
     pub fn with_text(surface: UVec2) -> Self {
         Self::from_resources(UiResources::isolated_text(), surface)
     }
 
-    /// A harness that is never framed — its [`Self::ui`] is a
-    /// string-interning arena for tests that build `InternedStr`-bearing
-    /// projections without recording. Exists because `InternedStr` is
-    /// public and `Ui::intern` is the only public way to mint one.
+    /// A harness that is never framed; its [`Self::ui`] is a string-interning arena.
     pub fn arena() -> Self {
         Self::new(ARENA_SURFACE)
     }
 
-    /// Device pixel ratio, as a platform would report it. The surface
-    /// stays physical, so at `dpr = 2.0` a 600×200 surface is 300×100
-    /// logical — and every position below is logical.
+    /// Device pixel ratio. The surface stays physical, so at `dpr = 2.0` a 600x200 surface is
+    /// 300x100 logical.
     pub fn scale(mut self, dpr: f32) -> Self {
         self.display.system_scale = dpr;
         self.sync_display();
@@ -269,9 +145,7 @@ impl UiHarness {
         self
     }
 
-    /// The app's own scale on top of [`Self::scale`], multiplying into the
-    /// same logical space — [`Ui::set_user_scale`], which every frame
-    /// reads.
+    /// The app's own scale on top of [`Self::scale`]; goes to [`Ui::set_user_scale`].
     pub fn user_scale(mut self, scale: UserScale) -> Self {
         self.ui.set_user_scale(scale);
         self.sync_display();
@@ -279,7 +153,7 @@ impl UiHarness {
         self
     }
 
-    /// Monitor refresh, which repaint-wake coalescing reads.
+    /// Monitor refresh, read by repaint-wake coalescing.
     pub fn refresh_millihertz(mut self, mhz: u32) -> Self {
         self.display.refresh_millihertz = Some(mhz);
         self.sync_display();
@@ -287,22 +161,15 @@ impl UiHarness {
         self
     }
 
-    /// Change the surface between frames — the resize path. Takes
-    /// `&mut self` rather than `self` for a reason the three builders
-    /// above do not share: it deliberately does **not** re-warm, so the
-    /// next frame reads it as `display_changed` exactly as a real resize
-    /// does.
+    /// Change the surface between frames. Does not re-warm, so the next frame reads a
+    /// `display_changed` like a real resize.
     pub fn resize(&mut self, surface: UVec2) -> &mut Self {
         self.display.physical = surface;
         self.sync_display();
         self
     }
 
-    /// Swap the whole display between frames, for the changes
-    /// [`Self::resize`] cannot express — a DPI move (physical *and*
-    /// scale together), a pixel-snap flip. Same no-re-warm contract.
-    /// Its `user_scale` lands on [`Ui::set_user_scale`], the one home
-    /// a frame reads it from.
+    /// Swap the whole display between frames (DPI move, pixel-snap flip). Same no-re-warm contract.
     pub fn set_display(&mut self, display: Display) -> &mut Self {
         self.display = display;
         self.ui.set_user_scale(display.user_scale);
@@ -310,40 +177,30 @@ impl UiHarness {
         self
     }
 
-    /// Run one frame and report what it did. The record closure runs
-    /// once, twice, or not at all — see the module doc.
-    ///
-    /// First runs, with the same closure, every frame that input fed
-    /// before this call still owes — see rule 16. The report is the last
-    /// frame's.
+    /// Run one frame; the closure runs once, twice or not at all. First runs the frames held input
+    /// still owes (rule 12).
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         self.frame_app(&mut RecordApp::new(record))
     }
 
-    /// Run frames of a whole [`App`] — `update` once, then `record` per
-    /// pass — the way a host drives it, delivering held input first like
-    /// [`Self::frame`].
+    /// Run frames of a whole [`App`] as a host does, delivering held input first.
     pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport {
         self.deliver_held_input(app);
         self.drive(true, app)
     }
 
-    /// Run the frames input fed before now still owes, each with `app`,
-    /// as a host does on the `repaint_requested` they report.
     fn deliver_held_input(&mut self, app: &mut impl App) {
         while self.ui.input().has_held_input() {
             self.drive(true, app);
         }
     }
 
-    /// Exactly one host frame, delivering nothing held — for a test that
-    /// asserts on the frames input is spread over.
+    /// Exactly one host frame, delivering nothing held.
     pub fn step(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         self.drive(true, &mut RecordApp::new(record))
     }
 
-    /// Run one frame and keep what each record pass returned, warmup
-    /// excluded. See [`Passes`] for which pass sees what.
+    /// Run one frame and keep each record pass's value, warmup excluded. See [`Passes`].
     pub fn frame_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
         self.deliver_held_input(&mut RecordApp::new(|ui: &mut Ui| {
             record(ui);
@@ -351,17 +208,13 @@ impl UiHarness {
         self.step_passes(record)
     }
 
-    /// [`Self::frame_passes`] over exactly one host frame, delivering
-    /// nothing held, like [`Self::step`].
+    /// [`Self::frame_passes`] over exactly one host frame, like [`Self::step`].
     pub fn step_passes<R>(&mut self, mut record: impl FnMut(&mut Ui) -> R) -> Passes<R> {
-        // A cold recorder runs the input-blind warmup pass first; it is
-        // not one of the passes a caller asks about.
         let mut warmup = self.ui.frame_runtime().is_first_frame();
         let mut values = Vec::new();
         let report = self.step(|ui| {
-            // `record` runs on *every* pass — it is the scene, and a pass
-            // that skipped it would record an empty tree and wipe the
-            // cascade the next frame reads.
+            // `record` runs on every pass: skipping it would record an empty tree and wipe the
+            // cascade.
             let value = record(ui);
             if warmup {
                 warmup = false;
@@ -372,10 +225,7 @@ impl UiHarness {
         Passes::new(values, report)
     }
 
-    /// The value from the **input-observing** pass — pass A, the one
-    /// that sees one-frame edges (`clicked`, `drag.started()`). Panics
-    /// if the frame ran no record pass at all; [`Self::frame_passes`]
-    /// reports that instead.
+    /// The value from pass A. Panics if the frame ran no record pass; see [`Self::frame_passes`].
     pub fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R {
         self.frame_passes(record).into_a().expect(
             "the frame ran no record pass — FrameProcessing::PaintOnly. A paint-anim \
@@ -384,41 +234,29 @@ impl UiHarness {
         )
     }
 
-    /// `n` discarded frames. Two is the usual minimum: one to lay out,
-    /// one for `response_for` to resolve against a settled cascade.
-    ///
-    /// Named `prime`, not `settle` — palantir already uses "settle" for
-    /// the second record pass *within* one frame.
+    /// `n` discarded frames; two is the usual minimum. Not named `settle`, which means the second
+    /// record pass within a frame.
     pub fn prime(&mut self, n: u32, mut record: impl FnMut(&mut Ui)) {
         for _ in 0..n {
             self.frame(&mut record);
         }
     }
 
-    /// Move the absolute clock. Every event fed after this carries the
-    /// new time, and so does the next frame — one clock, read at both
-    /// doors, the way a host reads its own.
-    ///
-    /// Animation dt is derived rather than read: it is clamped per frame
-    /// to `MAX_ANIM_DT`, so one big jump here does not integrate one big
-    /// step there. Use [`Self::advance_frames`] for that.
+    /// Move the absolute clock; events fed afterward and the next frame carry it. Animation dt is
+    /// clamped, so use [`Self::advance_frames`] for animation.
     pub fn advance(&mut self, dt: Duration) -> &mut Self {
         self.time += dt;
         self
     }
 
-    /// Park the absolute clock at `time` — [`Self::advance`] for a test
-    /// written against absolute stamps rather than deltas, and the same
-    /// clock on both doors.
+    /// Park the absolute clock at `time`.
     pub const fn at(&mut self, time: Duration) -> &mut Self {
         self.time = time;
         self
     }
 
-    /// `n` frames stepping `dt` each — the correct way to move an
-    /// animation, since a single large jump is clamped to `MAX_ANIM_DT`.
-    /// A `dt` past that clamp panics: a test stepping it would
-    /// under-integrate silently rather than fail.
+    /// `n` frames stepping `dt` each, the way to move an animation. A `dt` past `MAX_ANIM_DT`
+    /// panics rather than under-integrate silently.
     pub fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
         Self::assert_anim_step(dt);
         for _ in 0..n {
@@ -427,10 +265,8 @@ impl UiHarness {
         }
     }
 
-    /// Frames stepping `dt` each until one requests no repaint, at most
-    /// `max` of them: how many frames that took, the idle one included,
-    /// or `None` if the last was still asking for another. The `dt`
-    /// bound is [`Self::advance_frames`]'s.
+    /// Frames stepping `dt` each until one requests no repaint, at most `max`. Returns how many it
+    /// took or `None` if the last still asked for more.
     pub fn frames_until_idle(
         &mut self,
         max: u32,
@@ -452,25 +288,14 @@ impl UiHarness {
         );
     }
 
-    /// Move the clock past `DOUBLE_CLICK_WINDOW`, so the next click starts
-    /// a fresh press run. Without this the clock never moves, every click
-    /// is simultaneous, and a second `click_at` on the same spot always
-    /// reports `double_clicked`.
-    ///
-    /// The peer of [`Self::advance`], and like it records no frame: a
-    /// press is stamped when it arrives, so the gap separates the runs on
-    /// its own. A frame here would have to record some tree, and one that
-    /// is not the test's own sweeps the state rows the test is about.
+    /// Move the clock past `DOUBLE_CLICK_WINDOW` so the next click starts a fresh
+    /// press run. Records no frame, which would sweep the state rows under test.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
         self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1))
     }
 
-    /// The raw input door, for events with no typed helper above — a
-    /// `KeyDown` with a specific `physical`, say. Everything the typed
-    /// helpers cover should go through them: they are what enforce the
-    /// press-origin, modifier, and threshold rules, and a helper that
-    /// emits exactly one event hands back that event's [`InputDelta`] so
-    /// nothing is given up by using it.
+    /// The raw input door, for events with no typed helper; the typed helpers enforce the
+    /// press-origin and modifier rules.
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         match event {
             InputEvent::PointerPressed(button) => {
@@ -488,24 +313,18 @@ impl UiHarness {
         self.ui.on_input(event, self.time)
     }
 
-    /// Returns the move's [`InputDelta`] — `on_input`'s value, so a
-    /// repaint-hint assertion has no reason to build the event by hand.
+    /// Returns the move's [`InputDelta`].
     pub fn move_to(&mut self, pos: Vec2) -> InputDelta {
         self.on_input(InputEvent::PointerMoved(pos))
     }
 
-    /// The pointer leaves the surface. Returns the event's
-    /// [`InputDelta`], like [`Self::move_to`].
+    /// The pointer leaves the surface; returns the event's [`InputDelta`].
     pub fn pointer_left(&mut self) -> InputDelta {
         self.on_input(InputEvent::PointerLeft)
     }
 
-    /// Press wherever the pointer already is — the peer of
-    /// [`Self::release`], for a press deliberately separated from the
-    /// move that positioned it. The press origin is read back from
-    /// `InputState` rather than a second copy on this type, so a press
-    /// that follows a raw `PointerMoved` still latches
-    /// [`Self::drag_to`]'s threshold check.
+    /// Press wherever the pointer is. The press origin is read back from `InputState`, so a press
+    /// after a raw `PointerMoved` still latches [`Self::drag_to`]'s threshold.
     pub fn press(&mut self) -> InputDelta {
         self.press_button(PointerButton::Left)
     }
@@ -526,8 +345,7 @@ impl UiHarness {
         self.press_button(button)
     }
 
-    /// Release the left button, clearing the press origin
-    /// [`Self::drag_to`] measures from.
+    /// Release the left button, clearing the press origin [`Self::drag_to`] measures from.
     pub fn release(&mut self) -> InputDelta {
         self.release_button(PointerButton::Left)
     }
@@ -537,8 +355,7 @@ impl UiHarness {
         self.on_input(InputEvent::PointerReleased(button))
     }
 
-    /// Press and release the left button at `pos`, in one frame's
-    /// worth of events.
+    /// Press and release the left button at `pos`.
     pub fn click_at(&mut self, pos: Vec2) {
         self.click_button_at(PointerButton::Left, pos);
     }
@@ -548,32 +365,16 @@ impl UiHarness {
         self.click_button_at(PointerButton::Right, pos);
     }
 
-    /// The button-generic form the two above name — for a test sweeping
-    /// every [`PointerButton`] rather than exercising a named one.
+    /// The button-generic click, for sweeping every [`PointerButton`].
     pub fn click_button_at(&mut self, button: PointerButton, pos: Vec2) {
         self.press_button_at(button, pos);
         self.release_button(button);
     }
 
-    /// `id`'s center, **checked**: panics unless the pointer would
-    /// actually reach `id` there.
-    ///
-    /// The check is the point. A widget's center is not the same thing
-    /// as a hit on that widget — anything overlapping it that senses
-    /// hover wins the topmost-first scan, so aiming at a rect and
-    /// assuming the event lands is how a test ends up passing for the
-    /// wrong reason. The `_on` / `_onto` helpers below all route through
-    /// here; a case that *wants* to aim at an occluded widget is
-    /// deliberate and says so by computing the position itself.
-    ///
-    /// Reads last frame's cascade, so it needs a primed frame — see
-    /// [`Self::center_of`] for the failure when nothing recorded.
-    ///
-    /// The filter is "senses anything", deliberately wider than
-    /// [`Self::hit_at`]'s hover filter: a `SCROLL`-only widget is
-    /// invisible to the hover layer *by design* (`Sense::hovers`), so
-    /// checking against hover alone would reject aiming at a scroll or
-    /// pinch target — which is one of the main reasons to aim at all.
+    /// `id`'s center, checked: panics unless the pointer would reach `id` there (an
+    /// overlapping hover-sensing widget wins the scan). Needs a primed frame. The filter
+    /// is "senses anything", wider than [`Self::hit_at`]'s hover filter, since a
+    /// `SCROLL`-only widget is invisible to hover by design.
     fn hit_center_of(&self, id: WidgetId) -> Vec2 {
         let center = self.center_of(id);
         self.assert_reaches(id, center);
@@ -591,11 +392,8 @@ impl UiHarness {
         );
     }
 
-    /// The screen position of `local`, a point in `id`'s arranged space
-    /// measured from its layout origin — through every ancestor
-    /// transform, the way a pointer has to reach it. **Checked** like
-    /// [`Self::click_on`]: panics unless the pointer would reach `id`
-    /// there.
+    /// The screen position of `local`, a point in `id`'s arranged space, through every ancestor
+    /// transform. Checked like [`Self::click_on`].
     pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
         let response = self.ui.response_for(id);
         let layout = response.layout_rect.unwrap_or_else(|| {
@@ -606,10 +404,7 @@ impl UiHarness {
         pos
     }
 
-    /// `id`'s map from its arranged space to the screen: every ancestor's
-    /// transform, scroll and zoom composed. Unchecked, unlike
-    /// [`Self::point_in`] — for a point or a rect that need not land on
-    /// `id`, such as a drag target or an edge carried off the surface.
+    /// `id`'s map from arranged space to screen. Unchecked, unlike [`Self::point_in`].
     pub fn transform(&self, id: WidgetId) -> TranslateScale {
         self.ui.response_for(id).transform
     }
@@ -626,29 +421,23 @@ impl UiHarness {
         self.press_at(pos)
     }
 
-    /// Click `id` at its center. See `Self::hit_center_of` for what is
-    /// checked and why.
+    /// Click `id` at its center; see `Self::hit_center_of`.
     pub fn click_on(&mut self, id: WidgetId) {
         self.click_at(self.hit_center_of(id));
     }
 
-    /// Press `id` at its center, checked the same way
-    /// [`Self::click_on`] is.
+    /// Press `id` at its center, checked like [`Self::click_on`].
     pub fn press_on(&mut self, id: WidgetId) -> InputDelta {
         self.press_at(self.hit_center_of(id))
     }
 
-    /// Hover `id` — the move half of [`Self::press_on`], for a test that
-    /// aims at a widget and then feeds something positionless.
+    /// Hover `id`: the move half of [`Self::press_on`].
     pub fn move_onto(&mut self, id: WidgetId) -> InputDelta {
         self.move_to(self.hit_center_of(id))
     }
 
-    /// Move while pressed, returning the move's [`InputDelta`] like
-    /// [`Self::move_to`]. Panics if travel since the press has not
-    /// crossed `DRAG_THRESHOLD` — the capture would not latch and the
-    /// test would pass or fail for the wrong reason. A deliberate
-    /// sub-threshold move is [`Self::move_to`].
+    /// Move while pressed. Panics if travel since the press has not crossed `DRAG_THRESHOLD` (the
+    /// capture would not latch).
     pub fn drag_to(&mut self, pos: Vec2) -> InputDelta {
         let origin = self
             .held
@@ -666,16 +455,13 @@ impl UiHarness {
         self.move_to(pos)
     }
 
-    /// Scroll and pinch carry no position of their own: `InputState`
-    /// routes them to whatever the pointer was last over. These bare
-    /// forms are for a gesture deliberately separated from the move that
-    /// aimed it — the `_at` peers below are the same events with the aim
-    /// inlined. Positive `y` means the content scrolls down.
+    /// Scroll and pinch carry no position; `InputState` routes them to whatever the pointer was
+    /// last over. Positive `y` scrolls content down.
     pub fn scroll_lines(&mut self, delta: Vec2) -> InputDelta {
         self.on_input(InputEvent::ScrollLines(delta))
     }
 
-    /// [`Self::scroll_lines`] in pixels rather than lines.
+    /// [`Self::scroll_lines`] in pixels.
     pub fn scroll_pixels(&mut self, delta: Vec2) -> InputDelta {
         self.on_input(InputEvent::ScrollPixels(delta))
     }
@@ -685,8 +471,7 @@ impl UiHarness {
         self.on_input(InputEvent::Zoom(factor))
     }
 
-    /// Aim, then scroll — the delta returned is the scroll's, not the
-    /// positioning move's.
+    /// Aim, then scroll; the delta returned is the scroll's.
     pub fn scroll_lines_at(&mut self, pos: Vec2, delta: Vec2) -> InputDelta {
         self.move_to(pos);
         self.scroll_lines(delta)
@@ -704,71 +489,40 @@ impl UiHarness {
         self.pinch(factor)
     }
 
-    /// A non-repeat press whose `physical` is [`Key::Other`]
-    /// (`InputEvent::key_down`); a case that needs a real physical
-    /// position builds the event through [`Self::on_input`]. Text rides
-    /// along under any modifier: the command gate is the *field's*, not
-    /// this one's — a platform reports text under Ctrl too.
+    /// A non-repeat press whose `physical` is [`Key::Other`]; use [`Self::on_input`] for a real
+    /// physical key.
     pub fn key(&mut self, key: Key) -> InputDelta {
         self.on_input(InputEvent::key_down(key))
     }
 
-    /// Emits `ModifiersChanged` only when the set actually changes —
-    /// `Modifiers` is a snapshot the input machine holds, not a per-event
-    /// flag, and a redundant emit would wake a `KeyboardWake::MODIFIER`
-    /// watcher for nothing. That conditional emit is also why this
-    /// returns no [`InputDelta`] where its neighbours do: a test
-    /// asserting on the modifier wake wants the event unconditionally
-    /// and goes through [`Self::on_input`].
-    ///
-    /// The "actually changes" is read off `InputState`, not a mirror on
-    /// this type. A mirror desyncs the moment one modifier goes through
-    /// [`Self::on_input`] — and then this suppresses the very emit that
-    /// would have cleared it, leaving a chord silently held. It is read
-    /// *after held input*: a change still waiting in the queue (rule 16)
-    /// is one this harness already sent.
+    /// Emits `ModifiersChanged` only on an actual change (read from `InputState` after
+    /// held input, not a mirror), so it returns no [`InputDelta`].
     pub fn set_modifiers(&mut self, mods: Modifiers) {
         if self.ui.input().modifiers_after_held_input() != mods {
             self.on_input(InputEvent::ModifiersChanged(mods));
         }
     }
 
-    /// One press per character, each carrying that character as its
-    /// text — the path a real window produces for someone typing.
+    /// One press per character, each carrying it as text.
     pub fn type_text(&mut self, s: &str) {
         for c in s.chars() {
             self.key(Key::Char(c));
         }
     }
 
-    /// The **visible** rect from the previous frame's cascade — after
-    /// ancestor transforms and clipping, so it is what the pointer
-    /// actually hits and what [`Self::center_of`] aims at. For the
-    /// arranged geometry a layout assertion wants, see
-    /// [`Self::layout_rect`]; the two differ under any transform or
-    /// clip, and only there, which is what makes picking the wrong one
-    /// pass everywhere except the scroll and canvas cases.
-    ///
-    /// Safe to read between frames — geometry is stable across them,
-    /// one-frame edges are not.
+    /// The visible rect from the previous frame's cascade (after transforms and
+    /// clipping), which is what the pointer hits. For layout assertions use
+    /// [`Self::layout_rect`]; they differ only under a transform or clip.
     pub fn rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui.response_for(id).rect
     }
 
-    /// The **arranged** rect: pre-transform and unclipped, in world
-    /// coordinates — what the layout pass produced, before a scrolling
-    /// or zooming ancestor moved it. This is the one a layout test
-    /// means; [`Self::rect`] is the post-transform peer.
-    ///
-    /// Equal to indexing the layout pass output by the widget's node,
-    /// without making a test carry a `NodeId` to get there.
+    /// The arranged rect: pre-transform, unclipped, world coordinates. The one a layout test means.
     pub fn layout_rect(&self, id: WidgetId) -> Option<Rect> {
         self.ui.response_for(id).layout_rect
     }
 
-    /// [`Self::layout_rect`] for a widget the test knows arranged —
-    /// the read a layout assertion makes. Panics when `id` did not
-    /// arrange last frame.
+    /// [`Self::layout_rect`] for a widget known to have arranged; panics otherwise.
     pub fn arranged(&self, id: WidgetId) -> Rect {
         self.layout_rect(id)
             .unwrap_or_else(|| panic!("{id:?} did not arrange last frame"))
@@ -785,9 +539,7 @@ impl UiHarness {
             .center()
     }
 
-    /// `id`'s response captured inside pass A — the only correct way to
-    /// read a one-frame edge, since reading between frames sees the
-    /// previous frame's input and pass B has already had the edges drained.
+    /// `id`'s response captured inside pass A, the only correct way to read a one-frame edge.
     pub fn response_in(&mut self, id: WidgetId, mut record: impl FnMut(&mut Ui)) -> ResponseState {
         self.frame_value(move |ui| {
             record(ui);
@@ -795,10 +547,7 @@ impl UiHarness {
         })
     }
 
-    /// Focus and pointer reads that carry no protocol hazard — unlike
-    /// `response_for`, none of these is one-frame-stale in a way that
-    /// makes a between-frames read wrong. `response_for` deliberately
-    /// stays off this rung; use [`Self::rect`] for geometry and
+    /// Focus and pointer reads with no protocol hazard. Use [`Self::rect`] for geometry and
     /// [`Self::response_in`] for edges.
     pub const fn focus(&self) -> Option<WidgetId> {
         self.ui.focus()
@@ -819,9 +568,7 @@ impl UiHarness {
         self.ui.is_focus_within(ancestor)
     }
 
-    /// Topmost widget the pointer would hit at `pos`, by the same filter
-    /// hover routing uses. Turns "the press didn't land and I don't know
-    /// why" into one assertion.
+    /// Topmost widget the pointer would hit at `pos`, by the hover routing filter.
     pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId> {
         self.ui.cascade().hit_test(pos, Sense::hovers)
     }
@@ -830,8 +577,7 @@ impl UiHarness {
     ///
     /// # Panics
     ///
-    /// Panics when no clipboard backend answers. The harness runs on the
-    /// in-memory backend, which always does.
+    /// Panics when no backend answers; the in-memory one always does.
     pub fn clipboard_text(&self) -> String {
         self.ui
             .clipboard()
@@ -839,7 +585,7 @@ impl UiHarness {
             .expect("the harness clipboard is the in-memory backend")
     }
 
-    /// Seed the harness clipboard, for a paste a test is about to make.
+    /// Seed the harness clipboard for a coming paste.
     pub fn set_clipboard_text(&mut self, text: &str) {
         self.ui
             .clipboard()
@@ -851,8 +597,7 @@ impl UiHarness {
     ///
     /// # Panics
     ///
-    /// Panics when no such row exists, so a wrong id or a wrong type fails
-    /// instead of reading a default.
+    /// Panics when no such row exists.
     pub fn state<S: 'static>(&self, id: WidgetId) -> &S {
         self.ui.state::<S>(id).unwrap_or_else(|| {
             panic!(
@@ -862,18 +607,13 @@ impl UiHarness {
         })
     }
 
-    /// Escape hatch. Reading `response_for` off this between frames sees
-    /// the previous frame's input — prefer [`Self::response_in`].
+    /// Escape hatch. Prefer [`Self::response_in`] to `response_for` off this.
     pub const fn ui(&mut self) -> &mut Ui {
         &mut self.ui
     }
 }
 
-/// Tier 2 — construction and the frame entry tier 1 builds on.
 impl UiHarness {
-    /// A recorder over `resources` — two over one, for the shared-text-cache
-    /// and idle/active-window tests, or one over a shaper of the caller's
-    /// own, for a case that *changes* the font database.
     pub(crate) fn from_resources(resources: UiResources, surface: UVec2) -> Self {
         let mut harness = Self {
             engines: FrameEngines::new(&resources),
@@ -887,9 +627,6 @@ impl UiHarness {
         harness
     }
 
-    /// The one place a frame is actually entered. `Ui::frame` is
-    /// `pub(crate)`, so the harness drives it directly rather than
-    /// through a test method on `Ui`.
     fn drive(&mut self, damage_baseline_valid: bool, app: &mut impl App) -> FrameReport {
         let stamp = FrameStamp::new(self.frame_display(), self.time);
         self.ui.frame(
@@ -900,9 +637,7 @@ impl UiHarness {
         )
     }
 
-    /// The display a frame runs at: the harness's surface and scale under
-    /// the app's [`Ui::user_scale`], derived as the window driver derives
-    /// it, so a setting changed inside a frame lands on the next.
+    /// The display a frame runs at, derived as the window driver does.
     fn frame_display(&self) -> Display {
         Display {
             user_scale: self.ui.user_scale(),
@@ -914,35 +649,27 @@ impl UiHarness {
         self.ui.set_display(self.frame_display());
     }
 
-    /// Re-seed `prev_stamp` after a builder moved the display, so the
-    /// move does not read as a display change on frame 1 — but only on a
-    /// warm harness: seeding a cold one would skip the warmup pass it
-    /// exists for.
+    /// Re-seed `prev_stamp` after a builder moved the display, so frame 1 does not read a display
+    /// change. Warm harnesses only.
     fn rewarm(&mut self) {
         if !self.ui.frame_runtime().is_first_frame() {
             self.mark_warm();
         }
     }
 
-    /// Seed `prev_stamp` so frame 1 skips the cold-start warmup pass and
-    /// runs one record pass like every later frame.
     fn mark_warm(&mut self) {
         self.ui
             .set_prev_stamp(Some(FrameStamp::new(self.frame_display(), self.time)));
     }
 }
 
-/// The damage reads the crate's damage tests and the `damage` bench make;
-/// a non-test `internals` build has no caller.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::internals::harness::UiHarness;
 
     impl UiHarness {
-        /// Collapse this frame's accumulated raw rects the way
-        /// `DamageEngine::finish_region` does — the rects *and* the coverage
-        /// they cover the surface with.
+        /// Collapse this frame's raw damage rects as `DamageEngine::finish_region` does.
         pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
             DamageRegion::collapse_from(
                 &self.engines.damage.raw_rects,
@@ -951,15 +678,12 @@ pub(crate) mod internals {
             )
         }
 
-        /// Just the rects — what most damage assertions are about.
         pub(crate) fn damage_region(&self) -> DamageRegion {
             self.collapsed_damage().region
         }
     }
 }
 
-/// Tier 3 — everything only the *in-tree* suite calls. One gated `mod`
-/// rather than attributes on single methods, so its imports live with it.
 #[cfg(test)]
 mod unit {
     use crate::animation::animatable::Animatable;
@@ -986,21 +710,14 @@ mod unit {
     use glam::UVec2;
 
     impl UiHarness {
-        /// Cold recorder — `prev_stamp` unseeded, so frame 1 runs the
-        /// extra blackout warmup pass. For the tests that pin cold start
-        /// itself; every other constructor is warm.
+        /// Cold recorder (`prev_stamp` unseeded): frame 1 runs the warmup pass.
         pub(crate) fn cold(surface: UVec2) -> Self {
             let mut harness = Self::new(surface);
             harness.ui.set_prev_stamp(None);
             harness
         }
 
-        /// One frame with the damage baseline dropped — the host's "the
-        /// last frame never reached the screen" path
-        /// (`WindowDriver::output_valid == false`), which forces a full
-        /// repaint. Only the damage tests pinning *that* want it: a test
-        /// after a record pass, a full repaint, or a settled layout gets
-        /// all three from plain [`UiHarness::frame`].
+        /// One frame with the damage baseline dropped, forcing a full repaint.
         pub(crate) fn frame_without_baseline(
             &mut self,
             record: impl FnMut(&mut Ui),
@@ -1008,9 +725,7 @@ mod unit {
             self.drive(false, &mut RecordApp::new(record))
         }
 
-        /// A `FILL`/`FILL` hstack wrapped around `f`, returning the node
-        /// `f` produced — the fixture for "arrange this one subtree
-        /// against the whole surface".
+        /// A `FILL`/`FILL` hstack wrapped around `f`, returning `f`'s node.
         pub(crate) fn under_outer<R>(&mut self, mut f: impl FnMut(&mut Ui) -> R) -> R {
             self.frame_value(|ui| {
                 Panel::hstack()
@@ -1025,15 +740,12 @@ mod unit {
             self.ui.forest().node_for_widget_id(Layer::Main, id)
         }
 
-        /// `node`'s main-tree intrinsic on `axis` — the query a layout test
-        /// makes of the frame it just ran.
         pub(crate) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
             self.engines
                 .layout
                 .main_intrinsic(self.ui.forest(), node, axis, req)
         }
 
-        /// Where `id` recorded last frame, on whichever layer took it.
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {
             self.ui.cascade().endpoint(id)
         }

@@ -1,30 +1,16 @@
-//! [`RasterImage`] — pixels on their way into an atlas.
-//!
-//! At the primitives layer because it is the seam between three others:
-//! `text` and `icons` each produce one, and `renderer` consumes both. A
-//! home under any of the three would make the other two depend upward on
-//! it.
+//! [`RasterImage`]: pixels on their way into an atlas. In primitives because it is the seam between `text` and `icons` (producers) and `renderer` (consumer); any one of them as home would make the others depend upward.
 
 use crate::primitives::paint::content_type::ContentType;
 use glam::{IVec2, UVec2};
 
-/// One rasterized image, borrowed from the rasterizer that produced it.
-///
-/// A glyph comes from swash and an icon from resvg, and neither hands
-/// back an owned buffer: each renders into scratch it keeps, so a zoom
-/// gesture that re-rasterizes a screenful allocates nothing after its
-/// first frame. The borrow is what enforces that — an owned `Vec` here
-/// would be one allocation per raster, and the atlas copies the bytes
-/// out before the next raster overwrites them.
+/// One rasterized image, borrowed from the rasterizer that produced it. Swash (glyphs) and resvg (icons) render into kept scratch, so a zoom gesture re-rasterizing a screenful allocates nothing after frame one; the atlas copies the bytes before the next raster overwrites them.
 #[derive(Clone, Copy, Debug)]
 pub struct RasterImage<'a> {
     /// Whether [`Self::data`] is one byte per pixel or four.
     pub content: ContentType,
     /// Raster dimensions in physical pixels.
     pub size: UVec2,
-    /// Offset from the pen position to the raster's top-left, in the
-    /// rasterizer's sense: `x` right, `y` **up**. Zero for an icon,
-    /// whose raster *is* its box.
+    /// Offset from the pen to the raster's top-left: `x` right, `y` **up**. Zero for an icon.
     pub bearing: IVec2,
     /// Tightly packed rows, `size.x * size.y` pixels; one byte each for
     /// [`ContentType::Mask`], four (RGBA) for [`ContentType::Color`].

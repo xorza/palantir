@@ -1,5 +1,4 @@
-//! Wrapping text inside a fill slot: the share it reshapes at, and the
-//! floor under it.
+//! Wrapping text inside a fill slot: the share it reshapes at, and its floor.
 
 use crate::internals::harness::UiHarness;
 use crate::layout::tests::support;
@@ -8,10 +7,7 @@ use crate::layout::tests::support::chat_message;
 use crate::scene::layer::Layer;
 use glam::UVec2;
 
-/// Chat-message HStack pattern. Avatar (Fixed) + Message (Fill,
-/// wrapping text). Without HStack-Fill min-content floor + width
-/// commitment, message is measured at INF → shapes at natural width →
-/// cached shape disagrees with arrange's slot.
+/// Chat-message HStack (Fixed avatar + Fill wrapping message): without the Fill min-content floor and width commitment, the message measures at INF and its cached shape disagrees with arrange's slot.
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
@@ -29,12 +25,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     );
 }
 
-/// Pin (contains-content rule): a Stack's Fill child respects its
-/// `intrinsic_min` floor and grows to fit its measured content when the
-/// allocated slot is smaller than the content's rigid min, rather than
-/// shrinking further. The rect never paints content outside itself —
-/// the overflow propagates upward (the parent stack rect ends up wider
-/// than its `available`, and an ancestor that can grow absorbs it).
+/// A Stack's Fill child respects its `intrinsic_min` floor and grows to fit its content when the slot is smaller, propagating the overflow upward.
 #[test]
 fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
@@ -45,7 +36,6 @@ fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
         .w;
     let rect_w = h.ui.arranged_rect(Layer::Main, msg).size.w;
 
-    // The word's own width at 14 px, wider than its cramped slot.
     assert_eq!(shaped_w, 121.0, "measure floors at MinContent");
     assert_eq!(
         rect_w, shaped_w,

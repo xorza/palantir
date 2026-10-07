@@ -14,17 +14,10 @@ use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 
-/// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
-/// plus the container knobs. The widget picks a look from the live
-/// response state and `NodeFlags::is_disabled` via [`ThemeSlot::look`](crate::widget::ThemeSlot::look).
-///
-/// `padding`/`margin` apply when the user didn't call `.padding(...)`
-/// / `.margin(...)` on the builder. Explicit zero spacing overrides
-/// the theme like any other value.
+/// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`](crate::widget::ThemeSlot::look). `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
-    /// The four per-state looks. `flatten` keeps theme files flat
-    /// (`[button.normal]`, not `[button.looks.normal]`).
+    /// The four per-state looks; `flatten` keeps theme files flat (`[button.normal]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
     /// Spacing and transition spec — see [`SlotDefaults`].
@@ -33,12 +26,7 @@ pub struct ButtonTheme {
 }
 
 impl ButtonTheme {
-    /// The standard button recipe over `p`: clickable-surface family
-    /// `element` / `element_mid` / `element_strong`, resting one rung up at
-    /// `element_mid`. Disabled keeps the `element` fill but swaps
-    /// text to `text_disabled`. `text: None` on active states means
-    /// "inherit `Theme::text`" — bumping `theme.text.color` recolors
-    /// active button labels. The historical 4 px radius is retained.
+    /// The standard button recipe over `p`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`.
     pub fn from_palette(p: &Palette) -> Self {
         let bg = |fill: RgbaF32| {
             Background::rounded(fill, Corners::all(4.0))
@@ -74,28 +62,13 @@ impl ButtonTheme {
         }
     }
 
-    /// Visit every text slot this theme owns — drives `Theme::scale_text`.
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self { looks, defaults: _ } = self;
         looks.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset. Use for `Button`s that act as
-    /// menu-bar entries (File / Edit / View etc.) — transparent at
-    /// rest, hover-only background, no border or shadow, tighter
-    /// padding than the default chunky `Button`. The trigger reads as
-    /// plain text until the pointer is over it; matches the
-    /// conventional menu-bar look (Figma / VS Code / macOS).
-    /// Distinct from a popup-row `MenuItem`, which lives inside a
-    /// `ContextMenu` and is themed via `theme.context_menu.item`.
-    ///
-    /// Deliberately a recipe rather than a [`Theme`] slot: no widget in
-    /// the crate resolves against a menu-bar style, so a slot would be a
-    /// theme field, a serde shape, and a text-walk arm that nothing
-    /// reads. An app with a menu bar builds one from its own palette and
-    /// hands it to [`Button::style`].
+    /// Flat "menu-trigger" preset for menu-bar `Button`s: transparent at rest, hover-only background, no border or shadow. Deliberately a recipe, not a [`Theme`] slot, since no widget resolves against it; hand it to [`Button::style`].
     ///
     /// [`Theme`]: crate::Theme
     /// [`Button::style`]: crate::Button::style
@@ -123,11 +96,7 @@ impl ButtonTheme {
 impl ThemeSlot for ButtonTheme {
     type Pick = ();
 
-    /// `active` = pressed. Disabled wins over hover and press, pressed over
-    /// hover; otherwise normal. `response.disabled` already carries the
-    /// node's own flag — [`Widget::response`](crate::widget::Widget) merges
-    /// it, so a button disabled this frame paints disabled without waiting
-    /// for the cascade.
+    /// `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
         self.looks.pick(response, response.pressed())

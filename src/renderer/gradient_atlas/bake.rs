@@ -1,9 +1,6 @@
-//! Gradient-stop interpolation into one linear-f16 LUT row.
-//!
-//! Texels are premultiplied, and so is the interpolation between stops —
-//! CSS Color 4 §12.3: red to transparent passes through half-red at half
-//! alpha, not a darker or bluer colour from the transparent stop's hue.
-//! The shaders filter between texels in the same space.
+//! Gradient-stop interpolation into one linear-f16 LUT row. Texels and the
+//! interpolation between stops are premultiplied (CSS Color 4 §12.3), as the
+//! shaders filter in the same space.
 
 use crate::animation::animatable::Animatable;
 use crate::primitives::math::domain;
@@ -24,9 +21,6 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
         interpolation,
     } = ramp;
     let interpolation = *interpolation;
-    // No sort here: `GradientStops` holds its stops in ascending offset
-    // order as a type invariant, precisely so the value that keys this
-    // row and the row it bakes cannot disagree.
     let count = stops.len();
     debug_assert!(stops.is_ascending(), "GradientStops must arrive sorted");
 
@@ -35,12 +29,8 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
         linear_stops[index] = stops[index].color().premultiplied();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
-    // Only the Oklab ramp reads these, and an empty slice is what says so:
-    // a linear bake neither computes nor carries a second colour space.
     let oklab: &[[f32; 3]] = match interpolation {
         Interpolation::Oklab => {
-            // From the straight colour: a premultiplied one has no hue
-            // left to convert where its alpha is zero.
             for index in 0..count {
                 let color = stops[index].color();
                 oklab_stops[index] = oklab::from_linear(color.r, color.g, color.b);
@@ -60,43 +50,21 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
     }
 }
 
-/// The stop list plus a cursor into it, yielding one row of texels in
-/// order.
-///
-/// **An iterator rather than a `color_at(t)` the caller drives**, because
-/// the resume-in-place search is sound only while `t` never decreases: the
-/// cursor cannot walk back, and a smaller `t` would read a segment it has
-/// already passed. Owning the sequence is what makes that true by
-/// construction instead of by every caller happening to sweep upward. The
-/// whole row then costs one pass over the stops rather than a
-/// restart-from-the-first-segment per texel — the same reasoning that
-/// hoists the linear decode out of this loop (see the module doc in
-/// `gradient_atlas`), applied to the search.
-///
-/// [`GradientStops`] rather than a loose slice for the other half of the
-/// contract: the walk below is bounded by the last stop's offset, which
-/// bounds anything only while the stops ascend. That is the type's
-/// invariant, so it arrives with the value.
+/// The stop list plus a cursor, yielding one row of texels in order. An
+/// iterator because the resume-in-place search needs `t` never to decrease.
 #[derive(Debug)]
 struct RampTexels<'a> {
     stops: &'a GradientStops,
-    /// The stop colours, premultiplied.
     linear: &'a [RgbaF32],
-    /// Oklab coordinates of the straight stop colours, empty under
-    /// [`Interpolation::Linear`].
+    /// Oklab coordinates of the straight stop colours; empty under [`Interpolation::Linear`].
     oklab: &'a [[f32; 3]],
     interpolation: Interpolation,
-    /// Index of the segment's upper stop — the invariant is
-    /// `stops[upper - 1].offset() <= t`, restored by [`Self::color_at`].
+    /// Index of the segment's upper stop.
     upper: usize,
-    /// Texel [`Iterator::next`] yields, and so the `t` it evaluates at.
     texel: usize,
 }
 
 impl<'a> RampTexels<'a> {
-    /// Seat the cursor on the first segment. [`GradientStops`] holds at
-    /// least two entries by construction, which is what makes that
-    /// segment exist.
     const fn new(
         stops: &'a GradientStops,
         linear: &'a [RgbaF32],
@@ -113,8 +81,6 @@ impl<'a> RampTexels<'a> {
         }
     }
 
-    /// The ramp colour at `t`. Private to [`Iterator::next`], which is the
-    /// only thing that may name a `t` — see this type's doc.
     fn color_at(&mut self, t: f32) -> RgbaF32 {
         if t <= self.stops[0].offset() {
             return self.linear[0];
@@ -123,8 +89,6 @@ impl<'a> RampTexels<'a> {
         if t >= self.stops[last].offset() {
             return self.linear[last];
         }
-        // `t` is inside the ramp, so `stops[last].offset() > t` bounds this
-        // walk before it can run off the end.
         while self.stops[self.upper].offset() < t {
             self.upper += 1;
         }
@@ -172,9 +136,7 @@ impl Iterator for RampTexels<'_> {
 
 impl ExactSizeIterator for RampTexels<'_> {}
 
-/// Interpolate two premultiplied stops in Oklab, premultiplied there too:
-/// each stop's Oklab coordinates weigh by its alpha, and the blend divides
-/// the interpolated alpha back out before converting.
+/// Interpolates two premultiplied stops in Oklab, weighing coordinates by alpha.
 fn lerp_oklab(
     lower: RgbaF32,
     upper: RgbaF32,
@@ -209,12 +171,8 @@ mod tests {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, RampTexels};
 
-    /// The bake `zip`s the ramp against a fixed-length row, so a ramp
-    /// that yielded fewer texels would leave the tail of the row at
-    /// whatever the previous gradient baked — a silent bleed between two
-    /// unrelated LUT rows. Pin the count and the reported length
-    /// together: `zip` reads `size_hint`, so a wrong hint truncates just
-    /// as badly as a wrong count.
+    /// The bake `zip`s the ramp against a fixed-length row, so a short ramp or
+    /// wrong `size_hint` would leave stale texels.
     #[test]
     fn a_ramp_yields_exactly_one_row_of_texels() {
         let stops = GradientStops::new([
@@ -228,17 +186,9 @@ mod tests {
         assert_eq!(ramp.count(), LUT_ROW_TEXELS);
     }
 
-    /// Opaque red to transparent blue, baked premultiplied. Texel 51 sits
-    /// at t = 51/255 = 0.2: red at 0.8 alpha, `(0.8, 0, 0, 0.8)` — the
-    /// transparent stop adds no blue, where a straight lerp gave
-    /// `(0.8, 0, 0.2, 0.8)`. Oklab weighs each stop's coordinates by its
-    /// alpha the same way, so its texel is the same red, up to the
-    /// round trip through Oklab in the empty channels.
-    ///
-    /// A hard stop at 0.5 — stored as 128/255, texel 128's own `t`, which
-    /// takes the first stop's colour — bakes texel 128 as opaque red and
-    /// texel 129 as all zeros, so the bilinear filter between them is
-    /// `(0.5, 0, 0, 0.5)`: red at half alpha, not a purple band.
+    /// Opaque red to transparent blue, premultiplied: texel 51 (t = 0.2) is
+    /// `(0.8, 0, 0, 0.8)` with no blue. A hard stop at 0.5 bakes texel 128 red
+    /// and 129 zeros, so the filter gives `(0.5, 0, 0, 0.5)`, not purple.
     #[test]
     fn the_ramp_is_baked_premultiplied() {
         let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
@@ -255,7 +205,6 @@ mod tests {
             row
         };
         let fade = GradientStops::new([Stop::new(0.0, red), Stop::new(1.0, clear_blue)]);
-        // 0.8 stores as the f16 1638 × 2^-11.
         let stored = 1638.0 / 2048.0;
         let linear = RgbaF32::from(bake(&fade, Interpolation::Linear)[51]);
         assert_eq!(linear, RgbaF32::new(stored, 0.0, 0.0, stored));

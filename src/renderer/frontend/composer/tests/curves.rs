@@ -1,5 +1,5 @@
-//! Polylines, arcs and cubics: the instances they emit and the chrome at
-//! their joins.
+//! Polylines, arcs and cubics: the instances they emit and the chrome at their
+//! joins.
 
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::rect::Rect;
@@ -21,12 +21,10 @@ use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 
-/// Pin: a higher-kind stroke (a polyline, riding the curve tier)
-/// recorded between two text runs splits the batch where it covers the
-/// first run, and only there. Strokes paint over text by kind order, and
-/// a batch left open emits at the end of a later group — so merged text
-/// would paint over the stroke it was recorded under. Clear of the run
-/// that inversion reaches no pixel, and the two runs coalesce.
+/// A higher-kind stroke (a polyline, riding the curve tier) recorded between two
+/// text runs splits the batch where it covers the first run, and only there:
+/// strokes paint over text by kind order and an open batch emits at the end of a
+/// later group, so merged text would paint over its stroke.
 #[test]
 fn compose_polyline_over_prior_text_splits_text_batch() {
     #[derive(Debug)]
@@ -34,9 +32,8 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
         stroke_y: f32,
         text_batches: usize,
     }
-    // The first run spans y 0..20. A 1 px stroke tracks `stroke_y` ± 1
-    // once its width/2 + 0.5 fringe is counted, so y = 10 lands inside
-    // the run and y = 25 clears it by 4 px.
+    // The first run spans y 0..20; the stroke reaches `stroke_y` ± 1 with its
+    // fringe, so y = 10 lands inside the run and y = 25 clears it.
     for case in [
         Case {
             stroke_y: 10.0,
@@ -68,8 +65,6 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
             &params(1.0, UVec2::new(200, 200)),
         );
         assert_eq!(buf.text_batches.len(), case.text_batches, "{case:?}");
-        // A polyline lowers to GPU stroke instances riding the curve
-        // batches — a 2-point polyline is one segment, no join chrome.
         assert_eq!(buf.batches(PaintTier::Curve).len(), 1, "{case:?}");
         assert_eq!(
             buf.batches(PaintTier::Curve)[0].items.len,
@@ -80,10 +75,9 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
     }
 }
 
-/// Slice-2 polyline lowering: an N-point polyline emits N−1 segment
-/// instances (user caps only on the true ends, neighbor points on the
-/// joint lanes) plus N−2 join-chrome instances of the user's join
-/// kind, all in the curve stream.
+/// Polyline lowering: N points emit N−1 segment instances (user caps only on the
+/// true ends, neighbor points on the joint lanes) plus N−2 join-chrome instances,
+/// all in the curve stream.
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
     use crate::renderer::render_buffer::curve_caps::CurveCaps;
@@ -129,32 +123,28 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     let d1 = (pts[2] - pts[1]).normalize();
     let d2 = (pts[3] - pts[2]).normalize();
     assert_eq!(rig.composer.polyline.directions, [d0, d1, d2]);
-    // First segment: the cap at its start only; the start
-    // plane lane is zero (cap end, no clip) and the end lane carries
-    // the pre-oriented bisector normal.
+    // First segment: cap at its start only; the start plane lane is zero and the
+    // end lane carries the pre-oriented bisector normal.
     assert_eq!(segs[0].p0, pts[0]);
     assert_eq!(segs[0].p3, pts[1]);
     assert_eq!(segs[0].p1, Vec2::ZERO, "no clip plane at a cap end");
     assert_eq!(segs[0].p2, d0 + d1, "end bisector plane rides p2");
     assert_eq!(segs[0].caps, CurveCaps::new(LineCap::Round, true, false));
-    // Interior segment: no cap at either end, planes on both lanes. The
-    // start plane must be the bit-exact negation of the previous
-    // segment's end plane — the overlap-partition contract.
+    // Interior segment: no caps, planes on both lanes; the start plane is the
+    // bit-exact negation of the previous end plane (the overlap-partition
+    // contract).
     assert_eq!(segs[1].caps, CurveCaps::new(LineCap::Round, false, false));
     assert_eq!(
         segs[1].p1, -segs[0].p2,
         "shared joint planes negate exactly"
     );
     assert_eq!(segs[1].p2, d1 + d2);
-    // Last segment: the cap at the true end only.
     assert_eq!(segs[2].caps, CurveCaps::new(LineCap::Round, false, true));
     assert_eq!(
         segs[2].p1, -segs[1].p2,
         "shared joint planes negate exactly"
     );
     assert_eq!(segs[2].p2, Vec2::ZERO, "no clip plane at a cap end");
-    // Chrome anchors at the interior points with the pre-oriented
-    // face-plane normals (`p1 = -d_a`, `p2 = d_b`).
     assert_eq!(joins[0].p0, pts[1]);
     assert_eq!(joins[0].p1, -d0);
     assert_eq!(joins[0].p2, d1);
@@ -163,10 +153,8 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(joins[1].p2, d2);
 }
 
-/// A joint between two differently coloured segments paints their
-/// average, taken premultiplied: opaque red beside transparent black
-/// averages to red at half alpha, `(1, 0, 0, 0.5)`. A straight average
-/// was `(0.5, 0, 0, 0.5)`, half as bright.
+/// A joint between two differently coloured segments paints their premultiplied
+/// average: opaque red beside transparent black is red at half alpha.
 #[test]
 fn a_join_between_colours_averages_them_premultiplied() {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -204,8 +192,8 @@ fn a_join_between_colours_averages_them_premultiplied() {
     assert_eq!(joins, [half_red, half_red]);
 }
 
-/// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
-/// bends), keep miter chrome on gentle ones — the SVG convention.
+/// Miter joins downgrade to bevel chrome past MITER_LIMIT and keep miter chrome on
+/// gentle bends (the SVG convention).
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -226,7 +214,6 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
             &params(1.0, UVec2::new(300, 300)),
         )
     };
-    // Gentle 90° bend: cos(half angle) = cos 45° ≈ 0.707 > 1/4.
     let gentle = emit([
         Vec2::new(10.0, 10.0),
         Vec2::new(100.0, 10.0),
@@ -240,7 +227,6 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
             .count(),
         1,
     );
-    // Near-fold: turn ≈ 169°, cos(half angle) ≈ 0.095 < 1/4 → bevel.
     let sharp = emit([
         Vec2::new(10.0, 10.0),
         Vec2::new(100.0, 10.0),
@@ -257,11 +243,10 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     );
 }
 
-/// PerPoint colors land on the segment's color/color1 lanes (GPU
-/// lerps along t); PerSegment paints each segment solid with its own
-/// color and the chrome with the midpoint of its neighbors. Coincident
-/// points are skipped and their colors dropped, mirroring the CPU
-/// walker's kept-point discipline.
+/// PerPoint colors land on the segment's color/color1 lanes (the GPU lerps along
+/// t); PerSegment paints each segment solid with the chrome at its neighbors'
+/// midpoint. Coincident points are skipped and their colors dropped, as in the CPU
+/// walker.
 #[test]
 fn compose_polyline_color_modes_and_coincident_skip() {
     use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -272,9 +257,6 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let green16 = RgbaF16::from(green);
     let blue16 = RgbaF16::from(blue);
 
-    // PerPoint with a duplicated middle point: the duplicate is
-    // dropped, and the kept segments read the colors at the original
-    // point indices (0, 1) and (1, 3).
     let pts = [
         Vec2::new(10.0, 10.0),
         Vec2::new(60.0, 40.0),
@@ -311,9 +293,6 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .unwrap();
     assert_eq!(join.color0, green16, "PerPoint chrome = the joint color");
 
-    // PerSegment: solid lanes per segment; the skipped middle point
-    // drops the degenerate segment's color (index 1), so the kept
-    // segments paint colors 0 and 2 and the chrome their midpoint.
     let buf = run(
         |b, store| {
             polyline_cmd(
@@ -342,8 +321,6 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .iter()
         .find(|c| c.kind == CurveKind::JOIN_ROUND)
         .unwrap();
-    // Linear red (1, 0, 0) and blue (0, 0, 1) average to (0.5, 0, 0.5),
-    // which f16 holds exactly.
     assert_eq!(
         join.color0,
         RgbaF16::new(0.5, 0.0, 0.5, 1.0),
@@ -357,10 +334,6 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
-            // Two curves under one (implicit) scissor group → must
-            // batch into a single curve-tier batch. That's the load-bearing
-            // promise: one draw call per scissor group, no matter how
-            // many curves the group contains.
             for offset in [0.0_f32, 50.0] {
                 b.draw_curve(
                     DrawCurvePayload {
@@ -392,11 +365,10 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     );
     let batch = buf.batches(PaintTier::Curve)[0];
     assert_eq!(batch.last_group, 0);
-    // Each curve's control polygon is 2·√2600 + 80 ≈ 181.98 px, which
-    // `TARGET_CHORD_PX = 1.5` splits into ceil(181.98 / 1.5) = 122
-    // chords, and `SEGMENTS_PER_INSTANCE = 16` packs into
-    // 122.div_ceil(16) = 8 sub-instances. The two curves are the same
-    // shape translated, so the batch carries twice that.
+    // Each curve's control polygon is ≈ 181.98 px; `TARGET_CHORD_PX = 1.5` splits
+    // it into 122 chords and `SEGMENTS_PER_INSTANCE = 16` packs those into 8
+    // sub-instances. The two curves are one shape translated, so the batch carries
+    // twice that.
     assert_eq!(batch.items.len, 16);
     assert_eq!(
         buf.curves.len() as u32,
@@ -465,10 +437,9 @@ fn compose_splits_curve_batches_across_scissor_groups() {
     );
 }
 
-/// A ramp curve's fill reaches every sub-instance whole: the ramp tag,
-/// its atlas row, and the stroke colour in both colour lanes, where the
-/// shader multiplies it into the sample. A solid curve carries the solid
-/// tag and the fallback row instead.
+/// A ramp curve's fill reaches every sub-instance whole: ramp tag, atlas row, and
+/// the stroke colour in both colour lanes. A solid curve carries the solid tag and
+/// the fallback row.
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::packed::fill_kind::FillKind;
@@ -477,7 +448,6 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     let tint = RgbaF16::from(RgbaF32::new(0.25, 0.5, 1.0, 0.75));
     let buf = run(
         |b, _arena| {
-            // Every sub-instance must carry the same fill_kind and row.
             b.draw_curve(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
@@ -528,7 +498,6 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     use crate::renderer::render_buffer::curve_kind::CurveKind;
     use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::PI;
-    // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
     let sweep = 1.5 * PI;
     let buf = run(
         |b, _arena| {
@@ -554,24 +523,21 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    // Arc length = r_phys · sweep = 40 · 1.5π ≈ 188.5 px. Segments =
-    // ⌈188.5 / 1.5⌉ = 126; instances = ⌈126 / 16⌉ = 8.
+    // Arc length = r_phys · sweep ≈ 188.5 px; segments = ⌈188.5 / 1.5⌉ = 126;
+    // instances = ⌈126 / 16⌉ = 8.
     assert_eq!(buf.curves.len(), 8, "exact-length subdivision");
     for (i, ci) in buf.curves.iter().enumerate() {
         assert_eq!(ci.kind, CurveKind::ARC);
-        // Center → physical px (DPI 2), radius scaled, angles verbatim.
         assert_eq!(ci.p0, Vec2::new(100.0, 100.0), "center at DPI 2");
         assert_eq!(ci.p1.x, 40.0, "radius at DPI 2");
         assert_eq!(ci.p2, Vec2::new(0.0, sweep), "angles pass through");
         assert_eq!(ci.width, 4.0, "stroke width at DPI 2");
-        // t ranges tile [0, 1] contiguously, ending exactly at 1.
         let n = buf.curves.len() as f32;
         assert_eq!(ci.t0, i as f32 / n);
         if i + 1 == buf.curves.len() {
             assert_eq!(ci.t1, 1.0);
         }
     }
-    // One batch covers every instance — arcs ride the curve batching.
     assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
     assert_eq!(buf.batches(PaintTier::Curve)[0].items.len, 8);
 }
@@ -581,9 +547,8 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::{FRAC_PI_2, PI};
-    // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
-    // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
-    // so the spun center is (50, 70). Both angles shift by π/2.
+    // Pivot = bbox.center() = (50, 50); center (70, 50) spun by π/2 (clockwise,
+    // y-down) maps (+20, 0) to (0, +20), so it lands at (50, 70).
     let buf = run(
         |b, _arena| {
             b.draw_curve(
@@ -631,10 +596,8 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
-    // Same 800 px span: a straight cubic (CPs on the segment thirds —
-    // exactly what Shape::line lowers to) must collapse to one
-    // instance; a genuinely curved one must subdivide (800 px polygon
-    // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
+    // Same 800 px span: a straight cubic collapses to one instance; a curved one
+    // subdivides (⌈⌈800/1.5⌉/16⌉ = 34).
     let straight = |b: &mut PaintCapture| {
         b.draw_curve(
             DrawCurvePayload {
@@ -695,9 +658,8 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::FRAC_PI_2;
-    // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
-    // screen, y-down) maps an offset (dx, dy) from the pivot to
-    // (-dy, dx). p0 = (70, 50) → (50, 70); p3 = (50, 30) → (70, 50).
+    // Pivot (50, 50): a π/2 spin maps an offset (dx, dy) to (-dy, dx), so p0 (70,
+    // 50) → (50, 70) and p3 (50, 30) → (70, 50).
     let buf = run(
         |b, _arena| {
             b.draw_curve(
@@ -797,14 +759,10 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     assert!(buf.curves.iter().any(|c| c.kind == CurveKind::CUBIC));
 }
 
-/// The backend replays a group's higher kinds in fixed tier order —
-/// mesh batches → image batches → curve batches
-/// (`schedule::emit_group_body`) — regardless of record order. A draw
-/// recorded AFTER an overlapping draw of a later-replaying kind would
-/// paint under it if both shared a group, so the composer must flush.
-/// Record [curve, mesh]: one group would replay mesh→curve, inverting
-/// record order → two groups (curve batch anchored at group 0, mesh
-/// batch at group 1, restoring record order across groups).
+/// The backend replays a group's higher kinds in fixed tier order (mesh, image,
+/// curve; `schedule::emit_group_body`) regardless of record order. Recording
+/// [curve, mesh] in one group would replay mesh→curve, so the composer must flush
+/// into two groups to keep record order.
 #[test]
 fn compose_curve_then_overlapping_mesh_splits_group() {
     let buf = run(
@@ -867,14 +825,12 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     }
 }
 
-/// `PaintSink::draw_polyline` *asserts* its no-op predicate instead of
-/// gating on it, which is only safe if a degenerate polyline slipping
-/// through in release degrades quietly rather than panicking or drawing
-/// garbage. This is what makes that true, so it is the test to fix
-/// before restoring the gate — not this one to delete.
+/// `PaintSink::draw_polyline` *asserts* its no-op predicate rather than gating on
+/// it, which is only safe if a degenerate polyline slipping through in release
+/// degrades quietly. This test makes that true; fix it before restoring the gate.
 ///
-/// Calls the **required** half directly, since that is the path below
-/// the assert (and the one `PaintCapture::replay` takes).
+/// Calls the **required** half directly, the path below the assert (and the one
+/// `PaintCapture::replay` takes).
 #[test]
 fn degenerate_polyline_emits_nothing_rather_than_panicking() {
     for points_len in [0u32, 1] {

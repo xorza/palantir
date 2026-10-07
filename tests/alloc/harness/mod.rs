@@ -1,23 +1,12 @@
-//! Frame-loop drivers around `Ui` that measure heap allocations
-//! attributable to one scene's per-frame work.
+//! Frame-loop drivers around `Ui` that measure heap allocations attributable to one
+//! scene's per-frame work. [`Audit`] is the single way in: warmup length, measured
+//! frame count and per-frame budget. [`Audit::run`] raises a `UiHarness`; anything
+//! rendering frames its own way (renderer fixtures, the full-tree gate, device
+//! gates through [`OffscreenTarget`]) drives [`Audit::run_frames`].
 //!
-//! [`Audit`] is the single way in: it carries how long to warm the scene
-//! up, how many frames to measure, and what each of those frames may
-//! spend. [`Audit::run`] raises a `UiHarness` and drives the scene
-//! through it; anything that renders frames its own way drives
-//! [`Audit::run_frames`] instead — the renderer fixtures and the
-//! full-tree gate through a `FrontendHarness`, the device gates through
-//! [`OffscreenTarget`].
-//!
-//! Both terminals are `#[track_caller]`, so the call site names itself
-//! and cargo prints the failing test's own name above whatever it
-//! captured — no audit is ever told which fixture it is auditing.
-//!
-//! Both run inside [`with_audit`], so per-thread counters and backtrace
-//! capture stay scoped to the measured window. The counter is per-thread
-//! (see `allocator.rs`), so cargo's parallel test runner cannot pollute
-//! one fixture's window with another's allocations — no global lock
-//! needed.
+//! Both terminals are `#[track_caller]`, so cargo prints the failing test's own
+//! name, and both run inside [`with_audit`] whose per-thread counter (see
+//! `allocator.rs`) parallel tests cannot pollute.
 
 #![expect(
     clippy::print_stderr,
@@ -40,43 +29,35 @@ use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES};
 
 use crate::allocator::{AuditResult, with_audit};
 
-/// Logical display every fixture renders at: `UiHarness`'s own defaults
-/// (scale 1.0, pixel-snapped, no refresh rate) at 800×600. One number
-/// for [`Audit::run`] and [`new_ui`] alike, so a fixture moved between
-/// the two keeps its scene the size it was written for.
+/// Logical display every fixture renders at: `UiHarness`'s defaults (scale 1.0,
+/// pixel-snapped, no refresh rate) at 800×600, shared by [`Audit::run`] and
+/// [`new_ui`].
 const SURFACE: UVec2 = UVec2::new(800, 600);
 
-/// Mono-fallback harness for the alloc audits: private arena, fresh
-/// caches, no font loading — exactly what these GPU-less tests want.
+/// Mono-fallback harness for the alloc audits: private arena, fresh caches, no font
+/// loading.
 pub(crate) fn new_ui() -> UiHarness {
     UiHarness::new(SURFACE)
 }
 
-/// How the warmup phase ends.
 #[derive(Clone, Copy, Debug)]
 enum Warmup {
-    /// Stop once `STABLE_RUN` consecutive frames land inside the budget,
-    /// giving up at `MAX_WARMUP`. Right for any scene that settles, and
-    /// it saves hand-tuning a count per fixture.
+    /// Stop once `STABLE_RUN` consecutive frames land inside the budget, giving up
+    /// at `MAX_WARMUP`. Right for any scene that settles.
     ///
-    /// **Wrong for a scene that cycles.** The probe settles as soon as
-    /// it sees two quiet frames, and it can find those *within* one
-    /// cycle — before the widest frame of that cycle has ever been
-    /// recorded. The measured window then meets that frame's one-off
-    /// growth and reads it as a per-frame cost. Such a scene wants
-    /// [`Audit::warmup`] with a count in whole cycles, which is what the
-    /// churn fixtures do.
+    /// **Wrong for a scene that cycles.** The probe can settle on two quiet frames
+    /// *within* one cycle, before the widest frame has been recorded, so the
+    /// measured window meets that frame's one-off growth and reads it as per-frame
+    /// cost. Such a scene wants [`Audit::warmup`] with whole cycles.
     Probe,
     /// Exactly this many frames, warmed without any budget check.
     Fixed(usize),
 }
 
-/// One allocation audit: how to raise the scene, how long to warm it,
-/// how many frames to measure, and what each of those frames may spend.
-///
-/// The defaults are what a new fixture wants — the probe, 64 measured
-/// frames, a strict-zero budget — so `Audit::new().run(scene)` is the
-/// whole call for most of them.
+/// One allocation audit: how to raise the scene, how long to warm it, how many
+/// frames to measure and what each may spend. The defaults (the probe, 64 frames,
+/// strict-zero budget) make `Audit::new().run(scene)` the whole call for most
+/// fixtures.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Audit {
     text: bool,
@@ -86,17 +67,14 @@ pub(crate) struct Audit {
     paint_only: bool,
 }
 
-/// What an audit observed.
-///
-/// The worst frame is the number that matters to a budget: it says how
-/// much slack one has, and the harness printing it is what keeps a
-/// fixture from carrying a hand-recorded measurement nothing rechecks.
+/// What an audit observed. The worst frame is the number that matters to a budget;
+/// printing it keeps fixtures from carrying a hand-recorded measurement nothing
+/// rechecks.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Report {
     pub(crate) worst: u64,
-    /// The count most measured frames read, the smaller on a tie. A
-    /// driver's floor is flat but for a rare frame the pool it draws on
-    /// missed, and the mode is the flat value those frames leave alone.
+    /// The count most measured frames read, the smaller on a tie: a driver's floor
+    /// is flat but for a rare frame its pool missed.
     pub(crate) mode: u64,
 }
 
@@ -111,14 +89,9 @@ impl Audit {
         }
     }
 
-    /// Real cosmic shaping instead of the mono fallback, for a fixture
-    /// that has to exercise it — warmed and measured in one revolution
-    /// of the shaped-buffer expiry ring each.
-    ///
-    /// A bucket's first drain grows the wheel's scratch, and the probe's
-    /// quiet frames come long before the widest bucket of the first
-    /// revolution is due; a cost the ring pays once a revolution would
-    /// fall outside any shorter window.
+    /// Real cosmic shaping instead of the mono fallback, warmed and measured in one
+    /// revolution of the shaped-buffer expiry ring each: a bucket's first drain
+    /// grows the wheel's scratch, after the probe's quiet frames.
     pub(crate) const fn text(mut self) -> Self {
         let ring = SHAPED_BUFFER_RING_FRAMES as usize;
         self.text = true;
@@ -127,8 +100,8 @@ impl Audit {
         self
     }
 
-    /// A fixed warmup in place of the probe — see [`Warmup::Probe`] for
-    /// the scene shape that needs one.
+    /// A fixed warmup in place of the probe; see [`Warmup::Probe`] for the scene
+    /// shape that needs one.
     pub(crate) const fn warmup(mut self, frames: usize) -> Self {
         self.warmup = Warmup::Fixed(frames);
         self
@@ -139,30 +112,27 @@ impl Audit {
         self
     }
 
-    /// What one measured frame may allocate. Zero unless said otherwise;
-    /// a non-zero budget pins flatness rather than absence, so it is a
-    /// ceiling a cost that grew with the frame count would blow through.
+    /// What one measured frame may allocate. Zero unless said otherwise; a non-zero
+    /// budget pins flatness, a ceiling a cost growing with frame count would blow
+    /// through.
     pub(crate) const fn budget(mut self, allocs: u64) -> Self {
         self.budget = allocs;
         self
     }
 
-    /// Measure the frames that repaint from the retained tree without
-    /// running the scene — an idle animation's steady state.
+    /// Measure the frames that repaint from the retained tree without running the
+    /// scene (an idle animation's steady state).
     ///
-    /// Without this, every measured frame must run the scene: a frame
-    /// that skips it measures nothing the fixture wrote, and a paint-only
-    /// animation anywhere in the scene skips it on every frame after the
-    /// first. A scene that has one and still wants its record measured
-    /// calls `Ui::request_repaint` each frame, as an app that redraws
-    /// continuously does.
+    /// Otherwise every measured frame must run the scene, since a frame skipping it
+    /// measures nothing the fixture wrote; a scene with a paint-only animation that
+    /// still wants its record measured calls `Ui::request_repaint` each frame.
     pub(crate) const fn paint_only(mut self) -> Self {
         self.paint_only = true;
         self
     }
 
-    /// Drive `scene` through a `UiHarness` raised from [`Self::text`],
-    /// every measured frame checked against [`Self::paint_only`].
+    /// Drive `scene` through a `UiHarness` raised from [`Self::text`], every
+    /// measured frame checked against [`Self::paint_only`].
     #[track_caller]
     pub(crate) fn run(self, mut scene: impl FnMut(&mut Ui)) -> Report {
         let mut ui = if self.text {
@@ -181,10 +151,8 @@ impl Audit {
         })
     }
 
-    /// The same measured loop over a frame the caller renders itself.
-    /// [`Self::text`] describes the harness [`Self::run`] raises, so it
-    /// says nothing here beyond its window, and the caller asserts what its
-    /// own frames ran.
+    /// The same measured loop over a frame the caller renders itself; the caller
+    /// asserts what its own frames ran.
     #[track_caller]
     pub(crate) fn run_frames(self, mut frame: impl FnMut()) -> Report {
         assert!(
@@ -197,8 +165,8 @@ impl Audit {
         })
     }
 
-    /// `frame` returns whether it ran the scene, which only the measured
-    /// window checks: a paint-only scene still records while it warms.
+    /// `frame` returns whether it ran the scene, which only the measured window
+    /// checks.
     fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut() -> bool) -> Report {
         assert!(self.frames > 0, "an audit must measure at least one frame");
 
@@ -259,11 +227,11 @@ impl Audit {
     fn probe(self, frame: &mut impl FnMut() -> bool) -> usize {
         const MAX_WARMUP: usize = 8;
         const STABLE_RUN: usize = 2;
-        // Real shaping defers one allocation past any run of quiet frames:
-        // the shaped-buffer cache's first expiry drain grows its wheel's
-        // scratch. The tickets it drains are filed on the first frame, one
-        // probation window plus a frame out, and the clock ticks at the
-        // start of the frame after — so the warmup covers that frame too.
+        // Real shaping defers one allocation past any run of quiet frames: the
+        // shaped-buffer cache's first expiry drain grows its wheel's scratch. Its
+        // tickets are filed on the first frame, one probation window plus a frame
+        // out, and the clock ticks at the next frame's start, so warmup covers that
+        // frame too.
         let floor = if self.text {
             PROBATION_KEEP_FRAMES as usize + 2
         } else {

@@ -5,16 +5,9 @@ use glam::UVec2;
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// RAII owner of a registered image's GPU texture, returned by
-/// [`Ui::load_image`](crate::Ui::load_image). The texture lives exactly
-/// as long as an `ImageHandle` (or any clone of one) is held; dropping the last
-/// clone frees it. `Clone` shares ownership (reference-counted). Reference it
-/// from [`Shape::image`](crate::widget::Shape::image) each frame; "no image" is
-/// expressed as `Option<ImageHandle>` at the call site, not a sentinel.
-///
-/// Not `Copy`: the lifetime is load-bearing, so sharing must be an
-/// explicit `clone`. The render path keys on a cheap internal texture id, so
-/// per-frame draw data never carries the `Rc`.
+/// RAII owner of a registered image's GPU texture, from [`Ui::load_image`](crate::Ui::load_image); the
+/// texture lives until the last clone drops. Reference it from [`Shape::image`](crate::widget::Shape::image)
+/// each frame; "no image" is `Option<ImageHandle>`. Not `Copy`: sharing is an explicit `clone`.
 #[must_use = "hold the ImageHandle to keep its GPU texture alive — \
               discarding it (e.g. ignoring load_image's return) frees \
               the texture, so the image never renders"]
@@ -27,9 +20,7 @@ pub struct ImageHandle {
 struct ImageToken {
     id: TextureId,
     size: UVec2,
-    /// Counts the updates. Rides the image record, so the shape hash — and
-    /// with it damage — moves with every rewrite of a texture whose id does
-    /// not.
+    /// Counts updates, so the shape hash and damage move when a texture is rewritten under the same id.
     generation: Cell<u32>,
     registry: ImageRegistry,
 }
@@ -53,17 +44,14 @@ impl ImageHandle {
         }
     }
 
-    /// Stable per-registration id (never `TextureId(0)` — that's the render
-    /// path's "no texture" value). Keys the GPU texture store and the
-    /// per-shape damage hash.
+    /// Stable per-registration id (never `TextureId(0)`), keying the GPU texture store and damage hash.
     #[inline]
     pub(crate) fn id(&self) -> TextureId {
         self.inner.id
     }
 
-    /// Intrinsic pixel dimensions, baked in at registration so
-    /// downstream code never consults the registry to read them.
     #[inline]
+    /// Pixel size.
     pub fn size(&self) -> UVec2 {
         self.inner.size
     }
@@ -73,27 +61,13 @@ impl ImageHandle {
         self.inner.generation.get()
     }
 
-    /// Overwrite the texture with `image`'s texels at once, and repaint
-    /// every shape drawing it.
-    ///
-    /// The door for a surface whose pixels change while it is on screen — a
-    /// colour-picker field following a hue drag, a decoded video frame, a
-    /// CPU preview. Registering again would mint a new id, build a second
-    /// texture and free the first; this keeps the texture and its binding
-    /// and issues one `write_texture`, which copies the bytes into wgpu's
-    /// staging before it returns. The caller can reuse the CPU pixel buffer;
-    /// wgpu allocates staging memory for each upload.
-    ///
-    /// Update before recording the shape that draws the image, in the frame
-    /// the change must show.
+    /// Overwrites the texture with `image`'s texels and repaints every shape drawing it, keeping the id;
+    /// call before recording the shape, in the frame the change must show.
     ///
     /// # Panics
     ///
-    /// Panics unless `image` is the registered size. The size is fixed at
-    /// registration; a surface that must change size registers again and
-    /// drops the old handle. A release assert, not a debug one: a 2×3 and a
-    /// 3×2 image have the same byte count, so wgpu would accept the write
-    /// and draw the rows scrambled.
+    /// Panics unless `image` is the registered size (a 2×3 and 3×2 image have equal byte counts, so wgpu would
+    /// accept the write and scramble the rows).
     pub fn update(&self, image: &Image) {
         assert_eq!(
             image.size, self.inner.size,

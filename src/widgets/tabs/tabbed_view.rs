@@ -15,30 +15,25 @@ use crate::widgets::theme::tabs::TabsTheme;
 use std::hash::Hash;
 use std::rc::Rc;
 
-/// What one pass over a [`TabbedView`] asks its caller to do.
-///
-/// Only [`Self::Activated`] is already done when it is reported — the
-/// view owns the selection and has written it. The other two name a
-/// change to the caller's own collection, which the view cannot make
-/// through the shared slice it was handed.
+/// What one pass over a [`TabbedView`] asks its caller to do. Only
+/// [`Self::Activated`] is already done when reported; the other two name a change
+/// to the caller's own collection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabsAction {
-    /// The visible page changed. The bound index already holds `index`.
+    /// The visible page changed; the bound index already holds `index`.
     Activated {
         /// The page now visible.
         index: usize,
     },
-    /// The page's close button was clicked. Remove it from the option
-    /// collection, and re-derive the bound index alongside it.
+    /// The page's close button was clicked: remove it and re-derive the bound
+    /// index.
     Closed {
         /// The page to remove.
         index: usize,
     },
-    /// A chip was dragged onto another slot. Move `from` to `to` in the
-    /// option collection; `to` addresses the collection **as it is now**,
-    /// before the move — the gap the chip was dropped in, `len` appending
-    /// — so the page lands at `to - 1` when `to > from`, and at `to`
-    /// otherwise. The bound index already follows the page it named.
+    /// A chip was dragged onto another slot: move `from` to `to` in the option
+    /// collection. `to` addresses it **before** the move (`len` appends), so the
+    /// page lands at `to - 1` when `to > from`; the bound index already follows.
     Reordered {
         /// Where the chip came from.
         from: usize,
@@ -47,8 +42,7 @@ pub enum TabsAction {
     },
 }
 
-/// A [`TabbedView`]'s pass: the view's own response, and at most one
-/// [`TabsAction`].
+/// A [`TabbedView`]'s pass: its own response and at most one [`TabsAction`].
 #[derive(Debug)]
 pub struct TabbedViewResponse<'a> {
     /// The view's own pointer/click/hover [`Response`].
@@ -57,14 +51,10 @@ pub struct TabbedViewResponse<'a> {
     pub action: Option<TabsAction>,
 }
 
-/// A tab strip over a content area, bound to a `&mut usize` page index.
-///
-/// Mirrors [`ComboBox`](crate::ComboBox) exactly: the same value
-/// binding, the same `&[S: AsRef<str>]` option slice, and the same
-/// [`labeled`](Self::labeled) escape for rows that merely *carry* a
-/// label. A dialog with three pages should not have to implement a
-/// trait; a docked pane tree should, which is what
-/// [`DockView`](crate::DockView) is for.
+/// A tab strip over a content area, bound to a `&mut usize` page index. Mirrors
+/// [`ComboBox`](crate::ComboBox) (same binding, option slice and
+/// [`labeled`](Self::labeled) escape); for a docked pane tree use
+/// [`DockView`](crate::DockView).
 ///
 /// ```
 /// # use palantir::{Configure, TabbedView, Ui};
@@ -82,24 +72,17 @@ pub struct TabbedViewResponse<'a> {
 /// # }
 /// ```
 ///
-/// `*selected` is an *index* coerced for display: one past the end of
-/// `options` — a page list that shrank under it — shows the last page, and
-/// an empty list records the strip with no page. The bound index is not
-/// rewritten; it moves only when the user picks or drags.
-///
-/// Chips are keyed by index unless [`keyed`](Self::keyed) names a key per
-/// page — what a list that closes or reorders pages needs, so a chip's
-/// hover and animation stay with its page rather than its slot.
+/// `*selected` is an *index* coerced for display (past the end shows the last page,
+/// an empty list none) and is rewritten only when the user picks or drags. Chips
+/// are keyed by index unless [`keyed`](Self::keyed) names a key per page, which a
+/// list that closes or reorders pages needs.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
     widget: Widget,
     selected: &'a mut usize,
     options: &'a [S],
-    /// Reads one option's label. `new` fills this with `S::as_ref`.
     label: L,
-    /// The chip key of the page at an index. `labeled` fills this with
-    /// the index itself; [`Self::keyed`] with a hash of the page's key.
     key: K,
     closable: bool,
     reorderable: bool,
@@ -116,11 +99,7 @@ impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str> {
 }
 
 impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
-    /// A tabbed view over rows that *carry* a label rather than being
-    /// one: `label` reads each row's text.
-    ///
-    /// `label` is any `Fn`, so a projection may capture the table it
-    /// reads through.
+    /// A tabbed view over rows that *carry* a label; `label` reads each row's text.
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
@@ -136,12 +115,9 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
         }
     }
 
-    /// Key each page's chip by `key(page)` rather than by its index, so
-    /// a chip's hover and look animation follow its page when an earlier
-    /// page closes or the pages reorder. The key is any `Hash`, hashed the
-    /// way [`DockView::tab_key`](crate::DockView::tab_key) hashes a tab, so
-    /// the two widgets derive chip identity one way. Keys must be unique
-    /// within the list.
+    /// Key each page's chip by `key(page)` rather than by index, so hover and
+    /// animation follow the page when pages close or reorder; hashed as
+    /// [`DockView::tab_key`](crate::DockView::tab_key) does, keys unique.
     pub fn keyed<H: Hash>(
         self,
         key: impl Fn(&S) -> H,
@@ -161,38 +137,34 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
 }
 
 impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> {
-    /// Whether each chip carries a close button. Default `true`; a view
-    /// over a fixed set of pages passes `false`.
+    /// Whether each chip carries a close button. Default `true`.
     pub const fn closable(mut self, closable: bool) -> Self {
         self.closable = closable;
         self
     }
 
     /// Whether a chip may be dragged onto another slot, reported as
-    /// [`TabsAction::Reordered`]. Default `false` — the view holds a
-    /// shared slice and cannot perform the move itself, so it is the
-    /// caller who opts in to receiving one.
+    /// [`TabsAction::Reordered`]. Default `false`: the caller performs the move.
     pub const fn reorderable(mut self, reorderable: bool) -> Self {
         self.reorderable = reorderable;
         self
     }
 
-    /// What the strip does with chips that do not fit. Default
+    /// What the strip does with chips that do not fit; default
     /// [`TabOverflow::Scroll`].
     pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `tabs`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `tabs`.
     pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the strip and the page under it. `body` is called once, with
-    /// the visible page's index — or not at all when there are no pages.
+    /// Record the strip and the page under it; `body` runs once with the visible
+    /// page's index, or not at all with no pages.
     #[track_caller]
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_> {
         let theme = Rc::clone(ui.theme());
@@ -235,8 +207,8 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     .style(t)
                     .show(ui);
                 StripHit {
-                    // A tabbed view owns its selection outright, so every
-                    // way of asking for a tab is the same request.
+                    // The view owns its selection, so every way of asking for a tab
+                    // is one request.
                     clicked: strip.activated(),
                     closed: strip.closed,
                     drag_stopped: strip.drag_stopped,
@@ -249,8 +221,6 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 shown = Some(index);
                 action = Some(TabsAction::Activated { index });
             }
-            // The gaps either side of the chip leave the order as it was,
-            // so neither is a reorder.
             if let Some(from) = hit.drag_stopped
                 && reorderable
                 && let Some(to) = dropped_slot(ui, strip_id, options, &key)
@@ -285,8 +255,6 @@ impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
     }
 }
 
-/// The three edges [`TabbedView`] reads back out of its strip, carried
-/// past the state scope the strip was recorded inside.
 #[derive(Debug)]
 struct StripHit {
     clicked: Option<usize>,
@@ -294,12 +262,8 @@ struct StripHit {
     drag_stopped: Option<usize>,
 }
 
-/// The slot the pointer released over, read straight out of last
-/// frame's chip rects — no buffer, because a release happens once per
-/// gesture rather than once per frame.
-///
-/// `None` unless the release is over the strip: a chip let go deep in the
-/// page, or over another widget, was not dropped among the chips.
+/// The slot the pointer released over, from last frame's chip rects; `None` unless
+/// over the strip.
 fn dropped_slot<S>(
     ui: &mut Ui,
     strip: WidgetId,
@@ -318,13 +282,12 @@ fn dropped_slot<S>(
     Some(TabStrip::insertion_slot(chips, x))
 }
 
-/// The default chip key: the page's index.
 const fn index_key<S>(index: usize, _: &S) -> u64 {
     index as u64
 }
 
-/// Where the page at `index` sits after [`TabsAction::Reordered`] moves
-/// `from` into the gap `to`.
+/// Where the page at `index` sits after [`TabsAction::Reordered`] moves `from` into
+/// gap `to`.
 const fn moved_index(index: usize, from: usize, to: usize) -> usize {
     let landing = if to > from { to - 1 } else { to };
     if index == from {
@@ -340,8 +303,6 @@ const fn moved_index(index: usize, from: usize, to: usize) -> usize {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    /// Where the page at `index` sits after a reorder of `from` into the
-    /// gap `to` — the rule the view applies to its selection.
     pub(crate) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
         super::moved_index(index, from, to)
     }

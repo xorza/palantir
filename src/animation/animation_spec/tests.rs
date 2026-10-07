@@ -8,7 +8,6 @@ use std::time::Duration;
 
 #[test]
 fn anim_spec_construction_validates_and_canonicalizes() {
-    // EPS is 1e-4 s: half of it snaps, all of it animates.
     let instant_zero = AnimationSpec::duration(Duration::ZERO, Easing::Linear);
     let instant_sub_eps = AnimationSpec::duration(Duration::from_micros(50), Easing::Linear);
     assert!(instant_zero.is_instant());
@@ -18,8 +17,7 @@ fn anim_spec_construction_validates_and_canonicalizes() {
     assert!(!AnimationSpec::FAST.is_instant());
     assert!(!AnimationSpec::SPRING.is_instant());
 
-    // One nanosecond past the bound panics: the check is exact, where a
-    // conversion to `f32` seconds would round 60 s + 1 ns down to 60 s.
+    // One nanosecond past the bound panics: an `f32` seconds conversion would round 60 s + 1 ns to 60 s.
     panic_probe::assert_panics_with(DURATION_ERROR, || {
         AnimationSpec::duration(
             Duration::from_secs(60) + Duration::from_nanos(1),
@@ -47,7 +45,6 @@ fn anim_spec_construction_validates_and_canonicalizes() {
     }
 
     assert!(!AnimationSpec::spring(1.0, 2.0).is_instant());
-    // The swing bound's other side, √35 499 ≈ 188.4 rad/s, under 60π.
     assert!(!AnimationSpec::spring(35_500.0, 2.0).is_instant());
     // No stiffness is too stiff when the spring does not swing: critically
     // damped at `h² = k`, overdamped past it.

@@ -1,12 +1,6 @@
 use crate::input::zoom_factor::{ZoomFactor, clamp, is_valid};
 
-/// Every `f64` maps to a factor [`is_valid`] accepts — the property
-/// the module's "every product goes through `clamp`" rests on.
-///
-/// Hand-computed: both saturating ends resolve to the `f32` extremes,
-/// an ordinary product passes through unchanged, and NaN — which
-/// neither comparison in `clamp` answers `true` for — resolves to
-/// identity rather than falling through as NaN.
+/// Every `f64` maps to a factor [`is_valid`] accepts. Both saturating ends resolve to the `f32` extremes, an ordinary product passes through, and NaN (which neither comparison in `clamp` accepts) resolves to identity.
 #[test]
 fn clamp_maps_every_product_to_a_valid_factor() {
     let cases: &[(f64, f32)] = &[
@@ -26,8 +20,7 @@ fn clamp_maps_every_product_to_a_valid_factor() {
     }
 }
 
-/// `new` accepts exactly the factors that compose — a zoom cannot
-/// invert, annihilate, or be a non-number.
+/// `new` accepts exactly the factors that compose: no inversion, annihilation or NaN.
 #[test]
 fn only_a_finite_positive_number_is_a_factor() {
     for good in [f32::MIN_POSITIVE, 0.5, 1.0, 2.0, f32::MAX] {
@@ -38,11 +31,7 @@ fn only_a_finite_positive_number_is_a_factor() {
     }
 }
 
-/// **The reason the type exists.** A gesture is a running product, and
-/// a naive `f32` one pushed far enough in one direction reaches zero
-/// or infinity and cannot be composed back out. A thousand halvings
-/// land on the smallest positive factor rather than zero, and a
-/// thousand doublings walk all the way back.
+/// **Why the type exists.** A gesture is a running product, and a naive `f32` one reaches zero or infinity and can't be composed back. A thousand halvings land on the smallest positive factor, and a thousand doublings walk all the way back.
 #[test]
 fn a_long_one_way_gesture_stays_invertible() {
     let half = ZoomFactor::new(0.5).unwrap();
@@ -61,7 +50,7 @@ fn a_long_one_way_gesture_stays_invertible() {
     assert_eq!(zoom.get(), f32::MAX, "clamped at the other end");
     assert!(ZoomFactor::new(zoom.get()).is_some());
 
-    // Naively, the same walk is a one-way trip.
+    // Naively, the same walk is one-way.
     let mut naive = 1.0_f32;
     for _ in 0..1000 {
         naive *= 0.5;
@@ -73,17 +62,13 @@ fn a_long_one_way_gesture_stays_invertible() {
     assert_eq!(naive, 0.0, "and it never comes back");
 }
 
-/// Wheel-up is positive notches and zooms *in*, so the factor grows.
-/// Hand-computed: `1.25^-1 = 0.8`, rounded to the nearest f32, and
-/// `1.25^-(-2) = 1.5625`, exact in binary. Zero notches is the identity
-/// whatever the step.
+/// Wheel-up is positive notches and zooms in. `1.25^-1 = 0.8` (nearest f32), `1.25^-(-2) = 1.5625` (exact); zero notches is the identity for any step.
 #[test]
 fn wheel_notches_negate_into_the_factor() {
     assert_eq!(ZoomFactor::from_wheel(1.25, 1.0).get(), 0.8);
     assert_eq!(ZoomFactor::from_wheel(1.25, -2.0).get(), 1.5625);
     assert_eq!(ZoomFactor::from_wheel(1.25, 0.0), ZoomFactor::ONE);
-    // 10 000 notches of 1.03 is e^(10 000 · ln 1.03) ≈ e^295.6 either
-    // way, far past f32's range, so the factor saturates at its ends.
+    // 10 000 notches of 1.03 is e^295.6 either way, far past f32's range, so the factor saturates.
     assert_eq!(ZoomFactor::from_wheel(1.03, -10_000.0).get(), f32::MAX);
     assert_eq!(
         ZoomFactor::from_wheel(1.03, 10_000.0).get(),

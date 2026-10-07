@@ -19,13 +19,8 @@ use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::UVec2;
 
-/// "Simplified" view of the render schedule — strips bookkeeping
-/// (`SetScissor`, `SetStencilRef`) that the tests don't care to pin
-/// directly; `MaskStamp` / `MaskClear` map to `MaskWrite` /
-/// `MaskClear`. Stencil tests assert on this view; raw [`RenderStep`]
-/// is also tested (e.g. `scissor_steps_emit_once_per_transition`) for
-/// fidelity that scissor narrowing and stencil-ref stepping actually
-/// happen.
+/// Simplified view of the render schedule: bookkeeping steps (`SetScissor`, `SetStencilRef`) are stripped.
+/// Raw [`RenderStep`] is tested where scissor narrowing and stencil-ref stepping matter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DrawOp {
     PreClear,
@@ -52,15 +47,12 @@ pub(super) fn collect(
     steps
 }
 
-/// The steps with no damage scissor, no mask plan and no stencil — the
-/// schedule a test of plain group order reads.
 pub(super) fn plain_steps(buffer: &RenderBuffer) -> Vec<RenderStep> {
     collect(buffer, None, None)
 }
 
 pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
-    // A quad step names its group by the span that holds it, so two
-    // groups sharing a non-empty span would read as the first of them.
+    // A quad step names its group by span, so groups sharing a non-empty span would be ambiguous.
     for (i, group) in buffer.groups.iter().enumerate() {
         debug_assert!(
             group.quads.len == 0
@@ -97,8 +89,7 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
     out
 }
 
-/// The group whose quad span holds `run`. A run is the whole span unless
-/// the span mixes shadows with other quads.
+/// The group whose quad span holds `run` (a run is the whole span unless it mixes shadows with other quads).
 fn group_of(buffer: &RenderBuffer, run: Span) -> usize {
     buffer
         .groups
@@ -111,8 +102,6 @@ fn group_of(buffer: &RenderBuffer, run: Span) -> usize {
         .expect("quad run outside every draw group")
 }
 
-/// Number of `SetScissor` steps in `steps` — the metric the scissor
-/// deduplication is about.
 pub(super) fn scissor_count(steps: &[RenderStep]) -> usize {
     steps
         .iter()
@@ -144,8 +133,6 @@ fn dummy_text() -> TextDrawRow {
     }
 }
 
-/// A group scissored to the whole 100×100 fixture viewport, under no
-/// rounded clip, drawing `quads`.
 pub(super) fn group(quads: Span) -> DrawGroup {
     DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
@@ -154,23 +141,13 @@ pub(super) fn group(quads: Span) -> DrawGroup {
     }
 }
 
-/// Builds a 100×100 buffer with the given groups and no text batches.
-/// Quads/texts pools have four slots each so any small span is valid.
+/// A 100×100 buffer with the given groups and no text batches; pools have four slots so any small span is valid.
 pub(super) fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
     buf_with_batches(groups, Vec::new())
 }
 
-/// A `TextBatch` with the full-viewport sentinel scissor and no mask
-/// chain — schedule tests don't drive shader-level clipping, so the
-/// scissor only needs to survive the damage intersect. Text batches
-/// are constructed explicitly (mirroring what the composer emits)
-/// rather than derived from groups: `DrawGroup` carries no per-group
-/// text span, and a fixture that synthesized batches from groups
-/// would mask composer/batch decorrelation bugs. Batches anchored at
-/// *rounded* groups build their `TextBatch` inline instead: they need
-/// a chain matching their `last_group`'s and a realistic bounds-union
-/// scissor (the composer clamps it to the clip, so it never exceeds
-/// the stamp scissor the way this sentinel would).
+/// A `TextBatch` with the full-viewport sentinel scissor and no mask chain. Built explicitly, as the composer
+/// emits them (`DrawGroup` has no text span; deriving them would mask composer/batch decorrelation bugs).
 pub(super) fn text_batch(texts: Span, last_group: u32) -> TextBatch {
     TextBatch {
         texts,
@@ -180,8 +157,6 @@ pub(super) fn text_batch(texts: Span, last_group: u32) -> TextBatch {
     }
 }
 
-/// [`buf_with`], plus one single-item batch on `tier` per entry of
-/// `anchors`, each anchored at that group.
 pub(super) fn buf_with_tier_anchors(
     groups: Vec<DrawGroup>,
     tier: PaintTier,
@@ -197,10 +172,7 @@ pub(super) fn buf_with_tier_anchors(
     buf
 }
 
-/// Constructs a 100×100 buffer with the given groups and explicit
-/// `text_batches` (built the way the composer would emit them — see
-/// [`text_batch`]). Quads/texts pools have four slots each so any
-/// small span is valid.
+/// A 100×100 buffer with explicit `text_batches` (see [`text_batch`]).
 pub(super) fn buf_with_batches(
     groups: Vec<DrawGroup>,
     text_batches: Vec<TextBatch>,

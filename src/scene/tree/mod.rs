@@ -1,27 +1,10 @@
-//! Per-layer arena tree: SoA `records` column, sparse side tables
-//! (`bounds`/`panel`/`chrome`), flat shape buffer,
-//! and the subtree-rollup hashes used by cross-frame caches.
+//! Per-layer arena tree: SoA `records` column, sparse side tables, flat shape
+//! buffer, and subtree-rollup hashes for cross-frame caches.
 //!
-//! ## Noop filtering at this tier
-//!
-//! Tier 2 of the pipeline's noop policy — see
-//! [`paint_sink`](crate::renderer::frontend::paint_sink) for the policy
-//! itself and why the tiers aren't redundant. Storage answers "is this
-//! worth keeping around?", an optimization; correctness is tier 3's.
-//! Two sites enforce it here, each single-site for its column:
-//!
-//! - `Shapes::add` drops shapes whose authoring inputs would emit no
-//!   pixels (`Shape::is_noop` covers every variant). Saves per-shape
-//!   lowering — payload staging, bbox math, mesh hashing — that runs
-//!   inside `Shapes::add` itself.
-//! - `Tree::open_node` drops a node's chrome entry from
-//!   `chrome_table` when `Background::is_noop` (all of fill, stroke,
-//!   shadow are no-op). Saves a slot write and keeps chrome iteration
-//!   tight.
-//!
-//! Partial-noop chrome (e.g. shadow-only) survives storage and is
-//! dropped per-emit downstream, which is why `Ui::add_shape` and the
-//! encoder branches stay gate-free pass-throughs.
+//! Noop filtering at this storage tier: `Shapes::add` drops `Shape::is_noop`
+//! shapes and `Tree::open_node` drops `Background::is_noop` chrome rows (policy in
+//! [`paint_sink`](crate::renderer::frontend::paint_sink)). Partial-noop chrome is
+//! dropped per emit downstream.
 
 pub(crate) mod extras_idx;
 pub(crate) mod iter;
@@ -76,128 +59,74 @@ use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
 
-/// A single layer's arena. Per-layer trees live on
-/// [`crate::scene::forest::Forest`] and share no record/shape storage,
-/// so a mid-recording `Ui::layer` call dispatches straight into the
-/// destination tree without interleaving — no post-record reorder pass
-/// is needed to separate the layers again.
-///
-/// **`records`** is `Soa<NodeRecord>` indexed by `NodeId.0`, in pre-order
-/// paint order (parent before children, siblings in declaration order).
-/// Reverse iteration gives topmost-first (used by hit-testing). `soa-rs`
-/// lays each [`NodeRecord`] field out as its own contiguous slice, so
-/// each pass touches only the bytes it needs. Which pass reads which
-/// column is documented on the field itself.
+/// A single layer's arena. Layers share no storage, so `Ui::layer` records
+/// straight into its destination tree. `records` is in pre-order paint order;
+/// reverse iteration is topmost-first.
 #[derive(Debug, Default)]
 pub(crate) struct Tree {
     pub(crate) records: Soa<NodeRecord>,
 
     pub(crate) bounds_table: Vec<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
-    /// One row per node with chrome OR with `ClipMode::Rounded` —
-    /// the rounded-clip case keeps a row even when the paint itself
-    /// is fully no-op (`Background::is_noop`), so the encoder can
-    /// read `bg.radius` for the stencil-mask path without a separate
-    /// clip-radius column. Per-emit gates in `PaintSink::draw_*`
-    /// drop the visual no-op slices; the radius survives.
+    /// One row per node with chrome or `ClipMode::Rounded`; a rounded clip keeps its
+    /// row even for a noop paint so the encoder can read `bg.radius`.
     pub(crate) chrome_table: Vec<ChromeRow>,
-    /// The focus ring's stroke, for the one chrome row that flags it —
-    /// see [`ChromeRow::ring`]. A no-op when no node in this tree holds
-    /// focus that came from the keyboard.
+    /// The focus ring's stroke for the one chrome row that flags it ([`ChromeRow::ring`]).
     pub(crate) focus_ring: ShapeStroke,
 
-    /// Flat per-frame shape buffer. Records are indexed via
-    /// `NodeRecord.shape_span`; variable-length payloads (mesh
-    /// verts/indices, polyline points/colors, gradients) live on the
-    /// `RecordStore`.
     pub(crate) shapes: Shapes,
 
     pub(crate) grid_tracks: Vec<Track>,
     pub(crate) grid_defs: Vec<GridDef>,
-    /// Side table for [`LayoutMode::Scrollbars`], same arrangement as
-    /// `grid_defs`: the def is too wide for the packed 16-bit payload.
+    /// Side table for [`LayoutMode::Scrollbars`]; the def is too wide to pack.
     pub(crate) scrollbar_defs: Vec<ResolvedScrollbarsDef>,
 
-    /// Top-level root slots in this tree, in record order. Each slot's
-    /// `first_node` indexes `records`; pipeline passes iterate the
-    /// slice. Empty when no nodes were recorded into this tree this
-    /// frame.
     pub(crate) roots: Vec<RootSlot>,
 
-    /// Sparse shape-keyed paint animation registrations, cleared in
-    /// `pre_record`. Stateless: sampling is a pure function of
-    /// `Duration now` at encode time, so no per-entry timestamp is stored.
-    /// See [`PaintAnims`].
+    /// Sparse shape-keyed paint animations, cleared in `pre_record`. Sampling is a
+    /// pure function of `now`, so no timestamps are stored.
     pub(crate) paint_anims: PaintAnims,
 
     pub(crate) rollups: SubtreeRollups,
-    /// Whole-tree fingerprints, stamped alongside the per-node columns.
     pub(crate) fingerprint: TreeFingerprint,
-    /// Non-leaf owners of direct text shapes, restricted to the ones
-    /// that paint. Layout iterates the set after arrange to shape
-    /// paint-only text against its final padded width — a worklist, not
-    /// a hash, which is why it sits here rather than with the rollup
-    /// columns.
-    ///
-    /// The visibility cascade is folded in at build time, so a consumer
-    /// reads the set and shapes, with no ancestor walk and no test of
-    /// its own.
+    /// Non-leaf owners of direct text shapes that paint. Layout shapes their text
+    /// after arrange. Visibility is folded in at build time.
     pub(crate) container_text: FixedBitSet,
-    /// The columns the rollups were computed from. See [`RollupInputs`].
     last_inputs: RollupInputs,
-    /// Scratch `assert_rollups_hold` swaps the kept rollups into.
     #[cfg(debug_assertions)]
     rollup_check: RollupCheck,
 }
 
-/// The chrome half of a [`Tree::open_node`] call: the background to
-/// lower, and the store its gradient and text payloads land in. One
-/// parameter rather than two because a node either has chrome and both,
-/// or has neither.
+/// The chrome half of a [`Tree::open_node`] call: the background and the store
+/// its payloads land in.
 #[derive(Debug)]
 pub(crate) struct ChromeInput<'a> {
     pub(crate) bg: &'a Background,
-    /// The focus ring over the chrome — `Stroke::NONE` unless the node
-    /// holds focus that came from the keyboard.
+    /// Focus ring over the chrome; `Stroke::NONE` unless keyboard-focused.
     pub(crate) ring: Stroke,
     pub(crate) store: &'a mut RecordStore,
 }
 
 impl Tree {
-    /// Exclusive pre-order end for node `i`, grid flag stripped.
-    ///
-    /// `usize` rather than the stored `u32`: every caller indexes or spans
-    /// with the result, so the cast belongs here once instead of at each
-    /// of them. The one that stores it again narrows explicitly.
-    ///
-    /// **A flat-index accessor, not a [`NodeId`] one** — as are
-    /// [`Self::has_children`], [`Self::parent_of`] and
-    /// [`Self::subtree_has_grid`]. Their callers walk the pre-order
-    /// array by interval (`[start, end)`) rather than looking one node
-    /// up, so a `NodeId` parameter would only make each of them convert
-    /// back. The `NodeId` family is [`Self::children`], [`Self::bounds`],
-    /// [`Self::panel`], [`Self::chrome`] and [`Self::transform_of`].
+    /// Exclusive pre-order end for node `i`, grid flag stripped. This and
+    /// [`Self::has_children`], [`Self::parent_of`] and [`Self::subtree_has_grid`] take
+    /// flat indices, not [`NodeId`]s, since callers walk the pre-order array.
     #[inline]
     pub(crate) fn subtree_end_of(&self, i: usize) -> usize {
         self.records.subtree_end()[i].end() as usize
     }
 
-    /// Whether node `i` has any children — see
-    /// [`SubtreeEnd::has_children`].
     #[inline]
     pub(crate) fn has_children(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_children(i)
     }
 
-    /// The immediate parent of node `i`, or `None` when `i` is a root.
     #[inline]
     pub(crate) fn parent_of(&self, i: usize) -> Option<NodeId> {
         let parent = self.records.parent()[i];
         (parent != NodeId::NONE).then_some(parent)
     }
 
-    /// `true` iff the subtree rooted at `i` (inclusive) contains any
-    /// `LayoutMode::Grid` node. Populated incrementally by `close_node`.
     #[inline]
     pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_grid()
@@ -213,11 +142,6 @@ impl Tree {
         self.roots.clear();
     }
 
-    /// Finalize this tree: populate the hash columns and derived owner sets.
-    /// Capacity retained across frames. The paint-anim wake fold lives
-    /// on [`crate::scene::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
-    /// calls it at the tail of every frame (both record + paint-only
-    /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
         debug_assert!(
             self.paint_anims
@@ -229,9 +153,7 @@ impl Tree {
         let n = self.records.len();
         self.fingerprint.paint_counts =
             paint_counts(self.shapes.records.len(), self.chrome_table.len(), n);
-        // A pass that records what the last one did keeps its rollups,
-        // which are a function of it — the common frame, where nothing
-        // moved, at a compare rather than a hash per node.
+        // Unchanged inputs keep their rollups: a compare instead of a hash per node.
         if self.last_inputs.hold_for(self) {
             #[cfg(debug_assertions)]
             self.assert_rollups_hold();
@@ -241,20 +163,14 @@ impl Tree {
         self.last_inputs.note_rolled();
     }
 
-    /// Size the rollup columns for this pass and fill them.
     fn roll_up(&mut self) {
         let n = self.records.len();
         self.rollups.reset_for(n);
-        // `clear` keeps the length, so the grow only does work the first
-        // time the tree reaches this size. Sized here rather than at the
-        // insert site so `compute_rollups`' loop carries no sizing call.
         self.container_text.clear();
         self.container_text.grow(n);
         self.compute_rollups();
     }
 
-    /// Recompute the rollups a pass kept and assert they are the ones it
-    /// kept — every debug frame checks the compare in `post_record`.
     #[cfg(debug_assertions)]
     fn assert_rollups_hold(&mut self) {
         let mut check = mem::take(&mut self.rollup_check);
@@ -271,8 +187,7 @@ impl Tree {
             self.rollups.layout_subtree, check.rollups.layout_subtree,
             "kept layout subtree hashes",
         );
-        // By the bits set: `clear` keeps a bit set's length, so two sets
-        // with the same owners can differ in it.
+        // By bits set: `clear` keeps a bit set's length, so equal owner sets can differ.
         assert!(
             self.container_text.ones().eq(check.container_text.ones()),
             "kept container text",
@@ -284,30 +199,18 @@ impl Tree {
         self.rollup_check = check;
     }
 
-    /// Fused reverse-pre-order pass: computes the hash columns and
-    /// discovers non-leaf direct-text owners in a single sweep.
-    /// `subtree[i]` reads `node[i]` (just written this iteration) and
-    /// the already-finalized `subtree[children]` (visited earlier in
-    /// the reverse pass).
+    /// Fused reverse-pre-order pass: computes the hash columns and discovers
+    /// non-leaf direct-text owners.
     ///
-    /// **Layout half first, full hash derived from it.** A node's layout
-    /// hash folds what measure and arrange read — the layout core and
-    /// flags, bounds, panel, grid and scrollbar definitions, child ids in
-    /// order, and each text run's shaping inputs. Its full hash is that,
-    /// plus chrome and every shape's paint hash in record order. An
-    /// input added to the layout half reaches the full half by
-    /// construction, so the measure cache (which keys on the layout
-    /// half) and the cascade and damage (which key on the full one)
-    /// cannot drift apart. The rule for a new input: if layout might read
-    /// it, it goes in the layout half — an extra input costs a cache miss,
-    /// a missing one is a stale layout.
+    /// The full hash is derived from the layout half (what measure and arrange
+    /// read) plus chrome and shape paint hashes, so the measure cache (keyed on the
+    /// layout half) and cascade/damage (keyed on the full one) cannot drift. If
+    /// layout might read an input it goes in the layout half: an extra input costs
+    /// a cache miss, a missing one is a stale layout.
     fn compute_rollups(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
-        // Per-shape hashes are canonical — populated by `Shapes::add`
-        // at lowering time. compute_rollups just folds them into the
-        // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
         let widget_ids = self.records.widget_id();
         let subtree_ends = self.records.subtree_end();
@@ -324,8 +227,6 @@ impl Tree {
             layout_subtree,
         } = &mut self.rollups;
         let container_text = &mut self.container_text;
-        // `paint_counts` is stamped by `post_record` before this pass —
-        // a whole-tree fold, not a per-node one.
         let cascade_static = &mut self.fingerprint.cascade_static;
         let node_out = node.as_mut_slice();
         let subtree_out = subtree.as_mut_slice();
@@ -333,7 +234,6 @@ impl Tree {
         let mut cascade_static_hasher = Hasher::new();
 
         for i in (0..n).rev() {
-            // `lh` is the layout half, `ph` what only paint reads.
             let mut lh = Hasher::new();
             let mut ph = Hasher::new();
             layouts[i].hash_with_flags(attrs[i], &mut lh);
@@ -344,24 +244,17 @@ impl Tree {
                 bounds.hash(&mut lh);
                 tab_index = bounds.tab_index;
             }
-            // The transform moves no rect, so it rides the paint half:
-            // the measure cache keeps hitting under a pan, and the
-            // cascade refreshes geometry in place rather than rebuilding.
-            // It still dirties `node_hash`, which it must — direct shapes
-            // paint inside it per the `Panel::transform` contract. Pinned
-            // by `self_transform_change_flips_node_hash`.
+            // The transform moves no rect, so it rides the paint half: the measure cache
+            // keeps hitting under a pan. It still dirties `node_hash` (pinned by
+            // `self_transform_change_flips_node_hash`).
             let panel = ex.panel.map(|s| &panel_tab[s.idx()]);
             if let Some(panel) = panel {
                 panel.hash_layout(&mut lh);
             }
             let transformed = panel.filter(|p| !p.transform.is_identity());
-            // What the cascade's structural tables are built from, and
-            // nothing else: identity, nesting, the flag word, visibility
-            // and the Tab order key. Nesting is what makes this hash
-            // describe the tree's *shape* — without it two trees with
-            // the same nodes nested differently collide. The flag word
-            // and visibility share the end's word, and its top bit says
-            // whether a Tab key follows.
+            // What the cascade's structural tables are built from: identity, nesting,
+            // flag word, visibility and Tab key. Nesting makes this describe the tree's
+            // shape. The top bit of the end word says whether a Tab key follows.
             const {
                 assert!(
                     32 + NodeFlags::WIDTH + u8::BITS <= 63,
@@ -378,10 +271,8 @@ impl Tree {
             if tab_index != 0 {
                 cascade_static_hasher.write_u16(tab_index.cast_unsigned());
             }
-            // One leading byte says which of the two optional payloads
-            // follow — chrome, whose authoring hash was computed at
-            // lowering time (`shapes::lower::background`), and the
-            // transform — so no stream can be read as another's.
+            // A leading byte says which optional payloads follow (chrome, transform), so
+            // no stream reads as another's.
             let chrome = ex.chrome.map(|s| chrome_tab[s.idx()].hash);
             ph.write_u8(u8::from(chrome.is_some()) | (u8::from(transformed.is_some()) << 1));
             if let Some(hash) = chrome {
@@ -391,31 +282,15 @@ impl Tree {
                 panel.hash_transform(&mut ph);
             }
 
-            // Walk this node's direct shapes + immediate-child position
-            // markers in record order via the shared `TreeItems`
-            // traversal — single source of truth for the parent/child
-            // interleave cursor logic (encoder uses the same iterator).
-            // Each shape's canonical hash was computed at `Shapes::add`
-            // time; fold it in as a u64 so we don't re-hash the record
-            // fields here. Child markers carry the child's `WidgetId`
-            // (behind a `0xFF` domain separator) so `node_hash` covers
-            // the full paint-order identity stream: a child↔child
-            // reorder or a shape crossing a child boundary flips the
-            // hash and routes the parent to the damage diff's
-            // changed-paints arm, whose row matcher emits the
-            // order-inversion damage. The cost is that re-keying a
-            // child (same content, new id) also flips the parent
-            // chain's node/subtree hashes — a one-frame MeasureCache
-            // miss and a no-damage re-diff of the parent's rows —
-            // accepted, since re-keys are rare and almost always ride
-            // a structural change that invalidates those anyway.
+            // Walk direct shapes and child markers in record order via `TreeItems`, as the
+            // encoder does. Child markers carry the child's `WidgetId` behind a `0xFF`
+            // separator, so a reorder flips the hash and the damage diff emits the
+            // order-inversion damage. Re-keying a child also flips the parent chain: a
+            // one-frame cache miss, accepted as rare.
             //
-            // The subtree hashers ride the same walk: each child's
-            // already-finalized subtree rollups (reverse pre-order —
-            // children were visited earlier) fold in as it's yielded, and
-            // the node hashes are appended after `finish` below —
-            // children-then-self, one traversal instead of a second
-            // child-hop loop.
+            // Children's finalized subtree rollups fold in as they are yielded (children
+            // are visited earlier in reverse pre-order); node hashes are appended after
+            // `finish`.
             let mut sh = Hasher::new();
             let mut lsh = Hasher::new();
             let mut has_children = false;
@@ -439,20 +314,15 @@ impl Tree {
                     }
                 }
             }
-            // One load and one decode for the four consumers below.
             let meta = layouts[i].meta;
             let mode = LayoutMode::from(meta);
             if has_direct_text && mode != LayoutMode::Leaf {
                 container_text.insert(i);
             }
-            // A container run is paint-only, so a node that paints
-            // nothing — and every node under it — has no run to shape.
-            // A hidden *leaf* is the opposite case and still shapes,
-            // because there the run is what gives the slot its extent,
-            // which is why `LayoutPass::measure` tests `is_collapsed`
-            // where this tests `!is_visible`. Reverse pre-order is what
-            // makes one range clear enough: the descendants' bits are
-            // already in place when their ancestor reaches this line.
+            // A container run is paint-only, so a node that paints nothing, and every
+            // node under it, has no run to shape. A hidden leaf still shapes because the
+            // run gives its slot extent (`LayoutPass::measure` tests `is_collapsed`).
+            // Descendants' bits are already set in reverse pre-order.
             if !meta.visibility().is_visible() {
                 container_text.remove_range(i..subtree_ends[i].end() as usize);
             }
@@ -470,9 +340,7 @@ impl Tree {
             let node_hash = ph.finish();
             node_out[i] = ContentHash(node_hash);
 
-            // Childless subtree = the node alone, so the node hash IS the
-            // rollup — skip the second hasher round-trip (most nodes).
-            // Inner nodes fold children (streamed above) then self.
+            // A childless subtree is the node alone: its hash is the rollup.
             if has_children {
                 sh.write_u64(node_hash);
                 lsh.write_u64(layout_hash);
@@ -486,9 +354,6 @@ impl Tree {
         *cascade_static = ContentHash(cascade_static_hasher.finish());
     }
 
-    /// Intern one bar overlay's def, returning the id its node packs.
-    /// Called only by `Widget::scrollbar_def`, which is why the
-    /// `open_node` debug assert can treat a dangling id as a caller bug.
     pub(crate) fn push_scrollbars_def(&mut self, def: ResolvedScrollbarsDef) -> ScrollbarsDefId {
         let id = ScrollbarsDefId::from_index(self.scrollbar_defs.len());
         self.scrollbar_defs.push(def);
@@ -509,20 +374,12 @@ impl Tree {
         id
     }
 
-    /// Push a node as a child of the currently-open node (or as a new
-    /// root if `scratch.open_frames` is empty) and make it the new tip.
-    /// Root mints stamp `scratch.pending_placement` onto the new
-    /// `RootSlot`; child opens don't read it. The assigned `NodeId` is
-    /// the return value — the tree is the sole id authority.
+    /// Push a node under the open node (or as a new root if none is open) and make
+    /// it the tip. Roots stamp `scratch.pending_placement` onto the new `RootSlot`.
     ///
-    /// `chrome` is `None` for nodes without a background paint;
-    /// `ClipMode::Rounded` always downgrades to `Rect` in that case
-    /// (no radius to mask). With chrome, the row is kept past
-    /// `Background::is_noop` when `ClipMode::Rounded` so the encoder
-    /// can read `bg.radius` for the stencil-mask path — the only time
-    /// a noop chrome survives storage. Partial-noop chrome (e.g.
-    /// shadow-only) survives here and is dropped per-emit by the cmd
-    /// buffer's gates.
+    /// `chrome` is `None` for nodes without a background; `ClipMode::Rounded` then
+    /// downgrades to `Rect`. With chrome, `Rounded` keeps the row even if
+    /// `Background::is_noop`, so the encoder can read `bg.radius`.
     #[inline]
     pub(super) fn open_node(
         &mut self,
@@ -531,8 +388,7 @@ impl Tree {
         node: &Node,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
-        // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
-        // arena ceiling), which asserts for this same id below.
+        // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
         let new_id = NodeId(self.records.len() as u32);
 
         let parent_frame = scratch.open_frames.last().copied();
@@ -545,16 +401,13 @@ impl Tree {
             });
         }
         let mut cols = node.columns(widget_id);
-        // A root raised from a disabled scope is disabled, as a child of
-        // that scope's node would be — set on the record so the cascade
-        // disables the whole overlay, not only what records against it.
+        // A root raised from a disabled scope is disabled, so the cascade disables the
+        // whole overlay.
         if parent_frame.is_none() && scratch.owner_disabled {
             cols.attrs.set_disabled(true);
         }
-        // A rounded clip with no radius to round is a plain scissor.
-        // Applied to the recorded flags rather than to the node, because
-        // this is the only hop that sees both the node's request and the
-        // chrome supplying the radius.
+        // A rounded clip with no radius is a plain scissor. Applied to the recorded
+        // flags: only here are the request and the chrome both visible.
         if cols.attrs.clip_mode() == ClipMode::Rounded
             && chrome
                 .as_ref()
@@ -562,9 +415,7 @@ impl Tree {
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
-        // Decoded once — the def-handle asserts and the self-Grid stamp
-        // below all want it, and `meta` is immutable past `columns`
-        // (only `padding` is rewritten, by the stroke inflation).
+        // Decoded once; `meta` is immutable past `columns` except `padding`.
         let mode = LayoutMode::from(cols.layout.meta);
         match mode {
             LayoutMode::Grid(id) => debug_assert!(
@@ -595,21 +446,15 @@ impl Tree {
             store,
         }) = chrome
         {
-            // A chrome border paints fully inside the node's arranged
-            // rect (see `quad_pipeline/shader.wgsl` SDF stroke band), so `padding` grows
-            // by the border on every side and children sit inside it
-            // without the user having to add it by hand.
-            // Done here (not in the layout pass) so the layout columns
-            // already carry the effective padding — zero hot-path cost
-            // and the LayoutCore hash invalidates `MeasureCache`
-            // automatically when the inflated value shifts.
+            // A border paints inside the arranged rect, so `padding` grows by it. Done
+            // here so layout columns carry the effective padding and the `LayoutCore`
+            // hash invalidates `MeasureCache` when it shifts.
             let ring = bg.border_inset();
             if ring != 0.0 {
                 let [l, t, r, b] = cols.layout.padding.as_array();
                 cols.layout.padding = Spacing::new(l + ring, t + ring, r + ring, b + ring);
             }
-            // Tree-storage noop gate for chrome — mirrors `Shapes::add`
-            // for the shape buffer and `PaintSink::draw_*` for emits.
+            // Storage noop gate for chrome; mirrors `Shapes::add`.
             let needs_chrome_row = !bg.is_noop()
                 || !focus_ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
@@ -622,10 +467,7 @@ impl Tree {
                 self.chrome_table.push(row);
             }
         }
-        // Stamp the self-Grid bit at open time — the mode is already
-        // decoded above. Lets `close_node` drop its `layout[i].meta` read
-        // (3 record columns → 2). `new_open` asserts the 31-bit arena
-        // ceiling (high bit is the grid flag).
+        // Stamp the self-Grid bit now so `close_node` skips a `layout[i].meta` read.
         let init_end = SubtreeEnd::new_open(new_id.0, matches!(mode, LayoutMode::Grid(_)));
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
@@ -640,8 +482,8 @@ impl Tree {
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
             && cols.layout.meta.visibility().is_visible();
-        // This child contributes one marker row to the parent's paint
-        // span; the child's own counter starts past its chrome row.
+        // The child adds one marker row to the parent's paint span; its own counter
+        // starts past its chrome row.
         if let Some(parent) = scratch.open_frames.last_mut() {
             parent.paint_rows += 1;
         }
@@ -654,15 +496,9 @@ impl Tree {
         new_id
     }
 
-    /// Range-check a child's `grid` cell against its parent's
-    /// `GridDef` row/col counts. Only fires when the parent is a
-    /// `Grid` node and the def has nonzero rows + cols.
-    ///
-    /// Gated whole, not just its assert: everything it does — the load of
-    /// the parent's `LayoutCore`, the `LayoutMode` decode and its
-    /// `Index16` expect, the `grid_defs` index — exists to reach that
-    /// assert, and this runs on every node open, the hottest step of the
-    /// recording pass.
+    /// Range-check a child's `grid` cell against its parent's `GridDef`. Gated
+    /// whole: everything it does exists to reach the assert, and this runs on every
+    /// node open.
     #[cfg(debug_assertions)]
     fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
         if let Some(parent_id) = parent {
@@ -704,19 +540,10 @@ impl Tree {
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
 
-        // The paint-row stream is derived twice — counted here as the
-        // record pass runs (`OpenFrame::paint_rows`, which is what
-        // `PaintAnimEntry::row` indexes by), and re-derived at cascade
-        // time by `compute_paint_rect` walking `TreeItems`. Nothing
-        // structural ties the two, so check them against each other at
-        // the one point both are knowable: `shape_span.len` was stamped
-        // on the line above, which is all `TreeItems` was waiting for.
-        //
-        // Debug-only and once per node, against the *cascade's own*
-        // enumerator rather than a second hand-written count — so this
-        // fails on any drift, not only on nodes that happen to carry a
-        // paint anim (the pre-existing `debug_assert!` in `damage` only
-        // sees those).
+        // The paint-row stream is counted at record time (`OpenFrame::paint_rows`) and
+        // re-derived at cascade time by `compute_paint_rect` walking `TreeItems`.
+        // Nothing ties the two, so compare them here, debug-only, for every node (not
+        // only those with a paint anim).
         debug_assert_eq!(
             popped.paint_rows,
             u32::from(self.chrome(closing).is_some())
@@ -724,11 +551,8 @@ impl Tree {
             "paint-row count drifted from the cascade's row stream at node {i}",
         );
 
-        // `subtree_end[i]` is already the finalized "subtree contains
-        // Grid" answer: self-Grid was stamped at `open_node`, and
-        // descendants merged their flags up via this same code at
-        // close. No `layout[i].meta` read needed — drops close_node
-        // from 3 record-column touches to 2.
+        // `subtree_end[i]` already answers "subtree contains Grid": self-Grid was
+        // stamped at open and descendants merged up at close.
         let child_end = self.records.subtree_end()[i];
 
         if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
@@ -737,40 +561,24 @@ impl Tree {
         }
     }
 
-    /// Iterate children of `parent` in declaration order, each tagged
-    /// with its collapse state. Use [`Tree::active_children`] when you
-    /// only need non-collapsed children — that's the dominant access
-    /// pattern.
+    /// Children of `parent` in declaration order, with collapse state.
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         ChildIter::new(&self.records, parent)
     }
 
-    /// Iterate non-collapsed children of `parent`, yielding `NodeId`s
-    /// directly. Equivalent to `children(parent).filter_map(Child::active)`
-    /// but shorter at call sites — most layout drivers want this form.
     pub(crate) fn active_children(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.children(parent).filter_map(Child::active)
     }
 
-    /// This node's direct shapes interleaved with its immediate
-    /// children, in record order.
-    ///
-    /// Two walks inside this type reach for [`TreeItems::new`] instead:
-    /// `compute_rollups` and `close_node` both hold a `&mut` on one of
-    /// `Tree`'s fields while they walk, and `&self` here would take the
-    /// whole of it. Every caller that *can* take `&self` comes through
-    /// this.
+    /// This node's direct shapes interleaved with its immediate children, in record
+    /// order. `compute_rollups` and `close_node` use [`TreeItems::new`] instead,
+    /// as they hold a `&mut` on a `Tree` field while walking.
     pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
-    /// Read this node's raw transform. `None` for non-panel nodes (no
-    /// panel row) and for panels with an identity transform. `Panel` /
-    /// `Grid` are the only widgets that expose `.transform()` in the API,
-    /// so transforms always live alongside panel knobs.
-    ///
-    /// Private: the raw form is not the one either pass may use, so
-    /// [`Self::anchored_transform`] is the whole surface.
+    /// This node's raw transform: `None` for non-panel nodes and identity
+    /// transforms. Private; use [`Self::anchored_transform`].
     #[inline]
     fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
         self.records.extras()[id.idx()]
@@ -779,25 +587,15 @@ impl Tree {
             .filter(|t| !t.is_identity())
     }
 
-    /// This node's transform, anchored so its scale pivots about the
-    /// panel's own origin instead of the layer's `(0, 0)` — the form both
-    /// readers need, and the only one either may use.
-    ///
-    /// `rect` is the node's arranged rect, in whatever space the caller
-    /// works in. The cascade composes the result into the transform
-    /// descendants inherit and paint under. The encoder pushes it around
-    /// the body. If either anchors for itself, a scaled panel's body
-    /// drifts from the damage rect computed for it by the
-    /// `min * (1 - scale)` that [`TranslateScale::anchored_at`] cancels.
+    /// This node's transform, anchored so its scale pivots about the panel's own
+    /// origin instead of the layer's `(0, 0)`. `rect` is the arranged rect. Cascade
+    /// and encoder must both use this, or a scaled panel's body drifts from its
+    /// damage rect.
     #[inline]
     pub(crate) fn anchored_transform(&self, id: NodeId, rect: Rect) -> Option<TranslateScale> {
         self.transform_of(id).map(|t| t.anchored_at(rect.min))
     }
 
-    /// This node's bounds extras row (position / grid cell / min_size /
-    /// max_size). Falls back to `&BoundsExtras::DEFAULT` for nodes that
-    /// didn't customize any field. Mirrors `Tree::panel` — callers pull
-    /// the field they want.
     #[inline]
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
         self.records.extras()[id.idx()]
@@ -812,12 +610,6 @@ impl Tree {
             .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s.idx()])
     }
 
-    /// Chrome paint for `id`. Present whenever the node has visible
-    /// paint OR `ClipMode::Rounded` (the latter keeps a row even on
-    /// `Background::is_noop` so the encoder can read `bg.radius` for
-    /// the stencil-mask path). Per-emit `is_noop` gates in
-    /// `PaintSink::draw_*` drop the no-paint slices; the radius
-    /// always survives.
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
         self.records.extras()[id.idx()]
             .chrome
@@ -825,8 +617,6 @@ impl Tree {
     }
 }
 
-/// Fold the three counts that move whenever some node's paint-row count
-/// does. Free fn so the `Tree` field reads and the arithmetic sit apart.
 fn paint_counts(shapes: usize, chrome_rows: usize, nodes: usize) -> ContentHash {
     let mut h = Hasher::new();
     h.write_usize(shapes);

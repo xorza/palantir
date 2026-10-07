@@ -1,10 +1,5 @@
-//! Shared fixtures for the text suite; each submodule owns one axis.
-//!
-//! Split by what a failure points at: [`key`] cache identity and metric
-//! validation, [`wrap`] shaping and the wrap policies, [`truncate`] the
-//! clip/ellipsis cut, [`geometry`] caret, hit-test and selection,
-//! [`retention`] the shaped-buffer cache's windows, [`reuse`] the
-//! per-window rows and the supersede signal they carry.
+//! Shared fixtures for the text suite; each submodule owns one axis: [`key`], [`wrap`], [`truncate`], [`geometry`],
+//! [`retention`], [`reuse`].
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -43,13 +38,8 @@ mod reuse;
 mod truncate;
 mod wrap;
 
-/// Measurement parameters with the defaults nearly every case wants:
-/// bundled Inter Regular, unbounded, `HAlign::Auto`, and leading equal to
-/// the font size — which keeps the mono fallback's line height numerically
-/// equal to `font_size`, the placeholder layout the mono cases pin.
-///
-/// Override with the `TestShape` builders, so the one thing a case is
-/// about reads on one line: `shape(16.0).width(32.0).halign(HAlign::Right)`.
+/// Measurement parameters with the defaults most cases want: bundled Inter Regular, unbounded, `HAlign::Auto`,
+/// leading equal to the font size. Override via the `TestShape` builders: `shape(16.0).width(32.0)`.
 fn shape(font_size: f32) -> TestShape {
     TestShape::new(GlyphFont {
         size: font_size,
@@ -60,14 +50,12 @@ fn shape(font_size: f32) -> TestShape {
     })
 }
 
-/// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]) — what the real
-/// UI shapes at, and what the cosmic geometry cases pin.
+/// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]), what the cosmic geometry cases pin.
 fn ui_shape(font_size: f32) -> TestShape {
     shape(font_size).leading(font_size * LINE_HEIGHT_MULT)
 }
 
-/// Height of one line at `shape`'s leading, as a measured extent reports
-/// it — `Size` ceils, so a fractional leading rounds up.
+/// Height of one line at `shape`'s leading (`Size` ceils fractional leading).
 fn one_line_h(shape: TestShape) -> f32 {
     shape.font.line_height.ceil()
 }
@@ -80,13 +68,8 @@ fn slot_at(widget_id: WidgetId, ordinal: u16) -> TextRunSlot {
     TextRunSlot { widget_id, ordinal }
 }
 
-/// The extent the mono metric lays `text` out to — its unbounded shape
-/// where `shape` commits no width, its bounded resolve under `fit` where
-/// it does.
-///
-/// The two entry points are the whole of what the metric answers, so a
-/// case that wants the wrap floor or the line count asks [`mono_root`]
-/// for them: a bounded resolve has neither to give, on either metric.
+/// The mono metric's extent for `text`: unbounded shape where `shape` commits no width, else its bounded resolve
+/// under `fit`. The wrap floor and line count come from [`mono_root`].
 fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
     let request = shape.request(text, fit);
     match request.max_width() {
@@ -95,15 +78,11 @@ fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
     }
 }
 
-/// The mono metric's unbounded root, wrap floor scanned.
 fn mono_root(text: &str, shape: TestShape) -> TextRoot {
     mono::root(shape.unbounded_request(text), WrapFloor::Scan)
 }
 
-/// A truncating measure and the unbounded probe it cuts from. Truncation
-/// reads the cached unbounded shape, so the probe has to be measured
-/// first — returning both keeps a caller that needs the probe's key from
-/// re-deriving the shape by hand.
+/// A truncating measure and the unbounded probe it cuts from (which must be measured first).
 #[derive(Debug)]
 struct Truncated {
     fitted: TestMeasure,
@@ -116,7 +95,6 @@ fn truncate(cosmic: &mut CosmicMeasure, text: &str, shape: TestShape, fit: LineF
     Truncated { fitted, unbounded }
 }
 
-/// [`truncate`] when only the truncated result is wanted.
 fn measure_truncated(
     cosmic: &mut CosmicMeasure,
     text: &str,
@@ -136,9 +114,7 @@ struct GlyphPosition {
     end: usize,
 }
 
-/// Glyph geometry in the same block-local space the renderer and probe
-/// see — `left` off the buffer's own x, exactly as `extract_glyphs` folds
-/// it into the run origin.
+/// Glyph geometry in the block-local space the renderer and probe see.
 fn glyph_positions(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPosition> {
     let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
     let left = shaped.left;

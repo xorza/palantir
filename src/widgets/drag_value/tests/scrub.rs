@@ -1,5 +1,4 @@
-//! The drag gesture: what continues it, what ends it, and what never starts
-//! it.
+//! The drag gesture: what continues it, what ends it, and what never starts it.
 
 use crate::Ui;
 use crate::input::pointer::PointerButton;
@@ -20,12 +19,9 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
 
-    // Settle a layout frame so the cascade exists for pointer routing.
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    // Press at x=50 inside the 100×40 chip, drag 20px right:
-    // draft = anchor 10 + 20px * speed 1 = 30. Live write, no commit,
-    // and the deferred caller leaves canonical untouched.
+    // Press at x=50 in the 100×40 chip, drag 20px right: draft = anchor 10 + 20 = 30; live write, no commit.
     h.press_at(Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
@@ -35,15 +31,11 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     );
     assert_eq!(canonical, 10.0, "deferred caller ignores mid-drag writes");
 
-    // 5px more: anchor math re-derives 10 + 25 = 35 even though the
-    // caller re-seeded the stale 10 into the draft.
     h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.a().changed && !s.a().committed);
     assert_eq!(canonical, 10.0);
 
-    // Release: exactly one commit (in exactly one record pass), carrying
-    // the final scrubbed value into the stale-seeded draft.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(s.a().committed, "release commits the scrub");
@@ -54,7 +46,6 @@ fn scrub_commits_once_on_release_for_deferred_caller() {
     );
     assert_eq!(canonical, 35.0);
 
-    // Idle frame after: no residual signals — one commit per gesture.
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.a().changed && !s.a().committed);
     assert_eq!(canonical, 35.0);
@@ -96,8 +87,7 @@ fn scrub_distance_is_scale_invariant() {
 
 #[test]
 fn pointer_leaving_surface_does_not_split_the_gesture() {
-    // Mid-scrub window exit must not fire a premature commit, and the
-    // resumed drag's remainder must still commit on the real release.
+    // A mid-scrub window exit must not commit, and the resumed drag must commit on the real release.
     let id = WidgetId::from_hash("dv-pointer-leave");
     let mut h = UiHarness::new(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
@@ -107,13 +97,11 @@ fn pointer_leaving_surface_does_not_split_the_gesture() {
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    // Pointer crosses the window edge: drag unobservable, but latched.
     h.pointer_left();
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(!s.a().committed, "window exit is not a release");
     assert_eq!(canonical, 10.0);
 
-    // Re-enter with the button held and keep scrubbing: 10 + 25 = 35.
     h.move_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
     assert!(
@@ -138,15 +126,13 @@ fn transient_disable_does_not_swallow_the_gesture() {
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    // One disabled frame mid-drag: no write, but the gesture survives.
     let s = deferred_frame(&mut h, id, &mut canonical, false, true);
     assert!(
         !s.a().changed && !s.a().committed,
         "disabled frame writes nothing"
     );
 
-    // Re-enabled with the button still held: one settle frame (the
-    // cascaded disabled flag is one frame stale), then scrubbing resumes.
+    // Re-enabled, button held: one settle frame (the cascaded disabled flag is stale), then scrubbing resumes.
     deferred_frame(&mut h, id, &mut canonical, false, false);
     h.drag_to(Vec2::new(75.0, 20.0));
     let s = deferred_frame(&mut h, id, &mut canonical, false, false);
@@ -172,8 +158,7 @@ fn release_while_disabled_drops_the_gesture() {
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, false, false);
 
-    // Released on a disabled frame: a locked control emits no edit, and
-    // the gesture is over — a later enabled frame must not revive it.
+    // Released on a disabled frame: a locked control emits no edit and the gesture is over for good.
     h.release();
     let s = deferred_frame(&mut h, id, &mut canonical, false, true);
     assert!(!s.a().committed, "disabled release drops the gesture");
@@ -182,11 +167,8 @@ fn release_while_disabled_drops_the_gesture() {
     assert_eq!(canonical, 10.0);
 }
 
-/// The scrub anchors on the integer the target holds, so the whole `i64`
-/// domain survives a drag. An anchor widened to `f64` rounds every value
-/// past 2^53, and a drag too slow to make a whole step — one that moves
-/// the value nowhere — would then store that rounded number over the
-/// exact one the keyboard path accepts.
+/// The scrub anchors on the integer the target holds, so the whole `i64` domain survives; an `f64` anchor
+/// would round values past 2^53 and a sub-step drag would store the rounded number.
 #[test]
 fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
     const EXACT: i64 = 9_007_199_254_740_993;
@@ -205,8 +187,6 @@ fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
     };
     frame(&mut h, &mut value, SLOW);
 
-    // 20 px of travel at 0.001 a px is 0.02, under half a step, so
-    // nothing is stored.
     h.press_at(Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     frame(&mut h, &mut value, SLOW);
@@ -215,7 +195,6 @@ fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
     frame(&mut h, &mut value, SLOW);
     assert_eq!(value, EXACT, "and its commit stores nothing new");
 
-    // The same 20 px at speed 1 is 20 whole steps from that same anchor.
     h.press_at(Vec2::new(50.0, 20.0));
     h.drag_to(Vec2::new(70.0, 20.0));
     frame(&mut h, &mut value, 1.0);
@@ -224,10 +203,7 @@ fn an_exact_integer_survives_a_scrub_that_moves_it_nowhere() {
 
 #[test]
 fn non_left_drags_do_not_scrub() {
-    // A right-button drag over the chip is someone else's gesture
-    // (context menu, breaker) — it must neither write nor commit. The
-    // left row is the control: the same aim and travel scrubs 20 steps
-    // and commits them, so the right row's silence is the button.
+    // A right-button drag is someone else's gesture: neither write nor commit; the left row is the control.
     let id = WidgetId::from_hash("dv-right-drag");
     for (button, scrubs) in [(PointerButton::Left, true), (PointerButton::Right, false)] {
         let mut h = UiHarness::new(UVec2::new(300, 100));
@@ -251,12 +227,8 @@ fn non_left_drags_do_not_scrub() {
     }
 }
 
-/// The sense the widget needs is folded over the caller's at `show`,
-/// so no chain order can leave the chip unable to scrub.
-///
-/// `editable` decides only whether the click that opens the inline
-/// editor joins the drag. Turning it back off drops that click again,
-/// and a caller's own `Sense::SCROLL` survives either setting.
+/// The widget's sense is folded over the caller's at `show`, so no chain order leaves the chip unable to
+/// scrub; `editable` only decides whether the opening click joins the drag, and `Sense::SCROLL` survives.
 #[test]
 fn the_widgets_own_sense_survives_every_builder_order() {
     let mut h = UiHarness::new(UVec2::new(300, 100));

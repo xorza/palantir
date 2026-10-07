@@ -1,10 +1,4 @@
-//! The app's scale against the platform's. The render path sees only
-//! their product, and a larger product paints larger.
-//!
-//! Neither fixture holds a golden. Both assert a relation between two
-//! renders of one scene, which is what the property actually is — a
-//! stored PNG would pin the scene's pixels and say nothing about the
-//! relation.
+//! The app's scale against the platform's: the render path sees only their product, and a larger product paints larger. Neither fixture holds a golden; each asserts a relation between two renders.
 
 use glam::UVec2;
 use palantir::golden::image::{Rgba, RgbaImage};
@@ -15,9 +9,7 @@ use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(200, 160);
 
-/// A 40×24 logical block against the top-left corner, with nothing
-/// between it and the surface edge — so its painted rows and columns are
-/// the logical size times whatever the frame's scale factor is.
+/// A 40×24 logical block flush against the top-left corner, so painted rows and columns are the logical size times the scale factor.
 fn block(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("root")
@@ -31,10 +23,7 @@ fn block(ui: &mut Ui) {
         });
 }
 
-/// How wide and how tall the painted region reaches, measured from the
-/// corner the block is flush against. `background` is read back from an
-/// empty render on the same pipeline, so it is the exact bytes an
-/// unpainted pixel holds.
+/// How far the painted region reaches from the corner. `background` is read from an empty render on the same pipeline, so it is the exact bytes of an unpainted pixel.
 fn painted_extent(img: &RgbaImage, background: Rgba<u8>) -> UVec2 {
     let painted = |p: &Rgba<u8>| *p != background;
     let mut extent = UVec2::ZERO;
@@ -46,12 +35,7 @@ fn painted_extent(img: &RgbaImage, background: Rgba<u8>) -> UVec2 {
     extent
 }
 
-/// The two halves of the scale factor are interchangeable: the render
-/// path multiplies them and never sees either alone, so dpr 2 with no
-/// user scale must paint the same pixels as dpr 1 at 200%.
-///
-/// This is the property that lets the user scale reuse the whole hi-dpi
-/// path rather than needing one of its own.
+/// The two scale halves are interchangeable: dpr 2 with no user scale paints the same pixels as dpr 1 at 200%, which lets user scale reuse the hi-dpi path.
 #[test]
 fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     let mut h = Harness::new();
@@ -63,15 +47,11 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     assert_same("user_scale_halves", &user, &system);
 }
 
-/// Scaling up paints up. The 40×24 logical block covers 40×24 physical
-/// pixels at 100% and 80×48 at 200%, measured from the surface corner it
-/// is flush against.
+/// Scaling up paints up: 40×24 physical at 100%, 80×48 at 200%.
 #[test]
 fn a_larger_user_scale_paints_a_larger_block() {
     let mut h = Harness::new();
-    // Read back rather than converted: `DARK_BG` is linear and the target
-    // is sRGB, so what the background *is* in these bytes is what an empty
-    // render says it is.
+    // Read back, not converted: `DARK_BG` is linear and the target sRGB, so use what an empty render says.
     let background = {
         let empty = h.size(SURFACE).frame(|_: &mut Ui| {}).image;
         *empty.get_pixel(SURFACE.x - 1, SURFACE.y - 1)

@@ -1,5 +1,4 @@
-//! A 2D extent in logical pixels — a magnitude rather than a position,
-//! which is why it is not a `Vec2`.
+//! A 2D extent in logical pixels: a magnitude, not a position.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
@@ -11,12 +10,8 @@ use std::hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-/// A 2D extent in logical pixels. Distinct from a `Vec2` because it is a
-/// *magnitude*, not a position: negative components are meaningless, and
+/// A 2D extent in logical pixels. Negative components are meaningless, and
 /// [`Self::INF`] is the "no upper bound" sentinel measure passes down.
-///
-/// Hashing is approximate (`1e-4` tolerance) so a sub-pixel float wobble
-/// doesn't invalidate the measure cache.
 #[must_use]
 pub struct Size {
     /// Width.
@@ -32,8 +27,6 @@ impl hash::Hash for Size {
     }
 }
 
-/// Both axes in one `write_u64` rather than two component calls: one hasher
-/// round per size, matching [`Vec2`]'s packing.
 impl FloatHash for Size {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
@@ -54,8 +47,7 @@ impl FloatHash for Size {
 impl Size {
     /// Zero on both axes.
     pub const ZERO: Self = Self { w: 0.0, h: 0.0 };
-    /// Positive infinity on both axes — the "unconstrained" available size
-    /// an unbounded parent hands a child during measure.
+    /// Infinity on both axes: the size an unbounded parent hands a child.
     pub const INF: Self = Self {
         w: f32::INFINITY,
         h: f32::INFINITY,
@@ -66,40 +58,31 @@ impl Size {
         Self { w, h }
     }
 
-    /// True if both axes are within `EPS` of zero — i.e. this size
-    /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
-    /// match the crate's scalar `is_approx_zero` predicate.
-    /// For "paints no pixels" use [`Self::is_paint_empty`] —
-    /// different (looser) predicate.
+    /// True if both axes are within `EPS` of zero; see [`Self::is_paint_empty`] for the looser predicate.
     pub const fn is_approx_zero(self) -> bool {
         domain::is_approx_zero(self.w) && domain::is_approx_zero(self.h)
     }
 
-    /// True when either axis is at or below `EPS` (including NaN /
-    /// negative from degenerate construction). The shared "paints no
-    /// pixels" predicate — call from any gate that wants to drop
-    /// zero-extent geometry before emit / cache work runs.
+    /// True when either axis is at or below `EPS`, NaN included: the "paints no pixels" predicate.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
         domain::is_invisible(self.w) || domain::is_invisible(self.h)
     }
 
-    /// True if either axis is NaN. `const`, so the const predicates that
-    /// need the sweep can call it; the [`NanCheck`] impl below delegates
-    /// here rather than keeping a second copy of the field walk.
+    /// True if either axis is NaN.
     #[inline]
     pub(crate) const fn has_nan(self) -> bool {
         self.w.is_nan() || self.h.is_nan()
     }
 
-    /// Per-axis minimum — clamping a desired size down to what's available.
+    /// Per-axis minimum.
     pub const fn min(self, other: Self) -> Self {
         Self {
             w: self.w.min(other.w),
             h: self.h.min(other.h),
         }
     }
-    /// Per-axis maximum — applying an intrinsic-minimum floor.
+    /// Per-axis maximum.
     pub const fn max(self, other: Self) -> Self {
         Self {
             w: self.w.max(other.w),
@@ -107,14 +90,7 @@ impl Size {
         }
     }
 
-    /// What is left of this extent past `offset`, per axis, floored at
-    /// zero — the room a container that places a child at `offset` has
-    /// left to give it.
-    ///
-    /// [`Rect::deflated_by`](crate::primitives::geometry::rect::Rect::deflated_by)'s
-    /// leading half, for the callers that hold an extent rather than a
-    /// rect. The whole extent from an offset origin overflows by exactly
-    /// that offset, which is the bug this exists to make hard to write.
+    /// What is left of this extent past `offset`, floored at zero per axis.
     #[inline]
     pub(crate) const fn room_past(self, offset: Vec2) -> Self {
         Self {
@@ -123,13 +99,7 @@ impl Size {
         }
     }
 
-    /// Per-lane select: this size's lane where `mask` is set, `other`'s
-    /// where it is not.
-    ///
-    /// The shape four layout drivers spelled as a pair of `if`s over `.w`
-    /// and `.h` — a Hug axis measuring against `INFINITY`, a panned axis
-    /// contributing nothing, a canvas axis taking the room past a child.
-    /// One body, so the two lanes cannot drift apart.
+    /// Per-lane select: this size's lane where `mask` is set, else `other`'s.
     #[inline]
     pub(crate) const fn select(self, mask: BVec2, other: Self) -> Self {
         Self {
@@ -138,9 +108,7 @@ impl Size {
         }
     }
 
-    /// Both axes by one factor — a content extent at a scroll's zoom, a
-    /// margin at the same. Named because the per-axis spelling puts `w`
-    /// and `h` a keystroke apart, and a swap between them compiles.
+    /// Both axes by one factor.
     #[inline]
     pub const fn scaled_by(self, factor: f32) -> Self {
         Self {
@@ -166,8 +134,6 @@ impl<W: Num, H: Num> From<(W, H)> for Size {
     }
 }
 
-/// The extent as a vector, for the arithmetic that mixes it with a
-/// position: an offset across it, a share of it, a centre inside it.
 impl From<Size> for Vec2 {
     #[inline]
     fn from(size: Size) -> Self {
@@ -175,10 +141,7 @@ impl From<Size> for Vec2 {
     }
 }
 
-/// Wire format: a `{w, h}` table whose fields are optional, because
-/// [`Size::INF`] — the "no upper bound" sentinel — has no finite
-/// spelling. A non-finite axis serializes as absent and an absent axis
-/// deserializes back to infinity.
+/// Wire format: a `{w, h}` table with optional fields; a non-finite axis serializes as absent.
 impl ::serde::Serialize for Size {
     fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use ::serde::ser::SerializeStruct;
@@ -190,12 +153,7 @@ impl ::serde::Serialize for Size {
     }
 }
 
-/// An omitted axis reads as **unbounded**, not zero: this type spells a
-/// `max_size` bound as often as an extent, and infinity is what "no
-/// bound on this axis" means. `Serialize` above is the same rule read
-/// backwards — a non-finite lane is written as absent. The shared
-/// four-lane codec in `primitives::packed::serde` takes the opposite neutral
-/// for the opposite reason, which is why `Size` writes its own.
+/// An omitted axis reads as unbounded, not zero; the shared four-lane codec takes the opposite neutral.
 impl<'de> ::serde::Deserialize<'de> for Size {
     fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, ::serde::Deserialize)]
@@ -209,8 +167,7 @@ impl<'de> ::serde::Deserialize<'de> for Size {
             raw.w.unwrap_or(f32::INFINITY),
             raw.h.unwrap_or(f32::INFINITY),
         );
-        // A file is untrusted: NaN or a negative axis would reach a bound
-        // assert. Infinity stays, as the unbounded axis it spells.
+        // A file is untrusted: NaN or a negative axis would reach a bound assert.
         if size.w >= 0.0 && size.h >= 0.0 {
             Ok(size)
         } else {
@@ -246,9 +203,6 @@ mod tests {
     fn min_and_max_ignore_nan_operand() {
         let nan = Size::new(f32::NAN, f32::NAN);
         let real = Size::new(3.0, 5.0);
-        // `f32::min`/`max` ignore NaN when the other operand is a real
-        // number — matches every other f32-pair reduction in the crate
-        // (e.g. `Rect::union`/`intersect`).
         assert_eq!(real.min(nan), real);
         assert_eq!(real.max(nan), real);
     }

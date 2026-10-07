@@ -66,7 +66,6 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
 
     let current = text.shape_run(slot(wid), "abcdefgh", params, TextWrap::SingleLine);
     assert_eq!(current.size, Size::new(64.0, 16.0));
-    // Eight 8 px glyphs at 32 px fit four per line: 32 px × two 16 px lines.
     assert_eq!(
         text.shape_run(slot(wid), "abcdefgh", params.width(32.0), TextWrap::Wrap)
             .size,
@@ -74,16 +73,7 @@ fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     );
 }
 
-/// A reuse row outlives the frames it is not used in, and goes only with
-/// its widget.
-///
-/// It used to go after one unused frame. That lost the wrap slot — the
-/// only record of which bounded key the row last answered — and with it
-/// the `supersede` that demotes the key when the width next moves. Since
-/// the layout measure cache short-circuits whole subtrees, a steadily
-/// redrawing run never touches its row at all, so the slot was being
-/// discarded constantly and every stop-start of a drag leaked a buffer
-/// onto the long window.
+/// A reuse row outlives the frames it is not used in and goes only with its widget. It used to go after one unused frame, losing the wrap slot and the `supersede` that demotes the key; a measure-cache hit never touches a steady run's row, so every drag leaked a buffer onto the long window.
 #[test]
 fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     let mut text = TextSystem::mono();
@@ -97,28 +87,20 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     frame_end(&mut text);
     assert_eq!(text.entry_count(), 3, "rows used this frame all survive");
 
-    // Second frame touches only `a`'s first row. The untouched two stay:
-    // being unused for a frame is what a measure-cache hit looks like, not
-    // evidence the run is gone.
+    // Second frame touches only `a`'s first row; the rest stay (an unused frame is what a measure-cache hit looks like).
     let clock = text.shaper().frame();
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     frame_end(&mut text);
     assert_eq!(text.entry_count(), 3, "an unused frame drops nothing");
     assert!(text.has_entry(a, 1), "untouched sibling row survives");
     assert!(text.has_entry(b, 0), "untouched row of another widget too");
-    // An empty `removed` skips the retain — the sweep would be a
-    // whole-table walk to discover nothing changed — but must *not* skip
-    // the clock, which every text cache in the crate ages against and
-    // which the glyph atlas needs to advance before anything is
-    // evictable. Pinned here because the two live one line apart.
+    // An empty `removed` skips the retain walk but must not skip the clock, which every text cache and the glyph atlas age against.
     assert_eq!(
         text.shaper().frame(),
         clock + 1,
         "the empty-removed guard must not swallow the frame tick",
     );
 
-    // A removed widget's rows go even when hot, in the same retain pass
-    // that drops cold ones.
     text.shape_run(slot_at(a, 0), "hi", params, TextWrap::SingleLine);
     text.shape_run(slot(b), "yo", params, TextWrap::SingleLine);
     frame_end_removing(&mut text, &WidgetIdSet::from_iter([a]));
@@ -130,9 +112,7 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     assert!(text.has_entry(b, 0), "unrelated hot row remains");
 }
 
-/// A run driven through `TextSystem` the way a frame drives it: the
-/// intrinsic pass takes the root, the measure pass resolves a width.
-/// Returns the bounded key the renderer would replay.
+/// A run driven through `TextSystem` as a frame does; returns the bounded key the renderer would replay.
 fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32>) -> TextShapeKey {
     let base = ui_shape(14.0).halign(HAlign::Left);
     let shape = match width {
@@ -143,14 +123,7 @@ fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32
         .buffer_key()
 }
 
-/// [`drive`] plus the render half: the encoder's restore on an
-/// encoded-cache miss, which is the only thing that promotes a buffer
-/// onto the protected window.
-///
-/// A test that models a *visible* run needs both halves. Layout alone
-/// only ever inserts, so a layout-only fixture leaves every buffer on
-/// the probation window and would report a bounded cache whether
-/// supersession works or not.
+/// [`drive`] plus the encoder's restore on an encoded-cache miss, the only promotion onto the protected window; a layout-only fixture would report a bounded cache either way.
 fn drive_visible(
     text: &mut TextSystem,
     slot: TextRunSlot,
@@ -163,44 +136,23 @@ fn drive_visible(
     key
 }
 
-/// One frame boundary the way production drives it: sweep the rows of
-/// whatever left the tree, then advance the shared clock.
-///
-/// The tick is the caller's because in production it is too — the
-/// window's frame runtime makes it, so that a paint-only frame pays it
-/// as well. A fixture that called `TextSystem::end_frame` alone would
-/// age nothing at all.
+/// One frame boundary as production drives it: sweep rows of whatever left the tree, then tick the shared clock (the caller's job, as in the window runtime).
 fn frame_end_removing(text: &mut TextSystem, removed: &WidgetIdSet) {
     text.end_frame(removed);
     text.shaper().tick_frame();
 }
 
-/// End a frame with nothing removed — the steady case.
 fn frame_end(text: &mut TextSystem) {
     frame_end_removing(text, &WidgetIdSet::default());
 }
 
-/// Idle frames, for aging a buffer toward one of the retention windows.
 fn idle(text: &mut TextSystem, frames: u64) {
     for _ in 0..frames {
         frame_end(text);
     }
 }
 
-/// A resize drag is the population the probation window exists for, and
-/// the one it could not reach before `TextSystem` reported supersession:
-/// every frame commits a new whole-pixel width, so every frame mints a
-/// bounded key that nothing can ask for again.
-///
-/// Two things are asserted together because either alone is misleading.
-/// The cache must stay bounded by the *probation* window rather than the
-/// protected one — 60 frames of 8 runs would otherwise retain every one
-/// of the 480 buffers, since a rendered run is looked up on the frame it
-/// is inserted and would be promoted there. And the shaping must stay
-/// proportional to the drag: one bounded reshape per run per frame is
-/// the irreducible cost of the width genuinely changing, but the
-/// *unbounded* root must be shaped exactly once per run for the whole
-/// drag, because a width drag leaves the unbounded key untouched.
+/// A resize drag mints a new bounded key every frame that nothing can ask for again. Asserted together: the cache stays bounded by the probation window (the protected one would retain all 480 buffers of 8 runs over 60 frames), and the unbounded root is shaped exactly once per run, one bounded reshape per run per frame being irreducible.
 #[test]
 fn resize_drag_retains_only_the_probation_window() {
     const RUNS: u32 = 8;
@@ -211,14 +163,10 @@ fn resize_drag_retains_only_the_probation_window() {
         .map(|i| slot(WidgetId::from_hash(("drag", i))))
         .collect();
 
-    // Distinct body per run: `TextShapeKey` carries no widget identity,
-    // so eight runs of identical text would share one key and the drag
-    // would mint one buffer a frame instead of eight.
     let bodies: Vec<String> = (0..RUNS).map(|i| format!("row {i} of the list")).collect();
 
     let before = text.shaper().cache_counts();
     for frame in 0..FRAMES {
-        // Whole-pixel steps, so every frame quantizes to a fresh key.
         let width = 120.0 + frame as f32 * 3.0;
         for (s, body) in slots.iter().zip(&bodies) {
             drive_visible(&mut text, *s, body, Some(width));
@@ -227,20 +175,9 @@ fn resize_drag_retains_only_the_probation_window() {
     }
     let counts = text.shaper().cache_counts() - before;
 
-    // `TextWrap::Wrap` always binds, so a fresh run costs an unbounded
-    // root plus a bounded resolve. Afterwards the reuse row answers the
-    // root and only the width moves: one bounded reshape per run per
-    // later frame, and the root is shaped exactly once for the whole
-    // drag.
     assert_eq!(counts.shapes, RUNS * 2 + RUNS * (FRAMES - 1));
-    // Every frame but the first supersedes each run's previous width.
     assert_eq!(counts.supersedes, RUNS * (FRAMES - 1));
 
-    // Residency: the live bounded key per run, the buffers still inside
-    // their shortened window, and the unbounded root per run. The
-    // protected window would have held all 480 — two orders of magnitude
-    // above this ceiling, so the bound is what tells the two policies
-    // apart, and one assertion states it.
     let resident = text.shaper().cosmic_cache_len() as u32;
     let ceiling = RUNS * (shaped_buffer_cache::PROBATION_KEEP_FRAMES as u32 + 2) + RUNS;
     assert!(
@@ -250,15 +187,7 @@ fn resize_drag_retains_only_the_probation_window() {
     );
 }
 
-/// A run that stops answering through its bounded slot demotes the
-/// buffer that slot named.
-///
-/// Three ways to stop, one demotion. The width moving is the one the
-/// probation window was built for, and it worked; the other two returned
-/// past the slot and left its buffer on the protected window with
-/// nothing able to ask for it again. A truncating run whose box grows
-/// until the text fits takes `WrapCommit::Unbounded`, and a policy that
-/// stopped binding never reaches the commit at all.
+/// A run that stops answering through its bounded slot demotes the buffer it named. Three ways to stop: the width moving, a truncating run whose box grows until the text fits (`WrapCommit::Unbounded`), and a policy that stopped binding. The last two once left the buffer on the protected window.
 #[test]
 fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
     const BODY: &str = "a rather long label that will not fit";
@@ -299,9 +228,6 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
             "{label}: the bounded buffer is demoted exactly once",
         );
 
-        // Demoted, which is to say on the short window: the buffer goes
-        // within a few frames instead of holding a protected slot for
-        // 120 with no reuse row left that can name it.
         idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
         assert!(
             !text.shaper().has_cosmic_buffer(bounded),
@@ -310,9 +236,7 @@ fn a_run_that_stops_binding_demotes_the_buffer_its_bound_named() {
     }
 }
 
-/// A widget that leaves the tree loses every row it holds, and no other
-/// widget loses any. The sweep probes the removed widget's ordinals from
-/// zero, so a sibling's rows are never read, let alone dropped.
+/// A widget that leaves the tree loses every row it holds, and no other widget loses any.
 #[test]
 fn a_removed_widget_loses_all_its_rows_and_no_others() {
     let mut text = TextSystem::cosmic();
@@ -343,16 +267,7 @@ fn a_removed_widget_loses_all_its_rows_and_no_others() {
     assert!(!text.has_entry(gone, 0));
 }
 
-/// A widget that records fewer runs than last time loses the rows above
-/// its new count, on the pass that measured it.
-///
-/// The rows are bounded by the widget's *peak* ordinal count without
-/// this, so a list that once showed a hundred entries and now shows
-/// three keeps ninety-seven rows for as long as it stays in the tree.
-///
-/// The buffers those rows named are left alone — see
-/// [`scrolled_away_run_keeps_the_protected_window`] for why a slot that
-/// stops being recorded is not the same signal as one that moved.
+/// A widget that records fewer runs than last time loses the rows above its new count, else rows stay at its peak ordinal count (a list that went from a hundred to three keeps ninety-seven). Their buffers are left alone; see [`scrolled_away_run_keeps_the_protected_window`].
 #[test]
 fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
     let mut text = TextSystem::cosmic();
@@ -383,8 +298,6 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
         "a slot that stopped being recorded is not a slot that moved",
     );
 
-    // The counterweight, stated on the buffers: a list that grows back
-    // inside the window finds them resident.
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     for key in &keys {
         assert!(
@@ -394,11 +307,7 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
     }
 }
 
-/// The counterweight: a run that leaves the tree is *not* superseded.
-/// Scrolling a row out of view and back within the window must reuse its
-/// buffer, which is exactly what the long window is for — so the fix
-/// must not shorten it. Told apart from a drag by which signal fires:
-/// the slot vanishes rather than moving to a new key.
+/// The counterweight: a run that leaves the tree is not superseded, so scrolling a row out and back within the window reuses its buffer.
 #[test]
 fn scrolled_away_run_keeps_the_protected_window() {
     let mut text = TextSystem::cosmic();
@@ -406,8 +315,6 @@ fn scrolled_away_run_keeps_the_protected_window() {
     let key = drive_visible(&mut text, slot(wid), "row content", Some(200.0));
     frame_end(&mut text);
 
-    // Out of view: the widget stops being recorded, so its reuse row is
-    // dropped. Nothing supersedes the key — it may well come back.
     frame_end_removing(&mut text, &WidgetIdSet::from_iter([wid]));
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     assert!(
@@ -415,11 +322,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
         "a scrolled-away run must keep the protected window",
     );
 
-    // Back in view inside the window. The bounded buffer — the one the
-    // renderer replays — is still resident, so only the unbounded root
-    // is reshaped: a wrapped run's root buffer is never promoted (the
-    // encoder replays the bounded key), and nothing misses it, because
-    // the reuse row caches the root *value* rather than its buffer.
+    // Back in view: the bounded buffer is still resident, so only the unbounded root reshapes (the reuse row caches its value, not a buffer).
     let before = text.shaper().cache_counts();
     let again = drive(&mut text, slot(wid), "row content", Some(200.0));
     assert_eq!(again, key);
@@ -429,8 +332,6 @@ fn scrolled_away_run_keeps_the_protected_window() {
         "the bounded buffer must survive the scroll — only the root reshapes",
     );
 
-    // What that saved, stated as a contrast: past the protected window
-    // the buffer is genuinely gone and has to be rebuilt.
     idle(
         &mut text,
         RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK + 1,
@@ -453,11 +354,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
     );
 }
 
-/// Demotion, not eviction — and that distinction is load-bearing.
-/// A label alternating between two widths, or a drag that reverses back
-/// through a width it just left, returns inside the probation window and
-/// must still hit. Evicting on supersede would turn every reversal into
-/// a reshape.
+/// Demotion, not eviction: a label alternating between widths, or a drag reversing, returns inside the probation window and must hit.
 #[test]
 fn superseded_key_still_hits_inside_the_probation_window() {
     let mut text = TextSystem::cosmic();
@@ -465,12 +362,10 @@ fn superseded_key_still_hits_inside_the_probation_window() {
 
     let narrow = drive_visible(&mut text, s, "alternating label", Some(140.0));
     frame_end(&mut text);
-    // Supersedes `narrow`.
     let wide = drive_visible(&mut text, s, "alternating label", Some(260.0));
     frame_end(&mut text);
     assert_ne!(narrow, wide);
 
-    // Back to the first width, still inside the shortened window.
     let before = text.shaper().cache_counts();
     let returned = drive(&mut text, s, "alternating label", Some(140.0));
     let counts = text.shaper().cache_counts() - before;
@@ -485,9 +380,7 @@ fn superseded_key_still_hits_inside_the_probation_window() {
     );
 }
 
-/// Steady state must be untouched by any of this: a frame redrawing the
-/// same runs at the same widths supersedes nothing and shapes nothing.
-/// The reuse rows absorb it before the shaper is dispatched at all.
+/// Steady state is untouched: redrawing the same runs at the same widths supersedes and shapes nothing.
 #[test]
 fn steady_state_frames_neither_shape_nor_supersede() {
     let mut text = TextSystem::cosmic();
@@ -513,9 +406,7 @@ fn steady_state_frames_neither_shape_nor_supersede() {
     assert_eq!(counts.expiries, 0, "steady state expired a live buffer");
 }
 
-/// Typing changes the run itself, so both the unbounded row key and the
-/// bounded resolve hanging off it die together — the case a width drag
-/// does not cover, since a drag leaves the unbounded key alone.
+/// Typing changes the run itself, so the unbounded row key and the bounded resolve die together; a width drag does not cover this.
 #[test]
 fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
     let mut text = TextSystem::cosmic();
@@ -532,7 +423,6 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
         "a changed run must retire its root *and* its bounded resolve",
     );
 
-    // And the retired pair ages out on the short window, not the long one.
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     let live = drive(&mut text, s, "hello", Some(200.0));
     assert!(
@@ -546,12 +436,7 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
     );
 }
 
-/// Known cost, pinned so it stays known: two slots can hold the same key
-/// — a grid of repeated cell text — and supersession is per-slot, so one
-/// slot moving on demotes a buffer the other still uses. The worst case
-/// is one reshape, never a wrong result, which is why this is accepted
-/// rather than refcounted (a per-run map probe every frame to save an
-/// occasional reshape is the wrong trade).
+/// Known cost, pinned: two slots can hold one key (repeated cell text) and supersession is per-slot, so one moving on demotes a buffer the other uses. Worst case one reshape, accepted over refcounting.
 #[test]
 fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
     let mut text = TextSystem::cosmic();
@@ -565,7 +450,6 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
     assert_eq!(shared, same, "identical runs must share one key");
     frame_end(&mut text);
 
-    // Only slot `a` moves on; `b` still displays the shared key.
     drive_visible(&mut text, a, "12.5", Some(60.0));
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     assert!(
@@ -573,8 +457,7 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
         "premise: the shared buffer is demoted by a's move",
     );
 
-    // The cost is bounded at one reshape — `b` recovers on its next ask,
-    // and only for the buffer: its reuse row kept both measurements.
+    // Bounded at one reshape: `b` recovers on its next ask.
     let before = text.shaper().cache_counts();
     let recovered = drive_visible(&mut text, b, "—", Some(60.0));
     assert_eq!(recovered, shared);

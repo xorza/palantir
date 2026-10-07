@@ -3,24 +3,21 @@
 use crate::gpu::error::{self, UnmetRequirements};
 use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
-/// The features and limits to ask an adapter for, so that the device it
-/// returns can run Palantir's pipelines.
+/// The features and limits to ask an adapter for so the returned device can run
+/// Palantir's pipelines.
 ///
-/// Published rather than applied privately because an embedding application
-/// owns its device: it has its own features to request, and Palantir's are
-/// only one contributor to that set. [`negotiate`](Self::negotiate) hands back
-/// what to fold into a `DeviceDescriptor`; every host Palantir ships builds
-/// its device through it, so there is one statement of the requirement rather
-/// than one per host that drifts from the others.
+/// Published because an embedding application owns its device and Palantir's
+/// needs are one contributor to its request. [`negotiate`](Self::negotiate)
+/// returns what to fold into a `DeviceDescriptor`; every shipped host uses it,
+/// so the requirement is stated once.
 #[derive(Clone, Debug)]
 pub struct DeviceRequirements {
-    /// Palantir's own, plus whichever optional ones the adapter turned out to
-    /// have. Union with the caller's before requesting.
+    /// Palantir's own plus the optional ones the adapter has. Union with the
+    /// caller's before requesting.
     pub features: wgpu::Features,
-    /// Already resolved against the adapter, so these are requestable as they
-    /// stand. They are only what Palantir's own pipelines consume, so a caller
-    /// that draws its own work on the same device raises them to its needs
-    /// with `or_better_values_from` before requesting.
+    /// Resolved against the adapter, so requestable as they stand. Only what
+    /// Palantir's pipelines consume; a caller drawing its own work raises them with
+    /// `or_better_values_from`.
     pub limits: wgpu::Limits,
 }
 
@@ -28,26 +25,22 @@ impl DeviceRequirements {
     /// Features no configuration runs without.
     pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
 
-    /// The four features `collect_gpu_stats` asks for, as the one set they
-    /// mean something as: instrument the GPU timeline.
+    /// The four features `collect_gpu_stats` asks for, as the one set that
+    /// instruments the GPU timeline.
     ///
-    /// Each degrades on its own — [`Self::negotiate`] intersects them with
-    /// what the adapter advertises, and `WgpuBackend::new` tests each bit to
-    /// decide how much attribution it can offer. What is shared is the
-    /// *asking*, and every caller that asks spells the same three or the
+    /// Each degrades on its own: [`Self::negotiate`] intersects them with the
+    /// adapter, and `WgpuBackend::new` tests each bit to decide how much
+    /// attribution to offer. Every caller must ask for this same set, or the
     /// backend reads a bit nobody requested.
     pub const GPU_TIMING_FEATURES: wgpu::Features = wgpu::Features::TIMESTAMP_QUERY
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
         .union(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
         .union(wgpu::Features::PIPELINE_STATISTICS_QUERY);
 
-    /// What to request from `adapter`, given the `optional` features the
-    /// caller would take if they happen to be available.
-    ///
-    /// Optional features are intersected with what the adapter advertises, so
-    /// each degrades on its own rather than failing the request; the ones in
-    /// [`FEATURES`](Self::FEATURES) are not negotiable and their absence is an
-    /// error.
+    /// What to request from `adapter`, given `optional` features the caller would
+    /// take if available. Optional features are intersected with the adapter's, so
+    /// each degrades alone; those in [`FEATURES`](Self::FEATURES) are mandatory and
+    /// their absence is an error.
     pub fn negotiate(
         adapter: &wgpu::Adapter,
         optional: wgpu::Features,
@@ -55,15 +48,11 @@ impl DeviceRequirements {
         Self::against(adapter.features(), &adapter.limits(), optional)
     }
 
-    /// The two conditions Palantir cannot draw without: its non-negotiable
-    /// features, and the immediate-region bytes the viewport rides in.
+    /// The two conditions Palantir cannot draw without: its mandatory features and
+    /// the immediate-region bytes the viewport rides in.
     ///
-    /// Both entry points answer it — [`Self::against`] before folding the
-    /// rest of a request around it, [`Self::met_by`] on a device where the
-    /// request has already happened. Written twice, the immediate-size floor
-    /// was named by a string literal on one side and by
-    /// `check_limits_with_fail_fn` on the other, so the same failure reported
-    /// under two names depending on which door it came through.
+    /// Shared by [`Self::against`] and [`Self::met_by`] so a failure reports under
+    /// one name.
     fn check(available: wgpu::Features, limits: &wgpu::Limits) -> Result<(), UnmetRequirements> {
         if !available.contains(Self::FEATURES) {
             return Err(UnmetRequirements::Features {
@@ -80,8 +69,8 @@ impl DeviceRequirements {
         Ok(())
     }
 
-    /// The negotiation itself, against a capability pair rather than an
-    /// adapter — which is what makes it answerable without a GPU present.
+    /// The negotiation itself, against a capability pair rather than an adapter,
+    /// so it is answerable without a GPU.
     pub(crate) fn against(
         available: wgpu::Features,
         ceiling: &wgpu::Limits,
@@ -89,18 +78,14 @@ impl DeviceRequirements {
     ) -> Result<Self, UnmetRequirements> {
         Self::check(available, ceiling)?;
 
-        // The GLES-3 baseline rather than `Limits::default()`: the default
-        // demands 16 inter-stage shader variables where `curve_pipeline/shader.wgsl`, the
-        // busiest shader here, declares 10 — and a Raspberry Pi's V3D reports
-        // 15, so the default cost a device that draws Palantir fine. The
-        // pipelines clear the rest of the baseline with room to spare: no
-        // compute pass, no storage or uniform buffer, one bind group, two
-        // vertex buffers, twelve vertex attributes, one colour attachment.
+        // The GLES-3 baseline rather than `Limits::default()`, which demands 16
+        // inter-stage variables where `curve_pipeline/shader.wgsl`, the busiest shader,
+        // declares 10; a Raspberry Pi's V3D reports 15. The pipelines clear the rest of
+        // the baseline with room to spare.
         //
-        // Resolution is the exception and comes from the adapter, since the
-        // swapchain, a `GpuView` target and the atlases are all capped by
-        // `max_texture_dimension_2d` — the baseline's 2048 would cap the
-        // window rather than describe a need.
+        // Resolution comes from the adapter: the swapchain, `GpuView` targets and
+        // atlases are capped by `max_texture_dimension_2d`, and the baseline's 2048
+        // would cap the window.
         let limits = wgpu::Limits {
             max_immediate_size: IMMEDIATES_BYTES,
             ..wgpu::Limits::downlevel_defaults().using_resolution(ceiling.clone())
@@ -124,20 +109,16 @@ impl DeviceRequirements {
         })
     }
 
-    /// Whether a device already in hand can run Palantir.
-    ///
-    /// For hosts built on a caller-supplied device, where the request has
-    /// already happened and the only question left is whether it asked for
-    /// enough.
+    /// Whether a device already in hand can run Palantir, for hosts built on a
+    /// caller-supplied device.
     pub fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
         Self::check(device.features(), &device.limits())
     }
 }
 
-/// wgpu's own name for the limit, as `check_limits_with_fail_fn` reports it.
-/// wgpu publishes no constant for it, so this one spelling is what keeps a
-/// message from [`DeviceRequirements::check`] reading the same as one from
-/// the whole-`Limits` sweep beside it.
+/// wgpu's name for the limit as `check_limits_with_fail_fn` reports it (wgpu
+/// publishes no constant), so [`DeviceRequirements::check`] messages match the
+/// whole-`Limits` sweep.
 const IMMEDIATE_SIZE_LIMIT: &str = "max_immediate_size";
 
 #[cfg(test)]
@@ -157,8 +138,7 @@ mod tests {
         let available = Features::IMMEDIATES | Features::TIMESTAMP_QUERY;
         let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
 
-        // Only the optional features the adapter actually has come along; the
-        // one it lacks is dropped rather than failing the request.
+        // Only the optional features the adapter has come along.
         let requirements =
             DeviceRequirements::against(available, &ceiling.clone(), optional).unwrap();
         assert_eq!(
@@ -167,7 +147,6 @@ mod tests {
         );
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
-        // The non-negotiable one is not dropped.
         let missing =
             DeviceRequirements::against(Features::empty(), &ceiling.clone(), optional).unwrap_err();
         let UnmetRequirements::Features { missing } = &missing else {
@@ -198,9 +177,8 @@ mod tests {
 
     #[test]
     fn an_adapter_under_wgpu_defaults_still_negotiates() {
-        // A Raspberry Pi's V3D, which is one inter-stage variable and 512
-        // texture pixels short of `Limits::default()` and meets every other
-        // default.
+        // A Raspberry Pi's V3D: one inter-stage variable and 512 texture pixels short
+        // of `Limits::default()`.
         let ceiling = Limits {
             max_texture_dimension_1d: 7680,
             max_texture_dimension_2d: 7680,
@@ -221,7 +199,6 @@ mod tests {
         assert!(requirements.limits.check_limits(&ceiling));
         assert_eq!(requirements.limits.max_inter_stage_shader_variables, 15);
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
-        // Resolution is the adapter's, not the baseline's 2048 and 256.
         assert_eq!(requirements.limits.max_texture_dimension_2d, 7680);
         assert_eq!(requirements.limits.max_texture_dimension_3d, 7680);
     }

@@ -1,70 +1,38 @@
-//! Per-frame aggregate benchmark — two cleanly-separated benches in one
-//! file, selected by the [`Arms`] the runner hands [`bench`](fn@bench)
-//! (`cpu` / `gpu` / `both`):
+//! Per-frame aggregate benchmark: two benches selected by the [`Arms`] the runner
+//! hands [`bench`](fn@bench) (`cpu` / `gpu` / `both`).
 //!
-//! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
-//!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
-//!   wgpu device at all** (the same deviceless path as the allocation
-//!   suite's fixtures). Each iter runs record → measure → arrange →
-//!   cascade → damage, then encode + compose of what the frame planned,
-//!   and acks the present; nothing touches the GPU. This is the clean
-//!   signal: no queue submit, no `device.poll` ioctl, no per-size
-//!   framebuffer reconfiguration. Going through the offscreen renderer
-//!   driver plus a poll charges every iter driver work that profiles as
-//!   NVIDIA / kernel self-time — ~20% on `cached_cpu` and ~50% on
-//!   `resizing_cpu` (multi-MB backbuffer reallocations per size) —
-//!   swamping the palantir cost being measured.
-//! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
-//!   `OffscreenHost::frame` against an offscreen `wgpu::Texture` +
-//!   `PollType::Wait`, on the desktop's present strategy (see
-//!   `bench_host`). Wall time covers the whole CPU + GPU pipeline;
-//!   dominated by GPU exec on large views. The per-frame `write_stats`
-//!   dump (upload counts, GPU pass timings) lives here since it's
-//!   inherently GPU.
+//! - **`bench_cpu`** (`frame/*_cpu`): the CPU pipeline on a bare `Ui` and
+//!   standalone `Frontend` with no wgpu device, from record through encode +
+//!   compose. Going through the offscreen driver plus a poll charges every iter
+//!   driver time (~20% on `cached_cpu`, ~50% on `resizing_cpu`) that swamps the
+//!   cost measured.
+//! - **`bench_gpu`** (`frame/*_gpu`): `OffscreenHost::frame` against an offscreen
+//!   texture with `PollType::Wait`, on the desktop's present strategy (see
+//!   `bench_host`). The per-frame `write_stats` dump lives here.
 //!
-//! Running `--arms cpu` executes **zero** GPU code (no adapter/device
-//! request, no `write_stats`), so a `perf` / `samply` capture of the CPU
-//! bench is uncontaminated by driver activity.
+//! `--arms cpu` executes no GPU code, so a `perf` / `samply` capture is clean.
 //!
-//! The three arms are shared in spirit across both benches:
+//! Arms, in both benches:
 //!
-//! - **`frame/cached_*`** — fixed viewport, MeasureCache hits, damage
-//!   resolves to `Skip` in steady state, so both arms paint nothing, as a
-//!   host does on a frame with nothing to repaint.
-//! - **`frame/partial_*`** — fixed viewport, mutates a single fixture
-//!   counter per iter so damage resolves to one small `Partial` rect
-//!   over an otherwise-static tree. Models the steady-state of an
-//!   interactive UI (animating counter / blinking caret / hover).
-//! - **`frame/resizing_*`** — rotates a pool of differently-sized
-//!   surfaces so `available_q` busts the measure cache each iter.
-//! - **`frame/scrolling_*`** — fixed viewport, shifts a `Panel::transform`
-//!   each iter so only the cascade walk sees change.
-//! - **`frame/alternating_*`** — a scroll step and a counter tick in turn:
-//!   a full repaint, then a small partial one. On the desktop's present
-//!   strategy a full frame renders past the backbuffer, so it measures
-//!   what that costs the partial frame after it.
+//! - **`cached_*`**: fixed viewport, MeasureCache hits, damage `Skip`.
+//! - **`partial_*`**: one fixture counter changes per iter, so damage is one
+//!   small `Partial` rect.
+//! - **`resizing_*`**: rotates surface sizes so `available_q` busts the measure
+//!   cache each iter.
+//! - **`scrolling_*`**: shifts a `Panel::transform` so only the cascade walk sees
+//!   change.
+//! - **`alternating_*`**: a scroll step (full repaint) then a counter tick (small
+//!   partial); measures what a full frame costs the partial after it.
 //!
-//! After all selected arms run, each arm's criterion `time:` estimate
-//! (the slope it reports to stdout) is prepended to
-//! `benches/results/<machine>.txt` so per-machine history
-//! is captured automatically. `--machine` overrides the filename derived
-//! from `hostname -s`, and `--note` captions the row.
+//! Each arm's criterion `time:` estimate is prepended to
+//! `benches/results/<machine>.txt`; `--machine` overrides the `hostname -s` name
+//! and `--note` captions the row. `--size <w>x<h>` and `--scale <dpr>` override
+//! the surface. The fixture is taller than the 1440p default, so CPU arms process
+//! the whole tree while paint and GPU arms see only the screen. All four arrive
+//! in [`Run::fixture`].
 //!
-//! `--size <w>x<h>` and `--scale <dpr>` override the surface every arm
-//! renders into (the resize pool rescales with it), so the same fixture
-//! can be measured at another display size without editing this file.
-//! Culling is what makes the size matter: the fixture is taller than the
-//! 1440p default view, so the CPU arms record, measure and arrange the
-//! whole tree while paint and the GPU arms see only what is on screen. A
-//! taller surface therefore costs more, not less.
-//!
-//! All four arrive in [`Run::fixture`] — this bench reads no environment
-//! of its own.
-//!
-//! The shared workload lives in [`crate::internals::frame_fixture`] and
-//! also drives the allocation gates in `tests/alloc/gates/` and the
-//! showcase's `frame bench` page — run `cargo run --example showcase` to eyeball the
-//! tree these numbers come from.
+//! The workload lives in [`crate::internals::frame_fixture`], shared with the
+//! allocation gates in `tests/alloc/gates/` and the showcase's `frame bench` page.
 
 #![expect(
     clippy::print_stderr,
@@ -95,14 +63,11 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-// Surface clear colour, set on `theme.window_clear` in both harnesses —
-// which is also what the CPU `cached` arm's full repaint clears to (see
-// `CpuHarness::frame`).
+// Clear colour on `theme.window_clear`; also what the CPU `cached` arm's full
+// repaint clears to.
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
-// Proportioned against `BENCH_SURFACE` — `Surface::new` rescales them by
-// whatever ratio `--size` asks for, so what matters is the spread
-// (-16%..+8% wide, -7%..+3% tall), not the absolute values. Multiples of
-// 16 so a resized surface stays tile-aligned.
+// Proportioned against `BENCH_SURFACE` and rescaled by `--size`; multiples of 16
+// keep a resized surface tile-aligned.
 const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(2144, 1344),
     glam::UVec2::new(2560, 1440),
@@ -110,15 +75,10 @@ const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(2768, 1488),
 ];
 
-/// [`Fixture`]'s options resolved against this bench's defaults — what
-/// every arm actually renders into. Built once per run and threaded
-/// down, so no arm re-derives it and the resize pool is scaled once
-/// rather than at each of its four use sites.
 #[derive(Clone, Debug)]
 struct Surface {
     size: glam::UVec2,
     scale: f32,
-    /// [`RESIZE_POOL`] scaled to keep its proportions against `size`.
     pool: Vec<glam::UVec2>,
 }
 
@@ -147,13 +107,9 @@ fn gpu() -> &'static BenchGpu {
     gpu
 }
 
-/// A host on the desktop's present strategy: `retained_target` selects
-/// the `DirectAdaptive` the winit host runs, which never reads what the
-/// target held before. The default would measure the screenshot path,
-/// which also copies the whole backbuffer out on skip and full frames.
-///
-/// The timed arms collect no GPU stats, as the winit host does by
-/// default, so their wall time carries no query readback.
+/// A host on the desktop's present strategy (`DirectAdaptive`, as the winit host
+/// runs). The default would measure the screenshot path, which copies the
+/// backbuffer out on skip and full frames.
 fn bench_host(g: &BenchGpu, collect_gpu_stats: bool) -> OffscreenHost {
     g.offscreen_builder()
         .collect_gpu_stats(collect_gpu_stats)
@@ -171,17 +127,10 @@ fn gpu_frame(
     host.frame(target.as_target(), system_scale, &mut app);
 }
 
-/// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
-/// plus a standalone `Frontend` sharing the `Ui`'s record store. One
-/// `frame` runs record → measure → arrange → cascade → damage and then,
-/// when the frame produced a render plan, encode + compose — **stopping
-/// before any GPU submit**. No `wgpu::Device` is ever created, so the
-/// `frame/*_cpu` arms profile as pure palantir CPU work.
-///
-/// Time is advanced from a real `Instant` exactly like `WindowDriver::cpu_frame`
-/// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
-/// same cadence as production — otherwise a frozen clock could classify
-/// frames as `PaintOnly` and skip the record closure the arms depend on.
+/// Deviceless CPU-pipeline harness: a bare `Ui` plus a standalone `Frontend`,
+/// stopping before any GPU submit. Time comes from a real `Instant` as in
+/// `WindowDriver::cpu_frame`; a frozen clock could classify frames `PaintOnly` and
+/// skip the record closure.
 #[derive(Debug)]
 struct CpuHarness {
     frontend: FrontendHarness,
@@ -198,20 +147,13 @@ impl CpuHarness {
         }
     }
 
-    /// Drive one full CPU frame and ack the present so
-    /// the next frame's `take_frame_plan` matches what the host would see
-    /// after a real submit (lets `cached` settle into `Skip`).
-    ///
-    /// Encode + compose run on what the frame planned, as a host's do: a
-    /// frame whose damage is `Skip` paints nothing.
+    /// Drive one full CPU frame and ack the present, so `cached` settles into `Skip`.
     fn frame(&mut self, record: impl FnMut(&mut Ui)) {
         self.frontend.harness.at(self.start.elapsed());
         self.frontend.frame(record);
     }
 }
 
-/// Shared CPU-arm scaffolding: build a fresh deviceless harness, run 4
-/// warmup frames to settle caches, then hand criterion the same closure.
 fn run_cpu_arm<F>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     leaf: &str,
@@ -240,9 +182,6 @@ fn cpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 fn cpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     assert_partial_invariant(surface);
     run_cpu_arm(group, "partial_cpu", surface, |h, state| {
-        // Mutate before recording — same cadence as the scrolling /
-        // resizing arms — so every arm sets up this frame's input then
-        // records it, rather than relying on the prior iter's leftover.
         state.tick = state.tick.wrapping_add(1);
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
@@ -250,19 +189,14 @@ fn cpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
 
 fn cpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     run_cpu_arm(group, "scrolling_cpu", surface, |h, state| {
-        // Wraparound after a viewport's worth of pixels so the
-        // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
         h.frame(|ui| state.render(BENCH_SCALE, ui));
     });
 }
 
-/// One step of the alternating arms: a scroll step on even frames, which
-/// repaints in full, and a counter tick on odd ones, which repaints one
-/// small rect. The sequence a hover over an animated region makes, and
-/// the one where a full frame's present path decides what the next
-/// partial frame costs.
+/// One step of the alternating arms: a scroll step on even frames (full repaint),
+/// a counter tick on odd ones (small rect).
 fn alternate(state: &mut FrameFixture, frame: &mut u32) {
     if frame.is_multiple_of(2) {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
@@ -293,10 +227,7 @@ fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     });
 }
 
-/// Pin the Skip invariant before the timing loop, as
-/// [`assert_partial_invariant`] pins the partial arm: a steady frame of
-/// the still fixture must plan no paint, or the cached arms measure a
-/// repaint instead.
+/// Pin the Skip invariant: a steady frame of the still fixture must plan no paint.
 fn assert_cached_invariant(surface: &Surface) {
     let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
@@ -315,11 +246,7 @@ fn assert_cached_invariant(surface: &Surface) {
     );
 }
 
-/// Pin the Partial invariant before the timing loop: prime a deviceless
-/// harness for a couple of frames, then inspect `report.plan`. If this
-/// ever silently regresses to `Full` (e.g. someone widens the text box
-/// and the digits drift the surrounding panel hash), the bench would
-/// still produce a number but be measuring the wrong thing.
+/// Pin the Partial invariant: a regression to `Full` would still print a number.
 fn assert_partial_invariant(surface: &Surface) {
     let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
@@ -339,10 +266,7 @@ fn assert_partial_invariant(surface: &Surface) {
     );
 }
 
-/// Pin the alternation before the timing loop, as
-/// [`assert_partial_invariant`] pins the partial arm: a scroll step must
-/// repaint in full and the tick after it must repaint partially, or the
-/// alternating arms measure something else.
+/// Pin the alternation: scroll repaints in full, the tick after it partially.
 fn assert_alternating_invariant(surface: &Surface) {
     let mut h = CpuHarness::new(surface);
     let mut state = FrameFixture::default();
@@ -362,10 +286,6 @@ fn assert_alternating_invariant(surface: &Surface) {
     }
 }
 
-/// Shared GPU-arm scaffolding: build a fresh `OffscreenHost`, run 4
-/// warmup frames with `PollType::Wait`, then hand criterion the same
-/// closure. Each arm's `iter` closure owns target selection and per-iter
-/// state mutation.
 fn run_gpu_arm<F>(group: &mut BenchmarkGroup<'_, WallTime>, leaf: &str, mut iter: F)
 where
     F: FnMut(&mut OffscreenHost, &mut FrameFixture),
@@ -380,8 +300,6 @@ where
     group.bench_function(leaf, |b| {
         b.iter(|| iter(&mut host, &mut state));
     });
-    // Drain pipelined GPU work before the next bench function reuses
-    // the device.
     g.wait();
 }
 
@@ -448,14 +366,8 @@ fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
     });
 }
 
-/// Per-frame `queue.write_*` counts + GPU main-pass time for each
-/// arm, frames 0..=5, so the cold→warm transition is visible.
-/// Upload columns come from the backend's counting queue instrumentation;
-/// the GPU pass column comes from `wgpu` timestamp queries surfaced via
-/// [`crate::GpuPassStats`].
-/// The pass readout is one frame lagged (the `map_async` callback
-/// fires after the next `device.poll`), so frame 0's column is
-/// omitted.
+/// Per-frame `queue.write_*` counts and GPU main-pass time per arm, frames 0..=5.
+/// The pass readout lags a frame, so frame 0's column is omitted.
 fn report_write_stats(surface: &Surface) {
     fn run(
         label: &str,
@@ -475,12 +387,8 @@ fn report_write_stats(surface: &Surface) {
             gpu_frame(&mut host, target, scale, |ui| state.render(BENCH_SCALE, ui));
             g.wait();
             let s = WriteStats::take();
-            // The pass-time readout lags by one frame (the
-            // `map_async` callback that publishes a value fires off
-            // the *next* `device.poll`). One extra Poll here drains
-            // the just-submitted frame's resolve so the column
-            // matches the iteration we're printing rather than the
-            // previous one.
+            // The pass-time readout lags one frame (`map_async` fires off the next poll); one
+            // extra Poll drains this frame's resolve.
             g.poll();
             let stats = host.gpu_pass_stats();
             let gpu = stats.last_pass().map_or_else(
@@ -532,17 +440,10 @@ fn report_write_stats(surface: &Surface) {
     });
 }
 
-/// The workloads both halves run, in the order the results row lists
-/// them.
 const CATEGORIES: [&str; 5] = ["alternating", "cached", "partial", "resizing", "scrolling"];
 
-/// Arm ids criterion runs for a given mode, interleaved cpu/gpu per
-/// category. Used by the per-machine results writer to know which
-/// criterion estimate files to read after all arms have finished.
-///
-/// Built from the same namespace `bench_cpu` / `bench_gpu` register
-/// under, so a renamed group cannot leave the writer looking for
-/// estimates that were never written.
+/// Arm ids criterion runs for a mode, interleaved cpu/gpu per category, built
+/// from the namespace the benches register under.
 fn arm_names(run: Run<'_>) -> Vec<String> {
     let group = run.group_name();
     let mut v = Vec::with_capacity(CATEGORIES.len() * 2);
@@ -557,10 +458,6 @@ fn arm_names(run: Run<'_>) -> Vec<String> {
     v
 }
 
-/// CPU bench: the deviceless `frame/*_cpu` arms. Skipped wholesale when
-/// `--arms gpu` so a GPU-only run executes no CPU-arm code (and, more
-/// importantly, an `--arms cpu` run reaches this without `bench_gpu` having
-/// touched the GPU at all — pristine for profiling).
 fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
     if !run.arms.includes_cpu() {
         return;
@@ -574,8 +471,6 @@ fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
     group.finish();
 }
 
-/// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
-/// `write_stats` dump. Skipped wholesale when `--arms cpu`.
 fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
     if !run.arms.includes_gpu() {
         return;
@@ -590,14 +485,9 @@ fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
     group.finish();
 }
 
-/// Results finalizer — runs last in [`bench()`], and only when the run
-/// records. Reads criterion's reported estimate out of
-/// `target/criterion/<group>/<arm>/new/estimates.json` for every arm the two
-/// benches just ran and prepends the `[lower point upper]` triple — the
-/// same slope/mean criterion's stdout prints — to a per-machine `.txt`.
-/// Newest run lives at the top of the file (`head` gives the latest).
-/// Separated from the benches so it observes every arm regardless of
-/// mode, and so neither bench has to know it's the last one.
+/// Results finalizer: runs last, only when the run records. Prepends each arm's
+/// `[lower point upper]` from `target/criterion/<group>/<arm>/new/estimates.json`
+/// to the per-machine `.txt`, newest on top.
 fn prepend_machine_results(run: Run<'_>) {
     let machine = machine_label(run.fixture.machine);
     let mut block = String::new();
@@ -627,27 +517,12 @@ fn prepend_machine_results(run: Run<'_>) {
     prepend_block(Path::new("benches/results"), &machine, &block);
 }
 
-/// Put `block` at the top of `<dir>/<machine>.txt`, keeping whatever was
-/// there below it. Best-effort: any I/O failure prints to stderr and
-/// continues, because losing a history row must not fail a bench that
-/// has already produced its numbers.
-///
-/// A file that exists but cannot be read stops the write. Only
-/// `NotFound` means "no history yet"; every other error means the
-/// history is there and this run cannot see it, and the rename below
-/// would replace every past row with the newest one. Losing the new row
-/// costs one run, and losing the file costs all of them.
-///
-/// The prior content travels as bytes rather than as a `String` for the
-/// same reason: a file that is not valid UTF-8 is a file this run cannot
-/// read, and it is not this run's to discard.
-///
-/// Split from [`prepend_machine_results`] so the file handling is
-/// reachable from a test with a directory of its own — the caller's
-/// `benches/results` is a fixed relative path a test cannot redirect.
+/// Put `block` at the top of `<dir>/<machine>.txt`, keeping the rest. Best-effort:
+/// losing a row must not fail a finished bench. An unreadable existing file stops
+/// the write (only `NotFound` means no history), or the rename would replace every
+/// past row; content is read as bytes since non-UTF-8 isn't this run's to discard.
+/// Split out so a test can use its own directory.
 fn prepend_block(dir: &Path, machine: &str, block: &str) {
-    // The directory is gitignored, so a fresh checkout has none and the
-    // tempfile open below would fail with ENOENT.
     if let Err(e) = fs::create_dir_all(dir) {
         eprintln!("[machine-results] create {}: {e}", dir.display());
         return;
@@ -664,9 +539,7 @@ fn prepend_block(dir: &Path, machine: &str, block: &str) {
             return;
         }
     };
-    // Atomic-enough rewrite: write to a sibling tempfile then rename
-    // over the destination. Avoids leaving the file half-written if
-    // the bench is interrupted mid-write.
+    // Tempfile then rename, so an interrupted bench leaves no half-written file.
     let tmp_path = path.with_extension("txt.tmp");
     let mut f = match OpenOptions::new()
         .create(true)
@@ -706,26 +579,14 @@ struct Estimate {
     hi_ns: f64,
 }
 
-/// Locate criterion's output root — the `criterion/` dir under the
-/// `target/` cargo actually built into. The reliable signal is the bench
-/// binary's own path: criterion writes under the same `target/` tree the
-/// binary lives in (`<target>/<profile>/deps/<bin>`). When a parent
-/// workspace builds palantir as a path dependency, that is the parent's
-/// shared `target/`, not the submodule-local `palantir/target`.
-///
-/// A CWD walk-up can't find it: cargo runs the bench with CWD at the
-/// package dir, where a stale `palantir/target/criterion` from a
-/// standalone build shadows the real one and would feed the results row
-/// old estimates.
+/// Locate criterion's output root: the `target/` the bench binary lives in. A
+/// parent workspace building palantir as a path dependency uses its own `target/`,
+/// and a CWD walk-up could find a stale `palantir/target/criterion`.
 fn criterion_root() -> PathBuf {
     if let Ok(t) = env::var("CARGO_TARGET_DIR") {
         return PathBuf::from(t).join("criterion");
     }
-    // `current_exe()` = `<target>/<profile>/deps/<bin>`; the `target`
-    // ancestor is the first one named "target" (robust to the profile
-    // dir being release / debug / a custom name). `ancestors()` runs
-    // deepest-first, so this lands on the real cargo target, never a
-    // coincidental "target" higher in the path.
+    // The first ancestor named "target", deepest-first, whatever the profile dir is called.
     if let Ok(exe) = env::current_exe()
         && let Some(target) = exe
             .ancestors()
@@ -733,42 +594,26 @@ fn criterion_root() -> PathBuf {
     {
         return target.join("criterion");
     }
-    // Last resort: CWD-relative, matching criterion's own fallback.
     PathBuf::from("target").join("criterion")
 }
 
-/// Extract the estimate criterion's stdout `time:` line reports, from its
-/// `estimates.json`. Criterion prints the **slope** when it used
-/// linear-regression sampling (the default — slope cancels per-iter
-/// constant overhead and is the more accurate estimate for fast benches),
-/// and falls back to the **mean** for flat sampling (`"slope":null`).
-/// Mirror that order so the persisted row matches what criterion printed,
-/// not a mean that reads ~1% high.
-///
-/// The file is a single-line JSON blob with a stable layout
-/// (`"slope":{"confidence_interval":{...},"point_estimate":N,...}`): slice
-/// into the named block and pick the three numbers in declaration order.
-/// Avoids pulling serde_json just for this.
+/// Extract the estimate criterion's `time:` line reports: the **slope**, else the
+/// **mean** when `"slope":null`. Single-line JSON, so slice instead of pulling in
+/// serde_json.
 fn read_criterion_estimate(name: &str) -> Option<Estimate> {
     let s = fs::read_to_string(estimates_path(&criterion_root(), name)).ok()?;
     estimate_from_block(&s, "\"slope\":").or_else(|| estimate_from_block(&s, "\"mean\":"))
 }
 
-/// Where criterion filed `name`'s estimate: one directory per
-/// `/`-separated component, which is how it lays a group out —
-/// `criterion/<group>/<arm>/new/`. Flattening the separator into the
-/// directory name instead names a path that never exists, and every row
-/// files as "not found".
+/// Where criterion filed `name`'s estimate: one directory per `/` component.
 fn estimates_path(root: &Path, name: &str) -> PathBuf {
     name.split('/')
         .fold(root.to_path_buf(), |dir, part| dir.join(part))
         .join("new/estimates.json")
 }
 
-/// Read `{lower_bound, point_estimate, upper_bound}` out of the `key` block
-/// (`"slope":` / `"mean":`). `None` for an absent block or `"slope":null`
-/// (flat sampling) — without the null guard the number scan would walk
-/// past it into the next block and report the wrong statistic.
+/// Read `{lower_bound, point_estimate, upper_bound}` from the `key` block; `None`
+/// if absent or null, or the scan would run into the next block.
 fn estimate_from_block(s: &str, key: &str) -> Option<Estimate> {
     let after = &s[s.find(key)? + key.len()..];
     if after.trim_start().starts_with("null") {
@@ -792,9 +637,7 @@ fn extract_json_number(s: &str, key: &str) -> Option<f64> {
     rest[..end].parse().ok()
 }
 
-/// Render µs (sub-millisecond) or ms with two decimals, criterion
-/// stdout-style. Auto-picks the unit per-value (a column may mix —
-/// the median of `resizing_cpu` is ms while the CI radius is µs).
+/// Render µs or ms with two decimals, unit per value.
 fn fmt_estimate(e: Estimate) -> String {
     fn one(ns: f64) -> String {
         let us = ns / 1_000.0;
@@ -807,10 +650,8 @@ fn fmt_estimate(e: Estimate) -> String {
     format!("[{} {} {}]", one(e.lo_ns), one(e.mid_ns), one(e.hi_ns))
 }
 
-/// `--machine` overrides the default hostname-derived label. Sanitized
-/// to lowercase alnum + `-_` (first dotted component only, so FQDNs
-/// collapse to their short form) so it's safe as a filename. Falls back
-/// to `gethostname`; empty result → `unknown`.
+/// `--machine` overrides the hostname label; sanitized to lowercase alnum + `-_`,
+/// first dotted component, falling back to `gethostname`, then `unknown`.
 fn machine_label(machine: Option<&str>) -> String {
     fn sanitize(raw: &str) -> String {
         raw.trim()
@@ -833,9 +674,7 @@ fn machine_label(machine: Option<&str>) -> String {
     if n.is_empty() { "unknown".into() } else { n }
 }
 
-/// Required context tag for the results row, from `--note`. The bench
-/// refuses to run without one so every appended row has a
-/// why-was-this-measured caption.
+/// Required context tag from `--note`; the bench refuses to run without one.
 fn bench_annotation(note: Option<&str>) -> &str {
     match note.map(str::trim) {
         Some(s) if !s.is_empty() => s,
@@ -855,30 +694,15 @@ fn now_label() -> String {
         .map_or_else(|| "unknown-time".into(), |s| s.trim().to_owned())
 }
 
-// Longer per-arm measurement window than criterion's 5 s default —
-// the GPU arms (`*_gpu`) bounce ±15-25% across back-to-back runs because
-// thermals + scheduler noise share budget with everything else on the
-// machine. Doubling the window roughly halves the run-to-run spread;
-// total wall time goes from ~50 s to ~90 s, which is fine for an
-// on-demand bench. `--arms cpu` skips `bench_gpu` outright, so a CPU run
-// (and a profile of one) executes no GPU code at all; the results row is
-// prepended last.
+// Longer window than criterion's default: GPU arms vary ±15-25% across runs.
 pub(crate) fn config() -> Criterion {
     Criterion::default()
         .measurement_time(Duration::from_secs(12))
         .warm_up_time(Duration::from_secs(3))
 }
 
-/// `arms` decides which half runs — the runner resolves it from the
-/// driver's declared [`Arms::Both`] against what the invocation asked
-/// for. Being called *is* being wanted; the registry's `opt_in` keeps it
-/// out of the default set.
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    // Test and profile modes write no estimate, so the results row —
-    // and the note it demands — would be meaningless.
-    //
-    // Fail fast before any arm runs so a long bench doesn't finish and
-    // then realise the results row has no context.
+    // Test and profile modes write no estimate, so the note is moot; fail fast.
     if run.recording {
         let _ = bench_annotation(run.fixture.note);
     }
@@ -900,11 +724,6 @@ mod tests {
     use std::path;
     use std::process;
 
-    /// The results directory is gitignored, so the common case on a
-    /// fresh checkout is that it does not exist — a writer that only
-    /// opens the tempfile drops the row every run on such a machine.
-    /// Also pins newest-on-top, which is what makes `head` the latest
-    /// run.
     #[test]
     fn a_row_creates_the_missing_results_dir_and_lands_on_top() {
         let root = env::temp_dir().join(format!("palantir-bench-results-{}", process::id()));
@@ -921,17 +740,12 @@ mod tests {
             !dir.join("rig.txt.tmp").exists(),
             "the rename must leave no tempfile behind",
         );
-        // A second machine writes beside the first, not over it.
         prepend_block(&dir, "other", "elsewhere\n");
         assert_eq!(fs::read_to_string(&path).unwrap(), "newer\nolder\n");
 
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// The history below the new row is not this run's to lose. Reading
-    /// the file as a `String` and falling back to empty replaced every
-    /// past row with the newest one on any read that did not succeed —
-    /// content that is not UTF-8 included.
     #[test]
     fn an_unreadable_history_is_kept_rather_than_replaced() {
         let root = env::temp_dir().join(format!("palantir-bench-unreadable-{}", process::id()));
@@ -939,7 +753,6 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&dir).unwrap();
 
-        // Not UTF-8, so a `String` read fails where a byte read does not.
         let prior: &[u8] = b"\xff\xfe older\n";
         let path = dir.join("rig.txt");
         fs::write(&path, prior).unwrap();
@@ -952,8 +765,6 @@ mod tests {
             "the row goes on top of bytes this run cannot decode",
         );
 
-        // A read that fails for any other reason stops the write: the
-        // rename would otherwise replace the history with one row.
         let blocked = dir.join("other.txt");
         fs::create_dir(&blocked).unwrap();
         prepend_block(&dir, "other", "newer\n");
@@ -966,9 +777,6 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// `--size` has to reach the pool as well as the cached arm, or the
-    /// resize arm keeps rendering at the default while every other arm
-    /// moves — the two would no longer be measuring the same fixture.
     #[test]
     fn a_given_size_scales_the_resize_pool_by_the_same_ratio() {
         let d = Surface::new(Fixture::default());
@@ -976,8 +784,6 @@ mod tests {
         assert_eq!(d.scale, BENCH_DPR);
         assert_eq!(d.pool, RESIZE_POOL, "unset size leaves the pool alone");
 
-        // Half the default in both axes: 2560x1440 -> 1280x720, ratio
-        // 0.5, so 2144x1344 -> 1072x672 and 2768x1488 -> 1384x744.
         let half = Surface::new(Fixture {
             size: Some(glam::UVec2::new(1280, 720)),
             scale: Some(1.0),
@@ -995,8 +801,6 @@ mod tests {
             ],
         );
 
-        // A non-integral ratio rounds rather than truncating: width
-        // 2560 -> 2100 is 0.8203125, and 2144 * that = 1758.75 -> 1759.
         let odd = Surface::new(Fixture {
             size: Some(glam::UVec2::new(2100, 1440)),
             ..Fixture::default()
@@ -1005,9 +809,6 @@ mod tests {
         assert_eq!(odd.scale, BENCH_DPR, "unset scale keeps the default");
     }
 
-    /// Criterion nests a group: `criterion/frame/cached_gpu/new/`. The
-    /// arm id carries the `/`, so the separator has to become a
-    /// directory boundary and not part of one name.
     #[test]
     fn estimates_path_nests_the_group_and_arm() {
         let root = path::Path::new("/t/criterion");

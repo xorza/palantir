@@ -1,6 +1,4 @@
-//! The id tracker as it was before its in-step path: one hash table per
-//! pass, cleared and filled again every frame. Plain, so the differential
-//! test can hold [`SeenIds`](crate::scene::seen_ids::SeenIds) to it.
+//! The id tracker before its in-step path: one hash table per pass, cleared and refilled every frame; the differential test holds [`SeenIds`](crate::scene::seen_ids::SeenIds) to it.
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;

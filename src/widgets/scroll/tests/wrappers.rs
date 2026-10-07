@@ -12,9 +12,7 @@ use crate::scene::node::node_mode::NodeMode;
 use crate::widget_core::configure::Configure;
 use crate::widgets::scroll::{Scroll, ScrollWrappers};
 
-/// The outer wrapper is what the caller's interaction flags land on, the
-/// key filter included: a scope declared on the scroll has to reach the
-/// tree, or `Scroll::vertical().input_scope(..)` records no scope at all.
+/// The outer wrapper gets the caller's interaction flags, key filter included: a scope declared on the scroll must reach the tree, or `Scroll::vertical().input_scope(..)` records none.
 #[test]
 fn split_carries_every_interaction_flag_onto_the_outer_wrapper() {
     let scroll = Scroll::vertical()
@@ -30,9 +28,7 @@ fn split_carries_every_interaction_flag_onto_the_outer_wrapper() {
     assert_eq!(inner.authored_input_scope(), KeyFilter::NONE);
 }
 
-/// Sizing is the outer wrapper's, and the box the caller sees; padding,
-/// the panel knobs and the axes `show` settled the fit of are the inner
-/// viewport's, where the children are.
+/// Sizing is the outer wrapper's (the box the caller sees); padding, panel knobs and the axes `show` settled the fit of go to the inner viewport, where the children are.
 #[test]
 fn split_routes_sizing_outward_and_panel_knobs_inward() {
     let size: SizeSpec = (Sizing::fixed(120.0), Sizing::HUG).into();

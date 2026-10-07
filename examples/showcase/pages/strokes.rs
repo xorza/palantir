@@ -1,8 +1,4 @@
-//! Stroked geometry: widths down to sub-pixel hairlines, joins, caps,
-//! per-point / per-segment polyline colours, cubic and quadratic
-//! béziers, and circular arcs in solid colours and along ramps. Every
-//! tile pushes raw `Shape`s through `ui.add_shape` — all of it renders
-//! on the GPU curve pipeline, with no CPU tessellation anywhere.
+//! Stroked geometry: sub-pixel hairlines to wide widths, joins, caps, per-point / per-segment polyline colours, cubic and quadratic béziers, and circular arcs in solid and ramped colours. Every tile pushes raw `Shape`s through `ui.add_shape` onto the GPU curve pipeline, with no CPU tessellation.
 
 use crate::support;
 use crate::support::{api, demo_cell, note, section, tiles};
@@ -90,8 +86,7 @@ fn hairlines(ui: &mut Ui) {
     }
 }
 
-/// The same 90° corner three times — a non-clamp angle, so Miter really
-/// mitres rather than falling back to bevel.
+/// The same 90° corner three times; a non-clamp angle, so Miter really mitres.
 fn joins(ui: &mut Ui) {
     for (y, join) in [
         (22.0_f32, LineJoin::Miter),
@@ -107,9 +102,7 @@ fn joins(ui: &mut Ui) {
     }
 }
 
-/// Three lines, one per cap style, sharing endpoints. The white marker
-/// rules make the difference visible — Butt stops at the marker, Square
-/// extends half a width past it, Round adds a half-disc.
+/// Three lines, one per cap style, sharing endpoints; white marker rules show Butt stopping at the marker, Square a half width past, Round a half-disc.
 fn caps(ui: &mut Ui) {
     for y in [32.0_f32, 80.0, 128.0] {
         for x in [40.0_f32, 128.0] {
@@ -136,8 +129,7 @@ fn caps(ui: &mut Ui) {
     }
 }
 
-/// Three identical curves, one per cap kind — the endpoint shape is the
-/// only visual delta.
+/// Three identical curves, one per cap kind; the endpoint shape is the only delta.
 fn curve_caps(ui: &mut Ui) {
     for (i, cap) in [LineCap::Butt, LineCap::Square, LineCap::Round]
         .iter()
@@ -217,8 +209,7 @@ fn quadratic(ui: &mut Ui) {
     ));
 }
 
-/// Two-stop ramp along the curve's t parameter (p0 → p3), over a white
-/// stroke so the ramp shows as authored.
+/// Two-stop ramp along the curve's t (p0 → p3) over a white stroke, so the ramp shows as authored.
 fn gradient_cubic(ui: &mut Ui) {
     ui.add_shape(
         Shape::cubic_bezier(P0, P1, P2, P3, Stroke::new(RgbaF32::WHITE, 8.0))
@@ -227,7 +218,7 @@ fn gradient_cubic(ui: &mut Ui) {
     );
 }
 
-/// Three-stop ramp — same atlas and bake path as rounded-rect fills.
+/// Three-stop ramp, through the same atlas and bake path as rounded-rect fills.
 fn gradient_multistop(ui: &mut Ui) {
     let ramp = ColorRamp::new([
         Stop::new(0.0, support::E),
@@ -249,9 +240,7 @@ fn arcs(ui: &mut Ui) {
         28.0,
         Stroke::new(support::A, 3.0),
     ));
-    // 3/4 sweep with a ramp along the arc (the spinner's comet shape) —
-    // transparent tail to full head, round caps. The ramp is white and
-    // the stroke colour sets the hue.
+    // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke colour sets the hue.
     let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
     ui.add_shape(
         Shape::arc(

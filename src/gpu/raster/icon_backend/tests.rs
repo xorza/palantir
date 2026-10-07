@@ -1,8 +1,4 @@
-//! The unload path end to end: what a dropped [`IconSet`] costs the
-//! backend to forget, and when.
-//!
-//! All of it needs a device, because the backend owns a `RasterAtlas` and
-//! that owns textures.
+//! The unload path: what dropping an [`IconSet`] costs the backend to forget, and when. Needs a device.
 
 mod gpu {
     use crate::gpu::raster::icon_backend::IconBackend;
@@ -15,18 +11,15 @@ mod gpu {
     use glam::Vec2;
     use std::rc::Rc;
 
-    /// A backend over a program of its own — see the text suite's peer
-    /// for why a case does not name one.
+    /// A backend over its own program; see the text suite's peer.
     fn icon_backend(device: &wgpu::Device, icons: &IconRegistry) -> IconBackend {
         IconBackend::new(device, &RasterProgram::new(device), icons.clone())
     }
 
-    /// One tintable icon, so the raster lands on the mask side and the whole
-    /// path — parse, rasterize, pack — runs.
+    /// One tintable icon, so the raster lands on the mask side.
     const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
 
-    /// One frame boundary the way `WgpuBackend::submit` drives it, on a
-    /// clock this test owns in place of the shaper's.
+    /// One frame boundary as `WgpuBackend::submit` drives it, on a clock this test owns.
     fn tick(backend: &mut IconBackend, frame: &mut u64) {
         *frame += 1;
         backend.end_frame(*frame);
@@ -36,8 +29,7 @@ mod gpu {
         icons.register(Rc::new(IconTable::from_svgs([("solid", SOLID)]).unwrap()))
     }
 
-    /// Draw `set`'s only icon at 16², which is what puts a parse in the
-    /// rasterizer and a raster in the atlas.
+    /// Draw `set`'s only icon at 16², putting a parse in the rasterizer and a raster in the atlas.
     fn draw(backend: &mut IconBackend, device: &wgpu::Device, set: &IconSet) {
         let icon = set.handle(IconId(0)).icon;
         let key = IconRasterKey::for_box(icon, Vec2::splat(16.0));
@@ -47,9 +39,7 @@ mod gpu {
         );
     }
 
-    /// The whole reason [`IconSet`] became an owner: everything the backend
-    /// caches for a set is keyed on its [`IconSetId`], and nothing else can
-    /// tell that those keys are dead rather than merely cold.
+    /// Backend caches are keyed on [`IconSetId`]; only the owner's drop can tell they are dead.
     #[test]
     fn dropping_a_set_unloads_its_parses_and_its_rasters_at_the_next_submit() {
         let gpu = headless_test_gpu();
@@ -62,14 +52,13 @@ mod gpu {
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.pass.atlas.cache.len(), 1);
 
-        // Held: submits come and go and the set stays loaded.
+        // Held: the set stays loaded across submits.
         tick(&mut backend, &mut frame);
         tick(&mut backend, &mut frame);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.pass.atlas.cache.len(), 1);
 
-        // Dropped: queued now, forgotten at the submit — the backend has no
-        // other point at which it is allowed to touch the caches.
+        // Dropped: queued now, forgotten at the next submit, the backend's only point to touch caches.
         drop(set);
         assert_eq!(
             backend.rasterizer.parsed_count(),
@@ -89,10 +78,7 @@ mod gpu {
         );
     }
 
-    /// A set loaded into the slot a released one held must not inherit its
-    /// rasters. The generation is what keeps the two apart, and the unload has
-    /// to happen before the slot is handed on — which is why the drain frees
-    /// the slot and tells the backend in the same call.
+    /// A set loaded into a released slot must not inherit its rasters: the generation separates them, and the drain unloads before freeing the slot.
     #[test]
     fn a_set_reusing_a_freed_slot_rasterizes_from_scratch() {
         let gpu = headless_test_gpu();
@@ -123,10 +109,7 @@ mod gpu {
         );
     }
 
-    /// A caller that builds a fresh atlas inside its frame closure loads a set
-    /// per frame. Every one is released as the previous `IconSet` drops, so the
-    /// backend's two per-set caches stay at one set's worth however long it
-    /// runs — the leak this whole mechanism exists to close.
+    /// A fresh atlas per frame loads a set per frame; each is released as the previous drops, so the per-set caches stay at one set.
     #[test]
     fn loading_a_fresh_set_every_frame_holds_the_backend_caches_flat() {
         let gpu = headless_test_gpu();
@@ -138,11 +121,10 @@ mod gpu {
         for _ in 0..32 {
             let next = load(&icons);
             draw(&mut backend, &gpu.device, &next);
-            // Assigning is what drops the previous frame's set.
+            // Assigning drops the previous frame's set.
             held = Some(next);
             tick(&mut backend, &mut frame);
-            // One live set's worth, whatever the frame number: the previous
-            // frame's parse and raster were reclaimed by this submit.
+            // One live set's worth: the previous frame's parse and raster were reclaimed by this submit.
             assert_eq!(
                 (
                     backend.rasterizer.parsed_count(),

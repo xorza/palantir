@@ -1,5 +1,4 @@
-//! The standalone text leaf: labels, paragraphs and headings, shaped and
-//! measured like any other content.
+//! The standalone text leaf: labels, paragraphs and headings.
 
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain;
@@ -17,27 +16,19 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 
-/// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
-/// anything that's just a string. Hugs its measured size when it has room;
-/// **by default a single-line label keeps its full natural width**
-/// ([`TextWrap::SingleLine`]) — its min-content equals its full line, so a
-/// Hug parent / grid track sizes to it and never shrinks it below its text
-/// (the label "stays natural"); if a parent commits a width narrower than
-/// the line, the line runs past the slot rather than being silently cut.
-/// Use [`Self::text_wrap`] to opt into clipping or wrapping instead:
-/// `Truncate` hard-cuts to the committed width (no marker), `Ellipsis`
-/// marks the cut with `…`, `Wrap` / `WrapWithOverflow` reflow onto multiple
-/// lines. Widgets that should clip a too-long label (e.g. `Button`,
-/// `DragValue`) set `Truncate` explicitly.
+/// Standalone shaped-text leaf for labels, paragraphs and headings. **By default a
+/// single-line label keeps its full natural width** ([`TextWrap::SingleLine`]): its
+/// min-content is the full line, so a Hug parent never shrinks it and a narrower
+/// committed width lets the line run past the slot. [`Self::text_wrap`] opts into
+/// `Truncate`, `Ellipsis`, or wrapping; widgets that should clip (`Button`,
+/// `DragValue`) set `Truncate`.
 ///
 /// # Styling
 ///
-/// [`Self::style`] replaces every text axis at once, and defaults to the
-/// global [`crate::TextStyle`] from [`crate::Theme::text`]. Each axis also
-/// has a setter of its own — [`Self::color`], [`Self::font_size`],
-/// [`Self::family`], [`Self::weight`], [`Self::slant`],
-/// [`Self::line_height_factor`] — which overrides that one axis of whatever the
-/// bundle resolved to:
+/// [`Self::style`] replaces every text axis at once (default:
+/// [`crate::Theme::text`]); each axis also has its own setter ([`Self::color`],
+/// [`Self::font_size`], [`Self::family`], [`Self::weight`], [`Self::slant`],
+/// [`Self::line_height_factor`]) overriding just that axis of the resolved bundle:
 ///
 /// ```
 /// # use palantir::{FontWeight, RgbaF32, Text, Ui};
@@ -50,8 +41,8 @@ use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
 /// # }
 /// ```
 ///
-/// The font size is [`Self::font_size`] and not `size`, because
-/// [`Configure::size`] already names the widget's layout extent.
+/// The font size is [`Self::font_size`], not `size`, which [`Configure::size`] uses
+/// for layout extent.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Text<'a> {
@@ -64,7 +55,7 @@ pub struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
-    /// A run of `text`, which takes a `&str`, a `String`, or the
+    /// A run of `text`: a `&str`, a `String`, or the
     /// [`InternedStr`](crate::InternedStr) that [`fmt!`](crate::fmt) mints.
     #[track_caller]
     pub fn new(text: impl Into<TextInput<'a>>) -> Self {
@@ -74,18 +65,11 @@ impl<'a> Text<'a> {
             style: None,
             overrides: TextStyleOverrides::NONE,
             wrap: TextWrap::SingleLine,
-            // Default = (Auto, Auto) → top-left. Only matters when the
-            // widget has Fixed size larger than its measured content;
-            // a Hug Text widget has no slack to align in.
             align: Align::default(),
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `text`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// All-or-nothing — every axis the bundle covers is replaced. The
-    /// per-axis setters below then override single axes of the result, so
+    /// Per-instance override of [`crate::Theme`]'s `text`. All-or-nothing, so
     /// `.style(&heading).color(red)` is that bundle in red.
     pub fn style(mut self, s: impl Into<Option<&'a TextStyle>>) -> Self {
         self.style = s.into();
@@ -103,10 +87,8 @@ impl<'a> Text<'a> {
         self
     }
 
-    /// Font size in logical px, a *length*, overriding the resolved style's.
-    ///
-    /// Named apart from [`Configure::size`], which is the widget's layout
-    /// extent.
+    /// Font size in logical px, a *length*, overriding the resolved style's; named
+    /// apart from [`Configure::size`].
     ///
     /// # Panics
     ///
@@ -117,9 +99,8 @@ impl<'a> Text<'a> {
         self
     }
 
-    /// Line height as a multiple of the font size, overriding the resolved
-    /// style's `line_height_factor`. `1.0` sets the lines solid. `factor`:
-    /// *positive*, as a theme file's is.
+    /// Line height as a multiple of the font size, overriding the resolved style's;
+    /// `1.0` sets lines solid. `factor`: *positive*.
     ///
     /// # Panics
     ///
@@ -136,69 +117,55 @@ impl<'a> Text<'a> {
         self
     }
 
-    /// Weight to shape against, overriding the resolved style's.
-    /// [`Self::bold`] is this with [`FontWeight::BOLD`].
+    /// Weight to shape against; [`Self::bold`] is `FontWeight::BOLD`.
     pub const fn weight(mut self, weight: FontWeight) -> Self {
         self.overrides.weight = Some(weight);
         self
     }
 
-    /// Upright or italic, overriding the resolved style's.
-    /// [`Self::italic`] is this with [`FontSlant::Italic`].
+    /// Upright or italic; [`Self::italic`] is `FontSlant::Italic`.
     pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.overrides.slant = Some(slant);
         self
     }
 
-    /// Shape this run bold — [`Self::weight`] with [`FontWeight::BOLD`].
+    /// Shape this run bold.
     pub const fn bold(mut self) -> Self {
         self.overrides.weight = Some(FontWeight::BOLD);
         self
     }
 
-    /// Shape this run italic — [`Self::slant`] with
-    /// [`FontSlant::Italic`]. The weight axis is untouched, so
-    /// `.bold().italic()` is bold italic.
+    /// Shape this run italic; the weight is untouched, so `.bold().italic()` is
+    /// bold italic.
     pub const fn italic(mut self) -> Self {
         self.overrides.slant = Some(FontSlant::Italic);
         self
     }
 
-    /// Set how the text handles a committed width narrower than its natural
-    /// line. Default [`TextWrap::SingleLine`] (one unbroken line that runs past
-    /// the slot; its min-content is the full line width, so a Hug track won't
-    /// shrink below it — the label keeps its natural width). Pass
-    /// [`TextWrap::Truncate`] to hard-cut to the committed width with no
-    /// marker, [`TextWrap::Ellipsis`] to mark the cut with `…`, or
-    /// [`TextWrap::WrapWithOverflow`] to reshape onto multiple lines.
+    /// How the text handles a committed width narrower than its natural line;
+    /// default [`TextWrap::SingleLine`].
     pub const fn text_wrap(mut self, wrap: TextWrap) -> Self {
         self.wrap = wrap;
         self
     }
 
-    /// Position of the glyph bbox inside this text widget's arranged
-    /// rect. Distinct from [`Configure::align`], which positions the
-    /// *widget* inside its parent's slot. Only meaningful when the
-    /// widget has Fixed size larger than the text's measured size;
-    /// otherwise the widget hugs its content and there's no slack to
-    /// align in.
+    /// Position of the glyph bbox inside this widget's arranged rect, distinct from
+    /// [`Configure::align`], which positions the *widget*. Meaningful only when the
+    /// widget is Fixed larger than the text.
     pub const fn text_align(mut self, a: Align) -> Self {
         self.align = a;
         self
     }
 
-    /// Record the run. It senses nothing until [`Configure::sense`] says
-    /// otherwise.
+    /// Record the run; it senses nothing until [`Configure::sense`] says otherwise.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        // Folded back into a `TextStyle` rather than a `GlyphFont`, so the
-        // `line_height_factor` formula keeps its one owner.
+        // Folded back into a `TextStyle` so the `line_height_factor` formula has
+        // one owner.
         let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
         let color = style.color;
         let font = style.font();
-        // No metrics guard here: `TextShape::is_noop` rejects a non-finite
-        // size or leading at `add_shape`, which is where Button and
-        // DragValue leave it too. One owner of the rule, and it is the one
-        // downstream of every recorder.
+        // No metrics guard: `TextShape::is_noop` rejects a non-finite size or
+        // leading at `add_shape`.
         self.widget
             .show(ui, None, |ui| {
                 let text = ui.intern(self.text);

@@ -1,22 +1,13 @@
-//! GPU image-pipeline benchmark. Every workload paints the same stack of
-//! full-viewport images; they differ in the `ImageFlags` they ship and,
-//! for the tap cases, in how large a source those bits are applied to:
+//! GPU image-pipeline benchmark: every workload paints the same stack of full-viewport images
+//! with different `ImageFlags`:
 //!
-//! - `bilinear` sends zero flags — the common case (every plain image and
-//!   every `GpuView` composite), where the fragment shader samples the UV
-//!   directly.
-//! - `nearest` sends min+mag nearest, the control that must keep paying for
-//!   the texel-footprint measurement and the texel-center snap.
-//! - `minified_single` / `minified_mean` / `minified_peak` paint a source
-//!   large enough to shrink 5×, so the tap loop actually engages. The first is
-//!   the control with taps off; the other two isolate what up to 9 extra
-//!   fetches per fragment cost, and whether the two reductions differ.
+//! - `bilinear`: zero flags, the common case (plain images and `GpuView` composites).
+//! - `nearest`: min+mag nearest, which still pays for the footprint measurement and texel snap.
+//! - `minified_single` / `minified_mean` / `minified_peak`: a source 5× larger so the tap loop
+//!   engages; `single` is the taps-off control.
 //!
-//! The scene is deliberately fragment-bound (one texture, one bind, a few
-//! dozen draws, ~25M fragments) so the shader's per-fragment cost — not
-//! command recording — is what moves. Each iteration toggles the tint so
-//! damage repaints every layer, then waits for the GPU; the keep-or-revert
-//! signal is the median image-batch timestamp printed before each case.
+//! Fragment-bound by design, so shader cost moves. The keep-or-revert signal is the minimum
+//! image-batch timestamp, printed with the median before each case.
 
 #![expect(
     clippy::print_stderr,
@@ -41,20 +32,13 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const PHYSICAL: UVec2 = UVec2::new(1024, 1024);
-/// Source texture edge for the filter workloads. Smaller than the paint rect,
-/// so both run the magnification side of the filter choice.
 const TEXEL: u32 = 256;
-/// Source texture edge for the tap workloads: 5× the paint rect, so each
-/// fragment's footprint is 5 texels and `footprint_taps` runs its middle tier
-/// (`ceil(5 / 2) = 3`, so 9 taps). 5 rather than 4 or 6 because those land on
-/// a `ceil` boundary, where float noise would split fragments across two tap
-/// counts and widen the distribution for no reason.
+/// Tap-workload source edge: 5× the paint rect gives a 5-texel footprint and 9 taps. Not 4 or 6,
+/// which sit on a `ceil` boundary where float noise would split fragments across tap counts.
 const MINIFY_TEXEL: u32 = PHYSICAL.x * 5;
 const LAYERS: u32 = 24;
 const FRAGMENTS: u64 = (LAYERS * PHYSICAL.x * PHYSICAL.y) as u64;
-/// Frames rendered before sampling starts. An integrated GPU needs a
-/// long ramp before its clocks settle; a short warmup reads as noise
-/// several times larger than the effect under test.
+/// Frames before sampling; an integrated GPU needs a long ramp for clocks to settle.
 const WARMUP_FRAMES: usize = 128;
 const EVIDENCE_FRAMES: usize = 256;
 
@@ -93,11 +77,7 @@ impl Workload {
         }
     }
 
-    /// Source edge. The first pair magnifies a small texture, which is what
-    /// the filter comparison needs; the tap workloads need the opposite, so
-    /// they share a source large enough to minify. `MinifiedSingle` is their
-    /// control — same texels, same footprint, taps off — so the difference
-    /// between it and the other two is the tap loop and nothing else.
+    /// Source edge: a small texture magnifies for the filter pair; the tap workloads share a large one.
     const fn texel(self) -> u32 {
         match self {
             Self::Bilinear | Self::Nearest => TEXEL,
@@ -116,8 +96,6 @@ fn host(gpu: &BenchGpu) -> OffscreenHost {
     host
 }
 
-/// Deterministic high-frequency content: per-texel colour varies at the
-/// texel level so neither filter can be short-circuited by flat regions.
 fn texels(edge: u32) -> Vec<u8> {
     let mut pixels = Vec::with_capacity((edge * edge * 4) as usize);
     for y in 0..edge {
@@ -146,8 +124,6 @@ fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, pha
                 .expect("benchmark image fits every supported GPU")
         })
         .clone();
-    // Paint-only toggle: a tint the shader multiplies anyway, so damage
-    // repaints every layer without changing geometry or flags.
     let tint = if phase {
         RgbaF32::WHITE
     } else {
@@ -213,10 +189,8 @@ impl Fixture {
     }
 }
 
-/// Sorted-sample summary. The minimum is the keep-or-revert signal: an
-/// integrated GPU shares power and memory bandwidth with the rest of the
-/// machine, so the upper half of the distribution measures interference,
-/// not the shader.
+/// Sorted-sample summary. The minimum is the keep-or-revert signal: the upper half measures
+/// interference on a shared-power integrated GPU.
 #[derive(Clone, Copy, Debug)]
 struct Summary {
     min: f32,

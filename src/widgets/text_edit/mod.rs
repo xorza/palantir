@@ -1,12 +1,8 @@
-//! The editable text leaf, and the machinery one edit costs.
-//!
-//! The widget and its response live here. Around them: the buffer and
-//! selection ([`editor`], [`edit_state`]), what a key or a gesture turns
-//! into ([`action`], [`input_pass`]), where the text sits and how a
-//! caret maps onto it ([`text_layout`], [`text_geometry`], [`shape_ctx`],
-//! [`caret_paint`], [`paint_input`]), the scroll and focus a field retains
-//! ([`view_state`]), and the grapheme and word walks the caret moves by
-//! ([`unicode`]).
+//! The editable text leaf and the machinery one edit costs: buffer and selection
+//! ([`editor`], [`edit_state`]), keys and gestures ([`action`], [`input_pass`]),
+//! placement and caret mapping ([`text_layout`], [`text_geometry`], [`shape_ctx`],
+//! [`caret_paint`], [`paint_input`]), retained scroll and focus ([`view_state`]), and
+//! grapheme/word walks ([`unicode`]).
 
 mod action;
 #[cfg(feature = "bench")]
@@ -59,37 +55,24 @@ use glam::Vec2;
 struct TextEditState {
     edit: EditState,
     view: ViewState,
-    /// Selection wash for the painter, refilled every frame and retained
-    /// so a held drag across a long multi-line selection allocates once and
-    /// never again (`long_multiline_selection_alloc_free`).
-    ///
-    /// On the row rather than inside [`ViewState`] because the pass fills it
-    /// while `ViewState::update` runs: as sibling fields the two borrows are
-    /// disjoint, where a field of `view` would have to be moved out and put
-    /// back around every call that touches the rest of the view.
+    /// Selection wash for the painter, retained so a held drag allocates once
+    /// (`long_multiline_selection_alloc_free`). On the row, not in [`ViewState`], so its
+    /// borrow stays disjoint from `ViewState::update`.
     selection_rects: Vec<Rect>,
-    /// An interned placeholder's characters, copied out of the arena so the
-    /// pass can measure them while it holds `&mut Ui`. Retained, so a
-    /// steady placeholder allocates once.
+    /// An interned placeholder's characters, copied out of the arena so the pass can measure them
+    /// while holding `&mut Ui`.
     placeholder: String,
-    /// The focus session has an uncommitted result: set when focus
-    /// arrives and on every edit, cleared by the commit or the cancel that
-    /// ends it. What keeps a blur after Enter from committing twice.
+    /// The focus session has an uncommitted result; stops a blur after Enter committing twice.
     commit_pending: bool,
-    /// The input method's live composition, copied out of `Ui` so the
-    /// pass can hold it beside `&mut Ui`, and its cursor; empty when
-    /// nothing is composing. Retained.
+    /// The input method's live composition and cursor, copied out of `Ui`; empty when not
+    /// composing.
     preedit: String,
     preedit_cursor: Option<Span>,
-    /// What the field shows while composing — the buffer with the
-    /// preedit spliced in at the caret. The bound `String` changes only
-    /// when the composition commits. Retained.
+    /// What the field shows while composing: the buffer with the preedit spliced in at the caret.
     display: String,
-    /// A composition was live last pass, so this pass's is not its start.
     composing: bool,
 }
 
-/// One pass's inputs to [`TextEditState::roll_commit`].
 #[derive(Clone, Copy, Debug)]
 struct CommitPass {
     focus: FocusEdges,
@@ -100,8 +83,6 @@ struct CommitPass {
 }
 
 impl TextEditState {
-    /// Whether this pass commits, as [`TextEditResponse::committed`]
-    /// states it, and what stays pending for a later pass.
     const fn roll_commit(&mut self, pass: CommitPass) -> bool {
         if pass.disabled || pass.canceled {
             self.commit_pending = false;
@@ -118,26 +99,16 @@ impl TextEditState {
     }
 }
 
-/// Editable text leaf. Supports typing (whatever text a press produced —
-/// see [`KeyText`](crate::KeyText)), backspace/delete, left/right
-/// (+ shift / home / end), drag-select, multi-line, cut/copy/paste, undo+redo
-/// (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), escape-to-blur, click-to-place-caret.
+/// Editable text leaf: typing (see [`KeyText`](crate::KeyText)), caret motion,
+/// drag-select, multi-line, cut/copy/paste, undo/redo, escape-to-blur and
+/// click-to-place-caret. Borrows `&'a mut String`; the host owns the storage.
 ///
-/// While focused it asks for IME text ([`Ui::request_ime`]), so an input
-/// method composes in place: the composition shows at the caret,
-/// underlined, and the bound `String` changes only when it commits. A
-/// commit types as keys would, so its control characters — a newline
-/// among them — are dropped, as a key's are.
+/// While focused it asks for IME text ([`Ui::request_ime`]): the composition shows
+/// at the caret and the bound `String` changes only on commit. Commits type as keys
+/// do, so control characters (newlines included) are dropped.
 ///
-/// Borrows `&'a mut String` for the buffer — host owns the storage and
-/// the widget retains only semantic and view state. Host-side buffer
-/// mutations between frames are visible immediately; persisted offsets
-/// are repaired before each input pass.
-///
-/// The wheel pans the text only along the axis it overflows on — x for a
-/// single line, y for [`Self::multiline`] — and reaches the container
-/// behind the field on the other. A plain vertical wheel turn pans a
-/// single-line field when nothing under the pointer scrolls vertically.
+/// The wheel pans only along the axis the text overflows (x single-line, y for
+/// [`Self::multiline`]) and reaches the container behind on the other.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
@@ -146,68 +117,31 @@ pub struct TextEdit<'a> {
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
     placeholder: TextInput<'a>,
-    /// When `true`, Enter inserts `\n`, paste preserves newlines,
-    /// click hit-test + caret + selection render in 2D, and text
-    /// soft-wraps to the editor's inner width via cosmic-text. v1
-    /// single-line behaviour is the default — flip via [`Self::multiline`].
+    /// Enter inserts `\n`, paste keeps newlines, and text soft-wraps. Set via [`Self::multiline`].
     multiline: bool,
-    /// Caller-supplied alignment of the text inside the editor's
-    /// inner rect. `None` means "pick the mode-appropriate default" —
-    /// `Align::LEFT` (left + vcenter) for single-line, `Align::TOP_LEFT`
-    /// for multi-line. Caret and selection rects derive from the same
-    /// offset, so any alignment keeps them tracking the glyphs.
+    /// Caller alignment of the text in the inner rect; `None` picks by mode.
     text_align: Option<Align>,
-    /// Max characters (Unicode scalar values) the buffer may hold.
-    /// `None` = unbounded. Enforced at every insertion path (typing,
-    /// paste, newline): input that would overflow is dropped.
+    /// Max characters (Unicode scalar values); `None` is unbounded. Overflowing input is dropped.
     max_chars: Option<usize>,
-    /// Select the whole buffer when the field gains focus without a
-    /// same-frame press (e.g. focus handed off programmatically, as
-    /// [`crate::DragValue`] does on click-to-edit) so the first keystroke
-    /// replaces it. A press that focuses the field still places the caret.
+    /// Select the whole buffer when focus arrives without a same-frame press, so the first
+    /// keystroke replaces it.
     select_all_on_focus: bool,
-    /// Whether Escape belongs to the container rather than to this field —
-    /// see [`TextEdit::escape_falls_through`].
     escape_falls_through: bool,
 }
 
 impl<'a> TextEdit<'a> {
-    /// A single-line editor over `text`, which it edits in place. See
-    /// [`Self::multiline`] for the other mode.
+    /// A single-line editor over `text`, edited in place.
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
-        // **A scrolling viewport over one child**, which is what a field is.
-        //
-        // A child, because where the text sits inside the inner rect is an
-        // alignment and an alignment wants the arranged rect — so the engine
-        // resolves it, and a field's first frame paints its text where its
-        // second frame keeps it. A *leaf* arranges no children, so this cannot
-        // be one; `Layered` scroll arranges like a ZStack and honours the
-        // block's align.
-        //
-        // Scrolling, because that is what makes the field able to shrink under
-        // its own text: a panned axis reports no min-content, so a `Fill` field
-        // in a container narrower than its buffer scrolls rather than refusing
-        // to fit. The leaf said the same thing through `TextWrap::Scroll`; a
-        // child with a width of its own needs the viewport to say it instead.
-        // `SCROLL` as well as `CLICK`: the node is a scroll viewport, so
-        // an editor whose content overflows has somewhere to go, and
-        // without the sense the wheel routed straight past it to
-        // whatever container sat behind — a multi-line editor could only
-        // be panned by moving the caret. `pass` narrows it to the axis
-        // the text overflows on before the node records.
-        //
-        // The clip keeps glyphs, caret, and selection wash inside the
-        // editor's own rect, so a `Fixed`-sized editor with long content
-        // does not bleed over its neighbours. Chrome (background) draws
-        // before the clip, so the editor's surround still paints normally.
+        // A scrolling viewport over one child. A child, because text placement is an
+        // alignment and needs the arranged rect. Scrolling, because a panned axis reports no
+        // min-content, so a `Fill` field in a narrower container scrolls instead of
+        // refusing to fit. `SCROLL` as well as `CLICK` so an overflowing editor has
+        // somewhere to go; `pass` narrows it to the overflow axis before the node records.
         let widget = Widget::scroll(ScrollAxes::BOTH)
             .sense(Sense::CLICK | Sense::SCROLL)
             .focusable(true)
             .clip_rect();
-        // `Node::padding` left at zero — `show()` substitutes
-        // `theme.text_edit.padding` when the user didn't call
-        // `.padding(...)`.
         Self {
             widget,
             text,
@@ -222,15 +156,10 @@ impl<'a> TextEdit<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `text_edit`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// All-or-nothing. To tweak one axis, build and share a bundle:
-    /// `TextEditTheme { caret: red, ..ui.theme().text_edit.clone() }`.
-    /// Buffer font/leading/color live on the per-state `text` overrides (a
-    /// [`crate::TextStyleOverrides`]) — every axis left unset there
-    /// inherits [`crate::Theme::text`] like every other text-rendering
-    /// widget.
+    /// Per-instance override of [`crate::Theme`]'s `text_edit`; all-or-nothing. To
+    /// tweak one axis, share a bundle with `..ui.theme().text_edit.clone()`. Buffer
+    /// font/leading/color live on the per-state `text` overrides
+    /// ([`crate::TextStyleOverrides`]); unset axes inherit [`crate::Theme::text`].
     pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
         self.style = s.into();
         self
@@ -274,22 +203,19 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Family to shape against, overriding the resolved look's — a code
-    /// editor asks for [`FontFamily::MONO`] here.
+    /// Family to shape against, overriding the resolved look's.
     pub const fn family(mut self, family: FontFamily) -> Self {
         self.overrides.family = Some(family);
         self
     }
 
     /// Weight to shape against, overriding the resolved look's.
-    /// [`Self::bold`] is this with [`FontWeight::BOLD`].
     pub const fn weight(mut self, weight: FontWeight) -> Self {
         self.overrides.weight = Some(weight);
         self
     }
 
     /// Upright or italic, overriding the resolved look's.
-    /// [`Self::italic`] is this with [`FontSlant::Italic`].
     pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.overrides.slant = Some(slant);
         self
@@ -301,94 +227,64 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Shape the buffer italic — [`Self::slant`] with
-    /// [`FontSlant::Italic`]. The weight axis is untouched, so
-    /// `.bold().italic()` is bold italic.
+    /// Shape the buffer italic via [`Self::slant`]; `.bold().italic()` is bold italic.
     pub const fn italic(mut self) -> Self {
         self.overrides.slant = Some(FontSlant::Italic);
         self
     }
 
-    /// Select the whole buffer the moment the field gains focus without a
-    /// same-frame pointer press — so a value handed to it (via `set_focus`)
-    /// is replaced by the first keystroke. Clicking into the field still
-    /// places the caret at the hit. Default off.
+    /// Select the whole buffer when the field gains focus without a same-frame
+    /// pointer press (e.g. via `set_focus`). Default off.
     pub const fn select_all_on_focus(mut self, on: bool) -> Self {
         self.select_all_on_focus = on;
         self
     }
 
-    /// Drop `ESCAPE` from the focused field's scope, so Escape resolves to
-    /// whatever encloses it instead.
-    ///
-    /// For a field that *filters* its container rather than editing a value
-    /// of its own — a palette's search box, a picker's type-ahead. There,
-    /// one Escape is expected to close the whole overlay; a field that
-    /// takes it first blurs itself and leaves the overlay open around a
-    /// search box the user can no longer type in.
-    ///
-    /// Off by default, because the other archetype is the common one: an
-    /// inline rename or a value editor, where Escape *is* the cancel and
-    /// must not reach past the field to close the surface behind it.
+    /// Drop `ESCAPE` from the field's scope so Escape resolves to the enclosing
+    /// overlay. For a field that filters its container (a palette's search box); off by
+    /// default because for a rename or value editor Escape is the cancel and must not
+    /// reach past the field.
     pub const fn escape_falls_through(mut self, on: bool) -> Self {
         self.escape_falls_through = on;
         self
     }
 
-    /// Cap the buffer at `n` characters. Insertions are truncated to
-    /// what fits; content already longer than `n` is left alone (the
-    /// cap only gates growth). `n == 0` rejects every insertion.
+    /// Cap the buffer at `n` characters. Insertions are truncated; longer existing content is left
+    /// alone. `n == 0` rejects every insertion.
     pub const fn max_chars(mut self, n: usize) -> Self {
         self.max_chars = Some(n);
         self
     }
 
-    /// Position of the text inside the editor's inner rect (the rect
-    /// minus padding). Defaults: `Align::LEFT` (left + vcenter) for
-    /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
-    /// the offset to zero on each axis so caret + horizontal scroll
-    /// keep working when the text exceeds the inner rect. Distinct
-    /// from [`Configure::align`], which positions the *widget* inside
-    /// its parent's stack slot.
+    /// Position of the text inside the inner rect. Defaults: `Align::LEFT`
+    /// single-line, `Align::TOP_LEFT` multi-line. Distinct from [`Configure::align`],
+    /// which positions the widget in its parent's slot.
     pub const fn text_align(mut self, a: Align) -> Self {
         self.text_align = Some(a);
         self
     }
 
-    /// Switch to multi-line mode. Enter inserts `\n` (instead of
-    /// blurring), paste preserves newlines, text soft-wraps
-    /// to the editor's inner width, and click/caret/selection all
-    /// route through cosmic-text's 2D layout.
+    /// Switch to multi-line: Enter inserts `\n`, paste keeps newlines, text soft-wraps, and
+    /// click/caret/selection use cosmic-text's 2D layout.
     pub const fn multiline(mut self, on: bool) -> Self {
         self.multiline = on;
         self
     }
 
-    /// Text drawn in place of an empty, unfocused buffer: borrowed, owned,
-    /// interned or `fmt!` output, as every widget's text.
+    /// Text drawn in place of an empty, unfocused buffer.
     pub fn placeholder(mut self, text: impl Into<TextInput<'a>>) -> Self {
         self.placeholder = text.into();
         self
     }
 
-    /// Record the editor and run one frame of editing over the bound
-    /// `String`.
+    /// Record the editor and run one frame of editing over the bound `String`.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = self.widget.resolve(ui);
-        // **The state row is held for the whole pass.** Every stage of the
-        // pass wants it, and the stages are separated by `&mut Ui` calls —
-        // the keyboard drain, the shape probe, the context menu, the
-        // record — so a borrow taken from `ui` cannot survive between
-        // them. `with_state` moves it out and back (no allocation: the undo
-        // buffers move with it), which collapses the seven per-stage
-        // lookups into one and makes the write-back unconditional however
-        // [`Self::pass`] returns.
+        // The state row is held for the whole pass because its stages are separated by
+        // `&mut Ui` calls; `with_state` moves it out and back without allocating.
         let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
 
         TextEditResponse {
-            // The pass already probed this id and tracked the one field that
-            // can move under it mid-pass (focus), so it hands the state back
-            // rather than paying a second cascade + layout lookup here.
             response: Response::new(id, ui, signals.state),
             changed: signals.changed,
             committed: signals.committed,
@@ -399,52 +295,29 @@ impl<'a> TextEdit<'a> {
         }
     }
 
-    /// One record pass over a state row the caller owns — see
-    /// [`Self::show`] for why it is passed in rather than looked up.
-    /// Returns the borrow-free half of [`TextEditResponse`].
     fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> EditSignals {
         let mut is_focused = ui.focus() == Some(id);
-        // The pass's one probe, and what `show` hands back at the end.
-        // Nothing below can move a cascade or layout answer — both are frozen
-        // for the pass — so the only field kept current is `focused`, updated
-        // wherever the pass moves focus.
-        // Through `Widget::response`, so the node's own `disabled` is
-        // folded in and the interaction half is already gone with it.
-        // The look, the input, the menu snapshot and the caller all read
-        // this one value — a second copy taken before the fold would
-        // report a freshly disabled field as live.
+        // The pass's one probe, handed back by `show`. Through `Widget::response`, so
+        // `disabled` is folded in; a copy taken before the fold would report a freshly
+        // disabled field as live.
         let mut response = self.widget.response(ui);
-        // A disabled editor must not keep keyboard focus — it would
-        // paint disabled while still routing typing / paste / undo
-        // into the host's buffer. Kick focus out (mirrors `DragValue`'s
-        // click-to-edit path) and run this frame unfocused, so the
-        // same frame's keystrokes are dropped and no caret paints.
+        // A disabled editor must not keep focus or it would route typing / paste / undo into the
+        // host's buffer. Kick it out and run this frame unfocused.
         if is_focused && response.disabled {
             ui.clear_focus();
             is_focused = false;
             response.focused = false;
         }
-        // A focused editor takes the classes it edits with, so an
-        // app-level Ctrl+Z undoes *this buffer* rather than the document
-        // behind it, and Delete removes a character rather than the
-        // selected node. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`)
-        // — Ctrl+S still saves mid-edit, which is exactly what an
-        // exclusive capture would break.
-        //
-        // The same value gates the drain in the input pass, so what this
-        // field tells other readers it takes and what it acts on are one
-        // fact rather than two that can disagree.
+        // A focused editor takes the classes it edits with, so an app-level Ctrl+Z undoes
+        // this buffer. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`) so Ctrl+S still
+        // saves mid-edit. The same value gates the drain in the input pass.
         let mut filter = KeyFilter::TEXT_FIELD;
         filter.set(KeyFilter::ESCAPE, !self.escape_falls_through);
         if is_focused {
             self.widget.configure().input_scope(filter);
         }
-        // One borrow of the slot covers both halves: the state-independent
-        // caret / selection scalars this widget paints with, and the plan for
-        // the state-varying look. `apply` also substitutes theme
-        // padding/margin where the builder left those unconfigured — the
-        // renderer reads `node.padding` to deflate the buffer layout and the
-        // caret hit-test reads it back below, so both see the resolved value.
+        // `apply` substitutes theme padding/margin where unconfigured; the renderer and caret
+        // hit-test both read `node.padding`.
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.text_edit);
         let caret_color = slot.caret;
@@ -454,14 +327,10 @@ impl<'a> TextEdit<'a> {
         let mut look = slot
             .plan(&response, (), theme.text)
             .apply(ui, &mut self.widget);
-        // After the look animates, so a per-axis override outranks the
-        // theme in every state rather than cross-fading with it.
+        // After the look animates, so a per-axis override outranks the theme in every state.
         look.text = self.overrides.apply(&look.text);
-        // A face the shaper cannot be asked for shapes nothing — the
-        // answer `TextShape::is_noop` gives every widget that records
-        // text. This one needs an explicit arm because it derives caret
-        // and selection geometry from the face too, and there is none:
-        // the box paints, the layout below does not run.
+        // A face the shaper cannot be asked for shapes nothing (as `TextShape::is_noop`); caret and
+        // selection derive from the face, so the layout below must not run.
         if !look.text.metrics_valid() {
             let focus = state.view.roll_focus(is_focused);
             let committed = state.roll_commit(CommitPass {
@@ -479,14 +348,9 @@ impl<'a> TextEdit<'a> {
             return EditSignals::focus_only(focus, committed, response);
         }
         let font = look.text.font();
-        // `Tree::open_node` folds chrome stroke width into the stored
-        // padding so children sit inside the painted stroke ring (see
-        // `scene/tree/mod.rs::open_node`). Encoder's clip mask is
-        // `rect.deflated_by(post-inflate padding)`, so glyph + caret
-        // coordinates must use the same effective value — otherwise
-        // the top row of glyphs sits above the clip and gets scissored
-        // away. The node's own padding stays at the pre-inflate
-        // value so Tree's fold reproduces the same effective padding.
+        // `Tree::open_node` folds chrome stroke width into the stored padding, and the
+        // encoder's clip mask is `rect.deflated_by(post-inflate padding)`, so glyph and
+        // caret coordinates must use that value or the top glyph row is scissored away.
         let stroke_w = look.background.border_inset();
         let padding = Spacing::from_array(
             self.widget
@@ -506,12 +370,8 @@ impl<'a> TextEdit<'a> {
             previous_block_offset,
         });
         let ctx = layout.ctx;
-        // Pre-input caret snapshot, taken before the input pass's clamp so
-        // an external buffer shrink that displaces the caret still reads
-        // as motion (blink reset). Compared once, after the menu pass:
-        // the keyboard drain and the menu drain are mutually exclusive
-        // — an open popup's scope silences the layer below it — but
-        // either can move the caret, and one bracket covers both.
+        // Pre-input caret snapshot, before the input pass's clamp, so an external shrink that
+        // displaces the caret still resets the blink.
         let caret_before = state.edit.caret;
         let sel_before = state.edit.selection;
         let InputResult {
@@ -536,29 +396,21 @@ impl<'a> TextEdit<'a> {
             is_focused = false;
             response.focused = false;
         }
-        // Rolled here, once this pass's focus is final: the input pass
-        // above still needed the previous value.
         let focus = state.view.roll_focus(is_focused);
 
         let snapshot = ResponseSnapshot {
             id,
             state: response,
         };
-        // One editing session for the whole menu pass, opened here rather
-        // than per action: the state row is out on loan for this pass, so
-        // it can be held mutably beside `&mut Ui`, and one session
-        // reconciles the undo history against the buffer once.
-        // A disabled editor offers no menu, and not recording it is what
-        // closes the one already open. Otherwise a menu raised while the
-        // field was live goes on executing Cut / Paste / Clear past the
-        // point the keyboard path stopped accepting keystrokes.
+        // One editing session for the whole menu pass, so one session reconciles undo
+        // history once. A disabled editor offers no menu; not recording it closes any open
+        // one, else Cut / Paste / Clear would keep executing.
         let menu_edited = !response.disabled && {
             let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
             editor.show_menu(ui, &snapshot, filter)
         };
-        // A composition shows in place and types nothing until it commits.
-        // Starting one over a selection deletes the selection first, as a
-        // browser's field does — that delete is an edit like any other.
+        // A composition types nothing until it commits; starting one over a selection deletes the
+        // selection first, as browsers do.
         let composing = is_focused
             && !response.disabled
             && match ui.ime_preedit() {
@@ -591,9 +443,6 @@ impl<'a> TextEdit<'a> {
         let caret_byte = state.edit.caret;
         let selection = state.edit.sel_range();
 
-        // Same pixel + line fold `Scroll` applies, against the editor's
-        // own line height rather than the theme's default text size:
-        // one notch should advance this editor by its own lines.
         let wheel = if response.disabled {
             Vec2::ZERO
         } else {
@@ -609,10 +458,8 @@ impl<'a> TextEdit<'a> {
                 &state.placeholder
             }
         };
-        // While composing, the run shaped is the buffer with the preedit
-        // spliced in at the caret; the caret sits at the input method's
-        // cursor inside it, and the range the wash covers is the
-        // composition, which paint underlines instead of washing.
+        // While composing, the shaped run is the buffer with the preedit spliced in at the caret,
+        // and the washed range is the composition.
         let (text, caret_byte, wash) = if composing {
             state.display.clear();
             state.display.push_str(&self.text[..caret_byte]);
@@ -645,9 +492,7 @@ impl<'a> TextEdit<'a> {
             },
             &mut state.selection_rects,
         );
-        // The probe hashed what is on show, which is not the buffer while
-        // composing — and the buffer's identity is what the edit history
-        // reconciles against.
+        // The probe hashed what is on show, which is not the buffer while composing.
         state.edit.observe_text_hash(if composing {
             Some(EditState::text_hash(self.text))
         } else {
@@ -657,11 +502,8 @@ impl<'a> TextEdit<'a> {
             && !response.disabled
             && let Some(layout_rect) = response.layout_rect
         {
-            // The caret in screen space, for the platform's candidate
-            // list: block-local, slid by the field's scroll, placed by the
-            // block's offset in the padded box, then carried by the
-            // transform the field records under. The box and the block's
-            // offset are last arrange's, which is all a record pass has.
+            // The caret in screen space for the platform's candidate list, using last arrange's box
+            // and block offset.
             let caret = geometry.caret_pos;
             let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
             let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
@@ -683,9 +525,7 @@ impl<'a> TextEdit<'a> {
             focus_gained: focus.gained,
             now,
         });
-        // The wheel senses only the axis the text overflows on, so the
-        // other one — and both, while the text fits — reaches the
-        // container behind the field.
+        // The wheel senses only the overflow axis; the other reaches the container behind.
         let sense = self.widget.authored_sense();
         self.widget
             .configure()
@@ -730,9 +570,8 @@ impl Configure for TextEdit<'_> {
     }
 }
 
-/// [`TextEditResponse`] minus its `Response` — what one pass can report
-/// while the state row is still out on loan. `show` reunites the two
-/// once the row is home and it can borrow `ui` again.
+/// [`TextEditResponse`] minus its `Response`: what a pass can report while the state row is on
+/// loan.
 #[derive(Clone, Copy, Debug)]
 struct EditSignals {
     changed: bool,
@@ -741,17 +580,10 @@ struct EditSignals {
     canceled: bool,
     focus_gained: bool,
     focus_lost: bool,
-    /// The response the pass probed — disabled already folded in — with
-    /// `focused` as the pass left it. What `show` hands to
-    /// [`Response::new`] instead of re-probing. Every other field is
-    /// frozen for the pass, so this is the same answer a second probe
-    /// would give.
     state: ResponseState,
 }
 
 impl EditSignals {
-    /// A pass that left the buffer alone, so the focus roll is all it
-    /// has to report.
     const fn focus_only(focus: FocusEdges, committed: bool, state: ResponseState) -> Self {
         Self {
             changed: false,
@@ -765,37 +597,28 @@ impl EditSignals {
     }
 }
 
-/// What [`TextEdit::show`] returns: the widget's [`Response`] plus the
-/// edit-specific signals computed *inside* `show()`. Callers read
-/// commit/focus state from here instead of re-polling `ui` for focus
-/// and key presses, which is both terser and authoritative (the editor
-/// knows what it did with the input this frame).
+/// What [`TextEdit::show`] returns: the widget's [`Response`] plus the edit signals computed inside
+/// `show()`.
 #[derive(Debug)]
 pub struct TextEditResponse<'a> {
     /// The widget's pointer/click/hover [`Response`].
     pub response: Response<'a>,
-    /// The buffer was edited this frame (characters inserted or removed).
+    /// The buffer was edited this frame.
     pub changed: bool,
     /// The edit finished this frame and the buffer holds its result, as
-    /// [`ValueResponse::committed`](crate::ValueResponse::committed)
-    /// means it: on Enter in a single-line editor, or on the blur that
-    /// ends a focus session, and never on Escape or on a blur because the
-    /// editor turned disabled. A session commits once, so a blur after
-    /// Enter commits again only when an edit came between them.
+    /// [`ValueResponse::committed`](crate::ValueResponse::committed): on Enter in a
+    /// single-line editor or on the blur ending a focus session, never on Escape or a
+    /// blur because the editor turned disabled. A session commits once.
     pub committed: bool,
-    /// The user pressed Enter in a single-line editor — the conventional
-    /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
+    /// Enter pressed in a single-line editor (the accept signal). Always `false` in multi-line
+    /// mode.
     pub submitted: bool,
-    /// The user pressed Escape with no selection left to collapse — the
-    /// conventional "cancel" signal.
-    ///
-    /// Escape also blurs, so [`Self::focus_lost`] fires alongside it, and
-    /// [`Self::committed`] does not.
+    /// Escape pressed with no selection left to collapse (the cancel signal). It
+    /// also blurs, so [`Self::focus_lost`] fires and [`Self::committed`] does not.
     pub canceled: bool,
     /// The editor took focus this frame.
     pub focus_gained: bool,
-    /// The editor lost focus this frame (clicked away, another widget focused,
-    /// or Escape). Read [`Self::committed`] to commit on blur.
+    /// The editor lost focus this frame (clicked away, another widget focused, or Escape).
     pub focus_lost: bool,
 }
 
@@ -803,8 +626,8 @@ pub struct TextEditResponse<'a> {
 pub(crate) mod internals {
     use crate::widgets::text_edit::TextEditResponse;
 
-    /// A [`TextEditResponse`]'s edges, copied out of the record pass
-    /// whose `ui` borrow the response holds.
+    /// A [`TextEditResponse`]'s edges, copied out of the record pass whose `ui` borrow the response
+    /// holds.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) struct EditEdges {
         pub(crate) changed: bool,

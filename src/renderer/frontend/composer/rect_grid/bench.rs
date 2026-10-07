@@ -1,22 +1,10 @@
-//! Overlap-index benchmarks for the composer's rect grid.
+//! Overlap-index benchmarks for the composer's rect grid: is the tiled index the right structure and are its two constants at their optima (inside a whole frame it moves only 1–3%).
 //!
-//! Split from the `composer` benches because they answer a different
-//! question: not "how fast does compose run" but "is the tiled index the
-//! right structure, and are its two constants at their optima". Inside a
-//! whole frame the grid moves 1–3%, which no amount of averaging
-//! resolves; here it is the entire measurement, tight to ±0.5%.
 //!
-//! Two workloads, deliberately at opposite ends:
+//! Two workloads at opposite ends:
 //!
-//! - `realistic` mirrors what the instrumented `frame/*_cpu` arms
-//!   actually do — ~70–200 label-sized rects, two quad probes each, a
-//!   third of them surviving the union pre-reject. This is the arm that
-//!   decides `TILE_SIZE` and `TILE_CAP`, and the one that shows the
-//!   tiled index beating a flat scan 7.0 µs to 56.7 µs at 200 labels.
-//! - `saturated` is the pathology the overflow chains exist for and no
-//!   real frame reaches: tiles filled past `TILE_CAP` plus wide rects
-//!   spanning all of them, so every tile chains the spanning rects and
-//!   every query walks its tile's chain.
+//! - `realistic`: ~70–200 label-sized rects, two quad probes each, a third surviving the union pre-reject; decides `TILE_SIZE` and `TILE_CAP`.
+//! - `saturated`: tiles filled past `TILE_CAP` plus wide rects spanning all of them, so every query walks a chain.
 
 #![expect(
     clippy::print_stderr,
@@ -31,11 +19,7 @@ use glam::UVec2;
 use std::hint::black_box;
 use std::time::Duration;
 
-/// The pathology the overflow chains exist for and no real frame
-/// reaches: a row of tiles each holding more than [`TILE_CAP`] rects,
-/// plus wide rects spanning every one of them. The wide rects are the
-/// interesting part — with all their tiles full they are reachable only
-/// through the chains, so every query walks its tile's whole chain.
+/// The pathology the overflow chains exist for and no real frame reaches: a row of tiles each over [`TILE_CAP`], plus wide rects spanning all of them, reachable only through the chains.
 #[derive(Debug)]
 struct SaturatedFixture {
     grid: RectGrid,
@@ -58,9 +42,7 @@ impl SaturatedFixture {
         fixture
     }
 
-    /// Fill each tile past capacity, then lay the spanning rects in the
-    /// y-band the small ones leave free so they overlap the same
-    /// saturated tiles without stacking on each other.
+    /// Fill each tile past capacity, then lay the spanning rects in the y-band the small ones leave free.
     fn register(&mut self) {
         for tx in 0..self.tiles {
             for i in 0..(TILE_CAP as u32 + 2) {
@@ -73,9 +55,7 @@ impl SaturatedFixture {
         }
     }
 
-    /// One compose-shaped round: rebuild the batch, then run one overlap
-    /// query per tile the way the composer probes per quad. Returns the
-    /// hit count so nothing can be elided.
+    /// One compose-shaped round: rebuild the batch, then one overlap query per tile; returns the hit count so nothing is elided.
     fn round(&mut self) -> usize {
         self.grid.clear();
         self.register();
@@ -94,13 +74,7 @@ impl SaturatedFixture {
     }
 }
 
-/// The realistic counterpart, shaped from what the `frame/*_cpu` arms
-/// actually do (instrumented run, 25–63 M queries each): ~70–200
-/// label-sized rects live at once, ~2 quad queries per rect, and roughly
-/// a third of those queries surviving the union pre-reject. Those ratios
-/// are what make the tile walk worth anything, and inside a whole frame
-/// they move ~1% — too little to resolve. Here they are the entire
-/// measurement.
+/// The realistic counterpart, shaped from the instrumented `frame/*_cpu` arms: ~70–200 label-sized rects live at once, ~2 quad queries per rect, about a third surviving the union pre-reject.
 #[derive(Debug)]
 struct RealisticFixture {
     grid: RectGrid,
@@ -110,12 +84,7 @@ struct RealisticFixture {
 }
 
 impl RealisticFixture {
-    /// `labels` text rects laid out as rows of columns across a
-    /// 1920×1080 viewport, the way a dense panel of form rows or
-    /// graph-node captions lands. Queries are quad-sized probes: two per
-    /// label, half aimed at a label (the hit path, which exits early)
-    /// and half at the gaps between rows (the miss path, which is what a
-    /// linear scan pays full price for).
+    /// `labels` text rects in rows of columns across 1920×1080; two quad-sized probes per label, half at a label (hit path, exits early), half at row gaps (miss path).
     fn new(labels: u32) -> Self {
         let viewport = UVec2::new(1920, 1080);
         let cols = 6;
@@ -149,10 +118,7 @@ impl RealisticFixture {
         }
     }
 
-    /// One frame: reset, register every text rect, then run every query.
-    /// Returns the hit count so nothing can be elided — and so a variant
-    /// that silently stops finding overlaps fails loudly instead of
-    /// benchmarking faster.
+    /// One frame: reset, register every text rect, run every query. Returns the hit count so nothing is elided and a variant that stops finding overlaps fails loudly.
     fn round(&mut self) -> usize {
         self.grid.start_frame(self.viewport);
         for &t in &self.texts {
@@ -169,9 +135,7 @@ impl RealisticFixture {
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    // Label-sized text rects and quad-sized probes in the proportions
-    // the instrumented `frame/*_cpu` arms showed. This is the arm that
-    // decides whether the tile walk pays for itself.
+    // Label-sized text rects and quad-sized probes in the proportions the instrumented arms showed.
     let mut group = run.subgroup(c, "realistic");
     group.sample_size(50);
     group.warm_up_time(Duration::from_secs(1));
@@ -187,8 +151,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     }
     group.finish();
 
-    // Overflow length prints as the secondary metric; the per-round wall
-    // time is the decision metric.
+    // Overflow length is the secondary metric; per-round wall time decides.
     let mut group = run.subgroup(c, "saturated");
     group.sample_size(30);
     group.warm_up_time(Duration::from_secs(1));

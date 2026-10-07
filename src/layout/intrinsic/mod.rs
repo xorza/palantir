@@ -1,16 +1,10 @@
-//! Intrinsic-dimensions queries — the on-demand `LenReq` API.
+//! Intrinsic-dimensions queries: the on-demand `LenReq` API. Owns the query types (`LenReq`,
+//! `IntrinsicQuery`, the ranges a walk answers with), the central `IntrinsicQuery::walk` dispatch
+//! (`Sizing` overrides, padding/margin and `min_size`/`max_size` clamps, then each driver's
+//! `intrinsic()` for content-driven sizes), and leaf intrinsics.
 //!
-//! This module owns:
-//! - The query types: `LenReq`, `IntrinsicQuery`, and the ranges a walk
-//!   answers with.
-//! - The central `IntrinsicQuery::walk` dispatch that handles `Sizing`
-//!   overrides, padding/margin, and `min_size`/`max_size` clamps before
-//!   delegating to each driver's `intrinsic()` for content-driven sizes.
-//! - Leaf intrinsics (no driver module owns leaves).
-//!
-//! Per-driver intrinsic logic lives alongside that driver's
-//! `measure`/`arrange`, in its [`LayoutDriver`] impl — same
-//! per-driver-file convention as the rest of layout.
+//! Per-driver intrinsic logic lives beside that driver's `measure`/`arrange`, in its
+//! [`LayoutDriver`] impl.
 
 pub(crate) mod intrinsic_query;
 pub(crate) mod intrinsic_range;
@@ -37,9 +31,9 @@ use crate::text::system::TextRunSlot;
 /// Wrap a raw content range in the node's own box on `axis`: padding, the
 /// `Sizing` override, margin, and the `min_size` / `max_size` clamps.
 ///
-/// Padding is added unconditionally. A Fixed axis arrives with a zero
-/// content range, and `AxisSlot::resolve` returns the declared value
-/// without reading either — so the add cannot reach the result.
+/// Padding is added unconditionally: a Fixed axis arrives with a zero content range, and
+/// `AxisSlot::resolve` returns the declared value without reading either, so the add cannot reach
+/// the result.
 fn outer(
     layout: LayoutCore,
     bounds: &BoundsExtras,
@@ -62,10 +56,9 @@ fn outer(
     content
 }
 
-/// The only [`DriverOp`] of the three that carries no `LayoutPass`. That is the
-/// point: a pure query of a subtree must not be able to write the frame's
-/// text shapes, and holding the engine and the tree separately is what
-/// keeps a `LayerLayout` out of reach.
+/// The only [`DriverOp`] of the three that carries no `LayoutPass`: a pure query of a subtree must
+/// not be able to write the frame's text shapes, and holding the engine and tree separately keeps a
+/// `LayerLayout` out of reach.
 #[derive(Debug)]
 struct IntrinsicOp<'op, 'text> {
     engine: &'op mut LayoutEngine,
@@ -112,15 +105,12 @@ impl DriverOp for IntrinsicOp<'_, '_> {
     }
 }
 
-/// Leaf: walk shapes and aggregate. Only `ShapeRecord::Text` contributes
-/// non-zero intrinsics today; other shapes are owner-relative paint and
-/// don't drive size. Lives here rather than in a `leaf` module because
-/// there isn't one — leaves have no driver, the leaf path is just "ask
-/// the recorded shapes."
+/// Leaf: walks shapes and aggregates. Only `ShapeRecord::Text` contributes non-zero intrinsics;
+/// other shapes are owner-relative paint and don't drive size. Lives here because leaves have no
+/// driver module.
 ///
-/// A run's content demands are `Size`s, so the accumulators are too and
-/// both axes fall out of the same pass. `axis` picks the answered lane
-/// at the end; see [`IntrinsicWalk`] for what the other one buys.
+/// A run's content demands are `Size`s, so the accumulators are too and both axes fall out of one
+/// pass. `axis` picks the answered lane at the end; see [`IntrinsicWalk`] for what the other buys.
 fn leaf(
     engine: &mut LayoutEngine,
     tree: &Tree,

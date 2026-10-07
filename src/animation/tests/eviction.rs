@@ -53,25 +53,17 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 0, "vec2 slots for `id` must drop");
     assert_eq!(c(&mut map), 0, "color slots for `id` must drop");
 
-    // A typed map its sweep drained goes with its last row (`Drained::Drop`),
-    // which is what lets `Ui::animate`'s empty fast path come back.
     map.sweep_removed(&WidgetIdSet::from_iter([other]));
     assert!(map.is_empty(), "every typed map drained, so none is kept");
 }
 
-/// `post_record` also evicts slots that were *not* poked this frame
-/// even when the widget id itself stuck around — without this a
-/// `(WidgetId, AnimationSlot)` whose owner stopped calling
-/// `Ui::animate` would linger forever, since the only other drop
-/// trigger is full widget removal.
+/// `post_record` also evicts slots not poked this frame even when the widget id stays.
 #[test]
 fn post_record_evicts_untouched_slots() {
     let mut map = AnimMap::default();
     let id = wid("a");
     let empty = WidgetIdSet::default();
 
-    // Touch two slots, then run `post_record` to commit a "frame":
-    // both rows survive, both `touched` flags clear.
     let _ =
         map.typed_mut::<f32>()
             .step(id, AnimationSlot::new("a"), 1.0, AnimationSpec::FAST, 0.016);
@@ -86,8 +78,6 @@ fn post_record_evicts_untouched_slots() {
         "both slots must survive the first sweep"
     );
 
-    // Next frame: only poke slot 0. Slot 1 was never re-touched
-    // after `post_record` cleared its flag, so it should drop.
     let _ =
         map.typed_mut::<f32>()
             .step(id, AnimationSlot::new("a"), 1.0, AnimationSpec::FAST, 0.016);
@@ -98,8 +88,6 @@ fn post_record_evicts_untouched_slots() {
         "abandoned slot must drop while the still-poked slot survives",
     );
 
-    // Re-poke slot 1 — first-touch path snaps to target. Confirms
-    // dropped rows behave like any other never-seen `(id, slot)`.
     let r = map.typed_mut::<f32>().step(
         id,
         AnimationSlot::new("b"),

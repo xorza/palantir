@@ -91,12 +91,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
     assert_ne!(h_ab, h_ba);
 }
 
-/// A panel's own `Panel::transform` changing flips both its
-/// `node_hash` and its `subtree_hash`. The `node_hash` change is
-/// load-bearing: under the new `Panel::transform` contract, a
-/// transform applies to the panel's direct shapes, so a self-transform
-/// shift moves the node's *own* painted output. `DamageEngine::compute`
-/// keys self-paint damage off `node_hash`, so the bit must live there.
+/// A panel's own `Panel::transform` changing flips both `node_hash` and `subtree_hash`. The `node_hash` change is load-bearing: the transform applies to the panel's direct shapes, and `DamageEngine::compute` keys self-paint damage off `node_hash`.
 #[test]
 fn self_transform_change_flips_node_hash() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -109,10 +104,7 @@ fn self_transform_change_flips_node_hash() {
             .response
             .node()
     }
-    // Both transforms are non-identity — identity is the noop sentinel
-    // (`PanelExtras::DEFAULT.transform`) so a panel with only an
-    // identity transform set carries no row at all and the test would
-    // be measuring the wrong distinction.
+    // Both transforms are non-identity: identity is the noop sentinel (`PanelExtras::DEFAULT.transform`) and would carry no row.
     let t_a = TranslateScale::from_translation(Vec2::new(1.0, 0.0));
     let t_b = TranslateScale::from_translation(Vec2::new(10.0, 0.0));
     let (a, b) = (record(|ui| build(ui, t_a)), record(|ui| build(ui, t_b)));
@@ -121,8 +113,7 @@ fn self_transform_change_flips_node_hash() {
         a.subtree, b.subtree,
         "self transform MUST change subtree hash"
     );
-    // A transform moves no rect, so neither the measure cache nor the
-    // cascade's structural tables may see it.
+    // A transform moves no rect, so neither the measure cache nor cascade structural tables may see it.
     assert_eq!(
         a.layout_subtree, b.layout_subtree,
         "self transform must not change the layout half"
@@ -140,10 +131,7 @@ fn self_transform_change_flips_node_hash() {
     );
 }
 
-/// `LayoutMode::Grid(idx)` carries a frame-local arena slot. Per-node
-/// hash must NOT depend on it — only on def contents (rolled in at
-/// `NodeExit`). Same grid declared in different positions still hashes
-/// the same.
+/// `LayoutMode::Grid(idx)` carries a frame-local arena slot; the node hash must depend only on def contents (rolled in at `NodeExit`), so the same grid in different positions hashes alike.
 #[test]
 fn grid_per_node_hash_independent_of_arena_slot() {
     use crate::primitives::layout::track::Track;
@@ -277,9 +265,7 @@ fn subtree_end_handles_deep_nesting() {
     );
 }
 
-/// `subtree_hash` rollup is root-local: synthesizing a second root by
-/// recording two top-level subtrees back-to-back yields independent
-/// hashes for the second root regardless of the first's content.
+/// The `subtree_hash` rollup is root-local: a second top-level subtree recorded back-to-back hashes independently of the first.
 #[test]
 fn subtree_hash_rollup_root_local_across_two_roots() {
     fn build(ui: &mut Ui, root_a_color: RgbaF32) -> u32 {

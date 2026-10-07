@@ -1,18 +1,14 @@
-//! Fixtures that push shape *count* and shape *variety* through a whole
-//! frame, where the other widget fixtures push structure.
+//! Fixtures that push shape *count* and *variety* through a whole frame; the
+//! other widget fixtures push structure.
 //!
-//! **These are the fixtures that encode and compose.** `Audit::run`
-//! drives a `UiHarness`, and `Ui::frame` stops at damage. These four go
-//! through a [`FrontendHarness`] instead, which runs the deviceless
-//! frontend on every frame that plans a paint. What they cover is
-//! everything a shape costs from `add_shape` to the render buffer: the
-//! record store's per-frame copies (a polyline's points, a mesh's vertex
-//! and index bytes), the tree's shape arena, the cascade's paint rows,
-//! the encoder's per-shape command, and the composer's scratch.
+//! **These encode and compose.** `Audit::run` drives a `UiHarness`, which stops
+//! at damage; these four use a [`FrontendHarness`], running the deviceless
+//! frontend on every painting frame. They cover a shape's cost from `add_shape`
+//! to the render buffer: record-store copies, the shape arena, cascade paint
+//! rows, the encoder's command and the composer's scratch.
 //!
-//! No device, so no driver: the budget is palantir's own strict zero.
-//! What a submission costs on a real adapter is `gates::on_gpu`'s
-//! business.
+//! No device, so the budget is strict zero; real-adapter cost is
+//! `gates::on_gpu`'s.
 
 use crate::harness::{Audit, new_ui};
 use palantir::Stroke;
@@ -24,29 +20,21 @@ use palantir::{
 };
 use std::rc::Rc;
 
-/// Distinct positions the nudge cycles through. More than one so damage
-/// is full on every frame, few enough that the tree never walks off the
-/// surface and starts being culled instead of drawn.
+/// Distinct nudge positions: more than one so damage is full every frame, few
+/// enough that the tree isn't culled off the surface.
 const NUDGE_POSITIONS: u32 = 4;
 
-/// Whole nudge cycles of warmup. The scene cycles, so the probe could
-/// settle inside one cycle before its widest frame was ever drawn — see
-/// `Warmup::Probe`.
+/// Whole nudge cycles of warmup; the scene cycles, so the probe could settle
+/// before its widest frame (see `Warmup::Probe`).
 const WARMUP_CYCLES: u32 = 4;
 
-/// Frames of `scene` through the deviceless frontend, nudged one pixel
-/// sideways each frame so every shape in it is re-encoded.
+/// Frames of `scene` through the deviceless frontend, nudged one pixel sideways
+/// each frame so every shape is re-encoded.
 ///
-/// **The nudge is what makes this an audit of the frontend at all.** A
-/// still tree damages nothing after its first frames, so encode and
-/// compose would never run and the shapes below would never reach the
-/// paths these fixtures exist to pin.
-///
-/// A moving transform is the cheapest change that damages the whole
-/// subtree, but it is not free of the record side: the panel row folds
-/// the transform into its node hash, so the measure cache misses and
-/// layout re-runs with it. These numbers are therefore whole-frame
-/// numbers, not frontend-only ones.
+/// **The nudge makes this an audit of the frontend:** a still tree damages
+/// nothing, so encode and compose would never run. It isn't free of the record
+/// side, though: the panel row folds the transform into its node hash, so the
+/// measure cache misses and layout re-runs. These are whole-frame numbers.
 #[track_caller]
 fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
     let mut frontend = FrontendHarness::new(new_ui());
@@ -65,16 +53,14 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
                     )))
                     .show(ui, |ui| scene(ui));
             });
-            // A small scene repaints partially, which still encodes every
-            // shape the nudge moved.
+            // A small scene repaints partially, still encoding every shape the nudge moved.
             assert_ne!(report.paint(), FramePaint::Skip, "the frame repaints");
         });
 }
 
-/// 16×16 grid of `Block`s — 256 quads, re-encoded every frame. Stresses
-/// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse much harder
-/// than `grid_8x8` (64 quads). A capacity-doubling regression in the
-/// encoder shape vec or the composer quad vec shows up here.
+/// 16x16 grid of `Block`s: 256 quads re-encoded every frame, stressing
+/// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse harder than
+/// `grid_8x8` (64 quads).
 #[test]
 fn many_rects_compose_alloc_free() {
     frontend_audit(|ui| {
@@ -101,10 +87,8 @@ fn many_rects_compose_alloc_free() {
 }
 
 /// Static polyline pushed every frame. Slice borrows are copied into the
-/// window's record store at `add_shape` time, so the closure can hold the
-/// `Vec` and hand `&points[..]` to the shape variant. Pins the composer's
-/// polyline point / index / direction scratch reuse, which nothing else
-/// in the suite reaches.
+/// window's record store at `add_shape`, so the closure can hold the `Vec`.
+/// Pins the composer's polyline point / index / direction scratch reuse.
 #[test]
 fn polyline_static_alloc_free() {
     let points: Vec<glam::Vec2> = (0..32)
@@ -120,10 +104,9 @@ fn polyline_static_alloc_free() {
     });
 }
 
-/// Static `Mesh` pushed every frame via `Ui::add_shape`. Vertex / index
-/// bytes are copied into the tree's mesh arena at `add_shape` time, so
-/// the mesh built once outside the closure is reused as-is. Pins that the
-/// mesh-encoding command path doesn't allocate at steady state.
+/// Static `Mesh` pushed every frame via `Ui::add_shape`; vertex and index bytes
+/// are copied into the tree's mesh arena. Pins that mesh encoding doesn't
+/// allocate at steady state.
 #[test]
 fn mesh_static_alloc_free() {
     let mesh = {
@@ -144,24 +127,18 @@ fn mesh_static_alloc_free() {
     });
 }
 
-/// 200 icons per frame. Every one goes record → encode → compose, so the
-/// per-frame cost is a push onto `RenderBuffer.icons` and nothing else.
-/// Rasters and atlas slots belong to the backend, which this deviceless
-/// frontend never runs; `gates::on_gpu`'s scale ramp is what reaches
-/// them.
+/// 200 icons per frame, each going record, encode, compose: a push onto
+/// `RenderBuffer.icons` and nothing else. Rasters and atlas slots belong to the
+/// backend, which this frontend never runs (`gates::on_gpu`'s scale ramp
+/// reaches them).
 ///
-/// The set is re-loaded inside the scene, which is the shape an
-/// immediate-mode caller writes — so this also pins that re-loading a set
-/// every frame is a refcount bump. `IconRegistry::register` finds the live
-/// `IconSet` over that allocation and hands back a clone of it; a
-/// regression that took a second slot would show up here before it showed
-/// up as unbounded growth.
+/// The set is re-loaded inside the scene, as an immediate-mode caller writes it,
+/// pinning that re-loading is a refcount bump: `IconRegistry::register` finds
+/// the live `IconSet` and clones it. A second slot would show here first.
 ///
-/// The set is *parked* across frames, which is the contract: an `IconSet`
-/// owns its parses and its atlas rasters, so a scene that dropped the one
-/// it loaded would unload them at every submit and rasterize afresh at
-/// every frame. Keeping it is what the `#[must_use]` on `load_icons` is
-/// telling the caller to do.
+/// The set is *parked* across frames: an `IconSet` owns its parses and rasters,
+/// so dropping it would unload and re-rasterize each frame (hence `#[must_use]`
+/// on `load_icons`).
 #[test]
 fn many_icons_compose_alloc_free() {
     const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
@@ -170,8 +147,8 @@ fn many_icons_compose_alloc_free() {
     let mut held: Option<IconSet> = None;
 
     frontend_audit(move |ui| {
-        // `insert` drops last frame's clone *after* this frame's exists,
-        // so the shared owner never reaches zero and nothing is released.
+        // `insert` drops last frame's clone *after* this frame's exists, so the shared
+        // owner never reaches zero.
         let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
         Grid::new()
             .auto_id()

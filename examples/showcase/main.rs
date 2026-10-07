@@ -1,6 +1,4 @@
-//! The palantir widget tour. `main` only wires the winit host; the
-//! chrome and the page table live in [`shell`], the pages themselves in
-//! [`pages`], and every shared token in [`support`].
+//! The palantir widget tour. `main` wires the winit host; chrome and page table are in [`shell`], pages in [`pages`], shared tokens in [`support`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

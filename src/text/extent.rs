@@ -3,14 +3,7 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 
-/// The block a shaped run lays out to, and how far its glyphs' ink
-/// reaches past that block on each side.
-///
-/// Layout sizes and places the block, which spans the glyphs' advances.
-/// The ink is what paints: an italic's overhang or a negative side
-/// bearing reaches past the block, and what covers the painted pixels —
-/// damage, the text scissor — has to cover that too. Whole pixels, so the
-/// f16 lanes hold it exactly to 2048 px.
+/// The block a shaped run lays out to (glyph advances) and how far its ink reaches past it on each side, as in an italic overhang; damage and the text scissor cover the ink. Whole pixels, exact in f16 to 2048 px.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TextExtent {
     pub(crate) size: Size,
@@ -18,8 +11,7 @@ pub(crate) struct TextExtent {
 }
 
 impl TextExtent {
-    /// A block whose ink stays inside it — what a measure that reads no
-    /// glyph outlines answers.
+    /// A block whose ink stays inside it.
     pub(crate) const fn inked_within(size: Size) -> Self {
         Self {
             size,

@@ -1,7 +1,4 @@
-//! Image sampling fixtures. Exact-pixel assertions (no goldens): the
-//! expected values are hand-derived from the source texels, so the test
-//! is machine-independent and pins the *sampling semantics*, not a
-//! rendered snapshot.
+//! Image sampling fixtures: exact-pixel assertions (no goldens) with values hand-derived from the source texels, pinning sampling semantics.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -28,7 +25,6 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
     drop(handle);
     assert_eq!(h.host.gpu_image_cache_len(), 1);
 
-    // Changing the caller's bytes must not change the staged upload.
     image.texels_mut().rotate_left(1);
     let scene = |ui: &mut Ui| {
         Panel::canvas()
@@ -51,7 +47,6 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
         let out = h.size(size).clear(RgbaF32::BLACK).frame(scene).image;
         for y in 0..2 {
             for x in 0..4 {
-                // Sampling at texel centres only incurs the sRGB round trip.
                 let want = expected[(y * 2 + x % 2) as usize];
                 assert_px(
                     out.get_pixel(x, y).0,
@@ -69,8 +64,6 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
     assert_eq!(h.host.gpu_image_cache_len(), 0);
 }
 
-/// Source texels for the filter fixture: a 2×1 red|blue strip. Upscaled
-/// 64× horizontally, the two filters must diverge only around the seam.
 const RED: [u8; 4] = [230, 60, 60, 255];
 const BLUE: [u8; 4] = [60, 120, 230, 255];
 
@@ -97,9 +90,6 @@ fn strip_pane(
         });
 }
 
-/// Assert the pixel sits strictly between the two source texels on both
-/// the red and blue channels — i.e. the sampler blended rather than
-/// picked one texel.
 fn assert_blend(pixel: [u8; 4], label: &str) {
     for c in [0, 2] {
         let (lo, hi) = (RED[c].min(BLUE[c]), RED[c].max(BLUE[c]));
@@ -111,15 +101,11 @@ fn assert_blend(pixel: [u8; 4], label: &str) {
     }
 }
 
-/// Minification and magnification choose their own filters. Sampled
-/// per-pixel against hand-derived expectations:
-/// - Both filters: x=16 / x=112 sit inside the sampler's texel-center
-///   clamp region → exactly RED / BLUE (±2 sRGB round-trip).
-/// - Nearest: the seam is a hard edge — x=63 is RED, x=64 is BLUE
-///   (texel index = floor(uv · 2): 63.5/128·2 = 0.99 vs 64.5/128·2 = 1.01).
-/// - Linear: x=64 is mid-ramp — far from both endpoints.
-/// - Downscaling RED|BLUE|RED|BLUE from 4px to 2px samples each
-///   red/blue boundary: nearest picks BLUE while linear blends.
+/// Minification and magnification choose their own filters:
+/// - Both: x=16 / x=112 sit in the texel-center clamp region: RED / BLUE (±2 sRGB).
+/// - Nearest: hard seam, x=63 RED, x=64 BLUE (floor(uv · 2): 63.5/128·2 = 0.99 vs 64.5/128·2 = 1.01).
+/// - Linear: x=64 is mid-ramp.
+/// - Downscaling RED|BLUE|RED|BLUE 4px to 2px: nearest picks BLUE at each boundary, linear blends.
 #[test]
 fn minification_and_magnification_filters_are_independent() {
     let mut h = Harness::new();
@@ -249,33 +235,15 @@ fn minification_and_magnification_filters_are_independent() {
     }
 }
 
-/// The shader keeps its footprint measurement behind the nearest-flag
-/// branch, so the zero-flag (bilinear), both-nearest, and tiled
-/// combinations each need their own pin at a fractional texel-per-pixel
-/// ratio — where the two filters land on different texels.
+/// The shader keeps footprint measurement behind the nearest-flag branch, so bilinear, both-nearest and tiled each need a pin at a fractional texel-per-pixel ratio.
 ///
-/// Strip fixture: RED|BLUE|RED across 100px → 33.33px per texel, so the
-/// per-fragment texel coordinate is `t = (x + 0.5) · 3 / 100`.
-/// - Bilinear samples the texel *centers* at 0.5 / 1.5 / 2.5:
-///   `t(16) = 0.495` and `t(83) = 2.505` sit outside the outermost
-///   centers → clamped to pure RED; `t(32) = 0.975` is 47.5% of the way
-///   to texel 1 → a ramp.
-/// - Both-nearest snaps to `floor(t)`: `t(32) = 0.975` → RED and
-///   `t(33) = 1.005` → BLUE, a hard seam exactly where bilinear ramps;
-///   `t(66) = 1.995` → BLUE and `t(67) = 2.025` → RED.
+/// Strip: RED|BLUE|RED across 100px, `t = (x + 0.5) · 3 / 100`.
+/// - Bilinear: `t(16) = 0.495` and `t(83) = 2.505` clamp to RED; `t(32) = 0.975` is a ramp.
+/// - Both-nearest: `floor(t)`, so `t(32)` RED, `t(33) = 1.005` BLUE; `t(66) = 1.995` BLUE, `t(67) = 2.025` RED.
 ///
-/// Tile fixture: RED|BLUE with `scale = 2.5` across 100px → 2.5 repeats,
-/// so `uv = (x + 0.5) / 40` and the shader's `fract` wrap gives
-/// `t = fract(uv) · 2`.
-/// - The filters part at every seam: nearest steps from the last texel
-///   to the first, while bilinear blends the two — which is what a
-///   repeat means, and what the assertions below separate.
-/// - Inside a repeat they part the same way: `t(20) = 1.025` blends under
-///   bilinear but snaps to BLUE under nearest.
-/// - `x = 81` is inside the truncated third repeat
-///   (`fract(2.0375) = 0.0375` → `t = 0.075`, below the first texel
-///   center) → RED under nearest, which pins that the wrap runs per
-///   fragment rather than the last partial tile stopping at an edge.
+/// Tile: RED|BLUE, `scale = 2.5` across 100px, `t = fract((x + 0.5) / 40) · 2`.
+/// - At every seam nearest steps while bilinear blends; `t(20) = 1.025` blends or snaps to BLUE.
+/// - `x = 81` (`fract(2.0375) = 0.0375`, `t = 0.075`) is RED under nearest: the wrap runs per fragment.
 #[test]
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     let mut h = Harness::new();
@@ -390,12 +358,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         .image;
 
     let tpx = |x: u32| tiled.get_pixel(x, 8).0;
-    // Bilinear over a repeat blends *across* every seam, the draw's own
-    // edges included: the texel before the first one is the last one,
-    // which is what repeating means and what `ClampToEdge` cannot say.
-    // At 20 px per texel the sample points nearest the first seam are
-    // x = 0 and x = 39, and both read a blend rather than the pure texel
-    // a clamp would smear there.
+    // Bilinear over a repeat blends across every seam, edges included: at 20 px per texel, x = 0 and x = 39 read a blend, not the pure texel a clamp would give.
     assert_px(
         tpx(0),
         [176, 94, 170, 255],
@@ -411,7 +374,6 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         SRGB_ROUND_TRIP,
         format_args!("and close on it, got {:?}", tpx(39)),
     );
-    // One tile is 40 px, so the same offsets a repeat later read the same.
     assert_px(
         tpx(40),
         tpx(0),
@@ -426,8 +388,6 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     );
     assert_blend(tpx(20), "tiled bilinear intra-tile seam");
 
-    // Nearest picks a whole texel, so a seam is a step and the pure
-    // colours survive at the edges the bilinear pane blends.
     for (x, expected, name) in [
         (0, RED, "tile start"),
         (39, BLUE, "tile end"),
@@ -458,40 +418,20 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     );
 }
 
-/// Downsample fixture source: one lit texel per three, on black. White and
-/// black because they are linear 1.0 and 0.0 exactly, so every expected value
-/// below is a plain fraction of full scale.
+/// Source: one lit texel per three, on black; white and black are linear 1.0 and 0.0, so expectations are plain fractions.
 const STAR: [u8; 4] = [255, 255, 255, 255];
 const SKY: [u8; 4] = [0, 0, 0, 255];
 
-/// Each [`ImageDownsample`] mode's answer for a lit texel that the single
-/// bilinear tap misses entirely — the aliasing this feature exists to fix,
-/// reduced to three hand-computable pixels.
+/// Each [`ImageDownsample`] mode's answer for a lit texel the single bilinear tap misses.
 ///
-/// **Geometry.** A 24×1 source of `STAR SKY SKY` repeated 8× painted into an
-/// 8×16 pane: 3 texels per pixel, so `uv_dx = 1/8` and `texel_dx = 3`, giving
-/// a footprint of exactly 3 texels. Taps per axis is
-/// `clamp(ceil(3 · 0.5), 1, 4) = 2` — `ceil(1.5)` sits mid-bucket, so no
-/// float wobble can change the count. Pixel `x` covers texels
-/// `T0 T1 T2 = 3x, 3x+1, 3x+2`, and its centre is texel coord `3x + 1.5`.
+/// **Geometry.** A 24x1 `STAR SKY SKY` source in an 8x16 pane: 3 texels per pixel, taps per axis `clamp(ceil(3 · 0.5), 1, 4) = 2`. Pixel `x` covers texels `3x..3x+2`, centre `3x + 1.5`.
 ///
-/// **Taps.** The 2×2 grid offsets by `±0.25` of the derivative span, i.e.
-/// `±0.75` texels, landing at `3x + 0.75` and `3x + 2.25` (the two rows
-/// duplicate them — the source is one texel tall, so the vertical offset
-/// samples the same row). Each is a bilinear tap:
-/// - `3x + 0.75` is 0.25 of the way from T0's centre to T1's → `0.75·T0 + 0.25·T1`
-/// - `3x + 2.25` is 0.75 of the way from T1's centre to T2's → `0.25·T1 + 0.75·T2`
+/// **Taps.** The 2x2 grid offsets `±0.75` texels: `3x + 0.75` is `0.75·T0 + 0.25·T1`, `3x + 2.25` is `0.25·T1 + 0.75·T2`.
 ///
-/// **Results**, with `T0 = STAR` (linear 1.0) and `T1 = T2 = SKY` (0.0), all
-/// weights being exact binary fractions:
-/// - `Single` samples once at the pixel centre, `3x + 1.5`, which is *exactly*
-///   T1's centre → `0.0`. The star is in the footprint and contributes
-///   nothing: sub-pixel motion is what swaps which texel that centre lands on,
-///   and that swap is the blinking.
-/// - `Mean` = `(0.75 + 0.25·0 + 0.25·0 + 0.75·0) / 2` → `0.375` linear
-///   → sRGB `1.055 · 0.375^(1/2.4) − 0.055` = 0.6461 → **165**.
-/// - `Peak` keeps the brighter tap, `0.75` linear
-///   → `1.055 · 0.75^(1/2.4) − 0.055` = 0.8808 → **225**.
+/// **Results**, `T0 = STAR` (1.0), `T1 = T2 = SKY` (0.0):
+/// - `Single` samples T1's exact centre: `0.0`.
+/// - `Mean` = `(0.75 + 0 + 0 + 0) / 2` = `0.375` linear, sRGB `1.055 · 0.375^(1/2.4) − 0.055` = 0.6461, **165**.
+/// - `Peak` = `0.75` linear, sRGB 0.8808, **225**.
 #[test]
 fn downsample_modes_recover_a_texel_the_single_tap_misses() {
     const PANE: Vec2 = Vec2::new(8.0, 16.0);
@@ -541,8 +481,6 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 
     let mut measured = Vec::with_capacity(cases.len());
     for (i, (_, expected, label)) in cases.iter().enumerate() {
-        // Mid-pane, away from the pane seams; every pixel in a pane covers an
-        // identical `STAR SKY SKY` group, so the column choice is arbitrary.
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
         assert_px(
             pixel,
@@ -558,41 +496,17 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
         measured.push(pixel[0]);
     }
 
-    // The ordering is the semantic claim, and it holds independently of the
-    // sRGB round-trip the tolerance above absorbs: one tap loses the star
-    // outright, the area average keeps a fraction of it, and the peak keeps
-    // the most.
     assert!(
         measured[0] < measured[1] && measured[1] < measured[2],
         "Single < Mean < Peak must hold, got {measured:?}",
     );
 }
 
-/// Taps are combined *premultiplied*, which is what makes both modes correct
-/// over alpha. Two panes, one claim each, on the same 3-texels-per-pixel
-/// geometry as the fixture above (taps read `0.75·T0 + 0.25·T1` and
-/// `0.25·T1 + 0.75·T2`; `T1` is fully clear in both sources, so each tap is
-/// just three-quarters of an outer texel).
+/// Taps combine *premultiplied*, so both modes are correct over alpha (geometry as above; `T1` clear, so each tap is three quarters of an outer texel).
 ///
-/// The texture holds premultiplied colour, so a tap is premultiplied
-/// before it is read — the whole point of `premultiply_into`, and what
-/// makes the coverage apply exactly once.
+/// **Mean.** `WHITE(α=128) CLEAR CLEAR`: the lit tap is full-strength white at 0.75 coverage; the mean is `0.75 · α / 2 = 0.1882` linear, **120** sRGB. Straight colour applies coverage twice: 105.
 ///
-/// **Mean — averaging.** Source `WHITE(α=128) CLEAR CLEAR`. The lit tap is
-/// `0.75 · α` over `0.75 · α`, so its colour is white at full strength and
-/// only its *coverage* is three quarters. The mean of the two taps is
-/// `0.75 · α / 2 = 0.1882` linear, which composites over black as itself →
-/// **120** sRGB. Filtering straight colour instead drags rgb to `0.75`
-/// before the coverage is applied, which multiplies it in twice and reads
-/// 105 — the fringe.
-///
-/// **Peak — ranking.** Source `WHITE(α=26) CLEAR GREY(α=255)`, chosen so the
-/// two orderings disagree: by straight luma the near-invisible white wins
-/// (0.75 vs 0.162), by premultiplied luma the solid grey does (0.121 vs
-/// 0.057). Grey is sRGB 128 = 0.21586 linear, so the winning tap is
-/// `0.75 · 0.21586 = 0.1619` over `a = 0.75`, and the composite is that
-/// same 0.1619 → **113** sRGB (picking the white would read 68, and
-/// applying the coverage twice reads 98).
+/// **Peak.** `WHITE(α=26) CLEAR GREY(α=255)`, where orderings disagree: straight luma picks the faint white (0.75 vs 0.162), premultiplied the grey (0.121 vs 0.057). Grey sRGB 128 = 0.21586 linear, tap `0.75 · 0.21586 = 0.1619`, **113** sRGB (white 68, double coverage 98).
 #[test]
 fn downsample_combines_taps_in_premultiplied_space() {
     const PANE: Vec2 = Vec2::new(8.0, 16.0);
@@ -665,23 +579,9 @@ fn downsample_combines_taps_in_premultiplied_space() {
     }
 }
 
-/// A magnified edge keeps its colour: the bilinear blend between an
-/// opaque texel and a transparent one carries the opaque colour at
-/// partial coverage, not a partial colour.
+/// A magnified edge keeps its colour: bilinear between opaque and transparent texels needs premultiplied storage, else soft edges darken.
 ///
-/// The plain path — one hardware tap, no footprint loop — is what an
-/// icon or a photo scaled up runs, and it is the sampler's own filter
-/// doing the blending. That filter reads whatever the texture holds, so
-/// the texture has to hold premultiplied colour or the blend darkens
-/// every soft edge.
-///
-/// Geometry: a two-texel image, `RED CLEAR`, filled across a 16 px pane.
-/// Texel centres sit at uv 0.25 and 0.75, and pixel 7 samples uv
-/// `7.5/16 = 0.46875` — `t = 0.4375` of the way between them. So the tap
-/// is `0.5625` of the red at `0.5625` coverage, which over black is
-/// `0.5625` linear → **199** sRGB. Filtering straight colour first
-/// gives the same 0.5625 red at 0.5625 alpha and then multiplies them,
-/// reading 153: the dark fringe.
+/// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centres 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight colour multiplies twice: 153.
 #[test]
 fn a_magnified_transparent_edge_keeps_its_colour() {
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
@@ -723,27 +623,13 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
     );
 }
 
-/// Taps wrap with the tile rather than clamping at its edge. A tap steps
-/// off the base UV by up to half the footprint, so a tiled draw's leave
-/// `[0,1)` on their own — and `tap` wraps each of its fetches, so they
-/// land in the neighbouring repeat rather than on the edge texel a clamp
-/// would smear across every seam.
+/// Taps wrap with the tile instead of clamping: a tap steps off the base UV by up to half the footprint, and `tap` wraps each fetch into the neighbouring repeat.
 ///
-/// **Geometry.** A 4×1 `STAR SKY SKY SKY` tile repeated 24× across an 8×16
-/// pane: 3 whole tiles per pixel, so `uv_dx = 3` and the footprint is 12
-/// texels — past the cap, so `n = 4` and no float wobble can move it. Every
-/// pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`), which is why one
-/// expected value covers the whole pane.
+/// **Geometry.** A 4x1 `STAR SKY SKY SKY` tile across an 8x16 pane: 3 tiles per pixel, `uv_dx = 3`, footprint 12 texels, `n = 4`. Every pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`).
 ///
-/// **Taps.** `n = 4` offsets by `±0.125` and `±0.375` of the derivative span,
-/// i.e. `±0.375` and `±1.125` tiles, so the four positions are
-/// `-0.625, 0.125, 0.875, 1.625` — two of them outside the tile.
-/// - Wrapped: `0.375, 0.125, 0.875, 0.625` → texel coords `1.5, 0.5, 3.5, 2.5`,
-///   which are the centres of texels 1, 0, 3, 2 → `SKY STAR SKY SKY`. Mean is
-///   `0.25` linear → **137** sRGB.
-/// - Clamped: `-0.625` and `1.625` pin to the outer texels → `STAR STAR SKY
-///   SKY`, mean `0.5` linear → 188. So the wrap is worth exactly one star in
-///   four here, and the assertion below separates the two by 51 sRGB steps.
+/// **Taps.** `n = 4` offsets `±0.375` and `±1.125` tiles: `-0.625, 0.125, 0.875, 1.625`.
+/// - Wrapped: `0.375, 0.125, 0.875, 0.625`, texel coords `1.5, 0.5, 3.5, 2.5`: `SKY STAR SKY SKY`, mean `0.25` linear, **137** sRGB.
+/// - Clamped: `STAR STAR SKY SKY`, mean `0.5`, 188; 51 steps apart.
 #[test]
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let mut h = Harness::new();
@@ -777,8 +663,6 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
         })
         .image;
 
-    // Every pixel is tile-aligned identically, so a single expected value
-    // covers the pane — and a seam that clamped would break exactly that.
     for x in 0..8 {
         let pixel = out.get_pixel(x, 8).0;
         assert_px(
@@ -792,22 +676,13 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
 
 const GREEN: [u8; 4] = [60, 200, 90, 255];
 
-/// Adjacent draws sharing a texture collapse into one instanced draw
-/// (`image_runs`). Composited output must be byte-identical to the
-/// one-draw-per-image walk that preceded it, so this paints a pattern
-/// carrying every case that distinguishes them and reads back the pane
-/// each instance landed in:
+/// Adjacent draws sharing a texture collapse into one instanced draw (`image_runs`), byte-identical to one draw per image:
 ///
-/// - `A A` — a leading run, the case that actually coalesces.
-/// - `B` then `A` — singletons, and `A`'s second appearance is a
-///   *non-adjacent* repeat that must stay its own run. Merging it would
-///   paint it before `B`.
-/// - `C C` — a trailing run, which pins that the last span closes at the
-///   batch end rather than one short.
+/// - `A A`: a leading run, the case that coalesces.
+/// - `B` then `A`: singletons; `A`'s second appearance is non-adjacent and must stay its own run, else it paints before `B`.
+/// - `C C`: a trailing run, pinning that the last span closes at the batch end.
 ///
-/// A drifting instance range shows up as a pane painting its neighbour's
-/// colour, and a dropped run as a pane left at the clear colour — both
-/// caught by the per-pane centre-pixel assertion.
+/// Read back per pane: a drifting range paints a neighbour's colour, a dropped run the clear colour.
 #[test]
 fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];

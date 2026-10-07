@@ -12,38 +12,25 @@ use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 
-/// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`]
-/// (`active` = pressed). The default `active` look equals `hovered` —
-/// a row's click auto-closes the menu, so a louder pressed state is
-/// opt-in.
+/// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`] (`active` = pressed).
+/// `active` defaults to `hovered`: a click closes the menu.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MenuItemTheme {
-    /// The four per-state looks. `flatten` keeps theme files flat
-    /// (`[context_menu.item.normal]`, not `[….item.looks.normal]`).
     #[serde(flatten)]
+    /// Four-state row look.
     pub looks: StatefulLook,
-    /// RgbaF32 for the right-aligned shortcut hint (e.g. "⌘C"). Pulled
-    /// off the row label color so the hint reads muted.
+    /// Shortcut hint colour.
     pub shortcut: RgbaF32,
-    /// Minimum gutter between the label and its right-aligned shortcut
-    /// hint. The row is `SpaceBetween`, so this is the floor the two
-    /// texts are held apart by while the menu hugs its widest row —
-    /// it is what stops "Copy ⌘C" from reading as one word.
+    /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
-    /// Spacing and transition spec — see [`SlotDefaults`]. `margin` is
-    /// `ZERO` by default: rows stack flush inside the menu's own padding
-    /// and [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) is
-    /// what opens a gutter between them.
+    /// Spacing and transition spec; `margin` is `ZERO` since [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) spaces rows.
     #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 
 impl MenuItemTheme {
-    /// `shortcut` is a bare `RgbaF32`, not a `TextStyle` — the hint is
-    /// painted at the row label's size. Destructured so a new field
-    /// fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             looks,
@@ -56,18 +43,8 @@ impl MenuItemTheme {
 
     /// Rows transparent at rest, one surface step brighter on hover.
     pub fn from_palette(p: &Palette) -> Self {
-        // Rows are transparent at rest; hover paints one surface-step
-        // brighter (`element_mid`) — same delta a menu-bar trigger uses
-        // (`ButtonTheme::menu_button`), so the bar and the popup that
-        // drops out of it feel like one continuous surface. `active`
-        // (pressed) keeps the hover look: the click auto-closes the
-        // menu, so a louder pressed state buys nothing by default.
-        //
-        // The chip radius stays under the panel's so it nests inside the
-        // corner rather than out-rounding it: at panel radius 4 with 4 px
-        // of container padding, the region a row can occupy has square
-        // corners, and anything rounder than the panel itself reads as a
-        // pill floating in a box.
+        // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::menu_button`; `active` keeps it
+        // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
         let hovered = WidgetLook {
             background: Background::rounded(p.element_mid, Corners::all(3.0)),
             text: TextStyleOverrides::NONE,
@@ -83,9 +60,6 @@ impl MenuItemTheme {
                 },
             },
             shortcut: p.text_muted,
-            // Reads against the container's 4 px: an 8 px row inset puts the
-            // label 12 px off the panel edge to 9 px off its top, the
-            // slightly-wider-than-tall gutter a column of labels wants.
             gap: 16.0,
             defaults: SlotDefaults {
                 padding: Spacing::xy(8.0, 5.0),
@@ -99,7 +73,6 @@ impl MenuItemTheme {
 impl ThemeSlot for MenuItemTheme {
     type Pick = ();
 
-    /// `active` = pressed.
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
         self.looks.pick(response, response.pressed())
     }

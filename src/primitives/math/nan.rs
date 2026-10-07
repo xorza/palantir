@@ -1,63 +1,21 @@
-//! Debug-only NaN screen for authoring inputs.
+//! NaN screen for authoring inputs.
 //!
-//! A NaN that reaches the paint pipeline is a caller bug, and a quiet
-//! one. It survives every arithmetic hop, poisons whatever bbox it lands
-//! in, and from there the cull rect, the damage region, and everything
-//! those union with — while the shader's `> 0.0` comparisons all read
-//! false and paint nothing. `f32::max` even launders it back to a finite
-//! number at some hops, so the corruption doesn't always reach a place
-//! that would look wrong. The frame comes out *missing*, not broken:
-//! nothing to see, nothing to bisect.
+//! A NaN reaching paint poisons bboxes, cull and damage, and the frame comes out missing rather than broken. [`NanCheck`] stops it at two gates, each where the inputs are still in hand:
 //!
-//! [`NanCheck`] is what stops it, at the two gates that decide it — one
-//! per path a paint input can arrive on, each placed where the inputs are
-//! still in hand and nothing has been staged yet:
 //!
-//! - **Shapes.** `Shapes::add` asks the *authored* shape, before
-//!   lowering, and refuses to record one that carries a NaN. Loud in
-//!   debug, quiet in release.
-//! - **Chrome.** `lower::background` asks the `Background`, and
-//!   sanitizes each field to what its NaN already meant rather than
-//!   dropping the row — a rounded-clip node keeps a chrome row even when
-//!   its paint is fully no-op, so dropping would leave the stencil mask
-//!   reading the NaN.
+//! - **Shapes.** `Shapes::add` refuses to record an authored shape carrying a NaN.
+//! - **Chrome.** `lower::background` sanitizes each `Background` field rather than dropping the row, which a rounded clip's stencil mask needs.
 //!
-//! Every impl is `O(1)`, which is what lets both gates run in release as
-//! well as debug — so a NaN is *dropped* in a shipped build, not just
-//! reported in a dev one. Bulk inputs (polyline points, mesh vertices)
-//! get there by having been folded into a `bbox` under the AABB NaN
-//! contract (see [`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)) — one
-//! `Rect` test stands in for scanning the data behind it.
-//!
-//! Scalar lanes bottom out in `f32::is_nan` directly; the trait starts
-//! at the composite types, which is where a caller has something worth
-//! naming.
+//! Impls are `O(1)`, so both gates run in release too. Bulk inputs (polyline points, mesh vertices) are covered by their `bbox` under the AABB NaN contract ([`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)).
 
 use glam::Vec2;
 
-/// True if any scalar the value carries is NaN. See the module doc for
-/// where this is checked.
-///
-/// A type whose `const` predicates also need the sweep — [`Shadow`],
-/// [`RgbaF32`], [`Rect`], [`Size`] — carries it as an inherent `const fn`
-/// and implements this trait by delegating there, so the field walk is
-/// written once.
-///
-/// [`Shadow`]: crate::primitives::paint::shadow::Shadow
-/// [`RgbaF32`]: crate::primitives::paint::color::RgbaF32
-/// [`Rect`]: crate::primitives::geometry::rect::Rect
-/// [`Size`]: crate::primitives::geometry::size::Size
+/// True if any scalar the value carries is NaN.
 pub(crate) trait NanCheck {
     fn has_nan(&self) -> bool;
 }
 
-/// [`NanCheck`] for a `Vec2`, callable from a `const fn`.
-///
-/// Exists because neither spelling works in a const context: `NanCheck`
-/// cannot be a const trait on stable, and glam's `Vec2::is_nan` is not
-/// `const` either. `f32::is_nan` *is*, so the const paint predicates
-/// (`Rect::is_paint_empty`, `Rect::from_min_max`, `Shadow::is_noop`)
-/// route through this rather than each open-coding the two lanes.
+/// [`NanCheck`] for a `Vec2`, callable from a `const fn` (`NanCheck` cannot be a const trait on stable).
 #[inline]
 pub(crate) const fn vec2_has_nan(v: Vec2) -> bool {
     v.x.is_nan() || v.y.is_nan()

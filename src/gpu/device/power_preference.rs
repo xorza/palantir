@@ -1,12 +1,6 @@
 //! Which adapter to open, when the machine offers more than one.
 
-/// Which GPU a device request prefers on a machine that has a choice.
-///
-/// Palantir's own word for the policy, so a caller states it without naming
-/// a graphics-API type. A hybrid laptop is the case it exists for: the
-/// integrated GPU draws a user interface without waking the discrete one,
-/// while a benchmark is worth little unless it runs on the adapter a person
-/// is looking at.
+/// Which GPU a device request prefers when the machine has a choice, so callers need no graphics-API type.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PowerPreference {
     /// Take whichever adapter the driver ranks first.

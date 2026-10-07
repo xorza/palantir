@@ -8,21 +8,11 @@ use crate::primitives::text::text_epoch::TextEpoch;
 use std::fmt;
 use std::fmt::Write as _;
 
-/// One window's record-pass text. A single arena cleared at the start of
-/// every pass, stamped with a fresh [`TextEpoch`] so a handle minted
-/// against an earlier one cannot be resolved by mistake.
-///
-/// One `String` and no interior cell: every writer reaches this arena
-/// through `&mut` [`RecordStore`], so a cell here bought nothing but a
-/// shared-outer / mutable-inner borrow pair on every intern.
+/// One window's record-pass text: an arena cleared every pass and stamped with a fresh [`TextEpoch`],
+/// so a stale handle cannot be resolved. One `String`, no interior cell: writers go through `&mut`
+/// [`RecordStore`]; no rotation or pool, as text is interned per frame per window (see [`InternedStr`]).
 ///
 /// [`RecordStore`]: crate::scene::record_store::RecordStore
-///
-/// There is no rotation and no pool. Both existed to keep an escaped
-/// handle's bytes alive across passes, which meant a retained handle
-/// pinned the whole frame's text and two retained passes minted a fresh
-/// arena every frame. Requiring text to be interned per frame per window
-/// removes the reason for either — see [`InternedStr`].
 #[derive(Debug)]
 pub(super) struct TextStore {
     bytes: String,
@@ -43,12 +33,7 @@ impl TextStore {
         &self.bytes
     }
 
-    /// Ready the arena for a new record pass: drop the previous pass's
-    /// bytes and take a fresh epoch, which is what retires every handle
-    /// minted against them.
-    ///
-    /// Capacity is retained, so a steady scene re-interns the same text
-    /// into the same allocation frame after frame.
+    /// Readies the arena for a new pass, dropping old bytes and retiring their handles via a fresh epoch.
     pub(super) fn clear(&mut self) {
         self.bytes.clear();
         self.epoch = TextEpoch::reserve();
@@ -67,17 +52,8 @@ impl TextStore {
         InternedStr::new(Span::new(start as u32, (end - start) as u32), self.epoch)
     }
 
-    /// **The one screen on a handle from outside this pass**, run by both
-    /// paths that accept one.
-    ///
-    /// A foreign epoch is caller error, not bad data: the bytes the span
-    /// addressed are gone, so resolving anyway records whatever text now
-    /// occupies those offsets — another widget's label under this
-    /// widget's identity, or a panic from `str` indexing mid-character
-    /// with a message that names neither. [`InternedStr`] and
-    /// [`crate::Ui::fmt`] both document a panic here, so it is one in
-    /// release too. The cost is a `u64` compare against a `memcpy` and a
-    /// hash, which is why the promise is affordable to keep.
+    /// Screens a handle from outside this pass. A foreign epoch is caller error (its bytes are gone), so it
+    /// panics even in release; a `u64` compare is cheap.
     fn assert_current(&self, text: InternedStr) {
         assert!(
             text.epoch == self.epoch,
@@ -86,22 +62,16 @@ impl TextStore {
         );
     }
 
-    /// Take a handle back as this pass's own — [`crate::Ui::intern`]'s
-    /// already-interned arm. Nothing is copied, so the epoch is the whole
-    /// of the work.
     pub(super) fn reuse(&self, text: InternedStr) -> InternedStr {
         self.assert_current(text);
         text
     }
 
-    /// The characters of a handle minted by this pass.
     pub(super) fn text(&self, text: InternedStr) -> &str {
         self.assert_current(text);
         &self.bytes[text.span.range()]
     }
 
-    /// Lower a handle minted by this pass. Zero-copy — the bytes are
-    /// already in place, so this is a bounds-checked slice and a hash.
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {
         self.assert_current(text);
         RecordedText::new(text.span, hash::hash_str(&self.bytes[text.span.range()]))

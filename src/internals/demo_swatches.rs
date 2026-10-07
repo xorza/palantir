@@ -1,23 +1,8 @@
-//! The categorical accent swatches the two bundled demo surfaces share:
-//! the benchmark fixture
-//! ([`FrameFixture`](crate::internals::frame_fixture::FrameFixture)) and
-//! the `showcase` example.
+//! The categorical accent swatches shared by the benchmark fixture ([`FrameFixture`](crate::internals::frame_fixture::FrameFixture)) and the `showcase` example.
 //!
-//! **Colours only, and that boundary is load-bearing.** A font size feeds
-//! measurement, so a shared `caption_style` would let a restyle of the
-//! showcase move every number the frame bench reports — silently, and in
-//! a way no diff of the fixture would explain. A colour cannot: nothing
-//! in measure or arrange reads one, so retheming is free. That asymmetry
-//! is the whole reason the sharing stops here, and why each surface keeps
-//! its own text styles, surface ladder, and scaffolding.
+//! **Colours only, and that boundary is load-bearing.** A font size feeds measurement, so a shared style would let a showcase restyle move every frame-bench number; no measure or arrange pass reads a colour. Each surface keeps its own text styles and scaffolding.
 //!
-//! Named for the ink rather than the job, because the two sites disagree
-//! about the job: the fixture reads them semantically (`WARN`, `OK`), the
-//! showcase categorically (`B`, `C`, "two distinct things"). Each aliases
-//! these under its own vocabulary — same ink, different words.
-//!
-//! Not part of the supported surface; it exists only because both demo
-//! surfaces ship in-tree.
+//! Named for the ink, not the job: the fixture reads them semantically (`WARN`, `OK`), the showcase categorically (`B`, `C`). Not part of the supported surface.
 
 use crate::primitives::paint::color::RgbaF32;
 

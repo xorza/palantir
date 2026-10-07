@@ -1,12 +1,9 @@
-//! What a progress bar wears: the track it runs along, and the fill
-//! that measures the fraction.
+//! What a progress bar wears: its track and the fill measuring the fraction.
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent
-/// `fill` spanning the value. The pill corner radius is
-/// `thickness / 2`.
+/// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent `fill` spanning the value; the pill radius is `thickness / 2`.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProgressBarTheme {
     /// Track color behind the fill.

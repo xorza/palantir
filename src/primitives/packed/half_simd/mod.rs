@@ -1,113 +1,49 @@
-//! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that
-//! `Spacing`, `Corners`, `RgbaF16`, `FillAxis`, and `LoweredShadow`
-//! wrap as their shared `[u16; 4]` lane-storage core.
+//! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that `Spacing`, `Corners`, `RgbaF16`, `FillAxis` and `LoweredShadow` wrap.
 //!
-//! Bypasses `half::slice::HalfFloatSliceExt::convert_{to,from}_f32_slice`,
-//! which gates every call on a runtime `is_x86_feature_detected!("f16c")`
-//! lookup + cross-crate (non-inlinable without LTO) call into an
-//! out-of-line SIMD wrapper. Both costs were visible at the top of the
-//! `frame` bench profile (~3.2% combined self-time + an absorbed ~3%
-//! attributed to the callers; net ~6% on `frame/cached`).
-//!
-//! The x86_64 path uses `_mm_cvtph_ps` / `_mm_cvtps_ph` directly under a
-//! `#[target_feature(enable = "f16c")]` unsafe inner, called from a safe
-//! wrapper. With static F16C (a `target-cpu=x86-64-v3` build) the wrapper
-//! compiles to a single instruction. On a baseline x86-64 build the
-//! wrapper branches on `is_x86_feature_detected!` (a cached-atomic load
-//! and bit test, predicted after the first call) and direct-calls the
-//! same local kernel — skipping `half`'s out-of-line slice scaffolding,
-//! which profiled at ~1.4% self plus the dispatch absorbed by callers.
-//! Pre-F16C x86 (pre-2012) walks the lanes through `half`'s scalar
-//! *kernel* — `f16::from_f32_const`, not `from_f32`, because the public
-//! converter re-runs its own F16C detection per lane and that question is
-//! already settled by the time the fallback is reached. The non-x86
-//! fallback goes through `half`'s slice path (`fcvtl` on aarch64-fp16),
-//! where the dispatch is the point.
+//! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. On x86_64 the F16C intrinsics run under a `#[target_feature]` unsafe inner; with static F16C the wrapper is one instruction, otherwise it branches on the cached detection. Pre-F16C x86 uses `half`'s scalar kernel (`from_f32_const`, since the detection is already settled). Other targets use `half`'s slice path.
 
 use crate::primitives::math::domain::EPS;
 use std::hash;
 
-/// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
-/// storage core behind `Corners`, `Spacing`, `FillAxis`, `RgbaF16`,
-/// and `LoweredShadow`'s geometry. Each wraps an `F16x4` for type
-/// safety and adds its own lane-naming + domain methods; `F16x4` owns
-/// the pack/unpack/hash/NaN idioms so they can't drift apart.
+/// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2): the shared storage core behind `Corners`, `Spacing`, `FillAxis`, `RgbaF16` and `LoweredShadow`'s geometry. It owns the pack/unpack/hash/NaN idioms; lane meaning is the wrapper's business.
 ///
-/// `Pod`/`Zeroable` with `repr(transparent)`, so a `repr(transparent)`
-/// wrapper of `F16x4` keeps the exact `[u16; 4]` GPU-wire layout. Lane
-/// *meaning* (order, units) is entirely the wrapper's business.
-///
-/// **A wrapper forwards what it has a caller for, and no more.** The three
-/// surfaces differ — only two forward `as_u64`, only `Corners` answers
-/// `is_approx_zero` or scales itself — and each gap is an absent caller
-/// rather than an oversight. Adding the missing side of one is a change
-/// to make when something asks.
+/// `Pod` with `repr(transparent)`, so wrappers keep the `[u16; 4]` GPU-wire layout. A wrapper forwards only what it has a caller for.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct F16x4([u16; 4]);
 
 impl F16x4 {
-    /// The crate's visual tolerance in this type's lane encoding, and the
-    /// mask and exponent the lane predicates classify against.
-    ///
-    /// Here rather than beside [`EPS`] itself, because the encoding is
-    /// this type's business: `domain` answers f32 questions, and a lane
-    /// pattern is not one.
+    /// The crate's visual tolerance as f16 bits, and the mask and exponent the lane predicates classify against. Lives here because a lane pattern is not an f32 question.
     const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
     const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
-    /// Clears the sign bit, so a lane compares by magnitude.
     const ABS_MASK: u16 = 0x7FFF;
-    /// f16 infinity. NaN is the only thing that sorts above it.
     const NAN_EXP: u16 = 0x7C00;
 
-    /// All-zero lanes (`0.0` in f16). Also the `Default`.
     pub(crate) const ZERO: Self = Self([0; 4]);
 
-    /// Every lane `1.0` in f16.
     pub(crate) const ONE: Self = Self([half::f16::ONE.to_bits(); 4]);
 
-    /// The largest finite lane value, 65504. Past it a lane packs to
-    /// infinity.
     pub(crate) const MAX_LANE: f32 = half::f16::MAX.to_f32_const();
 
-    /// One lane's f16 bit pattern — for predicates that test a single
-    /// lane (`RgbaF16`'s alpha) without unpacking all four to f32.
     #[inline(always)]
     pub(crate) const fn lane_bits(self, lane: usize) -> u16 {
         self.0[lane]
     }
 
-    /// Wrap four raw lane words. The lanes are f16 everywhere but one
-    /// place: a triangle quad stores its corner points in the same
-    /// storage as unorm16, which the shader decodes by `fill_kind`.
-    /// Tests build bit patterns with it too.
+    /// Wrap four raw lane words. Lanes are f16 except a triangle quad's corner points, which are unorm16 (decoded by `fill_kind`).
     #[inline(always)]
     pub(crate) const fn from_bits(bits: [u16; 4]) -> Self {
         Self(bits)
     }
 
-    /// Pack four runtime f32 lanes — single SIMD instruction on
-    /// F16C/fp16 targets, scalar fallback elsewhere.
     #[inline]
     pub(crate) fn from_lanes(lanes: [f32; 4]) -> Self {
         Self(f16x4_from_f32x4(lanes))
     }
 
-    /// True if any lane's **magnitude** exceeds the f16 bit pattern
-    /// `bits` (sign ignored). `bits` must be `<= 0x7FFF`.
+    /// True if any lane's magnitude exceeds the f16 bit pattern `bits` (sign ignored). `bits` must be `<= 0x7FFF`.
     ///
-    /// SWAR rather than four scalar compares: masking the sign bit caps
-    /// every lane at `0x7FFF`, so adding `0x7FFF - bits` can set a
-    /// lane's top bit but can never carry *out* of it — which is what
-    /// lets all four comparisons run as one masked add over the packed
-    /// `u64`. Measured ~5× the scalar form.
-    ///
-    /// Every four-lane magnitude predicate in the crate is this one
-    /// test: [`Self::has_nan`], [`Self::all_lanes_noop`], and the
-    /// single-lane [`Self::lane_is_noop`] / [`Self::lane_is_opaque`].
-    ///
-    /// Packing by shift instead of a cast keeps this `const` and
-    /// endian-independent; LLVM folds it back to a single 64-bit load.
+    /// SWAR: with the sign masked every lane is at most `0x7FFF`, so adding `0x7FFF - bits` can set a lane's top bit but never carries out of it, and all four compares run as one masked add. Packing by shift keeps it `const` and endian-independent.
     #[inline]
     pub(crate) const fn any_lane_above(self, bits: u16) -> bool {
         const ABS: u64 = 0x7FFF_7FFF_7FFF_7FFF;
@@ -120,8 +56,6 @@ impl F16x4 {
         ((packed & ABS) + bias) & SIGN != 0
     }
 
-    /// True if any lane is infinite or NaN: a magnitude past the largest
-    /// finite f16.
     #[inline]
     pub(crate) const fn any_lane_non_finite(self) -> bool {
         self.any_lane_above(Self::NAN_EXP - 1)
@@ -141,83 +75,48 @@ impl F16x4 {
         false
     }
 
-    /// True if any lane is NaN.
-    ///
-    /// `0x7C00` is f16 infinity and NaN is the only thing whose
-    /// magnitude sorts above it, so the NaN test *is*
-    /// [`Self::any_lane_above`] at that threshold — one masked add for
-    /// all four lanes, no per-lane branch.
+    /// True if any lane is NaN: [`Self::any_lane_above`] at infinity.
     #[inline]
     pub(crate) const fn has_nan(self) -> bool {
         self.any_lane_above(Self::NAN_EXP)
     }
 
-    /// True when every lane is within [`EPS`] of zero.
-    ///
-    /// "Every lane within `EPS`" is the negation of "some lane above
-    /// it", which is [`Self::any_lane_above`] at the `EPS` pattern. NaN
-    /// sorts above `EPS` and so reports non-zero — deliberate: a caller
-    /// gating a fast path on this must not take it on an undefined lane.
+    /// True when every lane is within [`EPS`] of zero. NaN reports non-zero, so a fast path gated on this is never taken on an undefined lane.
     #[inline]
     pub(crate) const fn all_lanes_noop(self) -> bool {
         !self.any_lane_above(Self::EPS_BITS)
     }
 
-    /// True when `lane` is within [`EPS`] of zero — the single-lane form
-    /// of [`Self::all_lanes_noop`].
-    ///
-    /// Masks the sign bit and compares against the `EPS` pattern
-    /// directly, with no f16 → f32 conversion: positive f16 values are
-    /// monotonic in their bit representation, which is what lets a
-    /// magnitude question be answered as an integer compare. NaN's
-    /// exponent lands at `NAN_EXP` or above, well past the threshold, so
-    /// NaN classifies as non-zero — a loud programming bug rather than a
-    /// silent skip.
+    /// True when `lane` is within [`EPS`] of zero. Compares bit patterns directly, since positive f16 values are monotonic in their bits; NaN lands above the threshold and reads as non-zero.
     #[inline]
     pub(crate) const fn lane_is_noop(self, lane: usize) -> bool {
         self.lane_bits(lane) & Self::ABS_MASK <= Self::EPS_BITS
     }
 
-    /// True when `lane` is within [`EPS`] of 1.0 — [`Self::lane_is_noop`]
-    /// at the opaque end of the scale.
-    ///
-    /// The upper bound rejects NaN for the reason
-    /// [`Self::lane_is_noop`] gives. A negative lane carries the sign bit
-    /// and so sorts above `NAN_EXP` too, which rejects it as well.
+    /// True when `lane` is within [`EPS`] of 1.0. The upper bound rejects NaN, and a negative lane's sign bit puts it above `NAN_EXP`, rejecting it too.
     #[inline]
     pub(crate) const fn lane_is_opaque(self, lane: usize) -> bool {
         let bits = self.lane_bits(lane);
         bits >= Self::ONE_MINUS_EPS_BITS && bits < Self::NAN_EXP
     }
 
-    /// Unpack all four lanes to f32 at once via the batched slice path.
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
         f16x4_to_f32x4(self.0)
     }
 
-    /// Per-lane f32 multiply, re-quantized through the f16 round-trip.
+    /// Per-lane f32 multiply, re-quantized through f16.
     ///
-    /// Fused rather than `from_lanes(lanes().map(*k))`: that spelling
-    /// bounces the values through two `[f32; 4]` arrays and LLVM does not
-    /// weld the halves back into one register chain. Bit-identical
-    /// output, and `bench::scaled` holds the margin at **1.3x**.
-    ///
-    /// The margin is the array round-trip alone, because this workspace
-    /// sets `+f16c` and the feature check is static. A
-    /// runtime-dispatched build pays that check twice in the composed
-    /// form and measures closer to 2.3x.
+    /// Fused because `from_lanes(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
     #[inline]
     pub(crate) fn scaled(self, k: f32) -> Self {
         Self(f16x4_scaled(self.0, k))
     }
 
-    /// The 8 storage bytes as one `u64` — lets wrappers hash with a
-    /// single hasher write instead of four `write_u16`s.
+    /// The 8 storage bytes as one `u64`, for a single hasher write.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
-        // The four lanes' native bytes in lane order: what a `bytemuck`
-        // cast of the `[u16; 4]` reads, spelled so it can be `const`.
+        // Native bytes in lane order, as a `bytemuck` cast would read them, but `const`.
         let [a, b, c, d] = self.0;
         let [a, b, c, d] = [
             a.to_ne_bytes(),
@@ -230,47 +129,35 @@ impl F16x4 {
 }
 
 impl hash::Hash for F16x4 {
-    /// One `u64` write — wrappers `#[derive(Hash)]` and delegate here.
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.as_u64());
     }
 }
 
-/// The scalar encode every x86 fallback below shares.
-///
-/// `from_f32_const`, **not** `from_f32`: `half`'s public converter runs
-/// its own `is_x86_feature_detected!("f16c")` per lane, and every caller
-/// of this has just answered that question — no. Going through it would
-/// re-ask four times and route each lane through an out-of-line
-/// dispatching call, on the one configuration that can least afford it.
-/// `from_f32_const` is the fallback kernel directly.
+/// The scalar encode every x86 fallback shares. `from_f32_const`, not `from_f32`: the public converter re-runs F16C detection per lane, which callers have already settled.
 #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
 #[inline]
 fn f16x4_from_f32x4_scalar(src: [f32; 4]) -> [u16; 4] {
     src.map(|v| half::f16::from_f32_const(v).to_bits())
 }
 
-/// [`f16x4_from_f32x4_scalar`]'s decode direction, same reasoning.
 #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
 #[inline]
 fn f16x4_to_f32x4_scalar(bits: [u16; 4]) -> [f32; 4] {
     bits.map(|b| half::f16::from_bits(b).to_f32_const())
 }
 
-/// Decode four packed f16 bit-patterns to f32 lanes.
 #[inline]
 pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
-        // SAFETY: the `target_feature = "f16c"` cfg above is the
-        // compile-time guarantee `_mm_cvtph_ps` requires.
+        // SAFETY: the static `f16c` cfg guarantees `_mm_cvtph_ps`.
         unsafe { f16x4_to_f32x4_f16c(bits) }
     }
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // SAFETY: the branch is the runtime guarantee `_mm_cvtph_ps`
-        // requires; `is_x86_feature_detected!` is a cached-atomic load.
+        // SAFETY: the runtime detection guarantees `_mm_cvtph_ps`.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_to_f32x4_f16c(bits) };
         }
@@ -287,7 +174,6 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     }
 }
 
-/// Encode four f32 lanes to packed f16 bit-patterns (round-to-nearest-even).
 #[inline]
 pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
@@ -312,8 +198,7 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     }
 }
 
-/// Decode, scale, and re-encode in one pass — see [`F16x4::scaled`] for
-/// why this is fused rather than composed from the two converters.
+/// Decode, scale and re-encode in one pass; see [`F16x4::scaled`].
 #[inline]
 pub(crate) fn f16x4_scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
@@ -323,11 +208,7 @@ pub(crate) fn f16x4_scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
     }
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // SAFETY: see the runtime branch in `f16x4_to_f32x4`. One
-        // detect here rather than one per converter — which is also why
-        // the fallback goes straight to the scalar pair instead of back
-        // through `f16x4_from_f32x4(f16x4_to_f32x4(..))`, where each
-        // converter would re-run the detect this branch already settled.
+        // SAFETY: see the runtime branch in `f16x4_to_f32x4`. One detect covers both conversions, so the fallback goes straight to the scalar pair.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_scaled_f16c(bits, k) };
         }
@@ -347,10 +228,7 @@ unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
         _MM_FROUND_TO_NEAREST_INT, _mm_cvtph_ps, _mm_cvtps_ph, _mm_loadl_epi64, _mm_mul_ps,
         _mm_set1_ps, _mm_storel_epi64,
     };
-    // SAFETY: the loads/stores are the same 8 B and 16 B accesses
-    // `f16x4_to_f32x4_f16c` / `f16x4_from_f32x4_f16c` make; the multiply
-    // stays in the register between them. F16C presence enforced by
-    // `#[target_feature]`.
+    // SAFETY: same accesses as the `_f16c` converters.
     unsafe {
         let lanes = _mm_cvtph_ps(_mm_loadl_epi64(bits.as_ptr().cast()));
         let packed = _mm_cvtps_ph::<_MM_FROUND_TO_NEAREST_INT>(_mm_mul_ps(lanes, _mm_set1_ps(k)));
@@ -365,9 +243,7 @@ unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
 #[target_feature(enable = "f16c")]
 unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
     use std::arch::x86_64::{_mm_cvtph_ps, _mm_loadl_epi64};
-    // SAFETY: 4×u16 = 8 B fits in the low half of an __m128i; `_mm_loadl_epi64`
-    // reads 8 B from the pointer, `_mm_cvtph_ps` converts the low 4 f16 lanes
-    // to 4 f32 lanes. F16C feature presence enforced by `#[target_feature]`.
+    // SAFETY: 8 B load; `#[target_feature]` enforces F16C.
     unsafe {
         let v = _mm_loadl_epi64(bits.as_ptr().cast());
         let f = _mm_cvtph_ps(v);
@@ -382,9 +258,7 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
     use std::arch::x86_64::{
         _MM_FROUND_TO_NEAREST_INT, _mm_cvtps_ph, _mm_loadu_ps, _mm_storel_epi64,
     };
-    // SAFETY: `_mm_loadu_ps` reads 16 B from `src`'s storage (matches the
-    // array layout). `_mm_cvtps_ph` packs to 4×f16 in the low 8 B of the
-    // result. `_mm_storel_epi64` writes those 8 B to `out`'s 4×u16 = 8 B.
+    // SAFETY: 16 B load, 8 B store; matching array layouts.
     unsafe {
         let v = _mm_loadu_ps(src.as_ptr());
         let h = _mm_cvtps_ph::<{ _MM_FROUND_TO_NEAREST_INT }>(v);

@@ -8,12 +8,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::drag_value::DragValue;
 
-/// Drive one frame of a `DragValue` through a commit-deferring caller:
-/// the draft re-seeds from `canonical` every record pass and is adopted
-/// only on `committed` — the undo-aware consumption pattern the commit
-/// signal exists for. One snapshot per record pass: the edges show in
-/// pass A, and a commit must fire in exactly one pass or a per-pass
-/// consumer (an undo pusher) double-applies.
+/// Drive one frame of a `DragValue` through a commit-deferring caller: the draft re-seeds from `canonical` every record pass and is adopted only on `committed` (the undo-aware pattern). One snapshot per record pass: edges show in pass A, and a commit must fire in exactly one pass or a per-pass consumer double-applies.
 pub(super) fn deferred_frame(
     h: &mut UiHarness,
     id: WidgetId,

@@ -1,9 +1,4 @@
-//! Tab and dock fixtures: the chip row's chrome, and the pane tree the
-//! dock walks it onto.
-//!
-//! Both scenes are bare `fn`s over state the `Ui` holds, which is how a
-//! real application would host one page's state, so the fixture is not
-//! bending the widget to be photographable.
+//! Tab and dock fixtures: the chip row's chrome, and the pane tree the dock walks it onto.
 
 use glam::UVec2;
 use palantir::internals::frame_fixture::dock_fixture::DockFixture;
@@ -15,8 +10,7 @@ use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
-/// A strip on its own: one selected chip wearing the accent cap, one
-/// carrying an inked badge, and a close button on every one.
+/// A strip alone: a selected accent-capped chip, an inked badge, close buttons.
 #[test]
 fn tab_strip_matches_golden() {
     fn scene(ui: &mut Ui) {
@@ -43,8 +37,7 @@ fn tab_strip_matches_golden() {
     assert_matches_golden(GoldenName::TabStrip, &img);
 }
 
-/// A tabbed view: the same strip over a content area, so the selected
-/// chip's bottom edge is seen dissolving into the page below it.
+/// A tabbed view: the selected chip's bottom edge dissolves into the page below.
 #[test]
 fn tabbed_view_matches_golden() {
     fn scene(ui: &mut Ui) {
@@ -73,8 +66,7 @@ fn tabbed_view_matches_golden() {
     assert_matches_golden(GoldenName::TabbedView, &img);
 }
 
-/// Three panes: the divider chrome, one strip per pane, and the dimmed
-/// cap that marks the two panes not holding focus.
+/// Three panes: divider chrome, a strip per pane, and the dimmed cap on the two unfocused panes.
 #[test]
 fn dock_split_panes_matches_golden() {
     fn scene(ui: &mut Ui) {

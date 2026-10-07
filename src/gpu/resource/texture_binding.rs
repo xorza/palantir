@@ -1,25 +1,12 @@
-//! [`TextureBinding`] — the one texture-plus-sampler group every palantir
-//! shader that samples a texture binds.
+//! [`TextureBinding`]: the texture-plus-sampler group every texture-sampling shader binds.
 
-/// The group-0 layout every sampled texture binds through, and the sampler
-/// it pairs with: the gradient LUT atlas, the registered images, the
-/// `GpuView` targets, and the backbuffer when it is drawn onto a target
-/// that takes no copy.
+/// The group-0 layout every sampled texture binds through, with its sampler: gradient LUT atlas, registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target.
 ///
-/// Built once by the backend. `Clone` hands out `wgpu`'s own
-/// reference-counted handles, so every holder shares one layout and one
-/// sampler, and every pipeline that samples one of these textures composes
-/// over that same layout — a group built for one binds in any of them.
+/// Built once by the backend. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
 #[derive(Clone, Debug)]
 pub(crate) struct TextureBinding {
     layout: wgpu::BindGroupLayout,
-    /// Linear within a mip and nearest between them, clamped on all three
-    /// axes. Clamping is safe for every user because none hands the sampler
-    /// a coordinate outside `0..1`: the gradient shader applies
-    /// [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t`
-    /// before the sample, and the image shader `fract`s its uv under
-    /// `FLAG_TILED`. Nearest image filtering is a shader-side snap to the
-    /// texel centre, so every filter combination rides this one sampler.
+    /// Linear within a mip, nearest between, clamped on all axes. Safe because no user passes a coordinate outside `0..1`: the gradient shader applies [`Spread`](crate::primitives::paint::brush::gradient::Spread) to `t` first and the image shader `fract`s uv under `FLAG_TILED`. Nearest image filtering is a shader-side snap, so all filters ride this sampler.
     sampler: wgpu::Sampler,
 }
 
@@ -50,13 +37,7 @@ impl TextureBinding {
         Self { layout, sampler }
     }
 
-    /// One fragment-visible, filterable 2D float texture entry — the only
-    /// texture shape any palantir shader declares.
-    ///
-    /// Shared beyond this layout because the raster atlases bind two such
-    /// textures and no sampler, so their layout is their own; sharing the
-    /// entry is what keeps a `filterable` or `view_dimension` change from
-    /// reaching one layout and not the other.
+    /// One fragment-visible, filterable 2D float texture entry, the only texture shape any shader declares. Shared because the raster atlases (two textures, no sampler) have their own layout, and sharing the entry keeps `filterable` / `view_dimension` changes in step.
     pub(crate) const fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
@@ -74,7 +55,7 @@ impl TextureBinding {
         &self.layout
     }
 
-    /// The group that binds `view` through this layout and sampler.
+    /// The group binding `view` through this layout and sampler.
     pub(crate) fn bind_group(
         &self,
         device: &wgpu::Device,

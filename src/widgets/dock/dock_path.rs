@@ -2,16 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A split's address: the turns taken from the root, packed into one
-/// byte — a leading sentinel bit, then one bit per level (`0` = first
-/// child, `1` = second). The root split is the bare sentinel. One `Copy`
-/// byte instead of a `Vec<bool>`, with capacity for 7 levels, which
-/// [`DockState::with_max_depth`](crate::DockState::with_max_depth) keeps real
-/// trees well inside.
-///
-/// Like any address into the tree it is only stable between structural
-/// changes; a stale path that no longer lands on a split is ignored by
-/// the operation it feeds.
+/// A split's address: the turns from the root packed into one `Copy` byte, a leading sentinel bit then one bit per level (`0` first child, `1` second). The root is the bare sentinel. Capacity is 7 levels, beyond what [`DockState::with_max_depth`](crate::DockState::with_max_depth) allows. Stable only between structural changes; a stale path that no longer lands on a split is ignored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[must_use]
 pub struct DockPath(u8);
@@ -41,15 +32,12 @@ impl DockPath {
         DockPath((self.0 << 1) | u8::from(second))
     }
 
-    /// Whether the byte carries no sentinel bit — a corrupt address
-    /// rather than the root, reachable only through serde.
+    /// Whether the byte carries no sentinel bit: a corrupt address, reachable only through serde.
     pub(crate) const fn is_corrupt(self) -> bool {
         self.0 == 0
     }
 
-    /// Turns from the root, in root-to-leaf order. Saturating, so the
-    /// invalid sentinel-less `0` byte yields no turns instead of
-    /// underflowing.
+    /// Turns from the root, root-to-leaf. Saturating, so the invalid sentinel-less `0` yields no turns instead of underflowing.
     pub(crate) fn directions(self) -> impl Iterator<Item = bool> {
         let depth = Self::CAPACITY.saturating_sub(self.0.leading_zeros());
         (0..depth).rev().map(move |i| (self.0 >> i) & 1 == 1)

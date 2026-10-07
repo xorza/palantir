@@ -12,17 +12,14 @@ pub(super) fn theme() -> ScrollbarTheme {
     ScrollbarTheme::default()
 }
 
-/// Build a scroll over two frames so the second frame's record
-/// settles `ScrollState` before the bar-emit check.
+/// Build a scroll over two frames so the second settles `ScrollState`.
 pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> UiHarness {
     let mut h = UiHarness::new(surface);
     h.prime(2, build);
     h
 }
 
-/// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs
-/// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
-/// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
+/// Thumb rects (outer-local) for `scroll_key`: `Sense::DRAG` leaves under an overlay Canvas; 0–2 rects, vertical then horizontal.
 pub(super) fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
     let layout = ui.layout(Layer::Main);
     let outer_id = WidgetId::from_hash(scroll_key);
@@ -34,11 +31,7 @@ pub(super) fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
     for tag in ["vthumb", "hthumb"] {
         if let Some(thumb) = node(scroll_id.with(tag)) {
             let r = layout.rect[thumb.idx()];
-            // Both thumbs are recorded every frame — `layout::drivers::scrollbars`
-            // collapses the ones with nothing to show to zero extent
-            // rather than dropping them, so their ids and state rows
-            // survive an overflow toggle. A collapsed thumb is not a
-            // thumb, so it must not reach an assertion about placement.
+            // Both thumbs are recorded every frame; collapsed ones (zero extent) mustn't reach a placement assertion.
             if r.size.w <= 0.0 || r.size.h <= 0.0 {
                 continue;
             }

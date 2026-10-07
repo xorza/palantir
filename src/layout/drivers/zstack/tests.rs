@@ -63,9 +63,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
     assert_eq!(b.min.y, 8.0);
 }
 
-/// 100×100 ZStack under a 200×200 surface. Children's offsets relative
-/// to the panel's top-left depend on `(parent_child_align, child_align)`:
-/// per-axis resolution = child override else parent default else Start.
+/// A 100×100 ZStack under a 200×200 surface: child offsets resolve per axis as child override, else parent default, else Start.
 #[test]
 fn zstack_per_axis_alignment() {
     type Case = (
@@ -155,9 +153,7 @@ fn zstack_fill_child_stretches_to_inner() {
 
 #[test]
 fn hug_zstack_with_only_fill_children_collapses_to_zero() {
-    // A Fill child reports its content at measure, whatever extent it is
-    // offered, and a Block has none — so a Hug ZStack has no content to
-    // grow to, though it offers its children the full 200 px.
+    // A Fill child reports its content at measure whatever it is offered and a Block has none, so a Hug ZStack has nothing to grow to.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     let panel = h.under_outer(|ui| {
         Panel::zstack()

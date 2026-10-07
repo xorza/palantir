@@ -1,6 +1,5 @@
-//! The layout walk: [`LayoutEngine`], the scratch it carries between frames,
-//! and the snapshot check that decides whether last frame's measurements
-//! still describe this frame's forest.
+//! The layout walk: [`LayoutEngine`], its between-frame scratch, and the
+//! snapshot check deciding whether last frame's measurements still apply.
 
 use crate::common::tracy;
 use crate::layout::Layout;
@@ -27,18 +26,16 @@ use crate::text::system::TextSystem;
 
 /// Persistent layout engine. Field groups by lifetime:
 ///
-/// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
-///   Reset per layer by `LayoutScratch::resize_for`.
-/// - `text` — per-window text shaping and reuse slots.
-/// - `cache` — cross-frame measure cache. See [`crate::layout::cache`].
-/// - `last_roots` — how the last run laid each root out, which with the
+/// - `scratch`: per-frame state (see [`LayoutScratch`]), reset per layer by
+///   `LayoutScratch::resize_for`.
+/// - `text`: per-window text shaping and reuse slots.
+/// - `cache`: cross-frame measure cache, see [`crate::layout::cache`].
+/// - `last_roots`: how the last run laid each root out, which with the
 ///   snapshot decides whether its output is this run's.
 ///
-/// Per-frame *output* is **not** held here: `run` threads it through an
-/// `out: &mut Layout`, so the finalized layout is owned by the caller
-/// and read by the encoder, cascade, hit-index, scroll-state refresh,
-/// and tests. Recursive work receives only the current [`LayerLayout`](crate::layout::layer_layout::LayerLayout)
-/// slot.
+/// Per-frame output is not held here: `run` threads it through an
+/// `out: &mut Layout` owned by the caller. Recursive work receives only the
+/// current [`LayerLayout`](crate::layout::layer_layout::LayerLayout) slot.
 #[derive(Debug)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
@@ -47,10 +44,9 @@ pub(crate) struct LayoutEngine {
     last_roots: Vec<RootRun>,
 }
 
-/// One root as a run laid it out: its layer, the exact extent it was
-/// measured against, and the slot it was arranged into — outside its
-/// margin, where the root's own rect is inside it. Kept in paint order,
-/// one per root.
+/// One root as a run laid it out: its layer, the exact extent it was measured
+/// against, and the slot it was arranged into (outside its margin). Kept in
+/// paint order.
 #[derive(Clone, Copy, Debug)]
 struct RootRun {
     layer: Layer,
@@ -68,19 +64,14 @@ impl LayoutEngine {
         }
     }
 
-    /// Whether the last run's output is what this run would write, so
-    /// `out` stands as it is.
+    /// Whether the last run's output is what this run would write, so `out`
+    /// stands as it is.
     ///
-    /// The snapshot match proves every root's subtree is the one the
-    /// last run laid out, as far as layout reads it: every run after the
-    /// capture restores from it, and a run with a different subtree
-    /// recaptures. What the snapshot keeps only quantized, each root's
-    /// offer, is compared exactly here, with its layer. An equal subtree
-    /// under an equal offer arranges to the slot size the last run did,
-    /// so the origin this run would place it at is the one its placement
-    /// resolves against that size, and the slot holds only if that is
-    /// where the last run put it. Equal inputs give an equal run: every
-    /// step of it is a function of them.
+    /// The snapshot match proves each root's subtree is the one last laid out.
+    /// The offer, which the snapshot keeps only quantized, is compared exactly
+    /// here with the layer. Equal subtree and offer arrange to the same slot
+    /// size, so the slot holds iff the origin placement resolves to is where
+    /// the last run put it. Equal inputs give an equal run.
     fn keeps_last_run(&self, forest: &Forest, surface: Rect) -> bool {
         let mut last = self.last_roots.iter();
         for (layer, tree) in forest.trees.iter_paint_order() {
@@ -99,23 +90,19 @@ impl LayoutEngine {
         last.next().is_none()
     }
 
-    /// Grid's per-track intrinsic aggregator — a bump stack `Grid::intrinsic`
-    /// extends, recurses through, and truncates back. Reached by name for
-    /// the same reason [`LayoutPass`]'s accessors exist; the intrinsic
-    /// query itself stays off the pass, so it asks the engine directly.
+    /// Grid's per-track intrinsic aggregator: a bump stack `Grid::intrinsic`
+    /// extends, recurses through and truncates back. Reached by name like
+    /// [`LayoutPass`]'s accessors; the intrinsic query stays off the pass.
     #[inline]
     pub(super) const fn grid_track_aggregator(&mut self) -> &mut Vec<f32> {
         &mut self.scratch.grid.track_aggregator
     }
 
-    /// Cross-frame intrinsic for one `(node, axis, req)` slot, or `None`
-    /// when the node is ineligible or the snapshot has no value.
-    ///
-    /// Only non-leaf nodes are cacheable: a leaf's intrinsic is cheap to
-    /// recompute and it owns no descriptor. Intrinsics are independent of
-    /// the parent's `available`, so this checks `subtree_hash` alone and
-    /// hits even on a resize frame where `try_lookup` misses on
-    /// `available_q`.
+    /// Cross-frame intrinsic for one `(node, axis, req)` slot, or `None` when
+    /// the node is ineligible or the snapshot has no value. Only non-leaf nodes
+    /// are cacheable (a leaf's is cheap and owns no descriptor). Intrinsics are
+    /// independent of `available`, so this checks `subtree_hash` alone and hits
+    /// even on a resize frame where `try_lookup` misses.
     #[inline]
     fn cached_intrinsic(&self, tree: &Tree, idx: usize, slot: usize) -> Option<f32> {
         if LayoutMode::from(tree.records.layout()[idx].meta) == LayoutMode::Leaf {
@@ -128,23 +115,20 @@ impl LayoutEngine {
         )
     }
 
-    /// On-demand intrinsic-size query — outer (margin-inclusive) size on
-    /// `axis` for the halves `query` asks for.
+    /// On-demand intrinsic-size query: outer (margin-inclusive) size on `axis`
+    /// for the halves `query` asks for.
     ///
-    /// Pure function of the subtree at `node`: independent of the
-    /// parent's available width and of the arranged rect. Three layers
-    /// answer it, cheapest first — the intra-frame slot array, last
-    /// frame's snapshot, then a real subtree walk — and only the halves
-    /// still missing after the first two reach the walk, so a range query
-    /// whose min is already cached costs a max-only recursion.
+    /// A pure function of the subtree at `node`, independent of the parent's
+    /// available width and the arranged rect. Three layers answer, cheapest
+    /// first: the intra-frame slot array, last frame's snapshot, then a real
+    /// subtree walk. Only halves still missing reach the walk.
     ///
     /// A walk that also covered the other axis (see
     /// [`IntrinsicWalk`](crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk))
-    /// gets recorded there too, which is what keeps `measure`'s pair of
-    /// min-content queries down to one pass over a leaf's text runs.
+    /// is recorded there too, keeping `measure`'s pair of min-content queries
+    /// to one pass over a leaf's text runs.
     ///
-    /// Consumed by `Grid::measure` (Phase 1 column resolution) and
-    /// `Stack::measure` (Fill min-content floor) via the thin
+    /// Consumed by `Grid::measure` and `Stack::measure` via the thin
     /// [`Self::intrinsic`] / [`Self::intrinsic_range`] wrappers.
     pub(super) fn intrinsic_query(
         &mut self,
@@ -163,16 +147,11 @@ impl LayoutEngine {
                 *slot = cached;
                 continue;
             }
-            // Cross-frame reuse: an unchanged subtree's intrinsic is still
-            // valid from last frame's measure-cache snapshot. Intrinsic is
-            // `available`-independent, so this hits even on a resize frame
-            // where the desired-cache (`try_lookup`) misses on
-            // `available_q`. Crucially it fires at the *query* site: a
-            // parent computes its `intrinsic_min` (which queries children)
-            // before measuring those children, so the children's own
-            // cache-hit restore comes too late — only a lookup here stops
-            // the ancestor cold-recursing through every unchanged sibling
-            // subtree.
+            // Cross-frame reuse from last frame's snapshot, which hits even
+            // on a resize frame. It fires at the query site because a parent
+            // computes `intrinsic_min` before measuring its children, so their
+            // own cache-hit restore comes too late to stop the ancestor
+            // recursing through every unchanged sibling subtree.
             if let Some(value) = self.cached_intrinsic(tree, idx, req.slot(axis)) {
                 self.scratch.intrinsics[idx][req.slot(axis)] = value;
                 *slot = value;
@@ -199,8 +178,7 @@ impl LayoutEngine {
         range
     }
 
-    /// Store the halves `query` names of `found` in this frame's slot
-    /// array, for node `idx` on `axis`.
+    /// Store the halves `query` names of `found` in this frame's slot array.
     #[inline]
     fn record_intrinsic(
         &mut self,
@@ -228,8 +206,7 @@ impl LayoutEngine {
             .get(req)
     }
 
-    /// Both halves — what Grid's Hug tracks want, since a track needs the
-    /// content range rather than either end of it.
+    /// Both halves, as Grid's Hug tracks need the content range.
     #[inline]
     pub(super) fn intrinsic_range(
         &mut self,
@@ -241,9 +218,8 @@ impl LayoutEngine {
         self.intrinsic_query(tree, node, axis, IntrinsicQuery::range(), interned_text)
     }
 
-    /// Run measure + arrange for every root in every layer's tree
-    /// against `surface` (the viewport rect). Iterates trees in
-    /// `Layer::PAINT_ORDER`; each tree's recursive work receives a
+    /// Run measure and arrange for every root in every layer's tree against
+    /// `surface`, in `Layer::PAINT_ORDER`; each tree's recursive work gets a
     /// [`LayoutPass`] bound to that layer's output slot.
     pub(crate) fn run(
         &mut self,
@@ -257,13 +233,11 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        // Once per run, not per layer: `resize_for` runs inside the layer
-        // loop and would wipe an earlier layer's counts.
+        // Once per run: `resize_for` runs inside the layer loop and would wipe earlier counts.
         self.scratch.counters.begin_pass();
         // Before the snapshot check, which cannot see what this answers:
-        // the two caches a font load invalidates are the reuse rows and
-        // the snapshot, and `TextSystem::sync_fonts` drops the first and
-        // reports the frame the second has to go on.
+        // `TextSystem::sync_fonts` drops the reuse rows and reports the frame
+        // the snapshot must go on.
         if self.text.sync_fonts() {
             self.cache.forget_all();
         }
@@ -289,12 +263,9 @@ impl LayoutEngine {
                 let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
                 let root = slot.first_node;
                 let available = slot.available(layer, surface);
-                // Two of the five passes, and the only ones a Tracy
-                // capture couldn't tell apart — `PhaseSpan` already
-                // splits them for the debug overlay, so the zones go
-                // on the same boundaries rather than inventing new
-                // ones. Per root, not per node: bounded by layer
-                // count, so the zone budget stays flat.
+                // Two of the five passes that a Tracy capture couldn't tell
+                // apart; zones follow `PhaseSpan`'s boundaries. Per root, so
+                // the zone budget stays flat.
                 let measure_span = PhaseSpan::start();
                 let measured = {
                     tracy::zone!("Layout::measure");
@@ -308,8 +279,7 @@ impl LayoutEngine {
                     Placed::of(measured.size, measured.floor),
                     available,
                 );
-                // Overlay policies need the current measured body, not a
-                // response rect retained from an earlier frame.
+                // Overlay policies need the current measured body, not a retained response rect.
                 let arranged = Rect {
                     min: slot.origin(layer, size, surface),
                     size,
@@ -346,17 +316,14 @@ impl LayoutEngine {
                 );
             }
             self.scratch.counters.add_capture(capture_span);
-            // Container text is paint-only; its wrap width exists only
-            // after arrange, so it gets its own pass over the owners the
-            // rollup already identified.
+            // Container text is paint-only and its wrap width exists only after
+            // arrange, so it gets its own pass over the identified owners.
             let layouts = tree.records.layout();
             let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
             for index in tree.container_text.ones() {
                 let layout = layouts[index];
                 let node = NodeId(index as u32);
-                // The same inner box `arrange` places children in, so a
-                // container's own run wraps at the width its children
-                // were given.
+                // The inner box `arrange` places children in.
                 let available_w = layout.inner_rect(pass.rect(node)).size.w;
                 let runs = TextShapeInput::on_container(tree, interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
@@ -390,9 +357,7 @@ pub(crate) mod internals {
     use crate::scene::tree::node_id::NodeId;
 
     impl LayoutEngine {
-        /// [`Self::intrinsic`] on `forest`'s main tree, interning its
-        /// text along the way — the whole query a test makes of a frame
-        /// it just ran.
+        /// [`Self::intrinsic`] on `forest`'s main tree, interning its text.
         #[cfg(test)]
         pub(crate) fn main_intrinsic(
             &mut self,
@@ -405,15 +370,13 @@ pub(crate) mod internals {
             self.intrinsic(&forest.trees[Layer::Main], node, axis, req, &interned_text)
         }
 
-        /// Make the next run lay the forest out again rather than keep
-        /// the last run's output, for a test or bench that drives the
-        /// snapshot restore on a frame that changes nothing.
+        /// Make the next run lay the forest out again, to drive the snapshot
+        /// restore on a frame that changes nothing.
         pub(crate) fn forget_last_run(&mut self) {
             self.last_roots.clear();
         }
 
-        /// Drop every cached intrinsic and zero the compute counter, so
-        /// the next query computes from scratch and counts only itself.
+        /// Drop every cached intrinsic and zero the compute counter.
         #[cfg(test)]
         pub(crate) fn forget_intrinsics(&mut self) {
             self.scratch.intrinsics.fill([f32::NAN; SLOT_COUNT]);

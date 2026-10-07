@@ -4,52 +4,28 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::{self, TargetFormat};
 use glam::UVec2;
 
-/// Persistent off-screen *color* target for the backbuffer-copy path: the
-/// frontend renders into it, then [`WgpuBackend::submit`](crate::gpu::wgpu_backend::WgpuBackend::submit) copies it onto the
-/// caller's surface. Keeping last frame's pixels in a texture *we* own is what
-/// lets `LoadOp::Load` work for incremental damage — a fresh or rotating
-/// surface texture can't be relied on. The direct-present path skips the
-/// backbuffer entirely and renders straight into the surface.
-///
-/// Sized to match the surface texture; recreated on resize or format change.
-/// Owned per-window by `WindowDriver`; the backend is otherwise
-/// window-agnostic.
+/// Persistent off-screen colour target for the backbuffer-copy path; keeping
+/// last frame's pixels is what lets `LoadOp::Load` work for incremental damage.
+/// Recreated on resize or format change; owned per-window by `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
-    /// Built once with the texture, because a target that cannot be copied
-    /// into needs this every frame it presents — minting one per frame would
-    /// put an allocation on the paint path.
     bind_group: wgpu::BindGroup,
 }
 
-/// What [`Backbuffer::ensure`] hands back: the window's backbuffer, and
-/// whether that call had to build a fresh one.
 #[derive(Debug)]
 pub(crate) struct EnsuredBackbuffer<'a> {
     pub(crate) backbuffer: &'a Backbuffer,
-    /// A fresh texture's contents are undefined until the first pass
-    /// writes them, so a recreate obliges the caller to a `Full` damage
-    /// plan. Every upstream cause of one — a size change, a format flip,
-    /// a first frame — forces `Full` before the draw list builds, so the
-    /// caller asserts this rather than acting on it.
+    /// A fresh texture is undefined until written, so a recreate requires a
+    /// `Full` damage plan; upstream already forces it, so the caller asserts.
     pub(crate) recreated: bool,
 }
 
 impl Backbuffer {
-    /// The window's backbuffer at `size` and `format`, building it if the
-    /// slot is empty or holds one that no longer
-    /// [`describes`](Self::describes) the target.
-    ///
-    /// Hands the attachment back rather than only filling the slot, so
-    /// the caller does not re-read its own `Option` behind an `expect` —
-    /// the same contract [`Stencil::ensure`](crate::gpu::surface::stencil::Stencil::ensure)
-    /// offers. The `format` is the per-window surface format; the
-    /// matching pipeline set is fetched per submit from the backend's
-    /// `pipelines` map, so no global-format assert is needed. `binding` is
-    /// the one every sampled texture of the backend shares, which a target
-    /// that takes no copy draws the backbuffer through.
+    /// The window's backbuffer at `size` and `format`, built if the slot is empty
+    /// or no longer [`describes`](Self::describes) the target. `binding` is what
+    /// targets without copy support draw through.
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
         device: &wgpu::Device,
@@ -59,9 +35,6 @@ impl Backbuffer {
     ) -> EnsuredBackbuffer<'s> {
         let size = render_target::extent(size);
         let format = format.get();
-        // Drop a stale one first, then a plain get-or-insert: the two
-        // steps are what let this hand back a `&Backbuffer` without an
-        // `expect` re-reading the slot it just filled.
         if slot
             .as_ref()
             .is_some_and(|held| !held.describes(size, format))
@@ -75,11 +48,7 @@ impl Backbuffer {
         }
     }
 
-    /// Copy this backbuffer's pixels onto `surface_tex`. The caller's
-    /// surface must have `COPY_DST` usage (set in
-    /// [`wgpu::SurfaceConfiguration::usage`]), and must
-    /// [`describe`](Self::describes) this backbuffer — copying a
-    /// mismatched target would present undefined or stale-format pixels.
+    /// Copies this backbuffer's pixels onto `surface_tex`, which needs `COPY_DST` and must [`describe`](Self::describes) this backbuffer.
     pub(crate) fn copy_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -102,9 +71,6 @@ impl Backbuffer {
         );
     }
 
-    /// Private, so [`Self::ensure`] is the only way to one — it is what
-    /// holds the "matches the surface" invariant [`Self::describes`]
-    /// checks.
     fn new(
         device: &wgpu::Device,
         binding: &TextureBinding,
@@ -118,8 +84,6 @@ impl Backbuffer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            // `TEXTURE_BINDING` is for the targets that take no copy: there
-            // the backbuffer is sampled and drawn rather than copied.
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -134,12 +98,8 @@ impl Backbuffer {
         }
     }
 
-    /// Draw this backbuffer onto a target that cannot be copied into.
-    ///
-    /// The peer of [`Self::copy_onto`], reaching the same pixels through the
-    /// one usage every surface offers. A pass of its own, after the frame's
-    /// draws: it replaces the target rather than compositing onto it, so it
-    /// must not share a pass with anything that blends.
+    /// Draws this backbuffer onto a target that cannot be copied into, in its
+    /// own pass since it replaces the target.
     pub(crate) fn draw_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -153,12 +113,7 @@ impl Backbuffer {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    // Clear rather than Load although the triangle writes
-                    // every texel, which is what lets a rotating swapchain
-                    // image hold anything at all: on the tilers this path
-                    // exists for, a clear skips reading the tile memory in.
-                    // `DontCare` skips even that, and asks for an unsafe
-                    // contract in return for one flag.
+                    // Clear, though every texel is written: on tilers a clear skips loading tile memory.
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
@@ -173,19 +128,11 @@ impl Backbuffer {
         pass.draw(0..3, 0..1);
     }
 
-    /// The colour attachment to render into.
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
 
-    /// Whether this backbuffer is the one a target of `size` and
-    /// `format` wants — the question [`Self::ensure`] asks before
-    /// recreating and the skip-copy assert asks before copying.
-    ///
-    /// Format is half of it: the per-window backbuffer carries one
-    /// surface's pixels, and a format flip (window moved to an HDR
-    /// output) needs a fresh texture at the new format to match this
-    /// submit's pipeline set.
+    /// Whether this backbuffer matches a target of `size` and `format`.
     pub(crate) fn describes(&self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
         self.tex.size() == size && self.tex.format() == format
     }

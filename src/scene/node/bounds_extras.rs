@@ -1,5 +1,4 @@
-//! The per-node placement column: explicit position, cell, size bounds,
-//! and the node's place in the Tab order.
+//! The per-node placement column: explicit position, cell, size bounds and Tab order.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::grid_cell::GridCell;

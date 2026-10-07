@@ -1,5 +1,4 @@
-//! Pairing a node's text records with the shapes the measure pass
-//! produced for them.
+//! Pairing a node's text records with the shapes the measure pass produced.
 
 use crate::common::span::Span;
 use crate::layout::layer_layout::LayerLayout;
@@ -8,22 +7,11 @@ use crate::shape::record::ShapeRecord;
 
 /// One node's shaped-text runs, handed out in record order.
 ///
-/// The measure pass stamps [`LayerLayout::text_shapes`] in the same order a
-/// walk meets `ShapeRecord::Text` going through the node's shapes, so
-/// pairing the two is a cursor rather than a lookup.
+/// Measure stamps [`LayerLayout::text_shapes`] in the order a walk meets `ShapeRecord::Text`, so pairing is a cursor.
 ///
-/// **It advances on every text record, including ones the walker then
-/// drops.** A dropped run still owns its slot, and skipping it would slide
-/// every later run on the node onto the wrong shape. So the discrimination
-/// lives here, ahead of whatever the caller gates on: a walk hands each
-/// record over and gets an answer, rather than deciding for itself which
-/// records count.
+/// **It advances on every text record, including ones the walker drops**: a dropped run still owns its slot, and skipping it would shift later runs onto the wrong shape. Callers hand over each record rather than deciding which count.
 ///
-/// Both walks over a node's shapes use this — the encoder's paint emission
-/// and cascade's paint-rect rollup. They read different fields off the
-/// answer (`key` and `extent` against `extent` alone) but they consume
-/// the same column in the same order, and the bounds and drained checks
-/// below are the contract that keeps them agreeing.
+/// The encoder's paint emission and cascade's paint-rect rollup both use it; the bounds and drained checks below keep them in agreement.
 #[derive(Debug)]
 pub(crate) struct TextRuns {
     /// The node's slice of [`LayerLayout::text_shapes`].
@@ -57,8 +45,7 @@ impl TextRuns {
         Some(shaped)
     }
 
-    /// Every run the node's span holds was handed out — what the measure
-    /// pass stamped and what the walk met are the same count.
+    /// Every run the node's span holds was handed out: measure's stamped count equals the walk's.
     pub(crate) const fn is_drained(&self) -> bool {
         self.taken == self.span.len
     }

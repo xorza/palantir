@@ -242,12 +242,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     );
 }
 
-/// `Sense::SCROLL` widget alone (without `Sense::PINCH`) receives
-/// `scroll_delta` for wheel/pinch-pan events but a `1.0` `zoom_factor`
-/// for pinch — the routing bits are independent. Note the
-/// `response_for` call lives **inside** the record closure: the
-/// frame target-delta rows are cleared by `post_record`, so a
-/// post-frame read would see identity values.
+/// A `Sense::SCROLL`-only widget gets `scroll_delta` for wheel/pinch-pan but a `1.0` `zoom_factor` for pinch: the routing bits are independent. `response_for` runs inside the record closure, as `post_record` clears the target-delta rows.
 #[test]
 fn sense_scroll_routes_scroll_but_not_pinch() {
     let surface = UVec2::new(200, 200);
@@ -279,9 +274,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     );
 }
 
-/// `Sense::PINCH` widget alone (without `Sense::SCROLL`) receives
-/// `zoom_factor` for pinch events but `Vec2::ZERO` `scroll_delta` for
-/// wheel — the sister of `sense_scroll_routes_scroll_but_not_pinch`.
+/// A `Sense::PINCH`-only widget gets `zoom_factor` for pinch but `Vec2::ZERO` `scroll_delta` for wheel.
 #[test]
 fn sense_pinch_routes_pinch_but_not_scroll() {
     let surface = UVec2::new(200, 200);

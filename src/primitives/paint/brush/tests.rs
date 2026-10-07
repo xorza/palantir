@@ -17,9 +17,7 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
 
-/// `LinearGradient::Hash` is what `shapes::lower` folds into a record's
-/// gradient content hash, so hashing the gradient is the production
-/// derivation.
+/// `LinearGradient::Hash` is what `shapes::lower` folds into a record's gradient content hash.
 fn h(g: &LinearGradient) -> u64 {
     let mut s = DefaultHasher::new();
     g.hash(&mut s);
@@ -31,8 +29,7 @@ struct StopsDocument {
     stops: GradientStops,
 }
 
-/// `LinearGradient::Hash` feeds retained shape identity, so `±0.0` and
-/// NaN bit-pattern variants must collapse instead of causing false damage.
+/// `LinearGradient::Hash` feeds shape identity, so `±0.0` and NaN variants must collapse.
 #[test]
 fn linear_gradient_hash_tracks_canonical_content() {
     let nan_a = f32::from_bits(0x7fc0_0001);
@@ -93,8 +90,7 @@ fn authoring_values_convert_to_their_brush_variants() {
         .stop(1.0, RgbaF32::WHITE);
 
     assert_eq!(Brush::from(color), Brush::Solid(color));
-    // sRGB 0 and 255 decode to exactly 0.0 and 1.0, and alpha is straight:
-    // 51 / 255 = 0.2.
+    // sRGB 0 and 255 decode to exactly 0.0 and 1.0; alpha is straight: 51 / 255 = 0.2.
     let bytes = SrgbaU8::new(255, 0, 255, 51);
     let decoded = RgbaF32::new(1.0, 0.0, 1.0, 0.2);
     assert_eq!(Brush::from(bytes), Brush::Solid(decoded));
@@ -122,10 +118,7 @@ fn solid_is_noop_iff_color_is_noop() {
     assert!(!Brush::Solid(RgbaF32::BLACK).is_noop());
 }
 
-/// Two through `MAX_STOPS` stops, and every door a stop list comes in
-/// by holds that count: `GradientStops::new`, a gradient's builder (which
-/// rejects a ninth stop as it arrives, and too few at `build`), a
-/// gradient's `new`, and deserialization.
+/// Two through `MAX_STOPS` stops hold at every door: `GradientStops::new`, a gradient's builder (rejects a ninth, too few at `build`), its `new`, and deserialization.
 #[test]
 fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
     let offset = |index: usize, count: usize| index as f32 / count.max(1) as f32;
@@ -181,11 +174,7 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
     }
 }
 
-/// Every kind's `two_stop` runs 0 → 1 with `Spread::Pad` and its kind's
-/// interpolation: Oklab for linear and radial, linear for conic, where
-/// Oklab can shift the hue a colour wheel sweeps through. It paints unless both stops are
-/// transparent, is never a solid, and the setters change only what
-/// they name.
+/// Each kind's `two_stop` runs 0 → 1 with `Spread::Pad`; Oklab for linear and radial, linear for conic. It paints unless both stops are transparent, is never solid, and setters change only what they name.
 #[test]
 fn two_stop_gradients_take_their_kind_defaults() {
     fn check<G: Clone + fmt::Debug + PartialEq>(
@@ -234,18 +223,14 @@ fn two_stop_gradients_take_their_kind_defaults() {
     check("radial", RadialGradient::two_stop, Interpolation::Oklab);
     check("conic", ConicGradient::two_stop, Interpolation::Linear);
 
-    // A radial gradient defaults to the centred circle: centre and
-    // radius 0.5, both exact in f16.
+    // A radial gradient defaults to the centred circle: centre and radius 0.5, exact in f16.
     let radial = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
     assert_eq!(radial.geometry.center, Vec2::splat(0.5));
     assert_eq!(radial.geometry.radius, Vec2::splat(0.5));
     assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
 }
 
-/// In code a stop's offset is a fraction, coerced: out of range clamps to
-/// the end it overshot, a non-finite one reads as 0. Its colour is checked
-/// and panics on a non-finite channel. A file refuses any offset outside
-/// `0..=1`, as it refuses every fraction, since its author can fix it.
+/// In code a stop offset is coerced (out of range clamps, non-finite reads 0) and a non-finite colour channel panics. A file refuses any offset outside `0..=1`.
 #[test]
 fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     for (offset, want) in [
@@ -277,10 +262,7 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     }
 }
 
-/// Every gradient kind round-trips, and a file whose geometry breaks its
-/// kind is a deserialization error rather than a brush that panics where
-/// it enters a node: angles are *angles*, centres *offsets*, a radial
-/// radius a *length* on each axis.
+/// Every kind round-trips; a file whose geometry breaks its kind is a deserialization error: angles are angles, centres offsets, radial radius a length per axis.
 #[test]
 fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
@@ -426,9 +408,7 @@ fn conic_axis_packs_start_angle() {
             Stop::new(1.0, RgbaF32::srgb(0.0, 0.0, 1.0)),
         ],
     );
-    // The axis packs to f16, 10 mantissa bits: 0.4 is 1638.4 steps of
-    // 2^-12 and rounds to 1638, 0.6 is 1228.8 steps of 2^-11 and rounds to
-    // 1229, and π/4 is 1608.5 steps of 2^-11 and rounds to 1608.
+    // The axis packs to f16 (10 mantissa bits): 0.4 is 1638.4 steps of 2^-12 → 1638, 0.6 is 1228.8 of 2^-11 → 1229, π/4 is 1608.5 of 2^-11 → 1608.
     assert_eq!(
         g.axis().lanes(),
         [1638.0 / 4096.0, 1229.0 / 2048.0, 1608.0 / 2048.0, 0.0],

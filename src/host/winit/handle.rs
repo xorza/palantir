@@ -1,8 +1,4 @@
-//! [`HostHandle`] + [`UserEvent`] — the cross-thread poke channel into a
-//! running [`WinitHost`](super::WinitHost). Background threads hold a
-//! `HostHandle<T>` and send `UserEvent<T>`s through the event-loop proxy
-//! to request a redraw, run a closure on the main thread with `&mut` the
-//! app, or ask the loop to exit.
+//! [`HostHandle`] and [`UserEvent`]: the cross-thread channel into a running [`WinitHost`](super::WinitHost).
 
 use winit::event_loop::EventLoopProxy;
 
@@ -10,28 +6,19 @@ use crate::host::winit::error::HostDisconnected;
 use crate::window::window_token::WindowToken;
 use std::fmt;
 
-/// A main-thread closure scheduled via [`HostHandle::run_on_main`],
-/// invoked with `&mut` the host's app `T`.
+/// A main-thread closure scheduled via [`HostHandle::run_on_main`].
 pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
 
-/// Events delivered to the host through [`HostHandle`] — cross-thread
-/// pokes the winit event loop turns into a redraw of a window, a
-/// run-on-main callback, or an exit. Generic over the host's app type
-/// `T` so [`Self::RunOnMain`] carries a typed `&mut T` closure with no
-/// downcast. Built only by the methods on [`HostHandle`].
-///
-/// There is no `OpenWindow` / `CloseWindow` variant: window lifecycle is
-/// an in-frame UI action ([`Ui::open_window`](crate::Ui::open_window)),
-/// not an off-thread one — a background thread that wants a new window
-/// pokes a `Repaint` and lets the next `frame` call `open_window`.
+/// Events delivered through [`HostHandle`] to the event loop. Generic over `T`
+/// so [`Self::RunOnMain`] carries a typed closure. Window lifecycle is an
+/// in-frame action ([`Ui::open_window`](crate::Ui::open_window)), so a
+/// background thread wanting a window pokes a `Repaint`.
 pub(crate) enum UserEvent<T> {
-    /// Wake the loop and request one redraw of the named window.
-    /// Coalesced — many in a row collapse to one frame.
+    /// Wakes the loop for one redraw of the named window; coalesced.
     Repaint(WindowToken),
-    /// Run a closure on the main (event-loop) thread with `&mut` the
-    /// app, then repaint every window if it returns `true`.
+    /// Runs a closure on the main thread with `&mut` the app, then repaints every window if it returns `true`.
     RunOnMain(MainTask<T>),
-    /// Ask the event loop to exit at the next opportunity.
+    /// Asks the event loop to exit.
     Quit,
 }
 
@@ -45,21 +32,14 @@ impl<T> fmt::Debug for UserEvent<T> {
     }
 }
 
-/// Thread-safe handle to a running [`WinitHost<T>`](super::WinitHost).
-/// Cheaply `Clone`; send to background threads so they can poke the UI
-/// without owning it. `T` is the host's app type — only
-/// [`Self::run_on_main`] actually uses it.
-///
-/// Obtain one via [`WinitHost::handle`](super::WinitHost::handle) before
-/// calling `run`.
+/// Thread-safe, cheaply `Clone` handle to a running
+/// [`WinitHost<T>`](super::WinitHost); obtain one via
+/// [`WinitHost::handle`](super::WinitHost::handle) before `run`.
 pub struct HostHandle<T: 'static> {
     pub(super) proxy: EventLoopProxy<UserEvent<T>>,
 }
 
-// Hand-written so the impls don't pick up a spurious `T: Clone` / `T:
-// Debug` bound — the handle stores only a proxy, never a `T`. (`T:
-// 'static` is unavoidable: the `EventLoopProxy<UserEvent<T>>` field
-// requires it.)
+// Hand-written to avoid a spurious `T: Clone`/`T: Debug` bound; the handle stores only a proxy.
 impl<T: 'static> Clone for HostHandle<T> {
     fn clone(&self) -> Self {
         Self {
@@ -75,30 +55,19 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 }
 
 impl<T: 'static> HostHandle<T> {
-    /// Request the host paint one frame of the window named by `window`.
-    /// Cheap and lock-free; safe to call from any thread. Drops silently
-    /// if the event loop has already exited or the window is gone —
-    /// nothing is owned by the poke, so an undelivered repaint against a
-    /// closing loop costs nothing. Contrast [`Self::run_on_main`].
+    /// Requests one frame of `window`. Lock-free; dropped silently if the loop or window is gone.
     pub fn request_repaint(&self, window: WindowToken) {
         let _ = self.proxy.send_event(UserEvent::Repaint(window));
     }
 
-    /// Schedule `f` to run on the main (event-loop) thread with `&mut`
-    /// access to the app before the next frame — the safe way to fold
-    /// background-thread results into app state without a separate
-    /// channel. Return `true` from `f` to repaint every window, `false`
-    /// to leave the present schedule unchanged.
+    /// Schedules `f` on the main thread with `&mut` the app before the next
+    /// frame; return `true` to repaint every window.
     ///
     /// # Errors
     ///
-    /// [`HostDisconnected`] when the event loop has already exited. `f` is
-    /// then dropped **undelivered and unrun**, together with whatever it
-    /// captured. This is the only [`HostHandle`] method that reports
-    /// delivery, and the asymmetry is the point: it is the only one
-    /// carrying owned work, so it is the only one whose failure silently
-    /// discards an application-state mutation the caller believes it
-    /// made.
+    /// [`HostDisconnected`] when the event loop has exited; `f` is dropped
+    /// unrun. This is the only method that reports delivery, as the only one
+    /// whose loss discards a state mutation.
     pub fn run_on_main(
         &self,
         f: impl FnOnce(&mut T) -> bool + Send + 'static,
@@ -108,9 +77,7 @@ impl<T: 'static> HostHandle<T> {
             .map_err(|_| HostDisconnected)
     }
 
-    /// Ask the host's event loop to exit. The current frame finishes;
-    /// no further frames are scheduled. Drops silently against an
-    /// already-exited loop, which is the state it was asking for.
+    /// Asks the event loop to exit; the current frame finishes.
     pub fn quit(&self) {
         let _ = self.proxy.send_event(UserEvent::Quit);
     }

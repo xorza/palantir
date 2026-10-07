@@ -47,9 +47,7 @@ impl RectShape {
     ///
     /// # Panics
     ///
-    /// Panics unless a solid fill is a [colour](crate::widget::domain::color), and a
-    /// gradient's geometry holds the kinds [`Background`](crate::Background)
-    /// lists for a fill.
+    /// Panics unless a solid fill is a [colour](crate::widget::domain::color) and a gradient's geometry holds the kinds [`Background`](crate::Background) lists.
     #[track_caller]
     pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
         let fill = fill.into();
@@ -58,8 +56,7 @@ impl RectShape {
         self
     }
 
-    /// Edge paint, inside the boundary: the outer edge of the border is
-    /// the rect's edge, like every area shape's.
+    /// Edge paint inside the boundary; the border's outer edge is the rect's edge.
     ///
     /// # Panics
     ///
@@ -93,10 +90,7 @@ impl sealed::LowerShape for RectShape {
             || (self.fill.is_noop() && self.border.is_noop())
     }
 
-    /// `fill` is screened here rather than where it interns: a gradient's
-    /// geometry disappears into the store behind a `GradientId`, so this
-    /// is the last point at which the record gate could still see it —
-    /// and rejecting after the intern would leave the row in the pool.
+    /// `fill` is screened here, not at intern: gradient geometry is hidden behind a `GradientId` afterward, and rejecting after the intern would leave the row in the pool.
     fn has_nan(&self) -> bool {
         self.local_rect.has_nan()
             || self.corners.has_nan()

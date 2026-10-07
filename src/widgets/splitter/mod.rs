@@ -1,5 +1,5 @@
-//! Two panes divided by a draggable rule: the widget, the per-pane bodies
-//! it takes, and the split ratio it keeps between frames.
+//! Two panes divided by a draggable rule: the widget, its per-pane bodies, and the
+//! split ratio it keeps between frames.
 
 pub(crate) mod split_half;
 
@@ -24,24 +24,20 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 
-/// Two panes split by a draggable divider. [`Splitter::row`] lays the panes
-/// side by side (vertical divider bar); [`Splitter::column`] stacks them
-/// (horizontal bar) — the words [`SplitDirection`](crate::SplitDirection) uses. The caller owns the split as `ratio` —
-/// the first pane's share of the free space, `0..1`. While dragging,
-/// the current pointer target feeds layout immediately; the widget writes
-/// the resulting content-constrained share back on the following record.
-/// Double-clicking the divider recenters to `0.5`. Panes clip their content
-/// so an oversized body can't bleed across the divider mid-resize. Visuals
-/// come from [`crate::SplitterTheme`] (theme slot `splitter`).
+/// Two panes split by a draggable divider: [`Splitter::row`] side by side,
+/// [`Splitter::column`] stacked (the words of
+/// [`SplitDirection`](crate::SplitDirection)). The caller owns the split as
+/// `ratio`, the first pane's share of the free space, `0..1`. While dragging, the
+/// pointer target feeds layout at once and the content-constrained share is written
+/// back on the next record. Double-clicking the divider recenters to `0.5`. Visuals
+/// come from [`crate::SplitterTheme`] (slot `splitter`).
 ///
-/// One Grid owns the pane tracks and the visible `rule_thickness` seam.
-/// The wide grab target is a late-recorded overlay in the rule's cell,
-/// so layout places it at the content-constrained boundary without a
-/// second layout pass.
-///
-/// [`Splitter::show`] records both panes through one `FnMut` body called
-/// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
-/// a recursive pane tree can capture its response mutably once.
+/// One Grid owns the pane tracks and the visible `rule_thickness` seam; the wide
+/// grab target is a late-recorded overlay in the rule's cell, so layout places it
+/// at the content-constrained boundary without a second pass. [`Splitter::show`]
+/// records both panes through one `FnMut` body called with [`SplitHalf::First`]
+/// then [`SplitHalf::Second`], so a recursive pane tree can capture its response
+/// mutably once.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Splitter<'a> {
@@ -55,21 +51,21 @@ pub struct Splitter<'a> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct SplitterState {
     sync_ratio_next_record: bool,
-    /// A double-click reset the ratio. The binding takes the reset's
-    /// arranged result on the next record, and that record commits it.
+    /// A double-click reset the ratio; the binding takes its arranged result on the
+    /// next record, which commits it.
     commit_on_sync: bool,
 }
 
 impl<'a> Splitter<'a> {
-    /// Side-by-side panes with a vertical divider bar; `ratio` is the
-    /// left pane's share.
+    /// Side-by-side panes with a vertical divider bar; `ratio` is the left pane's
+    /// share.
     #[track_caller]
     pub fn row(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::X)
     }
 
-    /// Stacked panes with a horizontal divider bar; `ratio` is the top
-    /// pane's share.
+    /// Stacked panes with a horizontal divider bar; `ratio` is the top pane's
+    /// share.
     #[track_caller]
     pub fn column(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::Y)
@@ -78,8 +74,6 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         Self {
-            // The clipped root contains the grab overlay's overhang within
-            // the splitter.
             widget: Widget::grid()
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip_rect(),
@@ -90,8 +84,8 @@ impl<'a> Splitter<'a> {
         }
     }
 
-    /// Floor either pane's split-axis extent at `px`, a *length*, while
-    /// dragging. Default `0.0` (panes can collapse to nothing).
+    /// Floor either pane's split-axis extent at `px`, a *length*, while dragging.
+    /// Default `0.0`.
     ///
     /// # Panics
     ///
@@ -102,27 +96,21 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `splitter`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `splitter`.
     pub fn style(mut self, s: impl Into<Option<&'a SplitterTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record both panes and the divider between them. `body` runs twice,
-    /// once per [`SplitHalf`].
+    /// Record both panes and the divider between them; `body` runs once per
+    /// [`SplitHalf`]. The divider drags the bound `ratio`; as for
+    /// [`Slider`](crate::Slider), `changed` is set on every frame the ratio moves
+    /// and `committed` on the frame a drag releases or a double-click reset lands.
     ///
-    /// The divider drags the bound `ratio` itself. The [`ValueResponse`]
-    /// says what that did, as it does for [`Slider`](crate::Slider): its
-    /// `response` is the splitter's own, covering both panes, `changed`
-    /// is set on every frame the ratio moves, and `committed` on the frame
-    /// a drag releases or a double-click reset lands.
-    ///
-    /// **The binding trails the drawn divider by one frame while it
-    /// moves.** Layout follows the pointer at once, but the ratio written
-    /// back is the share the panes were actually arranged at, which only
-    /// layout knows. That is the price of never writing a ratio a pane's
-    /// content floor overrides.
+    /// **The binding trails the drawn divider by one frame while it moves**: layout
+    /// follows the pointer at once, but the ratio written back is the share the
+    /// panes were arranged at, which only layout knows, so a content floor is never
+    /// overridden.
     pub fn show(
         mut self,
         ui: &mut Ui,
@@ -139,14 +127,10 @@ impl<'a> Splitter<'a> {
         let hovered_color = theme.hovered;
         let active_color = theme.active;
 
-        // The divider's interaction response drives both the ratio write
-        // and its own paint. Last frame's response — the recording below
-        // is this frame's.
         let divider_id = id.with("divider");
         let divider = ui.response_for(divider_id);
-        // A Tab stop taking the arrows, Home and End — the `CARET` class —
-        // as WAI-ARIA's window splitter does. Built here so it reads its
-        // keys as itself before the grid around it records.
+        // A Tab stop taking the `CARET` keys as WAI-ARIA's window splitter does;
+        // built here so it reads its keys before the grid records.
         let mut divider_widget = Widget::leaf()
             .id(divider_id)
             .sense(Sense::DRAG)
@@ -168,8 +152,6 @@ impl<'a> Splitter<'a> {
         let mut resizing = false;
         let mut reset = false;
         if !response.disabled {
-            // Divider follows the pointer: map the container-local
-            // position on the split axis to the first pane's share.
             if divider.left.drag.is_live()
                 && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
             {
@@ -186,11 +168,9 @@ impl<'a> Splitter<'a> {
                 resizing = true;
                 reset = true;
             }
-            // The keys of WAI-ARIA's window splitter on a focused divider:
-            // the arrows along the split move the seam a step, Home and End
-            // to either end — each placed through the drag's own mapping,
-            // so the keyboard obeys the same floors, and each committed on
-            // the next sync, as a reset is.
+            // WAI-ARIA window splitter keys: arrows move the seam a step, Home/End
+            // go to either end, through the drag's mapping (same floors), committed
+            // on the next sync like a reset.
             if ui.is_focus_within(divider_id)
                 && let Some(rect) = response.layout_rect
             {
@@ -207,8 +187,8 @@ impl<'a> Splitter<'a> {
                     (Key::End, extent),
                 ]
                 .into_iter()
-                // Every chord sampled: `key_pressed` also keeps it
-                // subscribed for the wake gate.
+                // Every chord is sampled: `key_pressed` keeps it subscribed for the
+                // wake gate.
                 .fold(None, |target, (key, pos)| {
                     let pressed = divider_widget.key_pressed(ui, Shortcut::key(key));
                     if pressed { Some(pos) } else { target }
@@ -221,16 +201,13 @@ impl<'a> Splitter<'a> {
             }
         }
         *self.ratio = ratio;
-        // Approximate, because a ratio re-derived from arranged extents
-        // carries last-bit noise an exact compare would report every frame.
         let changed = !domain::is_approx_zero(ratio - input);
         let synced = synced_ratio.is_some();
         let committed =
             !response.disabled && (divider.left.drag.stopped() || (state.commit_on_sync && synced));
 
-        // Written only on a change, against the `state` read above — an
-        // absent row reads as the default there. A splitter that never
-        // resizes mints no row at all.
+        // Written only on a change against `state` (an absent row reads as the
+        // default), so a splitter that never resizes mints no row.
         let next = SplitterState {
             sync_ratio_next_record: resizing || (sync_pending && !synced),
             commit_on_sync: reset || (state.commit_on_sync && !synced),
@@ -246,10 +223,8 @@ impl<'a> Splitter<'a> {
         } else {
             None
         };
-        // Resize cursor while the divider is hot. Keyed off `dragged`
-        // first: mid-drag the pointer routinely leaves the thin bar
-        // (`hovered` is also capture-gated), and the cursor must hold
-        // until release.
+        // Resize cursor while the divider is hot, keyed off the drag first:
+        // mid-drag the pointer leaves the thin bar and `hovered` is capture-gated.
         if bar_fill.is_some() {
             ui.set_cursor(CursorIcon::resize_along(axis));
         }
@@ -264,8 +239,8 @@ impl<'a> Splitter<'a> {
         let cross_tracks = [Track::FILL];
         let [rows, cols] = axis.rows_cols(&main_tracks[..], &cross_tracks[..]);
         self.widget.grid_tracks(ui, rows, cols);
-        // The middle track *is* the seam, so the grid owes no spacing of
-        // its own — a caller's `gap` would push the panes off the rule.
+        // The middle track *is* the seam, so the grid owes no spacing; a caller's
+        // `gap` would push the panes off the rule.
         self.widget.configure().gap(0.0).line_gap(0.0);
         self.widget.record(ui, None, |ui| {
             pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
@@ -278,8 +253,6 @@ impl<'a> Splitter<'a> {
 
             pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
-            // The grab bar overhangs the seam on the split axis only, so
-            // its inset is main-axis with nothing across.
             let inset = (rule_thickness - grab_thickness) * 0.5;
             divider_widget
                 .size((Sizing::FILL, Sizing::FILL))
@@ -303,7 +276,6 @@ impl Configure for Splitter<'_> {
     }
 }
 
-/// One pane: a clipped ZStack filling its Grid cell.
 fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
     Widget::zstack()
         .id(id)
@@ -313,9 +285,8 @@ fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce
         .record(ui, None, body);
 }
 
-/// Recover the first pane's effective share after layout applied both
-/// panes' intrinsic content floors. The next record writes this back while
-/// the current layout remains free to follow the latest pointer target.
+/// Recover the first pane's effective share after layout applied both panes'
+/// content floors.
 fn arranged_pane_ratio(
     ui: &Ui,
     first_id: WidgetId,
@@ -330,31 +301,23 @@ fn arranged_pane_ratio(
     (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
 }
 
-/// A caller-supplied ratio, made safe to use as a `Fill` weight. The
-/// same screen `Sizing::split` applies, under this widget's own neutral:
-/// a splitter with no ratio to honour opens centred, where a progress
-/// bar with none reads empty.
+/// A caller-supplied ratio made safe as a `Fill` weight; unlike a progress bar, an
+/// invalid one opens centred.
 const fn sanitize_ratio(r: f32) -> f32 {
     domain::fraction_or(r, 0.5)
 }
 
-/// How far one arrow press moves the seam, in logical px: a step the eye
-/// sees at any size, and fine enough that a few presses reach any place.
 const KEY_STEP: f32 = 10.0;
 
-/// Map a container-local pointer coordinate on the split axis to the
-/// first pane's share of the free space (`extent − reserved`, where
-/// `reserved` is the seam the rule occupies in layout). The seam center
-/// follows the pointer; `min_pane` floors both panes, collapsing to a
-/// centered clamp when the free space can't fit two floors. Degenerate
-/// extents pin to `0.5`.
+/// Map a container-local pointer coordinate on the split axis to the first pane's
+/// share of the free space (`extent − reserved`); the seam center follows the
+/// pointer and `min_pane` floors both panes, collapsing to a centered clamp when
+/// two floors do not fit. Degenerate extents pin to `0.5`.
 fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
     let span = extent - reserved;
     if domain::is_invisible(span) {
         return 0.5;
     }
-    // `floor <= 0.5` by construction, so the clamp can't invert even
-    // when `2 * min_pane > span` — it collapses to the centre instead.
     let floor = (min_pane / span).min(0.5);
     domain::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
 }

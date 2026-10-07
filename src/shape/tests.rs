@@ -95,8 +95,6 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             radius: 0.0,
             expected_noop: false,
         },
-        // A radius grows any triangle by itself on every side, so a thin
-        // or collapsed one still paints: a 6 px bar, or a 6 px disc.
         Case {
             label: "collinear_rounded",
             a: Vec2::ZERO,
@@ -140,10 +138,6 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
     }
 }
 
-/// The constructors return the concrete shape they name, so "did the
-/// builder survive erasure into a `Shape` variant" is no longer a
-/// question the type system leaves open. What is still worth pinning is
-/// that each builder writes the field it advertises.
 #[test]
 fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
@@ -188,10 +182,7 @@ fn text_noop_rejects_invalid_metrics() {
         ("infinite line height", 16.0, f32::INFINITY, true),
     ];
 
-    // `local_origin` is the one Text scalar `GlyphFont::metrics_valid`
-    // does not cover. It is geometry, so `at_origin` refuses a non-finite
-    // one (`shapes::tests::builders_refuse_what_they_check`); a finite one
-    // carries no NaN and does not stop a visible run from painting.
+    // `local_origin` is the one Text scalar `GlyphFont::metrics_valid` doesn't cover; `at_origin` refuses a non-finite one, a finite one doesn't stop a visible run painting.
     for (label, local_origin) in [
         ("no origin", None),
         ("finite origin", Some(Vec2::new(1.0, 2.0))),
@@ -238,9 +229,7 @@ fn text_noop_rejects_invalid_metrics() {
     }
 }
 
-/// A curve paints nothing when its stroke does, or when the ramp its
-/// colour multiplies is transparent everywhere — and a transparent
-/// stroke colour stays invisible whatever ramp it multiplies.
+/// A curve paints nothing when its stroke does or the ramp its colour multiplies is transparent everywhere.
 #[test]
 fn curve_noop_follows_the_stroke_and_the_ramp() {
     let visible = ColorRamp::two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE);

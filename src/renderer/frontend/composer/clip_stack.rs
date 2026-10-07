@@ -8,20 +8,18 @@ use crate::primitives::geometry::urect::URect;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ClipFrame {
     pub(super) scissor: URect,
-    /// Outer→inner chain of rounded masks active for this frame's
-    /// subtree — a span into `RenderBuffer.rounded_clips`. A rounded
-    /// push extends the parent chain with its own mask; a rect push
-    /// inherits it verbatim. Empty = no rounded ancestor.
+    /// Outer→inner chain of rounded masks for this frame's subtree, a span into
+    /// `RenderBuffer.rounded_clips`. A rounded push extends the parent chain; a rect push inherits it.
+    /// Empty = no rounded ancestor.
     pub(super) chain: Span,
 }
 
 /// The nested clips a compose walk has open, innermost last.
 ///
-/// Compose-time scratch, bounded by tree depth (typically <8) and kept
-/// across frames for its capacity. Push and pop are deliberately *not*
-/// here: entering a clip closes the group and batch the outgoing one
-/// owned, and that is a decision about the output buffer rather than
-/// about this stack — see `ComposeSession::push_clip`.
+/// Compose-time scratch, bounded by tree depth (typically <8) and kept across frames for its
+/// capacity. `push` and `pop` are raw: entering a clip also closes the group and batch the
+/// outgoing one owned, a decision about the output buffer made in
+/// `ComposeSession::push_clip`.
 #[derive(Debug, Default)]
 pub(super) struct ClipStack {
     frames: Vec<ClipFrame>,
@@ -30,11 +28,9 @@ pub(super) struct ClipStack {
 impl ClipStack {
     /// The clip in force: the stack top, or none at the root.
     ///
-    /// **Derived, not cached.** A mirror of the top would have to be
-    /// reassigned in lockstep with every push and pop, and the readers
-    /// split across it: the cull test and the clear fold ask one
-    /// question, the text path another. The stack is the only owner, so
-    /// there is nothing for them to disagree about.
+    /// **Derived, not cached.** A mirror of the top would need reassigning in lockstep with every push
+    /// and pop, and readers would split across it. The stack is the only owner, so there is nothing for
+    /// them to disagree about.
     pub(super) fn top(&self) -> Option<ClipFrame> {
         self.frames.last().copied()
     }
@@ -59,8 +55,7 @@ impl ClipStack {
         self.frames.push(frame);
     }
 
-    /// Panics on a `PopClip` with no matching push, which is a malformed
-    /// paint stream rather than a state the composer can answer for.
+    /// Panics on a `PopClip` with no matching push, a malformed paint stream the composer cannot answer for.
     pub(super) fn pop(&mut self) {
         self.frames
             .pop()
@@ -71,15 +66,12 @@ impl ClipStack {
         self.frames.clear();
     }
 
-    /// `bounds` held inside the clip in force — the pixels a draw with
-    /// that extent can actually reach, and paint-empty exactly when the
-    /// draw is culled.
+    /// `bounds` held inside the clip in force: the pixels a draw of that extent can reach, paint-empty
+    /// exactly when the draw is culled.
     ///
-    /// **The identical reject shape at every shape-draw site**, and the
-    /// rect each of them then registers as occupied: text's batch scissor
-    /// is the union of its runs' clipped bounds, and the quad and
-    /// higher-kind tiers order against what they paint rather than what
-    /// they would have painted unclipped.
+    /// The same reject shape serves every shape-draw site, and the rect each then registers as occupied:
+    /// text's batch scissor is the union of its runs' clipped bounds, and the quad and higher tiers order
+    /// against what they paint, not what they would have painted unclipped.
     pub(super) fn clamped(&self, bounds: URect) -> URect {
         match self.scissor() {
             Some(scissor) => bounds.clamp_to(scissor),

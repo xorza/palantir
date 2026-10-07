@@ -1,13 +1,7 @@
-//! The layout driver contract, and the one dispatch over [`LayoutMode`]
-//! that reaches it.
-//!
-//! Seven modules answer the same three questions about a subtree.
-//! [`LayoutDriver`] is that agreement as a type rather than as a doc
-//! comment over seven free functions, and [`DriverOp::dispatch`] is the
-//! single match over it — so a new driver is one arm plus one impl, and
-//! the compiler asks for both. Spread across free functions instead, an
-//! argument can sit third in one match and fourth in the next, and
-//! nothing says which files a new driver has to reach.
+//! The layout driver contract, and the one dispatch over [`LayoutMode`] that
+//! reaches it: seven modules answer the same three questions about a subtree,
+//! [`LayoutDriver`] is that agreement as a type and [`DriverOp::dispatch`] the
+//! single match over it, so a new driver is one arm plus one impl.
 
 mod canvas;
 pub(crate) mod grid;
@@ -37,56 +31,30 @@ use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
-/// One layout driver: how a container measures, arranges and reports the
-/// intrinsic size of its children.
-///
-/// Implemented on a unit marker per driver module, so the three passes
-/// name a driver the same way and the payload sits in the same place in
-/// all three signatures.
-///
-/// **Every arm of [`DriverOp::dispatch`] is a call into one of these**, so
-/// a driver's policy lives in its own file and the dispatch stays
-/// dispatch. [`Scrollbars`] contributes nothing to an intrinsic and still
-/// answers rather than being written off as a `ZERO` inline, because
-/// "what does this driver contribute" is the driver's answer to give.
+/// One layout driver: how a container measures, arranges and reports the intrinsic
+/// size of its children. Implemented on a unit marker per driver module, so the
+/// three passes name a driver the same way. **Every arm of [`DriverOp::dispatch`]
+/// calls into one of these**, so a driver's policy lives in its own file;
+/// [`Scrollbars`] contributes nothing to an intrinsic yet still answers.
 pub(super) trait LayoutDriver {
-    /// Per-instance config the driver takes off its [`LayoutMode`]
-    /// variant: the pack axis for the two stack pairs, the def index for
-    /// a grid or a scrollbar overlay, the spec for a scroll. `()` where
-    /// the variant carries none.
-    ///
-    /// One function pair per pack orientation rather than one per
-    /// variant, which is why `HStack` and `VStack` are the same driver
-    /// with a different payload.
+    /// Per-instance config taken off the [`LayoutMode`] variant: the pack axis for
+    /// stacks, the def index for a grid or scrollbar overlay, the spec for a
+    /// scroll; `()` if none.
     type Payload: Copy;
 
-    /// Whether this driver's [`Self::arrange`] is a pure function of the
-    /// slot it is handed — reading nothing outside its own subtree and
-    /// that rect.
-    ///
-    /// `LayoutPass::replay_arranged` rests on exactly this: a measure hit
-    /// proves the subtree's authoring is unchanged, so given an identical
-    /// slot its rects can be copied forward instead of re-derived. A
-    /// driver that reads *outside* its subtree breaks the implication —
-    /// its inputs can move while its own hash and slot sit still — and the
-    /// damage is silent: stale rects, no panic, nothing that fails to
-    /// compile. It surfaces only as a visual bug, which is how a scrollbar
-    /// once survived the content that justified it.
-    ///
-    /// No default, so a new driver has to answer, in the file where the
-    /// reason lives. One that answers `false` opts its whole subtree out
-    /// of replay.
+    /// Whether [`Self::arrange`] is a pure function of the slot it is handed,
+    /// reading nothing outside its own subtree. `LayoutPass::replay_arranged` rests
+    /// on this: a measure hit proves the subtree's authoring is unchanged, so with
+    /// an identical slot its rects are copied forward. A driver reading *outside*
+    /// its subtree breaks that silently (stale rects, no panic). No default, so a
+    /// new driver must answer; `false` opts its subtree out of replay.
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool;
 
-    /// Bottom-up. Recurses into children through `pass.measure(..)` and
-    /// returns the driver's content size and its floor — before padding,
-    /// margin and clamping, which [`LayoutPass::measure`] folds in. The
-    /// floor composes from the children's the way the content composes
-    /// from their extents; see [`Measured`] for what it promises.
-    ///
-    /// Called exactly once per measure. A `Fill` axis that grows past
-    /// `inner_avail` needs no re-measure; `AxisSlot::resolve_node` carries
-    /// the reason.
+    /// Bottom-up. Recurses through `pass.measure(..)` and returns the content size
+    /// and floor, before padding, margin and clamping (which
+    /// [`LayoutPass::measure`] folds in); see [`Measured`]. Called exactly once per
+    /// measure: a `Fill` axis growing past `inner_avail` needs no re-measure
+    /// (`AxisSlot::resolve_node` carries the reason).
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
@@ -95,25 +63,16 @@ pub(super) trait LayoutDriver {
     ) -> Measured;
 
     /// Top-down. Assigns each child a final rect and recurses through
-    /// `pass.arrange(..)`.
-    ///
-    /// **Local coordinates.** `inner` is the size of the node's inner box
-    /// and nothing else: a driver places its children in that box's own
-    /// coordinates, its top-left at the origin, and `LayoutPass::arrange`
-    /// moves each one onto the page with a single add. So a child's place
-    /// never depends on where its parent sits, and a moved subtree is
-    /// rebuilt from those offsets exactly — see
-    /// `LayoutPass::replay_arranged`.
+    /// `pass.arrange(..)`. **Local coordinates:** `inner` is the node's inner box
+    /// size, children are placed in that box's coordinates, and
+    /// `LayoutPass::arrange` moves each onto the page with a single add, so a moved
+    /// subtree is rebuilt exactly (see `LayoutPass::replay_arranged`).
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, payload: Self::Payload, inner: Size);
 
-    /// Pure on-demand query, and the one step that takes no pass: it must
-    /// not reach the frame's text shapes. Driven by `Grid`'s Phase-1
-    /// column resolution and `Stack`'s Fill min-content floor.
-    ///
-    /// `axis` is the axis being asked about. A driver whose answer also
-    /// depends on the axis it packs along reads that off `payload` — "how
-    /// tall given you pack across" is a different question from "how
-    /// wide", and only the stacks have a pack axis to tell them apart.
+    /// Pure on-demand query, the one step taking no pass: it must not reach the
+    /// frame's text shapes. Driven by `Grid`'s Phase-1 column resolution and
+    /// `Stack`'s Fill min-content floor. `axis` is the axis asked about; a driver
+    /// whose answer depends on its pack axis reads that off `payload`.
     fn intrinsic(
         engine: &mut LayoutEngine,
         tree: &Tree,
@@ -125,26 +84,19 @@ pub(super) trait LayoutDriver {
     ) -> IntrinsicRange;
 }
 
-/// One operation applied to whichever driver a [`LayoutMode`] names.
-///
-/// The three passes each dispatch over the same ten variants. Written out
-/// three times, a new driver was three arms in three files, and the
-/// compiler could only ask for the next one once the last was written.
-/// Here the match lives once, in [`Self::dispatch`], and a pass is an
-/// implementor.
+/// One operation applied to whichever driver a [`LayoutMode`] names; the match
+/// lives once, in [`Self::dispatch`].
 pub(super) trait DriverOp: Sized {
-    /// What this pass answers with: a content [`Size`] for measure,
-    /// nothing for arrange, an [`IntrinsicRange`] for the query.
+    /// What this pass answers with: a [`Size`] for measure, nothing for arrange, an
+    /// [`IntrinsicRange`] for the query.
     type Output;
 
-    /// Run against the driver `D` and the payload its variant carries.
     fn run<D: LayoutDriver>(self, payload: D::Payload) -> Self::Output;
 
-    /// A leaf has no driver — the pass answers for it directly.
     fn leaf(self) -> Self::Output;
 
-    /// Pick the driver `mode` names and run. The compiler flags a missing
-    /// arm here because [`LayoutMode`] matches are exhaustive.
+    /// Pick the driver `mode` names and run; the exhaustive match flags a missing
+    /// arm.
     fn dispatch(self, mode: LayoutMode) -> Self::Output {
         match mode {
             LayoutMode::Leaf => self.leaf(),
@@ -159,8 +111,7 @@ pub(super) trait DriverOp: Sized {
     }
 }
 
-/// Whether the driver `mode` names may replay its arranged rects instead
-/// of re-deriving them, as the [`DriverOp`] that asks.
+/// Whether the driver `mode` names may replay its arranged rects.
 #[derive(Debug)]
 pub(super) struct ReplayOp;
 
@@ -171,8 +122,6 @@ impl DriverOp for ReplayOp {
         D::ARRANGE_DEPENDS_ONLY_ON_SLOT
     }
 
-    /// A leaf places no children, so copying its subtree forward is
-    /// trivially sound.
     fn leaf(self) -> bool {
         true
     }
@@ -185,10 +134,9 @@ mod tests {
     use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
     use crate::primitives::layout::scroll_axes::ScrollAxes;
 
-    /// `Scrollbars` is the sole driver that reads outside its own subtree,
-    /// and the only thing standing between that and silently stale rects
-    /// is this flag. Pinning both sides keeps a future `true` from being
-    /// added by reflex — the failure mode is invisible at runtime.
+    /// `Scrollbars` is the sole driver reading outside its subtree, and this flag
+    /// alone prevents stale rects; pinning both sides stops a `true` being added by
+    /// reflex.
     #[test]
     fn only_scrollbars_opts_out_of_arrange_replay() {
         let slot_pure = [

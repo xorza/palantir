@@ -1,5 +1,4 @@
-//! A text backend on the shared test device, and the frames it is driven
-//! through.
+//! A text backend on the shared test device, and the frames driving it.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::raster::raster_program::RasterProgram;
@@ -21,16 +20,11 @@ use crate::text::wrap::TextWrap;
 use glam::{UVec2, Vec2};
 use wgpu::util::StagingBelt;
 
-/// The surface every row is bounded by.
 pub(super) const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
-/// The 14 px font every row is shaped at.
 const FONT_PX: f32 = 14.0;
 
-/// One backend over a program of its own, the shaper and record store
-/// its rows come from, and the lease that keeps the device alive. Which
-/// program object a case built against is not something any of them
-/// asserts on.
+/// One backend over its own program, plus the shaper, record store and device lease its rows need.
 #[derive(Debug)]
 pub(super) struct TextRig {
     lease: HeadlessTestGpuLease,
@@ -56,12 +50,7 @@ impl TextRig {
         }
     }
 
-    /// A row drawing `text` at 14 px on `line_height` lines, from
-    /// `origin`, bounded by [`PHYSICAL`] at scale 1 in near-white.
-    ///
-    /// Shaped through the run first, so the key stamped into the row is
-    /// the one the shaped buffer landed under: no width and a
-    /// non-binding policy, the unbounded root and nothing else.
+    /// A row drawing `text` at 14 px from `origin`, bounded by [`PHYSICAL`] at scale 1 in near-white. Shaped through the run first so the stamped key matches the shaped buffer's.
     pub(super) fn row(&mut self, text: &str, line_height: f32, origin: Vec2) -> TextDrawRow {
         let interned = self.store.intern(text);
         let recorded = self.store.record_text(interned);
@@ -91,8 +80,7 @@ impl TextRig {
         }
     }
 
-    /// Prepare `batches` at `scale`, batch `i` under index `i`, in one
-    /// deferred upload; submit it and wait for the device.
+    /// Prepare `batches` at `scale` in one deferred upload; submit and wait.
     pub(super) fn frame(&mut self, scale: f32, batches: &[&[TextDrawRow]]) {
         let device = &self.lease.device;
         let mut belt = StagingBelt::new(device.clone(), 1 << 16);

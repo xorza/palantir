@@ -5,11 +5,7 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 
-/// A drop shadow is its source moved by the offset and grown by the halo,
-/// `4σ + max(spread, 0)`. The source (10, 20, 30, 40) moved by (12, 7) and
-/// grown by 18 is (4, 9, 66, 76); moved by (−9, −11) and grown by 17,
-/// (−16, −8, 64, 74); moved by (4, −3) and grown by 8, since a negative
-/// spread adds nothing, (6, 9, 46, 56).
+/// A drop shadow is its source moved by the offset and grown by the halo `4σ + max(spread, 0)`. Source (10, 20, 30, 40): offset (12, 7) grown 18 gives (4, 9, 66, 76); (−9, −11) grown 17 gives (−16, −8, 64, 74); (4, −3) grown 8 (negative spread adds nothing) gives (6, 9, 46, 56).
 #[test]
 fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     #[derive(Debug)]
@@ -69,15 +65,9 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     );
 }
 
-/// A mesh whose vertex hull overflows its owner box (a rotated / scaled
-/// glyph) must report that hull as its paint bbox. Returning the owner
-/// rect instead makes partial damage too small — the overflow paints with
-/// cut vertices and leaves leftover pixels when it changes. Regression for
-/// the subscription-glyph triangle.
+/// A mesh whose vertex hull overflows its owner box reports the hull as its paint bbox; the owner rect would under-size partial damage (regression: the subscription-glyph triangle).
 #[test]
 fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
-    // Hull reaches left/up past the owner origin and right/down past a
-    // 13x13 owner box — it paints outside on every side.
     let hull = Rect {
         min: Vec2::new(-5.0, -4.0),
         size: Size::new(25.0, 24.0),
@@ -88,8 +78,6 @@ fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
         "the paint bbox is the vertex hull, not the owner rect"
     );
 
-    // `local_rect` translates the hull (its size still comes from the
-    // vertices, not `local_rect.size`).
     let offset = Rect {
         min: Vec2::new(2.0, 3.0),
         size: Size::new(99.0, 99.0),

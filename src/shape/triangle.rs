@@ -1,5 +1,4 @@
-//! The triangle builder. Lowers to
-//! `ShapeRecord::Quad(QuadShape::Triangle)`.
+//! The triangle builder; lowers to `ShapeRecord::Quad(QuadShape::Triangle)`.
 
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
@@ -87,23 +86,17 @@ fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
         .length_squared()
         .max(ac.length_squared())
         .max(bc.length_squared());
-    // Longest-edge normalization keeps the cutoff independent of authored scale.
     let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
     is_invisible(normalized_twice_area)
 }
 impl sealed::LowerShape for TriangleShape {
-    /// A thin or collapsed triangle with a radius is not empty: the SDF
-    /// grows it by the radius on every side, so it paints a bar along its
-    /// edges or a disc at its point.
+    /// A thin or collapsed triangle with a radius paints a bar or a disc, so it is not empty.
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.border.is_noop())
             || (is_invisible(self.radius) && triangle_paint_empty(self.a, self.b, self.c))
     }
 
-    /// `radius` has to be named. Lowering launders it —
-    /// `radius.max(0.0)` is `0.0` for NaN — so the record carries no
-    /// trace of it, and a NaN corner would reach the SDF as a
-    /// sharp-cornered triangle whose bbox was inflated by nothing.
+    /// `radius` must be checked here: lowering launders NaN to `0.0`, so the record would hide it.
     fn has_nan(&self) -> bool {
         self.a.has_nan()
             || self.b.has_nan()
@@ -113,18 +106,7 @@ impl sealed::LowerShape for TriangleShape {
             || self.border.has_nan()
     }
 
-    /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
-    /// `radius`: the SDF offsets the shape outward by that much to round
-    /// its corners, and the border is inside the edge and adds no
-    /// outward reach.
-    ///
-    /// The AA fringe is **not** folded in here. It is half a *physical*
-    /// pixel, and this rect is owner-local logical px — baking it in
-    /// under-covers below scale 1 and over-covers above. Every stroked
-    /// kind adds it in `cascade::paint_rect`, after lifting to screen
-    /// space where the display scale is in hand.
-    ///
-    /// Nothing is staged, so nothing goes through `lower::`.
+    /// `bbox` is the AABB of `a`/`b`/`c` inflated by `radius`. The AA fringe is added later in `cascade::paint_rect`, since it is half a physical pixel and this rect is logical. Nothing is staged, so nothing goes through `lower::`.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             a,
@@ -134,10 +116,7 @@ impl sealed::LowerShape for TriangleShape {
             fill,
             border,
         } = self;
-        // Through `Aabb`, not raw `min`/`max`: those launder a NaN corner
-        // out of the bounds, which would leave the record's own bbox
-        // reading finite for a shape that carries a NaN — and that bbox
-        // is what damage and clip-cull are computed from.
+        // Through `Aabb`: raw `min`/`max` would launder a NaN corner out of the bounds.
         let bbox = Aabb::of(&[a, b, c]).inflated(radius.max(0.0));
         ShapeRecord::Quad(QuadShape::Triangle {
             a,

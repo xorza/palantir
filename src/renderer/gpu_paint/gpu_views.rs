@@ -1,54 +1,31 @@
-//! The `Ui`'s live-`GpuView` bookkeeping, and the per-view row it keeps.
+//! The `Ui`'s live-`GpuView` bookkeeping.
 
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use std::collections::hash_map::Entry;
 
-/// One live `GpuView`, keyed by `WidgetId`: the view's stable backend
-/// `texture_id` (minted once from the shared render caches, so it cannot
-/// collide with images or another window), the app `paint` callback
-/// (refreshed every frame), and the redraw `epoch`.
+/// One live `GpuView` keyed by `WidgetId`: its stable `texture_id`, the app `paint` callback and the redraw `epoch`.
 #[derive(Debug)]
 pub(crate) struct GpuViewEntry {
     pub(crate) texture_id: TextureId,
     pub(crate) paint: GpuPaintRef,
-    /// The shape `epoch` stamped on each recorded frame. Bumped to the current
-    /// frame id only when the widget requests a repaint; held stable otherwise,
-    /// so a static view's shape hash doesn't change and the damage diff treats
-    /// it as unchanged (the encoder then culls it, skipping its GPU paint).
+    /// The shape `epoch`; bumped only on a repaint request so a static view's hash is stable and the encoder culls it.
     epoch: u64,
 }
 
-/// Every `GpuView` the `Ui` has seen and not yet swept. The only place a
-/// view's identity persists across frames — no `by_texture` index and no
-/// resolve, since the composer lists the targets to paint and the backend
-/// frees each the frame it is no longer composited.
+/// Every `GpuView` the `Ui` has seen and not yet swept.
 #[derive(Debug, Default)]
 pub(crate) struct GpuViews {
     entries: WidgetIdMap<GpuViewEntry>,
 }
 
 impl GpuViews {
-    /// Upsert `id`'s row for this frame and hand back the `epoch` its
-    /// shape must carry.
-    ///
-    /// `repaint` is the widget's per-frame dirty flag. When set, the epoch
-    /// bumps to `frame`, so the shape hash changes and the view repaints;
-    /// when clear, the epoch is held stable, so the damage diff treats the
-    /// view as unchanged and the encoder culls it (skipping its GPU paint
-    /// and reusing last frame's pixels). First sight always paints — the
-    /// texture does not exist yet.
-    ///
-    /// **A different callback is a different view**, and takes a fresh
-    /// `TextureId` for it. The id is stable for as long as one callback
-    /// answers to the widget, which is what the backend's target — and
-    /// the `GpuPaint::init` it ran once against that target — is keyed
-    /// on. Handing a *new* callback the old target would call `paint` on
-    /// something never initialized, and under `repaint(false)` would
-    /// leave it the old callback's pixels. A fresh id is a fresh target:
-    /// uninitialized, empty, and freed the frame the old one leaves the
-    /// live roster.
+    /// Upserts `id`'s row and returns the `epoch` its shape carries: bumped to
+    /// `frame` on `repaint`, else held so the encoder culls the view. First
+    /// sight always paints. A different callback is a different view and takes
+    /// a fresh `TextureId`, as the backend target and its `GpuPaint::init` are
+    /// keyed on the id.
     pub(crate) fn record(
         &mut self,
         id: WidgetId,
@@ -64,8 +41,6 @@ impl GpuViews {
                 if replaced {
                     entry.texture_id = TextureId::reserve();
                 }
-                // A replacement always paints, whatever the widget asked
-                // for: the fresh target has nothing in it.
                 if replaced || repaint {
                     entry.epoch = frame;
                 }
@@ -82,32 +57,19 @@ impl GpuViews {
         }
     }
 
-    /// The row the encoder composites for `id`.
     pub(crate) fn view(&self, id: WidgetId) -> &GpuViewEntry {
         &self.entries[&id]
     }
 
-    /// Drop the rows of widgets the frame stopped recording, one probe
-    /// each, so a frame pays for what it removed rather than for every
-    /// view the session ever held. The backend frees each orphaned
-    /// texture the next frame it is absent from the retention roster.
+    /// Drops the rows of widgets the frame stopped recording.
     pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         for id in removed {
             self.entries.remove(id);
         }
     }
 
-    /// Fill `out` with the retention roster: every view the frame
-    /// *recorded*, as against the `frame_targets` the frame *painted*,
-    /// which the damage diff culls an unchanged view out of. Keyed on
-    /// that alone, the backend could not tell "unchanged" from "gone" and
-    /// would free a live view's target.
-    ///
-    /// Sorted so the backend's retention sweep can search it instead of
-    /// scanning it once per retained target — the product of the two
-    /// counts, every submit, where a graph view holds one target per
-    /// node. A map's `values()` has no order of its own, so this also
-    /// stops the roster from depending on hash order.
+    /// Fills `out` with the retention roster: every view *recorded*, unlike
+    /// `frame_targets`, which culls unchanged views. Sorted so the backend can search it.
     pub(crate) fn collect_live_targets(&self, out: &mut Vec<TextureId>) {
         out.clear();
         out.reserve_exact(self.entries.len());
@@ -122,13 +84,7 @@ mod tests {
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use crate::renderer::gpu_paint::gpu_views::GpuViews;
 
-    /// One callback keeps one target, and a different one takes its own.
-    ///
-    /// `GpuPaint::init` runs once per target, so a target the backend
-    /// already initialized would hand a *new* callback a `paint` it never
-    /// prepared for — and, where the widget asked for no repaint, the
-    /// pixels the old callback left. Identity is the only thing that can
-    /// tell the two apart, since the widget id cannot.
+    /// One callback keeps one target; a different one takes its own, as `GpuPaint::init` runs once per target.
     #[test]
     fn a_replaced_callback_takes_a_fresh_target() {
         let id = WidgetId::from_hash("view");
@@ -138,8 +94,6 @@ mod tests {
         views.record(id, first.clone(), true, 1);
         let target = views.view(id).texture_id;
 
-        // The same callback, holding still: same target, and the epoch
-        // stays where a static view left it.
         let epoch = views.record(id, first.clone(), false, 2);
         assert_eq!(
             views.view(id).texture_id,
@@ -148,8 +102,6 @@ mod tests {
         );
         assert_eq!(epoch, 1, "and no repaint it did not ask for");
 
-        // A different one: its own target, and a paint whether or not it
-        // asked, because that target is empty.
         let epoch = views.record(id, GpuPaintRef::noop(), false, 3);
         assert_ne!(
             views.view(id).texture_id,
@@ -159,8 +111,6 @@ mod tests {
         assert_eq!(epoch, 3, "and it paints on the frame it arrived");
     }
 
-    /// Sweeping a removed view drops its row and leaves its sibling's,
-    /// so only the sibling's target stays on the retention roster.
     #[test]
     fn sweeping_a_removed_view_keeps_its_sibling() {
         let (gone, kept) = (WidgetId::from_hash("gone"), WidgetId::from_hash("kept"));

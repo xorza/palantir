@@ -1,17 +1,6 @@
-//! The host layer — everything between the OS/GPU and the [`Ui`](crate::Ui)
-//! recorder. [`UiResources`](crate::ui::resources::UiResources) is the
-//! app-global bundle each `Ui` and the shared renderer are built over;
-//! [`HostCore`](core::HostCore) bundles those resources with the one CPU
-//! frontend and GPU backend both hosts build on;
-//! [`WindowDriver`](window_driver::WindowDriver) owns each window's `Ui`
-//! and drives frames through that core; the
-//! `Ui` owns its retained record store. [`winit`] and
-//! [`offscreen`] are the two
-//! drivers (swapchain windows / render-to-texture); [`clock`] is the injected
-//! per-frame time source. The backend-agnostic *vocabulary* the recorder
-//! shares with this layer (`Display`, `WindowConfig`/`WindowToken`,
-//! `DebugOverlayConfig`) deliberately lives at the crate root, not here — the
-//! `Ui` API must not depend on the host machinery.
+//! The host layer between the OS/GPU and the [`Ui`](crate::Ui) recorder.
+//!
+//! [`HostCore`](core::HostCore) bundles [`UiResources`](crate::ui::resources::UiResources) with the CPU frontend and GPU backend; [`WindowDriver`](window_driver::WindowDriver) drives each window's `Ui` through it. [`winit`] and [`offscreen`] are the two drivers; [`clock`] injects time. Recorder vocabulary lives at the crate root so the `Ui` API doesn't depend on the host.
 
 pub(crate) mod clock;
 mod core;

@@ -1,5 +1,4 @@
-//! A side layer gets its own tree, and keeps it independent of the one it
-//! opened from.
+//! A side layer gets its own tree, independent of the one it opened from.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -77,25 +76,16 @@ fn ui_layer_records_popup_into_separate_tree() {
     );
 }
 
-/// `Ui::layer`'s optional size cap selects the overlay's `available`.
-/// `None` fills from anchor to surface bottom-right. `Some(s)` is
-/// anchor-independent and clamped to the surface; the caller owns
-/// placement in that mode. Anchor here is (50, 40) on a 400×300
-/// surface; remaining viewport from that anchor is (350, 260).
+/// `Ui::layer`'s size cap sets the overlay's `available`: `None` fills from the anchor (50, 40) to the 400×300 surface corner, (350, 260); `Some(s)` ignores the anchor and clamps to the surface.
 #[test]
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::geometry::size::Size;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = glam::Vec2::new(50.0, 40.0);
     let cases: &[(Option<Size>, Size)] = &[
-        // None → anchor-clamped: surface − anchor.
         (None, Size::new(350.0, 260.0)),
-        // Some(s) → anchor-independent: cap unchanged when ≤ surface.
         (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
-        // Some(huge) → clamped to the full surface size, not to
-        // `surface − anchor` (the caller picks the position).
         (Some(Size::new(9999.0, 9999.0)), Size::new(400.0, 300.0)),
-        // Some(mixed) → each axis clamps independently to surface.
         (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 300.0)),
     ];
     let mut h = UiHarness::new(SURF);
@@ -241,9 +231,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     assert_eq!(popup_texts, vec!["copy"]);
 }
 
-/// Pins per-tree shape buffer ownership
-/// proven by markers pushed at every Main + Popup level — each appears
-/// exactly once, in its owning tree, in recording order.
+/// A marker pushed at every Main and Popup level appears once, in its owning tree, in order.
 #[test]
 fn mid_recording_popup_keeps_trees_independent() {
     fn marker(slot: u8) -> RectShape {
@@ -311,7 +299,6 @@ fn mid_recording_popup_keeps_trees_independent() {
     let main_tree = h.ui.tree(Layer::Main);
     let popup_tree = h.ui.tree(Layer::Popup);
 
-    // Synthetic viewport at NodeId(0); user "main-parent" at NodeId(1).
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);

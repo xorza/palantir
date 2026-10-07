@@ -1,18 +1,8 @@
-//! Authoring → storage lowering: turns user-facing [`Shape`] inputs
-//! and [`Background`] chrome into the [`ShapeRecord`] / [`ChromeRow`]
-//! forms the tree stores. Bulk payload bytes (polyline points/colors,
-//! gradients) append to the window's [`RecordStore`]; functions that
-//! never touch the store don't take it.
+//! Authoring → storage lowering: [`Shape`] inputs and [`Background`] chrome become the [`ShapeRecord`] / [`ChromeRow`] forms the tree stores; bulk payload appends to the window's [`RecordStore`].
 //!
-//! **What lives here is what touches the store.** A shape whose record
-//! is a repacking of its own fields builds it in its own `Lower` impl,
-//! beside the type that knows the fields; a shape that has to *stage*
-//! something — gradient stops, polyline points, mesh vertices — lowers
-//! through a function here, so the `RecordStore` borrow stays on this
-//! side of the authoring boundary and no builder reaches for it.
+//! What lives here touches the store: a shape that must stage something (gradient stops, polyline points, mesh vertices) lowers here, keeping the `RecordStore` borrow off the authoring side; one that merely repacks its fields lowers in its own `Lower` impl.
 //!
-//! Entry points: [`Shapes::add`](crate::shape::shapes::Shapes::add) dispatches shapes here;
-//! `Tree::open_node` calls [`background`] for chrome.
+//! Entry points: [`Shapes::add`](crate::shape::shapes::Shapes::add) for shapes; `Tree::open_node` calls [`background`].
 //!
 //! [`Shape`]: crate::shape::Shape
 
@@ -53,12 +43,7 @@ use std::hash;
 use std::hash::{Hash as _, Hasher as _};
 use std::slice;
 
-/// Stable content hash for a gradient kind or a curve ramp: discriminant
-/// byte then the value's `Hash` impl (a gradient's hashes f32
-/// canon-bits). Lets `ShapeRecord::Hash` stay context-free — the hash is
-/// captured at lowering and rides in the `ShapeBrush::Gradient` or
-/// `CurveRamp::Interned` beside its id, so downstream cache keys don't
-/// need the store.
+/// Stable content hash for a gradient kind or curve ramp: discriminant byte then the value's `Hash`, captured at lowering so downstream cache keys stay context-free.
 #[inline]
 fn grad_hash<G: hash::Hash>(tag: u8, g: &G) -> u64 {
     let mut h = Hasher::new();
@@ -67,9 +52,6 @@ fn grad_hash<G: hash::Hash>(tag: u8, g: &G) -> u64 {
     h.finish()
 }
 
-/// Lower one gradient kind. `tag` and `kind` are the two things the
-/// three kinds do not share — the discriminant byte that keeps their
-/// content hashes apart, and the marker the shader branches on.
 fn gradient_brush<G: GradientGeometry>(
     store: &mut RecordStore,
     tag: u8,
@@ -88,15 +70,9 @@ fn gradient_brush<G: GradientGeometry>(
     ShapeBrush::Gradient { id, hash }
 }
 
-/// Lower a user-side `Brush` to the storage form: `Solid` stays
-/// inline; gradients retain their content in the store and return a
-/// `ShapeBrush::Gradient` holding the index and the content hash, which
-/// keeps the `ShapeRecord` / `ChromeRow` hashes context-free.
+/// Lower a `Brush`: `Solid` stays inline; gradients go into the store and return a `ShapeBrush::Gradient` with index and content hash.
 pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
-    // No screen of its own: a gradient's geometry disappears into the
-    // store behind a `GradientId`, so the decision has to be made before
-    // the intern, and both callers make it — `Shapes::add` on the
-    // authored shape, `background` below on the whole `Background`.
+    // A gradient's geometry vanishes behind a `GradientId`, so the no-op decision is made before interning, by both callers.
     debug_assert!(
         !b.has_nan(),
         "NaN gradient geometry reached lowering: {b:?}"
@@ -109,46 +85,21 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
     }
 }
 
-/// Lower a user-facing `Background` to a `ChromeRow`. Same gradient
-/// lowering as [`Shapes::add`](crate::shape::shapes::Shapes::add) uses for rectangle fills,
-/// so chrome and shape paints share one pool. Takes `bg` by
-/// reference — the recording chain threads it through four functions
-/// and [`Background`] is deliberately not `Copy`; the per-field reads
-/// below copy the small fields locally as needed.
+/// Lower a `Background` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `bg` by reference: [`Background`] is deliberately not `Copy`.
 pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke) -> ChromeRow {
-    // **Chrome's NaN gate**, and the second of the crate's two — the
-    // shape path's is `Shapes::add`. It runs here for the same reason
-    // that one runs before lowering: `fill` interns its gradient into the
-    // store, so a broken one has to be caught while it is still in hand.
+    // Chrome's NaN gate, the second of two (the shape path's is `Shapes::add`), before lowering because `fill` interns its gradient.
     //
-    // It sanitizes where the shape path drops, because a chrome row has
-    // *two* consumers. `chrome_table` deliberately keeps a row for
-    // `ClipMode::Rounded` even when the paint is fully no-op, so the
-    // encoder can read `corners` for the stencil mask — dropping the
-    // chrome would fix the fill and leave the mask reading the NaN.
-    //
-    // Each field falls back to what its NaN already meant: no rounding,
-    // no paint, no stroke, no shadow. Every one degrades safely — a
-    // square background instead of a rounded one, a clip that still
-    // clips. Sanitizing before the hash below keeps `ChromeRow.hash`
-    // agreeing with what actually paints.
+    // It sanitizes where the shape path drops: `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op, so the stencil mask can read `corners`, and dropping it would leave the mask reading the NaN. Each field falls back to what its NaN meant; sanitizing before the hash keeps `ChromeRow.hash` honest.
     debug_assert!(
         !bg.has_nan(),
         "NaN in a Background — it degrades to no rounding and no paint: {bg:?}",
     );
-    // A background that paints nothing is kept only for a rounded clip's
-    // corners. Its fill lowers to transparent rather than interning a
-    // gradient no pass draws, which is also what lets
-    // `ChromeRow::is_invisible` answer from the row alone.
     let fill_brush = if bg.fill.has_nan() || bg.is_noop() {
         &Brush::TRANSPARENT
     } else {
         &bg.fill
     };
     let fill = brush(store, fill_brush);
-    // The width stays even when the colour paints nothing: it is the
-    // padding edge the layout fold moved the children to, and an inset
-    // shadow paints inside that edge.
     let border = ShapeStroke {
         width: bg.border_inset(),
         ..ShapeStroke::from(if bg.border.has_nan() {
@@ -169,10 +120,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke)
     };
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();
-    // Canonical authoring hash, fed as whole words straight from
-    // registers. A struct packed for one byte-slice `write` is stored
-    // field by field and read back in wider chunks, a load the CPU
-    // cannot forward from the stores still in flight.
+    // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
     let brush = fill.hash_parts();
     let mut h = Hasher::new();
     h.write_u64(brush.payload);
@@ -192,10 +140,7 @@ pub(crate) fn background(store: &mut RecordStore, bg: &Background, ring: Stroke)
     }
 }
 
-/// Lower a rounded or windowed rectangle onto the quad tier. Every
-/// geometry input is already in its storage form, so the only work is
-/// the fill: it interns through [`brush`], the same pool [`background`]
-/// draws from, so chrome and rectangle fills share one gradient set.
+/// Lower a rounded or windowed rectangle onto the quad tier. Geometry is already in storage form; the fill interns through [`brush`], the pool [`background`] shares.
 pub(crate) fn rect(
     store: &mut RecordStore,
     kind: RectKind,
@@ -213,14 +158,7 @@ pub(crate) fn rect(
     })
 }
 
-/// Lower a mesh: copy its vertices and indices into the store and
-/// freeze the bbox and content hash the record carries.
-///
-/// Here rather than in `MeshShape::lower` because staging is the whole
-/// of what it does — the builder held a `&Mesh` and the record holds two
-/// spans into the store, and reaching for the store from the authoring
-/// side is the coupling this module exists to keep on one side of the
-/// line.
+/// Lower a mesh: copy vertices and indices into the store and freeze the bbox and content hash.
 pub(crate) fn mesh(
     store: &mut RecordStore,
     mesh: &Mesh,
@@ -238,13 +176,7 @@ pub(crate) fn mesh(
     }
 }
 
-/// Lower a polyline authoring shape into a `ShapeRecord::Polyline`: copy
-/// the points into the store, and the colours multiplied by the stroke
-/// colour, then compute the content hash. Only `Shape::Polyline` routes through
-/// this — the one multi-segment stroke with interior joins; every
-/// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
-/// `ShapeRecord::Curve` directly, picking its [`CurveBasis`]. Both
-/// render on the GPU curve pipeline.
+/// Lower a polyline into a `ShapeRecord::Polyline`: points into the store, colours multiplied by the stroke colour, then the content hash. Single-stroke shapes lower to `ShapeRecord::Curve` instead.
 pub(crate) fn polyline(
     store: &mut RecordStore,
     points: &[Vec2],
@@ -254,30 +186,19 @@ pub(crate) fn polyline(
     join: LineJoin,
     bbox: Rect,
 ) -> ShapeRecord {
-    // `Single` stages one white multiplier, so every mode takes the same
-    // multiply and the stroke colour lands exactly: `1.0 × c` is `c`.
     let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
         PolylineColors::Single => (ColorMode::Single, slice::from_ref(&RgbaF32::WHITE)),
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
         PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
     };
 
-    // `Shape::is_noop` drops < 2-point polylines before lowering
-    // (`Shapes::add` gates on it), so a degenerate slice here is a
-    // caller bug, not an input case. Colour cardinality is the same kind
-    // of contract, checked here beside it rather than from the no-op
-    // query — a query answers, it does not validate.
+    // `Shapes::add` drops < 2-point polylines via `is_noop`, so a degenerate slice is a caller bug; colour cardinality is checked here since a query answers, it does not validate.
     debug_assert!(
         points.len() >= 2,
         "polyline with < 2 points reached lowering"
     );
     colors.assert_matches(points.len());
-    // `bbox` was folded by `PolylineShape::new`, which is what let
-    // `Shapes::add` screen this shape before anything below staged a
-    // byte. Two passes over `points` rather than one interleaved pass,
-    // and it is the faster shape by ~3x past a handful of points: the
-    // fold vectorizes when nothing else shares the loop, and the copy
-    // below becomes one `memcpy` instead of per-point `push`es.
+    // `bbox` was folded by `PolylineShape::new` so `Shapes::add` can screen before staging. Two passes beat one interleaved: the fold vectorizes alone and the copy becomes one `memcpy`.
     debug_assert!(
         !bbox.has_nan(),
         "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
@@ -285,9 +206,6 @@ pub(crate) fn polyline(
     let staged = store.stage_polyline(points, color_slice, stroke.color);
     let lowered_colors = &store.polyline_colors[staged.colors.range()];
 
-    // Hash contract for polyline records: no variant tag needed —
-    // polylines are the only shape lowering into this record, and
-    // `compute_record_hash` writes the record tag anyway.
     let mut h = Hasher::new();
     for &point in points {
         point.hash_visual(&mut h);
@@ -312,24 +230,9 @@ pub(crate) fn polyline(
     }
 }
 
-/// Lower any [`CurveGeometry`] onto its [`CurveBasis`] plus a tight
-/// bbox. One entry point rather than four, so the geometry's fields are
-/// read where they live instead of being destructured into a positional
-/// call and rebuilt on the other side.
+/// Lower any [`CurveGeometry`] onto its [`CurveBasis`] plus a tight bbox. Tessellation is GPU-side at draw time.
 ///
-/// Tessellation happens GPU-side at draw time — no CPU flattening, no
-/// per-curve vertex/index allocation. The composer derives sub-instance
-/// count from the post-transform control-polygon length. A ramp samples
-/// along the curve parameter `t`.
-///
-/// Lines and quadratics reach the shader as cubics. A line's inner
-/// control points sit on the segment's thirds, so `B(t) = a + (b - a)·t`
-/// exactly and `t` runs linearly from `a` to `b`; the composer's
-/// flatness fast-path keeps that collinear cubic a single GPU instance.
-/// A quadratic's promotion is exact, not an approximation. An arc keeps
-/// its own basis: the shader evaluates the exact circle, so
-/// centre/radius/angles are stored verbatim and a ramp is sampled along
-/// the sweep.
+/// Lines and quadratics reach the shader as cubics (exact promotion; a line's inner control points sit on the segment's thirds so `t` runs linearly and the composer keeps it one GPU instance). An arc keeps its own basis: the shader evaluates the exact circle.
 pub(crate) fn curve(
     store: &mut RecordStore,
     geometry: CurveGeometry,
@@ -352,8 +255,6 @@ pub(crate) fn curve(
             start_angle,
             sweep,
         } => {
-            // `|sweep| ≤ 2π`: a longer sweep would repaint pixels and
-            // double-blend a translucent stroke.
             debug_assert!(
                 sweep.abs() <= TAU + 1.0e-4,
                 "Shape::arc sweep {sweep} exceeds a full circle (±2π)"
@@ -373,8 +274,6 @@ pub(crate) fn curve(
     let ramp = match &ramp {
         None => CurveRamp::None,
         Some(ramp) => {
-            // Tag 3, past the gradient kinds' 0..=2 in `brush`, so a ramp
-            // and a gradient over the same stops hash apart.
             let hash = grad_hash(3, ramp);
             let id = store.intern_gradient(
                 hash,
@@ -390,16 +289,12 @@ pub(crate) fn curve(
     curve_record(bounded, ShapeStroke::from(stroke), ramp, cap)
 }
 
-/// One curve's shader basis and the tight bbox of its trace — what
-/// every geometry resolves to before the shared stroke fields join it.
 #[derive(Clone, Copy, Debug)]
 struct BoundedBasis {
     basis: CurveBasis,
     bbox: Rect,
 }
 
-/// The three geometries that reach the shader as cubics differ only in
-/// how they arrive at these four control points.
 fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
     BoundedBasis {
         basis: CurveBasis::Cubic { p0, p1, p2, p3 },
@@ -407,11 +302,7 @@ fn cubic(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> BoundedBasis {
     }
 }
 
-/// The one `ShapeRecord::Curve` constructor — both bases land here, so
-/// the stroke fields they share are assembled in exactly one place.
-/// The record hash (`compute_record_hash`) covers the basis + stroke +
-/// cap directly; the only lowering-time hash it reads is the one an
-/// interned `ramp` carries.
+/// The one `ShapeRecord::Curve` constructor, so the shared stroke fields are assembled once.
 const fn curve_record(
     bounded: BoundedBasis,
     stroke: ShapeStroke,

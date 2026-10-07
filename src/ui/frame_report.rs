@@ -1,8 +1,4 @@
 //! One frame's plain-data report from [`Ui::frame`]: the post-record
-//! signals a caller may inspect. All frame-shaped state (forest,
-//! layout, cascade, display) stays on [`Ui`] itself. The renderer's
-//! detailed paint plan remains crate-private; callers see its stable
-//! [`FramePaint`] classification.
 //!
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
@@ -12,26 +8,14 @@ use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use std::time::Duration;
 
-/// How `Ui::frame` resolved this frame: which passes actually ran.
-///
-/// Crate-private, for the same reason the [`RenderPlan`] behind
-/// [`FrameReport::paint`] is: it names the internal pass structure, and
-/// that structure is free to change. A consumer asking "was anything
-/// repainted" reads [`FramePaint`]; this answers "which passes got
-/// there", which is the crate's own business.
+/// How `Ui::frame` resolved this frame: which passes ran. Crate-private, since it names the internal pass structure; consumers read [`FramePaint`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FrameProcessing {
-    /// Paint-anim-only short-circuit fired: no pre_record, no user
-    /// closure, no post_record, no layout, no cascade. Just damage
-    /// compute + encode + paint against the retained tree.
+    /// Paint-anim-only short-circuit: no record, layout or cascade; only damage + encode + paint against the retained tree.
     PaintOnly,
-    /// Standard frame: one record pass + layout + cascade + damage
-    /// + finalize.
+    /// Standard frame: one record pass + layout + cascade + damage + finalize.
     SingleLayout,
-    /// Pass A's closure set the action flag or requested relayout,
-    /// so a second `record_pass` (plus its own `post_record` +
-    /// layout + cascade) ran before `finalize_frame`. Capped at
-    /// one retry per `Ui::frame`.
+    /// Pass A set the action flag or requested relayout, so a second `record_pass` ran (one retry per frame).
     DoubleLayout,
 }
 
@@ -50,27 +34,14 @@ pub enum FramePaint {
 /// the next one.
 #[derive(Debug)]
 pub struct FrameReport {
-    /// `true` when an animation tick during this frame hasn't
-    /// settled (set by `Ui::animate`). Hosts honor by calling
-    /// `window.request_redraw()` (or equivalent) after present, so
-    /// the next frame runs even when input is idle.
+    /// `true` when an animation tick this frame hasn't settled (set by `Ui::animate`); hosts request a redraw after present.
     pub repaint_requested: bool,
-    /// Absolute Ui-time deadline at which the host should wake and run
-    /// another frame, even if no input arrives. `None` ⇒ no scheduled
-    /// wake. Set by [`crate::Ui::request_repaint_after`]. The supported host
-    /// facades convert this Ui-time deadline to their own clock.
+    /// Absolute Ui-time deadline at which the host should wake and run another frame; `None` for no scheduled wake. Set by [`crate::Ui::request_repaint_after`].
     pub repaint_after: Option<Duration>,
     pub(crate) plan: Option<RenderPlan>,
-    /// Which passes ran — see [`FrameProcessing`]. Every build decides
-    /// it, so every build carries it: `FrameCycle::run` asserts it
-    /// against this report's own paint outcome, and the crate's tests
-    /// read it to pin which short-circuit fired.
+    /// Which passes ran, see [`FrameProcessing`]; `FrameCycle::run` asserts it against the paint outcome and tests read it.
     pub(crate) processing: FrameProcessing,
-    /// Where IME text goes this frame — the caret a widget asked for with
-    /// [`Ui::request_ime`](crate::Ui::request_ime), in logical px — or
-    /// `None` when nothing asked. A host that embeds the UI enables its
-    /// platform's input method while this is `Some`, and places the
-    /// candidate list beside the rect; the winit host does both itself.
+    /// Where IME text goes this frame: the caret rect (logical px) a widget asked for with [`Ui::request_ime`](crate::Ui::request_ime), else `None`. A host that embeds the UI enables its input method while `Some`; the winit host does it itself.
     pub ime_area: Option<Rect>,
 }
 

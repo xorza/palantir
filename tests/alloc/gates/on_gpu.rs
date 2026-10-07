@@ -1,17 +1,13 @@
 //! The gates whose cost is partly the driver's rather than palantir's.
 //!
-//! Every wgpu submission allocates, and how much is the adapter's call:
-//! the scale ramp below spends 396 blocks a frame on a GeForce RTX 4090,
-//! 1059 on Mesa's lavapipe and 1759 on Apple's Metal. Validation
-//! accounts for none of it — `WGPU_VALIDATION=0` moves the count by zero.
+//! Every wgpu submission allocates, and how much is the adapter's call: the
+//! scale ramp spends 396 blocks a frame on a GeForce RTX 4090, 1059 on Mesa's
+//! lavapipe and 1759 on Apple's Metal. Validation accounts for none of it.
 //!
-//! So neither gate reads a strict zero. The still-tree gate needs no
-//! number at all: it measures the adapter's floor on an empty scene
-//! through the same target and pins the tree to it, so CI runs it on
-//! every adapter.
-//! The ramp's ceiling was measured on one adapter and does not transfer —
-//! widened to fit every driver it would let several hundred blocks a
-//! frame through unseen — so CI skips that one by name.
+//! So neither gate reads a strict zero. The still-tree gate measures the
+//! adapter's floor on an empty scene through the same target and pins the tree
+//! to it, so CI runs it on every adapter. The ramp's ceiling was measured on
+//! one adapter and does not transfer, so CI skips it by name.
 
 use std::rc::Rc;
 
@@ -25,19 +21,14 @@ use palantir::{
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::{Audit, OffscreenTarget, Report};
 
-/// Surface and tree for both GPU gates, deliberately smaller than the
-/// CPU one: what the first of them pins is the driver's per-frame floor,
-/// which scales with submissions rather than with node count. A bigger
-/// tree would only make the same number slower to reach.
-///
-/// Shared so the ramp's number reads against the still-tree floor: the
-/// ramp draws this tree plus a row of icons, and what it costs over the
-/// floor is the miss path.
+/// Surface and tree for both GPU gates, smaller than the CPU one: the first
+/// pins the driver's per-frame floor, which scales with submissions, not node
+/// count. Shared so the ramp reads against the still-tree floor; the ramp
+/// draws this tree plus a row of icons, and its excess is the miss path.
 const RENDER_SURFACE: UVec2 = UVec2::new(1280, 800);
 const RENDER_NODE_SCALE: usize = 6;
 
-/// Offscreen frames of `scene` on `target`, warmed and measured with no
-/// ceiling — what they cost is the answer, not the test.
+/// Offscreen frames of `scene` on `target`, warmed and measured with no ceiling.
 fn device_frames(
     gpu: &HeadlessTestGpuLease,
     target: &mut OffscreenTarget,
@@ -52,23 +43,19 @@ fn device_frames(
         })
 }
 
-/// The adapter's per-frame floor on `target`: an empty scene's modal
-/// count. Every submission allocates — a `CommandEncoder` Arc, a
-/// `CommandBuffer` Arc, the queue's in-flight `Vec` push, per-pass scratch
-/// from `wgpu_hal` — and the offscreen path submits its backbuffer copy on
-/// every frame.
+/// The adapter's per-frame floor on `target`: an empty scene's modal count.
+/// Every submission allocates (command encoder and buffer Arcs, the in-flight
+/// `Vec` push, `wgpu_hal` pass scratch), and the offscreen path submits its
+/// backbuffer copy every frame.
 ///
-/// The floor holds for `target` alone. The copy's command buffer grows its
-/// texture tracker to each texture's tracker index as it meets it, so what
-/// the copy allocates depends on where the device placed the backbuffer
-/// and the target among its live textures: on an Apple M5, an empty scene
-/// read 25 or 28 blocks a frame by how many unrelated textures were alive
-/// when its target was made. A floor is only comparable with frames drawn
-/// through the same target, whose backbuffer the host keeps.
+/// The floor holds for `target` alone: the copy's texture tracker grows to
+/// each texture's index, so the count depends on where the device placed the
+/// backbuffer and target among live textures (an Apple M5 read 25 or 28 by how
+/// many unrelated textures were alive). Compare only against frames drawn
+/// through the same target.
 fn empty_floor(gpu: &HeadlessTestGpuLease, target: &mut OffscreenTarget) -> u64 {
     let floor = device_frames(gpu, target, |_| {}).mode;
-    // A floor that reads zero has stopped measuring, and only the number
-    // says so.
+    // A floor of zero means the gate has stopped measuring.
     assert!(
         floor > 0,
         "an empty frame counted no allocation — the wgpu submission path \
@@ -77,20 +64,17 @@ fn empty_floor(gpu: &HeadlessTestGpuLease, target: &mut OffscreenTarget) -> u64 
     floor
 }
 
-/// A still tree damages nothing, so its frames must cost the device what
-/// an empty scene's do through the same target: whatever palantir does
-/// on the way to a skipped paint, it does without the heap.
+/// A still tree damages nothing, so its frames must cost the device what an
+/// empty scene's do through the same target: palantir's skipped-paint path is
+/// heap-free.
 ///
-/// Compared on the mode, not the worst frame. wgpu pools its command
-/// encoders and tracking vectors, and how often a call hits that pool
-/// depends on state palantir does not own, so a rare frame lands a few
-/// blocks above the rest inside `create_command_encoder` and `submit`.
-/// The mode leaves those frames out, so the comparison can be exact: one
-/// more allocation on most frames fails it.
+/// Compared on the mode, not the worst frame: wgpu pools its encoders and
+/// tracking vectors, so a rare frame lands a few blocks higher inside
+/// `create_command_encoder` and `submit`. The mode omits those, so one more
+/// allocation on most frames fails the comparison.
 ///
-/// The leased test device carries no timestamp or pipeline-statistics
-/// features, which matters: the queries an instrumented device runs
-/// allocate per frame, and that is the very thing being counted here.
+/// The leased test device has no timestamp or pipeline-statistics features,
+/// whose queries allocate per frame.
 #[test]
 fn still_tree_frame_costs_the_empty_floor() {
     let gpu = isolated_headless_test_gpu();
@@ -110,68 +94,47 @@ fn still_tree_frame_costs_the_empty_floor() {
     );
 }
 
-/// One `16×16` box, so what the rasterizer spends is the SVG pipeline
-/// rather than the drawing in it.
+/// One `16×16` box, so the SVG pipeline is what the rasterizer spends.
 const RAMP_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
 
-/// Icons the ramp draws. Enough that a per-raster regression reads as a
-/// multiple rather than as noise, few enough that the glyph side still
-/// dominates the frame the way a real UI does.
+/// Icons the ramp draws: enough that a per-raster regression reads as a
+/// multiple, few enough that glyphs still dominate as in a real UI.
 const RAMP_ICONS: u16 = 5;
 
-/// Frames the ramp measures, one raster rung each.
-///
-/// Short on purpose. The zoom carries content off the surface as it
-/// climbs, so the glyph count per frame falls with it: measured over 384
-/// frames the worst frame is the same one but the mean drops from 478 to
-/// 334, which is 320 frames of measuring less and less. The costly frames
-/// are the early ones, and this window is the ones that hold the whole
-/// tree.
+/// Frames the ramp measures, one raster rung each. Short on purpose: the zoom
+/// carries content off the surface, so the glyph count falls (over 384 frames
+/// the mean drops from 478 to 334 with the same worst frame). The costly
+/// frames are the early ones that hold the whole tree.
 const RAMP_FRAMES: usize = 64;
 
-/// Per-frame ceiling for the ramp, against a measured worst frame of
-/// 400 and a mean of 350.
+/// Per-frame ceiling for the ramp, against a measured worst frame of 400 and
+/// a mean of 350.
 ///
-/// **Not zero, and it cannot be.** Every frame here misses every glyph
-/// and every icon it draws: swash scales an outline per glyph, resvg
-/// renders the parsed tree at a size it has not been rendered at, and
-/// both atlases take an insert. Shaping is not in that list — the rung is
-/// a raster scale, which `TextShapeKey` does not carry, so the shaped
-/// buffers hit. The floor belongs to the dependencies rather than to
-/// palantir. The glyph set is fixed — the host shapes with the four
-/// bundled faces and nothing from the machine — so the headroom above the
-/// measured worst is for the driver's frame-to-frame spread on this
-/// adapter, which repeated runs put at 398 to 404.
+/// Not zero: every frame misses every glyph and icon it draws (swash scales an
+/// outline per glyph, resvg renders at an unseen size, both atlases insert).
+/// Shaping hits, since the rung is a raster scale that `TextShapeKey` does not
+/// carry. The floor belongs to the dependencies. The glyph set is fixed (the
+/// four bundled faces), so the headroom is the driver's frame-to-frame spread
+/// on this adapter, 398 to 404 over repeated runs.
 ///
-/// What it pins is the *per-miss* cost. A regression that allocated once
-/// more per glyph would lift this by the glyph count, and the audit
-/// checks every frame on its own, so it fails on the frame that did it
-/// with that frame's backtraces attached. Both rasterizers render into
-/// retained scratch and hand back a borrow, so neither the glyph nor the
-/// icon side contributes a block per raster; anything that made one of
-/// them own its pixels again would show up here first.
+/// It pins the per-miss cost: one more allocation per glyph lifts it by the
+/// glyph count, and the audit checks each frame with backtraces. Both
+/// rasterizers render into retained scratch, so neither contributes a block
+/// per raster.
 ///
-/// **What it does not reach is atlas pressure.** Eviction needs the mask
-/// side full, and a zoom that climbs far enough to fill it has already
-/// carried most of the tree off the surface — so this ramp exercises
-/// growth and the miss path, not the re-rasterize cascade
-/// `RasterAtlas::evict_one` describes.
+/// It does not reach atlas pressure: eviction needs the mask side full, and a
+/// zoom that fills it has carried most of the tree off the surface, so this
+/// exercises growth and the miss path, not `RasterAtlas::evict_one`'s cascade.
 const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 510;
 
-/// A continuous zoom: the raster scale steps one [`TEXT_SCALE_STEP`] rung
-/// a frame, so every glyph and every icon on screen resolves to a key
-/// neither atlas holds.
+/// A continuous zoom: the raster scale steps one [`TEXT_SCALE_STEP`] rung a
+/// frame, so every glyph and icon resolves to a key neither atlas holds.
 ///
-/// The gap this closes. Every other audit in the suite paints at a fixed
-/// scale, so its glyphs and icons are rasterized during warmup and hit
-/// for the rest of the run — leaving `rasterize_and_insert`, the SVG
-/// rasterizer, both atlases' insert paths and the encoded-run cache's
-/// miss path outside every measured window. A moving scale also damages
-/// the whole surface every frame, so this is the one audit that encodes
-/// and composes a full tree rather than an empty damage region.
-///
-/// The warmup ramps too. Stopping the zoom to warm up would hand the
-/// window a full set of hits and measure the steady state twice.
+/// Other audits paint at a fixed scale, hitting after warmup, which leaves
+/// `rasterize_and_insert`, the SVG rasterizer, both atlas insert paths and the
+/// encoded-run cache's miss path unmeasured. A moving scale also damages the
+/// whole surface, so this is the one audit that encodes and composes a full
+/// tree. The warmup ramps too, or the window would measure the steady state.
 #[test]
 fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     let gpu = isolated_headless_test_gpu();
@@ -195,8 +158,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         .run_frames(|| {
             zoom += TEXT_SCALE_STEP;
             target.frame(&gpu, BENCH_DPR, |ui| {
-                // Parked across frames, so re-loading is a refcount bump
-                // and the set's rasters are never unloaded.
+                // Parked across frames: re-loading is a refcount bump.
                 let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
                 Panel::vstack()
                     .auto_id()
@@ -219,8 +181,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
             });
         });
 
-    // A ramp that stopped missing would cost what a still frame does and
-    // pin nothing this one exists for.
+    // A ramp that stopped missing would cost what a still frame does.
     assert!(
         report.mode > floor,
         "most frames counted {} blocks, no more than the empty floor of {floor} \

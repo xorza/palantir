@@ -5,8 +5,7 @@ use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, TextWrap};
 
-/// Every policy, in declaration order — so a new one has to be added
-/// here to compile, rather than quietly escaping the sweeps below.
+/// Every policy, so a new one must be added here to compile.
 const ALL: [TextWrap; 6] = [
     TextWrap::SingleLine,
     TextWrap::Scroll,
@@ -16,15 +15,8 @@ const ALL: [TextWrap; 6] = [
     TextWrap::WrapWithOverflow,
 ];
 
-/// The whole policy-to-fit mapping, plus the reachability it implies.
-///
-/// Pinned because two things lean on it and neither would fail loudly.
-/// A policy that changed which fit it binds under would reshape every
-/// run beneath it against a different cache identity. And the
-/// shaper-level `TestShape` fixture takes a [`LineFit`] directly
-/// rather than a policy, which only stays honest while every fit is
-/// some policy's — a fit no policy yields would let a test describe a
-/// run layout cannot produce.
+/// The policy-to-fit mapping, pinned because cache identity and the
+/// `TestShape` fixture (which takes a `LineFit` directly) depend on it.
 #[test]
 fn every_line_fit_is_some_policys_and_only_the_two_unbounded_ones_have_none() {
     for (policy, expected) in [
@@ -44,14 +36,11 @@ fn every_line_fit_is_some_policys_and_only_the_two_unbounded_ones_have_none() {
                  one directly can build a request layout never does",
         );
     }
-    // Exactly two policies keep their unbounded shape; if that grew,
-    // the `(width, fit)` gate would be letting more through than the
-    // two documented on `line_fit`.
+    // Exactly two policies keep their unbounded shape.
     assert_eq!(ALL.iter().filter(|p| p.line_fit().is_none()).count(), 2);
 }
 
-/// Unbounded root standing in for a shaped measurement — the only
-/// input the bounded-shaping decisions read.
+/// Unbounded root standing in for a shaped measurement.
 fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
     TextRoot {
         extent: TextExtent::inked_within(Size::new(width_px, 16.0)),
@@ -62,19 +51,16 @@ fn root(width_px: f32, single_line: bool, intrinsic_min: f32) -> TextRoot {
 
 #[test]
 fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
-    // A truncating fit whose root already fits shapes identical
-    // glyphs, so the reshape and its cache entry are skipped. Wrap
-    // never qualifies (cosmic bakes per-line halign into the buffer),
-    // and neither does a root that already broke or overflows.
+    // A truncating fit whose root already fits skips the reshape. Wrap never
+    // qualifies (cosmic bakes per-line halign into the buffer), nor does a
+    // root that already broke or overflows.
     for (fit, single_line, target_width_px, expected) in [
         (LineFit::Clip, true, 100.0, true),
         (LineFit::Ellipsis, true, 100.0, true),
         (LineFit::Wrap, true, 100.0, false),
         (LineFit::Clip, false, 100.0, false),
         (LineFit::Clip, true, 99.0, false),
-        // The comparison runs on the canonical (whole-px) wrap grid —
-        // quantized by the caller, the way `commit` does it — so 99.6
-        // rounds up to the root's 100 and fits; 99.4 does not.
+        // Compared on the whole-px wrap grid: 99.6 rounds up to the root's 100 and fits; 99.4 does not.
         (LineFit::Clip, true, 99.6, true),
         (LineFit::Clip, true, 99.4, false),
     ] {
@@ -91,9 +77,7 @@ fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
 
 #[test]
 fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
-    // 40 px committed against a 60 px unbreakable segment: every
-    // policy but WrapWithOverflow shapes at the committed width and
-    // lets the segment break.
+    // 40 px committed against a 60 px unbreakable segment: all but WrapWithOverflow shape at 40 and break it.
     let narrow = root(200.0, false, 60.0);
     for policy in [
         TextWrap::SingleLine,
@@ -113,8 +97,7 @@ fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
         TextWrap::WrapWithOverflow.target_width(40.0, &narrow),
         TextWrap::Wrap.target_width(40.0, &narrow),
     );
-    // A committed width already past the floor is used verbatim, so
-    // the policy only ever raises the target.
+    // A committed width past the floor is used verbatim.
     assert_eq!(
         TextWrap::WrapWithOverflow.target_width(80.0, &narrow),
         80.0,
@@ -131,9 +114,7 @@ fn wrap_target_matches_cache_grid() {
         let cache_width = MeasureCache::available_key(Size::new(width, 0.0)).x;
         assert_eq!(width.canonical_px() as i32, cache_width, "width={width}");
     }
-    // The wrap width adds one rule on top of the shared grid: an
-    // over-constrained layout can commit a negative width, which the
-    // cache would assert on, so it clamps to zero here first.
+    // A negative committed width (over-constrained layout) clamps to zero; the cache would assert on it.
     for width in [-0.4_f32, -1.0, -1e9] {
         assert_eq!(width.canonical_px(), 0.0, "width={width}");
     }

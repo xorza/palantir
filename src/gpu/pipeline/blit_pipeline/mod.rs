@@ -1,26 +1,16 @@
-//! Drawing the retained backbuffer onto a target, for targets that cannot be
-//! copied into.
+//! Drawing the retained backbuffer onto a target that cannot be copied into.
 
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;
 
-/// The format-independent half of the backbuffer blit: one shader module,
-/// no buffers.
+/// The format-independent half of the backbuffer blit: one shader module, no buffers.
 ///
-/// The peer of [`Backbuffer::copy_onto`](crate::gpu::surface::backbuffer::Backbuffer::copy_onto),
-/// reached when the target lacks `COPY_DST` — a GLES swapchain image, which is
-/// the default framebuffer and takes draws alone. Without it such a surface
-/// would have to give up damage-limited painting and repaint whole.
-///
-/// It binds the same group-0 layout every sampled texture uses, rather than a
-/// second one that would have to agree with it. The sampler slot that layout
-/// carries goes unused: the shader reads texels by index, because this stands
-/// in for a copy and a filtered read is not one.
+/// The peer of [`Backbuffer::copy_onto`](crate::gpu::surface::backbuffer::Backbuffer::copy_onto) for targets lacking `COPY_DST` (a GLES swapchain image takes draws alone); without it such a surface would repaint whole instead of damage-limited. It binds the shared group-0 layout; its sampler slot goes unused, since the shader reads texels by index (a filtered read isn't a copy).
 #[derive(Debug)]
 pub(crate) struct BlitPipeline {
     shader: wgpu::ShaderModule,
-    /// Format-independent, so built once here rather than per format.
+    /// Format-independent, so built once.
     pipeline_layout: wgpu::PipelineLayout,
 }
 
@@ -37,11 +27,7 @@ impl BlitPipeline {
         }
     }
 
-    /// The pipeline for one target format.
-    ///
-    /// No blend state: the backbuffer holds the finished frame, so the draw
-    /// replaces the target rather than compositing onto it. No stencil twin
-    /// either — this runs after every clipped draw, in a pass of its own.
+    /// The pipeline for one target format. No blend: the backbuffer holds the finished frame, so the draw replaces the target. No stencil twin: it runs after every clipped draw, in its own pass.
     pub(super) fn build(
         &self,
         device: &wgpu::Device,
