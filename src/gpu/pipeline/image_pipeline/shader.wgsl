@@ -106,6 +106,22 @@ fn tap(uv: vec2<f32>, tiled: bool) -> vec4<f32> {
     return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
 }
 
+// The texel at `texel`, a floored texel-space coordinate, unfiltered: what a
+// nearest filter promises. Not the sampler at the texel's centre, which
+// computes `uv · n − 0.5` in fixed point with as few as four bits below the
+// texel, and so blends in a neighbour (V3D reads 2 steps of it at a seam).
+// Wrapped on a tiled draw and clamped otherwise, as `tap` and the sampler's
+// `ClampToEdge` treat the same edge.
+fn nearest_texel(texel: vec2<f32>, tiled: bool) -> vec4<f32> {
+    let dims = vec2<i32>(textureDimensions(tex));
+    let i = vec2<i32>(texel);
+    var at = clamp(i, vec2<i32>(0), dims - 1);
+    if (tiled) {
+        at = vec2<i32>(wrap_texel(i.x, dims.x), wrap_texel(i.y, dims.y));
+    }
+    return textureLoad(tex, at, 0);
+}
+
 // `i` brought into `[0, n)`. WGSL's `%` keeps the sign of the dividend,
 // so a texel one to the left of the tile needs the extra turn.
 fn wrap_texel(i: i32, n: i32) -> i32 {
@@ -217,16 +233,21 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // the one `select` it skipped.
         let nearest = filtered & (FLAG_MIN_NEAREST | FLAG_MAG_NEAREST);
         let filter_flag = select(FLAG_MAG_NEAREST, FLAG_MIN_NEAREST, minifying);
-        if ((nearest & filter_flag) != 0u) {
-            uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
+        let snapped = (nearest & filter_flag) != 0u;
+        var texel = vec2<f32>(0.0);
+        if (snapped) {
+            texel = floor(uv * dims);
+            uv = (texel + vec2<f32>(0.5)) / dims;
         }
 
         // Only a footprint worth covering earns the loop: magnified and 1:1
         // draws have none, and under two texels the grid is one tap at this
-        // same UV — which is the `else` arm, reached without the machinery.
+        // same UV — which the arms below take without the machinery.
         let taps = filtered & (FLAG_TAPS_MEAN | FLAG_TAPS_PEAK);
         if (taps != 0u && footprint_squared > MIN_TAPPED_FOOTPRINT_SQUARED) {
             s = footprint_taps(uv, uv_dx, uv_dy, sqrt(footprint_squared), in.flags);
+        } else if (snapped) {
+            s = nearest_texel(texel, tiled);
         } else {
             s = tap(uv, tiled);
         }
