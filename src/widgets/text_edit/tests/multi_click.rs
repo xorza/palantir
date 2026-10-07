@@ -1,12 +1,6 @@
 use crate::widgets::text_edit::tests::*;
 
-/// Double-click selects the word under the caret; triple-click
-/// selects the whole buffer. Pins the input pass's dispatch on the
-/// input layer's `press_count` run (chained within
-/// `DOUBLE_CLICK_WINDOW`/`DOUBLE_CLICK_RADIUS`, classified with the
-/// event-time frame clock — hence the idle frame before the "pause"
-/// press below, standing in for the frames a real host runs between
-/// gestures).
+/// Double-click selects the word, triple-click the buffer; dispatch follows the input layer's `press_count` run (within `DOUBLE_CLICK_WINDOW`/`DOUBLE_CLICK_RADIUS` on the event-time clock, hence the idle frame before the pause press).
 #[test]
 fn double_and_triple_click_select_word_and_all() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -25,11 +19,9 @@ fn double_and_triple_click_select_word_and_all() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
-    // Setup: record once so the editor's rect is known to the next frame.
     h.at(Duration::from_secs_f32(0.0))
         .frame(|ui| body(ui, &mut buf));
 
-    // Click 1 at x=32 (mono byte 3, inside "hello").
     h.press_at(Vec2::new(32.0, 20.0));
     h.at(Duration::from_secs_f32(0.0))
         .frame(|ui| body(ui, &mut buf));
@@ -40,8 +32,6 @@ fn double_and_triple_click_select_word_and_all() {
     assert_eq!(st.edit.caret, 3, "single click places the caret");
     assert_eq!(st.edit.selection, None);
 
-    // Click 2 at same pos, well inside the window → double press,
-    // selects word at byte 3 → "hello".
     h.press();
     h.at(Duration::from_secs_f32(0.1))
         .frame(|ui| body(ui, &mut buf));
@@ -51,7 +41,6 @@ fn double_and_triple_click_select_word_and_all() {
     h.at(Duration::from_secs_f32(0.1))
         .frame(|ui| body(ui, &mut buf));
 
-    // Click 3 still inside the window → triple press → select all.
     h.press();
     h.at(Duration::from_secs_f32(0.2))
         .frame(|ui| body(ui, &mut buf));
@@ -65,9 +54,7 @@ fn double_and_triple_click_select_word_and_all() {
     h.at(Duration::from_secs_f32(0.2))
         .frame(|ui| body(ui, &mut buf));
 
-    // Long pause (an idle frame advances the event clock, as a real
-    // host's frames would), then another click restarts the run:
-    // plain caret placement, no selection.
+    // An idle frame advances the event clock; the next click restarts the run.
     h.at(Duration::from_secs_f32(5.0))
         .frame(|ui| body(ui, &mut buf));
     h.press();

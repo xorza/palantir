@@ -3,43 +3,25 @@
 use crate::damage::Damage;
 use crate::primitives::paint::color::RgbaF32;
 
-/// WindowDriver-facing render plan, present only when there's actual render
-/// work this frame — `FrameReport.plan = None` is the skip signal, so neither
-/// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
-/// colour (needed for both outcomes: `Full` clears the colour attachment,
-/// `Partial` pre-fills each scissor with it) with the frame's [`Damage`].
+/// WindowDriver-facing render plan, present only when there is render work; `FrameReport.plan = None` is the skip signal. Pairs the clear colour with the frame's [`Damage`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RenderPlan {
     /// Surface clear colour for this frame.
     pub(crate) clear: RgbaF32,
-    /// Whole surface, or just a damage region. `Full` clears and repaints
-    /// everything; `Partial` loads the backbuffer and paints inside the
-    /// rects after a `clear`-coloured pre-fill quad per scissor, with the
-    /// coverage riding along for the present-path promote decision (see
-    /// `DIRECT_PROMOTE_COVERAGE`).
-    ///
-    /// The scene's own outcome, carried rather than restated: `Damage`'s
-    /// "nothing to paint" is already the absence of one, which is what
-    /// this plan's `Option` says too.
+    /// Whole surface or a damage region. `Partial` loads the backbuffer and paints inside the rects after a clear-coloured pre-fill per scissor; coverage rides along for the present-path promote decision (`DIRECT_PROMOTE_COVERAGE`).
     pub(crate) damage: Damage,
 }
 
 impl RenderPlan {
-    /// Physical-pixel padding around every partial-repaint scissor for
-    /// antialiasing fringes and glyph overhang. The backend inflates
-    /// each scissor by this much; [`Self::cull_margin`] is the logical
-    /// slack the frontend must match so it never culls a draw that
-    /// lands inside the padded rect.
+    /// Physical-pixel padding around each partial scissor for AA fringes and glyph overhang; [`Self::cull_margin`] is the logical slack the frontend must match.
     pub(crate) const AA_PADDING: u32 = 2;
 
-    /// Logical-pixel culling slack matching the backend's scissor
-    /// padded by [`Self::AA_PADDING`].
+    /// Logical-pixel culling slack matching the scissor padding [`Self::AA_PADDING`].
     pub(crate) const fn cull_margin(scale: f32) -> f32 {
         (Self::AA_PADDING as f32 + 1.0) / scale
     }
 
-    /// Stamp `DamageEngine`'s output with the surface clear colour. A
-    /// frame with no damage stays `None` all the way to the host.
+    /// Stamp `DamageEngine`'s output with the clear colour; no damage stays `None`.
     pub(crate) fn from_damage(damage: Option<Damage>, clear: RgbaF32) -> Option<Self> {
         Some(RenderPlan {
             clear,
@@ -47,9 +29,7 @@ impl RenderPlan {
         })
     }
 
-    /// This plan escalated to a full repaint, keeping its clear colour — used
-    /// when partial damage can't be honoured (direct present, or a freshly
-    /// (re)created backbuffer with undefined contents).
+    /// This plan escalated to a full repaint, keeping its clear colour; for when partial damage can't be honoured (direct present, fresh backbuffer).
     pub(crate) const fn to_full(self) -> RenderPlan {
         RenderPlan {
             clear: self.clear,

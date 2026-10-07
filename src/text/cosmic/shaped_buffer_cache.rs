@@ -1,22 +1,13 @@
-//! The shaped-buffer cache: which buffers are resident, how long each
-//! one stays, and the pool an evicted one is recycled through.
+//! The shaped-buffer cache: which buffers are resident, how long each stays, and
+//! the pool an evicted one is recycled through.
 //!
-//! Bounded by **age, not capacity**. A count budget cannot express what
-//! this needs: set below the live working set it thrashes — UI redraw is
-//! a cyclic access pattern, LRU's worst case, so the overflow misses
-//! every frame forever — and set above it, a resize drag fills it with
-//! widths that can never be hit again. Ageing bounds both without a
-//! number to guess: an app keeps exactly what it keeps touching, and
-//! scan traffic falls out on its own.
-//!
-//! Four operations move an entry between the two windows, and they are
-//! one protocol rather than four methods: [`ShapedBufferCache::insert`]
-//! files a probationary ticket, [`ShapedBufferCache::hit`] promotes,
-//! [`ShapedBufferCache::supersede`] demotes, and
-//! [`ShapedBufferCache::tick_frame`] settles whatever came due. The
-//! [`ExpiryWheel`] contract in [`crate::common::expiry_wheel`] is upheld
-//! only by all of them agreeing, and reading any one alone is how the
-//! ticket-leak regression got written.
+//! Bounded by age, not capacity: a count budget below the working set thrashes
+//! (redraw is cyclic, LRU's worst case) and above it fills with widths a resize
+//! drag never revisits. [`ShapedBufferCache::insert`] files a probationary ticket,
+//! [`ShapedBufferCache::hit`] promotes, [`ShapedBufferCache::supersede`] demotes,
+//! and [`ShapedBufferCache::tick_frame`] settles what came due; the
+//! [`ExpiryWheel`] contract ([`crate::common::expiry_wheel`]) holds only if all
+//! four agree.
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
@@ -29,115 +20,64 @@ use std::collections::hash_map::Entry;
 
 const RECYCLE_POOL_CAP: usize = 128;
 
-/// Frames a *probationary* entry survives before
-/// [`ShapedBufferCache::tick_frame`] drops it: one inserted and never
-/// looked up, or one [superseded](ShapedBufferCache::supersede) after its
-/// reuse slot moved to a different key.
+/// Frames a *probationary* entry survives before [`ShapedBufferCache::tick_frame`]
+/// drops it: inserted and never looked up, or
+/// [superseded](ShapedBufferCache::supersede) after its reuse slot moved to
+/// another key. Short on purpose: a drag mints a never-reused key per run per
+/// frame, and the protected window would hold `runs × RENDERED_RUN_KEEP_FRAMES`
+/// dead buffers.
 ///
-/// Short on purpose. This population is scan traffic: a resize or zoom
-/// drag quantizes to a new whole-pixel wrap width nearly every frame, so
-/// each run mints a key that will never be asked for again. Holding those
-/// for the protected window lets one drag accumulate
-/// `runs × RENDERED_RUN_KEEP_FRAMES` dead buffers.
-///
-/// **Supersession is what makes this window reach that population.**
-/// Insertion alone does not: layout shapes a run and the encoder renders
-/// it on the *same* frame, and that render is a lookup, so every drawn
-/// buffer would otherwise be promoted the moment it was created and the
-/// probation tier would be inert. Steady state cannot repair that by
-/// re-touching it either — the measure cache and the encoded-run cache
-/// both short-circuit before reaching here, so a resident buffer is
-/// never looked up again on a later frame. `TextSystem` holds the only
-/// signal that distinguishes "this run wants a different shape now"
-/// (drag, typing, animation — dead) from "this run left the tree"
-/// (scrolled away — may well return), and it reports the first through
-/// [`ShapedBufferCache::supersede`].
-///
-/// A demotion, not an eviction: four frames of grace means a label
-/// oscillating between two keys, or a drag reversing back through a
-/// width it just used, still hits.
+/// **Supersession is what makes this window reach that population.** Layout shapes
+/// a run and the encoder renders it on the same frame, which is a lookup, so every
+/// buffer would be promoted at creation; the measure and encoded-run caches
+/// short-circuit before here, so nothing repairs that later. `TextSystem` alone
+/// can tell "wants a different shape" (dead) from "left the tree" (may return). It
+/// is a demotion, not an eviction: four frames of grace let an oscillating label or
+/// a reversing drag still hit.
 ///
 /// # Why not reference-counted retention
 ///
-/// Letting an entry die when no upper cache still holds it reads like
-/// the obvious replacement for this whole scheme — no windows, no
-/// demotion signal. It does not work, for a measured reason.
-/// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints a fresh
-/// encoded entry every frame and those live
-/// `ENCODED_CACHE_KEEP_FRAMES` — a shorter window than this one, but
-/// still one with no probation tier under it. An encoded entry holding
-/// its buffer *strongly* therefore pins `runs × (that window + 1)` of
-/// them, an order of magnitude past what this window achieves, and the
-/// exact growth it was added to stop. Holding it *weakly* keeps the drag
-/// bounded but leaves buffers dying under live encoded entries, so the
-/// whole restore path (`ShapedTextRef`, `InternedText`,
-/// `CosmicMeasure::ensure_buffer`) has to stay — and deleting that was
-/// the other half of the idea. The two wins are mutually exclusive.
+/// `EncodedKey` embeds [`TextShapeKey`], so a width drag mints an encoded entry per
+/// frame living `ENCODED_CACHE_KEEP_FRAMES`. Holding its buffer strongly pins
+/// `runs × (window + 1)` buffers, the growth this scheme stops. Holding it weakly
+/// leaves buffers dying under live entries, so the restore path (`ShapedTextRef`,
+/// `InternedText`, `CosmicMeasure::ensure_buffer`) must stay. The wins exclude each
+/// other.
 pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 
-/// The longest a rendered run waits to be retired: its keep plus the
-/// spread that staggers retirements.
+/// The longest a rendered run waits to be retired: its keep plus the stagger.
 const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
 
-/// A resident shaped buffer paired with the x its glyph block starts at,
-/// so every reader normalizes the same way off one lookup.
+/// A resident shaped buffer with the x its glyph block starts at.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedRun<'a> {
     pub(crate) buffer: &'a Buffer,
-    /// See [`CacheEntry::left`].
     pub(crate) left: f32,
 }
 
-/// One shaped `Buffer` per [`TextShapeKey`], on a two-tier age window.
-///
-/// The protected tier is [`RENDERED_RUN_KEEP_FRAMES`] plus the entry's
-/// own share of [`RENDERED_RUN_KEEP_SPREAD_MASK`]; the probation tier is
-/// [`PROBATION_KEEP_FRAMES`]. Which tier an entry sits in is its
-/// `dies_at` and nothing else — see [`CacheEntry::dies_at`].
+/// One shaped `Buffer` per [`TextShapeKey`], on a two-tier age window: protected is
+/// [`RENDERED_RUN_KEEP_FRAMES`] plus the entry's share of
+/// [`RENDERED_RUN_KEEP_SPREAD_MASK`]; probation is [`PROBATION_KEEP_FRAMES`]. The
+/// tier is the entry's `dies_at`.
 #[derive(Debug)]
 pub(super) struct ShapedBufferCache {
     entries: FxHashMap<TextShapeKey, CacheEntry>,
-    /// **The** frame clock every text cache in the crate ages against,
-    /// advanced by [`Self::tick_frame`]. Stamped onto every entry this
-    /// touches, and the reference point both retention windows measure
-    /// back from.
+    /// The frame clock every text cache in the crate ages against, advanced by
+    /// [`Self::tick_frame`] and stamped on every entry. Downstream caches read it
+    /// through [`TextShaper::frame`](crate::text::shaper::TextShaper) instead of
+    /// counting, so [`RENDERED_RUN_KEEP_FRAMES`] can state an ordering against them.
     ///
-    /// One counter rather than one per cache. The renderer's
-    /// encoded-run cache and its glyph atlas receive this reading
-    /// through [`TextShaper::frame`](crate::text::shaper::TextShaper)
-    /// instead of counting for themselves, which is what lets
-    /// [`RENDERED_RUN_KEEP_FRAMES`] state an ordering against them at
-    /// all — comparing two windows means something only while both
-    /// count the same thing.
-    ///
-    /// It advances on the record path while the backend sweeps on the
-    /// submit path, so it both jumps — a window that records twice before
-    /// one submit — and stalls — two windows submitting in one round.
-    /// That is fine for an age comparison. It is never a cadence gate
-    /// written as `frame % INTERVAL == 0`.
-    ///
-    /// **It counts host frames.** A window that frames again on the
-    /// reading it last framed at ticks it, so N windows painting together
-    /// tick it once per round — see `FrameRuntime::tick_text_clock`. A
-    /// window painting at a lower rate than its sibling ages at the
-    /// sibling's rate, which is the host's.
+    /// It advances on record while the backend sweeps on submit, so it can jump or
+    /// stall: fine for an age comparison, never a `frame % INTERVAL == 0` gate. It
+    /// counts host frames: N windows painting together tick it once per round
+    /// (`FrameRuntime::tick_text_clock`).
     frame: u64,
-    /// Which keys come due on which frame, so [`Self::tick_frame`] costs
-    /// what expires rather than what is resident.
-    ///
-    /// A wheel rather than a single earliest-`keep_until` gate, which is
-    /// O(1) only while nothing churns: one key that changes every frame
-    /// — a clock, an FPS counter, a scrubbing value — re-pins that
-    /// minimum a probation window out on every insert, the gate stops
-    /// firing, and every frame walks the whole map to reclaim one entry.
-    /// The churn that would motivate such a gate is precisely the churn
-    /// that defeats it.
+    /// Which keys come due on which frame. A wheel, not an earliest-`keep_until` gate:
+    /// a key changing every frame re-pins that minimum on each insert, and every frame
+    /// would walk the whole map to reclaim one entry.
     expiry: ExpiryWheel<TextShapeKey>,
-    /// LIFO pool fed by eviction. `Buffer::set_text` reclaims its line,
-    /// shaping, and layout allocations when the buffer is reset.
+    /// LIFO pool fed by eviction; `Buffer::set_text` reuses its allocations.
     recycle_pool: Vec<Buffer>,
-    /// Shape / hit / supersede / expire tallies. Zero-sized outside
-    /// tests.
     pub(super) counters: CacheCounters,
 }
 
@@ -154,26 +94,16 @@ impl Default for ShapedBufferCache {
 }
 
 impl ShapedBufferCache {
-    /// Shaped buffers currently resident.
     pub(super) fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// The current reading of the shared frame clock — see
-    /// [`Self::frame`]. Every downstream cache stamps and expires
-    /// against this rather than counting frames of its own.
     pub(super) const fn frame(&self) -> u64 {
         self.frame
     }
 
-    /// Look up the shaped run for `key`, or `None` when no buffer is
-    /// resident under it — never measured on this cache, or aged out
-    /// since.
-    ///
-    /// A lookup, so absence is an answer rather than a wiring bug: the
-    /// probe path takes it for a run that was never shaped, and a
-    /// residency check is the question itself. It does **not** promote,
-    /// which is what separates it from [`Self::hit`].
+    /// Look up the shaped run for `key`, or `None` when no buffer is resident. Absence
+    /// is an answer here. Does not promote, unlike [`Self::hit`].
     pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
         self.entries.get(&key).map(|e| ShapedRun {
             buffer: &e.buffer,
@@ -181,11 +111,8 @@ impl ShapedBufferCache {
         })
     }
 
-    /// The resident entry under `key`, its deadline pushed out to the
-    /// protected window and the hit counted.
-    ///
-    /// Being asked for at all is the evidence that separates reuse from
-    /// scan traffic, so no separate promotion step is needed.
+    /// The resident entry under `key`, its deadline pushed to the protected window.
+    /// Being asked for is the evidence of reuse over scan traffic.
     pub(super) fn hit(&mut self, key: TextShapeKey) -> Option<&mut CacheEntry> {
         let entry = self.entries.get_mut(&key)?;
         entry.dies_at = self.frame + RENDERED_RUN_KEEP_FRAMES + key.keep_spread() + 1;
@@ -193,25 +120,16 @@ impl ShapedBufferCache {
         Some(entry)
     }
 
-    /// The cached unbounded shape a truncating fit cuts from.
-    ///
-    /// `CosmicMeasure::shape_truncated` restores this key before reaching
-    /// for it, and reads it once per miss: the shaping between back-off
-    /// rounds needs the measurer mutably, so it snapshots the glyphs it
-    /// cuts from rather than holding this borrow across the loop.
-    ///
-    /// Hands back the whole entry rather than its buffer: the caller
-    /// wants the measured extent as well as the glyphs, and both come out
-    /// of the one lookup. Does not promote — the restore that preceded it
-    /// already did.
+    /// The cached unbounded shape a truncating fit cuts from. Read once per miss by
+    /// `CosmicMeasure::shape_truncated` (after restoring the key), which snapshots the
+    /// glyphs since shaping needs the measurer mutably. Does not promote.
     pub(super) fn probe(&self, key: TextShapeKey) -> &CacheEntry {
         self.entries
             .get(&key)
             .expect("truncation requires the cached unbounded shape")
     }
 
-    /// Store a freshly shaped buffer. Entries start probationary; only a
-    /// later [`Self::hit`] promotes them (see [`PROBATION_KEEP_FRAMES`]).
+    /// Store a freshly shaped buffer, probationary until a [`Self::hit`] promotes it.
     pub(super) fn insert(
         &mut self,
         key: TextShapeKey,
@@ -219,12 +137,8 @@ impl ShapedBufferCache {
         extent: CachedExtent,
         left: f32,
     ) {
-        // Counted here rather than per `shape_until_scroll` so one
-        // cached run is one tally: the truncation back-off can reshape a
-        // prefix several times to land inside the committed width, and a
-        // workload test cares that the run was shaped, not how many
-        // attempts the cut took. The memoized ellipsis probe shapes
-        // without inserting and is deliberately not counted.
+        // Counted here, not per `shape_until_scroll`: one cached run is one tally even if
+        // the truncation back-off reshapes several times. The ellipsis probe isn't counted.
         self.counters.shapes.bump();
         let dies_at = self.probation_dies_at();
         let ticket_seq = self.expiry.schedule(key, dies_at);
@@ -245,60 +159,32 @@ impl ShapedBufferCache {
     }
 
     /// The frame an entry filed into the probation window is first dead.
-    /// Read by [`Self::insert`] and by [`Self::supersede`], the two sites
-    /// that file one.
     const fn probation_dies_at(&self) -> u64 {
         self.frame + PROBATION_KEEP_FRAMES + 1
     }
 
-    /// Demote `key` to the probation window: the reuse slot that owned
-    /// it now answers a different key, so nothing can ask for it through
-    /// that slot again. See [`PROBATION_KEEP_FRAMES`] for why this is
-    /// the signal the two-tier policy runs on.
-    ///
-    /// Only ever shortens a deadline — a supersede must not extend the
-    /// life of an entry already closer to expiry — and files a second
-    /// ticket for the earlier frame, since the outstanding one sits at
-    /// the deadline this just retracted.
-    ///
-    /// Silent on a key that isn't resident: the buffer may already have
-    /// aged out, and superseding what is gone is a no-op, not an error.
+    /// Demote `key` to the probation window: its reuse slot now answers another key.
+    /// Only shortens a deadline, and files a second ticket for the earlier frame since
+    /// the outstanding one sits at the retracted deadline. Silent on a non-resident key.
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
         let dies_at = self.probation_dies_at();
         let Some(entry) = self.entries.get_mut(&key) else {
             return;
         };
         self.counters.supersedes.bump();
-        // Never *extends* a life: an entry already closer to expiry —
-        // one that was inserted and never looked up — keeps its own
-        // deadline.
+        // Never extends a life: an entry already closer to expiry keeps its deadline.
         if entry.dies_at > dies_at {
             entry.dies_at = dies_at;
-            // The new ticket is earlier than the outstanding one, so it
-            // is the one that decides this entry's fate: stamping it
-            // here retires the supplanted ticket when it fires.
+            // The new ticket is earlier, so it decides this entry's fate; stamping it retires
+            // the supplanted ticket when it fires.
             entry.ticket_seq = self.expiry.schedule(key, dies_at);
         }
     }
 
-    /// Advance the shared frame clock one frame and drop every buffer
-    /// whose deadline has passed.
-    ///
-    /// **The one place the clock moves.** Everything downstream — the
-    /// glyph atlas, the encoded-run cache — receives the new reading as
-    /// an argument and never advances it, which is what keeps every text
-    /// cache in the crate on one reading.
-    ///
-    /// Cost tracks what expires, not what is resident: [`Self::expiry`]
-    /// hands back only the keys whose ticket came due, so a frame holding
-    /// a scrolled document's whole working set pays the same as an empty
-    /// one unless something actually lapsed.
-    ///
-    /// A ticket is a hint, never authority to drop. Deadlines move after
-    /// it is filed — [`Self::hit`] pushes one out and deliberately files
-    /// nothing, which is what keeps a re-read entry from filing a ticket
-    /// per frame — so the real `dies_at` is re-read here and a still-live
-    /// entry is simply re-filed.
+    /// Advance the shared frame clock one frame and drop every buffer whose deadline
+    /// has passed. The one place the clock moves. Cost tracks what expires. A ticket is
+    /// a hint: [`Self::hit`] pushes a deadline out and files nothing, so the real
+    /// `dies_at` is re-read and a live entry re-filed.
     pub(super) fn tick_frame(&mut self) {
         self.frame += 1;
         let frame = self.frame;
@@ -306,23 +192,18 @@ impl ShapedBufferCache {
         let recycle_pool = &mut self.recycle_pool;
         let counters = &mut self.counters;
         self.expiry.retire(frame, |key, seq| {
-            // Retired already — a demote leaves two tickets outstanding
-            // and both can come due in one drain, so whichever settled
-            // first may have evicted the entry this one is holding.
+            // Retired already: a demote leaves two tickets outstanding, and the first may have
+            // evicted this entry.
             let Entry::Occupied(slot) = entries.entry(key) else {
                 return None;
             };
-            // Supplanted by a later `supersede`: the entry's live ticket
-            // is still outstanding and will settle it, so this one is
-            // surplus and dies here. Re-filing it instead is what let the
-            // per-entry ticket count — and with it the per-frame drain —
-            // grow for as long as the entry stayed resident.
+            // Supplanted by a later `supersede`: the live ticket is still outstanding, so
+            // this one dies. Re-filing it grew the ticket count for as long as the entry lived.
             if seq != slot.get().ticket_seq {
                 return None;
             }
             if slot.get().dies_at > frame {
-                // Re-filed under the same serial, so the entry's stamp
-                // still names it and nothing has to be written back.
+                // Re-filed under the same serial, so the entry's stamp still names it.
                 return Some(slot.get().dies_at);
             }
             counters.expiries.bump();
@@ -331,14 +212,8 @@ impl ShapedBufferCache {
         });
     }
 
-    /// Drop every shaped buffer now, recycling each one, without waiting
-    /// out a retention window.
-    ///
-    /// `CosmicMeasure::load_font` owes this: the buffers were laid out
-    /// against a database that has since changed. Tests that exercise the
-    /// *restore* path use it to set up a guaranteed-cold cache in one
-    /// call, instead of encoding this cache's retention policy into tests
-    /// that aren't about it.
+    /// Drop every shaped buffer now, recycling each. Owed by `CosmicMeasure::load_font`;
+    /// tests use it for a guaranteed-cold cache.
     pub(super) fn drop_all(&mut self) {
         let recycle_pool = &mut self.recycle_pool;
         for (_, entry) in self.entries.drain() {
@@ -347,25 +222,19 @@ impl ShapedBufferCache {
         self.expiry.clear();
     }
 
-    /// A buffer to reshape into, or `None` when the caller has to build
-    /// one. The pool's whole purpose: `Buffer::set_text` reclaims the
-    /// line, shaping and layout allocations a recycled buffer already
-    /// holds, where a fresh one pays for them again.
+    /// A buffer to reshape into, or `None` when the caller must build one.
     pub(super) fn take_recycled(&mut self) -> Option<Buffer> {
         self.recycle_pool.pop()
     }
 
-    /// Hand a buffer back that never became an entry — the ellipsis
-    /// probe shapes one glyph and drops it. Filed buffers come back
-    /// through [`Self::tick_frame`] and [`Self::drop_all`] instead.
+    /// Hand back a buffer that never became an entry (the ellipsis probe's).
     pub(super) fn recycle(&mut self, buffer: Buffer) {
         recycle_into(&mut self.recycle_pool, buffer);
     }
 }
 
-/// The pool's one write, as a free function: [`ShapedBufferCache::tick_frame`]
-/// and [`ShapedBufferCache::drop_all`] both hold another field across it,
-/// and only a field-level borrow leaves the pool free.
+/// The pool's one write as a free function: [`ShapedBufferCache::tick_frame`] and
+/// [`ShapedBufferCache::drop_all`] hold another field across it.
 fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
     if pool.len() < RECYCLE_POOL_CAP {
         pool.push(buffer);
@@ -382,7 +251,6 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::extent::TextExtent;
 
-    /// Frames one revolution of the expiry ring takes.
     pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
 
     #[cfg(test)]
@@ -395,11 +263,8 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl ShapedBufferCache {
-        /// Outstanding expiry tickets. The number that says whether
-        /// [`ShapedBufferCache::supersede`] is holding up its end of the
-        /// wheel's protocol: a demote files a ticket that supplants the
-        /// outstanding one, and if the supplanted ticket re-files itself
-        /// this grows by one per demote for as long as the entry lives.
+        /// Outstanding expiry tickets. Grows by one per demote if a supplanted ticket
+        /// re-files itself.
         pub(crate) fn pending_tickets(&self) -> usize {
             self.expiry.pending()
         }
@@ -408,8 +273,6 @@ pub(crate) mod internals {
             self.counters.counts()
         }
 
-        /// What the buffer filed under `key` measured to, without
-        /// touching its life.
         pub(crate) fn extent(&self, key: TextShapeKey) -> Option<TextExtent> {
             self.entries.get(&key).map(|entry| entry.extent.extent())
         }

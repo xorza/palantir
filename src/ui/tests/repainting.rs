@@ -31,9 +31,7 @@ use glam::Vec2;
 use std::collections::HashSet;
 use std::time::Duration;
 
-/// Pin: enabling `frame_stats` records a Debug-layer text widget,
-/// keeps damage `Partial` (not `Full`) on an otherwise-static scene,
-/// and updates `fps_ema` once two frames have elapsed.
+/// Pin: enabling `frame_stats` records a Debug-layer text widget, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = UiHarness::new(SURFACE);
@@ -42,9 +40,6 @@ fn frame_stats_overlay_records_partial_damage() {
         ..h.ui.debug_overlay()
     });
 
-    // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
-    // diff against), but the Debug layer should already carry the
-    // readout.
     let mut body = |ui: &mut Ui| {
         Block::new()
             .id(WidgetId::from_hash("body"))
@@ -58,10 +53,6 @@ fn frame_stats_overlay_records_partial_damage() {
         "Debug layer must carry the frame_stats readout",
     );
 
-    // Second frame at t = 16ms. Main scene is unchanged; only the
-    // Debug-layer readout dirties → expect `Partial`, not `Full`,
-    // and not `None` either. `fps_ema` picks up its first instantaneous
-    // reading, 1 / 0.016 s.
     let report = h.at(Duration::from_millis(16)).frame(&mut body);
     assert!(
         matches!(
@@ -80,8 +71,6 @@ fn frame_stats_overlay_records_partial_damage() {
         "the first reading seeds fps_ema with the instantaneous rate",
     );
 
-    // Disabling the flag mid-stream evicts the Debug-layer node next
-    // frame.
     h.ui.set_debug_overlay(DebugOverlayConfig {
         frame_stats: false,
         ..h.ui.debug_overlay()
@@ -93,9 +82,7 @@ fn frame_stats_overlay_records_partial_damage() {
     );
 }
 
-/// Multiple distinct deadlines coexist in the queue and surface
-/// in ascending order; each fires independently on a frame at or
-/// past its deadline.
+/// Distinct deadlines coexist in the queue, surface in ascending order, and each fires on a frame at or past it.
 #[test]
 fn request_repaint_after_queues_distinct_deadlines() {
     let mut h = UiHarness::new(SURFACE);
@@ -103,21 +90,17 @@ fn request_repaint_after_queues_distinct_deadlines() {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.5));
     });
-    // Earliest deadline wins the report slot.
     assert_eq!(
         report.repaint_after,
         Some(Duration::from_secs_f32(0.5)),
         "FrameReport must surface the earliest pending wake",
     );
-    // Both entries are still queued (neither has fired).
     assert_eq!(
         h.ui.frame_runtime.repaint_wakes.len(),
         2,
         "both distinct deadlines stay queued"
     );
 
-    // Run a frame at the first deadline. The earliest entry drains;
-    // the second survives.
     let report = h.at(Duration::from_secs_f32(0.5)).frame(|_| {});
     assert_eq!(
         report.repaint_after,
@@ -126,17 +109,12 @@ fn request_repaint_after_queues_distinct_deadlines() {
     );
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
 
-    // Run a frame at the second deadline. Queue empties.
     let report = h.at(Duration::from_secs_f32(1.5)).frame(|_| {});
     assert_eq!(report.repaint_after, None);
     assert!(h.ui.frame_runtime.repaint_wakes.is_empty());
 }
 
-/// Re-requesting an already-queued deadline within the same frame
-/// is a no-op — the queue is sorted + dedup'd. Near-duplicates within
-/// `DEFAULT_REPAINT_COALESCE_DT` (1/120 s, the headless default)
-/// collapse onto the later wake to minimize host wake-ups; entries
-/// spaced beyond the window stay distinct.
+/// Re-requesting a queued deadline in one frame is a no-op. Near-duplicates within `DEFAULT_REPAINT_COALESCE_DT` (1/120 s) collapse onto the later wake; those beyond it stay distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
     let mut h = UiHarness::new(SURFACE);
@@ -152,22 +130,12 @@ fn request_repaint_after_dedups_within_frame() {
         "exact duplicate deadlines collapse to one entry",
     );
 
-    // Near-duplicates within the 1/120 s window collapse onto the
-    // later deadline (prefer the longer wait); deadlines spaced
-    // beyond the window stay distinct.
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
-        // Earlier request first; second request lands ~4 ms later
-        // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
-        // to win.
         ui.request_repaint_after(Duration::from_secs_f32(0.500));
         ui.request_repaint_after(Duration::from_secs_f32(0.504));
-        // Reversed order — later first, then a near-earlier
-        // request. Existing later wake should suppress the earlier
-        // one (same outcome: only the later survives).
         ui.request_repaint_after(Duration::from_secs_f32(0.512));
         ui.request_repaint_after(Duration::from_secs_f32(0.508));
-        // Beyond the window — must stay distinct.
         ui.request_repaint_after(Duration::from_secs_f32(0.600));
     });
     let deadlines: Vec<Duration> =
@@ -186,10 +154,7 @@ fn request_repaint_after_dedups_within_frame() {
     );
 }
 
-/// The coalesce floor tracks `Display::refresh_millihertz`: two wakes
-/// 12 ms apart stay distinct at the unknown-rate 120 Hz fallback
-/// (≈8.33 ms window) but collapse at 60 Hz (≈16.67 ms window),
-/// proving the floor is derived from the display in `schedule_wake`.
+/// The coalesce floor tracks `Display::refresh_millihertz`: wakes 12 ms apart stay distinct at the 120 Hz fallback (8.33 ms) but collapse at 60 Hz (16.67 ms).
 #[test]
 fn coalesce_floor_follows_refresh_rate() {
     let schedule_pair = |h: &mut UiHarness| {
@@ -199,7 +164,6 @@ fn coalesce_floor_follows_refresh_rate() {
         });
     };
 
-    // Unknown refresh → 120 Hz fallback: 12 ms > 8.33 ms → distinct.
     let mut h = UiHarness::new(SURFACE);
     schedule_pair(&mut h);
     assert_eq!(
@@ -208,7 +172,6 @@ fn coalesce_floor_follows_refresh_rate() {
         "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
 
-    // 60 Hz refresh → 16.67 ms window: 12 ms < window → collapse.
     let mut h = UiHarness::new(SURFACE).refresh_millihertz(60_000);
     schedule_pair(&mut h);
     assert_eq!(
@@ -223,8 +186,7 @@ fn coalesce_floor_follows_refresh_rate() {
     );
 }
 
-/// Entries with `deadline <= now` drain at the top of the next
-/// frame; entries strictly past `now` survive.
+/// Entries with `deadline <= now` drain at the top of the next frame; later ones survive.
 #[test]
 fn request_repaint_after_drains_fired_entries() {
     let mut h = UiHarness::new(SURFACE);
@@ -235,16 +197,12 @@ fn request_repaint_after_drains_fired_entries() {
     });
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 3);
 
-    // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
     let report = h.at(Duration::from_secs_f32(1.0)).frame(|_| {});
     assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
-/// Anim-only fast path: when the only wake fired is a paint-anim
-/// quantum boundary (no input, no `request_repaint`, no real wake),
-/// `Ui::frame` skips record + post-record and emits
-/// `FrameProcessing::PaintOnly`.
+/// Anim-only fast path: a lone paint-anim quantum wake skips record and post-record and emits `FrameProcessing::PaintOnly`.
 #[test]
 fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -261,26 +219,18 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let mut h = UiHarness::new(SURFACE);
 
-    // Frame 0: record. Full path; schedules anim wake at `half`.
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
     let (rendered, recorded) = (h.ui.render_frame_id(), h.ui.frame_id());
 
-    // Frame 1 at the blink boundary: only anim wake fires → fast path.
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // The two clocks part company exactly here. `render_frame_id` counts
-    // the painted frame; `frame_id` must not, or retained state that stamps
-    // it to notice it was skipped reads an idle blink as "my surface was
-    // away" and drops whatever it had in flight.
+    // `frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
     assert_eq!(h.ui.render_frame_id(), rendered + 1);
     assert_eq!(h.ui.frame_id(), recorded);
 
-    // PaintOnly must emit a Partial damage plan covering the anim's
-    // tight rect — not Full (defeats the point) and not None (the
-    // blink phase actually flipped). Pin both invariants.
     match r1.plan {
         Some(RenderPlan {
             damage: Damage::Partial(damage),
@@ -297,18 +247,11 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
-    // Bug regression: PaintOnly skips post_record, but must still
-    // re-fold the retained paint_anims so the *next* blink boundary
-    // is queued. Without this fold the caret stops blinking until
-    // input forces a FullRecord (mouse-move regression).
     assert_eq!(r1.repaint_after, Some(half + half));
     let r2 = h.at(half + half).frame(|ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
-    // A pending OS close request vetoes the fast path: the app can only
-    // read `close_requested` (and veto via `keep_open`) during record,
-    // so an anim-wake frame escalates to Full while `wants_close` is
-    // set — and drops back to PaintOnly once it clears.
+    // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
     h.ui.window_frame.close_requested = true;
     let r3 = h.at(half * 3).frame(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
@@ -316,33 +259,15 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
-    // Four frames on from the stamp above, one of which recorded (`r3`,
-    // the close-request escalation). A reader that recorded on both `r0`
-    // and `r3` sees consecutive `frame_id`s across the paint-only frames
-    // between them — which is what "no gap" has to mean.
     assert_eq!(h.ui.render_frame_id(), rendered + 4);
     assert_eq!(h.ui.frame_id(), recorded + 1);
 }
 
-/// Regression: `Ui::frame` used to clear the record store unconditionally
-/// at entry, including on `PaintOnly` frames. But on PaintOnly the
-/// record pass is skipped, so `tree.shapes` retains last frame's
-/// `ShapeRecord`s — which reference record payloads by index
-/// (`ShapeBrush::Gradient(id)`, polyline/mesh spans, arena-backed text
-/// spans). Clearing left those indices dangling; the encoder then
-/// panicked on the first gradient lookup with
-/// `index out of bounds: the len is 0 but the index is N`.
-/// Fix: clear inside `record_pass` instead (only fires when we're
-/// rebuilding shapes). This test pins it with retained gradient and
-/// recorded text entries plus an animated shape that forces
-/// PaintOnly on frame 1, then re-runs the encoder.
+/// Regression: `Ui::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
 #[test]
 fn paint_only_preserves_record_store_for_retained_shapes() {
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            // Gradient-filled chrome: `lower::background` interns a
-            // `RecordedGradient` into `RecordStore::gradients` each record
-            // pass, and the resulting `ChromeRow` stores the index.
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
@@ -359,7 +284,6 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Text::new(label)
                 .id(WidgetId::from_hash("retained-text"))
                 .show(ui);
-            // Animated shape, drives the PaintOnly wake on frame 1.
             add_blink_shape(ui, half);
         });
     }
@@ -368,8 +292,6 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     let mut h = UiHarness::new(SURFACE);
 
-    // Frame 0: full record. Populates the gradient payloads and stamps
-    // `ShapeBrush::Gradient(GradientId(0))` into the chrome row for the frame.
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
@@ -377,14 +299,9 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
         assert_eq!(store.interned_text().all(), "retained 7");
     }
 
-    // Frame 1 at the blink boundary: only the anim wake fires →
-    // PaintOnly. With the old (buggy) clear, the gradient payloads
-    // would be empty here and the encoder below would panic.
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // Direct pin: the gradient interned during frame 0's record must
-    // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
         h.ui.forest.record_store.gradients.records.len(),
         1,
@@ -400,8 +317,6 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
         );
     }
 
-    // Indirect pin: re-run the encoder against the retained tree
-    // + record store. With the bug, this panicked on `gradients[id]`.
     let _ = h.encode_paint();
 }
 
@@ -474,8 +389,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     );
 }
 
-/// `request_repaint` co-firing with an anim wake produces the
-/// `REAL | ANIM` mix, so the classifier picks Full.
+/// `request_repaint` co-firing with an anim wake gives `REAL | ANIM`, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
     fn body(ui: &mut Ui, half: Duration) {
@@ -492,7 +406,6 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     let mut h = UiHarness::new(SURFACE);
 
-    // Frame 0: record + `request_repaint`. Next frame must be Full.
     let r0 = h.frame(|ui| {
         body(ui, half);
         ui.request_repaint();
@@ -503,21 +416,9 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     assert_eq!(r1.processing, FrameProcessing::SingleLayout);
 }
 
-/// At an anim-only wake boundary, the classifier picks `PaintOnly`.
-/// Under `InputPolicy::OnDelta` (default) an inert pointer move
-/// since the last frame doesn't disqualify it — `repaint_requested`
-/// stayed `false`. Under `InputPolicy::Always` the same input
-/// upgrades the frame to `SingleLayout`.
-///
-/// Action input (click / key / IME) is unconditionally upgraded
-/// under both policies because `on_input` returns
-/// `repaint_requested = true` for them — exercised in the second
-/// half of the test.
+/// At an anim-only wake the classifier picks `PaintOnly`. Under `InputPolicy::OnDelta` an inert pointer move doesn't disqualify it; under `Always` it upgrades to `SingleLayout`. Action input (click / key / IME) always upgrades.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    // Body declares an inert Frame *and* an anim shape so the next
-    // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
-    // entry, so OnDelta sees `repaint_requested = false`.
     fn body(ui: &mut Ui, half: Duration) {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -539,8 +440,6 @@ fn input_policy_routes_paint_only_gate() {
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         h.move_to(Vec2::new(40.0, 40.0));
-        // One assertion for what used to need two: the move arrived,
-        // and it was not repaint-worthy.
         assert_eq!(
             h.ui.input.signal_since_last_frame(),
             InputSignal::Inert,
@@ -554,7 +453,6 @@ fn input_policy_routes_paint_only_gate() {
             "OnDelta + inert pointer move + anim wake → PaintOnly",
         );
 
-        // PaintOnly path must have drained the input signal and queues.
         assert_eq!(h.ui.input.signal_since_last_frame(), InputSignal::None);
     }
 
@@ -572,7 +470,6 @@ fn input_policy_routes_paint_only_gate() {
         );
     }
 
-    // only with focus or a chord watcher, so prime focus first.
     {
         use crate::primitives::identity::widget_id::WidgetId;
         let mut h = UiHarness::new(SURFACE);
@@ -595,12 +492,7 @@ fn input_policy_routes_paint_only_gate() {
     }
 }
 
-/// The fps EMA reads the TRUE frame delta — the MAX_DT clamp is for
-/// the animation integrator only. Hand-computed: sample 1 at 1 s →
-/// inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5,
-/// EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would have recorded both
-/// stalls as 10 fps samples (EMA 10.0), reporting a HIGHER rate the
-/// longer the stall.
+/// The fps EMA reads the true frame delta; the MAX_DT clamp is for the animation integrator only. Hand-computed: sample 1 at 1 s → inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5, EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would record both stalls as 10 fps (EMA 10.0).
 #[test]
 fn fps_ema_reads_unclamped_frame_delta() {
     let mut h = UiHarness::new(SURFACE);
@@ -612,20 +504,12 @@ fn fps_ema_reads_unclamped_frame_delta() {
     assert_eq!(h.ui.frame_runtime.fps_ema, 1.0f32 * 0.9 + 0.5 * 0.1);
 }
 
-/// `Ui::request_relayout` outside a record pass is a caller error, not a
-/// no-op.
-///
-/// It re-runs *this* frame's record after measure, so there is nothing
-/// for it to retry when no record is in flight — and `FrameCycle::run`
-/// clears the flag on its way in, so an out-of-frame call used to set a
-/// bit the next line dropped. The retry silently never happened. Inside
-/// a record it stays legal, which is what the second half pins.
+/// `Ui::request_relayout` outside a record pass is a caller error, not a silently dropped no-op; inside a record it stays legal.
 #[test]
 #[should_panic(expected = "outside a record pass")]
 fn request_relayout_between_frames_is_a_caller_error() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|_| {});
-    // Between frames: no node open, so no record is in flight.
     h.ui.request_relayout();
 }
 
@@ -646,18 +530,12 @@ fn request_relayout_during_record_is_honoured() {
     );
 }
 
-/// The record-pass gate is a *frame*-level question, not a per-layer
-/// one. `Ui::layer` pushes a layer without opening anything in it, so a
-/// gate that asked "is a node open on the current layer" rejected a
-/// perfectly legal call made from an overlay scope before that scope had
-/// recorded its first widget.
+/// The record-pass gate is frame-level, not per-layer: `Ui::layer` pushes a layer without opening a node, which a per-layer gate wrongly rejected.
 #[test]
 fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         ui.layer(Layer::Popup).show(|ui| {
-            // First statement in the overlay body: the layer is pushed,
-            // but nothing has been recorded into it yet.
             ui.request_relayout();
         });
     });

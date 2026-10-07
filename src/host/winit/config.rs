@@ -1,5 +1,4 @@
-//! [`WinitHostConfig`] — the startup settings a [`WinitHostBuilder`]
-//! collects for [`WinitHost`].
+//! [`WinitHostConfig`]: the startup settings a [`WinitHostBuilder`] collects for [`WinitHost`].
 //!
 //! [`WinitHostBuilder`]: super::WinitHostBuilder
 //! [`WinitHost`]: super::WinitHost
@@ -9,12 +8,7 @@ use crate::text::font_scope::FontScope;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 
-/// The first window's [`WindowConfig`] plus the **app-global** GPU settings
-/// that are fixed once at launch and shared by every window. Secondary
-/// windows ([`Ui::open_window`](crate::Ui::open_window)) carry only a
-/// [`WindowConfig`] and inherit the rest. Each field's default and its
-/// reason are on the [`WinitHostBuilder`](super::WinitHostBuilder) setter
-/// of the same name.
+/// The first window's [`WindowConfig`] plus the app-global GPU settings fixed at launch and shared by every window. Defaults and reasons are on the same-named [`WinitHostBuilder`](super::WinitHostBuilder) setters.
 #[derive(Clone, Debug)]
 pub(crate) struct WinitHostConfig {
     pub(crate) window: WindowConfig,

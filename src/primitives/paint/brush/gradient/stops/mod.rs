@@ -1,6 +1,4 @@
-//! A gradient's colour stops: the u8-quantized stop itself, the inline
-//! run a gradient carries them in, and the builder that sorts and
-//! validates one.
+//! A gradient's colour stops: the quantized stop, the inline run, and its builder.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::num;
@@ -13,26 +11,13 @@ use std::hash;
 use std::ops;
 use tinyvec::ArrayVec;
 
-/// Hard cap on stops in a single gradient. 8 covers >99% of UI use
-/// (2-3 stops dominate, multi-stop bars rarely exceed 5).
+/// Hard cap on stops in a single gradient.
 pub(crate) const MAX_STOPS: usize = 8;
 
-/// One colour stop in a gradient. The position is the 0..1 parametric
-/// offset quantized to 8 bits (256 levels — finer than the LUT it bakes
-/// into), and the colour is 8-bit **sRGB-encoded**, the form a designer
-/// writes: a hex-authored stop keeps its exact bytes, and any other colour
-/// lands within half a display step. Linear bytes would not — near black
-/// one linear step spans many display steps. Total 5 B / stop, align 1,
-/// so `GradientStops` is 40 B inline vs. 64 B with f32 offsets. Stops are
-/// storage-only (never animated; snap on morph), and out-of-range
-/// positions clamp at construction.
-///
-/// The quantization stays an implementation detail, on both fields: they
-/// are private, [`Self::new`] clamps and quantizes, [`Self::offset`] and
-/// [`Self::color`] decode back, and serde carries the decoded forms as the
-/// wire format. A theme author writes `offset: 0.5` and `color: "#22ccdd"`,
-/// matching how every other position and every other colour in the crate is
-/// authored.
+/// One colour stop: a 0..1 offset quantized to 8 bits and an 8-bit **sRGB-encoded**
+/// colour, so a hex-authored stop keeps its exact bytes. 5 B per stop;
+/// storage-only, never animated. The quantization is private; serde carries the
+/// decoded forms (`offset: 0.5`, `color: "#22ccdd"`).
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Stop {
     offset_u8: u8,
@@ -40,10 +25,8 @@ pub struct Stop {
 }
 
 impl Stop {
-    /// Construct a stop. `offset` is a *fraction*, coerced: clamped to
-    /// 0..=1, a non-finite one read as 0, then quantized to u8
-    /// (round-to-nearest). `color` is a *colour*, encoded to sRGB bytes,
-    /// exactly for a colour built from a hex code.
+    /// Construct a stop. `offset` is a *fraction*, coerced (clamped to 0..=1,
+    /// non-finite read as 0). `color` is a *colour*.
     ///
     /// # Panics
     ///
@@ -57,15 +40,13 @@ impl Stop {
         }
     }
 
-    /// Decode the stored quantized position back to a 0..1 f32 for
-    /// consumers (atlas bake, axis calc) that interpolate in float.
+    /// The position decoded to a 0..1 f32.
     #[inline]
     pub const fn offset(self) -> f32 {
         self.offset_u8 as f32 / 255.0
     }
 
-    /// Decode the stored colour back to the crate's linear f32 form, the
-    /// way [`Self::offset`] decodes the position.
+    /// The colour decoded to linear f32.
     #[inline]
     pub const fn color(self) -> RgbaF32 {
         RgbaF32::from_srgba(self.color)
@@ -104,26 +85,16 @@ impl<'de> Deserialize<'de> for Stop {
     }
 }
 
-/// Inline gradient-stop sequence whose length is always two through
-/// eight, **held in ascending offset order**.
+/// Inline gradient-stop sequence of two to eight stops, **held in ascending offset
+/// order**.
 ///
-/// The ordering is an invariant of the type, not a step the bake does,
-/// because this value *is* the gradient's cache identity: `Eq`/`Hash`
-/// run over the raw array, so two sequences differing only in the order
-/// they were written hash apart while baking a byte-identical LUT row —
-/// two atlas rows, two bakes and two eviction slots for one gradient.
-/// Sorting at construction makes identity and bake agree by
-/// construction. That is also why there is no `DerefMut`: handing out
-/// `&mut [Stop]` would let a caller reorder the offsets afterwards and
-/// put the two back out of step.
+/// The order is an invariant because this value is the gradient's cache identity:
+/// `Eq`/`Hash` run over the raw array, so unsorted duplicates would hash apart yet
+/// bake one LUT row. Hence no `DerefMut`.
 ///
-/// A `u8` count beside a fixed array rather than a `tinyvec::ArrayVec`,
-/// whose `u16` count aligns the value to two bytes. At 41 B and align 1,
-/// a [`ColorRamp`](crate::ColorRamp) adds its interpolation byte with no tail
-/// padding, so a gradient's spread byte packs beside it and
-/// `LinearGradient` stays 48 B. Slots past `len` always hold
-/// `Stop::default()`, so the derived `Eq` agrees with the `Hash` below,
-/// which reads the live stops only.
+/// A `u8` count beside a fixed array (not `ArrayVec`'s `u16`) keeps
+/// `LinearGradient` at 48 B. Slots past `len` hold `Stop::default()` so `Eq` agrees
+/// with the live-stops-only `Hash`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GradientStops {
     len: u8,
@@ -131,11 +102,8 @@ pub struct GradientStops {
 }
 
 impl GradientStops {
-    /// Collect stops into inline storage, panicking on an invalid count.
-    ///
-    /// Sorted on the way in; equal offsets keep their written order, so a
-    /// hard colour break authored as two stops at the same position still
-    /// reads in the direction it was written.
+    /// Collect stops into inline storage; panics on an invalid count. Sorted on the
+    /// way in, equal offsets keeping written order.
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
         let mut builder = GradientStopsBuilder::default();
         for stop in stops {
@@ -144,34 +112,18 @@ impl GradientStops {
         builder.build()
     }
 
-    /// The stops in use, for a `const fn` that cannot reach them through
-    /// `Deref`.
     pub(crate) const fn as_slice(&self) -> &[Stop] {
         self.stops.split_at(self.len as usize).0
     }
 
-    /// True when the stops hold [`Self::sorted`]'s ascending order — for
-    /// a consumer that relies on it to `debug_assert` it rather than
-    /// re-spell the comparison over a quantization it should not read.
     pub(crate) fn is_ascending(&self) -> bool {
         self.windows(2).all(|w| w[0].offset_u8 <= w[1].offset_u8)
     }
 
-    /// The one place a `GradientStops` is built, and so the one place its
-    /// ascending-offset invariant is established.
-    ///
-    /// Both doors end here — [`GradientStopsBuilder::build`], which every
-    /// authored gradient goes through, and the `Deserialize` impl below —
-    /// because they differ only in how they *reject* a bad stop count, a
-    /// panic against a deserialization error, and not at all in what a
-    /// good one has to become. Sorting at each of them instead left
-    /// the deserializer holding the wire order, so the invariant the type
-    /// doc states held for authored gradients alone.
-    ///
-    /// Insertion sort: `MAX_STOPS` is 8 and the input is nearly always
-    /// already ordered, so this is a comparison pass and no swaps. Stable,
-    /// because the compare is a strict `>` — equal offsets keep the order
-    /// they were written in.
+    /// The one place a `GradientStops` is built, so the ascending invariant is
+    /// established here for both [`GradientStopsBuilder::build`] and `Deserialize`.
+    /// Stable insertion sort: input is nearly ordered and the strict `>` keeps
+    /// equal offsets in written order.
     fn sorted(mut values: ArrayVec<[Stop; MAX_STOPS]>) -> Self {
         for index in 1..values.len() {
             let mut current = index;
@@ -189,18 +141,12 @@ impl GradientStops {
     }
 }
 
-/// The accumulating half of [`GradientStops`], and the one place the
-/// `MAX_STOPS` capacity rule lives.
-///
-/// [`GradientStops::new`] fills one from an iterator; a
-/// [`GradientBuilder`](crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder)
-/// holds one across its chained `stop` calls, so a ninth stop panics at
-/// the call that wrote it rather than at `build`.
+/// The accumulating half of [`GradientStops`] and the one place the `MAX_STOPS`
+/// rule lives; a gradient builder holds one so a ninth stop panics at its call.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GradientStopsBuilder(ArrayVec<[Stop; MAX_STOPS]>);
 
 impl GradientStopsBuilder {
-    /// Append one stop, rejecting a ninth.
     pub(crate) fn push(&mut self, stop: Stop) {
         assert!(
             self.0.len() < MAX_STOPS,
@@ -209,7 +155,6 @@ impl GradientStopsBuilder {
         self.0.push(stop);
     }
 
-    /// Finish, requiring at least two stops.
     pub(crate) fn build(self) -> GradientStops {
         assert!(
             self.0.len() >= 2,
@@ -229,25 +174,10 @@ impl ops::Deref for GradientStops {
 }
 
 impl hash::Hash for GradientStops {
-    /// **Colour goes in the low half.** `SrgbaU8::to_u32` is
-    /// `from_be_bytes([r, g, b, a])`, so red is its top byte; packing the
-    /// colour into the *high* half of this word puts red at bit 56, and
-    /// `FxHasher`'s `(hash + word) * K` propagates entropy upward only —
-    /// red would get eight bits of spread and never reach the low bits
-    /// hashbrown selects its bucket from. Offsets are almost always the
-    /// constants 0 and 255, so that layout left the bucket index riding
-    /// on the alpha and blue channels alone.
-    ///
-    /// The cost was not theoretical: a palette of 200 gradients sharing a
-    /// blue channel and varying red/green — one hue family, an ordinary
-    /// way to generate themed accents — hashed into a *single* bucket,
-    /// turning `CpuGradientAtlas`'s index into one long probe chain
-    /// (~230 ns per lookup against ~18 ns). Even unrelated hand-authored
-    /// colours reached only a quarter of the available buckets.
-    ///
-    /// Swapping the halves carries exactly the same information and costs
-    /// the same one write; it just puts the varying bytes where the
-    /// multiply can spread them. Pinned by
+    /// **Colour goes in the low half.** `SrgbaU8::to_u32` puts red on top and
+    /// `FxHasher` spreads entropy upward only, so red in the high half never
+    /// reaches the bucket-selecting low bits (200 gradients once collapsed to one
+    /// bucket). Pinned by
     /// `tests::hash_spreads_across_buckets_for_structured_palettes`.
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {

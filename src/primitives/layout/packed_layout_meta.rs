@@ -29,11 +29,7 @@ impl PackedLayoutMeta {
         Align::from_raw(self.metadata() & Self::ALIGN_MASK)
     }
 
-    /// Matched rather than transmuted: the two-bit field admits a `3`
-    /// that is not a `Visibility` discriminant, and the `const _` below
-    /// only pins that the widest *valid* variant fits — it says nothing
-    /// about the unused pattern. `NodeFlags::clip_mode` unpacks its own
-    /// two-bit enum the same way, and both compile to the same load.
+    /// Matched, not transmuted: the two-bit field admits a `3` that is no `Visibility` discriminant, and the `const _` below only pins that the widest valid variant fits. `NodeFlags::clip_mode` unpacks its own two-bit enum the same way.
     #[inline(always)]
     pub(crate) fn visibility(self) -> Visibility {
         match (self.metadata() & Self::VIS_MASK) >> Self::VIS_SHIFT {

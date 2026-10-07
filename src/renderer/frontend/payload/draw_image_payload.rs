@@ -6,42 +6,25 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 
-/// Image draw payload. `rect` is the logical-px paint rect (encoder
-/// already folded in `local_rect`, `fit`, and the image's intrinsic
-/// size). `uv_min` / `uv_size` are the texture crop — `(0,0)`+`(1,1)`
-/// for the common Fill/Contain/None modes; non-trivial only for Cover.
-/// `tint` multiplies the sampled texel. `handle` is the user-supplied
-/// [`ImageHandle`](crate::renderer::image_registry::image_handle::ImageHandle) — the
-/// backend looks it up against its GPU texture
-/// cache.
+/// Image draw payload: `rect` is the logical-px paint rect (`fit` and intrinsic size folded in),
+/// `uv_min`/`uv_size` crop the texture (non-trivial only for Cover), `tint` multiplies the texel.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawImagePayload {
     pub(crate) rect: Rect,
     pub(crate) uv_min: glam::Vec2,
     pub(crate) uv_size: glam::Vec2,
     pub(crate) tint: RgbaF16,
-    /// The image's registration id ([`TextureId`],
-    /// a `repr(transparent)` `Pod` `u64`). The backend looks it up in its
-    /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
-    /// texture" and skips the draw.
+    /// Registration id keying the backend's texture cache; `TextureId(0)` means no texture and skips the draw.
     pub(crate) handle: TextureId,
-    /// Tile wrap, min/mag nearest sampling and minification tap mode,
-    /// forwarded verbatim into
+    /// Tile wrap, nearest sampling and minification tap mode, forwarded to
     /// [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
-    /// [`ImageFlags::NONE`] (the common case, including a `GpuView`) takes
-    /// one bilinear tap at the UV.
+    /// [`ImageFlags::NONE`] takes one bilinear tap.
     pub(crate) flags: ImageFlags,
 }
 
-/// One image draw as [`PaintSink::image`] takes it: the payload plus, for
-/// a `GpuView` composite, the callback its off-screen target is painted
-/// with.
+/// One image draw as [`PaintSink::image`] takes it: the payload plus the paint callback of a `GpuView`.
 ///
-/// One value rather than two arguments, so the composite and the target
-/// it needs cannot come apart and the no-op question reads the same
-/// `is_noop(&self)` every sibling payload answers. Borrowed rather than
-/// owned so the draw stays `Copy` — the `Rc` clone is the capture sink's
-/// to pay, once, when it keeps a call past the frame.
+/// One value so the two cannot come apart; borrowed so the draw stays `Copy`.
 ///
 /// [`PaintSink::image`]: crate::renderer::frontend::paint_sink::PaintSink::image
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,21 +33,14 @@ pub(crate) struct ImageDraw<'a> {
     pub(crate) view: Option<ViewPaint<'a>>,
 }
 
-/// A `GpuView` draw's off-screen half: the app callback that fills the
-/// target, and the version of the pixels it should hold.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ViewPaint<'a> {
     pub(crate) paint: &'a GpuPaintRef,
-    /// The view's repaint version, moved only on a frame the widget asked
-    /// to repaint (`GpuViews::record`). A target already painted at this
-    /// version, at the same geometry, still holds the right pixels.
+    /// The view's repaint version; a target painted at this version and geometry is still valid.
     pub(crate) epoch: u64,
 }
 
 impl ImageDraw<'_> {
-    /// This draw with its alpha scaled by `by`, for
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
-    /// gate.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         if by == 1.0 {
@@ -79,10 +55,7 @@ impl ImageDraw<'_> {
         }
     }
 
-    /// Paints nothing when: zero-extent rect, fully transparent tint, or
-    /// a null handle with no callback behind it — a registered image
-    /// that was dropped. A `GpuView` is never null-skipped, since its
-    /// texture is framework-painted this frame.
+    /// Paints nothing: zero-extent rect, transparent tint, or a null handle with no callback.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         let Self { payload, view } = self;

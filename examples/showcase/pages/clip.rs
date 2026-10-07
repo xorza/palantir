@@ -1,12 +1,4 @@
-//! Clip modes and subtree transforms. Each clip card holds a child that
-//! overflows on all four sides via negative margins; the card's clip
-//! mode decides what survives — no clip spills, rect clip cuts square at
-//! the bounds, rounded clip trims to the painted corner radius. Adding
-//! padding moves the boundary: children clip at the content rect and the
-//! mask follows the same edge.
-//!
-//! `TranslateScale` applies to whole subtrees — descendants paint
-//! translated and scaled, stroke widths included.
+//! Clip modes and subtree transforms. Each card holds a child overflowing on all four sides via negative margins; the clip mode decides what survives (none spills, rect cuts square, rounded trims to the corner radius), and padding moves the boundary to the content rect. `TranslateScale` applies to whole subtrees, stroke widths included.
 
 use crate::support;
 use crate::support::{api, captioned_cell, demo_cell, note, section, tiles};
@@ -16,9 +8,7 @@ use palantir::{
 };
 
 const CARD: f32 = 200.0;
-/// How far the child overhangs the card on every side. The cell is the
-/// card plus this on all four sides, so "no clip" spills into empty
-/// space instead of over the neighbouring tile.
+/// How far the child overhangs the card on every side; the cell adds it to all four, so "no clip" spills into empty space, not the neighbouring tile.
 const SPILL: f32 = 18.0;
 const CELL: f32 = CARD + 2.0 * SPILL;
 
@@ -95,8 +85,7 @@ enum Mode {
     Rounded,
 }
 
-/// Card with a large corner radius, so the difference between the
-/// rect scissor and the rounded stencil reads clearly at the corners.
+/// Card with a large corner radius so the rect scissor and rounded stencil differ clearly.
 fn card_bg() -> Background {
     Background::rounded(support::WELL, Corners::all(28.0))
         .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5))
@@ -124,17 +113,12 @@ fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
     });
 }
 
-/// Rectangle that overflows the card on all four sides. The negative
-/// margin grows its slot past the content rect and `Fill` takes all of
-/// it, so the overhang stays exactly [`SPILL`] whether or not the card
-/// is padded.
+/// Rectangle overflowing the card on all sides: the negative margin grows its slot past the content rect and `Fill` takes it all, so the overhang stays [`SPILL`] padded or not.
 fn spiller(ui: &mut Ui) {
     Block::new()
         .size((Sizing::FILL, Sizing::FILL))
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
-        // Translucent so the card's own edge stays visible underneath —
-        // otherwise the unclipped case is a solid block with nothing to
-        // read the overhang against.
+        // Translucent so the card edge stays visible beneath; unclipped would otherwise be a solid block.
         .background(Background::fill(support::B.with_alpha(0.8)))
         .show(ui);
 }

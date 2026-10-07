@@ -1,5 +1,4 @@
-//! The determinate progress bar: a rounded track with an accent fill
-//! sized to a 0..1 fraction.
+//! The determinate progress bar: a rounded track with an accent fill sized to a 0..1 fraction.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,17 +12,11 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 
-/// Determinate progress bar: a rounded `track` with an accent fill
-/// spanning `fraction` (clamped to `0..=1`) of its width.
+/// Determinate progress bar: a rounded `track` with an accent fill spanning `fraction` (clamped to `0..=1`) of its width.
 ///
-/// A `fraction` that names no share — the `0 / 0` of a job with nothing
-/// to do — reads as empty. `Sizing::split` owns that screen, so app code
-/// may divide without guarding the divisor first.
+/// A fraction naming no share (`0 / 0`) reads as empty; `Sizing::split` owns that, so app code may divide unguarded.
 ///
-/// The fill / remainder split is two weighted leaves, so the fill tracks the
-/// resolved track width without the widget knowing it at record time.
-/// Visuals come from [`crate::ProgressBarTheme`] (theme slot
-/// `progress_bar`).
+/// Fill and remainder are two weighted leaves, so the fill tracks the resolved track width. Visuals come from [`crate::ProgressBarTheme`] (slot `progress_bar`).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ProgressBar<'a> {
@@ -33,13 +26,7 @@ pub struct ProgressBar<'a> {
 }
 
 impl<'a> ProgressBar<'a> {
-    /// A bar filled to `fraction` of its width — `0.0` empty, `1.0`
-    /// full.
-    ///
-    /// Total over every `f32`: a value outside the range reads as the
-    /// nearer end, and a non-finite one — the `0 / 0` a ratio of nothing
-    /// produces — reads as empty. Resolved at `show`, by
-    /// [`Sizing::split`].
+    /// A bar filled to `fraction` of its width. Total over every `f32`: out of range reads as the nearer end, non-finite as empty. Resolved at `show` by [`Sizing::split`].
     #[track_caller]
     pub fn new(fraction: f32) -> Self {
         Self {
@@ -49,14 +36,13 @@ impl<'a> ProgressBar<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `progress_bar`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `progress_bar`.
     pub fn style(mut self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the bar. It senses nothing by default.
+    /// Record the bar. Senses nothing by default.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
@@ -76,8 +62,7 @@ impl<'a> ProgressBar<'a> {
                     .id(id.with("fill"))
                     .size((fill, Sizing::FILL))
                     .record(ui, Some(&fill_bg), |_| {});
-                // Remainder spacer — its `Fill` weight pushes the fill to the
-                // correct fraction of the track width.
+                // Remainder spacer: its `Fill` weight pushes the fill to the right fraction.
                 Widget::leaf()
                     .id(id.with("rest"))
                     .size((spacer, Sizing::FILL))

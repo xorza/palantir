@@ -49,8 +49,8 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
     }
 }
 
-/// Vertical scroll measures children with INF on Y; content extent is
-/// the children's full height. State is populated post-arrange.
+/// Vertical scroll measures children with INF on Y; the content extent is their
+/// full height.
 #[test]
 fn vertical_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
@@ -70,7 +70,6 @@ fn vertical_scroll_records_content_extent() {
     assert_eq!(layout_for(&h.ui, "scroll").content.h, 5.0 * 50.0);
 }
 
-/// Horizontal scroll measures children with INF on X.
 #[test]
 fn horizontal_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
@@ -92,11 +91,9 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    // Ten 40 px columns and nine 4 px gaps: 400 + 36, past the 200 viewport.
     assert_eq!(layout_for(&h.ui, "scroll").content.w, 436.0);
 }
 
-/// Both-axis scroll measures with both axes unbounded.
 #[test]
 fn both_axis_scroll_records_content_extent() {
     let mut h = UiHarness::new(SURFACE);
@@ -114,7 +111,6 @@ fn both_axis_scroll_records_content_extent() {
     assert_eq!(layout_for(&h.ui, "scroll").content, Size::new(300.0, 250.0));
 }
 
-/// Cached measure output restores every scroll geometry input.
 #[test]
 fn layout_output_survives_across_frames() {
     let mut h = UiHarness::new(SURFACE);
@@ -145,9 +141,9 @@ fn layout_output_survives_across_frames() {
     assert_eq!(f1.content.h, 4.0 * 40.0);
 }
 
-/// `Scroll::content_margin` doesn't fold into the recorded `content`
-/// size — margin is applied at clamp time only. Bars track real
-/// content; the margin acts as invisible overscroll.
+/// `Scroll::content_margin` does not fold into the recorded `content` size: margin
+/// applies at clamp time only, so bars track real content and the margin is
+/// invisible overscroll.
 #[test]
 fn content_margin_leaves_content_size_unchanged() {
     let mut h = UiHarness::new(SURFACE);
@@ -166,17 +162,15 @@ fn content_margin_leaves_content_size_unchanged() {
     assert_eq!(layout_for(&h.ui, "scroll").content, Size::new(80.0, 160.0));
 }
 
-/// Arranged height of the scroll widget's outer wrapper (the node that
-/// carries the user's `id`).
+/// Arranged height of the scroll widget's outer wrapper (the node carrying the
+/// user's `id`).
 fn scroll_height(h: &UiHarness, id_salt: &'static str) -> f32 {
     h.arranged(WidgetId::from_hash(id_salt)).size.h
 }
 
-/// A harness holding a `count`-row vertical **Hug** scroll (each row
-/// 50px tall) with the given min/max heights, wrapped in a Hug vstack. A
-/// Hug scroll sizes to content (the driver reports content extent on Hug
-/// panned axes); the wrapper isolates the assertion from how the root
-/// itself is arranged.
+/// A harness holding a `count`-row vertical **Hug** scroll (50px rows) with the
+/// given min/max heights, in a Hug vstack that isolates the assertion from how the
+/// root is arranged.
 fn hug_scroll(count: u32, min_h: f32, max_h: f32) -> UiHarness {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
@@ -202,17 +196,13 @@ fn hug_scroll(count: u32, min_h: f32, max_h: f32) -> UiHarness {
     h
 }
 
-/// A `Hug` scroll sizes to its content, clamped to `[min, max]` — the
-/// same "size to content, then clamp" `Hug` means for every other
-/// widget, rather than collapsing to zero or filling the parent. Below
-/// the cap it tracks content (3 × 50 = 150); under the floor it pins to
-/// `min_size` (1 × 50 floored at 120, the 400 cap left as slack); past
-/// the cap it stops there (8 × 50 = 400 capped at 200) and the content
-/// overflows. The content extent records the rows in full in every case,
-/// so the bar and thumb size against the real content.
+/// A `Hug` scroll sizes to its content clamped to `[min, max]`: 3 × 50 = 150 below
+/// the cap, pinned to `min_size` under the floor (1 × 50 floored at 120), stopped
+/// at the cap above (8 × 50 = 400 capped at 200) with the content overflowing. The
+/// content extent records the rows in full, so bar and thumb size against real
+/// content.
 #[test]
 fn hug_scroll_clamps_viewport_to_content() {
-    // (label, row_count, min_h, max_h, expected viewport height)
     let cases: &[(&str, u32, f32, f32, f32)] = &[
         ("fits_content_below_max", 3, 0.0, 400.0, 150.0),
         ("floors_at_min", 1, 120.0, 400.0, 120.0),
@@ -229,14 +219,10 @@ fn hug_scroll_clamps_viewport_to_content() {
     }
 }
 
-/// A `Hug` scroll under a fixed 100 px parent takes the parent's bound
-/// as its viewport, while its 8 × 50 = 400 of content keeps its natural
-/// extent and overflows.
-///
-/// One Hug stack further in, below a fixed 30 px header, the stack
-/// shrinks too: a scroll's floor on its panned axis is zero, so the Hug
-/// stack around it takes the parent's 100 rather than the 30 + 400 its
-/// content wants, and the viewport gives way to the 100 − 30 = 70 its
+/// A `Hug` scroll under a fixed 100 px parent takes the parent's bound as its
+/// viewport while its 8 × 50 = 400 of content overflows. One Hug stack further in,
+/// below a fixed 30 px header, a scroll's zero floor on its panned axis lets the
+/// stack take the parent's 100, and the viewport gives way to the 100 − 30 = 70 its
 /// rigid sibling leaves.
 #[test]
 fn hug_scroll_viewport_follows_parent_cap() {
@@ -294,11 +280,8 @@ fn hug_scroll_viewport_follows_parent_cap() {
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
 }
 
-/// Counterpart guard: a `Fill` scroll keeps the content-independent
-/// viewport — it reports zero on its pan axis, so it does **not** inflate
-/// a `Hug` ancestor (a Fill scroll in a Hug parent stays collapsed, the
-/// parent doesn't grow to the 150px of content). This is what `Hug` opts
-/// out of, and it's unchanged from before.
+/// Counterpart guard: a `Fill` scroll keeps the content-independent viewport and
+/// reports zero on its pan axis, so it does **not** inflate a `Hug` ancestor.
 #[test]
 fn fill_scroll_does_not_grow_hug_parent() {
     let mut h = UiHarness::new(SURFACE);
@@ -326,12 +309,10 @@ fn fill_scroll_does_not_grow_hug_parent() {
 }
 
 /// Toggling a scroll's pan-axis `Sizing` (`Hug` ⇄ `Fill`) on the **same
-/// `WidgetId`** across frames busts the `MeasureCache`: the fit bits ride
-/// scroll specification, which is folded into the subtree hash.
-/// Frame 1 (`Hug`) fits its 150px content; frame 2 (`Fill`) collapses in
-/// the `Hug` parent. Without the payload hashing, the inner viewport's
-/// hash (its own `Sizing` is a constant `Fill`) wouldn't change and the
-/// stale frame-1 fit measure would be served — yielding 150 in frame 2.
+/// `WidgetId`** busts the `MeasureCache`: the fit bits ride the scroll
+/// specification, which is folded into the subtree hash. Without it the inner
+/// viewport's hash (a constant `Fill`) would not change and frame 1's stale 150
+/// would be served in frame 2.
 #[test]
 fn toggling_scroll_sizing_busts_measure_cache() {
     let mut h = UiHarness::new(SURFACE);
@@ -361,18 +342,11 @@ fn toggling_scroll_sizing_busts_measure_cache() {
     );
 }
 
-/// Pin: a `Hug` scroll reports its content extent as its **intrinsic**,
-/// not merely as its measured size.
-///
-/// `Scroll` sets the viewport's `fit` bit on any panned axis the author
-/// left `Hug` — that is what makes a scroll size to its content. Measure
-/// honoured that bit from the start; the intrinsic query did not, and
-/// answered zero for every panned axis. Nothing downstream of `measure`
-/// noticed, because `AxisSlot::resolve` takes `max(content,
-/// intrinsic_min)` and content won. A Hug grid column is where it
-/// showed: column widths come from the Phase-1 *intrinsic* walk, so the
-/// column resolved to zero and the cell it was meant to size overflowed
-/// it.
+/// Pin: a `Hug` scroll reports its content extent as its **intrinsic**, not just
+/// its measured size. If the intrinsic query ignored the `fit` bit and answered
+/// zero, nothing downstream of `measure` would notice (`AxisSlot::resolve` takes
+/// `max(content, intrinsic_min)`), but a Hug grid column, resolved from the Phase-1
+/// intrinsic walk, would resolve to zero and its cell would overflow.
 #[test]
 fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
     const CONTENT_W: f32 = 120.0;
@@ -399,8 +373,6 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
             .node()
     });
 
-    // The Hug column is resolved from the cell's intrinsic, so the
-    // scroll's own arranged width is the column width.
     let cell = h.main_child_rects(root)[0];
     assert_eq!(
         cell.size.w, CONTENT_W,
@@ -408,38 +380,27 @@ fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
     );
 }
 
-/// **A scroll viewport takes the slot it is placed in, whichever driver
-/// places it.**
+/// **A scroll viewport takes the slot it is placed in, whichever driver places
+/// it.** Its `desired` follows the content, so a bounded parent can hand it a
+/// smaller slot; the viewport clips, so it must not overflow that slot as an
+/// ordinary node does.
 ///
-/// Its `desired` follows the content it scrolls — that is what lets a `Hug`
-/// wrapper size to it — so a bounded parent hands one a slot smaller than
-/// the desired it measured. The viewport clips, so it must not overflow that
-/// slot the way an ordinary node does.
-///
-/// One case per placing driver, because the clamp used to live inside
-/// `ZStack::arrange`: a bare scroll node in a Grid or a stack's cross axis
-/// got no clamp at all, and `TextEdit` is exactly such a node. A stack's
-/// *main* axis is the one placement `AxisPlacement` does not own — its flex
-/// solver shrinks against the zero min-content a panned scroll reports — so
-/// it is covered here too, as the same outcome by another route.
-///
-/// Canvas is deliberately absent: on a `Hug` axis its slot *is* the child's
-/// own desired (a canvas takes its size from the children it positions, so
-/// it has no independent room to pull a viewport into), and on a sized axis
-/// it hands `inner`, which the measure pass already bounded the desired
-/// against. The clamp is the identity either way.
+/// One case per placing driver: a bare scroll node in a Grid or a stack's cross
+/// axis once got no clamp, and `TextEdit` is such a node. A stack's *main* axis is
+/// the one placement `AxisPlacement` does not own (its flex solver shrinks against
+/// the zero min-content a panned scroll reports). Canvas is absent: its slot is the
+/// child's desired on a `Hug` axis and `inner` on a sized one, so the clamp is the
+/// identity.
 #[test]
 fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
     const SLOT: Size = Size { w: 200.0, h: 100.0 };
     const CONTENT: Size = Size { w: 400.0, h: 400.0 };
     const SCROLL: &str = "bare-scroll";
 
-    /// A bare `Node::scroll`, not the `Scroll` widget: the widget wraps its
-    /// viewport in a ZStack of its own, which is the one driver that always
-    /// clamped. `TextEdit` records the bare form, and this is its shape.
+    /// A bare `Node::scroll`, not the `Scroll` widget, which wraps its viewport in
+    /// a ZStack (the one driver that always clamped); `TextEdit` records the bare
+    /// form.
     fn record_scroll(ui: &mut Ui) {
-        // `fit` on both panned axes is what makes a `Hug` scroll report its
-        // content extent — the state whose desired can outgrow the slot.
         Widget::scroll(ScrollAxes::BOTH.fit_content(true, true))
             .size((Sizing::HUG, Sizing::HUG))
             .id(WidgetId::from_hash(SCROLL))
@@ -456,10 +417,9 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
         h.frame(|ui| {
             let parent = WidgetId::from_hash("parent");
             // **Hug capped by `max_size`, not `Fixed`.** A Hug axis measures
-            // its children against `INFINITY`, so the scroll's desired is its
-            // content's; the cap is then what makes the slot smaller than
-            // that desired. A Fixed parent bounds the measure instead and
-            // never reaches the placement this is about.
+            // children against `INFINITY`, so the cap makes the slot smaller than
+            // the desired; a Fixed parent bounds the measure instead and never
+            // reaches this placement.
             let sized = (Sizing::HUG, Sizing::HUG);
             let cap = (SLOT.w, SLOT.h);
             match driver {

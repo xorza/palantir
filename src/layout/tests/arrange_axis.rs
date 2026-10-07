@@ -53,8 +53,7 @@ struct ArrangeCase {
     max: f32,
     margin: f32,
     align: Align,
-    /// A fixed child of this extent on the axis, for a hugging case to
-    /// hug; zero records none.
+    /// A fixed child of this extent on the axis for a hugging case to hug; zero records none.
     content: f32,
 }
 
@@ -134,17 +133,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
     h.arranged(child)
 }
 
-/// One sizing resolves to one extent under every driver, on either axis,
-/// with or without a margin — and the margin moves the child off the
-/// slot's start by itself, since the default alignment starts there.
-///
-/// Fill floors at its measured minimum when the slot is too small, and
-/// stops at its maximum when the slot is larger; a fixed size holds under
-/// stretch alignment, loses to a larger minimum, and a minimum equal to
-/// the maximum pins the extent outright. A hugging node stops at its
-/// maximum below its content, and floors at its minimum above both its
-/// content and its slot — the slot is below the minimum there because a
-/// stretching driver grows a hugging child to the slot.
+/// One sizing resolves to one extent under every driver, either axis, with or without margin (which alone moves the child off the slot start). Fill floors at its measured minimum in a small slot and stops at its maximum in a larger one; fixed holds under stretch, loses to a larger minimum, and min == max pins it. A hugging node stops at its maximum below its content and floors at its minimum above content and slot (a stretching driver grows a hugging child to the slot).
 #[test]
 fn sizing_resolves_alike_under_every_driver() {
     #[derive(Debug)]
@@ -262,8 +251,7 @@ fn max_capped_fill_uses_resolved_alignment() {
     }
 }
 
-/// A container with no children hugs nothing: every driver arranges an
-/// empty hugging panel to its padding alone, 5 on each side.
+/// A childless hugging panel arranges to its padding alone, 5 on each side, under every driver.
 #[test]
 fn an_empty_driver_hugs_its_padding() {
     let id = WidgetId::from_hash("empty-driver");
@@ -304,14 +292,7 @@ fn an_empty_driver_hugs_its_padding() {
     }
 }
 
-/// A collapsed child takes no room under any driver: it does not grow a
-/// hugging parent, take a gap, or move a sibling, and it arranges to a
-/// zero size. The children are a 20×20 `a`, a collapsed 50×50 `gone`,
-/// and a 30×20 `b`, with a gap of 10. A stack and a wrap put `b` at
-/// 20 + 10 = 30 and hug 30 + 30 = 60 wide. A canvas places `b` there by
-/// hand and `gone` at (100, 100), past both. A grid puts `gone` in `a`'s
-/// cell and `b` in the next column. A zstack overlaps `a` and `b` at the
-/// origin and hugs the wider, 30.
+/// A collapsed child takes no room under any driver: no hugging growth, gap, or sibling shift, zero size. Children: 20×20 `a`, collapsed 50×50 `gone`, 30×20 `b`, gap 10. Stack and wrap put `b` at 20 + 10 = 30 and hug 30 + 30 = 60. Canvas places `b` by hand and `gone` at (100, 100). Grid puts `gone` in `a`'s cell and `b` in the next column. Zstack overlaps `a` and `b` at the origin and hugs the wider, 30.
 #[test]
 fn a_collapsed_child_takes_no_room() {
     let panel_id = WidgetId::from_hash("collapsed-driver");

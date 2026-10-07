@@ -4,29 +4,24 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 use std::f32::consts;
 
-/// Visuals and motion for [`crate::Spinner`]: the rotating comet arc.
-/// Builder overrides (`.color(...)` / `.diameter(...)` /
-/// `.thickness(...)`) win; otherwise these fill in.
+/// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)` / `.diameter(...)` / `.thickness(...)`) win.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SpinnerTheme {
-    /// Arc color — the comet's head; the tail fades to transparent.
+    /// Arc colour at the comet's head; the tail fades to transparent.
     pub color: RgbaF32,
     /// Diameter in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub diameter: f32,
-    /// Arc length in radians. Under a full turn, so the gap is what
-    /// reads as motion; `TAU` would look like a static ring.
+    /// Arc length in radians; under a full turn, or it reads as a static ring.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub sweep: f32,
     /// Rotation rate in radians/second.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
     pub speed: f32,
-    /// Stroke width as a fraction of the diameter, so a resized spinner
-    /// keeps its proportions instead of thinning out.
+    /// Stroke width as a fraction of the diameter.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
     pub thickness_ratio: f32,
-    /// Floor on the derived stroke width, in logical px — a tiny
-    /// spinner still needs a visible arc.
+    /// Floor on the derived stroke width in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_thickness: f32,
 }

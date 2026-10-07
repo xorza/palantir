@@ -13,12 +13,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// `Surface::apply_to` (called by `Panel::show`) writes the clip bit
-/// AND records chrome in `Tree::chrome_table` together. One fixture sweeps every Surface
-/// configuration: no surface; paint-only via `From<Background>`;
-/// `Surface::scissor`; `Surface::clipped`; `Surface::rounded` with
-/// non-zero radius; `Surface::rounded` with zero-radius downgrade.
-/// Refactors that touch any mode are caught by the table.
+/// `Surface::apply_to` (from `Panel::show`) writes the clip bit and records chrome in `Tree::chrome_table`. One fixture sweeps: no surface, paint-only `From<Background>`, `scissor`, `clipped`, `rounded` with radius, `rounded` with zero-radius downgrade.
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -42,9 +37,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .node();
             cases.push(("paint-only", n, ClipMode::None, true));
 
-            // Surface::scissor — clip + transparent paint. Chrome is
-            // dropped at install (Tree::open_node filters invisible
-            // paint), so only the clip flag survives.
+            // Chrome is dropped at install (`Tree::open_node` filters invisible paint); only the clip flag survives.
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("scissor"))
                 .size(50.0)
@@ -78,7 +71,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .node();
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
-            // Background + clip_rounded with zero radius — open_node downgrades.
+            // Zero radius: open_node downgrades.
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
@@ -221,13 +214,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     assert_eq!(child.size.h, 80.0);
 }
 
-/// Regression: a child recorded inside a `.disabled(true)` panel
-/// must see `state.disabled = true` *during recording* on its very
-/// first frame. Cascade lags by a frame, so without
-/// `Forest::ancestor_disabled` first-frame `response_for` returned
-/// `disabled=false`, which made the animation cache snap to the
-/// alive look on insertion and animate to disabled on frame 2 —
-/// visible in the showcase as a flash of "alive" disabled buttons.
+/// Regression: a child in a `.disabled(true)` panel must see `state.disabled = true` while recording on its first frame. Cascade lags a frame, so without `Forest::ancestor_disabled` the animation cache snapped to the alive look and flashed it.
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::identity::widget_id::WidgetId;
@@ -250,8 +237,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     );
 }
 
-/// The enabled row is the control: the same click on the same button
-/// lands there, so the disabled row cannot pass because the click missed.
+/// The enabled row is the control: the same click lands there, so the disabled row can't pass by missing.
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
@@ -331,8 +317,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
 
 #[test]
 fn zstack_layers_children_without_painting_background() {
-    // Wrapped in HStack so the ZStack's Hug-to-children size is honored
-    // (root would otherwise expand to surface).
+    // In an HStack so the ZStack's Hug size is honored (a root would expand to the surface).
     let mut h = UiHarness::new(UVec2::new(400, 200));
     let [z, bg_node, fg_node] = h.frame_value(|ui| {
         Panel::hstack()
@@ -373,9 +358,7 @@ fn zstack_layers_children_without_painting_background() {
     assert_eq!((fg.size.w, fg.size.h), (60.0, 30.0));
 }
 
-/// ZStack inner = 200×100, child = 40×20. `align(...)` resolves
-/// independently per axis: Center → (100-40)/2 leading; End → inner -
-/// child; Start → 0.
+/// ZStack inner = 200×100, child = 40×20. `align` resolves per axis: Center → (100-40)/2 leading; End → inner - child; Start → 0.
 #[test]
 fn zstack_aligns_child_per_axis() {
     let cases: &[(&str, Align, (f32, f32))] = &[

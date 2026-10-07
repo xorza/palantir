@@ -1,44 +1,14 @@
-//! Build-gated observability for the layout pass. Built on [`TestOnly`],
-//! whose module doc explains the gated-cell pattern and why the gates
-//! differ between passes.
-//!
-//! Test-only rather than the wider gate because
-//! [`LayoutCounters::cache_hits`] pushes to a `Vec` on *every* cache hit,
-//! which in steady state is every subtree root — the allocation suite
-//! (`tests/alloc`) asserts steady-state frames allocate nothing, so it
-//! would end up measuring this probe instead of the frame.
-//!
-//! [`PhaseTimings`] rides a [`BenchOnly`] cell like everything else
-//! here. What lets it is [`PhaseSpan::elapsed_ns`] answering zero
-//! without the `bench` feature rather than not existing: the clock read
-//! is what a build must not pay for, and that is gone either way, so the
-//! mutator needs no `#[cfg]` of its own.
+//! Build-gated observability for the layout pass, on [`TestOnly`]; [`PhaseTimings`]
+//! rides a [`BenchOnly`] cell and [`PhaseSpan::elapsed_ns`] answers zero without
+//! `bench`.
 
 use crate::common::counters::{BenchOnly, TestOnly, counter_snapshot};
 use crate::primitives::identity::widget_id::WidgetId;
 
-/// CPU nanoseconds one `LayoutEngine::run` spent in each half of the
-/// layout pass, summed over every root in every layer.
-///
-/// Split because the cross-frame cache covers only the first half.
-/// `MeasureCache::try_lookup` can short-circuit an entire subtree — in
-/// steady state the root itself, so measure collapses to a few whole-tree
-/// `copy_from_slice`s — while `LayoutPass::arrange` still visits every
-/// node, replaying a hit subtree's rects rather than dispatching it. A
-/// whole-`run` number averages that asymmetry away; these two are what
-/// make it visible.
-///
-/// The sliver between the two (resolving the root's own size from
-/// `desired`) is charged to neither: it is one `arrange_size` call per
-/// root, independent of tree size.
-///
-/// The `caches` bench is the only consumer, and the four clock reads per
-/// root per frame are no longer negligible against the pass they measure
-/// — arrange replay took the cached layout pass to ~4 µs, so the
-/// instrumentation would be a low single-digit percentage of it, landing
-/// inside the frame but outside the spans it reports. So the reads
-/// themselves are `bench`-gated, in [`PhaseSpan`], and what a test build
-/// accumulates here is zeros.
+/// CPU nanoseconds one `LayoutEngine::run` spent in each layout phase, summed over
+/// every root in every layer. Split because the cross-frame cache covers only
+/// measure; a whole-`run` number would average away that asymmetry. The clock reads
+/// are `bench`-gated in [`PhaseSpan`], so a test build accumulates zeros.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct PhaseTimings {
     pub(crate) measure_ns: u64,
@@ -46,12 +16,9 @@ pub(crate) struct PhaseTimings {
     pub(crate) capture_ns: u64,
 }
 
-/// An open timing span. Zero-sized and free outside `bench`, so the
-/// call sites need no `#[cfg]` around the `let` that opens one — which is
-/// the whole reason this exists rather than a bare `Instant`.
-///
-/// Deliberately borrows nothing: [`Self::start`] is a free constructor,
-/// so a span stays open across the `&mut self` call it is timing.
+/// An open timing span. Zero-sized and free outside `bench`, so call sites need no
+/// `#[cfg]`. Borrows nothing, so it stays open across the `&mut self` call it
+/// times.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PhaseSpan {
     #[cfg(feature = "bench")]
@@ -74,12 +41,7 @@ impl PhaseSpan {
         }
     }
 
-    /// Nanoseconds since the span opened, and zero without `bench` —
-    /// where there is no reading to subtract from.
-    ///
-    /// Answering rather than not existing is what lets
-    /// [`LayoutCounters`]'s timing mutators be plain cell edits: a
-    /// closure body typechecks whether or not it runs.
+    /// Nanoseconds since the span opened; zero without `bench`.
     #[inline]
     #[cfg_attr(
         not(feature = "bench"),
@@ -103,49 +65,33 @@ impl PhaseSpan {
 counter_snapshot! {
     cells TestOnly, reads cfg(test);
 
-    /// Which branch [`LayoutPass::replay_arranged`] took. The translate
-    /// branch in particular is easy to write a fixture that silently
-    /// never reaches.
+    /// Which branch [`LayoutPass::replay_arranged`] took.
     ///
     /// [`LayoutPass::replay_arranged`]: crate::layout::pass::LayoutPass
     pub(crate) struct ReplayCounters;
 
-    /// One reading of a [`ReplayCounters`]. Tests compare it as a
-    /// literal.
     pub(crate) struct ReplayCounts;
 
-    /// Slot unchanged — the subtree's rects were copied verbatim.
+    /// Slot unchanged: rects copied verbatim.
     copied: u32,
-    /// Slot moved without resizing — rects were copied and shifted.
+    /// Slot moved without resizing: rects copied and shifted.
     translated: u32,
 }
 
-/// What the layout pass did this `run`, for tests and benches to assert
-/// against.
-///
-/// Reset by [`Self::begin_pass`] once at the top of every run — not in
-/// `LayoutScratch::resize_for`, which runs per layer and would wipe an
-/// earlier layer's counts.
+/// What the layout pass did this `run`. Reset by [`Self::begin_pass`] once per run,
+/// not in `LayoutScratch::resize_for`, which runs per layer.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutCounters {
-    /// `IntrinsicQuery::walk` (cache-miss) calls this run. Tests assert a
-    /// localized change doesn't trigger a whole-tree intrinsic re-walk.
     intrinsic_computes: TestOnly<u32>,
-    /// Subtree roots restored from the measure cache this run. A cache-hit
-    /// test that asserts only "warm rects equal cold rects" passes
-    /// vacuously if the lookup never hit, so tests assert *where* it hit.
+    /// Subtree roots restored from the measure cache this run, so tests can assert
+    /// *where* it hit.
     cache_hits: TestOnly<Vec<WidgetId>>,
-    /// Runs that kept the last run's output whole. Accumulates, so a
-    /// test reads the delta across the frames it drives.
     kept_runs: TestOnly<u32>,
     replays: ReplayCounters,
-    /// Measure / arrange wall time this run.
     phase_timings: BenchOnly<PhaseTimings>,
 }
 
 impl LayoutCounters {
-    /// Clear every counter for a new pass. Retains `cache_hits` capacity so
-    /// a test build doesn't reallocate each frame.
     #[inline]
     pub(crate) fn begin_pass(&mut self) {
         self.intrinsic_computes.reset();
@@ -155,24 +101,15 @@ impl LayoutCounters {
         self.phase_timings.reset();
     }
 
-    /// Fold a closed measure span into this run's total. Accumulates
-    /// rather than assigns — `run` opens one span per root per layer.
     #[inline]
     pub(crate) fn add_measure(&mut self, span: PhaseSpan) {
         self.phase_timings
             .edit(|t| t.measure_ns += span.elapsed_ns());
     }
 
-    /// Snapshot capture — [`MeasureCache::capture_tree`] plus
-    /// [`MeasureCache::end_frame`]. The third layout phase, and the
-    /// easiest to miss: both run outside the measure and arrange spans,
-    /// so without this counter a frame's layout time reads short by
-    /// however much the snapshot cost.
-    ///
-    /// It is the phase whose *share* grows as the cache works better —
-    /// capture is O(nodes) on any changed frame, while measure shrinks
-    /// to the subtrees that actually missed. `broad/measure/localized`
-    /// is the shape that makes that visible.
+    /// Snapshot capture ([`MeasureCache::capture_tree`] plus
+    /// [`MeasureCache::end_frame`]), which runs outside the measure and arrange
+    /// spans.
     ///
     /// [`MeasureCache::capture_tree`]: crate::layout::cache::MeasureCache
     /// [`MeasureCache::end_frame`]: crate::layout::cache::MeasureCache
@@ -182,7 +119,6 @@ impl LayoutCounters {
             .edit(|t| t.capture_ns += span.elapsed_ns());
     }
 
-    /// Arrange counterpart of [`Self::add_measure`].
     #[inline]
     pub(crate) fn add_arrange(&mut self, span: PhaseSpan) {
         self.phase_timings
@@ -215,9 +151,8 @@ impl LayoutCounters {
     }
 }
 
-/// Reads gated to the builds that ask: `bench.rs` drivers read the phase
-/// timings, and only tests read the rest. Nothing in a shipping build has
-/// a reason to ask, which is what lets the counters themselves be absent.
+/// Reads gated to the builds that ask: `bench.rs` reads the phase timings, tests
+/// the rest.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     #[cfg(test)]
@@ -241,8 +176,6 @@ pub(crate) mod internals {
             self.intrinsic_computes.count()
         }
 
-        /// Zero the intrinsic counter mid-run — for a test that primes a
-        /// frame and then counts only what a subsequent query costs.
         #[cfg(test)]
         pub(crate) fn reset_intrinsic_computes(&mut self) {
             self.intrinsic_computes.reset();
@@ -269,13 +202,9 @@ pub(crate) mod internals {
 mod tests {
     use crate::layout::counters::{LayoutCounters, PhaseSpan};
 
-    /// The pattern's premise: with its gate off, a probe type costs
-    /// nothing, so the unconditional call sites in `LayoutEngine::run`
-    /// compile away rather than merely being cheap.
-    ///
-    /// Asserted in both configurations so the pin can't pass vacuously —
-    /// a plain `cargo test` exercises the zero-sized arm, `--all-features`
-    /// the populated one.
+    /// With its gate off a probe type costs nothing, so the unconditional call
+    /// sites in `LayoutEngine::run` compile away. Asserted in both configurations
+    /// so the pin cannot pass vacuously.
     #[test]
     fn phase_span_costs_nothing_when_its_gate_is_off() {
         #[cfg(not(feature = "bench"))]
@@ -291,10 +220,8 @@ mod tests {
         );
     }
 
-    /// Same premise for the probe itself. Under `cfg(test)` its counters
-    /// exist, so this pins the populated direction; the zero-sized case is
-    /// unobservable from a test build by construction, which is precisely
-    /// why the `PhaseSpan` pin above matters.
+    /// Same premise for the probe; under `cfg(test)` only the populated direction
+    /// is observable.
     #[test]
     fn counters_are_carried_only_in_a_test_build() {
         assert!(

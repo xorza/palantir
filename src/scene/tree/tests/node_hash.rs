@@ -23,7 +23,6 @@ use glam::Vec2;
 fn empty_tree_has_no_hashes() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|_| {});
-    // Synthetic viewport root: present even for an empty user record.
     assert_eq!(h.ui.tree(Layer::Main).records.len(), 1);
     assert_eq!(h.ui.tree(Layer::Main).rollups.node.len(), 1);
     assert_eq!(h.ui.tree(Layer::Main).rollups.subtree.len(), 1);
@@ -45,7 +44,6 @@ fn same_authoring_produces_same_hash() {
             .node()
     };
     assert_eq!(record(build).node, record(build).node);
-    // The hash is the root's own, so the change is to the root.
     let padded = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -152,9 +150,7 @@ fn widget_id_only_affects_cascade_static_hash() {
 fn changing_layout_property_changes_hash() {
     use crate::primitives::layout::visibility::Visibility;
     type Build = fn(&mut Ui) -> NodeId;
-    // `structural`: the case changes what the cascade's structural tables
-    // hold, so it must reach `cascade_static`. The rest only move rects,
-    // which the cascade refreshes in place, so they must not.
+    // `structural` cases change the cascade's structural tables so they reach `cascade_static`; the rest only move rects, refreshed in place.
     let cases: &[(&str, bool, Build, Build)] = &[
         (
             "size",
@@ -329,9 +325,7 @@ fn child_hash_does_not_affect_parent_hash() {
     assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
-/// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after
-/// `post_record`: one slot per shape, populated by the existing
-/// `compute_rollups` walk so we don't pay a second per-shape sweep.
+/// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after `post_record`, filled by the `compute_rollups` walk.
 #[test]
 fn shape_hashes_column_sized_to_shape_records() {
     let mut h = UiHarness::new(SURFACE);
@@ -359,14 +353,12 @@ fn shape_hashes_column_sized_to_shape_records() {
         tree.shapes.records.len(),
         "shape_hashes column must be parallel to records",
     );
-    // Two distinct shapes ⇒ two distinct hashes. (Different endpoints,
-    // different fills.)
+    // Two distinct shapes give two distinct hashes.
     assert_ne!(
         tree.shapes.hashes[0], tree.shapes.hashes[1],
         "distinct shapes must produce distinct per-shape hashes",
     );
-    // No shape hash should be the zero default — populated for every
-    // record, never skipped.
+    // No shape hash is the zero default.
     for (i, h) in tree.shapes.hashes.iter().enumerate() {
         assert_ne!(
             *h,
@@ -376,10 +368,7 @@ fn shape_hashes_column_sized_to_shape_records() {
     }
 }
 
-/// Per-shape hashes are deterministic across identical-authoring
-/// frames. The shape buffer's slot for the same n-th shape on the
-/// same widget must hash to the same value frame N and frame N+1
-/// — that's the invariant the damage diff depends on.
+/// Per-shape hashes are deterministic across identical-authoring frames: the damage diff depends on it.
 #[test]
 fn shape_hash_stable_across_frames() {
     let build = |ui: &mut Ui| {
@@ -406,9 +395,7 @@ fn shape_hash_stable_across_frames() {
     );
 }
 
-/// Changing one shape's authoring inputs flips that shape's hash
-/// alone — other shapes on the same owner stay stable. This is the
-/// per-shape damage diff's key precondition.
+/// Changing one shape's authoring inputs flips that shape's hash alone, the per-shape damage diff's precondition.
 #[test]
 fn one_shape_change_only_flips_its_own_hash() {
     let build = |b_endpoint: Vec2, ui: &mut Ui| {
@@ -440,21 +427,7 @@ fn one_shape_change_only_flips_its_own_hash() {
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }
 
-/// Nesting reaches `cascade_static`, so re-parenting alone invalidates a
-/// retained cascade.
-///
-/// Same three widget ids, same per-node configuration, same node count —
-/// only the shape differs: two siblings under the root versus one nested
-/// inside the other. Every per-node hash is therefore identical and the
-/// count matches, so nothing *but* `subtree_end` distinguishes the two.
-///
-/// `CascadeEngine::can_update` used to catch this by zipping the whole
-/// `subtree_ends` column against the tree on every run — an O(nodes) walk
-/// per layer per frame, on the incremental fast path. Folding the end into
-/// this hash covers the same ground for free, which is what lets
-/// `LayerCascade::subtree_ends` be the sparse ancestry column its doc claims.
-/// If the fold is ever dropped, these two collide and a re-parent silently
-/// keeps the stale cascade.
+/// Nesting reaches `cascade_static`, so re-parenting alone invalidates a retained cascade: same ids, per-node configuration and node count, only two siblings versus one nested, so nothing but `subtree_end` differs. Folding it into this hash replaced an O(nodes) `subtree_ends` zip in `CascadeEngine::can_update`; dropping the fold would let a re-parent keep the stale cascade.
 #[test]
 fn nesting_alone_changes_cascade_static() {
     let leaf = |ui: &mut Ui, name: &'static str| {
@@ -496,9 +469,7 @@ fn nesting_alone_changes_cascade_static() {
     );
 }
 
-/// A paint animation is part of what a shape paints, so it moves the
-/// node hash: adding one, dropping one, and changing what it animates
-/// each read as a change, and the same animation twice reads the same.
+/// A paint animation is part of what a shape paints, so it moves the node hash: adding, dropping or changing it reads as a change, the same animation twice does not.
 #[test]
 fn a_paint_animation_moves_the_node_hash() {
     use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
@@ -533,11 +504,7 @@ fn a_paint_animation_moves_the_node_hash() {
     assert_ne!(spun, fading, "a different channel");
 }
 
-/// Which half of the rollup each kind of edit moves. Paint-only edits
-/// move the full subtree hash and leave the layout half, which the
-/// measure cache keys on; layout edits move both, the full hash being
-/// built from the layout half. A child's text is a layout input of the
-/// child, so it reaches both of the parent's rollups through the child.
+/// Which half of the rollup each edit moves: paint-only edits move the full subtree hash and leave the layout half the measure cache keys on; layout edits move both. A child's text reaches both of the parent's rollups.
 #[test]
 fn each_edit_moves_the_half_it_belongs_to() {
     use crate::widgets::text::Text;

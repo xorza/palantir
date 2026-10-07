@@ -1,9 +1,4 @@
-//! Traversal iterators over a [`Tree`](super::Tree): [`ChildIter`] /
-//! [`Child`] (direct children, collapse-tagged) and [`TreeItems`] /
-//! [`TreeItem`] (a node's direct shapes interleaved with its immediate
-//! children in record order). The latter is the single source of truth
-//! for the parent/child shape-cursor logic — the encoder, cascade, and
-//! hash walks all drive it.
+//! Traversal iterators over a [`Tree`](crate::scene::tree::Tree): [`ChildIter`]/[`Child`] (direct children) and [`TreeItems`]/[`TreeItem`] (a node's shapes interleaved with its children in record order), the single source of the shape-cursor logic for encoder, cascade and hash walks.
 
 use soa_rs::Soa;
 
@@ -24,11 +19,6 @@ pub(crate) struct ChildIter<'a> {
 }
 
 impl<'a> ChildIter<'a> {
-    /// `parent`'s direct children, in record order.
-    ///
-    /// Built here rather than by a struct literal at the caller — like
-    /// [`TreeItems::new`] — so the fields stay private and the columns a
-    /// walk reads are one decision rather than one per caller.
     pub(crate) fn new(records: &'a Soa<NodeRecord>, parent: NodeId) -> Self {
         let ends = records.subtree_end();
         Self {
@@ -42,9 +32,7 @@ impl<'a> ChildIter<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum TreeItem<'a> {
-    /// `u32` is the shape's index into `Tree::shapes.records` — used
-    /// by the encoder's sparse paint-animation cursor. Cascade / testing
-    /// call sites that only care about the record itself can ignore it.
+    /// The `u32` is the shape's index into `Tree::shapes.records`, used by the encoder's paint-animation cursor.
     ShapeRecord(u32, &'a ShapeRecord),
     Child(Child),
 }

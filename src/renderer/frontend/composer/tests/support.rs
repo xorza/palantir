@@ -1,5 +1,4 @@
-//! The composer a test drives, the payloads it is fed, and what it is read
-//! back through.
+//! The composer a test drives, the payloads it is fed, and how it is read back.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -52,9 +51,7 @@ pub(super) fn draw(buf: &mut PaintCapture, r: Rect) {
     QuadBuilder::new(r).draw(buf);
 }
 
-/// [`draw`] with a fill unique to the quad's place in the capture — the
-/// n-th call's red channel is `n / 255` — so a test can name which quads
-/// survived a prune, not only how many.
+/// [`draw`] with a fill unique to the quad's capture position (n-th call: red `n / 255`), so a test can name which quads survived a prune.
 pub(super) fn draw_marked(buf: &mut PaintCapture, r: Rect) {
     let nth = buf.calls.len() as f32;
     QuadBuilder::new(r)
@@ -67,8 +64,7 @@ pub(super) fn survivors(buf: &RenderBuffer) -> Vec<Rect> {
     buf.quads.iter().map(|q| q.rect).collect()
 }
 
-/// The surviving quads' capture positions, read back off the fill
-/// [`draw_marked`] gave each: what tells apart two survivors over one rect.
+/// Surviving capture positions, read off the fill [`draw_marked`] gave; tells apart survivors over one rect.
 pub(super) fn survivor_calls(buf: &RenderBuffer) -> Vec<u32> {
     buf.quads
         .iter()
@@ -101,9 +97,7 @@ pub(super) fn params(scale: f32, physical: UVec2) -> Display {
     Display::from_physical(physical, scale)
 }
 
-/// [`params`] with the pixel snap off — for a case about fractional
-/// physical geometry, which the snap would round away before it reached
-/// the code under test.
+/// [`params`] with pixel snap off, for fractional physical geometry the snap would round away.
 pub(super) fn params_unsnapped(scale: f32, physical: UVec2) -> Display {
     Display {
         pixel_snap: false,
@@ -127,8 +121,7 @@ pub(super) fn run_with_texture_cap(
     run_in(ComposeRig::with_texture_cap(*display, cap), build)
 }
 
-/// One frame of `rig`, recorded by `build` into a fresh capture and the
-/// rig's store.
+/// One frame of `rig`, recorded by `build` into a fresh capture and the rig's store.
 fn run_in(
     mut rig: ComposeRig,
     build: impl FnOnce(&mut PaintCapture, &mut RecordStore),
@@ -139,9 +132,7 @@ fn run_in(
     rig.out
 }
 
-/// The payload the encoder builds for a `GpuView`: the view's full
-/// arranged rect, untinted, full UV, default sampling. Pair it with
-/// `Some(&paint)` — that's what makes the sink flag it as a view.
+/// The payload the encoder builds for a `GpuView`: full arranged rect, untinted, full UV, default sampling. Pair with `Some(&paint)` so the sink flags it a view.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload {
         rect,
@@ -153,8 +144,7 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
     }
 }
 
-/// Draw a `GpuView` at `rect` — [`gpu_view_payload`] under a no-op
-/// paint, at full alpha.
+/// Draw a `GpuView` at `rect`: [`gpu_view_payload`] under a no-op paint, full alpha.
 pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
     buf.draw_image(
         ImageDraw {
@@ -168,8 +158,7 @@ pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
     );
 }
 
-/// The payload the encoder builds for an icon: a fit-resolved logical rect,
-/// an identity, and a tint.
+/// The payload the encoder builds for an icon: fit-resolved logical rect, identity, tint.
 pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
     buf.draw_icon(
         DrawIconPayload {
@@ -183,8 +172,7 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
 }
 
 pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
-    // 3 verts / 3 indices + opaque tint clears `DrawMeshPayload::is_noop`
-    // so the cmd reaches the composer.
+    // 3 verts / 3 indices and an opaque tint clear `DrawMeshPayload::is_noop`.
     buf.draw_mesh(
         DrawMeshPayload {
             bbox,
@@ -200,8 +188,7 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32) {
-    // Half-pixel steps keep every radius distinct and below the 200 px a
-    // 400 px box fits, so no two levels fit to the same mask.
+    // Half-pixel steps keep every radius distinct and under the 200 px a 400 px box fits.
     for level in 1..=depth {
         clip_rounded(
             buffer,

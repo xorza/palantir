@@ -1,99 +1,50 @@
-//! The wgpu backend: the one GPU renderer, its per-window attachments,
-//! and the pipeline sets it builds per swapchain format.
+//! The wgpu backend: the one GPU renderer, its per-window attachments, and the
+//! pipeline sets it builds per swapchain format.
 //!
 //! # One frame
 //!
-//! [`WgpuBackend::submit`] draws a frame in two halves that cannot
-//! overlap, because the first holds `&mut self` and the second reads
-//! `self.pipelines` through a shared borrow: an upload phase recording
-//! every texture and dynamic-buffer write the passes will read, then the
-//! render passes themselves.
+//! [`WgpuBackend::submit`] runs two halves that cannot overlap: an upload phase
+//! (`&mut self`) recording every texture and dynamic-buffer write, then the render
+//! passes, which read `self.pipelines` through a shared borrow.
 //!
-//! Every instanced pipeline here spells the same six steps under the
-//! same names — `new`, `instance_layout`, `build_variants`, `upload`,
-//! `bind`, `draw` — so a reader who knows one knows the rest, and the
-//! render loop's arms differ only where the pipelines genuinely do. A
-//! new pipeline is expected to keep those names. The two raster tenants
-//! are the exception: text and icon share one
-//! `RasterPass` implementation and one
-//! [`RasterProgram`] — so one `build_variants` and one pipeline pair
-//! serve both, and what stays per tenant is the atlas and the instance
-//! buffer.
+//! Every instanced pipeline spells the same six steps (`new`, `instance_layout`,
+//! `build_variants`, `upload`, `bind`, `draw`); new ones keep them. Text and icon
+//! share one `RasterPass` and [`RasterProgram`].
 //!
-//! Quads and text interleave per-group in paint order: each group's
-//! quads draw first, then its text renders on top, before the next group
-//! runs. So a child quad declared *after* a label correctly occludes
-//! that label. Without a shared shaper installed (mono fallback) text
-//! rendering is silently skipped and the frame still draws its quads.
+//! Each group's quads draw first, then its text, so a child quad declared after a
+//! label occludes it.
 //!
 //! # Damage
 //!
-//! Two paths, branching on the frame plan's damage region:
+//! - [`Damage::Full`](crate::damage::Damage::Full): one `LoadOp::Clear(clear)` pass
+//!   paints every group at its native scissor.
+//! - [`Damage::Partial(region)`](crate::damage::Damage::Partial): one render pass per
+//!   rect, `LoadOp::Load`ing the backbuffer, with each group's scissor narrowed to
+//!   the rect (scaled, padded for AA bleed, clamped; zero-area rects dropped).
 //!
-//! - [`Damage::Full`](crate::damage::Damage::Full): a single
-//!   `LoadOp::Clear(clear)` pass paints every group at its native
-//!   scissor. First frame, post-resize, post-format-change, and
-//!   coverage-above-threshold all land here.
-//! - [`Damage::Partial(region)`](crate::damage::Damage::Partial):
-//!   one render pass per rect in the region. Each pass `LoadOp::Load`s
-//!   the backbuffer (preserving last frame outside the rect) and the
-//!   schedule narrows every group's scissor to that pass's damage rect.
-//!   Logical-px in; the backend scales, pads for AA bleed, and clamps to
-//!   surface, and rects that clamp to zero area are filtered out. The
-//!   rects are pairwise disjoint, so one stencil clear per pass is
-//!   enough — no per-rect reset.
-//!
-//! Both shapes go through one `begin_render_pass`. The `dim_undamaged`
-//! debug mode adds a pre-pass on Partial frames: one full-viewport
-//! 40%-translucent black quad onto the backbuffer with `LoadOp::Load`,
-//! in a render pass of its own because the no-stencil pipeline is
-//! incompatible with the main pass's stencil attachment on rounded-clip
-//! frames. Undamaged pixels are dimmed once per frame; damaged pixels
-//! are dimmed and then immediately overwritten by the fresh repaint. So
-//! across many frames the static background fades toward black while
-//! moving content stays current — far less jarring than the prior
-//! `LoadOp::Clear` flash, and it pins which regions actually repaint.
+//! The `dim_undamaged` debug mode adds a pre-pass on Partial frames in its own pass:
+//! the no-stencil dim pipeline is incompatible with the main pass's stencil
+//! attachment on rounded-clip frames.
 //!
 //! # The staging belt
 //!
-//! The main encoder opens before the first upload. Every dynamic-buffer
-//! upload routes through `staging_belt`, which schedules its
-//! `copy_buffer_to_buffer` commands onto that encoder rather than
-//! allocating its own `MTLBlitCommandEncoder` per `queue.write_buffer`.
-//! The render passes record onto the same encoder later, and wgpu
-//! serialises commands in record order, so the copies land before the
-//! passes that read from the destination buffers.
-//!
-//! Closing the belt with `finish_and_recall_on_submit` records a
-//! `map_buffer_on_submit` onto the encoder, so the just-used chunks
-//! re-map once the submission completes — no explicit `recall()`. It has
-//! to precede `encoder.finish()`, which needs the still-live encoder.
-//! Chunks come back when the map callback fires off a `device.poll`: a
-//! `PollType::Wait` caller sees them next frame, and a `PollType::Poll`
-//! caller may allocate one more chunk during the catch-up window, which
-//! wgpu's docs flag as harmless.
+//! The main encoder opens before the first upload, and every dynamic-buffer upload
+//! routes through `staging_belt`, which records its copies on that encoder instead of
+//! a Metal blit encoder per `queue.write_buffer`. wgpu serialises in record order, so
+//! copies land before the passes that read them. `finish_and_recall_on_submit` must
+//! precede `encoder.finish()`.
 //!
 //! # The clear
 //!
-//! The surface clear is the bottom-most paint layer of the frame, so its
-//! alpha is forced to 1: any sub-1 alpha would let the host's desktop
-//! show through the framebuffer's transparent regions. Palantir doesn't
-//! support transparent windows, and the occlusion prune assumes the
-//! clear is opaque.
-//!
-//! The composer may have folded a viewport-covering root background quad
-//! into the clear (`RenderBuffer::clear_override`). It then replaces the
-//! plan's clear for both the Full-pass `LoadOp::Clear` and the Partial
-//! pre-clear quad.
+//! The surface clear is the bottom paint layer, so its alpha is forced to 1: there
+//! are no transparent windows and the occlusion prune assumes an opaque clear. A
+//! root quad folded into the clear (`RenderBuffer::clear_override`) replaces the
+//! plan's clear for the Full pass and the Partial pre-clear quad.
 //!
 //! # GPU timestamps
 //!
-//! When timing is on, the main-pass timestamps resolve as the last step
-//! before `encoder.finish()`: the main pass closed before the backbuffer
-//! copy, so the resolve rides in the same command buffer as everything
-//! else. After submission, `after_submit` kicks the `map_async` on this
-//! frame's staging slot and reads back any prior frame whose map
-//! completed — one `device.poll(Poll)` and one memcpy on the ready slot.
+//! Main-pass timestamps resolve just before `encoder.finish()`; `after_submit`
+//! reads back any earlier frame whose map completed.
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
@@ -136,96 +87,52 @@ use std::rc::Rc;
 use std::time::Instant;
 use wgpu::util::StagingBelt;
 
-/// Wgpu renderer owning its device/queue handles, pipelines, and text
-/// backend. The winit adapter retains cloned handles solely for surface
-/// configuration and presentation.
-///
-/// The text side holds the same
-/// [`TextShaper`](crate::text::shaper::TextShaper) the `Ui` side
-/// measures against (passed in at [`Self::new`]), so layout-time
-/// measurement and rasterization hit one buffer cache. No layout, no encode, no compose
-/// — those happen elsewhere and arrive here as a `RenderBuffer`.
+/// Wgpu renderer owning its device/queue handles, pipelines and text backend.
+/// The text side holds the same [`TextShaper`](crate::text::shaper::TextShaper) the
+/// `Ui` measures against, so measurement and rasterization share one buffer cache.
 #[derive(Debug)]
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    /// All per-frame dynamic-buffer uploads route through this belt so
-    /// the resulting `copy_buffer_to_buffer` commands ride the main
-    /// encoder. On Metal that collapses N `queue.write_buffer` calls
-    /// (each spinning up a fresh `MTLBlitCommandEncoder`) down to one
-    /// blit encoder per submit. Chunk size sized to comfortably hold a
-    /// resizing-frame's worth of buffer uploads (~512 KB observed in
-    /// the frame bench).
+    /// Routes per-frame dynamic-buffer uploads onto the main encoder, collapsing N
+    /// `queue.write_buffer` calls (each a Metal blit encoder) into one.
     staging_belt: StagingBelt,
-    /// Shared gradient LUT atlas resources (texture + group-0 bind
-    /// group), lent to the quad and curve pipelines — both render
-    /// gradient brushes off this one allocation.
+    /// Shared gradient LUT atlas lent to the quad and curve pipelines.
     gradient: GpuGradientAtlas,
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
-    /// The registered images. The host's recorders create, rewrite and
-    /// free them through the `ImageRegistry` this backend attached it to,
-    /// over this same `Rc`. The draw path binds through it, and the
-    /// `GpuView` targets and each format's image pipeline build against its
-    /// binding.
+    /// The registered images; host recorders create, rewrite and free them through the
+    /// `ImageRegistry` this backend attached over this `Rc`.
     image_store: Rc<WgpuImageStore>,
-    /// The framework's `GpuView` targets. Owned beside the pipeline rather
-    /// than inside it, so `paint_gpu_views` and `retire_owner` are reached
-    /// without a forwarder and `draw` is handed the store it binds from.
     gpu_view_targets: GpuViewTargets,
-    /// The one shader and group-0 layout both raster tenants
-    /// draw through, and so the one pipeline pair per format they
-    /// share — see [`RasterProgram`].
+    /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
     raster: RasterProgram,
-    /// Presents the retained backbuffer onto a target that takes no copy —
-    /// see [`BlitPipeline`].
     blit: BlitPipeline,
     icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
-    /// The group-0 layout and sampler every sampled texture binds
-    /// through: the gradient atlas, the images, the `GpuView` targets and
-    /// each window's backbuffer. One, so a group built for one binds in
-    /// every pipeline that samples any of them.
+    /// The group-0 layout and sampler every sampled texture binds through, so a group built for one
+    /// binds in every pipeline that samples any.
     texture_binding: TextureBinding,
-    /// The rounded-clip chains each group and text batch stamps, and the
-    /// mask quads they index, rebuilt on every stencil frame and handed to
-    /// the schedule only on those. Retained so a frame costs no allocation.
+    /// Rounded-clip chains and mask quads, rebuilt on stencil frames only; retained to avoid
+    /// allocation.
     mask_plan: MaskPlan,
-    /// Format-dependent render pipelines, keyed by swapchain color format
-    /// and built lazily ([`Self::ensure_format`]) the first time a
-    /// surface of that format is submitted. Windows on different-format
-    /// outputs (e.g. one sRGB, one HDR) each bind their own set while
-    /// sharing every format-independent resource above. The only state
-    /// that carries the color target; there is no single "current format"
-    /// — the surface texture handed to `submit` selects the set.
+    /// Render pipelines keyed by swapchain color format, built lazily by [`Self::ensure_format`].
+    /// The surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<TargetFormat, FormatPipelines>,
-    /// Main-pass timestamp queries. `Some` when the host opted into
-    /// instrumentation and the device was created with `TIMESTAMP_QUERY`
-    /// enabled. Publishes into the host's shared `GpuPassStats` handle;
-    /// with one shared backend the published sample reflects the most recently
-    /// submitted window.
+    /// Main-pass timestamp queries; `Some` when the host opted in and the device has
+    /// `TIMESTAMP_QUERY`.
     gpu_timings: Option<GpuTimings>,
-    /// The one handle this backend publishes through — its host-side
-    /// record time on every submitted frame, and, when `gpu_timings` is
-    /// resolving, that sample too. `GpuTimings` is handed this at
-    /// `after_submit` rather than keeping a clone, so the two cannot come
-    /// to name different sinks.
-    ///
-    /// The record time is unconditional rather than behind
-    /// [`BackendConfig`]: the measurement is two `Instant::now()` calls
-    /// and one `RefCell` write *per frame*, and making it opt-in would
-    /// mean the only way to read it is to also enable the in-pass
-    /// timestamp writes that perturb the very number it reports.
+    /// The one handle this backend publishes through. Record time is unconditional
+    /// (two `Instant::now()` calls and a `RefCell` write); making it opt-in would force
+    /// the in-pass timestamp writes that perturb the number.
     pass_stats: GpuPassStats,
 }
 
-/// What [`WgpuBackend::run_main_pass`] draws into: the color attachment, the
-/// stencil attachment when the frame uses rounded clipping, and the color the
-/// pass clears to. One frame's attachments are picked together — backbuffer vs.
-/// surface view, stencil or no stencil — so they arrive together.
+/// What [`WgpuBackend::run_main_pass`] draws into: color, optional stencil, and clear color, picked
+/// together per frame.
 #[derive(Clone, Copy, Debug)]
 struct PassTarget<'a> {
     color_view: &'a wgpu::TextureView,
@@ -234,14 +141,9 @@ struct PassTarget<'a> {
 }
 
 impl WgpuBackend {
-    /// Build the one shared GPU renderer over the host's handles. Owns the
-    /// device/queue and every format-independent GPU resource (pipelines'
-    /// shaders + buffers, the glyph + gradient atlases, the image store),
-    /// and attaches that store to `resources.images`, so a registration
-    /// through the host's recorders is a texture here the moment it
-    /// returns. Format-agnostic at construction: each swapchain format's
-    /// pipeline set builds lazily on the first submit that targets it (see
-    /// [`Self::ensure_format`]).
+    /// Build the one shared GPU renderer over the host's handles and attach the image
+    /// store to `resources.images`. Per-format pipelines build lazily; see
+    /// [`Self::ensure_format`].
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, config: BackendConfig) -> Self {
         let Gpu { device, queue } = gpu;
         let texture_binding = TextureBinding::new(&device);
@@ -251,9 +153,6 @@ impl WgpuBackend {
             texture_binding.clone(),
         ));
         resources.images.attach(Rc::clone(&image_store));
-        // Gradient LUT atlas resources, shared by the quad and curve
-        // pipelines (both sample gradient brushes). Owned here so neither
-        // pipeline owns the other's input — each binds `gradient.bg`.
         let gradient = GpuGradientAtlas::new(
             &device,
             resources.gradient_atlas.clone(),
@@ -269,13 +168,8 @@ impl WgpuBackend {
         let text = TextBackend::new(&device, &raster, resources.text.clone());
         let icon = IconBackend::new(&device, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&device);
-        // Per-format pipeline sets build lazily on the first submit that
-        // targets each format (`ensure_format`); none at construction.
         let pipelines = FxHashMap::default();
-        // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
-        // per-frame upload peak, so we land in 1-2 chunks during
-        // steady state. wgpu allocates a new chunk only when the
-        // active one can't fit a write.
+        // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
@@ -315,20 +209,12 @@ impl WgpuBackend {
         }
     }
 
-    /// Ensure the pipeline set for `format` exists, building + caching it
-    /// on first use. Callers then read it back with `&self.pipelines[&format]`
-    /// (a shared field borrow, so it doesn't conflict with the `&mut self`
-    /// upload phase). Only the `wgpu::RenderPipeline` objects carry the
-    /// color-target format; every format-independent resource (image
-    /// textures, glyph + gradient atlases, samplers, buffers) lives on the
-    /// shared resource structs, so a new format costs only a handful of
-    /// pipeline compiles — **no image re-upload or glyph re-rasterization**.
-    /// Windows on different-format outputs each get (and keep) their own set.
+    /// Ensure the pipeline set for `format` exists. Only `wgpu::RenderPipeline`s carry
+    /// the color-target format, so a new format costs a few pipeline compiles and no
+    /// image re-upload or glyph re-rasterization.
     fn ensure_format(&mut self, format: TargetFormat) {
-        // Split borrow: the resource structs the builder reads are
-        // disjoint from `self.pipelines`, but the borrow checker can't see
-        // that through `entry().or_insert_with(closure)`, so build first
-        // then insert.
+        // Build then insert: the borrow checker can't see the builder's inputs are disjoint from
+        // `self.pipelines` through `entry().or_insert_with`.
         if !self.pipelines.contains_key(&format) {
             let built = FormatPipelines::new(
                 &self.device,
@@ -346,24 +232,13 @@ impl WgpuBackend {
         }
     }
 
-    /// Render one frame into the submission's target and present it.
+    /// Render one frame into the submission's target and present it. Skip frames
+    /// never reach this method.
     ///
-    /// The module docs carry the frame's shape: the two halves, the two
-    /// damage paths, the belt and the timestamp resolve.
-    ///
-    /// Skip frames never reach this method — `WindowDriver::render_to_texture`
-    /// dispatches them to the copy / no-op paths.
-    ///
-    /// [`SubmissionTargets::backbuffer`] picks the path. `Some` renders
-    /// into that backbuffer and copies the result onto
-    /// [`surface`](SubmissionTargets::surface), whose texture must carry
-    /// `COPY_DST` usage (set in [`wgpu::SurfaceConfiguration::usage`]);
-    /// `None` renders straight into the surface (direct present).
-    /// [`Submission::plan`] is the *effective* plan — every escalation
-    /// (promote / resync) was sealed in `present_mode` *before* the draw
-    /// list was built, so the plan and the buffer always agree. The
-    /// caller (`WindowDriver`) has also ensured the stencil and the
-    /// backbuffer.
+    /// [`SubmissionTargets::backbuffer`] picks the path: `Some` renders into it and
+    /// copies onto [`surface`](SubmissionTargets::surface), whose texture needs
+    /// `COPY_DST`; `None` renders straight into the surface. [`Submission::plan`] is the
+    /// effective plan: escalations were sealed before the draw list was built.
     pub(crate) fn submit(&mut self, submission: Submission<'_>) {
         tracy::zone!();
         let SubmissionTargets {
@@ -385,9 +260,6 @@ impl WgpuBackend {
             "wgpu_backend.submit"
         );
 
-        // Build (once) + select the pipeline set for this surface's
-        // format. Read back as `&self.pipelines[&format]` after the
-        // `&mut self` upload phase so the borrows don't collide.
         let surface_tex = target.texture();
         let format = target.format();
         self.ensure_format(format);
@@ -396,12 +268,7 @@ impl WgpuBackend {
         let repaint_scissors = build_repaint_scissors(plan.damage, buffer);
         let dim_undamaged = submission.dim_undamaged();
 
-        // The stencil texture (rounded-clip masking) is ensured by the
-        // caller; `stencil_view` is `Some` exactly when `use_stencil`. The
-        // mask quads upload further down, after the encoder is open.
-
-        // One encoder: the belt's copies must land before the passes that
-        // read them.
+        // One encoder: the belt's copies must land before the passes that read them.
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -417,15 +284,9 @@ impl WgpuBackend {
             b: f64::from(clear.b),
             a: f64::from(clear.a),
         };
-        // Shared field borrow (the entry was built by `ensure_format`
-        // above) — coexists with the `&self` pass methods.
         let fmt = &self.pipelines[&format];
-        // One view of the surface at most, and only where a pass reads
-        // it: the direct-present path paints into it, and the overlay
-        // pass lands on it after the backbuffer copy. Building it
-        // unconditionally would add a view per frame to the backbuffer
-        // path, which is the path a normal run takes.
-        // A target that takes no copy needs the view for the blit as well.
+        // At most one surface view, only where a pass reads it; the normal backbuffer path avoids a
+        // view per frame.
         let surface_view = (via_backbuffer.is_none() || overlay_count > 0 || !target.takes_copy())
             .then(|| surface_tex.create_view(&wgpu::TextureViewDescriptor::default()));
         let color_view: &wgpu::TextureView = match via_backbuffer {
@@ -495,10 +356,8 @@ impl WgpuBackend {
         self.icon.end_frame(frame);
     }
 
-    /// The belt-routed upload phase of one [`Self::submit`]: every
-    /// texture and dynamic-buffer write the frame's passes will read,
-    /// recorded onto `encoder` before any render pass opens. Returns the
-    /// damage-overlay instance count for the post-copy overlay pass.
+    /// The belt-routed upload phase of one [`Self::submit`]; returns the damage-overlay instance
+    /// count.
     fn upload_frame(&mut self, encoder: &mut wgpu::CommandEncoder, sub: &Submission<'_>) -> u32 {
         let Submission {
             owner,
@@ -509,30 +368,20 @@ impl WgpuBackend {
             cutouts,
             debug_overlay,
         } = *sub;
-        // All four read off the submission rather than carried beside
-        // it: it already says what the plan repaints, whether there is a
-        // stencil attachment, and which debug flags are on, and a copy
-        // alongside is a second route to one fact.
         let clear = sub.clear();
         let dim_undamaged = sub.dim_undamaged();
         let use_stencil = targets.stencil.is_some();
         let is_partial = plan.damage.is_partial();
         let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
 
-        // Texture-only upload (the belt is buffer-only). Runs first so
-        // any draw below sees the right pixels: idle frames drain an
-        // empty dirty flag and do nothing; the first frame uploads row
-        // 0's magenta fallback plus any baked rows composer queued.
+        // Texture-only upload (the belt is buffer-only), first so draws see the right pixels.
         self.gradient.upload(&ctx);
 
         if dim_undamaged {
             self.debug
                 .upload_dim(&mut ctx, buffer.display.physical.as_vec2());
         }
-        // Damage-rect overlay quads (debug). Uploaded alongside
-        // everything else; the overlay pass itself runs last, after
-        // the backbuffer→surface copy — same upload-early /
-        // draw-late split as the dim quad above.
+        // Damage-rect overlay quads (debug): uploaded now, drawn last after the backbuffer copy.
         let overlay_count = if debug_overlay.damage_rect {
             self.debug.upload_damage_rects(&mut ctx, plan, buffer)
         } else {
@@ -540,9 +389,6 @@ impl WgpuBackend {
         };
         if use_stencil {
             tracy::zone!("stage_masks");
-            // After this, `mask_plan.groups` parallels `buffer.groups` and
-            // `.batches` parallels `buffer.text_batches`, each entry the
-            // span of its quads that chain stamps.
             self.mask_plan.build(buffer);
             self.quad.upload_masks(&mut ctx, self.mask_plan.quads());
         }
@@ -557,16 +403,10 @@ impl WgpuBackend {
             },
         );
         self.image.upload(&mut ctx, buffer.images.instance());
-        // Paint every GpuView composited this frame into its off-screen
-        // target on this same encoder, before the main pass samples it.
-        // The composer listed them in `buffer.frame_targets` (size + scales
-        // + paint callback); this allocates each + runs its callback, then
-        // frees this submitter's targets absent from `buffer.live_targets`
-        // — every view the frame *recorded*, which is a wider set than the
-        // ones it painted, so an unchanged view keeps its texture
-        // (eviction is owner-scoped — the shared backend serves every
-        // window).
-        // `submit` itself carries no render-target logic.
+        // Paint every GpuView composited this frame into its off-screen target before
+        // the main pass samples it, then free this submitter's targets absent from
+        // `buffer.live_targets` (a wider set than those painted, so an unchanged view keeps
+        // its texture). Eviction is owner-scoped because the backend serves every window.
         self.gpu_view_targets.paint_gpu_views(
             &mut ctx,
             buffer.frame_views(),
@@ -581,10 +421,6 @@ impl WgpuBackend {
                 .upload_clear(&mut ctx, buffer.display.physical.as_vec2(), clear);
         }
 
-        // Text prepare: per-batch glyph encoding. Routes its
-        // vertex/atlas-staging writes through the same ctx so
-        // every text-backend write lands as
-        // `copy_buffer_to_buffer` on the main encoder.
         {
             tracy::zone!(
                 "text.prepare_batches",
@@ -603,18 +439,12 @@ impl WgpuBackend {
             }
         }
 
-        // One deferred vbuf write covering every batch prepared
-        // above, then the queued glyph-atlas uploads (grow blits +
-        // per-glyph copy_buffer_to_texture) on the same encoder so
-        // they share the main render submit. The staging side of
-        // those copies also routes through the belt — see
-        // `RasterPass::flush` / `atlas::flush_pending_uploads`.
+        // One deferred vbuf write for every prepared batch, then queued glyph-atlas uploads staged
+        // through the belt.
         self.text.flush(&mut ctx);
 
-        // Icons: prewarm any filtered icon at this frame's scale (an SVG
-        // filter is 10-20x an ordinary raster, so meeting one lazily is a
-        // dropped frame), then encode each batch, rasterizing misses
-        // inline the way the text prepare does.
+        // Icons: prewarm any filtered icon at this scale (an SVG filter is 10-20x an ordinary
+        // raster, so a lazy hit drops a frame), then encode each batch.
         {
             tracy::zone!(
                 "icon.prepare_batches",
@@ -631,12 +461,8 @@ impl WgpuBackend {
         overlay_count
     }
 
-    /// Full-viewport pass that draws one 40%-translucent black quad
-    /// over the backbuffer with `LoadOp::Load`. Runs before partial
-    /// damage passes when the debug `dim_undamaged` flag is on (see
-    /// `dim_undamaged` in [`Self::submit`]). No stencil attachment
-    /// even when the frame uses rounded clipping — the dim quad
-    /// paints uniformly and subsequent partial passes set their own.
+    /// Full-viewport pass drawing a translucent black quad over the backbuffer when `dim_undamaged`
+    /// is on. No stencil attachment; partial passes set their own.
     fn run_dim_pass(
         &self,
         fmt: &FormatPipelines,
@@ -653,32 +479,18 @@ impl WgpuBackend {
         );
     }
 
-    /// Open the main render pass against the backbuffer and walk the
-    /// schedule once per damage rect (or once with no scissor on Full).
-    /// All rects share one pass: one `begin_render_pass`, one stencil
-    /// `LoadOp::Clear(0)`, one color load. Per-rect work is just a
-    /// `SetScissor` + the schedule's group walk (plus the schedule's
-    /// own per-rect `PreClear` quad on Partial).
+    /// Open the main render pass against the backbuffer and walk the schedule once
+    /// per damage rect (once, unscissored, on Full): one `begin_render_pass`, one stencil
+    /// `LoadOp::Clear(0)`, one color load.
     ///
-    /// Every schedule walk leaves the stencil clean: a walk that ends
-    /// with a mask stamped emits a tail clear under the stamp's
-    /// scissor. That — not rect disjointness — is what keeps one
-    /// rect's stencil writes out of a later rect's reads:
-    /// `RenderPlan::AA_PADDING` can make nominally-disjoint rects' padded
-    /// scissors overlap, and the stencil clears once per pass. Each
-    /// `render_groups` call's fresh `active_mask = None` therefore
-    /// always matches the true stencil contents.
+    /// Every walk leaves the stencil clean: one ending with a mask stamped emits a tail
+    /// clear under the stamp's scissor. That, not rect disjointness, keeps one rect's
+    /// stencil writes from a later rect's reads, since `RenderPlan::AA_PADDING` can make
+    /// disjoint rects' padded scissors overlap.
     ///
-    /// `RepaintScissors::Full` runs one schedule walk with no damage
-    /// scissor and clears the whole backbuffer. `Partial` loads the
-    /// prior color and runs once per non-empty scissor.
-    ///
-    /// Host CPU time for the whole of this — pass open, every recorded
-    /// draw step, and the end-of-pass command replay that `pass`'s drop
-    /// runs — publishes to
-    /// [`GpuPassStats::last_main_pass_cpu`]. It is the one frame cost
-    /// that scales with draw-step *count* rather than pixel count, so it
-    /// is the metric the `record_pass` benchmark reads.
+    /// Host CPU time for all of it, including the end-of-pass replay on `pass`'s drop,
+    /// publishes to [`GpuPassStats::last_main_pass_cpu`]; it scales with draw-step count
+    /// and is what the `record_pass` benchmark reads.
     fn run_main_pass(
         &self,
         fmt: &FormatPipelines,
@@ -694,19 +506,13 @@ impl WgpuBackend {
             stencil_view,
             clear,
         } = target;
-        // The mask chains go with the stencil attachment they stamp into:
-        // a pass without one has no plan to read.
         let masks = stencil_view.map(|_| &self.mask_plan);
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
                 view,
                 depth_ops: None,
                 stencil_ops: Some(wgpu::Operations {
-                    // One stencil clear per *pass*, not per rect. What
-                    // makes that sufficient is the schedule's tail
-                    // clear (see the method doc), not rect
-                    // disjointness: `RenderPlan::AA_PADDING` can make
-                    // nominally-disjoint rects' scissors overlap.
+                    // One stencil clear per pass: the schedule's tail clear makes that sufficient.
                     load: wgpu::LoadOp::Clear(0),
                     store: wgpu::StoreOp::Discard,
                 }),
@@ -715,16 +521,11 @@ impl WgpuBackend {
             RepaintScissors::Full => wgpu::LoadOp::Clear(clear),
             RepaintScissors::Partial(_) => wgpu::LoadOp::Load,
         };
-        // Timestamp writes via the descriptor cover the basic mode
-        // (TIMESTAMP_QUERY only — pass begin / end). In per-batch
-        // mode (TIMESTAMP_QUERY_INSIDE_PASSES additionally on) we
-        // skip the descriptor and write begin/end inline via
-        // `pass_begin` / `pass_end` so a single sequential timestamp
-        // stream covers begin → midpoints → end without index gaps.
+        // The descriptor covers basic mode; with `TIMESTAMP_QUERY_INSIDE_PASSES` we write inline
+        // via `pass_begin` / `pass_end` for one gap-free stream.
         let timestamp_writes = self.gpu_timings.as_ref().and_then(GpuTimings::pass_writes);
         let started = Instant::now();
-        // Scoped so `pass` drops — replaying its recorded commands into the
-        // encoder — inside the measured window rather than after it.
+        // Scoped so `pass` drops, replaying its commands, inside the measured window.
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.renderer.main.pass"),
@@ -772,15 +573,9 @@ impl WgpuBackend {
             .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
     }
 
-    /// Dispatch every step in the per-frame schedule
-    /// ([`for_each_step`]) to the wgpu render pass. Logic
-    /// for *what* runs in *what order* lives in the schedule module;
-    /// this method is purely the wgpu translation layer for each
-    /// `RenderStep`. Tests reuse the same schedule emitter to assert
-    /// on the sequence without GPU.
-    ///
-    /// `masks` is `Some` exactly when the pass has a stencil attachment,
-    /// which is also what picks each kind's stencil-test pipeline.
+    /// Dispatch each step of the per-frame schedule ([`for_each_step`]) to the wgpu
+    /// pass; ordering lives in the schedule module so tests assert it without a GPU.
+    /// `masks` is `Some` exactly when the pass has a stencil attachment.
     fn render_groups<'a>(
         &'a self,
         fmt: &'a FormatPipelines,
@@ -790,50 +585,28 @@ impl WgpuBackend {
         masks: Option<&MaskPlan>,
         viewport: ViewportPush,
     ) {
-        // Track what pipeline + vertex buffer is currently bound so we
-        // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
-        // across consecutive same-kind steps. wgpu records every
-        // `set_pipeline` as a real command — drivers don't dedupe.
-        // `PreClear` sets its own state, so we reset to `None` after it
-        // and re-bind on the next step.
+        // Tracks the bound pipeline and vertex buffer to skip redundant calls (wgpu records every
+        // `set_pipeline`; drivers don't dedupe). `PreClear` resets it to `None`.
         #[derive(Debug, PartialEq, Eq)]
         enum Bound {
             None,
-            /// The quad instances through the colour pipeline of a form.
             QuadInstance(QuadForm),
-            /// The quad instances through a shadow pipeline: the same
-            /// buffer and bind group, another pipeline per entry, and the
-            /// cutout tables beside them.
             ShadowInstance(ShadowEntry),
             Mesh,
             Image,
             Curve,
             MaskStamp,
             MaskClear,
-            /// Text and icons both draw through it: one shader and one
-            /// group-0 layout, so one pipeline pair. Only the bind
-            /// group and the vertex buffer differ, and
-            /// `RasterPass::render_batch` sets those per step.
-            ///
-            /// One state for two tenants holds only while they name one
-            /// pipeline, which is why both arms bind `raster_pipeline`
-            /// rather than a literal each repeats. Giving either its own
-            /// pair and leaving this variant would draw one tenant's
-            /// atlas through the other's shader wherever the two steps
-            /// meet — the visual suite's
-            /// `an_icon_between_two_text_runs_lands_in_its_own_pixel_box`
-            /// is what fails.
+            /// Text and icons share one shader and group-0 layout, hence one pipeline pair.
+            /// Both arms bind `raster_pipeline`; a separate pair would draw one tenant's atlas
+            /// through the other's shader (the visual suite's
+            /// `an_icon_between_two_text_runs_lands_in_its_own_pixel_box` would fail).
             Raster,
         }
 
-        // `viewport.push_into(pass)` is called after every (re)bind
-        // below — the rule `IMMEDIATES_BYTES` states. Cheap: a
-        // register-mapped `set_immediates`, no buffer round-trip.
-        //
-        // `rebind` bundles the "bind ⇒ re-push viewport ⇒ record bound"
-        // triple so no draw arm can bind a pipeline and forget the
-        // viewport push. `PreClear` stays open-coded: it draws off a
-        // vertex buffer of its own and resets `bound` to `None`.
+        // `viewport.push_into(pass)` follows every (re)bind (the rule `IMMEDIATES_BYTES`
+        // states). `rebind` bundles bind, viewport push and recording `bound`; `PreClear`
+        // stays open-coded since it uses its own vertex buffer.
         fn rebind<'p>(
             bound: &mut Bound,
             target: Bound,
@@ -854,10 +627,6 @@ impl WgpuBackend {
         let use_stencil = masks.is_some();
         let raster_pipeline = fmt.raster.select(use_stencil);
 
-        // Helper: thread a `BatchKind` marker through to `GpuTimings`
-        // when per-batch timestamps are enabled. Coalesced inside
-        // `GpuTimings::mark` — same-kind repeats are free, only true
-        // transitions write a `RenderPass::write_timestamp`.
         let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
             if let Some(t) = self.gpu_timings.as_ref() {
                 t.mark(pass, kind);
@@ -868,12 +637,8 @@ impl WgpuBackend {
             RenderStep::PreClear => {
                 mark(pass, BatchKind::PreClear);
                 debug_marker::push(pass, "preclear");
-                // bind → push viewport → draw. Pushing after the
-                // draw (or skipping it) leaves the clear quad
-                // reading whatever's in the immediate region —
-                // zero on the first PreClear of a partial pass,
-                // which lands the quad at garbage NDC and skips
-                // the damage-region clear.
+                // bind, push viewport, then draw; otherwise the clear quad reads stale immediates
+                // (zero on a partial pass's first PreClear), skipping the damage-region clear.
                 self.quad.bind_clear(
                     pass,
                     fmt.quad.color(QuadForm::Solid),
@@ -882,8 +647,6 @@ impl WgpuBackend {
                 );
                 viewport.push_into(pass);
                 pass.draw(0..4, 0..1);
-                // Distinct vertex buffer (clear_buffer); next
-                // non-clear step re-binds.
                 bound = Bound::None;
                 debug_marker::pop(pass);
             }
@@ -967,13 +730,11 @@ impl WgpuBackend {
                 debug_marker::pop(pass);
             }
             RenderStep::TierBatch { tier, batch } => {
-                // Timing bucket and debug label both come off the tier,
-                // so a new one cannot land in the pass untimed or
-                // unlabelled the way a forgotten `mark` call would.
+                // Timing bucket and label come from the tier, so a new tier cannot reach the pass
+                // untimed.
                 let kind = batch_kind(tier);
                 mark(pass, kind);
                 debug_marker::push(pass, kind.label());
-                // Lazy: the icon tier draws off the batch index alone.
                 let items = || buffer.batches(tier)[batch].items;
                 match tier {
                     PaintTier::Mesh => {
@@ -1003,9 +764,6 @@ impl WgpuBackend {
                         );
                     }
                     PaintTier::Icon => {
-                        // The pipeline text draws through, so a text
-                        // step followed by an icon one rebinds
-                        // nothing — see [`Bound::Raster`].
                         rebind(&mut bound, Bound::Raster, pass, viewport, |pass| {
                             pass.set_pipeline(raster_pipeline);
                         });
@@ -1024,13 +782,9 @@ impl WgpuBackend {
         });
     }
 
-    /// Draw the damage-rect debug overlay onto the swapchain texture
-    /// *after* the backbuffer→surface copy. The overlay never lands on
-    /// the backbuffer, so next frame's `LoadOp::Load` reads clean
-    /// pixels and there's no ghost stroke. The outline quads were
-    /// uploaded in `submit`'s belt phase
-    /// (`DebugOverlay::upload_damage_rects`); `count` of them draw
-    /// here. Same upload-early / draw-late split as the dim pass.
+    /// Draw the damage-rect debug overlay onto the swapchain texture after the
+    /// backbuffer-to-surface copy, so it never lands on the backbuffer and leaves no
+    /// ghost stroke.
     fn run_overlay_pass(
         &self,
         fmt: &FormatPipelines,
@@ -1053,33 +807,22 @@ impl WgpuBackend {
         );
     }
 
-    /// Whether this device bakes shadow cutout tables: what every window's
-    /// `CutoutPlan` is built with.
     pub(crate) const fn bakes_cutouts(&self) -> bool {
         self.quad.bakes_cutouts()
     }
 
-    /// The device every window's per-window attachment is built against,
-    /// for a host to size its own [`Backbuffer`] and [`Stencil`].
     pub(crate) const fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
-    /// The binding every sampled texture here shares, for a host to build
-    /// its [`Backbuffer`] through rather than a second layout that would
-    /// have to agree with it.
     pub(crate) const fn texture_binding(&self) -> &TextureBinding {
         &self.texture_binding
     }
 
-    /// Skip path: the host's damage compute returned `None`, but the
-    /// swapchain target still needs valid pixels (visual tests capture
-    /// it unconditionally; the showcase short-circuits earlier, but
-    /// other hosts may not). A `Skip` requires the previous frame to
-    /// have been submitted at this size and format (`take_frame_plan`
-    /// forces `Full` otherwise), so the backbuffer must already exist
-    /// and match — copying anything else would present undefined or
-    /// stale-format pixels, so crash instead of degrading.
+    /// Skip path: the target still needs valid pixels. A `Skip` requires the previous
+    /// frame submitted at this size and format (`take_frame_plan` forces `Full`
+    /// otherwise), so a missing or mismatched backbuffer crashes rather than present
+    /// undefined pixels.
     pub(crate) fn copy_backbuffer_to_surface(
         &self,
         backbuffer: &Backbuffer,
@@ -1109,14 +852,9 @@ impl WgpuBackend {
         self.queue.submit(iter::once(encoder.finish()));
     }
 
-    /// Release every `GpuView` target owned by a render stream that has been
-    /// retired — the host calls this as a window closes.
-    ///
-    /// Necessary because per-submit eviction is owner-scoped: a submit only
-    /// frees its *own* absent targets, so that another window idling for a
-    /// frame does not lose its views. A closed window never submits again, so
-    /// without this its textures and bind groups would be held by every
-    /// surviving window until the host shuts down.
+    /// Release every `GpuView` target owned by a retired render stream (called as a
+    /// window closes). Per-submit eviction is owner-scoped, so without this survivors
+    /// would hold its textures until shutdown.
     #[cfg_attr(
         not(feature = "winit"),
         expect(
@@ -1129,14 +867,8 @@ impl WgpuBackend {
     }
 }
 
-/// The timing bucket and debug label a [`PaintTier`] replay lands in.
-///
-/// Here rather than on either type: `BatchKind` lives in `diagnostics`,
-/// which everything reports into and which depends on nothing, and
-/// `PaintTier` lives in the render buffer, which has no business knowing
-/// about instrumentation. The replay below is the one place both are
-/// already in scope. Exhaustive, so a new tier cannot reach the pass
-/// untimed and unlabelled the way a forgotten `mark` call could.
+/// The timing bucket and debug label a [`PaintTier`] replay lands in; exhaustive, so a new tier
+/// cannot go untimed.
 const fn batch_kind(tier: PaintTier) -> BatchKind {
     match tier {
         PaintTier::Mesh => BatchKind::Mesh,
@@ -1146,10 +878,7 @@ const fn batch_kind(tier: PaintTier) -> BatchKind {
     }
 }
 
-/// Open a color-only `LoadOp::Load` render pass — the shape shared by
-/// the dim pre-pass and the damage-overlay pass (no stencil, no
-/// timestamps; only the label and target view differ). Both passes run
-/// the debug overlay's quad draws standalone, outside the main pass.
+/// A color-only `LoadOp::Load` pass shared by the dim pre-pass and the damage-overlay pass.
 fn begin_load_pass<'e>(
     encoder: &'e mut wgpu::CommandEncoder,
     label: &'static str,
@@ -1175,30 +904,22 @@ fn begin_load_pass<'e>(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    //! Reach-in introspection for the surface-format-change tests: the
-    //! count of cached per-format pipeline sets and the GPU image-cache
-    //! occupancy, used to assert a new format builds its own pipelines
-    //! without dropping or re-uploading cached textures.
 
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
 
     impl WgpuBackend {
-        /// Draw every shadow as one cell of the full form instead of its
-        /// grid: the reference the grid is compared with. Drops the built
-        /// pipelines, so the next frame builds them with the reference.
+        /// Draw every shadow as one cell of the full form instead of its grid: the reference the
+        /// grid is compared with. Drops built pipelines.
         pub(crate) fn disable_shadow_grid(&mut self) {
             self.quad.disable_shadow_grid();
             self.pipelines.clear();
         }
 
-        /// Whether a pipeline set has been built for `format`.
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {
             self.pipelines.contains_key(&format)
         }
 
-        /// Registered images resident on the GPU — what the surface-format
-        /// change tests assert survives a pipeline rebuild.
         pub(crate) fn gpu_image_cache_len(&self) -> usize {
             self.image_store.resident()
         }

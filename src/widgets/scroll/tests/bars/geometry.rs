@@ -35,18 +35,7 @@ fn vertical_def(offset: f32) -> ScrollbarsDef {
     }
 }
 
-/// `ScrollbarsDef::thumb` over a `viewport`-tall overlay returns `None`
-/// when content fits the viewport or the viewport collapses to zero;
-/// otherwise the thumb, with the track at the viewport's length and the
-/// bar's range at `content - viewport`.
-///
-/// The track spans the whole viewport extent, so one length drives
-/// both the `viewport / content` ratio and the travel. Both results are
-/// quantized against that one integer track,
-/// `track = max(floor(viewport), 1)`:
-/// `thumb_size = clamp(round(max(viewport² / content, min_thumb)), 1, track)`
-/// and `thumb_offset = round(clamp(offset / (content - viewport), 0, 1) *
-/// (track - thumb_size))`.
+/// `ScrollbarsDef::thumb` is `None` when content fits or the viewport is zero; sizes quantize against the integer track `max(floor(viewport), 1)`: `thumb_size = clamp(round(max(viewport² / content, min_thumb)), 1, track)`, `thumb_offset = round(clamp(offset / (content - viewport), 0, 1) * (track - thumb_size))`.
 #[test]
 fn thumb_size_and_offset_cases() {
     #[derive(Debug)]
@@ -57,8 +46,7 @@ fn thumb_size_and_offset_cases() {
     type Case = (&'static str, f32, f32, f32, Option<Want>);
     let cases: &[Case] = &[
         (
-            // 200² / 800 = 50, above the 24 px floor and under the
-            // 200 px viewport, so the raw ratio survives both clamps.
+            // 200² / 800 = 50: above the 24 px floor, under the viewport.
             "ratio_above_floor",
             200.0,
             800.0,
@@ -69,8 +57,6 @@ fn thumb_size_and_offset_cases() {
             }),
         ),
         (
-            // Half of the 600 px scrollable range → half of the
-            // 200 - 50 = 150 px travel.
             "midpoint_offset_rides_linearly",
             200.0,
             800.0,
@@ -102,8 +88,7 @@ fn thumb_size_and_offset_cases() {
             }),
         ),
         (
-            // A viewport shorter than `min_thumb`: the floor would
-            // overshoot the track, so the viewport cap wins.
+            // A viewport shorter than `min_thumb`: the viewport cap wins.
             "clamped_down_to_viewport_when_min_exceeds_it",
             10.0,
             200.0,
@@ -114,11 +99,7 @@ fn thumb_size_and_offset_cases() {
             }),
         ),
         (
-            // A track under one logical pixel still overflows, so a bar
-            // is drawn: the floor gives it a 1 px thumb with nowhere to
-            // travel. The size cap and the offset cap used to floor the
-            // viewport separately and disagree about the track length
-            // here, placing that thumb at -1.
+            // A track under one logical pixel draws a 1 px thumb with no travel (once placed at -1).
             "sub_pixel_track_pins_the_thumb_at_zero",
             0.5,
             800.0,
@@ -129,9 +110,7 @@ fn thumb_size_and_offset_cases() {
             }),
         ),
         (
-            // Same track at the far end of its 799.5 px scrollable
-            // range: a full-travel fraction over zero travel is still
-            // zero, not a negative offset.
+            // Far end of the 799.5 px range: zero travel gives offset zero, not negative.
             "sub_pixel_track_holds_at_zero_at_full_offset",
             0.5,
             800.0,
@@ -178,9 +157,7 @@ fn thumb_size_and_offset_cases() {
     }
 }
 
-/// What the def adds over the bare arithmetic: its gutter and padding
-/// deflate the viewport, its zoom scales the content, and an axis it does
-/// not pan shows no bar however far the content overflows.
+/// The def adds gutter and padding (deflating the viewport), zoom, and no bar on an unpanned axis.
 #[test]
 fn the_def_deflates_scales_and_skips_axes_it_does_not_pan() {
     let outer = Size::new(300.0, 200.0);
@@ -209,8 +186,7 @@ fn the_def_deflates_scales_and_skips_axes_it_does_not_pan() {
     assert_eq!((zoomed.thumb_size, zoomed.max_offset), (90.0, 180.0));
     assert_ne!(zoomed, thumb);
 
-    // 1000 overflows the 278 across, but a vertical viewport has no
-    // horizontal bar. Panning both, it does: 278² / 1000 = 77.28 → 77.
+    // 1000 overflows the 278 across, but a vertical viewport has no horizontal bar; panning both: 278² / 1000 = 77.28 → 77.
     assert_eq!(def.thumb(Axis::X, outer, content), None);
     let both = ScrollbarsDef {
         axes: ScrollAxes::BOTH,
@@ -222,13 +198,7 @@ fn the_def_deflates_scales_and_skips_axes_it_does_not_pan() {
     assert_eq!((across.track, across.thumb_size), (278.0, 77.0));
 }
 
-/// A travelling thumb must not change *length* on screen. Physical
-/// snapping rounds a rect's min and max independently, so a thumb on
-/// fractional coordinates grows and shrinks by a pixel as it moves —
-/// the shimmer reported against the showcase. `axis_rects` pins the
-/// thumb to whole logical pixels to stop it; this asserts the
-/// *snapped* extent, since the logical one was already constant and
-/// so never caught the bug.
+/// A travelling thumb must not change length on screen: physical snapping rounds min and max independently. This asserts the snapped extent.
 #[test]
 fn a_travelling_thumb_keeps_its_snapped_length() {
     let build = |ui: &mut Ui| {
@@ -255,7 +225,6 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
     let mut h = UiHarness::new(surface);
     h.prime(2, build);
 
-    // What the compositor actually rasterizes, per `Rect::scaled_by`.
     let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
     let first = thumb_rects(&h.ui, "scroll")[0];
     let expected: Vec<f32> = [1.0, 2.0, 3.0].iter().map(|s| snapped(first, *s)).collect();
@@ -281,8 +250,7 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
     );
 }
 
-/// Thumb *extent* is `viewport / content * track` — no offset term.
-/// Scrolling moves the thumb; it must never resize it.
+/// Thumb extent has no offset term: scrolling moves the thumb, never resizes it.
 #[test]
 fn scrolling_moves_the_thumb_without_resizing_it() {
     let build = |ui: &mut Ui| {
@@ -305,7 +273,6 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
 
     let mut seen = Vec::new();
     for _ in 0..4 {
-        // Wheel input routes to whatever the pointer is over.
         h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 50.0));
         h.frame(build);
         let now = thumb_rects(&h.ui, "scroll");
@@ -326,8 +293,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
     );
 }
 
-/// Zooming a `Scroll::both` shrinks the thumb proportionally to
-/// the content growth.
+/// Zooming a `Scroll::both` shrinks the thumb in proportion to the content growth.
 #[test]
 fn zoomed_content_shrinks_thumb_proportionally() {
     let surface = UVec2::new(400, 400);

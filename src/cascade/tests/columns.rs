@@ -12,11 +12,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 
-/// A panel with chrome emits a Paint row at the start of its node's
-/// `node_spans` span; a chromeless childless panel emits an empty
-/// span; a chromeless *parent* emits one marker row per child — zero
-/// screen (markers produce no pixels), hash = the child's `WidgetId`
-/// bits (its paint-order identity for the damage diff's row matcher).
+/// A chrome panel emits a Paint row at the start of its `node_spans` span; a chromeless childless panel an empty span; a chromeless parent one zero-screen marker row per child, hash = the child's `WidgetId` bits.
 #[test]
 fn node_spans_rows_mirror_chrome_and_children() {
     use crate::primitives::paint::background::Background;
@@ -124,11 +120,7 @@ fn per_node_columns_track_tree_size() {
     }
 }
 
-/// A non-painting sibling seeds `Rect::ZERO`; folding it into the
-/// parent rollup must not anchor `subtree_paint_rects` at the origin —
-/// that would make every ancestor of any layout-only node span
-/// `(0,0)..content`, defeating the encoder's subtree cull for content
-/// offscreen toward +x/+y.
+/// A non-painting sibling seeds `Rect::ZERO`; folding it into the parent rollup must not anchor `subtree_paint_rects` at the origin, which would defeat the encoder's subtree cull.
 #[test]
 fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::primitives::paint::background::Background;
@@ -138,7 +130,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().id(row).show(ui, |ui| {
-            // Layout-only spacer: occupies 50 px, paints nothing.
+            // Layout-only spacer: 50 px, paints nothing.
             Panel::hstack()
                 .id(WidgetId::from_hash("spacer"))
                 .size(50.0)
@@ -159,14 +151,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     );
 }
 
-/// `LayerLayout::rect_hash` is what the incremental cascade walk reads
-/// to decide whether it may skip a clean subtree whole — while no rect
-/// in the layer moved, a subtree whose own inputs held holds below too.
-///
-/// So it has to discriminate on exactly one axis. Identical geometry
-/// must hash equal even when paint changed, or every recolour would
-/// walk the whole tree. Any moved rect must hash different, or a moved
-/// descendant under a clean ancestor keeps its stale rows.
+/// `LayerLayout::rect_hash` lets the incremental walk skip clean subtrees, so it must discriminate on geometry only: identical geometry hashes equal despite paint changes, any moved rect hashes differently.
 #[test]
 fn rect_hash_tracks_geometry_and_ignores_paint() {
     fn build(size: f32, fill: RgbaF32) -> impl FnMut(&mut Ui) {
@@ -188,7 +173,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     let base = h.ui.layout(Layer::Main).rect_hash();
 
-    // Same geometry, same paint — a rebuild of an identical frame.
+    // Same geometry, same paint.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
@@ -196,8 +181,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
         "an identical frame must hash equal, or the cascade walks every node",
     );
 
-    // Same geometry, different paint: the walk must still be able to
-    // skip the clean subtrees.
+    // Same geometry, different paint: clean subtrees must still skip.
     h.frame(build(50.0, RgbaF32::srgb(0.0, 1.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),
@@ -205,7 +189,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
         "a paint-only change must not move the rect hash",
     );
 
-    // Geometry moved — the one case that must invalidate.
+    // Geometry moved: must invalidate.
     h.frame(build(80.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     let moved = h.ui.layout(Layer::Main).rect_hash();
     assert_ne!(
@@ -213,8 +197,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
         "a resized child must move the rect hash, or its rows go stale under a clean ancestor",
     );
 
-    // And it is a function of the geometry, not a change counter:
-    // going back to the original size returns the original hash.
+    // A function of geometry, not a counter: the original size returns the original hash.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
         h.ui.layout(Layer::Main).rect_hash(),

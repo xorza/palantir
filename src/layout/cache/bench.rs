@@ -1,37 +1,20 @@
-//! Cache-effectiveness A/B benchmark. Measures the **measure cache**
-//! (the only cache left in the layout pipeline) under representative
-//! and adversarial workload shapes — a light list (`measure/*`, mono
-//! text fallback), a heavier
-//! stencil-clipped variant with real cosmic-text shaping (`heavy/*`),
-//! and deep (`deep/*`) / broad (`broad/*`) trees — in up to four arms:
+//! Cache-effectiveness A/B benchmark for the **measure cache**, over a light
+//! list (`measure/*`, mono text), a stencil-clipped shaped-text variant
+//! (`heavy/*`), deep (`deep/*`) and broad (`broad/*`) trees, a virtualized list,
+//! and a Hug-column grid (`grid/intrinsic`). Arms:
 //!
-//! - `cached`: warm-up frame primes the cache; subsequent iterations
-//!   hit at the highest stable subtree root every frame (in steady
-//!   state, the root itself). Each iteration forgets the last run first,
-//!   or the engine would keep its output and restore nothing.
-//! - `forced_miss`: warm-up primes the cache; each iteration clears
-//!   `FrameEngines::layout`'s cache before recording, so measure rebuilds from
-//!   scratch.
-//! - `resizing`: rotates four viewport widths so `available_q` misses
-//!   at the root while unchanged branches remain eligible for reuse.
-//! - `localized`: broad-tree only; toggles one leaf's fill weight, which
-//!   leaves its geometry alone, so unchanged sibling-subtree hits stay
-//!   visible.
-//! - `localized_height`: broad-tree only; toggles one leaf's height on a
-//!   surface the tree overflows, so every panel above it offers its
-//!   children a new minimum and sibling subtrees hit across offers.
-//! - `grid/intrinsic`: a 128-row real-text property grid that isolates
-//!   paired min/max-content recursion on Hug columns.
+//! - `cached`: warm-up primes the cache; each iteration forgets the last run
+//!   first, or the engine would keep its output and restore nothing.
+//! - `forced_miss`: clears the layout cache before each record.
+//! - `resizing`: rotates four viewport widths, so `available_q` misses at the
+//!   root while unchanged branches stay reusable.
+//! - `localized`: broad tree only; toggles one leaf's fill weight.
+//! - `localized_height`: broad tree only; toggles one leaf's height on an
+//!   overflowing surface, so siblings hit across offers.
 //!
-//! Ratio of `cached / forced_miss` quantifies what MeasureCache buys
-//! on a comparable workload. The encode and compose caches were removed
-//! after their contributions turned out to be < 1%.
+//! `cached / forced_miss` is what the cache buys on a comparable workload.
 //!
 //! Run with `cargo bench --features bench --bench criterion -- caches`.
-//!
-//! The `measure/*` arms use `UiHarness::new(glam::UVec2::new(1280, 800))` (cosmic shaper unset → mono
-//! text fallback, same path as the colocated frame bench); the `heavy/*` arms
-//! use `UiHarness::with_text(glam::UVec2::new(1280, 800))` so text-shaping cost is in the measurement.
 
 #![expect(
     clippy::print_stderr,
@@ -69,15 +52,13 @@ const HEAVY_ROWS_PER_GROUP: usize = 8;
 
 const GRID_ROWS: usize = 128;
 
-/// Frames each arm runs before and during its measure/arrange split
-/// report. Separate from criterion's own loop so the split is sampled
-/// per frame rather than averaged into one wall-clock estimate.
+/// Frames each arm runs for its measure/arrange split report, sampled per
+/// frame rather than averaged into criterion's wall-clock estimate.
 const PHASE_WARMUP_FRAMES: usize = 8;
 const PHASE_EVIDENCE_FRAMES: usize = 64;
 
-/// Sorted-sample summary of one phase. Min is the signal — these arms
-/// share a machine with everything else on it, so the upper half of the
-/// distribution measures interference rather than layout.
+/// Sorted-sample summary of one phase. Min is the signal: the upper half
+/// measures machine interference.
 #[derive(Clone, Copy, Debug)]
 struct PhaseSummary {
     min_us: f64,
@@ -93,17 +74,14 @@ fn summarize(samples: &mut [u64]) -> PhaseSummary {
     }
 }
 
-/// Report how one arm splits across the two halves of the layout pass.
+/// Report how one arm splits across measure and arrange.
 ///
-/// Criterion times a whole CPU frame, which hides the asymmetry this
-/// benchmark exists to expose: the measure cache can short-circuit a
-/// whole subtree — in steady state the root, collapsing measure to a few
-/// `copy_from_slice`s — while arrange walks every node with full driver
-/// dispatch no matter what. `arrange_over_measure` is the headline: on a
-/// `cached` arm it is the factor by which the uncached half dominates.
+/// Criterion times a whole frame, hiding that the measure cache can
+/// short-circuit a whole subtree while arrange walks every node.
+/// `arrange_over_measure` is the headline: on a `cached` arm, the factor by
+/// which the uncached half dominates.
 ///
-/// `step` runs one iteration of the arm and returns the engine's timings
-/// for that frame.
+/// `step` runs one iteration and returns that frame's engine timings.
 fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
     for _ in 0..PHASE_WARMUP_FRAMES {
         step();
@@ -186,12 +164,9 @@ fn build(ui: &mut Ui) {
         });
 }
 
-/// Heavier measure-cache baseline: rounded-stencil clips on every group
-/// and row, real cosmic-text shaping (no mono fallback), an extra
-/// zstack layer per row for deeper nesting, and a stroke on each group
-/// surface. Text shaping + deeper trees make measure genuinely
-/// expensive here, so the `cached / forced_miss` ratio reflects a
-/// shaping-bound workload rather than the mono-fallback `build` one.
+/// Heavier baseline: rounded-stencil clips on every group and row, real
+/// cosmic-text shaping, an extra zstack per row, and group strokes, so
+/// measure is shaping-bound rather than mono-fallback.
 fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
         fill: RgbaF32::hex(0x1a1a1a).into(),
@@ -239,8 +214,7 @@ fn build_heavy(ui: &mut Ui) {
                                 .background(row_bg.clone())
                                 .clip_rounded()
                                 .show(ui, |ui| {
-                                    // Inner zstack adds a nesting level — exercises
-                                    // measure on a deeper tree.
+                                    // Adds a nesting level.
                                     Panel::zstack()
                                         .id_salt(("h-avatar-wrap", g, r))
                                         .size((Sizing::fixed(24.0), Sizing::fixed(24.0)))
@@ -385,15 +359,13 @@ fn bench_broad_localized(
     });
 }
 
-/// Rows in the virtualized-list arms — a plausible viewport's worth, and
-/// enough that a per-descriptor rebuild is visible against frame noise.
+/// Rows in the virtualized-list arms; enough that a per-descriptor rebuild
+/// shows against frame noise.
 const SCROLL_ROWS: usize = 96;
 
-/// One frame of a virtualized list showing rows `first .. first + ROWS`.
-///
-/// The window slides by one row per frame, so the *set* of recorded
-/// `WidgetId`s changes every frame even though the count never does —
-/// which is the shape that matters here, not the row content.
+/// One frame of a virtualized list showing rows `first .. first + ROWS`. The
+/// window slides one row per frame, so the set of `WidgetId`s changes while
+/// the count doesn't.
 fn build_scroll_window(ui: &mut Ui, first: usize) {
     Panel::vstack()
         .id_salt("scroll-root")
@@ -408,19 +380,13 @@ fn build_scroll_window(ui: &mut Ui, first: usize) {
         });
 }
 
-/// The virtualized-list path: what a scroll costs the measure cache
-/// against what the same tree costs when it holds still.
+/// The virtualized-list path: what a scroll costs the measure cache vs the
+/// same tree standing still.
 ///
-/// `MeasureSnapshot::refresh_snapshots` reuses its retained `WidgetId`
-/// map only while the captured descriptor id *sequence* is unchanged,
-/// approximated by an ordered fold. A scrolling window changes that
-/// sequence every frame, so the map is rebuilt from scratch — one hash
-/// insert per descriptor — every frame the gesture lasts.
-///
-/// The two arms differ in nothing but whether the window moves, so the
-/// gap between them is the rebuild plus whatever else a changed id set
-/// costs. Rebuild counts are reported for both, because the wall-clock
-/// gap alone would not say which of those two it is.
+/// `MeasureSnapshot::refresh_snapshots` reuses its `WidgetId` map only while
+/// the descriptor id sequence is unchanged, so a scrolling window rebuilds it
+/// every frame (one hash insert per descriptor). The arms differ only in
+/// whether the window moves; rebuild counts are reported for both.
 fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     let make = || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
 

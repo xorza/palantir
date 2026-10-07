@@ -19,9 +19,7 @@ pub(crate) struct LayoutCore {
     pub(crate) meta: PackedLayoutMeta,
 }
 
-// SAFETY: `repr(C)` over four fields of plain integers — `SizeSpec`'s two
-// `u32`, two `Spacing`s of `u16` lanes, and `PackedLayoutMeta`'s `u32` —
-// whose sizes sum to the struct's, so no byte is padding.
+// SAFETY: `repr(C)` over four plain-integer fields (`SizeSpec`'s two `u32`, two `Spacing`s of `u16` lanes, `PackedLayoutMeta`'s `u32`) whose sizes sum to the struct's: no padding.
 unsafe impl bytemuck::NoUninit for LayoutCore {}
 
 const _: () = assert!(
@@ -39,36 +37,22 @@ impl LayoutCore {
         }
     }
 
-    /// The box this node's own content lives in: `rect` less this node's
-    /// padding, in whatever space `rect` is given in.
+    /// The box this node's content lives in: `rect` less padding, in `rect`'s space.
     ///
-    /// **Four passes ask it and must agree.** Arrange places children in
-    /// it, the container-text pass wraps a run to its width, the cascade
-    /// clips direct shapes and descendant damage to it, and the encoder
-    /// pushes it as the clip mask. `Tree::open_node` has already folded a
-    /// chrome stroke's ring into `padding`, so all four sit inside the
-    /// painted ring without any of them knowing about the stroke.
+    /// **Four passes must agree**: arrange places children in it, container-text wraps to its width, cascade clips shapes and descendant damage to it, and the encoder pushes it as the clip mask. `Tree::open_node` already folds a chrome stroke's ring into `padding`.
     #[inline]
     pub(crate) fn inner_rect(&self, rect: Rect) -> Rect {
         rect.deflated_by(self.padding)
     }
 
-    /// Fold this column and the node's flags into one hash.
-    ///
-    /// A method rather than a `Hash` impl — unlike the sibling columns —
-    /// because the flags live in a column of their own, and folding them
-    /// into this one's tail word saves the write they would take alone,
-    /// on a per-node path.
+    /// Fold this column and the node's flags into one hash. A method, not `Hash`, because the flags live in their own column and folding them into this tail word saves a write on a per-node path.
     #[inline]
     pub(crate) fn hash_with_flags<H: hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
         let mode = self.meta.into();
-        // Shifted rather than byte-cast, like the sibling
-        // [`Gaps::as_u32`](crate::scene::node::gaps::Gaps::as_u32):
-        // the key never leaves the process, but a layout-dependent hash
-        // is a trap worth not setting.
+        // Shifted, not byte-cast, like [`Gaps::as_u32`](crate::scene::node::gaps::Gaps::as_u32): avoids a layout-dependent hash.
         let tail = u64::from(self.meta.metadata())
             | (u64::from(self.meta.tag()) << 8)
             | (u64::from(flags.bits()) << 16);

@@ -1,7 +1,7 @@
-//! Cross-frame measure cache with one whole-tree snapshot per frame.
-//! Measure reads only from the previous snapshot while the completed
-//! current layout is materialized once in pre-order. Each node, grid
-//! hug value, and shaped text run is therefore retained exactly once.
+//! Cross-frame measure cache with one whole-tree snapshot per frame. Measure
+//! reads only the previous snapshot; the completed layout is materialized once
+//! in pre-order, so each node, grid hug value and shaped text run is retained
+//! once.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -47,8 +47,7 @@ pub(super) struct RootSnapshotKey {
 #[derive(Debug)]
 pub(super) struct CachedSubtree<'a> {
     pub(super) root: Measured,
-    /// Arena index this subtree's columns start at. `arrange` stores it
-    /// per node so it can re-slice `rect` without a second map probe.
+    /// Arena index this subtree's columns start at.
     pub(super) nodes_base: u32,
     pub(super) desired: &'a [Size],
     pub(super) floor: &'a [Size],
@@ -62,8 +61,8 @@ pub(super) struct CachedSubtree<'a> {
     pub(super) text_shapes_base: u32,
 }
 
-/// A subtree's arrange as last frame captured it: each node's rect, and
-/// its slot origin in its parent's inner box.
+/// A subtree's arrange as last frame captured it: each node's rect and its
+/// slot origin in its parent's inner box.
 #[derive(Debug)]
 pub(super) struct Arranged<'a> {
     pub(super) rects: &'a [Rect],
@@ -102,13 +101,10 @@ pub(crate) struct NodeArenas {
     desired: Vec<Size>,
     floor: Vec<Size>,
     stable_from: Vec<Size>,
-    /// Arranged rect per node, captured after `arrange` wrote it. One of
-    /// the two columns produced by the *second* half of the layout pass;
-    /// `LayoutPass::arrange` replays it instead of re-running the
-    /// drivers when a subtree's slot is unchanged or merely translated.
+    /// Arranged rect per node; `LayoutPass::arrange` replays it instead of
+    /// re-running drivers when a subtree's slot is unchanged or translated.
     rect: Vec<Rect>,
-    /// Each node's slot origin in its parent's inner box — the other
-    /// arrange column, and what a translated replay rebuilds `rect` from.
+    /// Slot origin in the parent's inner box; a translated replay rebuilds `rect` from it.
     local: Vec<Vec2>,
     scroll_content: Vec<Size>,
     text_spans: Vec<Span>,
@@ -117,10 +113,9 @@ pub(crate) struct NodeArenas {
 }
 
 impl NodeArenas {
-    /// Destructured rather than a statement list: `node_base` is taken
-    /// from `desired.len()`, so an arena left longer than the others
-    /// offsets every later slice of that column by the leftover — stale
-    /// rows from a previous frame, with nothing to assert on.
+    /// Destructured so a new column cannot be forgotten: `node_base` comes
+    /// from `desired.len()`, and a longer leftover arena would offset every
+    /// later slice of that column.
     fn clear(&mut self) {
         let Self {
             desired,
@@ -154,36 +149,26 @@ pub(crate) struct MeasureSnapshot {
     descriptors: Vec<ArenaSnapshot>,
     descriptor_wids: Vec<WidgetId>,
     pub(super) roots: Vec<RootSnapshotKey>,
-    /// Ordered fold over the `WidgetId`s in `descriptor_wids`, rebuilt
-    /// from scratch by every capture.
+    /// Ordered fold over `descriptor_wids`, rebuilt by every capture.
     descriptor_identity: u64,
-    /// The `descriptor_identity` [`Self::snapshots`] was last built for.
-    ///
-    /// Held beside the map so the two travel together through
-    /// `end_frame`'s buffer swap. That is the whole trick: this
-    /// snapshot's map is reusable exactly when the capture that just
-    /// filled the same struct produced the same identity, so nothing has
-    /// to reason about which frame the retained map came from.
+    /// The `descriptor_identity` [`Self::snapshots`] was built for. Held
+    /// beside the map so both travel through `end_frame`'s swap: the map is
+    /// reusable exactly when a capture into this struct yields the same
+    /// identity.
     snapshots_identity: u64,
 }
 
 impl MeasureSnapshot {
-    /// Empty everything, retained descriptor map included — see
-    /// [`MeasureCache::forget_all`] for when a snapshot is thrown away
-    /// whole.
-    ///
-    /// `snapshots_identity` goes with the map. Leaving it set would let
-    /// the next capture that happens to fold to the same value reuse a
-    /// map that is no longer there.
+    /// Empty everything, retained descriptor map included. Resetting
+    /// `snapshots_identity` stops a later capture folding to the same value
+    /// from reusing a map that is gone.
     fn forget_all(&mut self) {
         self.clear_capture();
         self.snapshots.clear();
         self.snapshots_identity = 0;
     }
 
-    /// Empty the captured columns, keeping the retained descriptor map —
-    /// the half a new capture refills. [`Self::forget_all`] is the
-    /// whole-snapshot peer, and the names say which is which.
+    /// Empty the captured columns, keeping the descriptor map.
     fn clear_capture(&mut self) {
         self.nodes.clear();
         self.tracks.clear();
@@ -194,19 +179,13 @@ impl MeasureSnapshot {
         self.descriptor_identity = 0;
     }
 
-    /// Rebuild `snapshots` from `descriptor_wids`, unless the capture
-    /// that just ran produced the very id sequence the retained map was
-    /// already built for.
+    /// Rebuild `snapshots` unless the capture produced the id sequence the
+    /// retained map was built for. Returns whether it rebuilt.
     ///
-    /// Sequence equality is *approximated* by `descriptor_identity`; a
-    /// collision would hand `try_lookup` a map pointing at another
-    /// widget's descriptor. That is survivable — the `subtree_hash` check
-    /// there rejects a mismatched descriptor, so the worst case is a
-    /// missed hit — but it would be silent, so
-    /// [`Self::snapshots_match_descriptors`] proves the approximation in
-    /// debug builds instead of leaving it argued.
-    /// Returns whether it rebuilt, which is the only thing distinguishing
-    /// the two paths from outside — the map ends up correct either way.
+    /// Equality is approximated by `descriptor_identity`. A collision is
+    /// survivable (the `subtree_hash` check in `try_lookup` rejects it, costing
+    /// a hit) but silent, so [`Self::snapshots_match_descriptors`] checks it in
+    /// debug builds.
     fn refresh_snapshots(&mut self) -> bool {
         if self.snapshots_identity == self.descriptor_identity {
             debug_assert!(
@@ -224,9 +203,8 @@ impl MeasureSnapshot {
         true
     }
 
-    /// Every captured descriptor is reachable through `snapshots` at its
-    /// own index — precisely what reusing the map claims. One hash probe
-    /// per descriptor, so it is only ever called from a `debug_assert!`.
+    /// Every descriptor is reachable through `snapshots` at its own index.
+    /// One probe each, so only for `debug_assert!`.
     fn snapshots_match_descriptors(&self) -> bool {
         self.snapshots.len() == self.descriptor_wids.len()
             && self
@@ -246,26 +224,16 @@ pub(crate) struct MeasureCache {
     current: MeasureSnapshot,
     hug_offsets: Vec<u32>,
     text_bounds: Vec<Span>,
-    /// Snapshot-map rebuilds run so far. Lets a test prove the reuse gate
-    /// in [`Self::end_frame`] both fires and busts — without it the
-    /// `debug_assert` guarding reuse passes vacuously on any frame that
-    /// silently stopped reusing.
-    ///
-    /// Accumulates for the life of the cache rather than resetting per
-    /// frame, so readers take a delta — the shape every counter over a
-    /// pass that may not run takes, for the reason
-    /// [`CascadeCounters`](crate::cascade::counters::CascadeCounters)
-    /// states.
+    /// Snapshot-map rebuilds so far, letting a test prove the reuse gate in
+    /// [`Self::end_frame`] fires and busts. Accumulates, so readers take a
+    /// delta, as with [`CascadeCounters`](crate::cascade::counters::CascadeCounters).
     pub(crate) snapshot_rebuilds: BenchOnly<u32>,
 }
 
 impl MeasureCache {
-    /// The cache key for an available size: each axis quantized to the
-    /// grid `try_lookup` matches on.
-    ///
-    /// `pub(crate)` for one caller outside `layout`:
-    /// `text::wrap::tests::wrap_target_matches_cache_grid`, which pins the
-    /// wrap width against this very grid.
+    /// The cache key for an available size: each axis quantized to the grid
+    /// `try_lookup` matches on. `pub(crate)` for
+    /// `text::wrap::tests::wrap_target_matches_cache_grid`.
     #[inline]
     pub(crate) fn available_key(s: Size) -> AvailableKey {
         debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
@@ -276,10 +244,9 @@ impl MeasureCache {
         self.current.clear_capture();
     }
 
-    /// Whether last frame's capture still describes `forest` at
-    /// `surface` — same node and root counts, and every root still
-    /// under the same widget id, subtree hash and quantized available.
-    /// A `false` here is what makes the next `run` a rebuild.
+    /// Whether last frame's capture still describes `forest` at `surface`:
+    /// same node and root counts, and every root under the same widget id,
+    /// subtree hash and quantized available. `false` forces a rebuild.
     pub(super) fn matches_forest(&self, forest: &Forest, surface: Rect) -> bool {
         let snapshot = &self.previous;
         if snapshot.nodes.desired.len() != forest.total_nodes()
@@ -306,10 +273,8 @@ impl MeasureCache {
         true
     }
 
-    /// Last frame's arrange of a subtree of `len` nodes whose capture
-    /// starts at `base` — the third snapshot read, beside
-    /// [`Self::try_lookup`] and [`Self::lookup_root_intrinsic`], rather
-    /// than an index into the arena from outside.
+    /// Last frame's arrange of a subtree of `len` nodes whose capture starts
+    /// at `base`.
     pub(super) fn arranged(&self, base: usize, len: usize) -> Arranged<'_> {
         let nodes = base..base + len;
         Arranged {
@@ -318,10 +283,10 @@ impl MeasureCache {
         }
     }
 
-    /// Last frame's measure of `wid`'s subtree, if its authoring is
-    /// unchanged and it holds under `available` — the offer it was
-    /// measured at, to the key's grid, or any finite offer past its
-    /// [`Measured::stable_from`], per axis.
+    /// Last frame's measure of `wid`'s subtree, if its authoring is unchanged
+    /// and it holds under `available`: the offer it was measured at (to the
+    /// key's grid), or any finite offer past [`Measured::stable_from`], per
+    /// axis.
     #[inline]
     pub(super) fn try_lookup(
         &self,
@@ -404,8 +369,8 @@ impl MeasureCache {
             text_shapes,
         } = input;
         let node_count = tree.records.len();
-        // Column-length agreement is an engine invariant, not input
-        // validation, and this runs once per layer per frame — debug only.
+        // Debug only: column-length agreement is an engine invariant, and this
+        // runs once per layer per frame.
         debug_assert_eq!(desired.len(), node_count);
         debug_assert_eq!(floor.len(), node_count);
         debug_assert_eq!(stable_from.len(), node_count);
@@ -429,18 +394,13 @@ impl MeasureCache {
         let has_text = !text_shapes.is_empty();
         if has_text {
             self.current.text_shapes.extend_from_slice(text_shapes);
-            // Bare `resize`, no `clear` first: the loop below writes
-            // every slot, so the fill value is irrelevant and clearing
-            // would only add a truncate-then-regrow round trip at a
-            // steady tree size. Same convention as
-            // `SubtreeRollups::reset_for`.
+            // Bare `resize`: the loop below writes every slot, and `clear`
+            // would add a truncate-then-regrow round trip.
             self.text_bounds.resize(node_count, Span::default());
             let mut owned_text_count = 0u32;
             for (index, span) in text_spans.iter().copied().enumerate() {
-                // Both arms assign, which is what makes the column
-                // total and lets the pass run without a preceding reset.
-                // Leaving the text-less arm to inherit a default would
-                // let a longer previous tree's bound leak through.
+                // Both arms assign so the column is total; a text-less node
+                // must not inherit a longer previous tree's bound.
                 let stored = if span.len == 0 {
                     Span::default()
                 } else {
@@ -479,8 +439,7 @@ impl MeasureCache {
         let layouts = tree.records.layout();
         let has_grids = !tree.grid_defs.is_empty();
         if has_grids {
-            // Every slot `0..=node_count` is assigned below, so this
-            // wants the length, not the zeroes.
+            // Every slot `0..=node_count` is assigned below.
             self.hug_offsets.resize(node_count + 1, 0);
             for (index, layout) in layouts.iter().copied().enumerate() {
                 self.hug_offsets[index] = self.current.tracks.len() as u32;
@@ -532,9 +491,8 @@ impl MeasureCache {
             self.current.descriptor_wids.push(wid);
         }
 
-        // Copied for every layer, the first included, like the columns
-        // above: a swap for the first would leave the engine's scratch
-        // columns empty until the next `resize_for`, while the
+        // Copied for every layer, the first included: a swap for the first
+        // would leave the engine's scratch columns empty while the
         // container-text pass still runs.
         self.current.nodes.desired.extend_from_slice(desired);
         self.current.nodes.floor.extend_from_slice(floor);
@@ -555,23 +513,17 @@ impl MeasureCache {
         mem::swap(&mut self.previous, &mut self.current);
     }
 
-    /// Force a cold start: both buffers forget everything, so the next
-    /// frame measures from scratch.
-    ///
-    /// **What every other invalidation here cannot express.** The
-    /// snapshot checks all ask whether the *inputs* moved — the subtree
-    /// hash, the available width — and the one event that changes what a
-    /// run measures to while moving neither is a font load. See
-    /// `TextSystem::sync_fonts`, which is what detects it.
+    /// Force a cold start: both buffers forget everything. The other
+    /// invalidations ask whether inputs moved, which a font load does not
+    /// change (see `TextSystem::sync_fonts`).
     pub(super) fn forget_all(&mut self) {
         self.previous.forget_all();
         self.current.forget_all();
     }
 }
 
-/// What the measure-cache tests reach, and the adversarial tree shapes
-/// the measure-cache bench times — shared with the tests that pin what
-/// the cache retains for them: a deep chain and a balanced broad tree.
+/// What the measure-cache tests reach, and the tree shapes the bench times:
+/// a deep chain and a balanced broad tree.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     #[cfg(test)]
@@ -608,16 +560,13 @@ pub(crate) mod internals {
             .show(ui, |ui| build_deep_level(ui, depth + 1));
     }
 
-    /// What a variant of the broad tree changes in its first leaf. Both
-    /// are layout authoring: a colour would be paint, which the measure
-    /// cache does not key on, and the whole tree would hit at the root.
+    /// What a variant of the broad tree changes in its first leaf. Both are
+    /// layout authoring; a colour is paint, which the cache does not key on.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) enum BroadChange {
         /// The leaf's fill weight, which an only child's geometry ignores.
         FillWeight,
-        /// The leaf's height, which moves the minimum of every panel
-        /// above it — and with it what each offers its children, once the
-        /// tree is taller than its surface.
+        /// The leaf's height, which moves the minimum of every panel above it.
         LeafHeight,
     }
 
@@ -661,8 +610,7 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl MeasureCache {
-        /// Last frame's measured `desired` column, which the layout
-        /// tests read to prove what a capture retained.
+        /// Last frame's measured `desired` column.
         pub(crate) fn captured_desired(&self) -> &[Size] {
             &self.previous.nodes.desired
         }

@@ -1,53 +1,33 @@
 //! The benchmark runner, and the drivers it runs.
 //!
-//! Every driver lives in a `bench.rs` beside the code it measures — they
-//! reach crate privates the supported surface will never carry, which is
-//! why they cannot live under `benches/` themselves. That is also why
-//! *this* is in the library rather than in the bench target: a
-//! `benches/*.rs` is a separate crate and cannot name a `pub(crate)` fn,
-//! so the registry has to be built here. The runner follows it in, which
-//! keeps [`run`] and its selection rules unit-testable — a
-//! `harness = false` target collects no `#[test]` fns at all.
-//!
-//! `benches/criterion.rs` is therefore a three-line call into [`run`].
-//!
-//! The allocation gates are not here at all: they report counts rather
-//! than times, so they need no criterion and no optimized link, and they
-//! live with the rest of the allocation suite in `tests/alloc/gates/`.
+//! Each driver lives in a `bench.rs` beside the code it measures, reaching
+//! crate privates, so the registry has to be built in the library: a
+//! `benches/*.rs` is a separate crate and cannot name a `pub(crate)` fn. The
+//! runner lives here too, keeping [`run`] and its selection rules
+//! unit-testable (a `harness = false` target collects no `#[test]` fns).
+//! `benches/criterion.rs` is a three-line call into [`run`]. Allocation gates
+//! report counts, not times, and live in `tests/alloc/gates/`.
 //!
 //! ## Why this owns `main`
 //!
-//! Criterion's filter gates the `bench_function` call, not the setup a
-//! driver runs before it — and that setup cannot move inside the
-//! closure, which criterion invokes once per sample. So under
-//! `criterion_main!` every driver paid every other driver's setup:
-//! filtering to `damage` still cost ~11 s and two wgpu adapter requests,
-//! all of it landing in a `perf` profile of the one benchmark asked for.
-//! Selecting on the registry *before* calling a driver fixes that
-//! exactly, and `criterion_main!` is ten lines of public API.
+//! Criterion's filter gates the `bench_function` call, not the setup a driver
+//! runs before it, so under `criterion_main!` filtering to `damage` still paid
+//! every other driver's setup (~11 s and two wgpu adapter requests). Selecting
+//! on the registry before calling a driver avoids that.
 //!
 //! ## Delegate-or-own
 //!
-//! `Criterion::configure_from_args` hard-exits on flags it doesn't know,
-//! so it cannot be called on an argv carrying ours. And `criterion::Mode`
-//! is `pub(crate)`: only profile mode is publicly reachable, **not**
-//! `Test` or `List`. `Mode::Test` is what makes `cargo test --benches`
-//! run each benchmark once instead of measuring it — and that command
-//! does run this binary.
-//!
-//! So when cargo drives us in test or list mode, argv goes to
+//! `Criterion::configure_from_args` hard-exits on flags it doesn't know, and
+//! `criterion::Mode` is `pub(crate)`, so `Test` and `List` are unreachable.
+//! `Mode::Test` is what makes `cargo test --benches` run each benchmark once,
+//! and that command does run this binary. So when cargo drives us in test or
+//! list mode (signalled by an absence; see `cli::delegates`), argv goes to
 //! `configure_from_args` untouched. Otherwise `Cli` parses it and drives
-//! criterion's public setters. `cli::delegates` draws that line — and the subtlety
-//! is that test mode is signalled by an *absence*.
+//! criterion's public setters.
 //!
-//! What the runner decides, a driver is handed in a `Run` rather than
-//! left to re-derive: two readings of the same argv are two things that
-//! can disagree. Nothing here reads the environment — every input is a
-//! declared flag, so `--help` is the whole surface.
-//!
-//! `cargo-criterion` integration rides `Criterion::default()`'s
-//! `connection`, which the own-branch keeps by construction. Baselines
-//! through `cargo criterion` are untested here.
+//! A driver is handed what the runner decided in a `Run`, not left to
+//! re-derive it from argv. Nothing reads the environment; every input is a
+//! declared flag. Baselines through `cargo criterion` are untested.
 
 #![expect(
     clippy::print_stdout,
@@ -64,15 +44,10 @@ use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::env;
 
-/// Which half of the pipeline is in play — on a driver row, what it
-/// measures; on the command line, what the run wants. One vocabulary for
-/// both sides, so selection is an intersection rather than two unrelated
-/// switches.
-///
-/// Most drivers have a single arm, and for them this only decides
-/// *whether* they run. A driver's `run` receives the resolved overlap
-/// anyway, because the frame bench genuinely has both and has to know
-/// which half was asked for.
+/// Which half of the pipeline is in play: on a driver row, what it measures;
+/// on the command line, what the run wants. One vocabulary, so selection is an
+/// intersection. Single-arm drivers only use it to decide whether they run;
+/// the frame bench has both and needs the resolved overlap.
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Arms {
     /// Touches no GPU.
@@ -91,9 +66,8 @@ impl Arms {
         matches!(self, Arms::Gpu | Arms::Both)
     }
 
-    /// What a driver offering `self` should run when the caller asked
-    /// for `want`, or `None` when they share nothing — the whole
-    /// selection rule.
+    /// What a driver offering `self` should run when the caller asked for
+    /// `want`, or `None` when they share nothing.
     pub(crate) const fn overlap(self, want: Arms) -> Option<Arms> {
         match (
             self.includes_cpu() && want.includes_cpu(),
@@ -110,42 +84,30 @@ impl Arms {
 /// What the runner resolved for one driver's invocation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Run<'a> {
-    /// The name the runner selected this driver by, and the namespace
-    /// every id it registers sits under. Reached through
-    /// [`Run::group`] rather than read directly.
+    /// The name the runner selected this driver by, and the namespace of every
+    /// id it registers. Reached through [`Run::group`].
     driver: &'static str,
-    /// The half of the pipeline to exercise — [`Arms::overlap`] of what
-    /// the driver offers against what the command line asked for.
-    /// Single-arm drivers ignore it.
+    /// The half of the pipeline to exercise: [`Arms::overlap`] of what the
+    /// driver offers against the command line. Single-arm drivers ignore it.
     pub(crate) arms: Arms,
-    /// Whether criterion will write `estimates.json` for this run.
-    ///
-    /// False in test mode and under `--profile-time`, both of which
-    /// report "Analysis Disabled" and record nothing. A driver that
-    /// reads its own numbers back afterwards has to skip when this is
-    /// false, or it files a row of "estimates not found".
+    /// Whether criterion will write `estimates.json`. False in test mode and
+    /// under `--profile-time`; a driver reading its numbers back must skip
+    /// then.
     pub(crate) recording: bool,
-    /// Every knob the command line carries for a driver that renders the
-    /// shared fixture and files a results row. The frame bench is the
-    /// only one today; a second would read the same struct rather than
-    /// grow `Run` sideways.
+    /// Command-line knobs for a driver that renders the shared fixture and
+    /// files a results row (only the frame bench today).
     pub(crate) fixture: Fixture<'a>,
 }
 
 impl Run<'_> {
-    /// A criterion group named for the driver the runner selected.
-    ///
-    /// Handing the name down beats writing it into each `bench.rs`: a
-    /// driver cannot spell its own namespace wrong, renaming a row in
-    /// `DRIVERS` renames its benchmarks with it, and an id can no longer
-    /// end up under a namespace no driver answers to — which is what
-    /// `text_atlas` had done with its `encoded_cache` group.
+    /// A criterion group named for the driver the runner selected, so a driver
+    /// cannot misspell its namespace and renaming a `DRIVERS` row renames its
+    /// benchmarks.
     pub(crate) fn group<'c>(&self, c: &'c mut Criterion) -> BenchmarkGroup<'c, WallTime> {
         c.benchmark_group(self.group_name())
     }
 
-    /// [`Self::group`] one level deeper, for a driver that measures more
-    /// than one thing.
+    /// [`Self::group`] one level deeper, for a driver measuring several things.
     pub(crate) fn subgroup<'c>(
         &self,
         c: &'c mut Criterion,
@@ -163,28 +125,25 @@ impl Run<'_> {
     }
 }
 
-/// The surface the shared fixture renders into, and how the row it files
-/// is captioned. Defaults live with the bench that uses them — `None`
-/// means "whatever that bench considers normal", so the runner never has
-/// to know a widget's dimensions to hand one over.
+/// The surface the shared fixture renders into, and the row's caption. `None`
+/// means the bench's own default.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Fixture<'a> {
     /// `--size <W>x<H>`: the physical surface every arm renders into.
     pub(crate) size: Option<glam::UVec2>,
     /// `--scale`: device pixel ratio.
     pub(crate) scale: Option<f32>,
-    /// `--machine`: which per-machine results file the row lands in.
-    /// Defaults to the short hostname.
+    /// `--machine`: which per-machine results file the row lands in; defaults
+    /// to the short hostname.
     pub(crate) machine: Option<&'a str>,
-    /// `--note`: the row's why-was-this-measured caption.
+    /// `--note`: why this was measured.
     pub(crate) note: Option<&'a str>,
 }
 
 /// The bench target's entry point.
 pub fn run() {
-    // Opt-in drivers stay out: test mode is a smoke check that every
-    // benchmark still executes, and the frame matrix is ~90 s of that —
-    // unoptimized, since `cargo test` builds the dev profile.
+    // Opt-in drivers stay out of test mode: it is a smoke check, and the frame
+    // matrix is ~90 s unoptimized.
     let argv: Vec<String> = env::args().collect();
     if cli::delegates(argv.iter().map(String::as_str)) {
         for driver in DRIVERS.iter().filter(|d| !d.opt_in) {
@@ -246,11 +205,9 @@ mod tests {
         }
     }
 
-    /// The namespace rule `DRIVERS` documents, now that it is composed
-    /// rather than retyped per `bench.rs`: a group is the driver's name,
-    /// a subgroup sits under it, and criterion joins a leaf on with the
-    /// same separator — so `text_atlas` + `encoded_cache` + `steady` is
-    /// the id `text_atlas/encoded_cache/steady`.
+    /// A group is the driver's name, a subgroup sits under it, and criterion
+    /// joins a leaf with the same separator: `text_atlas` + `encoded_cache` +
+    /// `steady` is `text_atlas/encoded_cache/steady`.
     #[test]
     fn group_names_are_the_drivers_namespace() {
         assert_eq!(
@@ -263,8 +220,7 @@ mod tests {
         );
     }
 
-    /// `overlap` is the entire selection rule, so pin its table. `None`
-    /// is the only answer that skips a driver.
+    /// `overlap` is the entire selection rule; `None` is the only skip.
     #[test]
     fn overlap_selects_the_shared_half() {
         use Arms::{Both, Cpu, Gpu};

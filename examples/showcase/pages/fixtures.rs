@@ -1,18 +1,6 @@
-//! Regression fixtures — deliberately colliding, occluding, or minimal
-//! content that pins framework behavior by eye. Quarantined on their own
-//! page so the intentionally ugly visuals don't leak into the widget
-//! pages.
-//!
-//! - **id collisions**: siblings reuse one explicit `.id_salt(...)`; the
-//!   framework disambiguates (state survives) and the always-on overlay
-//!   paints a magenta 3 px outline over the offenders.
-//! - **text z-order**: paint order is honored across quads and text —
-//!   the composer splits draw groups on every text↔quad transition.
-//! - **chrome concentricity**: rounded rect in rounded rect, the inner
-//!   radius shrunk by the stroke inset so corners stay concentric.
-//! - **premultiplied alpha**: translucent polylines over a magenta
-//!   backdrop. Correct blending yields muted mixes; the historical
-//!   straight-alpha-into-premul bug yields over-bright colors.
+//! Regression fixtures: deliberately colliding, occluding or minimal content that pins behavior by eye, apart so
+//! the ugly visuals don't leak into widget pages: id collisions (the overlay outlines offenders), text z-order
+//! (draw groups split on text↔quad transitions), chrome concentricity, and premultiplied-alpha blending.
 
 use crate::support;
 use crate::support::{api, captioned_cell, demo_cell, note, section, swatch_bg, tiles};
@@ -96,8 +84,6 @@ pub(crate) fn build(ui: &mut Ui) {
     });
 }
 
-/// ZStack of background + label, optionally with an occluder recorded
-/// after the text, which must paint over it.
 #[track_caller]
 fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
     captioned_cell(ui, label, support::TILE, support::TILE, |ui| {
@@ -127,9 +113,8 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
     });
 }
 
-/// Red field, centered blue card with a thick green border and 40 px
-/// corners, black rect nested inside — its radius shrunk by the border
-/// inset so the black corners follow the border's inner contour.
+/// Red field, blue card with a thick green border and 40 px corners, black rect nested inside whose radius
+/// shrinks by the border inset so its corners follow the border's inner contour.
 fn concentricity(ui: &mut Ui) {
     const STROKE: f32 = 8.0;
     const OUTER: f32 = 40.0;
@@ -160,15 +145,8 @@ fn concentricity(ui: &mut Ui) {
         });
 }
 
-/// Paint an opaque magenta backdrop so the next translucent draw
-/// composites against a known non-black, non-white colour — making the
-/// premultiplied-alpha bug obvious.
-///
-/// Backdrop = magenta `(1, 0, 1)`, translucent draw = green `(0, 1, 0)`
-/// at α=0.5. Correct blend (premultiplied source):
-/// `(0, 0.5, 0) + magenta * 0.5 = (0.5, 0.5, 0.5)` → mid grey. A
-/// straight-alpha source into a premul blend would give
-/// `(0, 1, 0) + magenta * 0.5 = (0.5, 1, 0.5)` → bright green.
+/// Opaque magenta `(1, 0, 1)` backdrop so a translucent green `(0, 1, 0)` draw at α=0.5 shows a
+/// premultiplied-alpha bug: correct blending gives mid grey `(0.5, 0.5, 0.5)`, straight alpha bright green `(0.5, 1, 0.5)`.
 fn backdrop(ui: &mut Ui) {
     ui.add_shape(
         Shape::rect(Rect::new(0.0, 0.0, support::TILE, support::TILE))
@@ -186,8 +164,7 @@ fn translucent_solid(ui: &mut Ui) {
     ));
 }
 
-/// Per-point translucent. Same expected muted mixes; the bug shows as
-/// bright vertex colours.
+/// Per-point translucent; same muted mixes, the bug shows as bright vertex colours.
 fn translucent_per_point(ui: &mut Ui) {
     backdrop(ui);
     let pts = [
@@ -203,9 +180,7 @@ fn translucent_per_point(ui: &mut Ui) {
     ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 14.0)).per_point(&cols));
 }
 
-/// α=0.25 — the bug grows with `(1 - a)`, so a lower alpha makes the
-/// over-bright effect even more obvious. Expected: the magenta backdrop
-/// tinted slightly toward green.
+/// α=0.25: the bug grows with `(1 - a)`; expects the magenta backdrop tinted slightly toward green.
 fn translucent_quarter(ui: &mut Ui) {
     backdrop(ui);
     let pts = [Vec2::new(14.0, 84.0), Vec2::new(154.0, 84.0)];

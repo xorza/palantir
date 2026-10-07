@@ -1,12 +1,11 @@
 //! Colour in the forms one value takes on its way to the GPU: straight-alpha
-//! linear f32 for authoring and blending, four f16 lanes for the lowered
-//! records and every draw lane, and four sRGB-encoded bytes for what a hex
-//! code, a gradient stop, a mesh vertex or an image texel means.
+//! linear f32 for authoring and blending, four f16 lanes for lowered records,
+//! and four sRGB-encoded bytes for hex codes, gradient stops, mesh vertices and
+//! image texels.
 //!
-//! One naming rule across all of them: the channels, then the width. A bare
-//! `Rgba` is linear light, the crate's convention everywhere on the CPU;
-//! `Srgba` is the encoded form. Every conversion between them lives in this
-//! module, so the two quantize policies cannot drift apart.
+//! Naming: channels, then width. A bare `Rgba` is linear light (the crate's CPU
+//! convention); `Srgba` is encoded. Every conversion lives here, so the two
+//! quantize policies cannot drift.
 
 pub(crate) mod srgba_u8;
 
@@ -41,33 +40,27 @@ use std::str;
     bytemuck::Zeroable,
     palantir_anim_derive::Animatable,
 )]
-// One 8-bit sRGB step is narrowest near black, at `1 / 255 / 12.92 ≈
-// 3.0e-4` linear; `1/4096 ≈ 2.4e-4` stays under it on every channel.
+// One 8-bit sRGB step is narrowest near black at `1 / 255 / 12.92 ≈ 3.0e-4`
+// linear; `1/4096 ≈ 2.4e-4` stays under it on every channel.
 #[animate(settle_eps = 1.0 / 4096.0)]
-/// An RGBA colour in **straight-alpha linear RGB**, the space every blend,
-/// anti-aliasing step, and tween in the crate operates in. The sRGB encode
-/// happens on the GPU when writing the swapchain.
-///
-/// Which constructor you reach for decides whether your input gets
-/// linearised:
+/// An RGBA colour in straight-alpha linear RGB, the space every blend,
+/// anti-aliasing step and tween operates in. The sRGB encode happens on the
+/// GPU at swapchain write.
 ///
 /// - [`Self::srgb`] / [`Self::srgba`] / [`Self::hex`] / [`Self::from_srgba`]
-///   read their argument as **sRGB-encoded** — the numbers CSS, Figma, and
-///   Photoshop show you — and linearise it for you. This is what you want
-///   for colours a human picked.
-/// - [`Self::new`] takes values that are **already linear**: tween outputs,
-///   physically-derived values, interop with another linear pipeline.
+///   read their argument as sRGB-encoded (the numbers CSS and Figma show) and
+///   linearise it. Use these for colours a human picked.
+/// - [`Self::new`] takes already-linear values.
 ///
-/// Writing an sRGB-encoded value straight into the fields skips the
-/// linearisation and will render too bright. Components may exceed `1.0`
-/// for HDR-shaped tween outputs. Hashing is approximate (`1e-4`).
+/// Writing an sRGB value straight into the fields renders too bright.
+/// Components may exceed `1.0` for HDR-shaped tween outputs. `Hash` is exact
+/// but for signed zeros; `FloatHash::hash_visual` is the tolerant one.
 ///
-/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends two colours
-/// per channel, unclamped. Storage is linear and straight-alpha, so a
-/// straight component blend is the correct one, and **alpha travels with the
-/// colour**: a caller that wants to keep its own opacity follows up with
-/// [`Self::with_alpha`]. [`Interpolation::Oklab`](crate::Interpolation) blends in a
-/// perceptual space instead, for gradients.
+/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends per channel,
+/// unclamped, which is correct for linear straight-alpha storage; alpha
+/// travels with the colour, so keep your own opacity with [`Self::with_alpha`].
+/// [`Interpolation::Oklab`](crate::Interpolation) blends perceptually, for
+/// gradients.
 #[must_use]
 pub struct RgbaF32 {
     /// Red, linear, nominally 0..1.
@@ -76,8 +69,7 @@ pub struct RgbaF32 {
     pub g: f32,
     /// Blue, linear, nominally 0..1.
     pub b: f32,
-    /// Alpha, 0..1. **Straight**, not premultiplied — the shader does the
-    /// premultiply on the way to the blend unit.
+    /// Alpha, 0..1, straight; the shader premultiplies.
     pub a: f32,
 }
 
@@ -88,14 +80,10 @@ impl hash::Hash for RgbaF32 {
     }
 }
 
-/// A colour under both of the crate's float tolerances.
-///
-/// [`Hash`](std::hash::Hash) above is the equality-compatible half, since
-/// `RgbaF32` compares by exact float equality. The visual half is what a
-/// *content* cache keys on, and the two must never meet inside one key:
-/// a paint type canonicalizing its width visually and its colour exactly
-/// would let a difference the eye cannot resolve split that key on one
-/// field and not the other.
+/// A colour under both of the crate's float tolerances. [`Hash`](std::hash::Hash)
+/// is the equality-compatible half; the visual half is what a content cache
+/// keys on. They must not meet in one key, or a difference the eye cannot see
+/// would split it on one field and not another.
 impl FloatHash for RgbaF32 {
     #[inline]
     fn hash_eq<H: hash::Hasher>(&self, state: &mut H) {
@@ -115,8 +103,7 @@ impl FloatHash for RgbaF32 {
 }
 
 impl RgbaF32 {
-    /// Fully transparent black. [`Self::is_noop`] is `true` for it, so it
-    /// paints nothing at all.
+    /// Fully transparent black; [`Self::is_noop`] is `true`.
     pub const TRANSPARENT: Self = Self {
         r: 0.0,
         g: 0.0,
@@ -138,21 +125,16 @@ impl RgbaF32 {
         a: 1.0,
     };
 
-    /// Alpha is non-positive, NaN, or within `EPS` of zero —
-    /// paints nothing. Mirrors the `is_noop` predicate on `Stroke`
-    /// / `Background` / `Surface` / `ShapeRecord`; consistent name
-    /// across primitives.
+    /// Alpha is non-positive, NaN, or within `EPS` of zero: paints nothing.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        // Alpha decides visibility; the colour channels are screened
-        // for NaN only. See `RgbaF16::is_noop` for why a NaN in a
-        // non-alpha lane has to count as invisible.
+        // Alpha decides visibility; colour channels are screened for NaN only
+        // (see `RgbaF16::is_noop`).
         domain::is_invisible(self.a) || self.has_nan()
     }
 
-    /// True if any channel is NaN. `const`, so [`Self::is_noop`] can
-    /// reuse it instead of repeating the channel walk; the [`NanCheck`]
-    /// impl below delegates here for the same reason.
+    /// True if any channel is NaN. `const`, so [`Self::is_noop`] and the
+    /// [`NanCheck`] impl share it.
     ///
     /// [`NanCheck`]: crate::primitives::math::nan::NanCheck
     #[inline]
@@ -160,25 +142,18 @@ impl RgbaF32 {
         self.r.is_nan() || self.g.is_nan() || self.b.is_nan() || self.a.is_nan()
     }
 
-    /// The type's own representation: linear channels and a straight alpha,
-    /// stored as given. For tween outputs, physically-derived values, and
-    /// interop with another linear pipeline.
-    ///
-    /// The one constructor with no encoding in its name, because it is the
-    /// one that does no encoding. A colour a human picked arrives through
-    /// [`Self::srgb`] or [`Self::hex`] instead.
+    /// Linear channels and a straight alpha, stored as given, with no
+    /// encoding. A colour a human picked arrives through [`Self::srgb`] or
+    /// [`Self::hex`].
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
 
-    /// `(r, g, b)` in 0..1 **sRGB-encoded** space — the numbers CSS, Figma
-    /// and Photoshop show — linearised on the way in so blending and SDF AA
-    /// happen in linear light.
+    /// `(r, g, b)` in 0..1 sRGB-encoded space, linearised on the way in.
     pub const fn srgb(r: f32, g: f32, b: f32) -> Self {
         Self::srgba(r, g, b, 1.0)
     }
-    /// [`Self::srgb`] with an explicit alpha. `a` is straight and is *not*
-    /// linearised — alpha is already linear.
+    /// [`Self::srgb`] with an explicit straight alpha, which is not linearised.
     pub const fn srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
             r: srgb_transfer::decode(r as f64),
@@ -188,10 +163,9 @@ impl RgbaF32 {
         }
     }
 
-    /// The colour channels multiplied by alpha — the form every colour
-    /// blend in the crate interpolates in (see `primitives::paint::brush`). The
-    /// result is still an `RgbaF32`, so dividing the alpha back out before
-    /// it is read as straight is the caller's.
+    /// The colour channels multiplied by alpha, the form colour blends
+    /// interpolate in (see `primitives::paint::brush`). Still an `RgbaF32`;
+    /// dividing alpha back out is the caller's.
     #[inline]
     pub(crate) const fn premultiplied(self) -> Self {
         Self {
@@ -202,9 +176,7 @@ impl RgbaF32 {
         }
     }
 
-    /// Replace the alpha channel, preserve RGB. Storage is linear /
-    /// straight-alpha (see `RgbaF32` docs), so this is a one-field swap —
-    /// no premultiply rebalancing.
+    /// Replace the alpha channel, preserving RGB (storage is straight alpha).
     pub const fn with_alpha(self, a: f32) -> Self {
         Self {
             r: self.r,
@@ -214,9 +186,8 @@ impl RgbaF32 {
         }
     }
 
-    /// This colour times `tint`, channel by channel with alpha — the rule
-    /// a mesh, image or stroke tint applies. Both are straight-alpha, so
-    /// the product is too.
+    /// This colour times `tint`, channel by channel with alpha: the rule for
+    /// mesh, image and stroke tints.
     #[inline]
     pub(crate) fn tinted(self, tint: Self) -> Self {
         Self {
@@ -227,13 +198,9 @@ impl RgbaF32 {
         }
     }
 
-    /// Decode sRGB-encoded bytes. Alpha is not gamma-encoded — straight
-    /// `a / 255`. `const`, and the [`From`] impl delegates here, so a hex
-    /// literal can be a constant.
-    ///
-    /// Exact: each channel is the transfer function of `byte / 255`
-    /// rounded to `f32` once — a lookup into a table built at compile
-    /// time — so [`Self::to_srgba_u8`] gives every byte back.
+    /// Decode sRGB-encoded bytes; alpha is `a / 255`. `const`, so a hex literal
+    /// can be a constant. Exact: a compile-time table lookup, so
+    /// [`Self::to_srgba_u8`] returns every byte.
     pub const fn from_srgba(bytes: SrgbaU8) -> Self {
         Self {
             r: srgb_transfer::DECODED_BYTES[bytes.r as usize],
@@ -243,15 +210,12 @@ impl RgbaF32 {
         }
     }
 
-    /// Packed 24-bit `0xRRGGBB` sRGB literal, opaque. Matches CSS hex
-    /// notation: `#3366CC` → `RgbaF32::hex(0x3366CC)`.
+    /// Packed `0xRRGGBB` sRGB literal, opaque: `#3366CC` is `hex(0x3366CC)`.
     pub const fn hex(rgb: u32) -> Self {
         Self::from_srgba(SrgbaU8::hex(rgb))
     }
 
-    /// Encode to **sRGB** 8-bit bytes: what an image texel, a CSS hex
-    /// string or a number shown to a person means. Inverts
-    /// [`Self::from_srgba`] exactly for every byte.
+    /// Encode to sRGB 8-bit bytes. Inverts [`Self::from_srgba`] exactly.
     pub fn to_srgba_u8(self) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::encode_byte(self.r),
@@ -276,8 +240,8 @@ impl From<RgbaF16> for RgbaF32 {
     }
 }
 
-/// Wire format: a CSS-style hex string, `#rrggbb` or `#rrggbbaa`. The
-/// 6-digit form is emitted whenever alpha is fully opaque.
+/// Wire format: a CSS-style hex string, `#rrggbb`, or `#rrggbbaa` when alpha
+/// is not fully opaque.
 impl Serialize for RgbaF32 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let SrgbaU8 { r, g, b, a } = self.to_srgba_u8();
@@ -297,9 +261,8 @@ impl<'de> Deserialize<'de> for RgbaF32 {
     }
 }
 
-/// The hex forms the wire format reads, so `"#3266cc".parse()` and a
-/// deserialized `"#3266cc"` cannot disagree. Not trimmed: the caller decides
-/// what whitespace means.
+/// The hex forms the wire format reads, so `parse` and deserialize agree. Not
+/// trimmed: the caller decides what whitespace means.
 impl str::FromStr for RgbaF32 {
     type Err = &'static str;
 
@@ -308,13 +271,11 @@ impl str::FromStr for RgbaF32 {
     }
 }
 
-/// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB
-/// [`RgbaF32`]. Deserialization input is untrusted, so every rejection is
-/// an `Err` — the length arms select on **bytes** and each digit is
-/// decoded by hand, because indexing the `str` instead would panic on a
-/// char boundary for any 6- or 8-*byte* non-ASCII input (`"日本"` is
-/// exactly six bytes), and delegating to `u8::from_str_radix` would
-/// accept its leading `+` sign as a hex digit position.
+/// Parse `#rrggbb` / `#rrggbbaa` (the `#` optional) into an sRGB [`RgbaF32`].
+/// Input is untrusted, so every rejection is an `Err`. Lengths select on
+/// bytes and digits are decoded by hand: indexing the `str` would panic on a
+/// char boundary for 6- or 8-byte non-ASCII input (`"日本"`), and
+/// `u8::from_str_radix` would accept a leading `+`.
 fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
     let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
     let parse_byte = |index: usize| -> Result<u8, &'static str> {
@@ -336,8 +297,7 @@ fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
     }
 }
 
-/// One hex digit's value, either case. Anything else — including every
-/// non-ASCII byte — is a rejection.
+/// One hex digit's value, either case; anything else is a rejection.
 const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
     match byte {
         b'0'..=b'9' => Ok(byte - b'0'),

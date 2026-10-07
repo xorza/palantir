@@ -5,45 +5,24 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::anchor::Anchor;
 use glam::Vec2;
 
-/// Where a layer root's origin comes from.
-///
-/// The two forms are exclusive — an origin is either known before
-/// measure or derived from it — which is the whole of what they decide.
-/// The size cap beside them on [`Placement`] is orthogonal, so setting
-/// one never discards the other.
+/// Where a layer root's origin comes from: known before measure, or derived from it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Origin {
-    /// Top-left fixed at this surface-space point.
     Fixed(Vec2),
-    /// Resolved from the measured size against a screen-space anchor
-    /// rect — the flip-or-shift-to-fit form popups, menus and tooltips
-    /// want.
     Anchored(Anchor),
 }
 
-/// Measurement and post-measure placement policy for one layer root.
-///
-/// The *storage* form, not the authoring one: it hangs off the root slot,
-/// the layout engine reads [`Self::available`] and [`Self::origin`] off it
-/// two passes after the record that set it, and the measure cache keys the
-/// root on the available size it derives. [`LayerScope`](crate::LayerScope)
-/// is its public face — `fixed_at` and `anchor` write [`Self::origin`],
-/// `max_size` writes the other field — which is why nothing publishes this
-/// type as a value. [`Anchor`] is one of the two origin rules it holds, and the
-/// only one with enough parameters to need a name of its own.
+/// Measurement and post-measure placement policy for one layer root: the storage form of what
+/// [`LayerScope`](crate::LayerScope) authors; the measure cache keys the root on its available size.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Placement {
     pub(crate) origin: Origin,
-    /// Upper bound on the available extent, clamped to the surface at
-    /// [`Self::available`]. `None` leaves a [`Origin::Fixed`] root the
-    /// space from its point to the surface edge, and an
-    /// [`Origin::Anchored`] one the whole surface — the extent each
-    /// resolves its origin against.
+    /// Upper bound on the available extent, clamped to the surface; `None` leaves the space from a fixed point to
+    /// the surface edge, or the whole surface for an anchored root.
     pub(crate) max_size: Option<Size>,
 }
 
 impl Placement {
-    /// Replace the origin with a fixed point, keeping any size cap.
     pub(crate) const fn with_fixed(self, point: Vec2) -> Self {
         Self {
             origin: Origin::Fixed(point),
@@ -51,8 +30,6 @@ impl Placement {
         }
     }
 
-    /// Replace the origin with one resolved after measure, keeping any
-    /// size cap.
     pub(crate) const fn with_anchored(self, anchor: Anchor) -> Self {
         Self {
             origin: Origin::Anchored(anchor),
@@ -60,7 +37,6 @@ impl Placement {
         }
     }
 
-    /// Replace the size cap, keeping the origin.
     pub(crate) const fn with_max_size(self, max_size: Size) -> Self {
         Self {
             max_size: Some(max_size),
@@ -87,8 +63,7 @@ impl Placement {
     }
 }
 
-/// The surface origin with the whole surface available — what a layer
-/// that sets no placement gets, and what a full-surface overlay wants.
+/// The surface origin with the whole surface available.
 impl Default for Placement {
     fn default() -> Self {
         Self {
@@ -105,9 +80,7 @@ mod tests {
     const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 100.0);
     const MEASURED: Size = Size::new(50.0, 30.0);
 
-    /// A gap of 4 below a 20x6 rect at (40, 10) puts the body's top at
-    /// `10 + 6 + 4 = 20`, and `AxisAlign::Start` puts its left at the
-    /// rect's 40. Both fit, so neither the flip nor the clamp fires.
+    /// A 4 gap below a 20x6 rect at (40, 10) puts the body's top at `10 + 6 + 4 = 20` and left at 40; neither flip nor clamp fires.
     fn anchored() -> Placement {
         Placement::default()
             .with_anchored(Anchor::below(Rect::new(40.0, 10.0, 20.0, 6.0)).with_gap(4.0))
@@ -137,8 +110,7 @@ mod tests {
         }
     }
 
-    /// Without a cap a fixed root gets the space from its point to the
-    /// surface edge — `200 - 12` by `100 - 7`.
+    /// Without a cap a fixed root gets the space from its point to the surface edge: `200 - 12` by `100 - 7`.
     #[test]
     fn an_uncapped_fixed_root_measures_against_the_rest_of_the_surface() {
         let placed = Placement::default().with_fixed(Vec2::new(12.0, 7.0));

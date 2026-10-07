@@ -1,5 +1,4 @@
-//! The one-widget harness an animation test drives, and the reads it
-//! asserts on.
+//! The one-widget harness an animation test drives, and the reads it asserts on.
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
 use crate::animation::animatable::Animatable;
@@ -49,11 +48,7 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
     velocity
 }
 
-/// Common prelude for tests that drive an animated widget through
-/// [`Ui::frame`]: spin up a `Ui`, pre-record the widget once so its state
-/// row exists, return the `Ui` and the widget's id. Per-frame bodies
-/// still re-record the widget (`Block::new().id(id).show(ui)`) so the
-/// persistent state survives end-of-frame sweeps.
+/// Prelude: pre-records the widget so its state row exists; per-frame bodies re-record it so state survives sweeps.
 #[derive(Debug)]
 pub(super) struct AnimUi {
     pub(super) h: UiHarness,
@@ -69,15 +64,7 @@ pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
     AnimUi { h, id }
 }
 
-/// The first step at which a spring released from rest `distance` from
-/// its target is inside its settle bound — from the closed form in `f64`,
-/// independent of the integrator. Step `n` lasts `dt_of(n)`.
-///
-/// Released from rest, `x(t) = e^(-h·t)(C + h·S)` and
-/// `v(t) = -k·e^(-h·t)·S` per unit distance, with `h = c/2` and `(C, S)`
-/// the pair `SpringTransition` names: `cos`/`sin` over `ω` below critical
-/// damping, `1`/`t` at it, `cosh`/`sinh` over `ψ` above it. The bound is
-/// the energy one, `x² + v²/k < eps²`, with `eps` the type's tolerance.
+/// The first step at which a spring released from rest `distance` from its target is inside its settle bound, from the `f64` closed form `x(t) = e^(-h·t)(C + h·S)`, `v(t) = -k·e^(-h·t)·S` (`h = c/2`, `(C, S)` per `SpringTransition`); the bound is `x² + v²/k < eps²`. Step `n` lasts `dt_of(n)`.
 pub(super) fn closed_form_settle_step(
     stiffness: f64,
     damping: f64,

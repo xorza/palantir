@@ -9,9 +9,7 @@ pub(super) struct RowStats {
 }
 
 impl RowStats {
-    /// Scan one row: writes each diff pixel into `d_row` (red where any
-    /// channel differs, dimmed actual where none does) and returns the
-    /// row's tallies.
+    /// Scan one row: writes each diff pixel into `d_row` (red where any channel differs, dimmed actual where none) and returns the tallies.
     pub(super) fn scan_row(a_row: &[u8], e_row: &[u8], d_row: &mut [u8]) -> Self {
         let mut stats = Self::default();
         for ((a, e), d) in a_row

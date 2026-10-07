@@ -5,12 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_group::TabGroup;
 
-/// Index of a node in [`DockState`](crate::DockState)'s flat tree.
-///
-/// Only stable between structural changes — every one of them re-packs
-/// the vector — so long-lived references use
-/// [`TabGroupId`](crate::TabGroupId) instead, and an operation fed a stale
-/// index bounds-checks and no-ops.
+/// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes (a stale one no-ops), unlike [`TabGroupId`](crate::TabGroupId).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeIndex(pub(crate) u32);
 
@@ -23,16 +18,13 @@ impl NodeIndex {
 /// One node of the flat tree: a division, or a pane.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum DockNode<T> {
-    /// A division of this node's rect between two children.
+    /// A division of this node's rect.
     Split(DockSplit),
-    /// A leaf pane, holding one tab strip.
+    /// A leaf pane with one tab strip.
     Group(TabGroup<T>),
 }
 
-/// A division of one rect between two child nodes.
-///
-/// Read-only outside the crate: a [`DockState`](crate::DockState) keeps its
-/// ratio inside the split clamp, and only its operations change one.
+/// A division of one rect between two child nodes; read-only outside the crate.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DockSplit {
     pub(crate) direction: SplitDirection,
@@ -52,8 +44,7 @@ impl DockSplit {
         self.ratio
     }
 
-    /// The leading child — left in a [`SplitDirection::Row`], top in a
-    /// [`SplitDirection::Column`].
+    /// The leading child: left in a Row, top in a Column.
     pub const fn first(self) -> NodeIndex {
         self.first
     }

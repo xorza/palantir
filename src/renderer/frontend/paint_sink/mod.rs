@@ -1,68 +1,39 @@
 //! The encoder's output surface.
 //!
-//! [`PaintSink`] is the one interface the [`Encoder`] paints through.
-//! In production the only sink is `ComposeSession`, which composes each
-//! call straight into a `RenderBuffer` — there is no intermediate
-//! command stream. Tests and benches add a capturing sink
-//! (`capture`) that holds the same calls as owned values.
+//! [`PaintSink`] is the one interface the [`Encoder`] paints through. In
+//! production the only sink is `ComposeSession`, which composes each call
+//! straight into a `RenderBuffer`; tests and benches add a capturing sink
+//! (`capture`).
 //!
-//! One trait, two halves. A sink *implements* the raw half: one method
-//! per payload kind, and nothing else. The encoder *calls* the provided
-//! half: one `draw_*` no-op gate per kind, which tests `is_noop` and
-//! forwards to the raw method or does nothing. The gates are provided
-//! methods, so there is one copy of each and no sink writes a second.
+//! A sink implements the raw half, one method per payload kind. The encoder
+//! calls the provided `draw_*` gates, which test `is_noop` and forward or do
+//! nothing, so there is one copy of each gate. Payload construction lives on
+//! the payload types (`DrawQuadPayload::rect`, ...), not here.
 //!
-//! Building the payloads is *not* here. A rect's brush lowering, a
-//! shadow's fill lanes, a triangle's geometry — those are constructors
-//! on the payload types (`DrawQuadPayload::rect`,
-//! `PushClipPayload::rect`, …), because none of them touch a sink.
-//! `PaintSink` has one job: receive a paint op.
-//!
-//! The encoder is generic over the sink rather than painting through
-//! `&mut dyn PaintSink`: production has one sink, so every draw of
-//! every shape was an indirect call to a statically known target, and
-//! the gates could not inline through it.
+//! The encoder is generic over the sink, not `&mut dyn PaintSink`, so the
+//! gates inline.
 //!
 //! ## Noop policy
 //!
-//! **The canonical statement of the tier policy — the whole pipeline's,
-//! not just this module's.** Other tiers point here rather than restate
-//! it; what they document locally is which *values* they consider
-//! invisible, never the policy.
+//! The canonical statement of the pipeline's tier policy; other tiers point
+//! here and document only which values they consider invisible.
 //!
-//! `is_noop` appears at three tiers, and they are not redundant with
-//! each other — each answers a different question at a point where the
-//! others cannot:
+//! 1. **Primitives** (`RgbaF32`, `Stroke`, `Shadow`, `Brush`, ...) answer
+//!    whether a value is invisible.
+//! 2. **Authoring shapes** (`Shape::is_noop` at `Shapes::add`;
+//!    `Background::is_noop` at `Tree::open_node`) skip lowering work, which a
+//!    payload-level gate cannot, since the work has already happened.
+//! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from the `draw_*`
+//!    gates) are the single correctness gate; callers do not pre-check.
 //!
-//! 1. **Primitives** (`RgbaF32`, `Stroke`, `Shadow`, `Brush`,
-//!    `TranslateScale`, …) answer "is this *value* invisible". They are
-//!    the vocabulary the other two tiers are written in.
-//! 2. **Authoring shapes** (`Shape::is_noop`, at `Shapes::add`) compose
-//!    those to skip *lowering* — text shaping, payload staging, mesh
-//!    hashing. A payload-level gate cannot do this job: by the time a
-//!    payload exists, the work being skipped has already happened.
-//!    `Background::is_noop` at `Tree::open_node` is the same tier for
-//!    chrome, skipping a sparse-column write.
-//! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from this
-//!    trait's `draw_*` gates) are the **single correctness gate**.
-//!    Callers don't pre-check and the encoder doesn't gate per branch;
-//!    everything funnels here.
+//! Tier 2 is an optimization, tier 3 correctness. The gate is bypassable
+//! (`sink.quad(payload)` compiles anywhere); `PaintCapture::replay` does so
+//! because its input already passed.
 //!
-//! So tier 2 is an optimization and tier 3 is correctness — a shape
-//! that slips past tier 2 still paints nothing, but pays for lowering.
-//! The gate is not *unbypassable*: `PaintSink` is crate-visible, so
-//! `sink.quad(payload)` compiles anywhere and skips it.
-//! `PaintCapture::replay` is the one place that does, and only because
-//! its input already passed.
-//!
-//! Exception: [`PaintSink::draw_polyline`] *asserts* its geometry
-//! before it gates. Its geometry conditions are caught by
-//! `Shape::Polyline::is_noop` at tier 2, and unlike every other
-//! payload's they are authoring-derived, so nothing between the two
-//! tiers can invalidate them: a degenerate polyline here is a broken
-//! contract, which is what an assert says and a silent `return` does
-//! not. The gate after it still drops the payload's own no-op cases.
-//!
+//! Exception: [`PaintSink::draw_polyline`] asserts its geometry before
+//! gating. `Shape::Polyline::is_noop` catches those conditions at tier 2 and
+//! nothing between the tiers can invalidate them, so a degenerate polyline
+//! here is a broken contract. The gate still drops the payload's own no-ops.
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -75,19 +46,14 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
-/// Sink for one frame's lowered paint operations, in authoring order.
+/// Sink for one frame's lowered paint operations, in authoring order. The
+/// required methods are what a sink implements; the provided `draw_*` gates
+/// are what the encoder paints through, and no sink overrides them.
 ///
-/// The required methods are exactly the calls a sink implements. The
-/// provided `draw_*` methods below are the no-op gates the encoder
-/// paints through, and no sink overrides them.
-///
-/// Each gate takes an `alpha` — a paint animation's opacity — and folds
-/// it into the payload before testing it, so a shape animated to nothing
-/// drops out through the gate that was already there. **It is a parameter
-/// rather than something the caller folds in** because the encoder emits
-/// a shape through one of these and nothing else: an arm that forgot to
-/// fade would compile and silently ignore the animation. `1.0` is "no
-/// animation", which is every draw outside a node's own shapes.
+/// Each gate takes an `alpha` (a paint animation's opacity) and folds it into
+/// the payload before testing it, so a shape animated to nothing drops out
+/// through the existing gate. It is a parameter so an encoder arm cannot
+/// forget to fade. `1.0` means no animation.
 pub(crate) trait PaintSink {
     /// Push a clip region. `payload.corners` is zero for a rect clip.
     fn push_clip(&mut self, payload: PushClipPayload);
@@ -98,33 +64,27 @@ pub(crate) trait PaintSink {
 
     fn pop_transform(&mut self);
 
-    /// One quad-tier draw — rect, windowed rect, shadow, or triangle.
-    /// All four funnel through the one gate below, so they cannot drift
-    /// apart on what counts as invisible.
+    /// One quad-tier draw (rect, windowed rect, shadow or triangle), all
+    /// through one gate so they agree on what is invisible.
     fn quad(&mut self, payload: DrawQuadPayload);
 
     fn text(&mut self, payload: DrawTextPayload);
 
-    /// Paint a mesh against already-staged vertices + indices in
-    /// `RecordStore.meshes`. The recorder pushes verts (translated
-    /// into the owner's logical-px world coords) and indices directly,
-    /// so the encoder applies the owner-rect offset inline without an
-    /// intermediate scratch buffer.
+    /// Paint a mesh against vertices and indices already staged in
+    /// `RecordStore.meshes`.
     fn mesh(&mut self, payload: DrawMeshPayload);
 
-    /// Paint a polyline against already-staged points and colors, on the
-    /// same terms as [`Self::mesh`]. The `color_mode`-dictated
-    /// `colors_len` is a caller invariant checked upstream by
+    /// Paint a polyline against already-staged points and colors. The
+    /// `color_mode`-dictated `colors_len` is checked upstream by
     /// `PolylineColors::assert_matches` in `lower::polyline`.
     fn polyline(&mut self, payload: DrawPolylinePayload);
 
-    /// Paint a textured rect, with the `GpuView` callback beside it when
-    /// this composites one — see [`ImageDraw`].
+    /// Paint a textured rect, with the `GpuView` callback when this
+    /// composites one; see [`ImageDraw`].
     fn image(&mut self, draw: ImageDraw<'_>);
 
-    /// Paint a baked icon. Nothing is rasterized here — the sink records
-    /// which icon at which logical rect, and the backend resolves that to
-    /// pixels once the physical size is known.
+    /// Paint a baked icon: the sink records which icon at which logical rect,
+    /// and the backend rasterizes it once the physical size is known.
     fn icon(&mut self, payload: DrawIconPayload);
 
     fn curve(&mut self, payload: DrawCurvePayload);
@@ -186,25 +146,12 @@ pub(crate) trait PaintSink {
     #[inline]
     fn draw_polyline(&mut self, payload: DrawPolylinePayload, alpha: f32) {
         let payload = payload.faded(alpha);
-        // The geometry half is asserted, not gated — the one no-op
-        // condition *already guaranteed* when it gets here, so a failure
-        // is a broken contract rather than a value to filter. The fade
-        // is gated below like every sibling's.
-        //
-        // Both geometry conditions are authoring-derived and unchanged by
-        // lowering: `PolylineShape::is_noop` rejects `< 2` points and a
-        // non-painting width before `Shapes::add` lowers anything, and
-        // the encoder forwards the record's span length and width
-        // verbatim. The other payloads gate instead of asserting
-        // because theirs are layout *outputs* — a rect resolved from
-        // the owner's arranged box, a text extent from the shaped
-        // measure — which can legitimately collapse to nothing.
-        //
-        // Debug-only is safe: `is_noop` below covers the geometry as well,
-        // so a release build drops a degenerate polyline anyway, and the
-        // composer emits no geometry for one either (pinned by
-        // `degenerate_polyline_emits_nothing_rather_than_panicking`). The
-        // assert is there to name the broken upstream contract.
+        // Geometry is asserted, not gated: `PolylineShape::is_noop` rejects
+        // `< 2` points and a non-painting width before lowering, and the
+        // encoder forwards both verbatim. Other payloads gate because theirs
+        // are layout outputs that can legitimately collapse. Debug-only is
+        // safe: `is_noop` below also covers the geometry, and the composer
+        // emits nothing for one. The assert names the broken contract.
         debug_assert!(
             !payload.is_degenerate(),
             "degenerate polyline reached the sink — `PolylineShape::is_noop` \

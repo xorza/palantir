@@ -1,5 +1,4 @@
-//! Per-side padding and margin, four f16 lanes in eight bytes — the same
-//! packing `Corners` and `RgbaF16` use, with edge names on the lanes.
+//! Per-side padding and margin: four f16 lanes in eight bytes, like `Corners` and `RgbaF16`.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::Num;
@@ -7,16 +6,11 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
 use std::ops;
 
-/// Per-side spacing (padding / margin), packed as four f16 lanes in
-/// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
+/// Per-side spacing (padding / margin) as four f16 lanes in `[u16; 4]`, order `left | top | right | bottom`.
 ///
-/// Precision: lossless for integer values up to 2048. Above that an f16
-/// step is 2 px below 4096 and 4 px below 8192, so a value rounds by up to
-/// ±1 px and ±2 px there. UI spacing never approaches the f16 ceiling.
+/// Lossless for integers up to 2048; above that an f16 step is 2 px below 4096 and 4 px below 8192, rounding by up to ±1 px and ±2 px.
 ///
-/// Hash delegates to the packed `F16x4` representation (one `u64` write) —
-/// `LayoutCore::hash_with_flags` folds this twice per node every frame (padding + margin),
-/// so the single-write form matters.
+/// Hash is one `u64` write of the packed form; `LayoutCore::hash_with_flags` folds this twice per node every frame.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing(F16x4);
@@ -24,8 +18,7 @@ pub struct Spacing(F16x4);
 f16x4_lanes!(Spacing, [left, top, right, bottom]);
 
 impl Spacing {
-    /// Packed 8-byte form. Used by `LayoutCore::hash_with_flags` to fold the
-    /// padding + margin lanes into the parent hasher write.
+    /// Packed 8-byte form, used by `LayoutCore::hash_with_flags`.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
@@ -39,8 +32,7 @@ impl Spacing {
         Self(F16x4::from_lanes([v, v, v, v]))
     }
 
-    /// `x` on left and right, `y` on top and bottom — the CSS two-value
-    /// shorthand.
+    /// `x` on left and right, `y` on top and bottom (CSS two-value shorthand).
     #[inline]
     pub fn xy(x: f32, y: f32) -> Self {
         Self(F16x4::from_lanes([x, y, x, y]))
@@ -52,8 +44,7 @@ impl Spacing {
         Self(F16x4::from_lanes([left, top, right, bottom]))
     }
 
-    /// Inverse of [`Self::as_array`] — the four-lane f32→f16 pack. Use at
-    /// hot sites that compute all four.
+    /// Inverse of [`Self::as_array`]: the f32→f16 pack, for hot sites computing all four.
     #[inline]
     pub fn from_array(v: [f32; 4]) -> Self {
         Self(F16x4::from_lanes(v))
@@ -91,9 +82,7 @@ impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
     }
 }
 
-/// Wire format: see [`LaneCodec`] — a scalar, a 1/2/4-node array, or a
-/// `{left, top, right, bottom}` table. The 2-node shorthand is
-/// `[horizontal, vertical]`, matching CSS's two-value padding.
+/// Wire format: see [`LaneCodec`]. The 2-node shorthand is `[horizontal, vertical]`.
 impl LaneCodec for Spacing {
     const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
 

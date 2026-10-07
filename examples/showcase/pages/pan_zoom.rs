@@ -1,16 +1,6 @@
-//! `Scroll::both().zoomable()` — bare wheel pans, `Ctrl/Cmd + wheel`
-//! zooms about the cursor, pinch zooms unconditionally. Pin the cursor
-//! to a cell and scroll-zoom: the cell stays under the cursor.
-//!
-//! The radio picks the viewport content: a dense 24×24 button grid
-//! (~580 nodes — cells are buttons so hover / press / click input works
-//! through the transform), or a heavier mixed document (~2000 nodes:
-//! grids, wrapping text, gradient swatches, polylines, chat rows) for
-//! benchmarking. The auto-drive checkbox pans and zooms the viewport
-//! every frame from a bounded cosine oscillator, through
-//! `Scroll::pan_by` and `Scroll::zoom_by` — the same clamp a wheel
-//! takes, and no pointer involved, so it drives the view without
-//! touching the real cursor.
+//! `Scroll::both().zoomable()`: bare wheel pans, `Ctrl/Cmd + wheel` zooms about the cursor, pinch zooms.
+//! A radio picks the content: a 24×24 button grid (~580 nodes) or a heavier mixed document (~2000 nodes) for
+//! benchmarking; auto-drive pans and zooms every frame through `Scroll::pan_by`/`zoom_by`, the same clamp a wheel takes.
 
 use crate::support;
 use palantir::SlotDefaults;
@@ -34,8 +24,7 @@ enum Content {
 struct State {
     content: Content,
     auto: bool,
-    /// Auto-drive frame counter, the oscillator's phase. Reset when the
-    /// drive stops, so it always starts from the same pose.
+    /// Auto-drive frame counter, the oscillator's phase; reset when the drive stops.
     tick: u32,
     last_click: Option<(u32, u32)>,
 }
@@ -46,8 +35,6 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut State) {
-    // A zero pan and an identity zoom are no-ops, so the viewport below
-    // takes the request unconditionally and the branch stays here.
     let mut auto_pan = Vec2::ZERO;
     let mut auto_zoom = 1.0;
     if s.auto {
@@ -95,8 +82,6 @@ fn page(ui: &mut Ui, s: &mut State) {
     }
 }
 
-/// The heavy mixed document — a long vertical run of grids, wrapping
-/// text, gradient swatches, polylines, and button grids.
 fn document(ui: &mut Ui, clicked: &mut Option<(u32, u32)>) {
     Panel::vstack().gap(16.0).padding(8.0).show(ui, |ui| {
         header_band(ui);
@@ -215,9 +200,7 @@ fn cell_grid(
     cols: u32,
     clicked: &mut Option<(u32, u32)>,
 ) {
-    // One theme for the whole grid, repointed per cell: only the fill
-    // varies, and a `ButtonTheme` is four `WidgetLook`s deep — building
-    // one per cell was the largest piece of per-cell work on the page.
+    // One theme for the whole grid, repointed per cell: building a `ButtonTheme` per cell would dominate per-cell work.
     let mut style = cell_theme();
     Panel::vstack().id_salt(salt).gap(4.0).show(ui, |ui| {
         for r in 0..rows {
@@ -234,9 +217,7 @@ fn cell_grid(
 }
 
 fn cell(ui: &mut Ui, r: u32, c: u32, style: &ButtonTheme) -> bool {
-    // Formatted into the record arena rather than a `String`: this runs for
-    // every cell of every grid every frame, and the page is the pan/zoom
-    // benchmark workload.
+    // Formatted into the record arena, not a `String`: this runs for every cell every frame.
     let label = fmt!(ui, "{r},{c}");
     Button::new()
         .id_salt(c)
@@ -298,10 +279,7 @@ fn canvas_polylines(ui: &mut Ui) {
         .show(ui, |ui| {
             Block::new().size((Sizing::FILL, Sizing::FILL)).show(ui);
             for line in 0..6 {
-                // Fixed count, so the points sit on the stack — a `Vec` per
-                // line per frame was six allocations for a shape whose size
-                // is a literal. Adjacent points are 24 px apart in x, so
-                // there is nothing for a coincident-point dedup to find.
+                // Fixed count, so the points sit on the stack instead of a `Vec` per line per frame.
                 let pts: [Vec2; 32] = array::from_fn(|i| {
                     let x = i as f32 * 24.0 + 8.0;
                     let phase = line as f32 * 0.6 + i as f32 * 0.25;
@@ -322,10 +300,7 @@ fn canvas_polylines(ui: &mut Ui) {
         });
 }
 
-/// Everything a cell's `ButtonTheme` shares: the label ink, the padding,
-/// and the anim that drives a smooth fill transition on hover and press.
-/// The four backgrounds are left to [`recolor_cell`], which is all that
-/// differs between cells.
+/// What a cell's `ButtonTheme` shares; [`recolor_cell`] sets the four backgrounds, the only per-cell difference.
 fn cell_theme() -> ButtonTheme {
     let label = TextStyleOverrides::NONE
         .with_font_size(11.0)
@@ -349,8 +324,7 @@ fn cell_theme() -> ButtonTheme {
     }
 }
 
-/// Point `theme`'s four states at one cell's colour: normal is the base,
-/// hovered is brightened, pressed is brightest with a focus stroke.
+/// Points `theme`'s four states at one cell's colour.
 fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
     let bg = |fill: RgbaF32| Background::rounded(fill, Corners::all(3.0));
     theme.looks.normal.background = bg(base);

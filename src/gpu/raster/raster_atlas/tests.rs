@@ -1,13 +1,12 @@
-//! The raster atlas's wire metadata, its expiry of empty entries, and
-//! growth under the byte budget.
+//! The raster atlas's wire metadata, expiry of empty entries, and growth under
+//! the byte budget.
 
 use super::*;
 use etagere::AllocId;
 use glam::{I16Vec2, IVec2, UVec2};
 
-/// The atlas is generic over its key, so its own tests use the cheapest one
-/// that satisfies the bounds rather than either tenant's — nothing here
-/// depends on what a key means.
+/// The atlas is generic over its key, so its tests use the cheapest one that
+/// satisfies the bounds; nothing depends on what a key means.
 type TestKey = u16;
 
 fn key(id: u16) -> TestKey {
@@ -60,9 +59,9 @@ fn packed_metadata_checks_every_wire_boundary() {
     }
 }
 
-/// Each non-drawing entry retires on its own last use rather than on
-/// a shared tick. At frame 1024 with a 120-frame window, an entry
-/// dies once `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
+/// Each non-drawing entry retires on its own last use, not a shared tick. At
+/// frame 1024 with a 120-frame window an entry dies once
+/// `last_use + 120 + 1 <= 1024`, i.e. `last_use <= 903`.
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
     let mut slots = vec![
@@ -77,8 +76,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
         cache.insert(key(i as u16 + 1), i);
     }
     let mut free = FreeSlots::default();
-    // No side: every entry this wheel reclaims is non-drawing, so
-    // `FreeSlots::release` never reaches for a packer to deallocate into.
+    // No side: every entry here is non-drawing, so `FreeSlots::release` never needs a packer.
     let refile = |cache: &mut FxHashMap<TestKey, u32>,
                   slots: &mut [AtlasSlot],
                   free: &mut FreeSlots,
@@ -112,23 +110,18 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     // Reclaimed slab slots are handed back for reuse, in ticket order.
     assert_eq!(free.as_slice(), [0, 1]);
 
-    // A second ticket for an already-reclaimed key is a no-op, not a
-    // double free — that is what makes an early or duplicate fire safe.
+    // A second ticket for a reclaimed key is a no-op, making an early or
+    // duplicate fire safe.
     assert_eq!(refile(&mut cache, &mut slots, &mut free, key(1)), None);
     assert_eq!(free.as_slice(), [0, 1]);
 }
 
-/// Growth stops at the byte budget, not at whatever the adapter
-/// happens to allow — the whole point of the ceiling.
-///
-/// The exactness matters: 16 MiB is `2^24` and both pixel sizes are
-/// powers of two, so the ceiling lands on a power-of-two side and
-/// the doubling sequence reaches it precisely rather than stopping
-/// one short or clamping to an odd size.
+/// Growth stops at the byte budget, not the adapter's limit. 16 MiB is `2^24`
+/// and both pixel sizes are powers of two, so the ceiling is a power-of-two
+/// side and the doubling sequence reaches it exactly.
 #[test]
 fn growth_stops_at_the_byte_budget_not_the_device_limit() {
-    // What both tenants configure today. Per-instance now, so this pins the
-    // arithmetic rather than a shared constant.
+    // What both tenants configure today; the budget is per instance.
     const BUDGET: u64 = 16 << 20;
     for device_max in [8192, 16384, 32768] {
         assert_eq!(
@@ -142,8 +135,7 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
             "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
         );
     }
-    // Both ceilings are exactly the budget, so neither wastes half a
-    // doubling nor overshoots it.
+    // Both ceilings are exactly the budget.
     for (content, side) in [(ContentType::Mask, 4096u64), (ContentType::Color, 2048)] {
         let bytes = side * side * u64::from(content.bytes_per_pixel());
         assert_eq!(bytes, BUDGET, "{content:?}");
@@ -152,9 +144,8 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
     assert_eq!(Side::growth_ceiling(1024, ContentType::Mask, BUDGET), 1024);
     assert_eq!(Side::growth_ceiling(512, ContentType::Color, BUDGET), 512);
 
-    // The budget is per instance, so a tenant can buy itself more room
-    // without moving the other's ceiling. Quadrupling the bytes doubles the
-    // side, which is the relationship a caller has to reason about.
+    // The budget is per instance, so a tenant can buy more room without moving
+    // the other's ceiling. Quadrupling the bytes doubles the side.
     assert_eq!(
         Side::growth_ceiling(16384, ContentType::Color, BUDGET * 4),
         4096
@@ -165,16 +156,14 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
     );
 }
 
-/// The clock skips exactly three things — wrong content, no
-/// rectangle to reclaim, and drawn on the current frame — and takes
-/// the first survivor in hand order rather than the globally oldest.
+/// The clock skips exactly three things (wrong content, no rectangle to
+/// reclaim, drawn on the current frame) and takes the first survivor in hand
+/// order, not the globally oldest.
 ///
-/// The second half is the property the whole change turns on: the
-/// hand *persists*. A second eviction resumes past the first victim
-/// instead of restarting, which is what makes a run of evictions
-/// cost one rotation between them all rather than a full slab walk
-/// each. Slot 5 is deliberately older than slot 1, so an exact-LRU
-/// picker would answer 5 first and this must not.
+/// The hand persists: a second eviction resumes past the first victim, so a
+/// run of evictions costs one rotation between them, not a slab walk each.
+/// Slot 5 is deliberately older than slot 1; an exact-LRU picker would answer
+/// 5 first.
 #[test]
 fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     let slots = vec![
@@ -192,8 +181,8 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         AtlasSlot::for_test(Some(AllocId::deserialize(5)), 1),  // the true LRU
     ];
 
-    // From rest, the first eligible mask slot is 0 — not 5, which is
-    // older. One step examined, and the hand parks past it.
+    // From rest, the first eligible mask slot is 0, not the older 5. One step
+    // examined; the hand parks past it.
     let first = ClockSweep::over(&slots, 0, ContentType::Mask, 10);
     assert_eq!(
         first,
@@ -203,8 +192,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
             examined: 1,
         },
     );
-    // Resuming from there takes slot 1 — again one step, because the
-    // hand did not restart.
+    // Resuming takes slot 1 in one step: the hand did not restart.
     let second = ClockSweep::over(&slots, first.hand, ContentType::Mask, 10);
     assert_eq!(
         second,
@@ -214,8 +202,8 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
             examined: 1,
         },
     );
-    // Now it must walk over the unallocated slot 2, the colour slot
-    // 3, and the current-frame slot 4 to reach 5.
+    // Now it walks over unallocated slot 2, colour slot 3 and current-frame
+    // slot 4 to reach 5.
     let third = ClockSweep::over(&slots, second.hand, ContentType::Mask, 10);
     assert_eq!(
         third,
@@ -230,11 +218,9 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         ClockSweep::over(&slots, 5, ContentType::Color, 10).victim,
         Some(3),
     );
-    // Nothing eligible: one full rotation, no victim, and the hand
-    // is left where it started so the next call is not skewed.
-    // Frame 1, not 2 — slot 5's `last_use` of 1 still qualifies at
-    // frame 2, and the oldest mask slot has to be *at* the frame for
-    // the side to be genuinely dry.
+    // Nothing eligible: one full rotation, no victim, hand left where it
+    // started. Frame 1, not 2: slot 5's `last_use` of 1 still qualifies at
+    // frame 2, and the oldest slot must be at the frame for the side to be dry.
     let dry = ClockSweep::over(&slots, 2, ContentType::Mask, 1);
     assert_eq!(
         dry,
@@ -255,19 +241,16 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
 }
 
-/// The escalation ladder in [`RasterAtlas::allocate`], driven against a
-/// real device because growing a side allocates a texture.
+/// The escalation ladder in [`RasterAtlas::allocate`], driven against a real
+/// device because growing a side allocates a texture.
 mod gpu {
     use super::*;
     use crate::gpu::test_gpu::headless_test_gpu;
 
-    /// A mask side that starts at 128² and tops out at 256², so one
-    /// insert can walk the whole ladder — fits, grows, or is refused —
-    /// without allocating anything a test machine notices.
-    ///
-    /// `eager_growth_bytes` is zero on purpose: the eager arm is
-    /// [`growth_stops_at_the_byte_budget_not_the_device_limit`]'s
-    /// business, and leaving it on here would hide which arm answered.
+    /// A mask side that starts at 128² and tops out at 256², so one insert can
+    /// walk the whole ladder cheaply. `eager_growth_bytes` is zero because the
+    /// eager arm belongs to
+    /// [`growth_stops_at_the_byte_budget_not_the_device_limit`].
     fn small_atlas(device: &wgpu::Device) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
             device,
@@ -283,8 +266,7 @@ mod gpu {
         )
     }
 
-    /// Insert `count` 16² mask entries, all stamped with the current
-    /// frame.
+    /// Insert `count` 16² mask entries, all stamped with the current frame.
     fn fill(atlas: &mut RasterAtlas<TestKey>, device: &wgpu::Device, count: u16) {
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
@@ -298,21 +280,17 @@ mod gpu {
         }
     }
 
-    /// An entry taller or wider than the side will *ever* be cannot be
-    /// made to fit by freeing rectangles, so the eviction loop must not
-    /// run for it. Left unguarded this is the worst thrash the atlas can
-    /// reach: one oversized glyph — a canvas zoomed past the mask
-    /// ceiling, an emoji past the colour one — empties the whole side
-    /// every frame it is asked for, and the run it belongs to is refused
-    /// as a template, so it *is* asked for again next frame.
+    /// An entry larger than the side will ever be cannot fit by freeing
+    /// rectangles, so the eviction loop must not run for it; otherwise one
+    /// oversized glyph empties the whole side every frame it is asked for.
     #[test]
     fn an_entry_past_the_ceiling_is_refused_without_evicting_anything() {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
         fill(&mut atlas, &gpu.device, 16);
-        // Age every entry out of the current frame so all 16 are
-        // eligible victims — otherwise the clock would protect them and
-        // the test would pass for the wrong reason.
+        // Age every entry out of the current frame so all 16 are eligible
+        // victims; otherwise the clock protects them and the test passes
+        // for the wrong reason.
         atlas.advance_to(1);
 
         let metadata = PackedMetadata::new(UVec2::new(300, 300), IVec2::new(0, 0)).unwrap();
@@ -328,15 +306,11 @@ mod gpu {
         );
     }
 
-    /// A frame that asks for more than its atlas holds must not pay a
-    /// clock rotation per starving entry.
-    ///
-    /// Once every slot of a side carries the current frame's stamp,
-    /// nothing can become evictable until the clock advances — so the
-    /// first rotation that comes up empty is the last one worth walking.
-    /// Unmemoized this is O(slab) per starving entry, quadratic in the
-    /// slab, and it lands on exactly the frame already too busy to draw
-    /// what it was asked for.
+    /// A frame asking for more than its atlas holds must not pay a clock
+    /// rotation per starving entry. Once every slot carries the current
+    /// frame's stamp nothing is evictable until the clock advances, so the
+    /// first empty rotation is the last worth walking; unmemoized it is
+    /// quadratic in the slab.
     #[test]
     fn a_side_walked_dry_is_not_walked_again_until_the_clock_moves() {
         let gpu = headless_test_gpu();
@@ -344,9 +318,8 @@ mod gpu {
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
 
-        // Saturate the side. Uniform 16² tiles shelf-pack a 256² side
-        // with no waste — 16 shelves of 16 — so the capacity is exact
-        // rather than a property of etagere's packing heuristics.
+        // Saturate the side: uniform 16² tiles shelf-pack a 256² side with no
+        // waste (16 shelves of 16), so capacity is exact.
         let mut placed = 0u16;
         while atlas
             .insert(
@@ -363,9 +336,8 @@ mod gpu {
         assert_eq!(placed, 256);
         assert_eq!(atlas.slots.len(), placed as usize, "no evictions yet");
 
-        // Redraw the whole working set on the next frame, which is what
-        // a real frame does before it starts starving: every slot is now
-        // stamped with the current frame and none of them is a victim.
+        // Redraw the whole working set next frame, as a real frame does before
+        // starving: every slot is stamped current, none a victim.
         atlas.advance_to(1);
         for i in 0..placed {
             assert!(atlas.touch(&key(i)).is_some(), "tile {i} is resident");
@@ -392,8 +364,7 @@ mod gpu {
              for the seven after it — not eight rotations",
         );
 
-        // The clock advancing is what makes the side worth walking
-        // again, and now every slot is a victim, so the entry lands.
+        // The clock advancing makes the side worth walking again; now every slot is a victim.
         atlas.advance_to(2);
         let evicted_before = atlas.counters.evictions.count();
         assert!(
@@ -402,12 +373,10 @@ mod gpu {
                 .is_some(),
             "an aged-out tile is evictable again",
         );
-        // How *many* victims one tile costs is etagere's bucket
-        // granularity — a bucket only returns its shelf space once every
-        // item in it is gone — so the count is read rather than pinned.
-        // What this atlas owes is the conservation law around it: every
-        // entry that left, left through `evict_one`, so the resident set
-        // shrank by exactly the evictions and not by a wipe.
+        // How many victims one tile costs is etagere's bucket granularity, so
+        // the count is read, not pinned. The atlas owes the conservation law:
+        // every entry that left did so through `evict_one`, so the resident set
+        // shrank by exactly the evictions.
         let evicted = atlas.counters.evictions.count() - evicted_before;
         assert!(
             evicted > 0,
@@ -420,10 +389,9 @@ mod gpu {
         );
     }
 
-    /// [`RasterAtlas::forget`] retires a whole family of keys at once —
-    /// what the clock cannot do, because a dead entry looks exactly like a
-    /// cold one to it. Everything the predicate keeps must come through
-    /// untouched, rectangles included.
+    /// [`RasterAtlas::forget`] retires a whole family of keys at once, which
+    /// the clock cannot (a dead entry looks cold). Everything the predicate
+    /// keeps comes through untouched, rectangles included.
     #[test]
     fn forget_retires_the_keys_it_rejects_and_nothing_else() {
         let gpu = headless_test_gpu();
@@ -435,8 +403,7 @@ mod gpu {
                 .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
                 .expect("eight 16² tiles fit a 128² side");
         }
-        // A non-drawing entry too: it owns no rectangle, so only its
-        // expiry ticket would ever have retired it.
+        // A non-drawing entry too: only its expiry ticket would retire it.
         atlas.insert_unallocated(key(100));
         assert_eq!(atlas.cache.len(), 9);
 
@@ -457,11 +424,10 @@ mod gpu {
         assert!(atlas.touch(&key(100)).is_none());
         assert_eq!(atlas.cache.len(), 4);
 
-        // A freed slab index still holds its old key in `slot_keys`, so
-        // a walk that decided liveness from that column would reclaim it
-        // a second time and hand one index to two future inserts. This
-        // pass rejects every key already retired above and must find
-        // nothing: the map is the only authority on which indices live.
+        // A freed slab index still holds its old key in `slot_keys`; a walk
+        // deciding liveness from that column would reclaim it twice and hand
+        // one index to two inserts. This pass must find nothing: the map is
+        // the only authority on which indices live.
         let free_before = atlas.free.as_slice().len();
         atlas.forget(|k| k % 2 == 0 && *k != 100);
         assert_eq!(
@@ -471,9 +437,8 @@ mod gpu {
         );
         assert_eq!(atlas.cache.len(), 4, "and the live entries are untouched");
 
-        // The reclaimed rectangles are genuinely back: the side had room
-        // for eight and holds four, so four more must land without a grow
-        // or an eviction.
+        // The reclaimed rectangles are back: the side had room for eight and
+        // holds four, so four more land without a grow or eviction.
         let before = atlas.counters.evictions.count();
         for i in 200..204u16 {
             assert!(
@@ -490,11 +455,10 @@ mod gpu {
         );
     }
 
-    /// An entry that fits the ceiling but not the *current* side has to
-    /// grow, whatever the byte budget says: eviction frees rectangles
-    /// and never widens the texture, so every victim it takes is
-    /// spent for nothing. The side extents bracket the insert, so they
-    /// pin that only the side that grew moves.
+    /// An entry that fits the ceiling but not the current side must grow
+    /// whatever the byte budget says: eviction frees rectangles but never
+    /// widens the texture. The side extents bracket the insert, pinning that
+    /// only the side that grew moves.
     #[test]
     fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
         let gpu = headless_test_gpu();

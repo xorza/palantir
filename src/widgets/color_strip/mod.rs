@@ -27,17 +27,10 @@ use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::Vec2;
 
-/// A one-axis bar of a colour picker: the hue ramp, or the alpha ramp of one
-/// colour over its checker.
+/// A one-axis bar of a colour picker: the hue ramp, or one colour's alpha ramp over its checker.
 ///
-/// Both are exact per texel, for the reason [`ColorField`](crate::ColorField)
-/// gives. The hue ramp especially: it runs along the sRGB gamut edge, which
-/// turns a corner at each primary and secondary, and a gradient chording
-/// across those corners misses by up to 73/255.
-///
-/// The alpha bar writes **real alpha** into its image and lets the GPU
-/// composite it over the checker behind — the same blend the colour will get
-/// wherever it is used, rather than a CPU imitation of it.
+/// Exact per texel, as [`ColorField`](crate::ColorField) explains; the alpha bar writes real alpha and
+/// lets the GPU composite it over the checker.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorStrip<'a> {
@@ -49,11 +42,7 @@ pub struct ColorStrip<'a> {
 
 #[derive(Debug)]
 enum StripKind<'a> {
-    /// Hue needs the whole coordinate, not a bare `f32`: hue alone does not
-    /// say which model to paint the ramp in.
     Hue(&'a mut ColorCoords),
-    /// Alpha needs the whole colour: it reads three channels for the ramp and
-    /// writes the fourth.
     Alpha(&'a mut RgbaF32),
 }
 
@@ -73,18 +62,13 @@ const ALONG: AxisKeys = AxisKeys {
 };
 
 impl<'a> ColorStrip<'a> {
-    /// A hue bar driving `coords`, painted in that value's model.
     #[track_caller]
+    /// A strip over the hue of `coords`.
     pub fn for_hue(coords: &'a mut ColorCoords) -> Self {
         Self::new(StripKind::Hue(coords))
     }
 
-    /// An alpha bar over `color`, showing that colour from transparent to
-    /// opaque and writing its alpha.
-    ///
-    /// Not `alpha`: that is a *setter* on the picker next door
-    /// ([`ColorPicker::alpha`](crate::ColorPicker::alpha)), and one word
-    /// cannot mean both a setter and a constructor.
+    /// An alpha bar over `color`. Not named `alpha`, which is a picker setter.
     #[track_caller]
     pub fn for_alpha(color: &'a mut RgbaF32) -> Self {
         Self::new(StripKind::Alpha(color))
@@ -102,9 +86,7 @@ impl<'a> ColorStrip<'a> {
         }
     }
 
-    /// The edge of one texture texel, in physical pixels: how far below the
-    /// display's resolution the texture is built, as a power of two.
-    /// Default 4. See
+    /// Edge of one texture texel in physical pixels, a power of two; default 4. See
     /// [`ColorField::texel_size`](crate::ColorField::texel_size).
     ///
     /// # Panics
@@ -116,14 +98,13 @@ impl<'a> ColorStrip<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Theme slot.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the bar and report what the gesture did to the value it writes.
+    /// Records the strip.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         let theme = self.style.unwrap_or(&ui.theme().color_picker);
         let themed = Size::new(
@@ -218,8 +199,6 @@ impl StripKind<'_> {
     }
 }
 
-/// What one bar's texture shows, and everything its fill reads — so the
-/// rebuild key: a hue bar follows its model, an alpha bar its colour.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum StripPaint {
     Hue(ColorModel),
@@ -231,7 +210,6 @@ impl StripPaint {
         matches!(self, Self::Alpha(_))
     }
 
-    // Both ramps vary along one axis; reuse each column conversion for every row.
     fn fill(self, image: &mut Image) {
         let width = image.size().x;
         for (column, texel) in image.row_mut(0).iter_mut().enumerate() {
@@ -249,9 +227,8 @@ fn keyboard_travel(ui: &mut Ui, kind: &mut StripKind<'_>) -> bool {
     let travel = ALONG.travel(ui, kind.read());
     let mut at = travel.to;
     if !travel.jumped && matches!(kind, StripKind::Hue(_)) && !(0.0..=1.0).contains(&at) {
-        // Steps go round the hue circle; positions do not. A step past an
-        // end wraps here, and every write — a drag to the edge, Home, End —
-        // clamps in `ColorCoords::set_hue`.
+        // Steps wrap round the hue circle; positions do not (drag, Home, End clamp in
+        // `ColorCoords::set_hue`).
         at = at.rem_euclid(1.0);
     }
     kind.write(at)

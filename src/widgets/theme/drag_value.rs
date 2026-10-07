@@ -1,5 +1,4 @@
-//! What a drag value wears: the scrub chip, and the text field it becomes
-//! while it is being typed into.
+//! What a drag value wears: the scrub chip and the text field it becomes while typed into.
 
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widgets::theme::ThemeText;
@@ -7,29 +6,17 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
 
-/// Theme for [`crate::DragValue`]: the scrub `chip` (a [`ButtonTheme`]) and the
-/// inline `editor` (a [`TextEditTheme`]) it swaps to under
-/// [`crate::DragValue::editable`]. Bundling both — built from one source via
-/// [`Self::from_chip`] — keeps them the same box size, so entering edit mode
-/// doesn't resize or restyle the field, and lets the editor's caret / selection
-/// match the app's other text fields.
+/// Theme for [`crate::DragValue`]: scrub `chip` ([`ButtonTheme`]) and inline `editor` ([`TextEditTheme`]) used under [`crate::DragValue::editable`]. Built from one source via [`Self::from_chip`], so both modes share a box size and edit mode doesn't resize or restyle.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DragValueTheme {
-    /// Chrome for the scrub chip — the DragValue-specific `ButtonTheme`
-    /// slot (`Button`/`ComboBox` default to `Theme::button` instead).
+    /// Chrome for the scrub chip: the DragValue-specific `ButtonTheme` slot (`Button`/`ComboBox` use `Theme::button`).
     pub chip: ButtonTheme,
-    /// Chrome for the inline editor. Its box (padding / margin / backgrounds)
-    /// mirrors `chip`; its caret / selection come from the app's text-edit look.
+    /// Chrome for the inline editor; box mirrors `chip`, caret / selection come from the text-edit look.
     pub editor: TextEditTheme,
 }
 
 impl DragValueTheme {
-    /// Derive from a `chip` look: the editor inherits the chip's box (padding /
-    /// margin / per-state backgrounds) so the two modes are pixel-identical,
-    /// while caret / selection / placeholder come from `text_edit` so they match
-    /// the app's other fields. The editor's `active` (= focused) maps to the
-    /// chip's `hovered` look — the chip is already hovered under the pointer
-    /// that clicked it.
+    /// Derive from a `chip`: the editor inherits its box for pixel-identical modes, caret / selection / placeholder come from `text_edit`. The editor's `active` (focused) maps to the chip's `hovered` look, since the pointer that clicked it is already over it.
     pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self {
         let editor = TextEditTheme {
             looks: StatefulLook {
@@ -47,16 +34,14 @@ impl DragValueTheme {
         Self { chip, editor }
     }
 
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self { chip, editor } = self;
         chip.for_each_text(f);
         editor.for_each_text(f);
     }
 
-    /// One palette drives both halves — the chip from the standard
-    /// button recipe, the editor derived from it via [`Self::from_chip`].
+    /// One palette drives both: the chip from the button recipe, the editor via [`Self::from_chip`].
     pub fn from_palette(p: &Palette) -> Self {
         Self::from_chip(
             ButtonTheme::from_palette(p),

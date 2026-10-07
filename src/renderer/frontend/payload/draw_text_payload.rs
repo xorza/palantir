@@ -9,17 +9,14 @@ use crate::text::shaped_ref::ShapedTextRef;
 pub(crate) struct DrawTextPayload {
     /// The measured block, which places the glyphs.
     pub(crate) rect: Rect,
-    /// How far the glyphs' ink reaches past `rect`, in its units — what
-    /// the run's scissor covers beyond it.
+    /// How far the glyphs' ink reaches past `rect`, in its units; the run's scissor covers it.
     pub(crate) ink: Spacing,
     pub(crate) color: RgbaF16,
     pub(crate) text: ShapedTextRef,
 }
 
 impl DrawTextPayload {
-    /// This draw with its alpha scaled by `by`, for
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
-    /// gate.
+    /// This draw with alpha scaled by `by`, for the [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink) gate.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         if by == 1.0 {
@@ -31,9 +28,7 @@ impl DrawTextPayload {
         }
     }
 
-    /// Paints nothing when: zero-extent rect
-    /// or fully transparent color. See [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)
-    /// for the noop policy.
+    /// Paints nothing for a zero-extent rect or fully transparent colour.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.color.is_noop()

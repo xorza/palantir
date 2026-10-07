@@ -1,5 +1,4 @@
-//! The `CascadeKey` that lets a frame reuse the previous cascade, and
-//! everything that moves it.
+//! The `CascadeKey` that lets a frame reuse the previous cascade, and what moves it.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -14,9 +13,7 @@ use crate::widgets::block::Block;
 use crate::widgets::text::Text;
 use glam::{UVec2, Vec2};
 
-/// An unchanged frame skips the cascade (its output is provably
-/// identical); any cascade-input change — authoring, or a surface change
-/// that moves an arranged rect — re-runs it.
+/// An unchanged frame skips the cascade; any input change (authoring, or a surface change moving an arranged rect) re-runs it.
 #[test]
 fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     use crate::primitives::layout::sizing::Sizing;
@@ -61,14 +58,7 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
     );
 }
 
-/// Key completeness for the *authoring* cascade inputs. The key trusts the tree
-/// hashes to capture everything the cascade reads (transforms, clip / disabled
-/// / focusable, visibility, chrome, shapes); if a future input stops being
-/// folded in, a frame toggling it would wrongly skip the cascade and paint
-/// stale. One arm per attribute class — each toggles a single attribute and
-/// asserts the skip is busted. Scroll offset and zoom are authored transforms
-/// and are pinned separately by
-/// `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
+/// Key completeness for authoring inputs: the key trusts tree hashes to capture everything the cascade reads. One arm per attribute class toggles one attribute and asserts the skip is busted. Scroll offset and zoom are pinned by `widgets::scroll::tests::cascade_skip_busts_on_scroll_offset_change`.
 #[test]
 fn the_key_covers_authoring_input_classes() {
     use crate::primitives::layout::clip_mode::ClipMode;
@@ -78,8 +68,7 @@ fn the_key_covers_authoring_input_classes() {
         cfg(Block::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);
     }
 
-    // Settle `base` into the skip, then run `changed` and assert the
-    // one-attribute delta re-runs the cascade.
+    // Settle `base` into the skip, then assert the one-attribute delta re-runs.
     fn assert_reruns(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
         let mut h = UiHarness::new(SURFACE);
         h.frame(|ui| base(ui));
@@ -131,11 +120,7 @@ fn the_key_covers_authoring_input_classes() {
     );
 }
 
-/// Key completeness for the one cascade input that is not authoring at
-/// all. Every other input reaches the key through a hash of what the
-/// frame recorded or arranged; a load can change a run's ink in a rect
-/// that does not move, while every hash addressing that run stands still.
-/// So the epoch is folded in directly.
+/// Key completeness for the one input that is not hashed: a font load can change a run's ink in a rect that doesn't move, so the epoch is folded in directly.
 #[test]
 fn the_key_covers_the_font_database() {
     let mut h = UiHarness::with_text(SURFACE);
@@ -159,13 +144,7 @@ fn the_key_covers_the_font_database() {
     );
 }
 
-/// Key completeness for the *identity* cascade inputs: the layer a root subtree
-/// lives on and the root's own `WidgetId`. Neither reaches any subtree hash
-/// (`compute_rollups` folds only child ids into parents, and roots have no
-/// parent); the key holds one part per layer, and each part folds every node's
-/// id. A wrongly matching key here reuses per-layer cascade columns sized for
-/// the previous layer assignment (index OOB in the damage pass) or a `by_id`
-/// map still keyed by the dead old root id (inert widget).
+/// Key completeness for identity inputs: the root's layer and `WidgetId` reach no subtree hash. A wrongly matching key would reuse per-layer columns sized for the old layer assignment (index OOB) or a `by_id` map keyed by a dead root id.
 #[test]
 fn the_key_covers_layer_and_root_identity() {
     fn float(ui: &mut Ui, layer: Layer, key: &str) {

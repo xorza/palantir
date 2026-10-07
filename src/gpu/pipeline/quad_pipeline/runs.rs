@@ -1,5 +1,4 @@
-//! A draw's span of instances cut where the pipeline its instances need
-//! changes.
+//! A draw's instance span cut where the needed pipeline changes.
 
 use crate::common::span::Span;
 
@@ -10,8 +9,7 @@ pub(crate) struct Run<K> {
     pub(crate) instances: Span,
 }
 
-/// A span's [`Run`]s, in paint order: each instance's key read from
-/// `keys`, or `fallback` for every instance when there are none.
+/// A span's [`Run`]s in paint order, keyed from `keys` or `fallback`.
 #[derive(Debug)]
 pub(crate) struct Runs<'a, K> {
     keys: Option<&'a [K]>,
@@ -21,8 +19,6 @@ pub(crate) struct Runs<'a, K> {
 }
 
 impl<'a, K: Copy> Runs<'a, K> {
-    /// The runs of `instances`, keyed by `keys`, which hold a key for
-    /// every uploaded instance, or by `fallback` alone.
     pub(crate) const fn new(instances: Span, keys: Option<&'a [K]>, fallback: K) -> Self {
         Self {
             keys,
@@ -32,8 +28,7 @@ impl<'a, K: Copy> Runs<'a, K> {
         }
     }
 
-    /// The keys cover every instance of the frame, so an instance past them
-    /// is a span from another frame: a panic, not a guess.
+    /// The keys cover every instance of the frame; an instance past them is another frame's span, a panic.
     fn key(&self, at: u32) -> K {
         self.keys.map_or(self.fallback, |keys| keys[at as usize])
     }
@@ -63,9 +58,6 @@ mod tests {
     use crate::common::span::Span;
     use crate::gpu::pipeline::quad_pipeline::runs::{Run, Runs};
 
-    /// A span splits where the key changes, in paint order, and starts and
-    /// ends where the span does, not where the keys do. Without keys, the
-    /// span is one run of the fallback.
     #[test]
     fn runs_split_a_span_where_the_key_changes() {
         let keys = [1, 1, 2, 1, 1, 1, 2];
@@ -85,7 +77,6 @@ mod tests {
         assert_eq!(runs(None, 4, 3), [run(0, 4, 3)]);
     }
 
-    /// A span past the keys comes from another frame's instances.
     #[test]
     #[should_panic(expected = "index out of bounds")]
     fn a_span_past_the_keys_panics() {

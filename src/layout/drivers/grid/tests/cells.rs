@@ -1,5 +1,4 @@
-//! Placing a child inside its resolved cell, and the depth stack that
-//! brackets the walk.
+//! Placing a child in its resolved cell, and the depth stack bracketing the walk.
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -36,9 +35,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     assert_eq!(r.min.y, 80.0);
 }
 
-/// Debug-only: `enter`/`exit` are the layout engine's own pairing, run
-/// per grid node per frame, so this is the crate checking itself rather
-/// than screening anything a caller passed.
+/// Debug-only: `enter`/`exit` pairing is the layout engine's own, so this checks the crate, not a caller.
 #[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "GridDepthStack::exit underflow")]

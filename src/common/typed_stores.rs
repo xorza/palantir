@@ -5,42 +5,22 @@ use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::fmt;
 
-/// Spelled once rather than at each downcast site — here and in
-/// [`Singletons`](crate::ui::singletons::Singletons): the argument is the
-/// same one every time — the entry is keyed by `TypeId::of::<S>()`, so
-/// nothing but an `S` can be behind it — and each copy is a chance to
-/// weaken one.
+/// Spelled once rather than at each downcast site (here and [`Singletons`](crate::ui::singletons::Singletons)): the `TypeId` key means nothing but an `S` can be behind it.
 pub(crate) const DOWNCAST_ERROR: &str = "TypeId keys the entry, so the stored type is S";
 
-/// What a typed store owes the container holding it: the end-of-frame
-/// sweep, and an emptiness probe for the tables that drop drained
-/// stores.
-///
-/// `: Any` is what lets the downcast sites upcast a `&(mut) dyn
-/// TypedStore` straight to `&(mut) dyn Any` — no `as_any` boilerplate.
+/// What a typed store owes its container: the end-of-frame sweep and an emptiness probe. `: Any` lets downcast sites upcast to `&(mut) dyn Any` directly.
 pub(crate) trait TypedStore: Any {
     fn sweep_removed(&mut self, removed: &WidgetIdSet);
     fn is_empty(&self) -> bool;
 }
 
-/// One boxed store per distinct payload type.
-///
-/// The shared half of `StateMap` and `AnimMap`. Both hold per-widget
-/// rows in a store whose *shape* is their own — one a dense `Vec`
-/// indexed by `WidgetId`, the other a row list keyed by
-/// `(WidgetId, AnimationSlot)` — but both reach that store through the same
-/// `TypeId` probe and the same downcast, and both fan the same
-/// end-of-frame sweep across it. That half is written here once instead
-/// of twice, which is what keeps the two from drifting on the downcast's
-/// safety argument.
+/// One boxed store per distinct payload type; the shared half of `StateMap` and `AnimMap`, whose stores differ in shape but share the `TypeId` probe, downcast and end-of-frame sweep.
 #[derive(Default)]
 pub(crate) struct TypedStores {
     by_type: FxHashMap<TypeId, Box<dyn TypedStore>>,
 }
 
-// Manual: the values are `dyn TypedStore`, which has no `Debug` and
-// can't gain one without a supertrait every store would have to satisfy.
-// The store count is the shape worth reporting.
+// Manual: `dyn TypedStore` has no `Debug`; the store count is the shape worth reporting.
 impl fmt::Debug for TypedStores {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TypedStores")
@@ -50,8 +30,7 @@ impl fmt::Debug for TypedStores {
 }
 
 impl TypedStores {
-    /// No store exists for any type yet — the fast path for a table
-    /// nothing has touched.
+    /// No store exists for any type yet: the fast path for an untouched table.
     pub(crate) fn is_empty(&self) -> bool {
         self.by_type.is_empty()
     }
@@ -67,9 +46,7 @@ impl TypedStores {
             .expect(DOWNCAST_ERROR)
     }
 
-    /// The store for `S` if one exists. `None` means no caller has
-    /// reached for `S` yet — never a type mismatch, which the `TypeId`
-    /// key rules out.
+    /// The store for `S` if one exists; `None` means no caller has reached for `S` yet.
     pub(crate) fn get<S: TypedStore>(&self) -> Option<&S> {
         self.by_type.get(&TypeId::of::<S>()).map(|store| {
             (store.as_ref() as &dyn Any)
@@ -78,8 +55,7 @@ impl TypedStores {
         })
     }
 
-    /// Mutable [`Self::get`]. Does **not** create the store, so a probe
-    /// that misses leaves the table untouched.
+    /// Mutable [`Self::get`]; does not create the store.
     pub(crate) fn get_mut<S: TypedStore>(&mut self) -> Option<&mut S> {
         self.by_type.get_mut(&TypeId::of::<S>()).map(|store| {
             (store.as_mut() as &mut dyn Any)
@@ -88,13 +64,7 @@ impl TypedStores {
         })
     }
 
-    /// Sweep every store against `removed`, keeping or dropping the ones
-    /// that drained as `drained` says.
-    ///
-    /// One walk, with the policy as an argument rather than a second
-    /// method: the two tables differ in exactly this and in nothing else
-    /// about the sweep, and two entry points named for their policies is
-    /// how the difference stops being visible at the call site.
+    /// Sweep every store against `removed`, keeping or dropping drained ones per `drained`; one walk with the policy as an argument, so the difference stays visible at the call site.
     pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet, drained: Drained) {
         self.by_type.retain(|_, store| {
             store.sweep_removed(removed);
@@ -106,12 +76,8 @@ impl TypedStores {
 /// What a sweep does with a store that drained to empty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Drained {
-    /// Keep it. An empty per-`T` store costs one hashmap slot and is
-    /// reused the next time a widget of that type appears, which is what
-    /// a table of a handful of long-lived types wants.
+    /// Keep it: an empty per-`T` store costs one slot and is reused, which suits a few long-lived types.
     Keep,
-    /// Drop it, so [`TypedStores::is_empty`] goes back to being a real
-    /// fast path once the table goes idle. Without this a single
-    /// ever-used type would leave the container non-empty forever.
+    /// Drop it, so [`TypedStores::is_empty`] is a real fast path once idle; otherwise one ever-used type keeps the container non-empty.
     Drop,
 }

@@ -1,7 +1,4 @@
-//! Layout-side scroll driver. Measure records the content extent on
-//! [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content);
-//! arrange delegates child placement to the matching stack driver, and
-//! intrinsic answers the same per-axis contribution rule measure does.
+//! Layout-side scroll driver. Measure records the content extent on [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content); arrange delegates to the matching stack driver; intrinsic applies measure's per-axis contribution rule.
 
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::drivers::stack::Stack;
@@ -29,17 +26,14 @@ impl LayoutDriver for Scroll {
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Measures scroll children with unbounded space on the panned axes,
-    /// records their full content extent, and returns the viewport's
-    /// desired size.
+    /// Measures children with unbounded space on panned axes, records their full content extent, and returns the viewport's desired size.
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
         axes: Self::Payload,
         inner_avail: Size,
     ) -> Measured {
-        // A panned axis measures unbounded: what it scrolls over is not
-        // limited by what it shows.
+        // A panned axis measures unbounded: what it scrolls over isn't limited by what it shows.
         let child_avail = Size::INF.select(axes.pan_mask(), inner_avail);
         let raw = match axes.child_layout() {
             ScrollChildLayout::Layered => ZStack::measure(pass, node, (), child_avail),
@@ -48,8 +42,7 @@ impl LayoutDriver for Scroll {
 
         pass.set_scroll_content(node, raw.size);
 
-        // A panned axis gives way whatever it shows, so it floors at
-        // nothing — the measure-side peer of its zero min-content.
+        // A panned axis gives way whatever it shows, so it floors at zero (peer of its zero min-content).
         Measured {
             size: raw.size.select(axes.contributes_mask(), Size::ZERO),
             floor: Size::ZERO.select(axes.pan_mask(), raw.floor),
@@ -66,20 +59,11 @@ impl LayoutDriver for Scroll {
         }
     }
 
-    /// A scroll's intrinsic has to answer exactly what its measure would: same
-    /// child driver, same per-axis contribution rule. Both come off the payload so
-    /// the two can't drift — [`ScrollAxes::contributes`] is where the `fit` case
-    /// is stated.
+    /// Must answer what measure would: same child driver and per-axis rule, both off the payload ([`ScrollAxes::contributes`] states the `fit` case).
     ///
-    /// **A scroll's two content sizes differ in kind, so one rule can't serve
-    /// both.** *Min*-content on a panned axis is zero: being able to shrink
-    /// below the content is what scrolling *is*, and `AxisSlot::resolve` floors the
-    /// viewport's own size with this, so anything larger pins a `Hug` scroll open
-    /// at its content. *Max*-content is what the viewport would take given room
-    /// — the content extent exactly when the author asked it to `fit`.
+    /// *Min*-content on a panned axis is zero (shrinking below the content is what scrolling is, and `AxisSlot::resolve` floors the viewport with it, so more would pin a `Hug` scroll open). *Max*-content is the content extent exactly when the author asked to `fit`.
     ///
-    /// Either half the caller did not ask for is dropped, and a query left with
-    /// neither skips the child walk entirely.
+    /// A half the caller didn't ask for is dropped; a query with neither skips the child walk.
     fn intrinsic(
         engine: &mut LayoutEngine,
         tree: &Tree,

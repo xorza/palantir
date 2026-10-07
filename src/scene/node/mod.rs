@@ -1,5 +1,4 @@
-//! The layout, interaction and paint record a [`Widget`] carries, in the
-//! shape the tree reads it.
+//! The layout, interaction and paint record a [`Widget`] carries, in the shape the tree reads it.
 //!
 //! [`Widget`]: crate::widget_core::widget::Widget
 
@@ -34,89 +33,45 @@ use crate::scene::node::node_mode::NodeMode;
 use crate::scene::node::panel_extras::PanelExtras;
 use glam::Vec2;
 
-/// Per-node config: spatial layout + interaction + paint flags. Every
-/// [`Widget`] owns one, and [`Widget::record`] hands it to the tree.
-///
-/// Fields are grouped by who reads them: own-size (every parent),
-/// mode-specific (only certain parents read these), interaction, and
-/// paint. Identity is the widget's, not the node's — a node is what a
-/// widget records, and it never carries the id it records under.
+/// Per-node config: layout, interaction and paint flags. Every [`Widget`] owns one; identity is the widget's, never the node's.
 ///
 /// [`Widget`]: crate::widget_core::widget::Widget
-/// [`Widget::record`]: crate::widget_core::widget::Widget::record
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Node {
     pub(crate) mode: NodeMode,
 
-    /// The themable fields are `None` until explicitly set, so
-    /// widgets can layer theme defaults under user intent with a plain
-    /// `get_or_insert` / `unwrap_or` — there is no separate provenance
-    /// tracking. [`Self::columns`] resolves `None` to the layout
-    /// defaults (`SizeSpec::default()`, `Size::ZERO`/`Size::INF` bounds,
-    /// `Spacing::ZERO`).
+    /// Themable fields are `None` until set, so widgets layer theme defaults under user intent; [`Self::columns`] resolves `None` to layout defaults.
     pub(crate) size: Option<SizeSpec>,
     pub(crate) min_size: Option<Size>,
     pub(crate) max_size: Option<Size>,
     pub(crate) padding: Option<Spacing>,
     pub(crate) margin: Option<Spacing>,
-    /// Clip mode, `None` until set. Kept out of [`NodeFlags`] during
-    /// authoring for the same theme-fallback reason; folded into the
-    /// recorded flags by [`Self::columns`].
+    /// Clip mode, `None` until set; folded into the recorded flags by [`Self::columns`].
     pub(crate) clip: Option<ClipMode>,
 
-    /// Within-line gap + between-line gap packed as two f16 lanes.
-    /// `gaps.gap()` is the sibling spacing (HStack/VStack/WrapHStack/
-    /// WrapVStack, and a Grid's columns); `gaps.line_gap()` is the
-    /// between-line spacing (WrapHStack/WrapVStack, and a Grid's rows).
-    /// Both ignored by Leaf/ZStack/Canvas.
+    /// Within-line and between-line gap as two f16 lanes: `gap()` for siblings (and Grid columns), `line_gap()` for lines (and Grid rows). Ignored by Leaf/ZStack/Canvas.
     pub(crate) gaps: AuthoredGaps,
 
-    /// Main-axis distribution of leftover space (HStack/VStack only).
     pub(crate) justify: Justify,
-    /// Own alignment within the parent's inner rect.
     pub(crate) align: Align,
-    /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
-    /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
-    /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
     pub(crate) position: Vec2,
-    /// Cell + span inside a `Grid` parent. Defaults to `(0, 0)` placement and
-    /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
+    /// Cell and span inside a `Grid` parent; ignored elsewhere.
     pub(crate) grid: GridCell,
 
-    /// Packed paint/input flags copied directly into the recorded tree.
     pub(crate) flags: NodeFlags,
 
-    /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
-    /// layout but suppresses paint + input; `Collapsed` zeros the slot and
-    /// skips the subtree everywhere. Lives on `LayoutCore` (not `NodeFlags`)
-    /// because measure's fast-path reads it next to size/margin.
+    /// Three-state visibility: `Hidden` keeps the slot but suppresses paint and input; `Collapsed` zeros the slot and skips the subtree.
     pub(crate) visibility: Visibility,
-    /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
-    /// `TranslateScale::IDENTITY` = no transform. The transform composes
-    /// with any ancestor transform; descendants render and hit-test in
-    /// the world coordinates the cumulative transform produces. Origin
-    /// is the top-left of the panel's logical-rect — the caller
-    /// composes its own pivot by pre/post-translation.
+    /// Pan/zoom applied to descendants post-layout, like WPF's `RenderTransform`; origin is the panel's top-left.
     pub(crate) transform: TranslateScale,
-    /// The Tab order key, `0` unless set — see
-    /// [`Configure::tab_index`](crate::Configure::tab_index).
     pub(crate) tab_index: i16,
 }
 
 impl Node {
-    /// Set the lower size bound.
+    /// Sets the lower size bound. A smaller maximum is raised to it, as in CSS and WPF.
     ///
-    /// The four `set_*` writers below own every check an authored field
-    /// owes, and everything that writes one goes through them: the
-    /// consuming [`Configure`](crate::Configure) setter, the
-    /// [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults)
-    /// fallback beside it, and the widgets that hold a `&mut Node` and
-    /// cannot move it through a builder. A field written past them is a
-    /// field whose bound or NaN screen did not run.
-    ///
-    /// The order against the maximum is coerced: the minimum wins, as in
-    /// CSS and WPF, so a maximum already set below it is raised to it.
+    /// The four `set_*` writers own every check an authored field owes; the consuming setter, the theme fallback and widgets holding `&mut Node` all go through them.
     ///
     /// # Panics
     ///
@@ -132,13 +87,11 @@ impl Node {
         }
     }
 
-    /// Set the upper size bound. A bound below a minimum already set is
-    /// raised to it.
+    /// Sets the upper size bound; one below an already-set minimum is raised to it.
     ///
     /// # Panics
     ///
-    /// Panics unless both axes are *extents*; positive infinity is the
-    /// unbounded maximum.
+    /// Panics unless both axes are *extents*; positive infinity is unbounded.
     #[inline]
     #[track_caller]
     pub(crate) const fn set_max_size(&mut self, value: Size) {
@@ -151,12 +104,7 @@ impl Node {
         self.max_size = Some(Size::new(value.w.max(min.w), value.h.max(min.h)));
     }
 
-    /// Set the padding: every edge a *length*.
-    ///
-    /// Checked in release: a NaN edge does not fail on its own — it
-    /// poisons every extent derived from it and surfaces frames later as
-    /// a widget that measured to nothing, with no way back to the call
-    /// that set it.
+    /// Sets the padding: every edge a *length*. Checked in release because a NaN edge poisons derived extents.
     ///
     /// # Panics
     ///
@@ -170,8 +118,7 @@ impl Node {
         self.padding = Some(value);
     }
 
-    /// Set the margin: every edge an *offset*, so a negative margin pulls a
-    /// sibling in.
+    /// Sets the margin: every edge an *offset*, so a negative margin pulls a sibling in.
     ///
     /// # Panics
     ///
@@ -185,23 +132,7 @@ impl Node {
         self.margin = Some(value);
     }
 
-    /// Fill a field in only where the caller stayed silent — the theme
-    /// half of authoring, in the same one place as the plain writes.
-    ///
-    /// A guard plus the writer above, rather than a raw `get_or_insert`:
-    /// the guard is what makes an explicit value win, and the writer is
-    /// what makes a themed value face the same checks an authored one
-    /// does.
-    ///
-    /// `fill_`, not `default_`: the consuming
-    /// [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults)
-    /// wrapper owns that name, and reads apart from it.
-    ///
-    /// A default also yields to the *other* bound the caller set: a themed
-    /// minimum above an authored maximum is clamped down to it, because a
-    /// default means "when the caller said nothing" and must never
-    /// contradict what the caller did say. Two authored bounds that
-    /// conflict resolve as [`Self::set_min_size`] says: the minimum wins.
+    /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
     #[inline]
     #[track_caller]
     pub(crate) const fn fill_min_size(&mut self, value: Size) {
@@ -214,9 +145,7 @@ impl Node {
         }
     }
 
-    /// The mirror of [`Self::fill_min_size`]: a themed maximum below an
-    /// authored minimum is raised to it, which [`Self::set_max_size`]
-    /// already does for any maximum.
+    /// Mirror of [`Self::fill_min_size`]: a themed maximum below an authored minimum is raised to it.
     #[inline]
     #[track_caller]
     pub(crate) const fn fill_max_size(&mut self, value: Size) {
@@ -249,12 +178,7 @@ impl Node {
         }
     }
 
-    /// Fill each axis the caller left `Auto`, leaving the other alone.
-    ///
-    /// Per-axis rather than whole-value like the writers above, because
-    /// `Auto` is what `Align` spells "unset" with and it spells it once
-    /// per axis. A widget defaulting one axis must not silently take
-    /// the other with it.
+    /// Fills each axis the caller left `Auto`, leaving the other alone.
     #[inline]
     pub(crate) const fn fill_align(&mut self, value: Align) {
         let h = match self.align.halign() {
@@ -268,55 +192,23 @@ impl Node {
         self.align = Align::new(h, v);
     }
 
-    /// Take over `from`'s placement — where the node sits in its parent
-    /// and in the Tab order, and nothing about what it contains or how it
-    /// behaves.
+    /// Takes over `from`'s placement (position in the parent and Tab order), nothing about contents or behavior; for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
     ///
-    /// For a widget that hands its slot to a second node partway through
-    /// a gesture: [`crate::DragValue`] swaps its scrub chip for an inline
-    /// [`crate::TextEdit`] on click, and without this the field visibly
-    /// moves and resizes on the edit frame, because margin, alignment,
-    /// grid placement and canvas position all go with the chip.
-    ///
-    /// And for a widget that records as two nodes rather than one:
-    /// [`crate::Scroll`] splits the caller's node into an outer box and
-    /// an inner viewport, and the placement is the outer one's.
-    ///
-    /// Margin is the one `Option`: `None` there means the caller stated
-    /// no opinion, so the adopting node keeps its own themed default
-    /// rather than taking a zero.
-    ///
-    /// The destructure is exhaustive on purpose. A new field has to be
-    /// given a side here rather than silently vanishing across the swap,
-    /// and an elided `..` would let that back in.
+    /// The destructure is exhaustive so a new field must be given a side.
     pub(crate) fn adopt_placement(&mut self, from: Node) {
         let Node {
-            // Layout mode is the adopting node's own: it is whatever
-            // container or leaf it was built as.
             mode: _,
-            // Box extent, not placement. The adopting node sizes itself:
-            // the editor pins its width to the chip's last rect so a long
-            // value scrolls instead of growing the row, and the scroll's
-            // outer box takes the caller's sizing separately. Forwarding
-            // these would undo both.
+            // Box extent, not placement: the adopting node sizes itself.
             size: _,
             min_size: _,
             max_size: _,
             padding: _,
             clip: _,
-            // Interior configuration: what the node does with its own
-            // children, and what it senses.
             gaps: _,
             justify: _,
             child_align: _,
-            // All but the Tab stop bit, which is the node's place in the
-            // Tab order and is taken below.
             flags,
-            // A render transform over the node's body, which is content
-            // rather than placement.
             transform: _,
-            // Everything below places the node inside its parent, or in
-            // the Tab order.
             margin,
             align,
             position,
@@ -336,15 +228,11 @@ impl Node {
         self.tab_index = tab_index;
     }
 
-    /// Install this node's layout mode, once the payload a builder chain
-    /// could not carry exists.
-    ///
-    /// The one way a mode is bound after construction — see
-    /// [`NodeMode::accepts`] for what a mode may be replaced with.
+    /// Installs this node's layout mode once the payload a builder chain couldn't carry exists; see [`NodeMode::accepts`].
     ///
     /// # Panics
     ///
-    /// Panics if `mode` is not a refinement of the one the node has.
+    /// Panics if `mode` is not a refinement of the node's current one.
     pub(crate) fn set_mode(&mut self, mode: LayoutMode) {
         assert!(
             self.mode.accepts(mode),
@@ -376,21 +264,7 @@ impl Node {
         }
     }
 
-    /// Fan this `Node` out into the per-`NodeId` columns `Tree` stores,
-    /// resolving every still-`None` themable field to its layout
-    /// default — the tail of the per-widget recording chain, after which
-    /// the node is dead.
-    ///
-    /// Single routing point: adding a field is one edit in the column
-    /// type and one in the routing block below. `widget_id` is the
-    /// widget's, resolved before it recorded, so `Node` itself never
-    /// carries one.
-    ///
-    /// Takes `&self` rather than the 100-byte `Node` by value, so the
-    /// four-hop opener chain above it moves no bytes at any hop and does
-    /// not lean on `#[inline]` to elide them. Named without a `to_` /
-    /// `into_` prefix for that reason: both would read as a by-value
-    /// receiver on a `Copy` type, which is what this avoids.
+    /// Fans this `Node` out into the per-`NodeId` columns `Tree` stores, resolving `None` themable fields to layout defaults. Takes `&self` so the opener chain moves no 100-byte `Node` per hop; named without `to_`/`into_`, which would read as by-value.
     #[inline(always)]
     pub(super) fn columns(&self, widget_id: WidgetId) -> NodeColumns {
         let mut attrs = self.flags;
@@ -416,8 +290,7 @@ impl Node {
     }
 }
 
-/// `value` capped at `cap`, keeping a NaN `value` so the bound check
-/// that follows still sees it — `f32::min` would drop it.
+/// `value` capped at `cap`, keeping a NaN `value` for the bound check that follows (`f32::min` would drop it).
 const fn at_most(value: f32, cap: f32) -> f32 {
     if value > cap { cap } else { value }
 }

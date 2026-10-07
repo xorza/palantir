@@ -15,9 +15,8 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
 
     harness.press_at(INSIDE);
     let latch = harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
-    // The move helpers hand back `on_input`'s own `InputDelta`, so
-    // asserting on the repaint hint never needs the raw door. A latching
-    // drag is exactly the "state the next frame has to show" case.
+    // The move helpers return `on_input`'s own `InputDelta`, so the repaint hint needs no raw door;
+    // a latching drag is the "state the next frame has to show" case.
     assert!(
         latch.repaint_requested,
         "the latching move must report a repaint, same as on_input would",
@@ -28,9 +27,8 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     );
     harness.release();
 
-    // The value is the event's, not a stub: leaving the button crosses a
-    // hover boundary and reports a repaint, while a second move over the
-    // same bare surface crosses nothing and reports none.
+    // The value is the event's, not a stub: leaving the button crosses a hover boundary and repaints,
+    // a second move over bare surface crosses nothing and doesn't.
     assert!(
         harness.move_to(OUTSIDE).repaint_requested,
         "leaving the button is a hover crossing",
@@ -53,8 +51,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
         UiHarness::new(SURFACE).drag_to(INSIDE);
     });
 
-    // `press` latches the same origin as `press_at` — it reads the
-    // pointer back out of `InputState` instead of being handed one, so a
+    // `press` latches the same origin as `press_at` (it reads the pointer back out of `InputState`), so a
     // press separated from its move still arms the threshold check.
     let mut split = UiHarness::new(SURFACE);
     split.prime(2, button);
@@ -86,9 +83,8 @@ fn modifiers_are_sticky_until_set_back() {
     let ctrl = Modifiers::CTRL;
     let mut harness = UiHarness::new(SURFACE);
 
-    // The set under test is `InputState`'s, not a copy on the harness —
-    // a copy desyncs the moment one modifier goes through `on_input`,
-    // and `set_modifiers` would then suppress the emit that clears it.
+    // The set under test is `InputState`'s, not a harness copy: a copy desyncs once one modifier goes
+    // through `on_input`, and `set_modifiers` would then suppress the emit that clears it.
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
@@ -105,9 +101,8 @@ fn modifiers_are_sticky_until_set_back() {
         "…and it stays cleared once set back",
     );
 
-    // Mixing the raw door with the helper must stay coherent: the raw
-    // event moves the real set, so the helper still sees a change and
-    // emits the clearing event rather than leaving ctrl silently held.
+    // Mixing the raw door with the helper stays coherent: the raw event moves the real set, so the
+    // helper still sees a change and emits the clearing event instead of leaving ctrl held.
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
     harness.set_modifiers(Modifiers::NONE);
     assert_eq!(
@@ -122,9 +117,8 @@ fn typed_text_arrives_as_one_press_per_char() {
     // Rule 14. `type_text` emits the `KeyDown { Key::Char }` a real
     // window produces, which is the only path a field inserts from.
     let mut harness = UiHarness::new(SURFACE);
-    // Keyboard events are dropped at *ingress* when nothing holds focus
-    // and no subscriber matches — not queued and ignored, discarded. So
-    // a keyboard test has to establish focus before it drives anything.
+    // Keyboard events are dropped at *ingress* when nothing holds focus and no subscriber matches, so a
+    // keyboard test has to establish focus before it drives anything.
     harness.ui().set_focus(target());
 
     harness.type_text("hi");
@@ -166,9 +160,8 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
         "a scroll over bare surface reaches nobody",
     );
 
-    // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form
-    // aims at wherever the pointer was left — here still OUTSIDE, which
-    // is why a separate `move_to` is what re-aims it.
+    // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form aims at wherever the pointer was
+    // left, still OUTSIDE; only a separate `move_to` re-aims it.
     harness.scroll_lines(Vec2::new(0.0, 3.0));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,

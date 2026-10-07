@@ -20,8 +20,6 @@ use glam::UVec2;
 
 #[test]
 fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
-    // Two opaque quads over one rect: the first is fully covered by the
-    // second, so prune drops it and the second survives.
     let buf = run(
         |b, _| {
             draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
@@ -36,15 +34,9 @@ fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
     );
 }
 
-/// The occluder (10.25, 10.25)..(110.25, 110.25) is unsnapped, so its
-/// cover is inset by its half-pixel ramp to (10.75, 10.75)..(109.75,
-/// 109.75). An under quad goes only when every pixel it shades is inside
-/// that cover, and it shades the pixels its own ramp reaches past its
-/// rect:
+/// The unsnapped occluder (10.25, 10.25)..(110.25, 110.25) covers only (10.75, 10.75)..(109.75, 109.75), its half-pixel ramp inset. An under quad goes only if every pixel it shades is inside that, and its own ramp reaches past its rect:
 /// - the same rect shades 10..111, past the cover on every side;
-/// - (10.75, 10.75)..(109.75, 109.75) is the cover itself, but its ramp
-///   covers column 10 a quarter, where the occluder covers it only three
-///   quarters, so it shades 10..110 and stays;
+/// - the cover itself shades 10..110 (its ramp covers column 10 a quarter, the occluder three quarters) and stays;
 /// - (11.25, 11.25)..(108.75, 108.75) shades 11..109, inside the cover;
 /// - (11.25, 11.25)..(109.85, 108.75) shades out to 110, past it.
 #[test]
@@ -93,8 +85,6 @@ fn prune_non_fast_cover_holds_every_pixel_the_under_shades() {
 
 #[test]
 fn prune_keeps_quad_not_fully_covered_by_smaller_later_quad() {
-    // The on-top quad is smaller than the under quad — under survives.
-    // `Rect::contains_rect` is asymmetric.
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
@@ -107,8 +97,6 @@ fn prune_keeps_quad_not_fully_covered_by_smaller_later_quad() {
 
 #[test]
 fn prune_keeps_quads_in_separate_groups_even_when_covered() {
-    // Group split: pushing a clip flushes; the later group's quad
-    // can't reach back to prune the earlier group's quad.
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
@@ -122,9 +110,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     assert_eq!(buf.groups.len(), 2);
 }
 
-/// A quad's border is an inner-edge annulus, so it paints nothing
-/// outside the rect: a bordered quad under an opaque cover of the same
-/// rect is invisible and pruned, exactly like an unbordered one.
+/// A quad's border is an inner-edge annulus and paints nothing outside the rect, so a bordered quad under a same-rect opaque cover is pruned.
 #[test]
 fn prune_drops_bordered_quad_under_solid_cover() {
     use crate::primitives::paint::stroke::Stroke;
@@ -139,22 +125,13 @@ fn prune_drops_bordered_quad_under_solid_cover() {
         },
         &params(1.0, UVec2::new(200, 200)),
     );
-    // The top quad is solid, opaque, sharp and pixel-aligned, so its
-    // cover is its whole rect, which contains the bordered quad's rect.
     assert_eq!(buf.quads.len(), 1, "bordered under-quad pruned");
     assert_eq!(buf.quads[0].stroke_width, 0.0, "the cover survives");
 }
 
 #[test]
 fn prune_rounded_on_top_uses_deflated_cover() {
-    // Phase 3: a rounded-corner quad IS an occluder — but its
-    // cover rect is its bounding rect deflated per side by the corner
-    // inset plus the SDF's 0.5px AA transition. So a rounded occluder
-    // strictly smaller (by the deflation margin)
-    // than the under-quad does NOT fully cover it. Reversed: when
-    // a sharp opaque quad on top exactly covers a rounded under,
-    // the under is dropped (sharp cover == its own bounding rect,
-    // which contains the rounded's bounding rect).
+    // Phase 3: a rounded quad's cover is its bounds deflated by the corner inset plus 0.5 px AA, so a smaller rounded occluder does not cover the under; a sharp one exactly covering a rounded under drops it.
 
     let buf_rounded_on_top = run(
         |b, _| {
@@ -189,7 +166,6 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 
 #[test]
 fn prune_keeps_transparent_solid_as_non_occluder() {
-    // alpha=0.5 quad on top doesn't occlude anything beneath.
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
@@ -204,12 +180,7 @@ fn prune_keeps_transparent_solid_as_non_occluder() {
 
 #[test]
 fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
-    // Phase 3: a rounded-corner opaque occluder fully covers a
-    // sharp under-quad that fits entirely inside its inscribed
-    // (KAPPA-deflated) rect. Rounded radius 10 plus the AA transition
-    // gives a cover deflation of ≈3.43 per side.
-    // An under-quad at (10,10,80,80) is well inside cover and
-    // should be dropped.
+    // Phase 3: a rounded opaque occluder covers a sharp under inside its inscribed rect. Radius 10 plus AA deflates ≈3.43 per side, so an under at (10,10,80,80) is dropped.
 
     let buf = run(
         |b, _| {
@@ -229,13 +200,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
 
 #[test]
 fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
-    // Phase 3: a sharp under-quad whose corner sits inside the
-    // rounded occluder's corner cutout (the transparent triangle
-    // between the bounding box corner and the arc's 45° point)
-    // must NOT be dropped — the rounded paint doesn't reach there.
-    // Rounded r=20 ⇒ inset ≈ 5.86. An under at (0,0,5,5) lies
-    // entirely inside the [0,20]×[0,20] corner-cutout zone and is
-    // never covered.
+    // A sharp under whose corner is in the rounded occluder's cutout must NOT drop. r=20 ⇒ inset ≈ 5.86, so an under at (0,0,5,5) lies in the [0,20]×[0,20] cutout zone.
 
     let buf = run(
         |b, _| {
@@ -257,9 +222,6 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
 fn prune_keeps_shadow_under_opaque_cover() {
     use crate::primitives::packed::fill_axis::FillAxis;
     use crate::primitives::packed::fill_kind::FillKind;
-    // A shadow's blur fringe extends past the stored rect — even if
-    // a later opaque solid fully contains its rect, the visible
-    // outer halo would be lost. Predicate must never drop shadows.
     let buf = run(
         |b, _| {
             b.draw_quad(
@@ -268,7 +230,6 @@ fn prune_keeps_shadow_under_opaque_cover() {
                     Corners::default(),
                     RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
                     FillKind::SHADOW_DROP,
-                    // (offset.x, offset.y, sigma, spread) — sigma=4 ⇒ 8-px halo.
                     FillAxis::from_lanes(0.0, 0.0, 4.0, 0.0),
                 ),
                 1.0,
@@ -286,11 +247,6 @@ fn prune_keeps_shadow_under_opaque_cover() {
 
 #[test]
 fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
-    // Three identical opaque solids stacked. After prune only the
-    // topmost survives. Walks back-to-front: A dropped by B (and by
-    // C); B dropped by C; C survives. Exercises the "multiple
-    // occluders per occludee" branch and verifies the compaction
-    // logic handles two consecutive drops.
     let buf = run(
         |b, _| {
             draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // A
@@ -304,12 +260,7 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
 
 #[test]
 fn prune_stroked_occluder_drops_smaller_sharp_under() {
-    // A solid-opaque occluder with a fully-OPAQUE stroke covers its
-    // whole rect: quad_pipeline/shader.wgsl strokes are inner-edge and coverage-
-    // partitioned with the fill, so opaque annulus + opaque fill =
-    // opaque rect. A sharp under entirely inside should be dropped.
-    // (Translucent strokes shrink the cover — see
-    // `prune_occluder_stroke_translucency_gates_cover`.)
+    // An opaque stroke leaves an opaque rect; see `prune_occluder_stroke_translucency_gates_cover` for translucent ones.
     use crate::primitives::paint::stroke::Stroke;
 
     let buf = run(
@@ -328,24 +279,15 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     );
 }
 
-/// FIX-pin: quad_pipeline/shader.wgsl strokes are INNER-edge and coverage-partitioned
-/// with the fill — the annulus's alpha is the stroke's alpha, not the
-/// fill's. An opaque-fill quad is fully opaque only when its stroke is
-/// a noop or fully opaque; a translucent stroke leaves a see-through
-/// ring, so only the fill-only interior — the rect deflated by the
-/// stroke width per side — may occlude.
+/// Pin: a translucent stroke leaves a see-through ring, so only the rect deflated by the stroke width may occlude; an opaque-fill quad is fully opaque only with a noop or opaque stroke.
 ///
-/// Fixture: top quad = rect (0,0,100,100), sharp corners, opaque white
-/// fill; stroke width 4 at scale 1. Hand-computed cover per case:
-/// - noop stroke → fast path, cover = full rect (0,0)..(100,100).
-/// - opaque stroke → cover = AA-deflated (0.5,0.5)..(99.5,99.5).
-/// - 50%-alpha stroke → cover = deflated by 4.5/side.
-/// - 50%-alpha stroke w=60 → deflation 60/side exceeds the 50 half-
-///   extent → empty cover, no occluder recorded.
+/// Top quad: (0,0,100,100), sharp, opaque white, stroke width 4 at scale 1. Hand-computed cover:
+/// - noop stroke → full rect (0,0)..(100,100).
+/// - opaque stroke → AA-deflated (0.5,0.5)..(99.5,99.5).
+/// - 50%-alpha stroke → deflated 4.5/side.
+/// - 50%-alpha stroke w=60 → deflation 60/side exceeds the 50 half-extent → empty cover, no occluder.
 ///
-/// Bottom quad (a,b,c): same rect (0,0,100,100) — inside the full cover
-/// but NOT inside (4,4)..(96,96). Bottom quad (d,e): (10,10,50,50) →
-/// painted (10,10)..(60,60), inside (4,4)..(96,96).
+/// Bottom quads (a,b,c): the same rect, inside the full cover but not (4,4)..(96,96); (d,e): (10,10,50,50) paints (10,10)..(60,60), inside it.
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
     use crate::primitives::paint::stroke::Stroke;
@@ -406,8 +348,6 @@ fn prune_occluder_stroke_translucency_gates_cover() {
 
 #[test]
 fn prune_compacts_preserving_non_contiguous_survivors() {
-    // Five quads, A to E. C covers A and E covers everything else, so
-    // only E survives.
     let buf = run(
         |b, _| {
             draw_marked(b, Rect::new(0.0, 0.0, 10.0, 10.0)); // A, inside C
@@ -420,9 +360,6 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
     );
     assert_eq!(survivor_calls(&buf), [4], "E covers everything");
 
-    // With B and D outside every cover and no E, only A drops: the
-    // survivors sit at indices 1, 2 and 3, and compaction keeps their
-    // order.
     let buf = run(
         |b, _| {
             draw_marked(b, Rect::new(0.0, 0.0, 10.0, 10.0)); // A, inside C
@@ -445,11 +382,7 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
 
 #[test]
 fn prune_edge_tangent_under_is_dropped_under_inclusive_containment() {
-    // The under-quad's max-edge equals the occluder's max-edge.
-    // `Rect::contains_rect` is inclusive on equal edges, so the
-    // under is fully contained and dropped. Pins the semantics —
-    // a future "strict containment" tweak that flips this would
-    // leak the tangent under-quad through.
+    // The under's max-edge equals the occluder's; `contains_rect` is inclusive, so it drops. A strict-containment change would leak the tangent quad.
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 50.0, 50.0)); // under, max=(50,50)
@@ -462,10 +395,7 @@ fn prune_edge_tangent_under_is_dropped_under_inclusive_containment() {
 
 #[test]
 fn prune_lower_index_occluder_does_not_drop_higher_index_under() {
-    // Push a giant opaque solid FIRST, then a smaller under-quad on
-    // top. The first quad would cover the second if order didn't
-    // matter — but it's the under, not the occluder. Predicate must
-    // respect paint order: only `occ.idx > i` qualifies.
+    // A giant opaque solid FIRST, then a smaller quad: the giant is the under, so only `occ.idx > i` qualifies.
     let buf = run(
         |b, _| {
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // big "occluder" but painted FIRST
@@ -482,11 +412,6 @@ fn prune_lower_index_occluder_does_not_drop_higher_index_under() {
 
 #[test]
 fn prune_steady_state_across_repeated_compose_calls() {
-    // Run a pruning scenario five times against the same Composer
-    // instance. Verifies scratch buffers (`opaque_in_group`,
-    // `drop_indices`) are reset cleanly between frames — a stale
-    // entry would either panic on index OOB after the slice shrinks
-    // or leak across-frame drops.
     let mut buffer = PaintCapture::default();
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     for _ in 0..5 {
@@ -498,12 +423,7 @@ fn prune_steady_state_across_repeated_compose_calls() {
     }
 }
 
-/// Clear fold: an opaque solid sharp unclipped quad covering the whole
-/// viewport becomes `RenderBuffer::clear_override` instead of a quad, and
-/// **discards everything composed before it** (a cover hides it all) —
-/// while any disqualifier (corners, stroke, translucency, gradient,
-/// partial coverage, active clip) leaves it as an ordinary quad over the
-/// prior scene.
+/// Clear fold: an opaque solid sharp unclipped quad covering the viewport becomes `RenderBuffer::clear_override` and discards everything before it; any disqualifier leaves an ordinary quad.
 #[test]
 fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     type Build = fn(&mut PaintCapture);
@@ -517,7 +437,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     let bg = RgbaF32::srgb(0.14, 0.16, 0.22);
     let folded = RgbaF16::from(bg);
 
-    // (case, builder, expected quad count, expected override)
     let cases: &[(&str, Build, usize, Option<RgbaF32>)] = &[
         (
             "qualifying root folds, later quad stays",
@@ -581,9 +500,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         (
             "prior quad is discarded under a later cover",
             |b| {
-                // Straddles the viewport edge so it isn't the per-group
-                // occlusion pruner doing the work — the fold's discard
-                // must drop it.
                 draw(b, Rect::new(-10.0, -10.0, 20.0, 20.0));
                 draw(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             },
@@ -624,8 +540,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
         assert_eq!(buf.clear_override, want, "{name}: clear_override");
     }
 
-    // Coverage in physical px: a logical half-viewport rect at DPR 2
-    // covers the full physical viewport and folds.
     let buf = run(
         |b, _arena| {
             QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
@@ -638,10 +552,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     assert_eq!(buf.clear_override, Some(folded), "DPR-2 override color");
 }
 
-/// A mid-stream cover discards the whole hidden underlay — text runs,
-/// clipped groups and their batches — not just quads; content recorded
-/// after the cover composes normally, and a transform in flight when the
-/// cover lands survives the discard (its pops are still ahead).
+/// A mid-stream cover discards the whole hidden underlay (text, clipped groups, batches), not just quads; a transform in flight survives.
 #[test]
 fn clear_fold_discards_hidden_underlay_mid_stream() {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -650,14 +561,11 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
 
     let buf = run(
         |b, _arena| {
-            // Hidden underlay: a text run and a quad inside a clipped group.
             text(b, Rect::new(10.0, 10.0, 50.0, 20.0));
             clip(b, Rect::new(0.0, 0.0, 150.0, 150.0));
             draw(b, Rect::new(10.0, 10.0, 20.0, 20.0));
             b.pop_clip();
-            // The cover lands under an active 2x transform: its world rect
-            // (0,0)-(200,200) covers the viewport, so it folds — and the
-            // transform must keep applying to the survivor below.
+            // The cover lands under an active 2x transform: its world rect (0,0)-(200,200) covers the viewport and folds, and the transform must keep applying to the survivor below.
             b.push_transform(TranslateScale::from_scale(2.0));
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
             draw(b, Rect::new(5.0, 5.0, 10.0, 10.0));
@@ -669,8 +577,6 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
 
     let folded = RgbaF16::from(RgbaF32::srgb(1.0, 1.0, 1.0));
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
-    // Underlay gone: only the post-cover quad + text survive, in one
-    // unscissored group (the pre-cover clipped group was discarded).
     assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
     assert_eq!(
         buf.quads[0].rect,
@@ -682,9 +588,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
     assert!(buf.groups[0].scissor.is_none());
 }
 
-/// `clear_override` is per-frame state: a fold one frame must not leak
-/// into the next frame's buffer when the cover disappears, and a
-/// steady-state cover re-folds every frame.
+/// `clear_override` is per-frame: a fold must not leak into the next frame, and a steady cover re-folds each frame.
 #[test]
 fn clear_fold_resets_across_frames() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
@@ -708,8 +612,7 @@ fn clear_fold_resets_across_frames() {
     assert_eq!(rig.out.quads.len(), 1);
 }
 
-/// A pixel-aligned opaque quad's cover is its own rect, so quad `i`
-/// survives exactly when no later quad's rect contains it.
+/// A pixel-aligned opaque quad's cover is its own rect.
 fn brute_force_survivors(rects: &[Rect]) -> Vec<Rect> {
     rects
         .iter()
@@ -719,12 +622,7 @@ fn brute_force_survivors(rects: &[Rect]) -> Vec<Rect> {
         .collect()
 }
 
-/// The indexed prune drops exactly what a scan of every later cover
-/// drops. 400 pseudo-random pixel-aligned rects over a 1280 × 1280
-/// viewport of 20 × 20 tiles: small ones, ones spanning many tiles,
-/// ones past [`LARGE_COVER_TILES`]'s 256 tiles (from 1040 px a side,
-/// 17 × 17 tiles), ones reaching past the viewport, and repeats of
-/// earlier rects so that many quads are covered.
+/// The indexed prune drops exactly what a scan of every later cover drops: 400 pseudo-random pixel-aligned rects over a 1280 × 1280 viewport of 20 × 20 tiles, including ones past [`LARGE_COVER_TILES`] (256), past the viewport, and repeats.
 #[test]
 fn indexed_prune_matches_a_full_scan() {
     let mut seed = 0x2545_f491_u32;
@@ -782,13 +680,7 @@ fn indexed_prune_matches_a_full_scan() {
     assert_eq!(survivors, expected);
 }
 
-/// The prune's cost is local. A 96 × 96 grid of 8 px cells, one opaque
-/// quad each, fills a 768 × 768 viewport of 12 × 12 tiles with 64 cells
-/// per tile. None covers another. A cell is tested only against the
-/// later cells of its own tile: the cells of a tile come in row-major
-/// order, so its `k`th cell is tested against `63 - k` of them, and a
-/// tile costs `0 + 1 + … + 63 = 2016` tests. A scan of every later cover
-/// costs `9216 × 9215 / 2 = 42 462 720`.
+/// The prune's cost is local. A 96 × 96 grid of 8 px cells fills 12 × 12 tiles with 64 cells each, none covering another. A cell is tested against the later cells of its tile: a tile costs `0 + 1 + … + 63 = 2016` tests, against `9216 × 9215 / 2 = 42 462 720` for a full scan.
 #[test]
 fn equal_cells_cost_one_tile_each() {
     let mut recorded = PaintCapture::default();

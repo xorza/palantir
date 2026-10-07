@@ -3,20 +3,15 @@
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// Visuals for [`crate::Splitter`]: the divider between the two panes.
-/// Layout reserves only the `rule_thickness` seam (painted in `rule`);
-/// the `grab_thickness`-wide drag target is an overlay straddling the
-/// seam, invisible at rest, filling with `hovered` under the pointer
-/// and `active` while a resize is in flight (covering the pane edges
-/// beneath it).
+/// Visuals for [`crate::Splitter`]: layout reserves the `rule_thickness` seam (painted in `rule`); the `grab_thickness` drag target is an invisible overlay straddling it, filled `hovered` or `active`.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SplitterTheme {
-    /// Overlay grab-bar breadth in logical px — the draggable hit area.
+    /// Grab-bar breadth in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub grab_thickness: f32,
-    /// Resting rule color (the visible seam between the panes).
+    /// Resting rule colour.
     pub rule: RgbaF32,
-    /// Rule breadth in logical px — the layout space the seam reserves.
+    /// Rule breadth in logical px; the layout space reserved.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub rule_thickness: f32,
     /// Full-bar fill while hovered.
@@ -26,8 +21,7 @@ pub struct SplitterTheme {
 }
 
 impl SplitterTheme {
-    /// A hairline rule inside a grab band six pixels wide, which lights up
-    /// on hover and again while dragged.
+    /// A hairline rule in a six-pixel grab band.
     pub const fn from_palette(p: &Palette) -> Self {
         Self {
             grab_thickness: 6.0,

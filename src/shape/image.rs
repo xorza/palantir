@@ -39,8 +39,7 @@ impl ImageShape {
 }
 
 impl ImageShape {
-    /// Paint into `rect`, in owner-relative coords, instead of the
-    /// owner's whole arranged rect.
+    /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
     ///
     /// # Panics
     ///
@@ -64,17 +63,13 @@ impl ImageShape {
         self
     }
 
-    /// Filtering while it is drawn larger. [`ImageFilter::Nearest`] is what
-    /// keeps pixel art crisp.
+    /// Filtering while drawn larger; [`ImageFilter::Nearest`] keeps pixel art crisp.
     pub const fn mag_filter(mut self, mag_filter: ImageFilter) -> Self {
         self.mag_filter = mag_filter;
         self
     }
 
-    /// Take extra taps where this image minifies, instead of the sampler's
-    /// lone bilinear one — see [`ImageDownsample`] for what that buys and
-    /// what it costs. Off by default; only worth setting on an image that
-    /// actually shrinks, and that has detail fine enough to alias.
+    /// Extra taps where the image minifies instead of one bilinear tap; see [`ImageDownsample`]. Off by default, worth it only for shrinking images with fine detail.
     pub const fn downsample(mut self, downsample: ImageDownsample) -> Self {
         self.downsample = downsample;
         self

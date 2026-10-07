@@ -1,5 +1,4 @@
-//! The anchored origin rule a side layer resolves after measure, and the
-//! side vocabulary it is written in.
+//! The anchored origin rule a side layer resolves after measure, and its side vocabulary.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -8,11 +7,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain::{self, vec2};
 use glam::Vec2;
 
-/// Which side of the anchored rect the body sits on — outside it, not
-/// on its edge. `Top` / `Bottom` mean an edge elsewhere in the crate
-/// ([`SplitSide`](crate::SplitSide), [`VAlign`](crate::VAlign)), so the
-/// four names here are relational and match the constructors that mint
-/// them one for one.
+/// Which side of the anchored rect the body sits on, outside it.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AnchorSide {
@@ -40,19 +35,14 @@ impl AnchorSide {
     }
 }
 
-/// Where an anchored body sits across the side it is anchored to: flush
-/// with the anchored rect's start edge, centred on it, or flush with its
-/// end. Below or above a rect that runs left to right; beside one, top to
-/// bottom. Either way the body still shifts back inside the surface when
-/// the alignment would push it off.
+/// Where an anchored body sits across its anchored side; it still shifts back inside the surface if pushed off.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AnchorAlign {
-    /// Flush with the start edge — a dropdown under its trigger. The
-    /// default.
+    /// Flush with the start edge; the default.
     #[default]
     Start,
-    /// Centred on the anchored rect — a tooltip under the thing it names.
+    /// Centred on the anchored rect.
     Center,
     /// Flush with the end edge.
     End,
@@ -68,18 +58,10 @@ impl AnchorAlign {
     }
 }
 
-/// Where a side layer lands next to the thing it belongs to.
-///
-/// Hand one to [`LayerScope::anchor`](crate::LayerScope::anchor). The
-/// origin resolves *after* measure, from the body's own size against the
-/// surface: the body takes the side you asked for when it fits there,
-/// flips to the opposite side when it does not, and shifts back inside
-/// the surface when neither side has room. That is what a dropdown does
-/// near the bottom edge, and it is the whole reason this is a value the
-/// layer resolves rather than a point you compute.
-///
-/// [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) is the other
-/// form: a top-left that never moves.
+/// Where a side layer lands next to the thing it belongs to, for
+/// [`LayerScope::anchor`](crate::LayerScope::anchor). The origin resolves
+/// after measure: the requested side if the body fits, else the opposite, else
+/// shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct Anchor {
@@ -99,10 +81,7 @@ impl Anchor {
         }
     }
 
-    /// Below a zero-sized rect at `point` — the point form, for an
-    /// overlay raised at the pointer rather than off a widget's rect.
-    /// Still flips and shifts, so a menu opened near the bottom edge
-    /// comes up rather than off-screen.
+    /// Below a zero-sized rect at `point`, for an overlay raised at the pointer.
     ///
     /// # Panics
     ///
@@ -157,18 +136,13 @@ impl Anchor {
         Self::new(rect, AnchorSide::RightOf, AnchorAlign::Start, 0.0)
     }
 
-    /// Where the body sits across the side it is anchored to —
-    /// [`AnchorAlign::Start`] by default.
+    /// Where the body sits across its anchored side; [`AnchorAlign::Start`] by default.
     pub const fn with_align(mut self, align: AnchorAlign) -> Self {
         self.align = align;
         self
     }
 
-    /// Hold the body this far off the anchored rect, in logical px.
-    ///
-    /// Zero by default, because a dropdown meets the trigger it drops out
-    /// of. An overlay that reads as a separate object — a tooltip — sets
-    /// its own. `px`: a *length*.
+    /// Holds the body `px` off the anchored rect; zero by default. `px`: a *length*.
     ///
     /// # Panics
     ///

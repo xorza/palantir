@@ -14,17 +14,10 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::theme::separator::SeparatorTheme;
 
-/// A thin divider rule between content. [`Separator::horizontal`]
-/// stretches across the parent's width as a `thickness`-tall line;
-/// [`Separator::vertical`] is a `thickness`-wide column rule.
-///
-/// Sized `Hug + Stretch` on its long axis so it fills the parent's cross
-/// extent without leaking an infinite size up to a `Hug` ancestor. An
-/// explicit [`Configure::size`] replaces that default entirely — the
-/// given size describes the rule's box and `thickness` is ignored — and
-/// an explicit [`Configure::align`] replaces it on the axis it names,
-/// leaving the other axis to the default.
-/// Visuals come from [`crate::SeparatorTheme`] (theme slot `separator`).
+/// A thin divider rule: `thickness` tall across the parent's width, or wide as a column. Sized `Hug` plus
+/// Stretch on its long axis so it fills the cross extent without leaking an infinite size to a `Hug`
+/// ancestor; an explicit [`Configure::size`] replaces that default and ignores `thickness`, an explicit
+/// [`Configure::align`] replaces it on its axis only. Visuals: [`crate::SeparatorTheme`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Separator<'a> {
@@ -36,14 +29,14 @@ pub struct Separator<'a> {
 }
 
 impl<'a> Separator<'a> {
-    /// A horizontal rule (stretches across the parent's width).
     #[track_caller]
+    /// A horizontal rule.
     pub fn horizontal() -> Self {
         Self::along(Axis::X)
     }
 
-    /// A vertical rule (stretches down the parent's height).
     #[track_caller]
+    /// A vertical rule.
     pub fn vertical() -> Self {
         Self::along(Axis::Y)
     }
@@ -59,19 +52,13 @@ impl<'a> Separator<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `separator`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// [`crate::MenuSeparator`] passes `theme.context_menu.separator` here
-    /// instead. Per-field [`Self::color`] / [`Self::thickness`] still win
-    /// over whichever bundle is in play.
+    /// Per-instance override of [`crate::Theme`]'s `separator`; [`Self::color`] and [`Self::thickness`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Line thickness in logical px, defaulting to
-    /// [`crate::Theme::separator`]'s. One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    /// Line thickness in logical px, defaulting to the theme's.
     ///
     /// # Panics
     ///
@@ -82,8 +69,7 @@ impl<'a> Separator<'a> {
         self
     }
 
-    /// Line color, defaulting to [`crate::Theme::separator`]'s.
-    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    /// Line color, defaulting to the theme's.
     ///
     /// # Panics
     ///
@@ -94,7 +80,7 @@ impl<'a> Separator<'a> {
         self
     }
 
-    /// Record the rule. It senses nothing.
+    /// Records the rule.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().separator);
         let t = domain::length_at_least(self.thickness.unwrap_or(theme.thickness), 0.0);
@@ -102,17 +88,13 @@ impl<'a> Separator<'a> {
             Axis::X => ((Sizing::HUG, Sizing::fixed(t)), Align::h(HAlign::Stretch)),
             Axis::Y => ((Sizing::fixed(t), Sizing::HUG), Align::v(VAlign::Stretch)),
         };
-        // The stretch belongs to the `Hug` default, not to the rule: it
-        // is what spans the parent, and applying it over an explicit
-        // size would override the extent the caller gave.
+        // The stretch belongs to the `Hug` default; over an explicit size it would override the caller's extent.
         let widget = match self.widget.authored_size() {
             Some(_) => self.widget,
             None => self.widget.size(default_size).default_align(stretch),
         };
         let chrome = Background::fill(self.color.unwrap_or(theme.color));
-        // Theme margin fills in only where the caller stayed silent —
-        // the menu slot holds its rule off the rows above and below,
-        // the in-flow slot leaves it at zero.
+        // Theme margin fills in only where the caller stayed silent.
         let widget = widget.default_margin(theme.margin);
         widget.show(ui, Some(&chrome), |_| {}).response
     }

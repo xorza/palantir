@@ -3,9 +3,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
-/// Hue of each sRGB cube corner, measured with the reference port. The test
-/// below re-derives them, so a drift in the conversion cannot hide behind a
-/// stale constant.
+/// Hue of each sRGB cube corner from the reference port; the test re-derives them.
 const CORNER_HUES: [f32; 6] = [
     0.081_205_2,
     0.304_914_5,
@@ -24,12 +22,10 @@ const CORNERS: [RgbaF32; 6] = [
     RgbaF32::hex(0xff00ff),
 ];
 
-/// Index of pure blue in [`CORNERS`] — the one corner that is not on the
-/// Okhsv gamut edge. See `pure_blue_lies_outside_the_cube`.
+/// Index of pure blue in [`CORNERS`], the one corner off the Okhsv gamut edge.
 const BLUE: usize = 4;
 
-/// Each cube corner is a fully saturated, full-value Okhsv colour, and its
-/// hue is the constant above.
+/// Each cube corner is a fully saturated, full-value Okhsv colour of the hue above.
 #[test]
 fn cube_corners_are_the_gamut_edge() {
     for (index, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
@@ -41,9 +37,7 @@ fn cube_corners_are_the_gamut_edge() {
             "the reference port's hues are printed to seven decimals, and \
              the f32 conversion adds up to two ulps",
         );
-        // The gamut-edge search runs on the platform's cbrt and powf,
-        // and their last-ulp differences grow through it: a few ulps
-        // under 1 on Linux, 5e-6 under it on Windows.
+        // Platform cbrt/powf last-ulp differences grow through the gamut-edge search.
         let edge = "the platform's cbrt and powf move the gamut-edge search";
         assert_close(coords.s, 1.0, 1e-5, edge);
         assert_close(coords.v, 1.0, 1e-5, edge);
@@ -57,43 +51,26 @@ fn cube_corners_are_the_gamut_edge() {
     }
 }
 
-/// Pure blue is the one colour the cube cannot name, and the numbers here say
-/// by how much.
-///
-/// Sweeping chroma out along blue's hue, red dips below zero at `C/L ≈ 0.588`
-/// and returns at `≈ 0.69`, and green only leaves at `≈ 0.695`. Pure blue
-/// sits at `0.693`, inside that second island. Okhsv's edge is the first
-/// crossing, so the island is outside it. The space is built this way; the
-/// port is not wrong.
+/// Pure blue is the one colour the cube cannot name: Okhsv's gamut edge is the first crossing of the
+/// chroma sweep, and pure blue sits in a later in-gamut island. The space is built this way; the port is not wrong.
 #[test]
 fn pure_blue_lies_outside_the_cube() {
     let edge = Okhsv::new(CORNER_HUES[BLUE], 1.0, 1.0).to_color();
     assert_eq!(edge.to_srgba_u8(), SrgbaU8::hex(0x0037ff));
-    // Reading pure blue back saturates both axes rather than reporting
-    // something out of range, so a picker opened on it shows its handles in
-    // the corner.
-    //
-    // Both axes are one to within `f32` resolution, and which side of it they
-    // land on belongs to the platform: over glibc they come out one ULP above
-    // one and the clamp catches them, while MSVC's `cbrt` rounds the other way
-    // and leaves `v` one ULP below. Eight ULPs of slack covers that
-    // disagreement over a chain of a cube root, a square root and a three-step
-    // Halley solve, and stays well inside a thousandth of an 8-bit step — a
-    // difference no picker can show.
+    // Reading pure blue back saturates both axes to within `f32` resolution (the side is platform-specific).
+    // Eight ULPs of slack covers it and stays well inside a thousandth of an 8-bit step.
     let top = 1.0 - 4.0 * f32::EPSILON..=1.0;
     let coords = Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0);
     assert!(top.contains(&coords.s), "blue saturation {}", coords.s);
     assert!(top.contains(&coords.v), "blue value {}", coords.v);
 }
 
-/// Distance between two hues the short way round the circle.
 fn hue_gap(a: f32, b: f32) -> f32 {
     let raw = (a - b).abs();
     raw.min(1.0 - raw)
 }
 
-/// The forward map lands a hair outside the gamut at the red corner — the
-/// reference returns -1/255 there. Without the clamp that reaches `RgbaF32`.
+/// The forward map lands a hair outside the gamut at the red corner (-1/255); the clamp stops it reaching `RgbaF32`.
 #[test]
 fn the_gamut_edge_never_goes_negative() {
     for step in 0..360 {
@@ -109,8 +86,7 @@ fn the_gamut_edge_never_goes_negative() {
     }
 }
 
-/// The two ends of the value axis are absolute: black for every hue and
-/// saturation, white for every hue at zero saturation.
+/// The value axis ends are absolute: black for every hue and saturation, white at zero saturation.
 #[test]
 fn the_value_ends_are_absolute() {
     let black = SrgbaU8::hex(0x000000);
@@ -123,9 +99,7 @@ fn the_value_ends_are_absolute() {
     }
 }
 
-/// Saturation moves chroma and leaves lightness alone; value moves lightness
-/// and leaves hue alone. This is the whole reason the space is here, so it is
-/// pinned rather than assumed.
+/// Saturation moves chroma and leaves lightness alone; value moves lightness and leaves hue alone.
 #[test]
 fn the_axes_are_orthogonal_in_hue() {
     let hue = 0.7;

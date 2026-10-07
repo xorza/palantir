@@ -1,7 +1,5 @@
-//! `Tooltip` behavior tests.
-//!
-//! Multi-frame integration tests drive fake pointer hover at advancing
-//! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
+//! `Tooltip` behavior tests: multi-frame tests driving fake pointer hover and
+//! the `Ui` frame-runtime clock to assert visibility, placement and sizing.
 
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
@@ -85,10 +83,9 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
 
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
-    // Mono at the tooltip's 13 px: 6.5 px a char, 15.59375 px a line
-    // (15.6 snapped to 1/64), inside 6 + 6 by 4 + 4 padding and a 1 px
-    // border. "tip" is one 19.5 px line; the long text wraps at
-    // 280 − 14 = 266, which holds 40 chars, onto two lines.
+    // Mono at 13 px: 6.5 px a char, 15.59375 px a line (15.6 snapped to 1/64),
+    // inside 6 + 6 by 4 + 4 padding and a 1 px border. "tip" is one 19.5 px line;
+    // the long text wraps at 280 - 14 = 266 (40 chars) onto two lines.
     assert_eq!(small.size, Size::new(19.5 + 14.0, 15.59375 + 10.0));
     assert_eq!(large.size, Size::new(260.0 + 14.0, 2.0 * 15.59375 + 10.0));
     assert_eq!(large.max().x, SURFACE.x as f32);
@@ -112,8 +109,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .text_shapes
         .first()
         .expect("tooltip text shaped");
-    // Forty 6.5 px chars a line, broken mid-token, inside the 14 px of
-    // padding and border.
+    // Forty 6.5 px chars a line, broken mid-token, inside 14 px of padding and border.
     assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
     assert_eq!(bubble.size.w, 260.0 + 14.0);
     assert!(
@@ -125,8 +121,8 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
 }
 
 /// The bubble's text names only its 13 px size, so the leading is
-/// `Theme::text`'s, set after the theme was built: "tip" at 2× leads at
-/// 13 × 2 = 26 px rather than the stock 15.59375, and stays 3 × 6.5 wide.
+/// `Theme::text`'s, set after the theme was built: "tip" at 2x leads at
+/// 13 * 2 = 26 px, not the stock 15.59375, and stays 3 * 6.5 wide.
 #[test]
 fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = UiHarness::new(SURFACE);
@@ -150,15 +146,10 @@ fn tooltip_text_inherits_the_ambient_leading() {
     assert_eq!(shaped.extent.size, Size::new(19.5, 26.0));
 }
 
-/// The bubble takes its box from [`Configure`] like any other widget —
-/// `Tooltip` used to hand-roll `padding` / `max_size` and offer nothing
-/// else, so `margin` here is a setter it simply did not have.
-///
-/// Identity is the other half: a tooltip has no call site of its own
-/// worth keying on, so it derives the bubble id from its trigger — but
-/// an explicit `.id(...)` has to win, the same way explicit spacing wins
-/// over the theme. Both halves in one test because they are one
-/// contract: the builder's surface is `Configure`'s, defaults included.
+/// The bubble takes its box from [`Configure`] like any widget (so it has
+/// `margin`). Identity: the id derives from the trigger, but an explicit
+/// `.id(...)` wins, as explicit spacing beats the theme. One test because the
+/// builder's surface is `Configure`'s, defaults included.
 #[test]
 fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let trigger_id = WidgetId::from_hash("unbounded-tooltip-trigger");
@@ -235,10 +226,9 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> UiHarness {
     h
 }
 
-/// An empty label is nothing to say, so the hover never becomes active:
-/// no state row turns visible and the layer stays as empty as it is with
-/// no tooltip at all. Same fixture as the visible cases above, which is
-/// what makes the empty layer mean something.
+/// An empty label is nothing to say: hover never becomes active, no state row
+/// turns visible, and the layer stays empty. Same fixture as the visible cases,
+/// which makes the empty layer meaningful.
 #[test]
 fn empty_label_records_no_bubble() {
     let empty = visible_tooltip_at(20.0, "");
@@ -324,9 +314,9 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
         "nothing has been visible yet, so the singleton holds no value either",
     );
 
-    // Hover lands a frame late — the response reads the previous frame's
-    // cascade — so the timer starts on the second frame and the 500 ms
-    // theme delay elapses on the third.
+    // Hover lands a frame late (the response reads the previous frame's cascade),
+    // so the timer starts on the second frame and the 500 ms delay elapses on the
+    // third.
     h.move_onto(trigger_id);
     h.frame(record);
     h.advance(Duration::from_millis(600)).frame(record);
@@ -350,9 +340,8 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     assert!(h.ui.singleton::<TooltipGlobal>().is_some());
 }
 
-/// Drive the timer across N frames with a fixed dt-per-frame, hovering
-/// the trigger the entire time. The bubble should be invisible until
-/// `time >= delay`, then visible.
+/// Drive the timer across N frames with a fixed dt, hovering throughout: the
+/// bubble is invisible until `time >= delay`, then visible.
 #[test]
 fn delay_gates_visibility() {
     let mut h = UiHarness::new(SURFACE);
@@ -377,8 +366,8 @@ fn delay_gates_visibility() {
         });
     };
 
-    // First frame — pointer not yet over the button. State row exists,
-    // but `elapsed == 0` and `visible == false`.
+    // First frame: pointer not yet over the button; the state row exists with
+    // `elapsed == 0` and `visible == false`.
     record_at_secs(&mut h, 0.0, &mut captured);
     let trigger_id = captured.expect("button id");
 
@@ -397,10 +386,9 @@ fn delay_gates_visibility() {
         "the hover begins on the frame the pointer first reached the trigger",
     );
 
-    // Tick past the delay, hovering the trigger and advancing 0.1 s a
-    // frame from 0.2 s. The delay ends at 0.05 + 0.3 = 0.35 s: the 0.3 s
-    // frame is 250 ms in and stays hidden, the 0.4 s frame — tick 2 — is
-    // 350 ms in and is the first to show.
+    // Tick past the delay, advancing 0.1 s a frame from 0.2 s. The delay ends at
+    // 0.05 + 0.3 = 0.35 s: the 0.3 s frame is 250 ms in (hidden); the 0.4 s frame,
+    // tick 2, is 350 ms in and first shows.
     let mut t = 0.1_f32;
     let mut first_visible = None;
     for tick in 0..20 {
@@ -438,9 +426,8 @@ fn delay_gates_visibility() {
     );
 }
 
-/// The bubble records with `Sense::NONE`, so a visible tooltip must
-/// never become the hover target: after it appears, moving the pointer
-/// off the trigger clears the trigger's hover and hides the bubble.
+/// The bubble records with `Sense::NONE`, so it never becomes the hover target:
+/// moving off the trigger clears its hover and hides the bubble.
 #[test]
 fn hover_clears_after_tooltip_visible() {
     let mut h = UiHarness::new(SURFACE);
@@ -493,11 +480,9 @@ fn hover_clears_after_tooltip_visible() {
     assert!(!state.visible, "tooltip must hide after move-away");
 }
 
-/// A tooltip attached to a trigger *inside* a popup body must record
-/// into the `Tooltip` layer without tripping the layer-nesting assert:
-/// `Tooltip::show` raises `Ui::layer(Tooltip)` while the active scope is
-/// already `Popup`. Regression for the panic that forced tooltips out of
-/// darkroom's new-node menu.
+/// A tooltip on a trigger *inside* a popup body must record into the `Tooltip`
+/// layer without tripping the layer-nesting assert (`Tooltip::show` raises
+/// `Ui::layer(Tooltip)` while the scope is `Popup`).
 #[test]
 fn tooltip_inside_popup_records_without_panic() {
     use crate::widgets::popup::Popup;
@@ -505,7 +490,6 @@ fn tooltip_inside_popup_records_without_panic() {
 
     let mut h = UiHarness::new(SURFACE);
 
-    // Near top-left so the popup never flips and the trigger stays put.
     let popup_anchor = Vec2::new(40.0, 40.0);
     let mut captured: Option<WidgetId> = None;
     let record_at_secs = |h: &mut UiHarness, secs: f32, captured: &mut Option<WidgetId>| {
@@ -533,12 +517,11 @@ fn tooltip_inside_popup_records_without_panic() {
         });
     };
 
-    // Record once so the trigger rect is available to the next frame.
     record_at_secs(&mut h, 0.0, &mut captured);
     record_at_secs(&mut h, 0.01, &mut captured);
     let trigger_id = captured.expect("button id");
-    // Hover the popup-nested trigger and tick past the delay. Each frame
-    // re-hovers and advances Ui-time by 0.1 s; hover lag is one frame.
+    // Hover the nested trigger and tick past the delay; each frame re-hovers and
+    // advances Ui-time 0.1 s; hover lags a frame.
     let mut t = 0.01_f32;
     for _ in 0..20 {
         t += 0.1;
@@ -553,8 +536,7 @@ fn tooltip_inside_popup_records_without_panic() {
         state.hover_started_at,
     );
 
-    // The bubble records into the Tooltip layer — a root distinct from
-    // the Popup layer it was raised inside.
+    // The bubble records into the Tooltip layer, a root distinct from the Popup.
     assert_eq!(
         h.ui.tree(Layer::Tooltip).records.len(),
         2,
@@ -562,11 +544,10 @@ fn tooltip_inside_popup_records_without_panic() {
     );
 }
 
-/// A nested layer that ranks at or below the current scope is rejected:
-/// with no per-node z-index, `Layer::PAINT_ORDER` is the only ordering,
-/// so a `Popup` (1) raised inside a `Modal` (2) body would paint *under*
-/// the modal. `push_layer` catches this in every build rather than
-/// letting a release one silently misrender.
+/// A nested layer ranking at or below the current scope is rejected: with no
+/// per-node z-index `Layer::PAINT_ORDER` is the only ordering, so a `Popup` (1)
+/// in a `Modal` (2) body would paint under the modal. `push_layer` catches this
+/// in every build.
 #[test]
 #[should_panic(expected = "must rank above")]
 fn layer_below_current_scope_panics() {
@@ -578,11 +559,9 @@ fn layer_below_current_scope_panics() {
     });
 }
 
-/// A disabled trigger is exactly when the user most wants to be told
-/// *why*, so `when_disabled` has to reach one — which needs the
-/// pointer to still be observed over a widget that can do nothing with
-/// it. The flag stays off by default, so the same fixture without it
-/// shows nothing.
+/// A disabled trigger is when the user most wants to know *why*, so
+/// `when_disabled` must reach one, observing the pointer over a widget that can
+/// do nothing with it. Off by default: the same fixture without it shows nothing.
 #[test]
 fn when_disabled_reaches_a_disabled_trigger() {
     let visible_after_hover = |allow: bool| {
@@ -617,9 +596,8 @@ fn when_disabled_reaches_a_disabled_trigger() {
             h.move_onto(trigger_id);
             record(&mut h, t);
         }
-        // No row is the off answer: a tooltip that never activates
-        // stores nothing. The `true` row is the control that the id is
-        // the one a visible tooltip writes.
+        // No row is the off answer: a never-activating tooltip stores nothing. The
+        // `true` row is the control that the id is the one a visible tooltip writes.
         h.ui.state::<TooltipState>(trigger_id)
             .is_some_and(|state| state.visible)
     };
@@ -634,8 +612,8 @@ fn when_disabled_reaches_a_disabled_trigger() {
     );
 }
 
-/// The stock tooltip `max_size` (280 wide) is a default, so an authored
-/// `min_size` above it raises the bound instead of panicking.
+/// The stock `max_size` (280 wide) is a default, so an authored `min_size` above
+/// it raises the bound instead of panicking.
 #[test]
 fn an_authored_min_above_the_themed_max_width_wins() {
     let mut h = UiHarness::new(SURFACE);

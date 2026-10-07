@@ -28,10 +28,8 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 
-/// Solid `Brush::Solid` panel: composer emits a Quad with
-/// `fill_kind = BRUSH_KIND_SOLID = 0`, `fill_lut_row = 0` (sentinel
-/// for "no gradient"), and the fill colour pass-through. Catches a
-/// regression that accidentally sets `fill_kind = 1` on solid quads.
+/// A solid `Brush::Solid` panel emits a Quad with `fill_kind = BRUSH_KIND_SOLID
+/// = 0`, `fill_lut_row = 0` (no gradient) and the fill colour passed through.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();
@@ -39,14 +37,14 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         .solid(RgbaF32::srgb(0.5, 0.5, 0.5))
         .draw(&mut buffer);
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
-    // 200×200 viewport: an opaque solid sharp quad covering the whole
-    // viewport would fold into the clear instead of emitting a quad.
+    // 200x200 viewport: an opaque solid sharp quad covering it all would fold into
+    // the clear instead of emitting.
     rig.compose(&buffer);
     let q = &rig.out.quads[0];
     assert_eq!(
         q.fill_kind,
-        // Sharp + stroke-less + pixel-aligned, so the solid kind also
-        // carries the fragment fast-path bit.
+        // Sharp, stroke-less, pixel-aligned: the solid kind also carries the
+        // fragment fast-path bit.
         FillKind::SOLID.with_fast(),
         "solid quad must carry kind=solid (+fast)",
     );
@@ -58,13 +56,11 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed");
 }
 
-/// A windowed rect must never fold into the pass clear, take the
-/// fragment fast path, or occlude quads beneath it — its interior is
-/// a hole. All three opaque-cover optimizations compare
-/// `fill_kind == FillKind::SOLID` exactly; the window bit breaks that
-/// equality by design. Deliberate worst case: full-viewport, opaque,
-/// solid, sharp-cornered, pixel-aligned at scale 1 — without the
-/// window bit this exact draw would trigger all three.
+/// A windowed rect must not fold into the pass clear, take the fragment fast
+/// path, or occlude quads beneath it (its interior is a hole). All three
+/// compare `fill_kind == FillKind::SOLID`; the window bit breaks that by
+/// design. Worst case: full-viewport, opaque, solid, sharp, pixel-aligned at
+/// scale 1.
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
     use crate::primitives::packed::fill_kind::FillKind;
@@ -100,8 +96,8 @@ fn windowed_rect_is_not_an_opaque_cover() {
     );
 }
 
-/// A resolved linear gradient packs row + axis + kind into the
-/// paint payload; composer pipes them through to the emitted Quad.
+/// A resolved linear gradient packs row, axis and kind into the paint payload,
+/// which the composer pipes to the Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
@@ -134,9 +130,8 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     assert_eq!(q.fill_axis, expected_axis);
 }
 
-/// Two quads referencing the same gradient share an atlas row.
-/// Content-hash addressing keeps the bake step idempotent across
-/// frames and across multiple emitting widgets.
+/// Two quads referencing the same gradient share an atlas row (content-hash
+/// addressing).
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::packed::fill_kind::FillKind;
@@ -161,8 +156,8 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
     assert_eq!(rows[1], rows[2]);
-    // Row 0 is `LutRow::FALLBACK`, the permanent magenta row, so a fresh
-    // atlas hands the first real gradient row 1.
+    // Row 0 is `LutRow::FALLBACK`, the magenta row, so the first real gradient
+    // gets row 1.
     assert_eq!(rows[0], LutRow(1));
 }
 
@@ -192,14 +187,12 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.batches(PaintTier::Image).len(), 1, "one image batch");
     assert_eq!(buf.batches(PaintTier::Image)[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
-    // Physical-px rect = logical * scale (no snap in `params`).
     assert_eq!(
         buf.images.instance()[0].rect,
         Rect::new(20.0, 40.0, 60.0, 80.0)
     );
-    // Composer must forward the encoder's UV crop verbatim — a Zero
-    // UV size means "sample one texel forever" and silently paints
-    // every image as a uniform color (regression hunt: 2026-05).
+    // The composer must forward the encoder's UV crop verbatim: a zero UV size
+    // samples one texel forever and paints every image a uniform colour.
     assert_eq!(buf.images.instance()[0].uv_min, Vec2::ZERO);
     assert_eq!(buf.images.instance()[0].uv_size, Vec2::ONE);
 }
@@ -251,21 +244,17 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
     }
 }
 
-/// A view reaching past the surface is allocated for what is on screen, and
+/// A view reaching past the surface is allocated for what is on screen and
 /// composited over that much of itself.
 ///
-/// Layout is allowed to hand back a rect larger than the window — the
-/// contains-content rule has a node overflow its parent rather than clip its own
-/// content — so this is a state the composer must expect rather than one that
-/// says something upstream went wrong. Following the rect would allocate pixels
-/// the window can never show and ask the app to draw them.
+/// Layout may hand back a rect larger than the window (overflow, not clip), so
+/// the composer must expect it; following the rect would allocate pixels the
+/// window can never show.
 ///
-/// Both halves are asked. A target sized to the visible part and a composite
-/// still stretched across the whole rect would sample the view squashed, which
-/// is worse than the waste it set out to save.
+/// Both halves are asked: a target sized to the visible part with a composite
+/// still stretched across the whole rect would squash the view.
 #[test]
 fn compose_gpu_view_sized_to_what_the_surface_can_show() {
-    // Twice as wide as the 100px surface, and a third taller.
     let buf = run(
         |b, _arena| {
             gpu_view(b, Rect::new(0.0, 0.0, 200.0, 120.0), TextureId(0xc0ffee));
@@ -280,9 +269,8 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
         UVec2::new(100, 90),
         "allocated past the window"
     );
-    // The whole view is still reported, because that is the shape it was laid
-    // out at and a projection derived from the visible part alone would be a
-    // different aspect.
+    // The whole view is still reported: a projection from the visible part alone
+    // would have a different aspect.
     assert_eq!(target.full, UVec2::new(200, 120));
     assert_eq!(
         target.offset,
@@ -297,12 +285,9 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
     );
 }
 
-/// A view a clip cuts on its near side reports where the target begins.
-///
-/// What a scroll does: the pane shows a window onto the view, and the part
-/// above and left of it is as unshowable as the part past the surface. The
-/// offset is the half that only this case pins — an overflowing view is cut off
-/// its far side, so its offset stays zero and a sign error there would not show.
+/// A view a clip cuts on its near side reports where the target begins, as in
+/// a scroll. The offset is the half only this case pins: an overflowing view is
+/// cut on its far side, so its offset stays zero and a sign error wouldn't show.
 #[test]
 fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     let buf = run(
@@ -327,11 +312,8 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     );
 }
 
-/// A view nothing cuts is left exactly as it was.
-///
-/// The path almost every frame takes, and the one the change above must not
-/// disturb: the target is the whole view, it begins at its own corner, and the
-/// composite covers the rect.
+/// A view nothing cuts is left as it was: the target is the whole view, begins
+/// at its own corner, and the composite covers the rect.
 #[test]
 fn compose_gpu_view_whole_when_nothing_clips_it() {
     let buf = run(
@@ -405,15 +387,11 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
         assert_eq!(target.offset, UVec2::ZERO, "{case:?}");
     }
 
-    // Capped *and* clipped, which is where the window could come apart from the
-    // view it is a window onto: at a downsample its origin rounds down and its
-    // size rounds up, so the pair is not obviously still inside the rounded-up
-    // whole. It always is — the two roundings cannot sum past it — and this is
-    // where that is held to, since nothing clamps it.
-    //
-    // The clip is deliberately off a whole number of target pixels — 45 logical
-    // is 22.5 at half — so both roundings actually happen rather than the case
-    // passing on exact arithmetic.
+    // Capped *and* clipped: at a downsample the window's origin rounds down and
+    // size rounds up, so the pair might exceed the rounded-up whole. The two
+    // roundings cannot sum past it, and nothing clamps it, so this holds it.
+    // The clip is off a whole target pixel (45 logical is 22.5 at half) so both
+    // roundings happen.
     let buf = run_with_texture_cap(
         |b, _arena| {
             b.push_clip(PushClipPayload::rect(Rect::new(45.0, 45.0, 155.0, 155.0)));
@@ -425,9 +403,8 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
     );
     let target = &buf.frame_targets[0];
     assert_eq!(target.full, UVec2::new(100, 100), "the whole view, halved");
-    // The clip leaves 45..200 of the view; at the cap's 0.5 that is
-    // 22.5..100, so the window starts on the floor, 22, and ends at the
-    // view's edge, 100 — never wider than the view, never past it.
+    // The clip leaves 45..200; at the cap's 0.5 that is 22.5..100, so the window
+    // starts on the floor, 22, and ends at the view's edge, 100.
     assert_eq!(target.offset, UVec2::splat(22));
     assert_eq!(target.used, UVec2::splat(100 - 22));
 }
@@ -457,8 +434,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     assert_eq!(buf.images.instance()[0].uv_size, Vec2::new(0.5, 1.0));
 }
 
-/// The composer forwards `flags` verbatim and keeps each draw's UV as-is
-/// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
+/// The composer forwards `flags` verbatim and keeps each draw's UV as-is.
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
     let buf = run(

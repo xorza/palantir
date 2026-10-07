@@ -1,5 +1,4 @@
-//! A self-transform's effect on composed rects, stroke fringe, and
-//! anchoring.
+//! A self-transform's effect on composed rects, stroke fringe and anchoring.
 
 use crate::damage::Damage;
 use crate::primitives::geometry::rect::Rect;
@@ -21,12 +20,8 @@ use crate::widgets::panel::Panel;
 use glam::UVec2;
 use glam::Vec2;
 
-/// A direct shape recorded on a panel with `.transform(...)` must
-/// land in `Cascade::paint_arenas` at the *composed* transform
-/// (parent ∘ self), not just `parent_transform`. Pins the cascade
-/// half of the `Panel::transform`-applies-to-body contract — the
-/// encoder half is already pinned by
-/// `transformed_panel_applies_transform_to_direct_shapes`.
+/// A direct shape on a panel with `.transform(...)` lands in
+/// `Cascade::paint_arenas` at the composed transform (parent ∘ self).
 #[test]
 fn shape_rect_composes_self_transform() {
     let scale = 3.0;
@@ -50,10 +45,7 @@ fn shape_rect_composes_self_transform() {
     });
 
     let shape_rect = first_paint_screen(&h.ui, "xpanel");
-    // The Panel sits at the hstack origin (0, 0). Owner-local
-    // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
-    //   min = (0, 0) * 3 + (10, 20) = (10, 20)
-    //   size = (30, 30) * 3 = (90, 90)
+    // Shape (0, 0, 30, 30) under parent ∘ self: min = (0,0)*3 + (10,20), size = 30*3 = 90.
     assert_eq!(shape_rect, Rect::new(10.0, 20.0, 90.0, 90.0));
 }
 
@@ -132,13 +124,8 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     }
 }
 
-/// `.transform(zoom=S)` on an off-origin panel must anchor the
-/// scale at the panel's own `layout_rect.min`, not at the
-/// cascade's (0, 0). A child at panel-local (0, 0) should land
-/// at the panel's origin regardless of `S` — without anchoring it
-/// would slide off by `panel.min * (S - 1)`. Pins the cascade-
-/// level half of the "scale my body about my own origin"
-/// `Panel::transform` contract.
+/// `.transform(zoom=S)` on an off-origin panel anchors at the panel's own
+/// `layout_rect.min`; unanchored a child would slide by `panel.min * (S - 1)`.
 #[test]
 fn self_transform_anchors_scale_at_panel_origin() {
     let zoom = 2.0;
@@ -146,9 +133,6 @@ fn self_transform_anchors_scale_at_panel_origin() {
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(|ui| {
-        // Push the transformed panel off the surface origin with a
-        // leading sibling — Spacer-style placeholder so the panel
-        // sits at (sibling_width, 0) instead of (0, 0).
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("spacer"))
@@ -159,8 +143,6 @@ fn self_transform_anchors_scale_at_panel_origin() {
                 .size(Sizing::fixed(200.0))
                 .transform(xform)
                 .show(ui, |ui| {
-                    // Panel-local (0, 0) — the natural top-left
-                    // of the panel's body.
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0))
                             .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
@@ -170,14 +152,8 @@ fn self_transform_anchors_scale_at_panel_origin() {
     });
 
     let shape_rect = first_paint_screen(&h.ui, "xpanel");
-    // Panel sits at (50, 0). Shape's panel-local (0, 0) should
-    // map to screen (50, 0) under the anchor — the panel's own
-    // top-left is the fixed point of its scale. Size is
-    // `panel-local size * zoom = 10 * 2 = 20`.
-    //
-    // Without anchoring, the raw `parent.compose(self).apply(panel.min)`
-    // would give `(50, 0) * 2 = (100, 0)` — content slides 50px
-    // right of where it belongs.
+    // The panel's top-left is the fixed point of its scale: shape at (50, 0),
+    // size 10 * 2 = 20. Unanchored it would be (100, 0).
     assert_eq!(
         shape_rect,
         Rect::new(50.0, 0.0, 20.0, 20.0),
@@ -185,21 +161,11 @@ fn self_transform_anchors_scale_at_panel_origin() {
     );
 }
 
-/// Cross-check that the cascade's transform/clip composition (which
-/// hit-test consumes via `paint_arena` / `EntryRow.rect`) agrees with
-/// the *independent* recomputation the encoder + composer perform to
-/// place the actual pixels. They are separate code paths — the encoder
-/// recomputes transform/clip from the tree rather than reading cascade
-/// output (`encoder/mod.rs`), kept in lockstep only by sharing the
-/// `TranslateScale`/`Rect` primitives. This pins that they don't drift:
-/// a transformed child's *composed quad rect* must equal the cascade's
-/// *screen rect* for that shape. A `ClipMode::Rect` is in the pipeline
-/// (exercises the encoder's clip-push + the composer's scissor) but the
-/// child sits fully inside the panel, so the clip doesn't reduce the
-/// painted geometry and the comparison stays apples-to-apples.
+/// The cascade's transform/clip composition (read by hit-test) must agree with
+/// the independent recomputation the encoder and composer use to place pixels:
+/// a transformed child's composed quad rect equals the cascade's screen rect.
 #[test]
 fn cascade_screen_rect_matches_composed_quad_under_transform() {
-    // translate=(15,25), scale=2 — non-trivial on both axes.
     let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -211,7 +177,6 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                 .clip(ClipMode::Rect)
                 .transform(xform)
                 .show(ui, |ui| {
-                    // Fully inside the 300×300 panel → clip never bites.
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))
                             .fill(RgbaF32::srgb(0.5, 0.5, 0.5)),
@@ -220,13 +185,9 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         });
     });
 
-    // Cascade's screen rect for the child shape (what hit-test sees).
     let cascade_rect = first_paint_screen(&h.ui, "xpanel");
 
-    // Composer's actual painted quad. Surface scale = 1, so physical px
-    // == logical px and the rect compares directly. The transparent
-    // viewport / hstack / canvas chrome emit no quads — the child
-    // A rounded rect is the only one.
+    // Surface scale 1, so physical equals logical; the child's rounded rect is the only quad.
     let mut frontend = Frontend::for_test();
     frontend.build(
         h.ui.frame_scene(),
@@ -244,8 +205,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     );
     let quad_rect = buffer.quads[0].rect;
 
-    // child-local (0,0,20,20) under (translate=(15,25), scale=2):
-    //   min = (0,0)*2 + (15,25) = (15,25);  size = (20,20)*2 = (40,40)
+    // child-local (0,0,20,20): min = (0,0)*2 + (15,25), size = (20,20)*2 = (40,40)
     assert_eq!(cascade_rect, Rect::new(15.0, 25.0, 40.0, 40.0));
     assert_eq!(
         quad_rect, cascade_rect,
@@ -253,8 +213,6 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     );
 }
 
-/// Screen rect of the first paint row for the widget keyed by
-/// `WidgetId::from_hash(key)` on `Layer::Main`.
 fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
     let node = ui.cascade().by_id[&WidgetId::from_hash(key)].node;
     let arena = &ui.cascade().layers[Layer::Main].paint_arena;

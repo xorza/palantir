@@ -12,16 +12,7 @@ use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
 
-/// Same rectangle payload, different paint kind: switching to a
-/// windowed rect inverts the painted region, so a hash collision
-/// would make damage diff skip the repaint.
-///
-/// The same risk, one level up: all three quad shapes share
-/// [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own is the
-/// only thing separating a rectangle, a shadow, and a triangle over
-/// the same box — and each shape's own fields have to reach the
-/// hasher through the merged arm. Every case here is a repaint that
-/// damage diff would skip on a collision.
+/// Same rectangle payload, different paint kind (a windowed rect inverts the painted region), and all three quad shapes share [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
@@ -74,11 +65,7 @@ fn quad_shapes_hash_apart() {
     }
 }
 
-/// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so
-/// [`CurveBasis`]'s own is the only thing separating their hashes —
-/// and the arc's own fields have to reach the hasher through the
-/// merged arm. A collision either way would make damage diff skip a
-/// repaint when a stroke changes shape.
+/// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so [`CurveBasis`]'s own must separate them and the arc's fields must reach the hasher.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
     let stroke = ShapeStroke::from(Stroke::new(RgbaF32::WHITE, 2.0));
@@ -99,8 +86,7 @@ fn curve_and_arc_bases_hash_apart() {
     };
     let baseline = arc(Vec2::ZERO, 4.0, 0.0, 1.0);
 
-    // Every field the two bases don't share is identical here, so
-    // only `CurveBasis`'s discriminant can tell these two apart.
+    // Every non-shared field is identical, so only `CurveBasis`'s discriminant differs.
     assert_ne!(
         compute_record_hash(&baseline),
         compute_record_hash(&curve(CurveBasis::Cubic {
@@ -171,11 +157,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
     );
 }
 
-/// A view composite and a texture draw share `Image`'s record
-/// discriminant, so only [`ImageSource`]'s own separates their hashes
-/// — and the view's `epoch` has to reach the hasher through the merged
-/// arm. A collision either way makes damage diff skip a repaint: a view
-/// that bumped its epoch would keep its stale texture on screen.
+/// A view composite and a texture draw share `Image`'s discriminant, so [`ImageSource`]'s must separate them and the view's `epoch` must reach the hasher, or a bumped epoch keeps a stale texture.
 #[test]
 fn image_source_hashes_apart_by_source() {
     let image = |source| ShapeRecord::Image {
@@ -187,8 +169,7 @@ fn image_source_hashes_apart_by_source() {
         mag_filter: ImageFilter::Linear,
         downsample: ImageDownsample::Single,
     };
-    // Both sources carry one u64-shaped payload of the same value,
-    // so the source tag is the only thing telling these two apart.
+    // Same u64-shaped payload, so only the source tag differs.
     let view = compute_record_hash(&image(ImageSource::GpuView { epoch: 7 }));
     assert_ne!(
         view,

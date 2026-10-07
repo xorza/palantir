@@ -1,5 +1,4 @@
-//! The box-and-label boolean toggle, and the pair of responses a click
-//! on either half reports.
+//! The box-and-label boolean toggle and its pair of click responses.
 
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -16,19 +15,9 @@ use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
-/// Two-response boolean toggle. Takes a `&mut bool` whose owner controls
-/// the value — same pattern as egui. Clicking the row flips it.
+/// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
-/// Layout: HStack [box, label]. The whole row is one hit target with
-/// `Sense::CLICK`; clicking anywhere on it toggles. Child node ids
-/// derive from the outer widget id via `WidgetId::with`, so they stay
-/// stable across sibling insertions (no reliance on `SeenIds`'
-/// occurrence-counter disambiguation).
-///
-/// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) — chrome
-/// through the slot's `plan`, which picks the `unchecked` or `checked`
-/// four-state pack, check glyph color from `indicator`, geometry from
-/// `box_size` etc.
+/// An HStack of [box, label], one `Sense::CLICK` target. Child ids derive via `WidgetId::with`, stable across sibling insertions. Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]): chrome via the slot's `plan` (`unchecked` / `checked`), glyph colour from `indicator`, geometry from `box_size`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Checkbox<'a> {
@@ -50,24 +39,19 @@ impl<'a> Checkbox<'a> {
         }
     }
 
-    /// The text this widget draws. Empty (the default) draws none —
-    /// no text child is recorded at all.
-    ///
-    /// Drawn to the right of the box; an empty label leaves the box alone.
+    /// The text drawn right of the box. Empty (default) records no text child.
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `checkbox`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `checkbox`.
     pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the row and report whether this frame flipped the bound
-    /// `bool`. A flip commits at once, so `committed == changed`.
+    /// Record the row and report whether this frame flipped the bool. A flip commits at once (`committed == changed`).
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
 
@@ -88,7 +72,7 @@ impl<'a> Checkbox<'a> {
             plan: slot.plan(&response, checked, theme.text),
             gap: slot.gap,
             boxed: Widget::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
-            // Square box: the theme's own corner radius stands.
+            // Square box: the theme's corner radius stands.
             pill: None,
         };
         let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {

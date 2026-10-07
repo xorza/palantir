@@ -198,8 +198,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         let mut h = UiHarness::new(UVec2::new(600, 200));
         let mut buf = String::from("editable");
 
-        // One renderable frame first, so the unrenderable one below has
-        // retained state it could lose.
+        // One renderable frame first, so the unrenderable one has state to lose.
         h.frame(|ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
@@ -246,12 +245,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
             calls,
             "{label}: invalid text reached the shaper",
         );
-        // `show` moves the state row out for the whole pass and back at
-        // the end. Bailing here is the pass's *only* early return, so it
-        // is the one place a write-back on some-but-not-all paths would
-        // hand the row back as `Default` — silently resetting the caret
-        // and dropping the undo stack the moment a theme made the text
-        // unrenderable.
+        // `show` moves the state row out and back; bailing here is its only early return, and must hand the row back, not `Default`.
         let st = h.state::<TextEditState>(editor_id);
         assert_eq!(st.edit.caret, 4, "{label}: caret lost on the early return");
         assert_eq!(
@@ -333,8 +327,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
-    // 16 × 1.2 = 19.2, on the shaper's 1/64-px grid: 1228.8 64ths round
-    // to 1229.
+    // 16 × 1.2 = 19.2 on the shaper's 1/64-px grid: 1228.8 64ths round to 1229.
     assert_eq!(
         lh,
         (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
@@ -345,8 +338,6 @@ fn pushed_shape_carries_default_line_height_from_theme() {
 
 #[test]
 fn no_selection_paints_no_highlight_rect() {
-    // Focused TextEdit with no selection paints exactly one
-    // rounded rect (the caret). No selection wash.
     use crate::shape::record::ShapeRecord;
 
     let mut h = UiHarness::new(NARROW);
@@ -386,8 +377,6 @@ fn no_selection_paints_no_highlight_rect() {
 
 #[test]
 fn shift_end_paints_selection_highlight() {
-    // Programmatic Shift+End extends to len; expect a rounded rect for
-    // the selection wash, painted *before* the caret rect.
     use crate::shape::record::ShapeRecord;
 
     let mut h = UiHarness::new(NARROW);
@@ -428,7 +417,6 @@ fn shift_end_paints_selection_highlight() {
         })
         .collect();
     assert_eq!(rects.len(), 2, "expect selection wash + caret rect");
-    // Selection rect is wider than the caret. Mono 8 px/char × 5 chars = 40 px.
     let widths: Vec<f32> = rects.iter().map(|r| r.size.w).collect();
     let max_w = widths.iter().copied().fold(0.0_f32, f32::max);
     assert!(
@@ -439,17 +427,13 @@ fn shift_end_paints_selection_highlight() {
 
 #[test]
 fn drag_select_extends_selection() {
-    // Press at offset 1, drag to offset 4 → selection covers [1..4].
-    // Mono fallback: 8 px/char, theme pad-left = 8 px → byte offset N
-    // sits at x = 8 + 8N.
+    // Press at offset 1, drag to 4 selects [1..4]. Mono 8 px/char, pad-left 8: offset N is at x = 8 + 8N.
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(editor_at(&mut buf, None));
-    // Mouse-down at offset 1 (x = 16).
     h.press_at(Vec2::new(16.0, 20.0));
     h.frame(editor_at(&mut buf, None));
-    // Drag to offset 4 (x = 40) — still pressed.
     h.drag_to(Vec2::new(40.0, 20.0));
     h.frame(editor_at(&mut buf, None));
     h.release();
@@ -464,13 +448,7 @@ fn drag_select_extends_selection() {
 
 #[test]
 fn click_without_drag_clears_prior_selection() {
-    // Programmatic Ctrl+A select-all, then a press elsewhere should
-    // collapse the selection (anchor latched on the press, no drag).
-    // Uses press+frame+release so the rising edge actually fires. The
-    // focusing click sits > DOUBLE_CLICK_RADIUS from the later press —
-    // the input layer counts *every* press toward a multi-press run
-    // (frames don't have to observe them), so a same-spot follow-up
-    // would legitimately read as a double-click word-select.
+    // Ctrl+A then a press elsewhere collapses the selection. The focusing click is beyond DOUBLE_CLICK_RADIUS of the later press, since every press counts toward a multi-press run.
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
 
@@ -481,7 +459,6 @@ fn click_without_drag_clears_prior_selection() {
     h.set_modifiers(Modifiers::NONE);
     h.frame(editor_at(&mut buf, None));
 
-    // Now press at offset 2 (x = 8 + 16 = 24), let a frame run, release.
     h.press_at(Vec2::new(24.0, 20.0));
     h.frame(editor_at(&mut buf, None));
     h.release();
@@ -496,8 +473,7 @@ fn click_without_drag_clears_prior_selection() {
 
 #[test]
 fn line_height_override_changes_caret_rect_height() {
-    // Pin: caret rect height tracks the leading carried on the
-    // theme's `text` style.
+    // Caret height tracks the theme `text` style's leading.
     use crate::TextEditTheme;
     use crate::shape::record::ShapeRecord;
     use crate::widget_core::widget_look::WidgetLook;

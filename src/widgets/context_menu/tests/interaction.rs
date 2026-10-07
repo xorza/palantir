@@ -83,11 +83,9 @@ fn item_click_dismisses_and_reports_clicked() {
     assert!(!menu_open(&h.ui), "item click auto-closes the menu");
 }
 
-/// Pressing a `MenuItem`'s shortcut while the menu is open fires
-/// the item (its `Response::clicked` is `true`) AND closes the menu,
-/// mirroring native menu behaviour. A hint shows the same chord on the
-/// row and leaves the press alone: the menu stays open and the row does
-/// not click.
+/// Pressing a `MenuItem`'s shortcut while the menu is open fires the item (`Response::clicked` is
+/// `true`) and closes the menu, as native menus do. A hint shows the same chord on the row and
+/// leaves the press alone: the menu stays open and the row does not click.
 #[test]
 fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
     for hint in [false, true] {
@@ -133,10 +131,8 @@ fn escape_dismisses_menu() {
     assert!(!menu_open(&h.ui), "Esc closes the menu");
 }
 
-/// Menu body must hug to its content width (theme.min_width floor),
-/// not blow up to the surface width. Regresses an issue where `Fill`
-/// cross-axis on inner cells leaked `INF` up through the Hug menu
-/// container.
+/// The menu body hugs its content width (`theme.min_width` floor) instead of spanning the surface;
+/// guards `Fill` cross-axis on inner cells leaking `INF` up through the Hug menu container.
 #[test]
 fn menu_body_width_does_not_span_surface() {
     let mut h = UiHarness::new(SURFACE);
@@ -215,15 +211,12 @@ fn menu_open(ui: &Ui) -> bool {
 
 /// **A menu raised from inside a popup records above it rather than panicking.**
 ///
-/// The composition every text field in an overlay is: a `TextEdit` in a popup,
-/// right-clicked. A menu that shared [`Layer::Popup`] with the popup that
-/// raised it asked the forest to push a layer onto itself — a debug assertion
-/// in debug, and in release a menu recorded *underneath* its own parent, drawn
-/// occluded and un-hittable.
+/// The composition every text field in an overlay is: a `TextEdit` in a popup, right-clicked. A menu
+/// sharing [`Layer::Popup`] with its popup would push a layer onto itself: a debug assertion in
+/// debug, and in release a menu recorded *underneath* its parent, occluded and un-hittable.
 ///
-/// Asserted on the tree the body lands in rather than on the absence of a
-/// panic: a menu that opened on the popup's own layer would still be open, and
-/// only the layer says which side of its parent it is on.
+/// Asserted on the tree the body lands in, not on the absence of a panic: a menu on the popup's own
+/// layer would still be open, and only the layer says which side of its parent it is on.
 #[test]
 fn a_menu_raised_inside_a_popup_lands_above_it() {
     let mut h = UiHarness::new(SURFACE);

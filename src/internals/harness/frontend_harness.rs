@@ -7,10 +7,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 
-/// Drives frames through the whole CPU pipeline: record through damage
-/// on the [`UiHarness`], then encode and compose of what the frame
-/// planned. It stops where a device would start, so nothing it does
-/// waits on, or allocates for, a driver.
+/// Drives frames through the whole CPU pipeline, record through compose, stopping where a device would start.
 #[derive(Debug)]
 pub struct FrontendHarness {
     pub(crate) harness: UiHarness,
@@ -18,8 +15,7 @@ pub struct FrontendHarness {
 }
 
 impl FrontendHarness {
-    /// Paint `harness`'s frames into a fresh frontend with the baseline
-    /// texture cap real adapters meet.
+    /// Paint `harness`'s frames into a fresh frontend.
     pub fn new(harness: UiHarness) -> Self {
         Self {
             harness,
@@ -27,14 +23,12 @@ impl FrontendHarness {
         }
     }
 
-    /// The harness the frames run on, for input, the clock, the surface
-    /// and the theme.
+    /// The harness the frames run on.
     pub const fn harness(&mut self) -> &mut UiHarness {
         &mut self.harness
     }
 
-    /// One frame, encoded and composed when it planned a paint. A frame
-    /// whose damage is empty skips both, as a host's would.
+    /// One frame, encoded and composed when it planned a paint.
     pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
         let report = self.harness.frame(record);
         if let Some(plan) = report.plan {
@@ -43,8 +37,7 @@ impl FrontendHarness {
         report
     }
 
-    /// Encode and compose the whole retained scene, as a full repaint
-    /// would, whatever the last frame planned.
+    /// Encode and compose the whole retained scene, as a full repaint would.
     pub fn paint_full(&mut self) {
         let plan = RenderPlan {
             clear: self.harness.ui.theme().window_clear,

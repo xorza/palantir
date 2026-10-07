@@ -1,34 +1,21 @@
-//! Observability for the cascade pass. Built on [`TestOnly`], whose module
-//! doc explains the gated-cell pattern and why the two gates exist.
+//! Observability for the cascade pass, built on [`TestOnly`] (see its module doc for the gated-cell pattern).
 //!
-//! This pass is the sharpest case for the accumulate default:
-//! [`CascadeEngine::run`] skips outright on an unchanged key, so a
-//! per-pass reset would not fire at all on those frames and each of them
-//! would report the previous run's numbers as its own.
+//! Accumulate is the right default: [`CascadeEngine::run`] skips on an unchanged key, so a per-pass reset would never fire and those frames would report the previous run's numbers.
 //!
 //! [`CascadeEngine::run`]: crate::cascade::engine::CascadeEngine
 
 use crate::common::counters::TestOnly;
 
-/// What the cascade did, for tests to assert against.
-///
-/// The two counters exist as a pair: both paths end in the same correct
-/// cascade, so from the outside there is nothing to tell them apart, and
-/// separating "`can_update` said no" from "the incremental walk gave up
-/// halfway" is the whole point.
+/// What the cascade did, for tests. Both paths end in the same cascade, so the pair is what separates "`can_update` said no" from "the incremental walk gave up halfway".
 #[derive(Debug, Default)]
 pub(crate) struct CascadeCounters {
     /// Full rebuilds performed.
     full_rebuilds: TestOnly<u32>,
-    /// Incremental walks that got partway and gave up, forcing the full
-    /// rebuild they had already started duplicating.
+    /// Incremental walks that gave up partway, duplicating the full rebuild they started.
     abandoned_incrementals: TestOnly<u32>,
-    /// Nodes whose rows an incremental walk recomputed rather than kept —
-    /// what tells a repair that stayed inside the changed subtree from
-    /// one that walked the tree.
+    /// Nodes an incremental walk recomputed rather than kept; tells a repair inside the changed subtree from a full-tree walk.
     refreshed_nodes: TestOnly<u32>,
-    /// Whether the last run did any work, rather than skip on an
-    /// unchanged key.
+    /// Whether the last run did work rather than skip on an unchanged key.
     ran: TestOnly<bool>,
 }
 
@@ -54,8 +41,7 @@ impl CascadeCounters {
     }
 }
 
-/// Reads are test-only: nothing in a shipping build has a reason to ask,
-/// and gating them here is what lets the counters themselves be absent.
+/// Reads are test-only; gating them lets the counters be absent from shipping builds.
 #[cfg(test)]
 impl CascadeCounters {
     pub(crate) fn full_rebuilds(&self) -> u32 {

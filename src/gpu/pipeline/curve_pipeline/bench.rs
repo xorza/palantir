@@ -1,15 +1,6 @@
-//! GPU curve-pipeline benchmark. Two fixed workloads isolate the shader paths
-//! affected by the static strip index buffer:
+//! GPU curve-pipeline benchmark: `cubic_strips` (one short cubic per cell, one instance) and `join_chrome` (a three-point polyline per cell, two segments and one join).
 //!
-//! - `cubic_strips` records one short cubic per grid cell. Every cubic stays
-//!   below the composer's subdivision threshold and produces one instance.
-//! - `join_chrome` records one three-point polyline per grid cell. Each emits
-//!   two segment instances and one join-chrome instance.
-//!
-//! Each iteration toggles one control point so damage forces the full curve
-//! stream through the backend, then waits for the GPU. Criterion measures that
-//! complete record-to-GPU wall time; the keep-or-revert signal is the median
-//! curve timestamp and pipeline statistics printed before each case.
+//! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU; the keep-or-revert signal is the median curve timestamp printed before each case.
 
 #![expect(
     clippy::print_stderr,

@@ -15,9 +15,7 @@ use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::UVec2;
 use glam::Vec2;
 
-/// The trace circle insets by half the stroke width (round caps
-/// reach `width/2` past the centerline, so this keeps the painted
-/// stroke inside the box), and degenerate sizes clamp at zero.
+/// The trace circle insets by half the stroke width (round caps), and degenerate sizes clamp at zero.
 #[test]
 fn arc_geometry_insets_by_half_width() {
     assert_eq!(
@@ -27,25 +25,17 @@ fn arc_geometry_insets_by_half_width() {
             radius: 11.0,
         }
     );
-    // width ≥ size: radius clamps to 0 instead of going negative.
     assert_eq!(arc_geometry(4.0, 8.0).radius, 0.0);
-    // The default sweep leaves a visible gap — a full turn would
-    // paint as a static ring, with nothing to read the spin off.
+    // The default sweep leaves a gap; a full turn would read as a static ring.
     assert!(SpinnerTheme::default().sweep < TAU);
 }
 
-/// Sweep, spin rate, and the diameter-derived stroke all come off
-/// `Theme::spinner` rather than constants. Stroke is
-/// `diameter * thickness_ratio` floored at `min_thickness`, so the
-/// arc keeps its proportions when the spinner is resized — and the
-/// floor is what a tiny one lands on.
+/// Sweep, spin rate and stroke come from `Theme::spinner`. Stroke is `diameter * thickness_ratio` floored at `min_thickness`.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
     use crate::shape::paint::curve_basis::CurveBasis;
     use crate::shape::record::ShapeRecord;
 
-    /// What one spinner recorded: its arc's sweep and stroke width, and
-    /// its spin in radians per second.
     #[derive(Debug)]
     struct Recorded {
         sweep: f32,
@@ -82,8 +72,6 @@ fn arc_and_spin_follow_the_spinner_theme() {
                 _ => None,
             })
             .expect("spinner records one arc");
-        // Reported as the old radians-per-second, so the assertions below
-        // stay written in the unit the theme is.
         let speed = tree
             .paint_anims
             .entries
@@ -102,8 +90,6 @@ fn arc_and_spin_follow_the_spinner_theme() {
         }
     }
 
-    // Stock theme: stroke is the ratio applied to the diameter,
-    // clear of the floor at 50 px.
     let stock = SpinnerTheme::default();
     let Recorded {
         sweep,
@@ -115,14 +101,11 @@ fn arc_and_spin_follow_the_spinner_theme() {
     let expected = 50.0 * stock.thickness_ratio;
     assert_eq!(width, expected, "want {expected}, got {width}");
 
-    // Quarter the diameter and the stroke follows it down, rather
-    // than staying put.
     let small = recorded(stock.clone(), 12.5, None).width;
     let expected_small = 12.5 * stock.thickness_ratio;
     assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
-    // Below the floor the derived value loses.
     let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
     let floored = recorded(stock.clone(), tiny, None).width;
     assert_eq!(
@@ -130,15 +113,13 @@ fn arc_and_spin_follow_the_spinner_theme() {
         "tiny spinner floors at min_thickness, got {floored}"
     );
 
-    // An explicit width replaces the derived one outright — the floor
-    // included, which only guards the derivation.
+    // An explicit width replaces the derived one, floor included.
     let explicit = stock.min_thickness * 0.5;
     assert_eq!(
         recorded(stock.clone(), 50.0, Some(explicit)).width,
         explicit
     );
 
-    // Retheme: every one of the three moves.
     let loud = SpinnerTheme {
         sweep: 1.0,
         speed: 9.0,
@@ -158,16 +139,13 @@ fn arc_and_spin_follow_the_spinner_theme() {
     assert_ne!(width, width_b);
 }
 
-/// Comet trail: transparent white at the tail, opaque white at the head,
-/// so the stroke colour it multiplies sets the hue. A translucent base
-/// keeps its own alpha at the head — times one, not raised to opaque.
+/// Comet trail: transparent white tail, opaque white head, so the stroke colour sets the hue; a translucent base keeps its alpha at the head.
 #[test]
 fn comet_fades_tail_to_head() {
     let ramp = comet();
     assert_eq!(ramp.stops.len(), 2);
     let (tail, head) = (ramp.stops[0], ramp.stops[1]);
     assert_eq!((tail.offset(), head.offset()), (0.0, 1.0));
-    // White decodes from its sRGB bytes exactly, so these are exact.
     assert_eq!(tail.color(), RgbaF32::new(1.0, 1.0, 1.0, 0.0));
     assert_eq!(head.color(), RgbaF32::WHITE);
 
@@ -176,9 +154,7 @@ fn comet_fades_tail_to_head() {
     assert_eq!(base.tinted(tail.color()), base.with_alpha(0.0));
 }
 
-/// The layout size and the drawn diameter are separate: an explicit size
-/// or `HUG` replaces the box, and an untouched spinner is the diameter
-/// square.
+/// Layout size and drawn diameter are separate: an explicit size or `HUG` replaces the box; default is the diameter square.
 #[test]
 fn explicit_layout_size_is_independent_from_diameter() {
     let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {

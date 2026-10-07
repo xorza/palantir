@@ -13,99 +13,59 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::block::Block;
 
-/// What stands between an overlay's body and the layers below it.
-///
-/// The pointer and the keys are one decision, so this is one value: an
-/// overlay either takes both from the layers below or neither. Taking one
-/// without the other leaves a host that is half-dead in a way nothing at
-/// the call site would explain.
+/// What stands between an overlay's body and the layers below it. Pointer and keys
+/// are one decision: an overlay takes both or neither.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Backdrop {
-    /// Nothing. The overlay annotates rather than interrupts: it wants
-    /// the layer for paint order and its flip-to-fit placement, and the
-    /// host underneath stays live. A tooltip recorded unconditionally
-    /// every frame would otherwise cut off every layer below it forever.
+    /// Nothing. The overlay annotates rather than interrupts: it wants the layer
+    /// for paint order and flip-to-fit placement; the host underneath stays live.
     None,
-    /// The overlay's own root, which the caller records itself. A modal
-    /// dims the surface, absorbs stray pointer events, and centres its
-    /// card in the one node.
+    /// The overlay's own root, recorded by the caller (a modal dims the surface and
+    /// absorbs stray pointer events here).
     Root,
-    /// A full-surface eater [`OverlayScope::record`] lays down under this
-    /// id, ahead of the body. A *placed* overlay cannot nest its body
-    /// inside its backdrop — the placement is what flips the body to fit
-    /// — so the backdrop is a sibling recorded first.
+    /// A full-surface eater [`OverlayScope::record`] lays down under this id ahead
+    /// of the body; a *placed* overlay cannot nest its body in its backdrop, as
+    /// placement flips it to fit.
     Eater(WidgetId),
 }
 
 impl Backdrop {
-    /// Whether the overlay takes input from the layers below.
-    ///
-    /// The keys and the pointer together — the one decision this type
-    /// exists to hold, so the three sites that gate on it read it here
-    /// rather than each testing the variant.
     const fn owns_input(self) -> bool {
         !matches!(self, Self::None)
     }
 }
 
-/// What one overlay turn produced: whatever the body returned, and the
-/// two dismissal edges the turn observed.
-///
-/// `inner` rides along the way [`Widget::record`](crate::widget::Widget::record)
-/// returns its body's value — without it every host would have to smuggle
-/// the result out of the closure through an `Option` it then unwraps.
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct OverlayTurn<R> {
     pub(crate) inner: R,
-    /// Escape landed inside the scope.
     pub(crate) escape: bool,
-    /// A press landed on the backdrop rather than on the body.
     pub(crate) outside: bool,
 }
 
-/// One overlay's turn on a layer, from the moment its root is stamped
-/// until it resolves that it closed.
-///
-/// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and
-/// [`Tooltip`](crate::Tooltip) share the whole lifecycle — claim the
-/// layer, lay a backdrop, record a body inside it, dismiss on Escape or
-/// an outside press, hand the scope back — and two of those steps have an
-/// ordering constraint that is invisible at the call site and wrong by
-/// default. Holding them as one type is what keeps a fourth overlay from
-/// rediscovering them: see [`Self::record`] and [`Self::withdraw`].
-///
-/// A scope silences the layers strictly *below* its own, never its own
-/// body, which is what lets a `TextEdit` inside a popup keep reading the
-/// keyboard while everything under the popup stops.
+/// One overlay's turn on a layer, from stamping its root until it closes.
+/// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
+/// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
+/// [`Self::withdraw`]). A scope silences the layers strictly *below* its own, never
+/// its own body, so a `TextEdit` in a popup keeps the keyboard.
 #[derive(Debug)]
 pub(crate) struct OverlayScope {
     owner: WidgetId,
-    /// Where the body records. Retained rather than passed to
-    /// [`Self::record`] so the scope cannot be stamped on one layer and
-    /// the body placed on another — every caller knows the whole
-    /// placement at claim time anyway.
+    /// Where the body records; retained so scope and body cannot land on different
+    /// layers.
     layer: Layer,
-    /// `None` takes the layer's default — the surface origin with the
-    /// whole surface available, which is what a full-surface overlay
-    /// like a modal wants.
+    /// `None` takes the layer's default: the surface origin, whole surface
+    /// available.
     anchor: Option<Anchor>,
     backdrop: Backdrop,
 }
 
 impl OverlayScope {
-    /// Claim `layer` for `root`, stamping it as the node that takes the
-    /// layer's entire key scope when the overlay has a backdrop. The owner
-    /// is the root's own resolved id, so a caller-set id on the root is
-    /// the owner too — not an id the caller derived beside it.
-    ///
-    /// Every class but [`KeyFilter::FOCUS`], because an overlay *owns*
-    /// input while it is up: it does not merely outrank the layers below
-    /// it, it cuts them off. That is what stops a popup underneath a modal
-    /// from dismissing alongside it on one Escape. `FOCUS` stays out so
-    /// Tab walks the overlay's own stops: a claimed class is one the
-    /// framework's traversal leaves alone, and the layers below are cut
-    /// off by layer, whatever the class.
+    /// Claim `layer` for `root`, stamping it as the node taking the layer's key
+    /// scope when there is a backdrop; the owner is the root's resolved id. Every
+    /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
+    /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
+    /// stops.
     pub(crate) fn claim(
         ui: &mut Ui,
         layer: Layer,
@@ -126,27 +86,16 @@ impl OverlayScope {
         }
     }
 
-    /// Lay the backdrop down, record `body` into the claimed layer at
-    /// `placement`, and report both dismissal edges.
+    /// Lay the backdrop down, record `body` into the claimed layer, and report both
+    /// dismissal edges.
     ///
-    /// The Escape read happens in here, before the layer closes, and it
-    /// has to: outside the layer the ambient scope sits below this
-    /// overlay's, so a `key_pressed(Escape)` call made after the fact is
-    /// silenced by the very scope the overlay just declared — and the
-    /// overlay never sees its own dismiss key. A backdrop-less scope
-    /// reports `false` without asking: it has no dismiss key, and
-    /// `key_pressed` auto-watches the chord for wake-up, which an
-    /// always-recorded overlay would re-arm every frame for nothing.
-    ///
-    /// A recorded eater goes down first, so it paints *under* the body.
-    /// Hit-test runs reverse-iter, so the body's leaves still win inside
-    /// its rect. It senses all four pointer interactions, so the overlay
-    /// is truly modal over the layers below: pan-drag, scroll and pinch
-    /// over the surrounding area cannot leak through to the host — a
-    /// graph canvas that pans on middle-drag and zooms on scroll, say.
-    /// `Sense::CLICK` is the dismiss trigger; the other three never
-    /// produce visible behaviour on the eater itself, and are absorbed
-    /// and discarded.
+    /// Escape is read in here, before the layer closes: afterwards the ambient
+    /// scope sits below this overlay's and would silence it. A backdrop-less scope
+    /// reports `false` without asking, as `key_pressed` would re-arm a wake every
+    /// frame. An eater goes down first so it paints *under* the body (hit-testing
+    /// runs in reverse, so the body still wins); it senses all four pointer
+    /// interactions so pan, scroll and pinch cannot leak to the host, and only
+    /// `Sense::CLICK` dismisses.
     pub(crate) fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
         if let Backdrop::Eater(id) = self.backdrop {
             ui.layer(self.layer).show(|ui| {
@@ -177,12 +126,9 @@ impl OverlayScope {
         }
     }
 
-    /// Whether a press landed on the backdrop rather than the body.
-    ///
-    /// The backdrop absorbs all four pointer interactions, so a secondary
-    /// press outside is absorbed either way — see
-    /// `ResponseState::any_clicked` for why absorbing it and ignoring it
-    /// is the case that matters.
+    /// Whether a press landed on the backdrop rather than the body; all four
+    /// pointer interactions are absorbed, so a secondary press counts (see
+    /// `ResponseState::any_clicked`).
     fn backdrop_clicked(&self, ui: &Ui) -> bool {
         let id = match self.backdrop {
             Backdrop::None => return false,
@@ -192,17 +138,10 @@ impl OverlayScope {
         ui.response_for(id).any_clicked()
     }
 
-    /// Give the scope back once the overlay has resolved that it closed.
-    ///
-    /// **The pass this runs in is unaffected** — a scope path resolves
-    /// once per pass against a cascade that is a frame old, so an
-    /// overlay that merely stopped recording would go on owning input
-    /// for the frame after it is gone: long enough to swallow the click
-    /// that lands where it used to be.
-    ///
-    /// Takes `self`, so the claim is spent by the call. An overlay that
-    /// stays open drops it instead, and one that closes cannot go on
-    /// using a scope it has handed back.
+    /// Give the scope back once the overlay has resolved that it closed. **The
+    /// current pass is unaffected**: scope paths resolve against a cascade a frame
+    /// old, so merely ceasing to record would keep owning input one more frame and
+    /// swallow the click where it was. Takes `self`, so the claim is spent.
     pub(crate) fn withdraw(self, ui: &mut Ui, closed: bool) {
         if closed && self.backdrop.owns_input() {
             ui.release_input_scope(self.owner);

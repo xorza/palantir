@@ -9,12 +9,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::Vec2;
 
-/// The interaction half of `response_for` routes against the one-frame
-/// -stale cascade, so on the frame a subtree becomes disabled a widget
-/// could otherwise observe `hovered`/`clicked` alongside
-/// `disabled == true` — a combination the steady-state hit index never
-/// produces (disabled entries carry `Sense::NONE`), and one that lets
-/// a click land on just-disabled UI.
+/// `response_for`'s interaction half routes against the one-frame-stale cascade, so on the frame a subtree becomes disabled a widget could see `hovered`/`clicked` with `disabled == true`, which steady state never produces (disabled entries carry `Sense::NONE`).
 #[test]
 fn freshly_disabled_subtree_masks_stale_interactions() {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -40,8 +35,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let enabled = run(&mut h, false);
     assert!(enabled.hovered(), "sanity: pointer hovers the button");
     assert!(!enabled.disabled);
-    // Disable frame: stale cascade still routes the hover; the read
-    // must mask it.
+    // Disable frame: the stale cascade still routes the hover; the read must mask it.
     let disabled = run(&mut h, true);
     assert!(disabled.disabled, "ancestor-disabled ORs in lag-free");
     assert!(
@@ -81,16 +75,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     );
 }
 
-/// The theme accessors' sharing contract, which is the whole point of
-/// storing it behind an `Rc`: reads hand back a handle so the widgets
-/// that need a bundle across a `&mut Ui` reborrow pay a refcount bump
-/// rather than copying one; writes are copy-on-write, so a live handle
-/// keeps the values it was taken with.
-///
-/// The `ptr_eq` assertion is the load-bearing one. If `Ui::theme` ever
-/// went back to returning `&Theme`, every `ui.theme().clone()` call site
-/// in the crate would still compile — and silently deep-copy ~9 KB of
-/// bundles per widget per frame instead.
+/// The theme accessors' `Rc` sharing: reads hand back a handle (a refcount bump, not a copy) and writes are copy-on-write, so a live handle keeps its values. The `ptr_eq` assertion matters: if `Ui::theme` returned `&Theme`, every `ui.theme().clone()` would still compile and silently deep-copy ~9 KB per widget per frame.
 #[test]
 fn theme_reads_share_and_writes_copy_on_write() {
     use crate::widgets::theme::Theme;
@@ -106,7 +91,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
         "a theme read must hand back the same allocation, not a copy",
     );
 
-    // Write with the handle alive: the `Ui` moves, the handle does not.
+    // Write with the handle alive: the `Ui` moves, the handle doesn't.
     let recolored = RgbaF32::srgb(0.1, 0.2, 0.3);
     h.ui.theme_mut().window_clear = recolored;
     assert_eq!(h.ui.theme().window_clear, recolored);
@@ -129,7 +114,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
         "an unshared theme must be written in place, with no copy",
     );
 
-    // `set_theme` takes the handle, so swapping whole themes is a move.
+    // `set_theme` takes the handle, so swapping themes is a move.
     let swapped: Rc<Theme> = Rc::new(Theme::default());
     let swapped_ptr = Rc::as_ptr(&swapped);
     h.ui.set_theme(swapped);

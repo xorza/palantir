@@ -1,5 +1,4 @@
-//! Assembly of a pipeline's WGSL source: the shared prelude, then the
-//! shader body, with the Rust-owned constants of both substituted in.
+//! Assembly of a pipeline's WGSL: the shared prelude, then the body, with Rust-owned constants substituted.
 
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
@@ -17,17 +16,10 @@ use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 
-/// Concatenated ahead of every shader body, so the vocabulary the
-/// pipelines share has one definition. See the file itself for what may
-/// go in it.
+/// Concatenated ahead of every shader body, so shared vocabulary has one definition.
 const PRELUDE: &str = include_str!("../prelude.wgsl");
 
-/// The shader bodies the backend compiles, each with its label and the
-/// Rust-owned constants it takes. A pipeline builds its module through
-/// [`Self::module`] rather than writing an `include_str!` of its own, and
-/// the tests specialize every variant — so a new shader joins the checks
-/// by existing, and the matches below will not compile until they name
-/// its file, its label and its constants.
+/// The shader bodies the backend compiles, each with its label and Rust-owned constants. Pipelines build via [`Self::module`] and tests specialize every variant, so the matches below won't compile until a new shader names its file, label and constants.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, strum::VariantArray)]
 pub(crate) enum ShaderBody {
     Quad,
@@ -61,8 +53,7 @@ impl ShaderBody {
         }
     }
 
-    /// The numbers this body declares as markers, from the Rust types that
-    /// own them.
+    /// The numbers this body declares as markers, from the Rust types that own them.
     fn constants(self) -> Vec<ShaderConstant> {
         match self {
             Self::Quad => vec![
@@ -81,9 +72,7 @@ impl ShaderBody {
                 ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
                 ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
                 ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
-                // `Pad` is not pinned: it is `apply_spread`'s fallback,
-                // which is also the right answer for a mode the shader
-                // does not know, so nothing there compares against it.
+                // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
                 ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeom::REACH_SIGMAS),
@@ -130,14 +119,7 @@ impl ShaderBody {
         }
     }
 
-    /// The complete source for this body: [`PRELUDE`] in front, every
-    /// constant substituted.
-    ///
-    /// **Every shader in this backend is built here**, including the
-    /// ones with no constants of their own — that is what puts
-    /// [`PRELUDE`] in front of all of them, and what makes an
-    /// unsubstituted marker a panic rather than a shader that compiles
-    /// with a comment where a number belongs.
+    /// The complete source: [`PRELUDE`] in front, every constant substituted. **Every shader is built here**, constant-free ones too, so the prelude precedes all and an unsubstituted marker panics rather than compiling with a comment where a number belongs.
     fn specialize(self) -> String {
         specialize_source(self.wgsl(), &self.constants())
     }

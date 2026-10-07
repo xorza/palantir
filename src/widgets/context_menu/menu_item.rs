@@ -18,17 +18,7 @@ use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 
-/// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu). Label on the left, optional
-/// right-aligned shortcut hint, theme-driven hover chrome. Reports
-/// `Response` so callers branch on `clicked()`; the row also calls
-/// [`CloseHandle::close`] on click so the parent `ContextMenu`
-/// auto-closes without the caller threading response.
-///
-/// If [`Self::shortcut`] is set, the row also intercepts that
-/// shortcut from this frame's key events: matching keypresses
-/// synthesize a click (so `if item.clicked() { … }` fires) AND
-/// close the menu, mirroring native menu behaviour. Disabled rows
-/// don't intercept.
+/// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu): label left, optional right-aligned shortcut hint. Clicking calls [`CloseHandle::close`]. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct MenuItem<'a> {
@@ -46,12 +36,11 @@ enum MenuShortcut {
 }
 
 impl<'a> MenuItem<'a> {
-    /// A row labelled `label`.
     #[track_caller]
+    /// An item with `label`.
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
-            // A Tab stop that a focused Enter or Space activates, as
-            // WAI-ARIA's menu item does; both keys are `KeyClass::Text`.
+            // A Tab stop that a focused Enter or Space activates, as WAI-ARIA's menu item does.
             widget: Widget::hstack()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -62,47 +51,32 @@ impl<'a> MenuItem<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `context_menu.item`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of `context_menu.item`; takes an `Option` as readily as a reference.
     pub fn style(mut self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Attach a keyboard shortcut. Renders the right-aligned hint
-    /// using the platform's native form (`⌘C` / `Ctrl+C`) and
-    /// intercepts that keypress while the menu is open. Glyph-only
-    /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
-    /// `Shortcut::key(Key::Backspace)`.
+    /// Attach a keyboard shortcut: renders the platform-native hint (`⌘C` / `Ctrl+C`) and intercepts that keypress while the menu is open.
     pub const fn shortcut(mut self, s: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Activate(s);
         self
     }
 
-    /// Show `shortcut` as the right-aligned hint without binding it: the
-    /// row does not intercept the keypress. For a menu that mirrors a
-    /// chord something else already handles — an editor's own Ctrl+C, say
-    /// — where binding it here would handle the press twice.
+    /// Show `shortcut` as the hint without binding it, for a chord something else already handles.
     pub const fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
         self.shortcut = MenuShortcut::Hint(shortcut);
         self
     }
 
-    /// Record the row inside an open menu. Activating it closes the menu
-    /// through `popup`.
+    /// Record the row inside an open menu; activating it closes the menu through `popup`.
     pub fn show<'ui>(mut self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
-        // Single `response_for` probe via the shared entry helper: the
-        // row's body records only decorative `Text` leaves, so the response
-        // is identical before and after the node records.
+        // Single `response_for` probe: the body is decorative, so the response is identical before and after the node records.
         let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         let disabled = response.disabled;
 
-        // Row-only scalars and the look plan come off one borrow of the row's
-        // theme, which ends before `apply` reborrows `ui` mutably. Everything
-        // response-varying — the four-response pick, the padding/margin
-        // defaults, the transition — rides the shared plan, so a menu row
-        // picks and animates exactly like a Button.
+        // The look plan comes off one borrow of the theme that ends before `apply` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
         let item = self.style.unwrap_or(&theme.context_menu.item);
         let shortcut_color = item.shortcut;
@@ -113,10 +87,7 @@ impl<'a> MenuItem<'a> {
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
 
-        // Hug+Stretch+SpaceBetween: row hugs content (the default
-        // `SizeSpec` — respects an explicit `.size(...)`), arrange
-        // stretches to widest row, label/shortcut pin to opposite
-        // edges. Fill would leak INF.
+        // Hug+Stretch+SpaceBetween: the row hugs content, arrange stretches it to the widest row, label and shortcut pin to opposite edges (Fill would leak INF).
         self.widget
             .configure()
             .align(Align::h(HAlign::Stretch))
@@ -146,10 +117,7 @@ impl<'a> MenuItem<'a> {
         }
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));
 
-        // Label + optional right-aligned shortcut hint as `Text` leaves;
-        // the row's `SpaceBetween` pins them to opposite edges. Both
-        // hug their content (Text defaults to `Hug × Hug` and a
-        // `SingleLine` wrap), matching what the row layout expects.
+        // Label and optional shortcut hint as `Text` leaves, both hugging their content.
         let body = |ui: &mut Ui| {
             Text::new(label)
                 .id(id.with("label"))
@@ -165,9 +133,7 @@ impl<'a> MenuItem<'a> {
         };
         self.widget.record(ui, Some(&look.background), body);
 
-        // A shortcut or an activation key is a click the pointer pipeline
-        // never saw. Callers read `.clicked()` and must not care which
-        // device produced it.
+        // A shortcut or activation key is a click the pointer pipeline never saw; callers must not care which device produced it.
         if shortcut_fired {
             response.left.phase = ButtonPhase::Up { click: Some(1) };
         }

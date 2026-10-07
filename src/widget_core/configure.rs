@@ -1,13 +1,7 @@
-//! The authoring surface every widget builder forwards to: two traits of
-//! layout, identity and paint setters, over a borrowed view of the
-//! [`Widget`] behind them.
-//!
-//! Every setter exists in two forms. The borrowing one on
-//! [`ConfigureWidget`] holds the body: a widget already in place chains
-//! it — `widget.configure().gap(0.0)` — rather than reading the value
-//! out and writing it back. The consuming one on the trait forwards to
-//! it, so a chain on a value it owns reads
-//! `Widget::leaf().sense(Sense::CLICK)`.
+//! The authoring surface every widget builder forwards to: [`Configure`] and
+//! [`ThemeDefaults`] over a borrowed view of the [`Widget`]. Each setter has a
+//! borrowing form on [`ConfigureWidget`] (`widget.configure().gap(0.0)`) and a
+//! consuming form on the trait that forwards to it.
 
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -29,12 +23,8 @@ use glam::Vec2;
 use std::hash::Hash;
 use std::panic::Location;
 
-/// A widget borrowed for configuration: the same setters [`Configure`]
-/// chains, in the form that writes where the widget already sits.
-///
-/// Opaque on purpose. It carries configuration without carrying the
-/// widget's structural layout mode, so a builder reaches its own
-/// placement and paint without reaching the tree's shape.
+/// A widget borrowed for configuration. Opaque on purpose: it exposes configuration, not the
+/// widget's structural layout mode.
 #[derive(Debug)]
 #[must_use = "a bare configure() writes nothing; chain a setter onto it"]
 pub struct ConfigureWidget<'a> {
@@ -42,21 +32,21 @@ pub struct ConfigureWidget<'a> {
 }
 
 impl ConfigureWidget<'_> {
-    /// Borrowing form of [`Configure::id_salt`].
+    /// See [`Configure::id_salt`].
     #[inline]
     pub fn id_salt(&mut self, key: impl Hash) -> &mut Self {
         self.widget.ident = Ident::Hash(WidgetId::from_hash(key));
         self
     }
 
-    /// Borrowing form of [`Configure::id`].
+    /// See [`Configure::id`].
     #[inline]
     pub const fn id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.ident = Ident::Verbatim(id);
         self
     }
 
-    /// Borrowing form of [`Configure::auto_id`].
+    /// See [`Configure::auto_id`].
     #[track_caller]
     #[inline]
     pub const fn auto_id(&mut self) -> &mut Self {
@@ -64,7 +54,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::size`].
+    /// See [`Configure::size`].
     #[inline]
     #[track_caller]
     pub fn size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
@@ -72,7 +62,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_size`].
+    /// See [`ThemeDefaults::default_size`].
     #[inline]
     #[track_caller]
     pub fn default_size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
@@ -80,7 +70,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::min_size`].
+    /// See [`Configure::min_size`].
     #[inline]
     #[track_caller]
     pub fn min_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -88,7 +78,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::max_size`].
+    /// See [`Configure::max_size`].
     #[inline]
     #[track_caller]
     pub fn max_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -96,7 +86,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::padding`].
+    /// See [`Configure::padding`].
     #[inline]
     #[track_caller]
     pub fn padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
@@ -104,7 +94,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::margin`].
+    /// See [`Configure::margin`].
     #[inline]
     #[track_caller]
     pub fn margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
@@ -112,7 +102,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::transform`].
+    /// See [`Configure::transform`].
     #[inline]
     #[track_caller]
     pub const fn transform(&mut self, t: TranslateScale) -> &mut Self {
@@ -120,7 +110,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::position`].
+    /// See [`Configure::position`].
     #[inline]
     #[track_caller]
     pub fn position(&mut self, p: impl Into<Vec2>) -> &mut Self {
@@ -128,7 +118,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::grid_cell`].
+    /// See [`Configure::grid_cell`].
     #[inline]
     #[track_caller]
     pub fn grid_cell(&mut self, cell: impl Into<GridCell>) -> &mut Self {
@@ -136,7 +126,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::adopt_placement`].
+    /// See [`Configure::adopt_placement`].
     #[inline]
     #[track_caller]
     pub fn adopt_placement(&mut self, from: &Widget) -> &mut Self {
@@ -144,7 +134,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::gap`].
+    /// See [`Configure::gap`].
     #[inline]
     #[track_caller]
     pub fn gap(&mut self, g: f32) -> &mut Self {
@@ -152,7 +142,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::line_gap`].
+    /// See [`Configure::line_gap`].
     #[inline]
     #[track_caller]
     pub fn line_gap(&mut self, g: f32) -> &mut Self {
@@ -160,35 +150,35 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::justify`].
+    /// See [`Configure::justify`].
     #[inline]
     pub const fn justify(&mut self, j: Justify) -> &mut Self {
         self.widget.node.justify = j;
         self
     }
 
-    /// Borrowing form of [`Configure::align`].
+    /// See [`Configure::align`].
     #[inline]
     pub const fn align(&mut self, a: Align) -> &mut Self {
         self.widget.node.align = a;
         self
     }
 
-    /// Borrowing form of [`Configure::child_align`].
+    /// See [`Configure::child_align`].
     #[inline]
     pub const fn child_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.child_align = a;
         self
     }
 
-    /// Borrowing form of [`Configure::sense`].
+    /// See [`Configure::sense`].
     #[inline]
     pub const fn sense(&mut self, s: Sense) -> &mut Self {
         self.widget.node.flags.set_sense(s);
         self
     }
 
-    /// Borrowing form of [`Configure::add_sense`].
+    /// See [`Configure::add_sense`].
     #[inline]
     pub fn add_sense(&mut self, s: Sense) -> &mut Self {
         let sense = self.widget.node.flags.sense() | s;
@@ -196,98 +186,98 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`Configure::disabled`].
+    /// See [`Configure::disabled`].
     #[inline]
     pub const fn disabled(&mut self, d: bool) -> &mut Self {
         self.widget.node.flags.set_disabled(d);
         self
     }
 
-    /// Borrowing form of [`Configure::focusable`].
+    /// See [`Configure::focusable`].
     #[inline]
     pub const fn focusable(&mut self, f: bool) -> &mut Self {
         self.widget.node.flags.set_focusable(f);
         self
     }
 
-    /// Borrowing form of [`Configure::tab_stop`].
+    /// See [`Configure::tab_stop`].
     #[inline]
     pub const fn tab_stop(&mut self, stop: bool) -> &mut Self {
         self.widget.node.flags.set_tab_stop(stop);
         self
     }
 
-    /// Borrowing form of [`Configure::arrow_focus`].
+    /// See [`Configure::arrow_focus`].
     #[inline]
     pub const fn arrow_focus(&mut self, axis: Axis) -> &mut Self {
         self.widget.node.flags.set_arrow_focus(Some(axis));
         self
     }
 
-    /// Borrowing form of [`Configure::tab_index`].
+    /// See [`Configure::tab_index`].
     #[inline]
     pub const fn tab_index(&mut self, index: i16) -> &mut Self {
         self.widget.node.tab_index = index;
         self
     }
 
-    /// Borrowing form of [`Configure::input_scope`].
+    /// See [`Configure::input_scope`].
     #[inline]
     pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self {
         self.widget.node.flags.set_key_filter(takes);
         self
     }
 
-    /// Borrowing form of [`Configure::visibility`].
+    /// See [`Configure::visibility`].
     #[inline]
     pub const fn visibility(&mut self, v: Visibility) -> &mut Self {
         self.widget.node.visibility = v;
         self
     }
 
-    /// Borrowing form of [`Configure::hidden`].
+    /// See [`Configure::hidden`].
     #[inline]
     pub const fn hidden(&mut self) -> &mut Self {
         self.visibility(Visibility::Hidden);
         self
     }
 
-    /// Borrowing form of [`Configure::collapsed`].
+    /// See [`Configure::collapsed`].
     #[inline]
     pub const fn collapsed(&mut self) -> &mut Self {
         self.visibility(Visibility::Collapsed);
         self
     }
 
-    /// Borrowing form of [`Configure::clip`].
+    /// See [`Configure::clip`].
     #[inline]
     pub const fn clip(&mut self, mode: ClipMode) -> &mut Self {
         self.widget.node.clip = Some(mode);
         self
     }
 
-    /// Borrowing form of [`Configure::clip_rect`].
+    /// See [`Configure::clip_rect`].
     #[inline]
     pub const fn clip_rect(&mut self) -> &mut Self {
         self.clip(ClipMode::Rect);
         self
     }
 
-    /// Borrowing form of [`Configure::clip_rounded`].
+    /// See [`Configure::clip_rounded`].
     #[inline]
     pub const fn clip_rounded(&mut self) -> &mut Self {
         self.clip(ClipMode::Rounded);
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_id`].
+    /// See [`ThemeDefaults::default_id`].
     #[inline]
     pub const fn default_id(&mut self, id: WidgetId) -> &mut Self {
         self.widget.fill_id(id);
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_padding`].
+    /// See [`ThemeDefaults::default_padding`].
     #[inline]
     #[track_caller]
     pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self {
@@ -295,7 +285,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_margin`].
+    /// See [`ThemeDefaults::default_margin`].
     #[inline]
     #[track_caller]
     pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self {
@@ -303,14 +293,14 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_align`].
+    /// See [`ThemeDefaults::default_align`].
     #[inline]
     pub const fn default_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.fill_align(a);
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_gap`].
+    /// See [`ThemeDefaults::default_gap`].
     #[inline]
     #[track_caller]
     pub fn default_gap(&mut self, g: f32) -> &mut Self {
@@ -318,7 +308,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_min_size`].
+    /// See [`ThemeDefaults::default_min_size`].
     #[inline]
     #[track_caller]
     pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -326,7 +316,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_max_size`].
+    /// See [`ThemeDefaults::default_max_size`].
     #[inline]
     #[track_caller]
     pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self {
@@ -334,7 +324,7 @@ impl ConfigureWidget<'_> {
         self
     }
 
-    /// Borrowing form of [`ThemeDefaults::default_clip`].
+    /// See [`ThemeDefaults::default_clip`].
     #[inline]
     pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self {
         self.widget.node.clip.get_or_insert(mode);
@@ -342,54 +332,21 @@ impl ConfigureWidget<'_> {
     }
 }
 
-/// Mixin: any widget builder that holds a [`Widget`] gets the setters
-/// (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for free
-/// by impl'ing just [`Self::configure`].
+/// Mixin: a builder holding a [`Widget`] gets the setters by implementing [`Self::configure`].
 pub trait Configure: Sized {
-    /// This builder's widget, borrowed for configuration.
-    ///
-    /// The one method an implementor writes: every setter below
-    /// forwards onto it. It is also the chain head each of them has
-    /// a borrowing twin for, so a widget already in place takes the
-    /// same chain — `widget.configure().gap(0.0).line_gap(0.0)` —
-    /// instead of being read out and written back.
+    /// This builder's widget, borrowed for configuration. The one method an implementor writes.
     fn configure(&mut self) -> ConfigureWidget<'_>;
 
-    /// Override this widget's id with a hash of `key`, scoped to the
-    /// parent.
+    /// Override this widget's id with a hash of `key`, scoped to the parent.
     ///
-    /// # Which id a widget needs
+    /// `*::new()` is `#[track_caller]`, so the default id is the widget's own call site.
+    /// Use `id_salt(key)` when the call site repeats (a loop, a helper drawing many
+    /// widgets), keyed on the instance's own id rather than an unstable index or label.
+    /// For a `#[track_caller]` helper that should take its caller's site, chain
+    /// [`Self::auto_id`]. [`Self::id`] is for an id computed elsewhere.
     ///
-    /// Every builder already has one: `*::new()` is `#[track_caller]`, so a
-    /// widget's default id is its own call site, mixed with its parent's.
-    /// **That is the answer unless one of the two below applies**, and a
-    /// widget written out in source — including one inside a `show` closure,
-    /// however deeply nested — is always the default case.
-    ///
-    /// - **The call site repeats.** A `for` loop, or one helper drawing many
-    ///   widgets, gives every instance the same call site. Distinguish them
-    ///   with `id_salt(key)`, keyed on whatever makes the instance itself
-    ///   distinct — the item's own id, not its index or its label, unless
-    ///   those are stable (an index re-keys every widget when a row is
-    ///   inserted; a label re-keys when someone edits the caption).
-    /// - **The call site is a helper's, and you wanted the caller's.**
-    ///   `fn card(ui: &mut Ui)` gives all its callers one id. Mark the helper
-    ///   `#[track_caller]` and chain [`Self::auto_id`] inside it — no keys to
-    ///   invent and no keys to collide.
-    ///
-    /// [`Self::id`] is the third, for an id computed elsewhere that must
-    /// match exactly.
-    ///
-    /// # Scoping
-    ///
-    /// The stored hash is mixed with the parent node's
-    /// already-disambiguated [`WidgetId`] when the node opens, so
-    /// `.id_salt("row")` resolves to distinct ids under
-    /// different parents — same scoping rule egui uses. At the root
-    /// (no parent) the salt hash is used as-is. Marks the id as a hash salt:
-    /// same-parent sibling collisions are disambiguated
-    /// (so state stays well-formed) but flagged with a magenta runtime
-    /// outline because they're caller bugs.
+    /// Same-parent sibling collisions are disambiguated but flagged with a magenta
+    /// outline, since they are caller bugs.
     #[inline]
     #[must_use]
     fn id_salt(mut self, key: impl Hash) -> Self {
@@ -397,18 +354,11 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Override this widget's id with a precomputed [`WidgetId`] used
-    /// verbatim — **not** mixed with the parent. Use when the id was
-    /// derived elsewhere and must match exactly (parent → child via
-    /// [`WidgetId::with`], a shared seed for sibling widgets across
-    /// layers, cross-frame state lookups that key off a domain id).
-    /// For the parent-scoped path, prefer [`Self::id_salt`] — see the
-    /// "which id a widget needs" rule there.
+    /// Override this widget's id with a precomputed [`WidgetId`], used verbatim and
+    /// not mixed with the parent. Otherwise prefer [`Self::id_salt`].
     ///
-    /// Set after [`Widget::resolve`], it replaces the resolved identity
-    /// and the record uses the new one. That is how [`crate::Modal`]
-    /// moves the configuration it was handed under a child of the id
-    /// its backdrop took — the reads made before were the root's.
+    /// Set after [`Widget::resolve`], it replaces the resolved identity; [`crate::Modal`]
+    /// uses this to move its configuration under a child of its backdrop's id.
     #[inline]
     #[must_use]
     fn id(mut self, id: WidgetId) -> Self {
@@ -416,12 +366,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Re-derive this widget's auto id at the *current* call site.
-    ///
-    /// **Only useful inside a `#[track_caller]` helper**, where "the current
-    /// call site" is the helper's caller rather than the helper. That is the
-    /// whole of what it is for: a helper that records widgets gives them all
-    /// one id, and this is how each caller gets its own instead —
+    /// Re-derive this widget's auto id at the current call site. Only useful inside
+    /// a `#[track_caller]` helper, where that site is the helper's caller:
     ///
     /// ```
     /// # use palantir::{Configure, Panel, Sizing, Text, Ui};
@@ -437,11 +383,6 @@ pub trait Configure: Sized {
     ///         });
     /// }
     /// ```
-    ///
-    /// Chaining it onto a widget written out in source is a no-op with extra
-    /// steps: `*::new()` is already `#[track_caller]`, so the widget's id is
-    /// already its own call site's. See [`Self::id_salt`] for which of the
-    /// three id mechanisms a given widget wants.
     #[track_caller]
     #[inline]
     #[must_use]
@@ -450,8 +391,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Both axes at once. Takes a [`Sizing`](crate::Sizing), a bare
-    /// number (fixed on both axes), a `(w, h)` pair, or a [`Size`].
+    /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair or a
+    /// [`Size`].
     #[inline]
     #[must_use]
     #[track_caller]
@@ -460,9 +401,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// The smallest size layout gives this node: each axis a *length*. A
-    /// maximum below it is raised to it — the minimum wins, as in CSS and
-    /// WPF.
+    /// The smallest size layout gives this node, each axis a *length*; a smaller
+    /// maximum is raised to it.
     ///
     /// # Panics
     ///
@@ -475,8 +415,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// The largest size layout gives this node: each axis an *extent*, so
-    /// `+inf` is unbounded. A maximum below the minimum is raised to it.
+    /// The largest size layout gives this node, each axis an *extent* (`+inf` is
+    /// unbounded).
     ///
     /// # Panics
     ///
@@ -489,9 +429,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Space inside this node, between its edge and its children. Takes a
-    /// number, a `(x, y)` pair, or a `(l, t, r, b)` quad, each edge a
-    /// *length*.
+    /// Space between this node's edge and its children, each edge a *length*.
     ///
     /// # Panics
     ///
@@ -504,9 +442,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Space outside this node, between its edge and its siblings. Same
-    /// argument shapes as [`Self::padding`], each edge an *offset* — a
-    /// negative margin pulls a sibling in.
+    /// Space between this node's edge and its siblings, each edge an *offset* (a
+    /// negative margin pulls a sibling in).
     ///
     /// # Panics
     ///
@@ -519,29 +456,13 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Apply a pan/zoom transform to this node's body — both child
-    /// subtrees AND shapes recorded directly on it via `Ui::add_shape`.
-    /// Layout runs in untransformed space; the transform only affects
-    /// paint and hit-test. Composes with any ancestor transform.
+    /// Apply a pan/zoom transform to this node's body (children and shapes recorded
+    /// on it); layout runs untransformed. Scale anchors at the node's own origin; see
+    /// [`TranslateScale::anchored_at`].
     ///
-    /// **Scale anchors at the node's own origin** (its `layout_rect.min`),
-    /// not at the cascade's (0, 0). The transform's translation component
-    /// is then applied in post-scale, node-local space —
-    /// `TranslateScale::new(pan, zoom)` means "scale my body 2× about my
-    /// top-left, then shift by `pan`" regardless of where the node sits on
-    /// the surface. See [`TranslateScale::anchored_at`] for the math.
-    /// Translation is identity-preserving (when `scale == 1`, the anchor is
-    /// a no-op).
-    ///
-    /// Widget chrome — [`Panel::background`](crate::Panel::background) and
-    /// its siblings — is the one exception: it paints in the *parent's*
-    /// space, anchored under any ancestor clip/transform. That's
-    /// deliberate: a transformed container acts as a pan/zoom viewport over
-    /// its body, and the background frames the viewport rather than panning
-    /// with it. For a background that scales/pans *with* the body, nest one
-    /// container deep — transform on the outer, chrome on its child.
-    ///
-    /// Inert on a leaf that records no shapes of its own.
+    /// Widget chrome ([`Panel::background`](crate::Panel::background) and siblings)
+    /// paints in the parent's space, so the background frames the viewport; to pan it
+    /// with the body, nest a container with the chrome on the child.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -550,8 +471,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Absolute position inside a `Canvas` parent (parent-inner coords),
-    /// each axis an *offset*. Ignored by other layout modes.
+    /// Absolute position inside a `Canvas` parent, each axis an *offset*. Ignored
+    /// elsewhere.
     ///
     /// # Panics
     ///
@@ -564,20 +485,13 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Placement inside a `Grid` parent: a bare `(row, col)` for a
-    /// single-track cell, or a [`GridCell`] for one that spans — see
-    /// [`GridCell::at`] and [`GridCell::with_span`]. Default `(0, 0)`.
-    ///
-    /// One setter for one field, so the placement cannot arrive half
-    /// written and no chain order can drop a span. Ignored outside a Grid
-    /// parent.
+    /// Placement inside a `Grid` parent: a bare `(row, col)` or a [`GridCell`]. Default
+    /// `(0, 0)`.
     ///
     /// # Panics
     ///
-    /// An out-of-range cell or span panics. Debug builds check it against
-    /// the parent's grid def at record time (`Tree::check_grid_cell`);
-    /// release builds skip that check, and the grid pass panics on the
-    /// track index in layout instead.
+    /// An out-of-range cell or span panics: debug builds check at record time
+    /// (`Tree::check_grid_cell`), release builds in layout.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -586,23 +500,11 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Take over `from`'s placement — where it sits in its parent, and
-    /// nothing about what it contains, how it behaves, or who it is.
-    ///
-    /// For a widget that hands its slot to a second one partway through
-    /// a gesture: [`DragValue`](crate::DragValue) swaps its scrub chip for
-    /// an inline [`TextEdit`](crate::TextEdit) on click, and without this
-    /// the field visibly moves and resizes on the edit frame, because
-    /// margin, alignment, grid placement and canvas position all go with
-    /// the chip. And for a widget that records as two nodes rather than
-    /// one: [`Scroll`](crate::Scroll) splits the caller's widget into an
-    /// outer box and an inner viewport, and the placement is the outer
-    /// one's.
-    ///
-    /// Size, padding and transform are not placement, and stay the
-    /// adopting widget's own. Margin is the one `Option`: `None` there means
-    /// the caller stated no opinion, so the adopting widget keeps its own
-    /// themed default rather than taking a zero.
+    /// Take over `from`'s placement (where it sits in its parent), not its contents or
+    /// behavior. For a widget handing its slot to another mid-gesture
+    /// ([`DragValue`](crate::DragValue) to [`TextEdit`](crate::TextEdit)) or recorded as
+    /// two nodes ([`Scroll`](crate::Scroll)). Size, padding and transform stay the
+    /// adopter's; a `None` margin keeps its themed default.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -611,9 +513,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Logical-px space between siblings within a line, a *gap*. Read by
-    /// HStack/VStack, the within-line direction of WrapHStack/
-    /// WrapVStack, and a Grid's columns.
+    /// Space between siblings within a line, a *gap*, read by stacks, wrap stacks and
+    /// Grid columns.
     ///
     /// # Panics
     ///
@@ -626,10 +527,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Logical-px space between *lines*: the cross-axis spacing between
-    /// a WrapHStack/WrapVStack's wrap rows, and between a Grid's rows.
-    /// Inert in every other layout mode. Pair with `.gap(...)` for the
-    /// within-line spacing. `g`: a *gap*.
+    /// Space between lines: wrap rows and Grid rows. Inert elsewhere. `g`: a *gap*.
     ///
     /// # Panics
     ///
@@ -642,10 +540,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Main-axis distribution of leftover space for `HStack`/`VStack`.
-    /// [`crate::Sizing::fill`] children take the leftover space first, so
-    /// with one on the main axis this distributes only what they leave:
-    /// nothing, unless a max size caps them.
+    /// Main-axis distribution of leftover space for `HStack`/`VStack`. [`crate::Sizing::fill`]
+    /// children take leftover first, so this distributes only what a max size leaves.
     #[inline]
     #[must_use]
     fn justify(mut self, j: Justify) -> Self {
@@ -653,8 +549,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Alignment inside the parent's inner rect. For single-axis use the
-    /// [`Align::h`] / [`Align::v`] constructors.
+    /// Alignment inside the parent's inner rect. For one axis use [`Align::h`] / [`Align::v`].
     #[inline]
     #[must_use]
     fn align(mut self, a: Align) -> Self {
@@ -662,9 +557,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Default alignment applied to children when their own axis is `Auto`.
-    /// Mirrors CSS `align-items`. For single-axis defaults use the
-    /// [`Align::h`] / [`Align::v`] constructors.
+    /// Default alignment for children whose own axis is `Auto` (CSS `align-items`). For one axis
+    /// use [`Align::h`] / [`Align::v`].
     #[inline]
     #[must_use]
     fn child_align(mut self, a: Align) -> Self {
@@ -680,16 +574,9 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Fold `s` into whatever this node already senses, instead of
-    /// replacing it.
-    ///
-    /// What a widget with a non-negotiable gesture chains at `show`
-    /// time. [`crate::Scroll`] with zoom on must take [`Sense::PINCH`]
-    /// however the caller sensed the viewport, and
-    /// [`crate::DragValue`] must take the drag it scrubs on — but
-    /// [`Self::sense`] would drop the caller's choice, and the order the
-    /// two were chained in would decide the answer. This makes the order
-    /// stop mattering.
+    /// Fold `s` into what this node already senses, for widgets with a non-negotiable
+    /// gesture ([`crate::Scroll`] zoom needs [`Sense::PINCH`]). [`Self::sense`] would
+    /// drop the caller's choice and chain order would decide.
     #[inline]
     #[must_use]
     fn add_sense(mut self, s: Sense) -> Self {
@@ -697,13 +584,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Suppress this node's interactions and cascade to all descendants.
-    ///
-    /// Suppressed, not removed: the node keeps the [`Sense`] it declared
-    /// and goes on taking the hover, the press and the wheel away from
-    /// whatever it covers. It answers none of them. A disabled button
-    /// stacked over a canvas is a hole in neither direction — the canvas
-    /// does not receive the click, and the button does not act on it.
+    /// Suppress this node's interactions and cascade to descendants. It keeps its [`Sense`] and
+    /// still takes hover, press and wheel from what it covers, but answers none.
     #[inline]
     #[must_use]
     fn disabled(mut self, d: bool) -> Self {
@@ -711,12 +593,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Mark this node as eligible to take keyboard focus, on a press and
-    /// as a Tab stop. Default `false`; a widget that acts on keys opts in.
-    ///
-    /// Disabled or invisible nodes are excluded from focus regardless of
-    /// this flag. Unlike [`Sense`], which a disabled node keeps: it
-    /// absorbs the press, and focus has nowhere useful to land.
+    /// Make this node eligible for keyboard focus, on a press and as a Tab stop. Default `false`.
+    /// Disabled or invisible nodes are excluded regardless.
     #[inline]
     #[must_use]
     fn focusable(mut self, f: bool) -> Self {
@@ -724,10 +602,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Whether Tab and Shift+Tab stop on this node when it is
-    /// [`focusable`](Self::focusable). Default `true`. `false` keeps the
-    /// focus a press gives — a dock pane, a canvas — and takes the node
-    /// out of the Tab order, as WPF's `IsTabStop` does.
+    /// Whether Tab stops here when [`focusable`](Self::focusable). Default `true`; `false` keeps
+    /// press focus but leaves the Tab order, as WPF's `IsTabStop`.
     #[inline]
     #[must_use]
     fn tab_stop(mut self, stop: bool) -> Self {
@@ -735,15 +611,10 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Make this node a group whose stops the arrow keys along `axis`
-    /// move focus between, as WAI-ARIA's menus, list boxes, radio groups
-    /// and toolbars do: the next arrow goes to the next stop inside the
-    /// node in Tab order, the previous one back, both wrapping.
-    ///
-    /// The framework moves focus, as it does on Tab, for every arrow
-    /// press that no scope *inside* the group claims — a text field in a
-    /// toolbar keeps its caret keys, and a popup around a menu does not
-    /// take the menu's arrows away. Unmodified arrows only.
+    /// Make this node a group whose stops the arrow keys along `axis` move focus
+    /// between (menus, radio groups, toolbars), wrapping. Arrows no scope inside the
+    /// group claims are the framework's, so a text field in a toolbar keeps its caret
+    /// keys.
     #[inline]
     #[must_use]
     fn arrow_focus(mut self, axis: Axis) -> Self {
@@ -751,12 +622,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// This node's key in the Tab order. Default `0`.
-    ///
-    /// Tab visits the stops of its domain in ascending `index`, and stops
-    /// with equal indices in record order — so a negative index moves a
-    /// node ahead of the unindexed ones and a positive index behind
-    /// them, as WPF's `TabIndex` does.
+    /// This node's key in the Tab order. Default `0`; ascending, equal indices in record order, as
+    /// WPF's `TabIndex`.
     #[inline]
     #[must_use]
     fn tab_index(mut self, index: i16) -> Self {
@@ -764,27 +631,12 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Make this node an **input scope** taking `takes` while it is
-    /// active.
-    ///
-    /// Scopes nest. A key press walks the active path deepest-first and
-    /// is granted to the first scope whose filter contains its
-    /// [`KeyClass`](crate::KeyClass); scopes further out never see it.
-    /// That is what lets a focused text field own `Ctrl+Z` while
-    /// `Ctrl+S` walks past it to the application —
-    /// [`KeyFilter::TEXT_FIELD`] deliberately omits `ACCEL`.
-    ///
-    /// The active path is rooted at the topmost *layer* declaring any
-    /// scope, so an overlay declaring [`KeyFilter::ALL`] cuts the layers
-    /// below it off entirely. A reader outside every scope resolves as
-    /// the active layer's outermost one.
-    ///
-    /// Deliberately **not** focus: a scope is where input *belongs*,
-    /// focus is where typing *goes*. Conflating them is what forces an
-    /// app to reconstruct one from the other.
-    ///
-    /// [`KeyFilter::NONE`] clears it — an empty filter is how "not a
-    /// scope" is stored.
+    /// Make this node an input scope taking `takes` while active. A key press walks
+    /// the active path deepest-first and goes to the first scope whose filter contains
+    /// its [`KeyClass`](crate::KeyClass), so a focused text field owns `Ctrl+Z` while
+    /// `Ctrl+S` passes on ([`KeyFilter::TEXT_FIELD`] omits `ACCEL`). An overlay declaring
+    /// [`KeyFilter::ALL`] cuts the layers below off. Not focus: a scope is where input
+    /// belongs, focus is where typing goes. [`KeyFilter::NONE`] clears it.
     #[inline]
     #[must_use]
     fn input_scope(mut self, takes: KeyFilter) -> Self {
@@ -800,7 +652,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint + input.
+    /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint and input.
     #[inline]
     #[must_use]
     fn hidden(mut self) -> Self {
@@ -808,7 +660,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Shorthand for [`Visibility::Collapsed`]: skip the node entirely (zero slot).
+    /// Shorthand for [`Visibility::Collapsed`]: zero slot.
     #[inline]
     #[must_use]
     fn collapsed(mut self) -> Self {
@@ -816,8 +668,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Generic clip setter. Most callers use the [`Self::clip_rect`]
-    /// / [`Self::clip_rounded`] sugars instead.
+    /// Generic clip setter; see [`Self::clip_rect`] / [`Self::clip_rounded`].
     #[inline]
     #[must_use]
     fn clip(mut self, mode: ClipMode) -> Self {
@@ -833,10 +684,8 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Rounded-corner stencil clip — shape comes from the widget chrome's
-    /// background radius. Calling this without
-    /// a chrome leaves the radius at zero, equivalent to
-    /// [`Self::clip_rect`].
+    /// Rounded-corner stencil clip; the radius comes from the widget chrome's background (zero
+    /// without chrome).
     #[inline]
     #[must_use]
     fn clip_rounded(mut self) -> Self {
@@ -845,33 +694,12 @@ pub trait Configure: Sized {
     }
 }
 
-/// The *theme* half of [`Configure`]: fill a field in only where the
-/// caller stayed silent.
-///
-/// This is the contract every themed widget states in prose — *explicit
-/// wins, the theme fills in the rest*. `Configure`'s plain setters
-/// always overwrite, so a widget resolving its defaults has to know
-/// whether the caller already spoke, which those setters can't say.
-/// These can.
-///
-/// **Separate from `Configure`, and for widget authors.** Theme
-/// resolution is the widget's job, not its caller's: an app chaining
-/// `.default_padding(..)` onto a `Button` overrides nothing, because the
-/// button resolved its own default first. A widget written outside this
-/// crate resolves its theme the same way, which is why the family is
-/// public.
-///
-/// Blanket-implemented for everything `Configure`, so it reaches a bare
-/// [`Widget`] *and* a builder that wraps one — `ContextMenu` resolves
-/// the menu theme into the `Popup` it is built from, which an inherent
-/// `Widget` method could not do without one builder reaching into the
-/// other's widget.
+/// The theme half of [`Configure`]: fill a field only where the caller stayed
+/// silent. Public so widgets outside this crate resolve the same way; an app
+/// chaining `.default_padding(..)` onto a `Button` overrides nothing.
+/// Blanket-implemented for every `Configure`.
 pub trait ThemeDefaults: Configure {
-    /// Identity to fall back on when the caller set none.
-    ///
-    /// "Set" means [`Configure::id`] / [`Configure::id_salt`] — a
-    /// `#[track_caller]` auto id doesn't count, since every widget has
-    /// one and counting it would make the fallback unreachable.
+    /// Identity to fall back on when the caller set none; an auto id doesn't count.
     #[inline]
     #[must_use]
     fn default_id(mut self, id: WidgetId) -> Self {
@@ -906,8 +734,7 @@ pub trait ThemeDefaults: Configure {
         self
     }
 
-    /// Alignment to fall back on, one axis at a time — an axis the
-    /// caller aligned keeps what they gave it.
+    /// Alignment to fall back on, per axis.
     #[inline]
     #[must_use]
     fn default_align(mut self, a: Align) -> Self {

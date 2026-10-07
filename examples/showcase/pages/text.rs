@@ -1,9 +1,4 @@
-//! Text measurement and wrapping. The left column is single-text
-//! wrapping mechanics in fixed-width containers — the simplest
-//! demonstrations of `TextWrap::WrapWithOverflow` and the intrinsic-min
-//! overflow rule. The right column is composition: Grid Auto under
-//! constraint, a property grid, and a chat row whose Fill message column
-//! reflows live.
+//! Text measurement and wrapping. The left column is single-text wrapping in fixed-width containers (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
 use crate::support;
 use crate::support::{Column, api, body_style, columns, note, section, well_bg};

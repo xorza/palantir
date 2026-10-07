@@ -1,5 +1,4 @@
-//! Layout-driver fixtures: vstack/grid/zstack at their minimal
-//! exercise-everything sizes.
+//! Layout-driver fixtures: vstack, grid, zstack.
 
 use glam::UVec2;
 use palantir::internals::frame_fixture::FrameFixture;
@@ -12,8 +11,7 @@ use crate::golden_name::GoldenName;
 use crate::goldens::assert_matches_golden;
 use crate::harness::{FIXTURE_PALETTE, Harness};
 
-/// Three rows of `Fill(1)` / `Fill(2)` / `Fill(1)` — should split the
-/// available height in 25/50/25 ratios.
+/// `Fill(1)`/`Fill(2)`/`Fill(1)` rows split the height 25/50/25.
 #[test]
 fn vstack_fill_weights_matches_golden() {
     let mut h = Harness::new();
@@ -56,8 +54,7 @@ fn vstack_fill_weights_matches_golden() {
     assert_matches_golden(GoldenName::VstackFillWeights, &img);
 }
 
-/// Grid with mixed track types (fixed / fill), gap, and a spanning
-/// header row. Tests the grid layout driver end to end.
+/// Grid with fixed and fill tracks, a gap and a spanning header row.
 #[test]
 fn grid_mixed_tracks_matches_golden() {
     let mut h = Harness::new();
@@ -115,9 +112,7 @@ fn grid_mixed_tracks_matches_golden() {
     assert_matches_golden(GoldenName::GridMixedTracks, &img);
 }
 
-/// ZStack: tinted background frame + centered button on top. Tests
-/// paint order (background drawn first, foreground on top) and
-/// `Align::CENTER` arrangement.
+/// ZStack paint order and `Align::CENTER` arrangement.
 #[test]
 fn zstack_centered_button_matches_golden() {
     let mut h = Harness::new();
@@ -146,12 +141,7 @@ fn zstack_centered_button_matches_golden() {
     assert_matches_golden(GoldenName::ZstackCenteredButton, &img);
 }
 
-/// Two `Hug` columns: a wrapping paragraph in col 0 and a bare
-/// (default-wrap) label in col 1. Pins the showcase "two Hug columns"
-/// fix — with `Text` defaulting to `TextWrap::Overflow`, the label keeps
-/// its full natural width (the grid floors its column at the label width)
-/// while the paragraph wraps to absorb the squeeze. Under the old
-/// `SingleLine` default the label clipped to "right col".
+/// Two `Hug` columns: the default-wrap label keeps its natural width while the paragraph wraps.
 #[test]
 fn grid_two_hug_cols_label_not_clipped_matches_golden() {
     let mut h = Harness::new();
@@ -183,7 +173,6 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 0))
                             .show(ui);
-                            // Bare label — exercises the default wrap mode.
                             Text::new("right column")
                                 .id_salt("label")
                                 .style(
@@ -200,9 +189,7 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
     assert_matches_golden(GoldenName::GridTwoHugColsLabelNotClipped, &img);
 }
 
-/// The frame bench's own tree at scale 1 — the one scene that records
-/// every public widget — so a change to any of them shows here even
-/// when no fixture of its own covers the part that moved.
+/// The frame bench's tree at scale 1, which records every public widget.
 #[test]
 fn frame_fixture_matches_golden() {
     let mut state = FrameFixture::default();

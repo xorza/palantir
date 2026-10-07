@@ -1,25 +1,9 @@
-//! Pure-input dispatch throughput. Builds a complex UI with hundreds
-//! of overlapping clickable / focusable regions across multiple
-//! ZStacks + a popup layer, warms it through two frames so cascade
-//! and hit-index are populated, then streams `on_input` events in the
-//! inner loop **without** running a frame each iteration.
-//!
-//! What this measures: `Ui::on_input` cost — pointer target refresh
-//! (`InputState::refresh_pointer_targets` calling
-//! `Cascade::hit_test_targets`, a linear walk over cascade entries),
-//! press/release hit-tests, scroll target lookup.
-//! `Cascade::hit_test` is a reverse linear scan, so overlap density
-//! is the dominant cost driver — the inner ZStacks intentionally
-//! pile O(N) clickable rects on each pointer position.
+//! Pure-input dispatch throughput: a dense UI with overlapping clickable/focusable regions, warmed through two frames, then `on_input` events streamed without a frame per iteration. Overlap density dominates, since `Cascade::hit_test` is a reverse linear scan.
 //!
 //! Cases:
-//! - `input/pointer_move_stream` — oscillating cursor across the
-//!   layout, the realistic per-frame burst (many `CursorMoved` events
-//!   coalesced from winit before the next redraw).
-//! - `input/click_stream` — press/release pairs, hits the focus +
-//!   click hit-test paths.
-//! - `input/scroll_stream` — `ScrollPixels` against a scroll target,
-//!   accumulator-only path.
+//! - `input/pointer_move_stream`: oscillating cursor, the per-frame burst of coalesced `CursorMoved`.
+//! - `input/click_stream`: press/release pairs.
+//! - `input/scroll_stream`: `ScrollPixels` against a scroll target.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
 use crate::bench::Run;
@@ -50,9 +34,7 @@ fn build_ui(ui: &mut Ui) {
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Bottom layer: dense clickable grid filling the viewport.
-            // Every cell is a Button (Sense::CLICK + focusable), so the
-            // cascade has G*G entries before any overlap stack starts.
+            // Bottom layer: a dense grid of Buttons (`Sense::CLICK` + focusable) before any overlap stack.
             Panel::vstack()
                 .auto_id()
                 .gap(0.0)
@@ -75,12 +57,7 @@ fn build_ui(ui: &mut Ui) {
                     }
                 });
 
-            // Overlap stack: OVERLAP_LAYERS sensing full-rect frames
-            // piled on top of each other inside a ZStack. Every pointer
-            // position lies inside all of them — worst case for the
-            // topmost-first reverse hit scan. Sense rotates HOVER /
-            // CLICK / DRAG / SCROLL so all three hit-test filters
-            // (hovers/clicks/scrolls) walk a populated path.
+            // Overlap stack: OVERLAP_LAYERS full-rect frames piled in a ZStack, so every pointer position is the worst case for the reverse hit scan; Sense rotates HOVER/CLICK/DRAG/SCROLL so all hit-test filters walk a populated path.
             Panel::zstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -100,9 +77,7 @@ fn build_ui(ui: &mut Ui) {
                     }
                 });
 
-            // Scrollable region in the middle covering the viewport
-            // center so `hit_test_targets` finds a scroll target —
-            // exercises that branch on pointer move.
+            // Scrollable region over the viewport centre so `hit_test_targets` finds a scroll target.
             Scroll::both()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -128,17 +103,14 @@ fn build_ui(ui: &mut Ui) {
 
 fn warmed_ui() -> UiHarness {
     let mut h = UiHarness::new(SIZE).scale(SCALE);
-    // Two frames: first builds cascade, second latches scroll-target
-    // and any post_record state once the pointer is inside.
+    // Two frames: the first builds the cascade, the second latches the scroll target.
     h.frame(build_ui);
     h.move_to(Vec2::new(320.0, 200.0));
     h.frame(build_ui);
     h
 }
 
-/// Pointer position that walks a Lissajous path across the logical
-/// surface (640×400). Different positions hit different bottom-layer
-/// grid cells, so hover transitions actually fire.
+/// Pointer position on a Lissajous path over the 640×400 surface, so hover transitions fire.
 fn pointer_at(i: u32) -> Vec2 {
     let t = i as f32 * 0.037;
     let x = 320.0 + (t.cos() * 280.0);
@@ -165,9 +137,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut i: u32 = 0;
         group.bench_function("click_stream", |b| {
             b.iter(|| {
-                // Move first so the press hits a fresh cell — without
-                // this every press lands on the same active widget and
-                // the focus hit-test gets memoized into the warm path.
+                // Move first so the press hits a fresh cell, or the focus hit-test is memoized into the warm path.
                 ui.press_at(pointer_at(i));
                 let d = ui.release();
                 i = i.wrapping_add(1);
@@ -194,8 +164,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         let mut i: u32 = 0;
         group.bench_function("mixed_stream", |b| {
             b.iter(|| {
-                // ~realistic burst between two redraws: several moves,
-                // a scroll, occasional click.
+                // A realistic burst between redraws: several moves, a scroll, an occasional click.
                 ui.move_to(pointer_at(i));
                 ui.move_to(pointer_at(i.wrapping_add(1)));
                 ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));

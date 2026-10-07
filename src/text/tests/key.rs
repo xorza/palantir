@@ -5,10 +5,7 @@ use crate::primitives::text::recorded_text::RecordedText;
 
 #[test]
 fn cache_key_discriminates_every_shaping_axis() {
-    // The renderer caches shaped buffers by key, so any input that changes
-    // glyph positions has to change the key. Miss one and a buffer shaped
-    // for other parameters gets replayed — measured rect against the wrong
-    // rasterized glyphs.
+    // Shaped buffers are cached by key, so any input that changes glyph positions must change the key.
     let mut c = CosmicMeasure::default();
     let base = c.measure("hi", shape(16.0)).buffer_key();
 
@@ -53,8 +50,6 @@ fn cache_key_discriminates_every_shaping_axis() {
         );
     }
 
-    // The axis values themselves are what land in the key, packed and
-    // read back, so a shifted field can't silently remap cached buffers.
     assert_eq!(base.family(), FontFamily::SANS);
     assert_eq!(base.weight(), FontWeight::REGULAR);
     assert_eq!(base.slant(), FontSlant::Normal);
@@ -70,15 +65,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     );
 }
 
-/// A run with no key costs no more than one with a key, and no minted
-/// key can hold the bit pattern that buys it.
-///
-/// The absent case is a `None` the type refuses to confuse with a real
-/// key, so what is left to pin is the mapping that feeds the niche and
-/// the width the niche saves. Both halves are load-bearing: without the
-/// mapping, the string whose raw hash is zero could not be keyed at all;
-/// without the width, `ShapedText` grows by eight bytes per recorded
-/// run.
+/// A run with no key costs no more than one with a key, and no minted key holds the niche's bit pattern: without the mapping a string with raw hash zero cannot be keyed; without the width `ShapedText` grows by eight bytes per run.
 #[test]
 fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
     assert_eq!(
@@ -109,14 +96,7 @@ fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
     }
 }
 
-/// A face the shaper cannot be asked for measures to nothing, and the
-/// run never reaches a dispatch.
-///
-/// `TextShapeRequest::unbounded` is the one screen, so this is the same
-/// answer empty text gets: no buffer key and a zero extent. It has to
-/// be an answer rather than a panic because `GlyphFont` is public and a
-/// caller fills it — `Ui::probe_text` and `TextGlyphs` take one straight
-/// from application arithmetic.
+/// A face the shaper cannot be asked for measures to nothing and never reaches a dispatch (no buffer key, zero extent). An answer rather than a panic, since `GlyphFont` is public.
 #[test]
 fn invalid_metrics_measure_to_nothing_without_a_shaping_dispatch() {
     use crate::primitives::geometry::size::Size;
@@ -205,10 +185,7 @@ fn bounded_width_canonicalizes_and_leaves_non_finite_values_unbound() {
     // Negative widths (over-constrained layouts) clamp to the zero-width key.
     let negative = shaper.measure("hi", base.width(-1.0)).buffer_key();
     assert_eq!(negative, zero);
-    // A width that names no width binds nothing, so the run keeps the
-    // unbounded shape it would have had with no width at all. Answered
-    // rather than rejected because `TextRun::max_width` is a public
-    // field a caller derives from an arranged rect.
+    // A width that names no width binds nothing: the run keeps its unbounded shape, since `TextRun::max_width` is a public field.
     for (label, width) in [
         ("NaN", f32::NAN),
         ("positive infinity", f32::INFINITY),
@@ -230,8 +207,7 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
 
     let mut cosmic = CosmicMeasure::default();
     let key = cosmic.measure("x", shape(EPS * 2.0)).buffer_key();
-    // Both floored onto the key's 1/64-px grid rather than to zero, which
-    // would name a face that shapes nothing.
+    // Both floor onto the key's 1/64-px grid, not zero.
     assert_eq!(key.font_size(), 1.0 / 64.0);
     assert_eq!(key.line_height(), 1.0 / 64.0);
     assert!(cosmic.shaped_run(key).is_some());
@@ -239,10 +215,7 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
 
 #[test]
 fn cache_key_collapses_halign_when_unbounded() {
-    // Halign only moves glyphs when there is a wrap target to align
-    // within, so the key folds it down to Auto without one — single-line
-    // callers don't pay an N-way cache split. With a target it must
-    // discriminate, or two alignments share one shaped buffer.
+    // Halign moves glyphs only with a wrap target, so the key folds it to Auto without one; with a target it must discriminate.
     let mut c = CosmicMeasure::default();
     let key = |c: &mut CosmicMeasure, halign, max_width: Option<f32>| {
         let base = shape(16.0).halign(halign);
@@ -308,9 +281,7 @@ fn bounded_identity_cache_keys_width_and_halign() {
     );
 }
 
-/// Inputs that quantize to one key must shape from that key's canonical
-/// values, so whichever sub-bucket value inserts first cannot alter the
-/// measured extent or glyph positions.
+/// Inputs that quantize to one key shape from its canonical values.
 #[test]
 fn quantized_key_shaping_is_insertion_order_independent() {
     let text = "canonical text wraps onto more than one aligned line";
@@ -340,7 +311,6 @@ fn quantized_key_shaping_is_insertion_order_independent() {
     );
 }
 
-/// The key a recorded run shapes under, at the face these cases share.
 fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
         recorded.hash,
@@ -354,9 +324,7 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
     )
 }
 
-/// `ShapedTextRef` is the render-handoff pairing of a shaped-buffer key
-/// with its record-store source bytes, and `resolve_request` restores the
-/// exact request the backend replays.
+/// `ShapedTextRef` pairs a shaped-buffer key with its source bytes; `resolve_request` restores the exact request the backend replays.
 #[test]
 fn shaped_text_ref_resolves_the_recorded_pair() {
     let mut store = RecordStore::default();
@@ -372,11 +340,7 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
     assert_eq!(request.key, key);
 }
 
-/// Pairing a key with a different run's source bytes would replay one
-/// run's shaped buffer for another's text.
-///
-/// Debug-only: the encoder mints one of these per text run per frame, so
-/// the compare runs at the frame's rate rather than a caller's.
+/// Pairing a key with another run's bytes would replay the wrong buffer. Debug-only: the encoder mints one per text run per frame.
 #[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "shaped-text key paired with a different run's source bytes")]

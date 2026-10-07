@@ -5,40 +5,24 @@ use winit::window::WindowId;
 use crate::host::winit::window::Window;
 use crate::window::window_token::WindowToken;
 
-/// The host's live windows, in registration order.
-///
-/// **Two keys, one place that knows how to match on either.** A window is
-/// addressed by its winit [`WindowId`] on the event path and by its
-/// [`WindowToken`] on the app path, and both are linear scans. This owns
-/// the predicate rather than leaving each call site to spell it out, where a
-/// fifth copy could appear or one event could scan twice. Lookups stay linear
-/// because window counts are tiny; what this owns is that they are spelled
-/// once.
-///
-/// Resolution hands back a [`WindowSlot`] rather than a borrow where the
-/// caller needs `&mut` on the rest of the host too, which is what lets one
-/// event resolve its window once and then act on it.
+/// The host's live windows, in registration order, addressed by winit [`WindowId`] on the event path and by
+/// [`WindowToken`] on the app path (linear scans; counts are tiny). Resolution hands back a [`WindowSlot`]
+/// rather than a borrow where the caller needs `&mut` on the rest of the host too.
 #[derive(Debug, Default)]
 pub(super) struct WindowSet {
     windows: Vec<Window>,
 }
 
-/// Where a window sits in its [`WindowSet`].
-///
-/// **Valid only until the set changes.** Every use resolves and consumes
-/// one inside a single event or command, which is why this is an index
-/// rather than a handle with a lifetime: `close_window` uses `swap_remove`,
-/// so a slot held across one would name a different window.
+/// Where a window sits in its [`WindowSet`]; valid only until the set changes, as `close_window` uses
+/// `swap_remove`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct WindowSlot(usize);
 
 impl WindowSet {
-    /// Slot of the window winit reports events for as `id`.
     pub(super) fn slot_of_id(&self, id: WindowId) -> Option<WindowSlot> {
         self.slot_where(|win| win.window.id() == id)
     }
 
-    /// Slot of the window the app addresses as `token`.
     pub(super) fn slot_of_token(&self, token: WindowToken) -> Option<WindowSlot> {
         self.slot_where(|win| win.driver.token == token)
     }
@@ -51,25 +35,13 @@ impl WindowSet {
         &mut self.windows[slot.0]
     }
 
-    /// The window the app addresses as `token`, resolved and borrowed in
-    /// one step — for a caller that needs nothing else off the host.
     pub(super) fn by_token(&mut self, token: WindowToken) -> Option<&mut Window> {
         let slot = self.slot_of_token(token)?;
         Some(self.at(slot))
     }
 
-    /// Register `window`, whose winit [`WindowId`] must not already be in
-    /// the set — a reused live id would give one window two entries and
-    /// route half its events to the wrong one.
-    ///
-    /// The token half is not checked here. A driver registers its token
-    /// with the app-global directory when it is built, which is before any
-    /// window reaches this, so a duplicate has already panicked there.
-    ///
-    /// A release assert, not a debug one: what it checks is what the
-    /// platform handed back rather than arithmetic of ours, and window
-    /// creation is cold enough to pay a scan of a handful of entries for
-    /// it.
+    /// Registers `window`; its winit [`WindowId`] must not already be in the set (a reused live id would misroute
+    /// events). A release assert: it checks what the platform handed back, and window creation is cold.
     pub(super) fn push(&mut self, window: Window) {
         assert!(
             self.slot_of_id(window.window.id()).is_none(),
@@ -78,8 +50,6 @@ impl WindowSet {
         self.windows.push(window);
     }
 
-    /// Remove the window holding `token` and hand it back, or `None` if
-    /// none does.
     pub(super) fn take(&mut self, token: WindowToken) -> Option<Window> {
         let slot = self.slot_of_token(token)?;
         Some(self.windows.swap_remove(slot.0))

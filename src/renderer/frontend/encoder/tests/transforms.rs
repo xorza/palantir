@@ -14,22 +14,10 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// A spun shape's payload bounds must be rotation-invariant: the
-/// smallest square centred on the owner-box centre that holds the
-/// centerline bbox swept about it, with the pivot carried rather than
-/// inferred. The composer applies stroke reach after this sweep. Owner
-/// box 80×40 → pivot c = (40, 20).
-///
-/// - **Polyline** (10,10)..(70,30): max corner distance from c is
-///   dx = 30, dy = 10, r = √(30² + 10²) = √1000 ≈ 31.6228. The far
-///   endpoint (70,30) rotated 90° CCW about c — c + (−10,30) = (30,50)
-///   — lies outside the owner box but inside the square: an owner-box
-///   bound is not rotation-safe.
-/// - **Arc** about (50,20), radius 10, 0..π: the centerline bbox spans
-///   (40,20)..(60,30) — endpoints and the π/2 crossing — so
-///   r = √(20² + 10²). Its geometry lanes ride owner-local and
-///   unrotated on the arc basis; the composer spins them at compose
-///   time, so both ends of the pivot contract meet here.
+/// A spun shape's payload bounds are the rotation-invariant square about the owner-box centre
+/// c = (40, 20) (box 80×40) holding the swept centerline bbox; the pivot is carried, not inferred.
+/// Polyline r = √(30² + 10²) ≈ 31.6228; arc bbox (40,20)..(60,30), r = √(20² + 10²). Arc lanes stay
+/// owner-local and unrotated; the composer spins them.
 #[test]
 fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     use crate::display::Display;
@@ -58,8 +46,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     ] {
         let display = Display::from_physical(UVec2::new(200, 200), 1.0);
         let mut h = UiHarness::new(display.physical);
-        // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0, so the
-        // encoder takes the spin branch.
+        // 1 s at 1 rad/s samples a rotation of 1 rad, so the encoder takes the spin branch.
         h.at(Duration::from_secs(1)).frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
@@ -103,11 +90,8 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
             _ => panic!("{spun:?}: expected one draw, got {:?}", cmds.kinds()),
         };
         let spin = bounds.spin().expect("spin must sample a non-zero rotation");
-        // The pivot is carried, not inferred from the cull rect's centre.
         assert_eq!(spin.pivot, c, "{spun:?} pivot {:?}", spin.pivot);
         assert!(spin.angle != 0.0, "{spun:?}");
-        // The cull rect is the rotation-invariant square about it, so the
-        // composer's overlap tracking holds at every angle.
         let cull = bounds.cull_rect();
         let square = Rect::new(
             c.x - half_extent,
@@ -125,11 +109,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }
 
-/// `Panel::transform` applies to the panel's body — both direct
-/// shapes (recorded via `ui.add_shape`) and child subtrees. Pins the
-/// "shapes inside the panel's transform" contract; the inverse case
-/// (chrome stays in parent space) is covered by
-/// `transformed_panel_chrome_stays_in_parent_space` below.
+/// `Panel::transform` applies to the panel's body (direct shapes and child subtrees), not its chrome.
 #[test]
 fn transformed_panel_applies_transform_to_direct_shapes() {
     use crate::shape::Shape;
@@ -139,8 +119,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     let scale = 2.0;
     let xform = TranslateScale::new(Vec2::new(10.0, 20.0), scale);
 
-    // Shape is 30×30 at panel-local (0, 0); child is 40×40 at
-    // panel-local (50, 60). Under `xform`, screen rects should be:
+    // Shape 30×30 at (0, 0), child 40×40 at (50, 60); under `xform` the screen rects are:
     //   shape: min = (10, 20), size = (60, 60)
     //   child: min = (10 + 50*2, 20 + 60*2) = (110, 140), size = (80, 80)
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -174,10 +153,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     assert_eq!(child_rect, Rect::new(110.0, 140.0, 80.0, 80.0));
 }
 
-/// Chrome on a transformed panel paints in parent space (unaffected
-/// by the panel's own transform), so a panel's background still
-/// frames the viewport while its body pans/zooms underneath. The
-/// flip side of `transformed_panel_applies_transform_to_direct_shapes`.
+/// Chrome paints in parent space: a background still frames the viewport while the body pans or zooms.
 #[test]
 fn transformed_panel_chrome_stays_in_parent_space() {
     let chrome_color = RgbaF32::srgb(0.1, 0.1, 0.1);
@@ -198,9 +174,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
     let drawn = screen_rects_by_fill(&h.encode_paint());
     let chrome_rect = rect_with_fill(&drawn, chrome_color).expect("chrome must paint");
 
-    // Chrome paints at the panel's own layout rect (Sizing::fixed(150.0)
-    // inside a 400×400 surface, hstack with one child → top-left at (0,0)
-    // by default). The transform must NOT scale chrome to 300×300.
+    // Chrome paints at the panel's own layout rect; the transform must not scale it.
     assert_eq!(
         chrome_rect,
         Rect::new(0.0, 0.0, 150.0, 150.0),

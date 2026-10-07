@@ -14,10 +14,9 @@ use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 
-/// What an event said about where the pointer is, in **physical** pixels
-/// — the one thing the host has to retain across events, because a scale
-/// change invalidates the logical position the recorder was told and
-/// re-deriving it needs the number before the division.
+/// The pointer's **physical** position, retained across events because a
+/// scale change invalidates the logical one and re-deriving needs it before
+/// the division.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum PointerTrace {
     Unchanged,
@@ -25,23 +24,20 @@ pub(super) enum PointerTrace {
     Gone,
 }
 
-/// What translating one event needs besides the event: the host state
-/// that changes how it reads.
+/// Host state that changes how an event reads.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Translation {
-    /// Physical pixels per logical pixel in the space the current frame
-    /// laid its widgets out in — what a pointer position is divided by.
+    /// Physical pixels per logical pixel in the current frame's layout space.
     pub(super) scale_factor: f32,
-    /// The modifiers winit last reported. A key event carries none of its
-    /// own, and text and wheel translation both read them.
+    /// The modifiers winit last reported; key events carry none, and text and
+    /// wheel translation read them.
     pub(super) modifiers: ModifiersState,
-    /// The platform whose conventions apply — `PLATFORM` in a build, any
-    /// of the three in a test.
+    /// The platform whose conventions apply: `PLATFORM` in a build, any in a test.
     pub(super) platform: Platform,
 }
 
-/// Returns what the event said about the pointer's physical position, for
-/// `Window::resync_pointer` to re-divide when that space moves.
+/// Returns the pointer's physical position the event reported, for
+/// `Window::resync_pointer`.
 pub(super) fn translate<'e>(
     event: &'e WindowEvent,
     at: Translation,
@@ -69,13 +65,9 @@ pub(super) fn translate<'e>(
             return PointerTrace::Gone;
         }
         WindowEvent::MouseInput { state, button, .. } => {
-            // The vocabulary stops at three on purpose:
-            // [`PointerButton`] indexes a `ButtonState` on every
-            // widget's `ResponseState` and a capture slot on
-            // `InputState`, so a fourth is a per-widget-per-frame cost
-            // paid by every app for a button almost none of them bind.
-            // Named rather than swept into a wildcard, so adding one
-            // here is a decision rather than a discovery.
+            // Three buttons on purpose: [`PointerButton`] indexes per-widget
+            // `ButtonState` and an `InputState` capture slot, so a fourth costs every app.
+            // Named, not wildcarded, so adding one is a decision.
             let button = match button {
                 MouseButton::Left => PointerButton::Left,
                 MouseButton::Right => PointerButton::Right,
@@ -89,9 +81,8 @@ pub(super) fn translate<'e>(
                 ElementState::Released => InputEvent::PointerReleased(button),
             });
         }
-        // A pinch delta is a displacement, so the factor is `1 + delta`.
-        // Emitted unscreened like every other payload here: what a factor
-        // has to satisfy is `InputEvent::is_valid`'s question.
+        // A pinch delta is a displacement, so the factor is `1 + delta`. Emitted
+        // unscreened; `InputEvent::is_valid` decides what a factor must satisfy.
         WindowEvent::PinchGesture { delta, .. } => {
             emit(InputEvent::Zoom(1.0 + *delta as f32));
         }
@@ -133,8 +124,7 @@ pub(super) fn translate<'e>(
                 platform,
             )));
         }
-        // Only the loss is forwarded: regaining focus tells the state
-        // machine nothing it does not already learn from the next event.
+        // Only the loss is forwarded; regaining focus is learned from the next event.
         WindowEvent::Focused(false) => emit(InputEvent::SurfaceFocusLost),
         WindowEvent::Ime(ime) => {
             if let Some(event) = ime_event(ime) {
@@ -146,18 +136,12 @@ pub(super) fn translate<'e>(
     PointerTrace::Unchanged
 }
 
-/// The keys winit spells the same way in both of its vocabularies, and
-/// the [`Key`] each denotes.
+/// Keys winit spells the same in `NamedKey` (logical) and `KeyCode`
+/// (physical), and the [`Key`] each denotes. A macro because the enums share
+/// only variant names.
 ///
-/// Written once and expanded against `NamedKey` (the logical side) and
-/// `KeyCode` (the physical one). A macro rather than a lookup table
-/// because the two winit enums share only these variant *names* — there
-/// is nothing to index, just a shape to repeat.
-///
-/// The two must agree: `Shortcut::matches`'s non-Latin fallback
-/// (`src/input/shortcut/mod.rs`) consults `physical` alone, so a key present
-/// on one side and missing from the other stops matching under a
-/// non-Latin layout and nothing says so.
+/// The sides must agree: `Shortcut::matches`'s non-Latin fallback
+/// (`src/input/shortcut/mod.rs`) consults `physical` alone.
 macro_rules! shared_key {
     ($winit:ident, $value:expr) => {
         match $value {
@@ -186,22 +170,15 @@ macro_rules! shared_key {
             $winit::F10 => Some(Key::F10),
             $winit::F11 => Some(Key::F11),
             $winit::F12 => Some(Key::F12),
-            // The one whose `Key` is not the same name.
             $winit::Space => Some(Key::Char(' ')),
             _ => None,
         }
     };
 }
 
-/// The [`Key`] a winit logical key denotes, or [`Key::Other`] where the
-/// vocabulary has no name for it.
-///
-/// A `Character` payload is a string because a dead-key sequence can
-/// resolve to several chars, and only the first is taken: [`Key`] names a
-/// *key*, and treating a whole run as a chord would bind shortcuts to
-/// whichever char happened to come first. Nothing is lost by it — the
-/// resolution the user meant to write travels beside the key, in the
-/// event's `text`.
+/// The [`Key`] a winit logical key denotes, or [`Key::Other`]. For a
+/// `Character`, only the first char of a dead-key sequence is taken, since
+/// [`Key`] names a key; the resolved text travels in the event's `text`.
 fn logical_key(key: &WinitKey) -> Key {
     match key {
         WinitKey::Named(named) => shared_key!(NamedKey, named).unwrap_or(Key::Other),
@@ -210,9 +187,7 @@ fn logical_key(key: &WinitKey) -> Key {
     }
 }
 
-/// The Latin letter and digit positions, which exist only on the
-/// physical side — the logical side reports whatever the layout puts
-/// there, as a `Character`.
+/// Latin letter and digit positions, which exist only on the physical side.
 const fn latin_position(code: KeyCode) -> Option<Key> {
     let c = match code {
         KeyCode::KeyA => 'a',
@@ -260,8 +235,7 @@ fn physical_key(physical: PhysicalKey) -> Key {
     let PhysicalKey::Code(code) = physical else {
         return Key::Other;
     };
-    // `or`, not `or_else`: the macro expands to a match, not a call, so
-    // there is nothing to defer.
+    // `or`, not `or_else`: the macro expands to a match, so nothing to defer.
     latin_position(code)
         .or(shared_key!(KeyCode, code))
         .unwrap_or(Key::Other)
@@ -274,10 +248,8 @@ enum WheelUnit {
     Pixels,
 }
 
-/// A vertical wheel turned with Shift held scrolls horizontally on
-/// Windows and Linux, the convention their toolkits and browsers share.
-/// macOS needs no help: its trackpads and mice send the horizontal delta
-/// themselves when Shift is held.
+/// A vertical wheel with Shift held scrolls horizontally on Windows and
+/// Linux; macOS sends the horizontal delta itself.
 fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
     let swaps = platform != Platform::Mac && modifiers.shift_key() && delta.x == 0.0;
     if swaps {
@@ -287,9 +259,8 @@ fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Ve
     }
 }
 
-/// The fields of a winit key press that translation reads — a winit
-/// `KeyEvent` cannot be built outside winit, so the rule below takes
-/// what it needs from one rather than the event.
+/// The fields of a winit key press that translation reads; a `KeyEvent`
+/// cannot be built outside winit.
 #[derive(Clone, Copy, Debug)]
 struct KeyDownFacts<'a> {
     logical: &'a WinitKey,
@@ -299,9 +270,9 @@ struct KeyDownFacts<'a> {
     is_synthetic: bool,
 }
 
-/// An IME event as the crate's. A disabled input method ends whatever it
-/// was composing, which is the empty preedit; enabling one says nothing a
-/// widget acts on. A cursor arrives as two byte offsets, in either order.
+/// An IME event as the crate's. A disabled input method ends composing (the
+/// empty preedit); enabling says nothing a widget acts on. A cursor is two byte
+/// offsets, in either order.
 fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
     match ime {
         Ime::Preedit(text, cursor) => Some(InputEvent::ImePreedit(ImePreedit {
@@ -319,22 +290,17 @@ fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
 
 /// The `KeyDown` a press becomes, or `None` for one that is not input.
 ///
-/// - A synthetic press is dropped. winit sends one on X11 and Windows for
-///   every key still held when the window gains focus — the Enter that
-///   confirmed another app's dialog — and delivering it would submit a
-///   form or close a modal nobody pressed a key at.
+/// - A synthetic press is dropped: X11 and Windows send one per held key on
+///   focus gain, which could submit a form nobody pressed a key at.
 /// - Text typed with Super held is cleared: Super is a command modifier
-///   on every platform (Cmd on macOS reaches `Modifiers::ctrl`, which the
-///   text rule already reads), and `Modifiers` has no bit for it on
-///   Windows and Linux, so this is the one place that can drop it.
+///   everywhere (Cmd on macOS reaches `Modifiers::ctrl`), and `Modifiers` has
+///   no Super bit on Windows and Linux.
 fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent<'static>> {
     if facts.is_synthetic {
         return None;
     }
-    // The platform's own resolution of layout, dead keys and modifiers —
-    // the only thing that knows what this press writes. `logical_key`
-    // names the key for chords and cannot answer for it: it holds one
-    // character where a dead-key fallback produces two.
+    // The platform's resolution of layout, dead keys and modifiers; `logical_key`
+    // holds one character where a dead-key fallback produces two.
     let text = match facts.text {
         Some(text) if !modifiers.super_key() => KeyText::new(text),
         _ => KeyText::EMPTY,

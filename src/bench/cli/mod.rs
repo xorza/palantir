@@ -1,10 +1,8 @@
 //! The bench runner's command line.
 //!
-//! Criterion parses argv itself in `configure_from_args`, which builds
-//! its own `clap::Command` and **hard-exits on any flag it doesn't
-//! know** — so it cannot be called on an argv carrying ours. That is why
-//! the criterion knobs below are re-declared and applied through public
-//! setters ([`Cli::configure`]) rather than forwarded.
+//! Criterion's `configure_from_args` **hard-exits on any flag it doesn't know**,
+//! so it can't parse an argv carrying ours; the criterion knobs are re-declared
+//! and applied through public setters ([`Cli::configure`]).
 
 use crate::bench::driver::Driver;
 use crate::bench::{Arms, Fixture};
@@ -14,22 +12,14 @@ use std::time::Duration;
 
 /// Whether argv is criterion's to parse rather than ours.
 ///
-/// Criterion's rule, from its own `configure_from_args`
-/// (`criterion-0.8.2`, `src/lib.rs:960`): `--bench` without `--test`
-/// benchmarks, **everything else is test mode**. So test mode is
-/// signalled by an absence — cargo passes a `harness = false` bench
-/// target `--bench` under `cargo bench` and *no arguments at all* under
-/// `cargo test --benches`. Keying on a `--test` that cargo never sends
-/// turns every `cargo test --all-targets` into a full measurement run.
+/// Criterion's rule (`criterion-0.8.2`, `src/lib.rs:960`): `--bench` without
+/// `--test` benchmarks, **everything else is test mode**. Cargo passes
+/// `--bench` under `cargo bench` and *no arguments* under `cargo test --benches`,
+/// so keying on `--test` would make every `cargo test --all-targets` a full run.
 ///
-/// A hand scan rather than a lenient `clap` parse, which cannot do this
-/// job: **cargo appends `--bench` after the caller's own arguments**,
-/// and `ignore_errors` stops collecting at the first token it doesn't
-/// recognise. A `Gate` deriving `Parser` therefore read
-/// `-d cascade --bench` as having no `--bench` at all and handed the
-/// whole run to criterion, which then rejected `-d`. Every
-/// `cargo bench -- <anything>` broke that way; only the bare
-/// `cargo bench` survived, because its argv is `--bench` alone.
+/// A hand scan, not a lenient `clap` parse: **cargo appends `--bench` after the
+/// caller's arguments** and `ignore_errors` stops at the first unrecognised
+/// token, so `-d cascade --bench` read as having no `--bench`.
 pub(super) fn delegates<'a>(args: impl Iterator<Item = &'a str>) -> bool {
     let mut bench = false;
     for arg in args {
@@ -53,8 +43,8 @@ pub(super) struct Cli {
     /// Regex over benchmark ids, applied within the selected drivers.
     filter: Option<String>,
 
-    /// Run only these drivers, by exact name. Repeatable. Naming an
-    /// opt-in driver is what opts it in.
+    /// Run only these drivers, by exact name. Repeatable. Naming an opt-in driver
+    /// opts it in.
     #[arg(short = 'd', long = "driver", value_name = "NAME")]
     drivers: Vec<String>,
 
@@ -67,8 +57,6 @@ pub(super) struct Cli {
     #[arg(long)]
     pub(super) list_drivers: bool,
 
-    // ── knobs for a driver that renders the shared fixture; see
-    // `Fixture`. Declared here because this is the only parser ──
     /// Physical surface every arm renders into, e.g. `3840x6000`.
     #[arg(long, value_name = "WxH", value_parser = parse_size)]
     size: Option<glam::UVec2>,
@@ -83,8 +71,6 @@ pub(super) struct Cli {
     #[arg(long, value_name = "TEXT")]
     note: Option<String>,
 
-    // ── criterion's own knobs, re-declared because we drive its setters
-    // rather than letting it parse argv ──
     /// Profile for this many seconds per benchmark instead of sampling.
     #[arg(long, value_name = "SECONDS")]
     profile_time: Option<f64>,
@@ -95,8 +81,7 @@ pub(super) struct Cli {
     /// Seconds criterion spends collecting those samples.
     #[arg(long, value_name = "SECONDS")]
     measurement_time: Option<f64>,
-    /// Seconds criterion runs before it starts measuring, so caches and
-    /// the clock settle first.
+    /// Seconds criterion runs before measuring, so caches and the clock settle.
     #[arg(long, value_name = "SECONDS")]
     warm_up_time: Option<f64>,
     /// Store this run's samples under a name, for a later `--baseline`
@@ -120,15 +105,13 @@ pub(super) struct Cli {
     #[arg(long)]
     noplot: bool,
 
-    /// Cargo passes this to every `harness = false` target. Accepted and
-    /// ignored — on this path criterion never sees argv at all.
+    /// Cargo passes this to every `harness = false` target. Accepted and ignored.
     #[arg(long, hide = true)]
     bench: bool,
 }
 
-/// `<W>x<H>` in physical pixels. A `value_parser` rather than a parse
-/// at the use site: a malformed size should be a clap error next to the
-/// flag, not a panic partway into a bench.
+/// `<W>x<H>` in physical pixels, a `value_parser` so a malformed size is a clap
+/// error next to the flag.
 fn parse_size(raw: &str) -> Result<glam::UVec2, String> {
     let (w, h) = raw
         .trim()
@@ -152,15 +135,13 @@ impl Cli {
         }
     }
 
-    /// Whether criterion will write `estimates.json` this run. Profile
-    /// mode reports "Analysis Disabled" and writes nothing, so a driver
-    /// that reads its own numbers back has to know.
+    /// Whether criterion will write `estimates.json` this run. Profile mode writes
+    /// nothing ("Analysis Disabled").
     pub(super) const fn records(&self) -> bool {
         self.profile_time.is_none()
     }
 
-    /// Every name given to `--driver` must exist, or the run silently
-    /// measures less than asked for.
+    /// Every name given to `--driver` must exist, or the run silently measures less.
     pub(super) fn validate(&self, known: &[Driver]) {
         for name in &self.drivers {
             assert!(
@@ -170,9 +151,8 @@ impl Cli {
         }
     }
 
-    /// A bare run reaches every driver except the opt-in ones — those are
-    /// exactly the ones that shouldn't happen by accident. Naming any
-    /// driver switches to that list verbatim, opt-in included.
+    /// A bare run reaches every driver except the opt-in ones; naming any driver
+    /// switches to that list verbatim, opt-in included.
     pub(super) fn selects(&self, driver: &Driver) -> bool {
         if self.drivers.is_empty() {
             !driver.opt_in
@@ -181,8 +161,8 @@ impl Cli {
         }
     }
 
-    /// Apply the parsed knobs to a driver's base configuration. Stands in
-    /// for `configure_from_args`, which cannot be used here.
+    /// Apply the parsed knobs to a driver's base configuration, standing in for
+    /// `configure_from_args`.
     pub(super) fn configure(&self, mut c: Criterion) -> Criterion {
         if let Some(f) = &self.filter {
             c = c.with_filter(f);
@@ -202,8 +182,7 @@ impl Cli {
         if let Some(b) = &self.save_baseline {
             c = c.save_baseline(b.clone());
         }
-        // `strict` is the difference between the two flags, and clap has
-        // already ruled out both being set.
+        // `strict` distinguishes the two flags; clap rules out both being set.
         if let Some(b) = &self.baseline {
             c = c.retain_baseline(b.clone(), true);
         }

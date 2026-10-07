@@ -1,31 +1,13 @@
-//! User-driven GPU rendering: the frontend half of the
-//! [`GpuView`](crate::widgets::gpu_view::GpuView) widget. App code implements [`GpuPaint`] on its own renderer (owning
-//! whatever pipelines / buffers / depth+MSAA textures it needs), wraps it
-//! in `Rc<RefCell<…>>`, and hands it to the widget each frame. The
-//! framework owns an off-screen render target sized to the widget's composed
-//! physical rect (uniformly downsampled when the device texture cap requires
-//! it), runs the callback into it during submit, and composites the result
-//! through the existing image pipeline — so clipping, rounded corners, z-order,
-//! and partial-damage recompositing come for free.
+//! User-driven GPU rendering: the frontend half of
+//! [`GpuView`](crate::widgets::gpu_view::GpuView). App code implements
+//! [`GpuPaint`] on its renderer and hands it to the widget each frame; the
+//! framework runs it into an off-screen target and composites it through the
+//! image pipeline.
 //!
-//! The `Ui` keeps one [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)
-//! store of live views: the app hands its renderer to the widget every
-//! frame, so [`Ui::gpu_view`](crate::Ui::gpu_view) records it there —
-//! minting the stable backend
-//! [`TextureId`](crate::primitives::identity::texture_id::TextureId) once from
-//! `UiResources`' shared authority, so it cannot collide with registered
-//! images or other windows, and refreshing the
-//! [`GpuPaintRef`](crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef).
-//! The shape records only the redraw `epoch`; the encoder looks the view
-//! up by the node's `WidgetId`, forwards the callback alongside the image
-//! payload, and the composer lists it in `RenderBuffer::frame_targets` for
-//! the backend. `Frontend::build` separately fills
-//! `RenderBuffer::live_targets` from the whole store — what the frame
-//! *recorded*, as against what it *painted* — and that is what the backend
-//! keys target retention on, so an unchanged view culled out of a frame keeps
-//! its texture. The store is swept by the same `removed` set as every other
-//! per-widget cache; the backend then frees the orphaned texture (see
-//! `GpuViewTargets::paint_gpu_views`).
+//! The `Ui` keeps a [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)
+//! store of live views. The shape records only the redraw `epoch`;
+//! `Frontend::build` fills `RenderBuffer::live_targets` from the whole store
+//! (recorded, not painted) so a culled unchanged view keeps its texture.
 
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
@@ -34,40 +16,22 @@ use crate::gpu::device::gpu_frame_context::GpuFrameContext;
 use crate::gpu::device::gpu_init_context::GpuInitContext;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
-/// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.
-/// `'static` because the framework holds the renderer (behind
-/// `Rc<RefCell<…>>`) across the whole frame — the render runs at paint
-/// time, after `App::record` has returned, so it can't borrow frame-local
-/// state.
+/// content into a [`GpuView`](crate::widgets::gpu_view::GpuView). `'static`
+/// because rendering happens after `App::record` returns.
 ///
-/// **Write premultiplied colour into the target.** The composite that
-/// puts a view on screen samples its texture the way it samples a
-/// registered image, and both hold colour already scaled by its own
-/// alpha — that is what makes the filter correct across a soft edge. A
-/// renderer that blends with `PREMULTIPLIED_ALPHA_BLENDING`, which is
-/// the target's own format and this crate's convention throughout, is
-/// already writing what the composite expects.
+/// **Write premultiplied colour into the target**, as the composite samples
+/// it like a registered image.
 pub trait GpuPaint: 'static {
-    /// Build GPU resources (pipelines, persistent buffers). Called **once**
-    /// per view, the first time the device is available for it. Skipping
-    /// paints does not re-run it — a view marked
-    /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) keeps its
-    /// off-screen texture — and neither does a resize, since the resolved
-    /// color target is framework-owned. Recreate your own depth / MSAA
-    /// attachments inside [`Self::paint`] when [`GpuFrameContext::physical_size`]
-    /// changes.
-    ///
-    /// It runs again only after the view is genuinely gone and comes back:
-    /// the widget stopped being recorded (so its state was swept, like every
-    /// other per-widget cache), or its window closed. A renderer that outlives
-    /// its widget — one parked in app state across a page switch — is handed
-    /// a fresh target when it returns and is initialized into it.
+    /// Builds GPU resources. Called **once** per view; skipped paints and
+    /// resizes do not re-run it, so recreate your depth/MSAA attachments in
+    /// [`Self::paint`] when [`GpuFrameContext::physical_size`] changes. It
+    /// runs again only after the view is gone (widget unrecorded or window
+    /// closed) and returns.
     fn init(&mut self, context: &GpuInitContext<'_>) {
         let _ = context;
     }
 
-    /// Render into the off-screen target. Open your own render pass(es) on
-    /// `context.encoder` against `context.target`; they ride palantir's main submit
-    /// and the result is composited into the UI at the widget's rect.
+    /// Renders into the off-screen target with your own pass(es) on
+    /// `context.encoder` against `context.target`.
     fn paint(&mut self, context: &mut GpuFrameContext<'_>);
 }

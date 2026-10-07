@@ -1,5 +1,4 @@
-//! A colour chip: the smallest thing that shows a colour, and the checker it
-//! shows a translucent one against.
+//! A colour chip over a checker for translucent colours.
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
@@ -15,16 +14,9 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 
-/// A chip painting one colour, with a checkerboard behind it when that colour
-/// is translucent.
+/// A chip painting one colour, over a checkerboard when it is translucent.
 ///
-/// The display half of the colour family: it writes nothing and senses only a
-/// click, so a caller builds a preset row, a recent-colours strip or a
-/// "before / after" pair out of it and reads
-/// [`clicked()`](crate::ResponseState::clicked) itself.
-///
-/// Sized from [`ColorPickerTheme::swatch_size`], and styled from the same
-/// bundle as the rest of the family.
+/// Display only: it writes nothing and senses a click, read through [`clicked()`](crate::ResponseState::clicked). Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorSwatch<'a> {
@@ -44,8 +36,7 @@ impl<'a> ColorSwatch<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self

@@ -1,5 +1,4 @@
-//! Justify within a line, and the children that pack differently or not at
-//! all.
+//! Justify within a line, and children that pack differently or not at all.
 
 use crate::internals::harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
@@ -10,12 +9,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
-/// Pin: per-line justify with a 200-wide WrapHStack and two 60-wide
-/// children (gap=10). Content width = 130, leftover = 70.
-///   Center:       half (35) leading → 35, 105.
-///   SpaceBetween: 1 between-gap absorbs all 70 extra → 0, 140.
-///   SpaceAround:  35/count = 35 per slot, half (17.5) leading → 17.5,
-///                 122.5 (60 + (10 + 35) gap = 105; 17.5 + 105 = 122.5).
+/// Per-line justify in a 200-wide WrapHStack with two 60-wide children (gap=10): content 130, leftover 70. Center: 35, 105. SpaceBetween: the one gap absorbs 70, 0 and 140. SpaceAround: 35 per slot, half (17.5) leading, 17.5 and 122.5 (60 + (10 + 35) = 105).
 #[test]
 fn wrap_hstack_justify_per_line() {
     let cases: &[(&str, Justify, [f32; 2])] = &[
@@ -37,8 +31,7 @@ fn wrap_hstack_justify_per_line() {
                     cell(ui, "b", 60.0, 20.0);
                 });
         });
-        // 200 wide, 60 + 10 + 60 = 130 used, 70 to place; each x is a
-        // multiple of 0.5, so exact in f32.
+        // 130 used, 70 to place; every x is a multiple of 0.5, exact in f32.
         let xs = [
             h.arranged(WidgetId::from_hash("a")).min.x,
             h.arranged(WidgetId::from_hash("b")).min.x,
@@ -47,11 +40,7 @@ fn wrap_hstack_justify_per_line() {
     }
 }
 
-/// Pin (today's behavior): `Sizing::fill` on a child's main axis is
-/// treated as `Hug` — measure runs at INF main and the child reports
-/// its content size, no per-row leftover distribution. Future work
-/// adding flex-style row-leftover distribution should update this
-/// test rather than introduce the new behavior silently.
+/// Today's behavior: `Sizing::fill` on a child's main axis acts as `Hug` (measured at INF main, content size, no per-row leftover). Flex-style distribution should update this test, not slip in silently.
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -65,15 +54,12 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    // min_size makes Fill measurable as a positive
-                    // number even with no row-leftover distribution.
+                    // min_size makes Fill measurable as a positive number without leftover distribution.
                     .min_size((40.0, 0.0))
                     .show(ui);
             });
     });
     let r = h.arranged(WidgetId::from_hash("filler"));
-    // Fill child got its min_size width (40), NOT the row leftover
-    // (300 - 60 - 10 - 10 = 220). If a future change distributes
-    // leftover, this assertion flips and the test becomes the spec.
+    // The Fill child gets its min_size width (40), not the row leftover (300 - 60 - 10 - 10 = 220); distribution would flip this and make the test the spec.
     assert_eq!(r.size.w, 40.0, "Fill main treated as Hug today");
 }

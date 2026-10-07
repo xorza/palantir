@@ -11,9 +11,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-/// The Tab stop rows: a focusable node that kept its stop and is neither
-/// disabled nor hidden, in record order, with its root and its index; and
-/// one root row per tree root, the popup's included.
+/// Tab stop rows: a focusable node that kept its stop and is neither disabled nor hidden, in record order with its root and index; plus one root row per tree root, the popup's included.
 #[test]
 fn tab_stops_are_live_focusable_stops_in_record_order() {
     use crate::cascade::entry::TabStopRow;
@@ -49,9 +47,7 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
         });
     });
 
-    // The frame records under the host's own `Main` root, so both root
-    // ids are read back rather than named: what is asserted is one root
-    // per tree, in record order, and the stops naming their own.
+    // The frame records under the host's own `Main` root, so root ids are read back: one root per tree in record order, stops naming their own.
     let cascade = h.ui.cascade();
     let layers: Vec<Layer> = cascade.roots.iter().map(|row| row.layer).collect();
     assert_eq!(layers, [Layer::Main, Layer::Popup]);
@@ -125,10 +121,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         });
     });
 
-    // `hits` is interactive-rows-only, in paint order, and carries its
-    // own geometry — so identity is all that needs asserting here. The
-    // disabled row is in it: disabling takes away what a widget may do,
-    // not the fact that the pointer rests on it.
+    // `hits` is interactive rows only, in paint order, with its own geometry. The disabled row is in it: disabling removes what a widget may do, not that the pointer rests on it.
     assert_eq!(
         h.ui.cascade()
             .hits
@@ -138,15 +131,10 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
         [hover, focus, disabled, popup_scroll],
     );
     let pos = Vec2::splat(50.0);
-    // Painted last of the four in `Main`, so the disabled one takes both
-    // the hover and the press: it keeps the sense it declared, and
-    // answers neither.
+    // Painted last of the four in `Main`, the disabled one takes the hover and press, keeps its declared sense and answers neither.
     assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(disabled));
     assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), Some(disabled));
-    // One walk must agree with the two separate filters above it: the
-    // press path resolves both from a single scan. `focus` is empty
-    // rather than the focusable row underneath — the press stopped at
-    // the disabled row, so nothing below it was pressed to be focused.
+    // One walk must agree with the two separate filters (the press path resolves both from one scan). `focus` is empty: the press stopped at the disabled row.
     let press = h.ui.cascade().hit_test_press(pos);
     assert_eq!(press.click, Some(disabled));
     assert_eq!(
@@ -169,10 +157,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     );
 }
 
-/// The interactive table is self-sufficient: every `HitRow` carries the
-/// same `rect` the node's `EntryRow` does, so the hit scan never needs
-/// to reach back into `entries`. If those two ever disagreed, hit
-/// testing would silently use stale geometry.
+/// The interactive table is self-sufficient: every `HitRow` carries the same `rect` as the node's `EntryRow`, so the hit scan never reaches into `entries`; disagreement would use stale geometry.
 #[test]
 fn hit_rows_carry_the_entry_rect() {
     let mut h = UiHarness::new(UVec2::splat(300));

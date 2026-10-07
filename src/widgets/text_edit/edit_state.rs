@@ -1,6 +1,4 @@
-//! Semantic state for the host-owned text buffer, plus the undo
-//! history it retains. [`Editor`](super::editor::Editor) is the
-//! behaviour over this data.
+//! Semantic state for the host-owned text buffer, plus its undo history.
 
 use crate::text::probe::TextProbe;
 use std::collections::VecDeque;
@@ -9,52 +7,31 @@ use std::ops;
 use unicode_segmentation::GraphemeCursor;
 
 /// Semantic state for the host-owned text buffer.
-///
-/// `caret` is a byte offset. Widget-driven mutations step grapheme
-/// boundaries, while [`Self::normalize`] repairs offsets after the host
-/// replaces the buffer between frames.
 #[derive(Clone, Default, Debug)]
 pub(super) struct EditState {
     pub(super) caret: usize,
-    /// Selection anchor. `None` = no selection. Invariant: never
-    /// `Some(caret)` — every mutation site collapses an empty selection
-    /// to `None` so "selection live" is a single `is_some()` check.
+    /// Selection anchor; never `Some(caret)`, so "selection live" is one `is_some()`.
     pub(super) selection: Option<usize>,
-    /// Byte the pointer started the in-flight drag-select from. `None`
-    /// when no drag is latched. Here rather than beside the pointer
-    /// state because it is a byte offset into the same host buffer as
-    /// `caret` and `selection`, and [`Self::normalize`] has to repair
-    /// all three together or a drag that outlives a host edit selects
-    /// from a stale boundary.
+    /// Byte the in-flight drag-select started from. Lives here so `normalize`
+    /// repairs it with `caret` and `selection`.
     pub(super) drag_anchor: Option<usize>,
     pub(super) undo: VecDeque<EditDelta>,
     pub(super) redo: Vec<EditDelta>,
-    /// Kind of the most recent recorded edit, used to coalesce
-    /// consecutive same-kind edits (typing chars, deleting chars) into
-    /// a single undo unit. `None` after any caret-only motion so the
-    /// next edit always opens a fresh group.
+    /// Kind of the last recorded edit, for coalescing; `None` after caret-only motion.
     pub(super) last_edit_kind: Option<EditKind>,
     pub(super) expected_hash: Option<NonZeroU64>,
     pub(super) local_edit_pending: bool,
     pub(super) char_count: Option<usize>,
 }
 
-/// Caret + anchor as one comparable unit. An [`EditDelta`] stores the
-/// pair either side of its edit so undo/redo restores the selection the
-/// user had, and so `coalesce` can check the two deltas actually abut.
+/// Caret + anchor as one comparable unit, stored either side of an edit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct SelectionState {
     pub(super) caret: usize,
     pub(super) selection: Option<usize>,
 }
 
-/// One edit as its parts, before the history decides whether to keep it.
-///
-/// The text is borrowed — from the buffer for `removed`, from the caller
-/// for `inserted` — so [`EditState::record_edit`] can try to extend the
-/// open undo group first and copy nothing at all in the case that matters:
-/// a keystroke appended to the group it opened. Only an edit that starts a
-/// new group is turned into an owning [`EditDelta`].
+/// One edit as borrowed parts, so `record_edit` can extend the open group without copying.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct EditParts<'a> {
     pub(super) start: usize,
@@ -64,11 +41,7 @@ pub(super) struct EditParts<'a> {
     pub(super) after: SelectionState,
 }
 
-/// One undoable buffer edit. Built here — from the borrowed [`EditParts`]
-/// an edit arrives as — and replayed by
-/// [`Editor`](super::editor::Editor), which is why the fields are
-/// `pub(super)`: the data and the stacks that retain it live here, the
-/// behaviour that applies one lives there.
+/// One undoable buffer edit, replayed by [`Editor`](super::editor::Editor).
 #[derive(Clone, Debug)]
 pub(super) struct EditDelta {
     pub(super) start: usize,
@@ -82,16 +55,15 @@ pub(super) struct EditDelta {
 pub(super) enum EditKind {
     Typing,
     Delete,
-    /// Bulk edits (paste, cut, clear, newline insert) — never coalesce.
+    /// Bulk edits (paste, cut, clear, newline insert); never coalesce.
     Other,
 }
 
-/// Cap on retained undo entries; [`EditState::record_edit`] drops the
-/// oldest past this.
+/// Cap on retained undo entries; the oldest is dropped past it.
 const UNDO_LIMIT: usize = 128;
 
 impl EditDelta {
-    /// Take ownership of `parts` — the two `String`s the history keeps.
+    /// Own the strings of `parts`.
     fn from_parts(parts: EditParts<'_>) -> Self {
         Self {
             start: parts.start,
@@ -102,9 +74,7 @@ impl EditDelta {
         }
     }
 
-    /// Extend this delta with an edit that abuts it, reporting whether it
-    /// did. Takes the parts rather than a built [`EditDelta`] so the caller
-    /// pays for the strings only when this says no.
+    /// Extend this delta with an abutting edit; reports whether it did.
     fn coalesce(&mut self, next: EditParts<'_>, kind: EditKind) -> bool {
         if self.after != next.before {
             return false;
@@ -143,14 +113,8 @@ impl EditDelta {
 }
 
 impl EditState {
-    /// Fold one edit into the undo history: appended to the open group when
-    /// it abuts one of the same kind, otherwise pushed as a new entry with
-    /// the oldest dropped past [`UNDO_LIMIT`]. Redo dies either way — the
-    /// timeline just forked.
-    ///
-    /// Takes borrowed parts, so a keystroke that lands in the open group
-    /// copies its character into that group's `String` and allocates
-    /// nothing. That is the steady state of typing.
+    /// Fold one edit into the undo history, coalescing into the open group when
+    /// it abuts one of the same kind. Redo is cleared either way.
     pub(super) fn record_edit(&mut self, parts: EditParts<'_>, kind: EditKind) {
         let coalesced = self.last_edit_kind == Some(kind)
             && self
@@ -167,15 +131,7 @@ impl EditState {
         self.last_edit_kind = Some(kind);
     }
 
-    /// Wipe the history if `text_hash` is not the buffer it describes,
-    /// then adopt it as the expectation.
-    ///
-    /// **The one statement of "did the host replace the buffer".** The
-    /// undo stack holds byte ranges into text the application owns; if
-    /// that text changed and we did not change it, every range in the
-    /// stack refers to something gone. Both entry points below reach the
-    /// rule here — written out at each of them, the two bodies drifted on
-    /// which hash they compared.
+    /// Wipe the history if `text_hash` is not the buffer it describes, then adopt it.
     fn adopt_text_hash(&mut self, text_hash: NonZeroU64) {
         if !self.local_edit_pending
             && self
@@ -190,17 +146,10 @@ impl EditState {
         self.expected_hash = Some(text_hash);
     }
 
-    /// Paint-path entry: the shape probe already hashed this buffer, so
-    /// its hash is the one to adopt. Also closes the local-edit window —
-    /// whatever we changed this frame has now been seen.
+    /// Paint-path entry: adopt the probe's hash and close the local-edit window.
     ///
-    /// **`None` observes nothing, and so changes nothing.** A probe whose
-    /// face named no usable size never hashed the buffer, so this frame
-    /// learned neither the identity to adopt nor that our own edit has
-    /// been seen. Adopting an absence would drop a standing expectation
-    /// and miss a host replacement that landed while the face was
-    /// unusable; closing the window would then blame the *next* frame for
-    /// an edit we made ourselves.
+    /// `None` changes nothing: the probe never hashed the buffer, so there is
+    /// nothing to adopt and our edit has not been seen.
     pub(super) fn observe_text_hash(&mut self, text_hash: Option<NonZeroU64>) {
         let Some(text_hash) = text_hash else {
             return;
@@ -209,12 +158,9 @@ impl EditState {
         self.local_edit_pending = false;
     }
 
-    /// Input-path entry, before an edit is applied: no probe has run for
-    /// this frame's buffer yet, so mint the hash.
+    /// Input-path entry, before an edit: mint the hash for this frame's buffer.
     ///
-    /// A pending local edit means we moved the buffer ourselves and the
-    /// hash it settles at is not known until paint, which adopts it —
-    /// so there is nothing to reconcile against here.
+    /// Skipped while a local edit is pending; paint adopts the settled hash.
     pub(super) fn reconcile_before_edit(&mut self, text: &str) {
         if self.local_edit_pending {
             return;
@@ -222,8 +168,7 @@ impl EditState {
         self.adopt_text_hash(Self::text_hash(text));
     }
 
-    /// The identity of `text`, minted the way the shape probe mints the
-    /// hash [`Self::observe_text_hash`] is fed.
+    /// The identity of `text`, minted as the shape probe mints it.
     pub(super) fn text_hash(text: &str) -> NonZeroU64 {
         TextProbe::hash_of(text)
     }
@@ -245,12 +190,8 @@ impl EditState {
         }
     }
 
-    /// Repair every persisted byte offset against the current host-owned
-    /// buffer. Offsets beyond the end clamp to `len`; offsets inside a
-    /// grapheme cluster walk back to its start, so a caret the host left
-    /// between `e` and its combining accent cannot type between them.
-    /// Then collapse an empty selection. Safe both before input, when the
-    /// application may have replaced the buffer, and after our mutations.
+    /// Repair persisted byte offsets against the host-owned buffer: clamp to `len`,
+    /// walk back to a grapheme start, then collapse an empty selection.
     pub(super) fn normalize(&mut self, text: &str) {
         self.caret = Self::repair_offset(text, self.caret);
         self.selection = self
@@ -272,16 +213,9 @@ mod tests {
     use crate::text::key::TextShapeKey;
     use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 
-    /// The two entry points into the history rule must mint one buffer's
-    /// identity identically, because they write and read the same
-    /// `expected_hash`: the paint path adopts the probe's, the input path
-    /// mints its own, and a disagreement reads as "the host replaced the
-    /// buffer" and wipes the undo stack under the user.
-    ///
-    /// The zero case is why this is a test rather than a comment.
-    /// `content_hash` maps a raw zero to one, so a bare `hash_str` on the
-    /// input side would differ for exactly the content that hashes to
-    /// zero, and for nothing else.
+    /// Both entry points must mint a buffer's identity alike; a mismatch reads as a
+    /// host replacement and wipes undo. `content_hash` maps a raw zero to one, so a
+    /// bare `hash_str` would differ only for content hashing to zero.
     #[test]
     fn both_entry_points_mint_one_buffers_identity_alike() {
         for text in ["", "a", "hello world", "\u{1f600} multi\nline"] {
@@ -292,15 +226,10 @@ mod tests {
                 "input path disagrees with the probe for {text:?}",
             );
         }
-        // The mapped case, driven directly: a raw zero is the one input
-        // where the two spellings part company.
         assert_eq!(TextShapeKey::content_hash(0).get(), 1);
     }
 
-    /// A caret the host left inside a grapheme cluster moves to its start:
-    /// between `e` and its combining acute, a typed `x` would take the
-    /// accent. A caret inside one code point steps back too, and one past
-    /// the end clamps.
+    /// A caret inside a grapheme cluster or code point moves to its start; past the end it clamps.
     #[test]
     fn normalize_repairs_offsets_to_grapheme_starts() {
         for (text, offset, repaired) in [
@@ -320,10 +249,8 @@ mod tests {
         }
     }
 
-    /// A frame whose probe hashed nothing must leave the history rule
-    /// exactly as it found it, and the expectation it kept must still
-    /// catch a replacement on the next frame that does hash — see
-    /// [`EditState::observe_text_hash`] for why both halves matter.
+    /// A frame whose probe hashed nothing leaves the history rule untouched, and the
+    /// kept expectation still catches a replacement on the next hashed frame.
     #[test]
     fn a_frame_that_hashed_nothing_observes_nothing() {
         let mut state = EditState::default();
@@ -346,8 +273,6 @@ mod tests {
             "an unhashed frame has not seen our edit, so the window stays open",
         );
 
-        // And the expectation it kept is the one that catches the
-        // replacement on the next frame that *does* hash.
         state.local_edit_pending = false;
         state.last_edit_kind = Some(EditKind::Typing);
         state.observe_text_hash(Some(EditState::text_hash("replaced by the host")));

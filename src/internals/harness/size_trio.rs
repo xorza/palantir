@@ -1,5 +1,4 @@
-//! The arranged sizes a widget's "explicit size beats the default" test
-//! reads.
+//! The arranged sizes a widget's "explicit size beats the default" test reads.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -21,8 +20,7 @@ pub(crate) struct SizeTrio {
 }
 
 impl SizeTrio {
-    /// Arrange the three copies `show` records — `explicit`, `HUG × HUG`,
-    /// then `None` for the default — and read their sizes.
+    /// Arrange the three copies `show` records (`explicit`, `HUG × HUG`, default `None`) and read their sizes.
     pub(crate) fn of(
         explicit: impl Into<SizeSpec>,
         mut show: impl FnMut(&mut Ui, Option<SizeSpec>) -> NodeId,

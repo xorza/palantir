@@ -32,9 +32,7 @@ pub(super) struct MenuRow {
     pub(super) rect: Rect,
 }
 
-/// The open menu's direct children in record order (separators
-/// included), each with the rect arrange gave it. Walks `subtree_end`
-/// so a row's own label / shortcut leaves are skipped.
+/// The open menu's direct children in record order (separators included) with their arranged rects; `subtree_end` skips a row's own label and shortcut leaves.
 pub(super) fn menu_rows(h: &UiHarness, for_id: WidgetId) -> Vec<MenuRow> {
     let body = menu_body(h, for_id).idx();
     let tree = h.ui.tree(Layer::Menu);

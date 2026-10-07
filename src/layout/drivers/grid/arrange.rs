@@ -38,20 +38,7 @@ pub(super) fn arrange_inner(
         return;
     }
 
-    // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
-    // Fast path: when measure already resolved this axis against the
-    // same `total` (recorded in `track_state.total_used`), copy the persisted
-    // sizes instead of re-running the constraint solver. The path is
-    // safe when:
-    //   - measure ran for this grid this frame (`total_used` is `Some` —
-    //     cache-hit-ancestor descendants keep the `None` that `reset_for`
-    //     left, since nothing ever wrote them);
-    //   - arrange's `inner.size.X` matches measure's `inner_avail.X`
-    //     (no WPF Stretch grow on this axis since measure committed).
-    // The `track_offsets` cumulative-sum is cheap relative to
-    // `resolve_axis` (O(n_tracks), no constraint solving) so we re-run
-    // it unconditionally — keeps the offsets in sync regardless of
-    // which path produced `sizes`.
+    // Resolve track sizes. Fast path: when measure resolved this axis against the same `total` (`track_state.total_used` is `Some`) and arrange's `inner.size.X` equals measure's `inner_avail.X` (no Stretch grow since), copy the persisted sizes instead of re-solving. Offsets are cheap, so they are always recomputed.
     {
         let GridContext {
             depth_stack,

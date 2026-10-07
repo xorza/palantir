@@ -10,14 +10,11 @@ use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::text_edit::tests::*;
 use std::fmt::Write;
 
-/// Fixed-size editor: scroll offset stays at zero while text fits, grows
-/// to keep the caret visible once content overflows the inner width, and
-/// snaps back when the caret returns home. Mono fallback (8 px / char @
-/// 16 px font, 1.5 px caret) gives predictable math; the editor's inner
-/// width is `280 − 2·(5 + 1.5)` = 267 px (theme default padding 5 px each
-/// side, plus the 1.5 px chrome stroke that `Tree::open_node` folds into
-/// padding — TextEdit mirrors that fold so glyph coords land on the
-/// encoder's clip rect).
+/// Fixed-size editor: scroll stays at zero while text fits, grows to keep the
+/// caret visible on overflow, and snaps back when the caret returns home. Mono
+/// fallback (8 px/char at 16 px font, 1.5 px caret). Inner width is
+/// `280 - 2*(5 + 1.5)` = 267 px: theme padding 5 px plus the 1.5 px stroke that
+/// `Tree::open_node` folds into padding, which TextEdit mirrors.
 #[test]
 fn scroll_keeps_caret_inside_visible_inner_rect() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -33,7 +30,6 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 
     let mut h = UiHarness::new(NARROW);
 
-    // Short text: caret at end (5) → x = 40 px ≤ inner_w. No scroll.
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 5);
@@ -41,10 +37,8 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
 
-    // Long text past inner_w: caret at end (100) → x = 800 px.
-    // Trailing clamp leaves a caret-width sliver inside the scissor:
-    // scroll.x = caret_right (800 + 1.5) − (inner_w − caret_width) =
-    // 801.5 − (267 − 1.5) = 536.
+    // Long text: caret at end (100) -> x = 800 px. The trailing clamp leaves a
+    // caret-width sliver: scroll.x = (800 + 1.5) - (267 - 1.5) = 536.
     let mut long = "a".repeat(100);
     h.frame(|ui| body(ui, &mut long));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
@@ -53,23 +47,18 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     assert_eq!(scroll.x, 536.0, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
-    // Caret home: scroll.x snaps back so the start of the text is
-    // visible again.
+    // Caret home: scroll.x snaps back to show the text start.
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset;
     assert_eq!(scroll.x, 0.0, "scroll snaps to 0 when caret moves home");
 }
 
-/// A `Hug`-width single-line editor must show its *whole* text as it
-/// grows under the caret — no permanent left clip. Pins two coupled
-/// fixes: (1) the editor reserves the caret sliver in its desired width
-/// so a content-hugging field is wide enough for an end-of-text caret,
-/// and (2) `update_scroll` upper-clamps `scroll.x` to the content end so
-/// the transient scroll — caused by the one-frame-stale rect lagging the
-/// field's own growth — settles back to zero instead of sticking.
-/// Mono fallback: 8 px/char @ 16 px font, 1.5 px caret, theme padding
-/// 5 px + 1.5 px stroke fold each side.
+/// A `Hug`-width single-line editor shows its *whole* text as it grows, with no
+/// permanent left clip. Pins (1) the editor reserves the caret sliver in its
+/// desired width, and (2) `update_scroll` upper-clamps `scroll.x` to the content
+/// end so the transient scroll from the one-frame-stale rect settles to zero.
+/// Mono fallback: 8 px/char at 16 px, 1.5 px caret, 5 px padding + 1.5 px stroke.
 #[test]
 fn hug_width_editor_shows_full_text_after_growth() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -85,15 +74,13 @@ fn hug_width_editor_shows_full_text_after_growth() {
 
     let mut h = UiHarness::new(WIDE);
 
-    // Start narrow so the Hug width settles small (rect ≈ one glyph).
     let mut buf = String::from("1");
     h.frame(|ui| body(ui, &mut buf));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
 
-    // Grow the buffer with the caret pinned at the end. The first frame
-    // still sees last frame's narrower rect and scrolls left to chase the
-    // caret — exactly the transient that used to stick.
+    // Grow the buffer with the caret pinned at the end. The first frame sees last
+    // frame's narrower rect and scrolls left chasing the caret: the transient.
     buf.push_str("2345");
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = buf.len());
     h.frame(|ui| body(ui, &mut buf));
@@ -108,9 +95,8 @@ fn hug_width_editor_shows_full_text_after_growth() {
     );
 }
 
-/// After horizontal scroll kicks in, clicking the left edge of the
-/// widget must hit the byte that's *visibly* at the left edge — not
-/// byte 0. Pins that the input pass adds `state.scroll` back into the
+/// After horizontal scroll, clicking the widget's left edge must hit the byte
+/// *visibly* there, not byte 0: the input pass adds `state.scroll` back into
 /// hit-test coords.
 #[test]
 fn click_hit_test_compensates_for_scroll() {
@@ -128,17 +114,14 @@ fn click_hit_test_compensates_for_scroll() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = "a".repeat(100);
 
-    // Drive caret to end so the editor scrolls all the way right.
     h.frame(|ui| body(ui, &mut buf));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut buf));
     let scroll_x = h.state::<TextEditState>(ed_id).view.scroll.offset.x;
     assert!(scroll_x > 100.0, "precondition: editor is scrolled");
 
-    // Click 8 px into the widget (right at the left edge of the
-    // inner rect). With scroll compensation, mono hit-test sees x =
-    // scroll_x (≈ 537.5), which lands on byte ≈ 67 (scroll_x / 8).
-    // Without compensation it'd land on byte 0.
+    // Click 8 px in (the inner rect's left edge). With scroll compensation, mono
+    // hit-test sees x = scroll_x (~537.5), byte ~67 (scroll_x / 8); without, byte 0.
     h.press_at(Vec2::new(8.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     h.release();
@@ -152,19 +135,13 @@ fn click_hit_test_compensates_for_scroll() {
     );
 }
 
-/// The wheel pans a multi-line editor whose content overflows, and the
-/// caret does not immediately drag the view back.
+/// The wheel pans a multi-line editor whose content overflows, and the caret
+/// does not immediately drag the view back. Pins that the node carries a wheel
+/// sense (else the delta never arrives) and that caret-follow is conditional
+/// (else it undoes the scroll next frame).
 ///
-/// The editor's node is a scroll viewport, but it carried only
-/// `Sense::CLICK`, so wheel events routed straight past it and the only
-/// way to pan was to move the caret. Both halves are pinned here: the
-/// sense has to be on the node for the delta to arrive, and the
-/// caret-follow has to be conditional or it would undo the scroll on the
-/// very next frame.
-///
-/// Mono wraps by character count rather than by newline, so the fixture
-/// is sized by total bytes: ~600 chars over a ~33-char line is ~18
-/// wrapped lines at 16 px each, comfortably past the ~87 px inner
+/// Mono wraps by character count, so the fixture is sized by bytes: ~600 chars
+/// over a ~33-char line is ~18 wrapped lines at 16 px, past the ~87 px inner
 /// height of a 100 px editor.
 #[test]
 fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
@@ -186,8 +163,8 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         writeln!(buf, "line{i}").unwrap();
     }
 
-    // Caret at the top, so anything that follows it would pull the view
-    // back to zero and the assertions below could not pass by accident.
+    // Caret at the top, so a caret-follow would pull the view to zero and the
+    // assertions couldn't pass by accident.
     h.frame(|ui| body(ui, &mut buf));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut buf));
@@ -206,9 +183,8 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         "wheel over a multi-line editor must pan it; scroll.y = {scrolled}",
     );
 
-    // A frame with no input and no caret movement must leave it where
-    // the wheel put it — this is the half a caret-follow-every-frame
-    // would break.
+    // A frame with no input and no caret movement leaves the view where the wheel
+    // put it, which a caret-follow-every-frame would break.
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset.y,
@@ -216,8 +192,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
         "an idle frame must not drag the view back to the caret",
     );
 
-    // Moving the caret *does* pull the view back, so the wheel has not
-    // simply disabled caret-following.
+    // Moving the caret *does* pull the view back: the wheel didn't disable it.
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
@@ -228,10 +203,9 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     );
 }
 
-/// Each wheel axis goes to the topmost row that pans it, as browser
-/// scroll chaining does. A single-line field pans only x, so a vertical
-/// wheel over one scrolls the page behind it and a horizontal one pans
-/// the field — even while its text overflows.
+/// Each wheel axis goes to the topmost row that pans it, as in browser scroll
+/// chaining. A single-line field pans only x: vertical wheel scrolls the page
+/// behind it, horizontal pans the field, even while its text overflows.
 #[test]
 fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
     let page = WidgetId::from_hash("page");
@@ -274,8 +248,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
         Vec2::ZERO
     );
 
-    // The page moved the field up by 10 px, to y -10..30, so (50, 20) is
-    // still on it.
+    // The page moved the field up 10 px, to y -10..30, so (50, 20) is still on it.
     h.scroll_pixels(Vec2::new(30.0, 0.0));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(h.state::<ScrollState>(page).offset, Vec2::new(0.0, 10.0));
@@ -285,10 +258,9 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
     );
 }
 
-/// With no row under the pointer that pans y, a single-line field takes a
-/// plain vertical wheel turn as horizontal movement — the routing does
-/// the move, so the field only ever reads x. A field whose text fits
-/// senses no wheel axis at all.
+/// With no row under the pointer that pans y, a single-line field takes a plain
+/// vertical wheel turn as horizontal movement (done by routing; the field reads
+/// only x). A field whose text fits senses no wheel axis.
 #[test]
 fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
     let ed_id = WidgetId::from_hash("lone-ed");

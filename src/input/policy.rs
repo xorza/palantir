@@ -1,40 +1,30 @@
-//! What counts as input arriving, and what an unfocusable press does to
-//! focus — the two policies an app can move off their defaults.
+//! What counts as input arriving, and what an unfocusable press does to focus.
 
-/// When the per-frame classification gate decides whether input requires
-/// re-recording, this enum picks the signal it consults.
+/// Which signal the per-frame gate consults to decide whether input requires
+/// re-recording.
 ///
-/// `Always` is the blunt one: any input event whatsoever —
-/// including a pointer move over inert surface — forces a full
-/// record→measure→arrange→cascade→encode pass. `OnDelta` consults the
-/// finer-grained `InputDelta::repaint_requested` instead: pointer moves
-/// only force a record when the hover/scroll
-/// target changed or a capture is active; scroll over a non-scroll
-/// surface is dropped; a press records when it hits a sense target,
-/// changes focus, or a `BUTTONS` watcher is live — a press on
-/// fully inert surface is observably a no-op and stays on the
-/// paint-anim path. Keys route through focus and record.
+/// `Always`: any input event, even a pointer move over inert surface, forces a
+/// full record pass. `OnDelta`: only `InputDelta::repaint_requested` does, i.e.
+/// a hover/scroll-target change or active capture, a press hitting a sense
+/// target, changing focus, or with a `BUTTONS` watcher live; keys route through
+/// focus and record.
 ///
-/// Default is [`OnDelta`](Self::OnDelta) — the right behavior for
-/// almost every app. Use [`Always`](Self::Always) only for telemetry,
-/// host integrations that observe raw input without the reactive
-/// [`Ui`](crate::Ui) queries, or any case where the build closure
-/// observes state widgets don't route through the hit index.
+/// Default is [`OnDelta`](Self::OnDelta). Use [`Always`](Self::Always) for
+/// telemetry, hosts observing raw input, or build closures reading state that
+/// bypasses the hit index.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum InputPolicy {
     /// Re-record on any input event.
     Always,
-    /// Re-record only when `InputDelta::repaint_requested` fired on at
-    /// least one event since the last frame.
+    /// Re-record only when `InputDelta::repaint_requested` fired on an event since
+    /// the last frame.
     #[default]
     OnDelta,
 }
 
 impl InputPolicy {
-    /// The weakest [`InputSignal`] this policy re-records for. The frame
-    /// gate is then `signal >= policy.record_threshold()` — the policy
-    /// names a cut on one ordered scale rather than selecting between two
-    /// separately-tracked booleans.
+    /// The weakest [`InputSignal`] this policy re-records for; the gate is
+    /// `signal >= policy.record_threshold()`.
     #[inline]
     pub(crate) const fn record_threshold(self) -> InputSignal {
         match self {
@@ -44,60 +34,43 @@ impl InputPolicy {
     }
 }
 
-/// The strongest input signal seen since the last frame — what
+/// The strongest input signal seen since the last frame, which
 /// [`InputPolicy`] thresholds against.
 ///
-/// **Ordered, and the order is the point.** Each level implies the one
-/// below it: an event that could change the screen is also an event that
-/// arrived. Tracking the two separately invited them to drift, since
-/// nothing tied "repaint-worthy" to "arrived at all"; as one monotone
-/// level the implication holds by construction and the frame gate is a
-/// comparison.
-///
-/// Reset to [`None`](Self::None) once per frame, alongside the per-frame
-/// event queues.
+/// **Ordered:** each level implies the one below it (an event that could change
+/// the screen also arrived), which one monotone level guarantees by
+/// construction. Reset to [`None`](Self::None) once per frame.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum InputSignal {
-    /// The host pushed nothing since the last frame. A frame may still
-    /// run — animation wakes and explicit repaint requests are separate
-    /// signals — but input is not what forces it.
+    /// The host pushed nothing since the last frame. A frame may still run for
+    /// animation wakes or repaint requests.
     #[default]
     None,
-    /// Events arrived, none of which could change what is on screen: a
-    /// pointer move over inert surface, scroll with no scroll target, a
-    /// press that hit nothing and moved no focus. Forces a record only
-    /// under [`InputPolicy::Always`], for an app whose record closure
-    /// observes raw input the hit index knows nothing about; under the
-    /// default `OnDelta` the frame stays on the paint-anim path.
+    /// Events arrived, none able to change the screen: a pointer move over inert
+    /// surface, scroll with no target, a press that hit nothing. Records only
+    /// under [`InputPolicy::Always`].
     Inert,
-    /// At least one event could change what is on screen — a hover or
-    /// scroll-target change, a capture-active move, a click, a key, a
-    /// modifier change.
+    /// An event could change the screen: a hover or scroll-target change, a
+    /// capture-active move, a click, a key, a modifier change.
     Repaint,
 }
 
 impl InputSignal {
-    /// Raise to at least `level`. Monotone within a frame: an `Inert`
-    /// event arriving after a `Repaint` one cannot lower the signal.
+    /// Raise to at least `level`; monotone within a frame.
     #[inline]
     pub(crate) fn raise(&mut self, level: Self) {
         *self = (*self).max(level);
     }
 }
 
-/// What happens to the currently-focused widget when the user presses
-/// the pointer somewhere that *isn't* a focusable widget. Set via
-/// [`crate::Ui::set_focus_policy`].
+/// What happens to the focused widget when the pointer presses somewhere that
+/// isn't a focusable widget. Set via [`crate::Ui::set_focus_policy`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FocusPolicy {
-    /// Pressing on a non-focusable widget or empty surface preserves
-    /// the current focus. Friendlier for sketches and tooling UIs
-    /// where every other widget is a Button — clicking a Button while
-    /// editing a field keeps the cursor in the field.
+    /// A press on a non-focusable widget or empty surface keeps focus, so e.g.
+    /// clicking a Button while editing a field keeps the cursor there.
     PreserveOnMiss,
-    /// Pressing anywhere that isn't a focusable widget clears focus.
-    /// Native-app convention on most platforms (click-outside-to-blur).
-    /// Default.
+    /// A press anywhere not focusable clears focus (click-outside-to-blur). Default.
     #[default]
     ClearOnMiss,
 }
@@ -106,9 +79,7 @@ pub enum FocusPolicy {
 mod tests {
     use crate::input::policy::{InputPolicy, InputSignal};
 
-    /// The whole reason the two booleans became one ordinal: "could
-    /// repaint" must imply "arrived at all". As separate flags nothing
-    /// enforced that; here it is the `Ord` derive, so pin it.
+    /// "Could repaint" must imply "arrived at all": pinned by the `Ord` derive.
     #[test]
     fn repaint_implies_inert_implies_none() {
         assert!(InputSignal::Repaint > InputSignal::Inert);
@@ -116,9 +87,7 @@ mod tests {
         assert_eq!(InputSignal::default(), InputSignal::None);
     }
 
-    /// `raise` is monotone — a later weaker event cannot lower a signal
-    /// already raised, which is what makes fold order irrelevant across
-    /// a frame's events.
+    /// `raise` is monotone, so fold order across a frame's events is irrelevant.
     #[test]
     fn raise_never_lowers() {
         let mut s = InputSignal::None;
@@ -132,10 +101,8 @@ mod tests {
         assert_eq!(s, InputSignal::Repaint);
     }
 
-    /// The policies must land on *different* cuts, or the setting does
-    /// nothing. Pins the behavioural difference, not just the values:
-    /// an inert event forces a record under `Always` and not under
-    /// `OnDelta`, while a repaint-worthy one forces both.
+    /// The policies must land on different cuts: an inert event forces a record
+    /// under `Always` and not `OnDelta`; a repaint-worthy one forces both.
     #[test]
     fn policies_cut_the_scale_differently() {
         let forces = |p: InputPolicy, s: InputSignal| s >= p.record_threshold();

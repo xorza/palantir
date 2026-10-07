@@ -3,13 +3,7 @@ use crate::layout::measured::Measured;
 
 #[test]
 fn mono_measure_cases() {
-    // Mono lays every `char` out `font_size * 0.5` wide on a
-    // `line_height` band, so each expected size below is arithmetic.
-    //
-    // The height column is what pins the wrap arithmetic: a case
-    // measuring one band tall stayed on one line, two bands wrapped once.
-    // No empty case: a run with no bytes never reaches a metric — see
-    // `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
+    // Mono lays every `char` out `font_size * 0.5` wide on a `line_height` band, so expected sizes are arithmetic; heights pin the wrap. No empty case; see `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
     let base = shape(16.0);
     let tall = base.leading(24.0);
     for (label, text, params, expected) in [
@@ -26,8 +20,6 @@ fn mono_measure_cases() {
             base.width(32.0),
             Size::new(32.0, 32.0),
         ),
-        // Wide enough to hold the run: the extent is the glyphs, not the
-        // box the caller offered.
         (
             "fits_inside_bound",
             "Hi",
@@ -42,7 +34,6 @@ fn mono_measure_cases() {
             base,
             Size::new(56.0, 16.0),
         ),
-        // Eight two-byte chars at four per 32 px line: two lines.
         (
             "multibyte_wraps_by_chars",
             "éééééééé",
@@ -64,36 +55,23 @@ fn mono_measure_cases() {
     }
 }
 
-/// The mono root reports the two facts only an unbounded shape has, and
-/// reports them the way the cosmic root does: one visual line, and a wrap
-/// floor measured over the same UAX #14 segments.
-///
-/// `single_line` gates `TextSystem::measure`'s fitting-truncate skip, so
-/// a root that lost it would silently start reshaping every fitting
-/// label.
+/// The mono root reports what only an unbounded shape has, as the cosmic root does: one visual line and a UAX #14 wrap floor. `single_line` gates `TextSystem::measure`'s fitting-truncate skip; losing it would reshape every fitting label.
 #[test]
 fn the_mono_root_reports_one_line_and_a_segment_floor() {
     let params = shape(16.0);
     let root = mono_root("hello world", params);
     assert!(root.single_line, "an unbounded mono run is one line");
     assert_eq!(root.extent.size, Size::new(88.0, 16.0), "11 bytes × 8 px");
-    // "hello " and "world" are the two unbreakable segments; the space
-    // hangs off the first, so both measure five 8 px cells.
+    // "hello " and "world" are the two unbreakable segments; the space hangs off the first, so both measure five 8 px cells.
     assert_eq!(root.wrap_floor(), 40.0);
 
-    // One unbroken word is its own floor, and a trailing space still
-    // hangs rather than widening it.
     assert_eq!(mono_root("abcdefg ", params).wrap_floor(), 56.0);
-    // A floor counts chars too: "héllo" is five, in six bytes.
     assert_eq!(mono_root("héllo wörld", params).wrap_floor(), 40.0);
 }
 
 #[test]
 fn bundled_faces_resolve_and_their_metrics_differ() {
-    // Each `FontFamily` / `FontWeight` pair must reach its intended
-    // physical face. Asserted on the resolved family name and on advances,
-    // not on the cache key — a key can discriminate perfectly while every
-    // request silently falls back to one face.
+    // Each `FontFamily` / `FontWeight` pair must reach its intended face, asserted on the resolved family and advances, not the cache key (which can discriminate while every request falls back to one face).
     let mut c = CosmicMeasure::default();
 
     assert_eq!(
@@ -119,9 +97,7 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
     let mono = width(&mut c, FontFamily::MONO, FontWeight::REGULAR);
     let mono_bold = width(&mut c, FontFamily::MONO, FontWeight::BOLD);
 
-    // Measured widths round up to whole pixels. JetBrains Mono's cell is
-    // 600/1000 em — 9.6 px at 16 px — so four of them is 38.4 → 39. Inter is
-    // proportional; 58.0 is four of its 'M' advances under the same rule.
+    // Widths round up to whole pixels. JetBrains Mono's cell is 600/1000 em, 9.6 px at 16 px: four is 38.4 → 39. Inter is proportional; 58.0 is four 'M' advances.
     assert_eq!(
         (sans, mono),
         (58.0, 39.0),
@@ -132,8 +108,6 @@ fn bundled_faces_resolve_and_their_metrics_differ() {
         "Inter Bold is wider than Regular's 58 — an equal width means Bold \
          silently fell back to Regular",
     );
-    // The variable mono face instantiates `wght` without changing the cell
-    // width, so weight-invariance here is the correct expectation.
     assert_eq!(
         mono, mono_bold,
         "monospace advance must be weight-invariant",
@@ -149,14 +123,10 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         content: Size,
         min_content: Size,
         max_content: Size,
-        /// `stable_from_w` offered 24 px, 64 px and no width.
         stable_from_w: [f32; 3],
     }
 
-    // "aa bbbb" is 7 cells of 8 px: 56 wide on one line. A policy that
-    // never binds holds anywhere; a truncating fit holds from the root's
-    // 56 once the text fits — at 64, and unbounded — and only at its
-    // offer where it cuts; a wrapping one binds to every width it gets.
+    // "aa bbbb" is 7 cells of 8 px: 56 wide on one line. A never-binding policy holds anywhere; a truncating fit holds from 56 up and only at its offer where it cuts; a wrapping one binds to every width.
     const AT: f32 = Measured::AT_OFFER_ONLY;
     let mut text = TextSystem::mono();
     let widget_id = WidgetId::from_hash("wrap policy");
@@ -244,19 +214,14 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
 
 #[test]
 fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
-    // **The one empty-text boundary.** A `TextShapeRequest` cannot hold a
-    // run with no bytes, so no layer below it carries a guard — and the
-    // crate edge that still meets one answers it itself.
+    // **The one empty-text boundary.** A `TextShapeRequest` cannot hold a run with no bytes, so no layer below guards; the crate edge answers it itself.
     let params = ui_shape(16.0);
     assert!(
         TextShapeRequest::unbounded("", params.font).is_none(),
         "an empty run has no request to make of the shaper",
     );
 
-    // A usable face still names a key — the metrics a probe answers in
-    // live on it, and emptiness is not a property of the face. What no
-    // bytes mint is the *buffer*, which is what the run's absent key
-    // reports and what makes the encoder drop it.
+    // A usable face still names a key; what no bytes mint is the buffer, so the encoder drops the run.
     assert!(
         TextRun {
             text: "",
@@ -270,9 +235,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
         "a usable face names a key whether or not there are bytes to shape",
     );
 
-    // Both metrics answer the same way through the probe edge: zero
-    // extent, no buffer key so the renderer drops the run, and no
-    // dispatch — a run with nothing to shape is not a shape.
+    // Both metrics answer alike through the probe edge: zero extent, no buffer key, no dispatch.
     for shaper in [TextShaper::new(), TextShaper::test_mono()] {
         let calls = shaper.measure_calls();
         let measured = shaper.measure("", params);
@@ -281,15 +244,13 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
         assert_eq!(shaper.measure_calls(), calls, "no dispatch for no bytes");
         assert_eq!(shaper.cosmic_cache_len(), 0, "and no cached buffer");
 
-        // The geometry an empty block still has to answer: one position,
-        // at its own origin, on a band of the requested height.
+        // What an empty block still answers: one position, at its origin, on a band of the requested height.
         shaper.probe_layout("", params, |probe| {
             assert_eq!(probe.size(), Size::ZERO);
             let caret = probe.caret_at(0);
             assert_eq!(caret.x, 0.0);
             assert_eq!(caret.y_top, 0.0);
-            // `TextShapeKey` quantizes leading to 1/64 px, so the band an
-            // empty block reports is round(19.2 × 64) / 64, not the request.
+            // `TextShapeKey` quantizes leading to 1/64 px, so the empty block's band is round(19.2 × 64) / 64.
             assert_eq!(caret.line_height, 19.203125);
             assert_eq!(probe.byte_at(37.0, 5.0), 0, "every point is byte 0");
         });
@@ -298,38 +259,26 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
 
 #[test]
 fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
-    // `intrinsic_min` is the wrap floor: the width of the widest segment
-    // no line break can split. Break opportunities are UAX #14's — the
-    // same ones cosmic-text splits its shape words on — so the floor has
-    // to track punctuation and script boundaries, not just whitespace.
+    // `intrinsic_min` is the wrap floor: the widest segment no UAX #14 break can split (matching cosmic-text's shape words), so it tracks punctuation and script boundaries, not just whitespace.
     let mut c = CosmicMeasure::default();
     c.load_font(HEBREW.into())
         .expect("the Hebrew test face loads");
     let shape = ui_shape(16.0);
 
-    // (run, the widest segment its floor must land on)
     for (text, widest) in [
-        // Right to left: the scan reads segments in logical order. Read
-        // visually, each reset came one glyph late and merged the two
-        // words, and the space between them, into one segment.
+        // Right to left: segments are read in logical order; read visually, resets came a glyph late and merged two words.
         (
             "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} \u{5d5}\u{5d6}",
             "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
         ),
-        // Mixed directions on one line.
         (
             "ab \u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4} cd",
             "\u{5d0}\u{5d1}\u{5d2}\u{5d3}\u{5d4}",
         ),
-        // "world" outweighs "hello" in Inter — `w` is the wider glyph.
         ("hello world hi", "world"),
-        // A hyphen opens a break after itself, so the floor is the
-        // prefix *including* it, not the whole token.
         ("aaa-bbb", "aaa-"),
-        // Trailing punctuation binds to the word it follows.
         ("aaa, bbb", "aaa,"),
-        // No whitespace anywhere: every ideograph is its own segment, so
-        // a CJK paragraph must floor at one glyph rather than one line.
+        // No whitespace: every ideograph is its own segment, so a CJK paragraph floors at one glyph, not one line.
         (
             "\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{30c6}\u{30ad}\u{30b9}\u{30c8}",
             "\u{65e5}",
@@ -337,7 +286,6 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     ] {
         let full = c.measure(text, shape);
         let segment = c.measure(widest, shape);
-        // The floor is exactly the widest segment measured on its own.
         assert_eq!(full.wrap_floor(), segment.size.w, "{text:?} vs {widest:?}");
         assert_eq!(
             segment.wrap_floor(),
@@ -346,11 +294,7 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
         );
     }
 
-    // A no-break space opens no opportunity, so it neither splits its run
-    // nor hangs — its own advance counts toward the segment. A single word
-    // is one segment too. Both floors equal the run's own width, which is
-    // also why the floor is integral: it is on the whole-pixel grid the
-    // committed wrap width is snapped to.
+    // A no-break space opens no break: it neither splits nor hangs, and its advance counts. Floors equal the run width, integral on the whole-pixel grid the wrap width snaps to.
     for (text, width) in [("aaa\u{a0}bbb", 61.0), ("hello", 37.0)] {
         let measured = c.measure(text, shape);
         assert_eq!(measured.size.w, width, "{text:?}");
@@ -362,13 +306,9 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
         "a long word floors at its whole-pixel width",
     );
 
-    // Width-bounded shapes skip the segment scan and report a zero floor —
-    // every consumer derives it from the unbounded root instead.
     let full = c.measure("hello world hi", shape);
     let bounded = c.measure("hello world hi", shape.width(60.0));
-    // One line is 19.203125, ceiled to 20. At 60 px the run breaks into
-    // "hello", "world" and "hi": 3 × 19.203125 = 57.609375, ceiled to 58,
-    // and as wide as its widest line, "world".
+    // One line is 19.203125, ceiled to 20. At 60 px the run breaks into "hello", "world", "hi": 3 × 19.203125 = 57.609375, ceiled to 58, as wide as its widest line, "world".
     assert_eq!(full.size, Size::new(101.0, 20.0));
     assert_eq!(bounded.size, Size::new(43.0, 58.0), "60 px forces a wrap");
     assert_eq!(
@@ -377,35 +317,20 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
     );
 }
 
-/// The wrap floor is scanned only for the policy that reads it, and is
-/// backfilled when a cheaper policy reached the shared buffer first.
-///
-/// The unbounded key carries no wrap policy, so one shaped buffer answers
-/// every run with the same text and face. A `Wrap` run therefore populates
-/// the entry a `WrapWithOverflow` run will hit — and if "not scanned" were
-/// stored as `0.0`, that second run would read a zero floor and let a long
-/// word break instead of overflowing. It is only wrong when two policies
-/// share a string, which is exactly the case a single-policy test misses.
+/// The wrap floor is scanned only for the policy that reads it, and backfilled when a cheaper policy reached the shared buffer first: the unbounded key carries no policy, and storing "not scanned" as `0.0` would let a `WrapWithOverflow` run break a long word instead of overflowing.
 #[test]
 fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("wrap-floor");
-    // One long unbreakable word, so the floor is well clear of both zero
-    // and the full run width.
     let content = "a extraordinarily b";
     let request = shape(16.0).leading(19.2).unbounded_request(content);
 
-    // The five policies that never read the floor leave it unscanned —
-    // this is the saving, and it is what makes the backfill necessary.
     let plain = text.root(slot_at(wid, 0), request, TextWrap::Wrap);
     assert_eq!(
         plain.intrinsic_min, None,
         "Wrap must not pay for a floor it never reads",
     );
 
-    // A second slot over the same string now hits the buffer the first run
-    // shaped, so the floor cannot come from shaping — it has to be scanned
-    // against the resident buffer.
     let overflow = text.root(slot_at(wid, 1), request, TextWrap::WrapWithOverflow);
     let floor = overflow.wrap_floor();
     assert_eq!(overflow.extent.size.w, 137.0);
@@ -415,21 +340,16 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
          left behind by the Wrap run",
     );
 
-    // Same value as a shaper that scanned from the start, so the backfill
-    // is the real scan and not an approximation.
     let fresh = TextSystem::cosmic()
         .root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow)
         .wrap_floor();
     assert_eq!(floor, fresh, "backfilled floor must equal a fresh scan");
 
-    // And the policy change is picked up on the *same* slot too: the row's
-    // key is unchanged, so only the floor's absence can trigger the refill.
+    // A policy change on the same slot is picked up too: the row's key is unchanged, so only the floor's absence triggers the refill.
     let same_slot = text.root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow);
     assert_eq!(same_slot.wrap_floor(), fresh, "same-slot policy change");
 
-    // The floor is what WrapWithOverflow floors its shaping width at, so a
-    // committed width below it must be raised — the behaviour a zero floor
-    // would silently lose.
+    // WrapWithOverflow floors its shaping width at the floor, so a committed width below it must be raised; a zero floor would lose that.
     assert_eq!(
         TextWrap::WrapWithOverflow.target_width(1.0, &overflow),
         floor,
@@ -437,25 +357,12 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     assert_eq!(TextWrap::Wrap.target_width(1.0, &overflow), 1.0);
 }
 
-/// A probe and the paint must shape under the same key, for every policy
-/// whose committed width is not simply the width it was offered.
-///
-/// `TextRun` cannot resolve either case for itself — both need the run's
-/// unbounded root — so the resolution lives in `TextShaper::layout`
-/// beside the shaping call. Before it did, a probe bound the raw width
-/// and got a *different* buffer than layout painted: `WrapWithOverflow`
-/// below its floor wrapped where the paint overflowed, and a fitting
-/// `Ellipsis` minted a bounded buffer layout never asks for. Both are
-/// silent — the caret simply sits in the wrong place.
+/// A probe and the paint must shape under the same key for every policy whose committed width isn't the width offered. `TextShaper::layout` resolves those beside the shaping call; before, a probe got a different buffer than paint and the caret sat in the wrong place.
 #[test]
 fn a_probe_shapes_under_the_key_the_paint_committed() {
-    // One unbreakable word wider than the probed width, so the floor is
-    // strictly above it and `target_width` has to raise it.
     let content = "a extraordinarily b";
     let params = shape(16.0).leading(19.2);
     let wid = WidgetId::from_hash("probe-key-parity");
-    // Below the floor for the overflow case, and wide enough that the
-    // short truncating run still fits.
     let probed_width = 1.0;
 
     for (ordinal, wrap) in [
@@ -468,8 +375,6 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
     .enumerate()
     {
         let (text, width) = match wrap {
-            // A run that already fits is what sends a truncating fit down
-            // the `resolves_to_unbounded` arm.
             TextWrap::Ellipsis | TextWrap::Truncate => ("hi", 512.0),
             _ => (content, probed_width),
         };
@@ -499,10 +404,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             "{wrap:?}: probe and paint must share one shaped buffer",
         );
 
-        // Prove the case is live: for the two policies that resolve, the
-        // committed key is *not* the one a raw bind of `width` produces,
-        // so the agreement above is the resolution working rather than
-        // both sides trivially binding the same number.
+        // Prove the case is live: for the two resolving policies the committed key is not the raw bind of `width`, so agreement is the resolution working, not both sides binding the same number.
         let raw = TextShapeRequest::unbounded(text, params.font)
             .expect("the fixture has text")
             .with_bound(WrapBound::new(
@@ -524,18 +426,9 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
     }
 }
 
-/// A probe answers in the alignment the *run* asked for, not the one its
-/// cache key carries.
-///
-/// The key's [`LineAlign`](crate::text::key::LineAlign) is a cache
-/// discriminator, projected onto what shaping varies on — an unbounded
-/// key stores `LineAlign::Auto` whatever the run said, because an unbounded shape bakes no per-line offsets.
-/// Reading the caret's alignment off it therefore put the caret on a
-/// glyphless line at the block's left edge for a right-aligned run.
+/// A probe answers in the alignment the run asked for, not the one its cache key carries: an unbounded key stores `LineAlign::Auto` whatever the run said, which once put a right-aligned run's caret at the block's left edge.
 #[test]
 fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
-    // A middle line with no glyphs, inside a block wide enough for the
-    // alignment to move the caret measurably.
     let text = "wide enough\n\ntail";
     let empty_line_byte = "wide enough\n".len();
     let shaper = TextShaper::new();

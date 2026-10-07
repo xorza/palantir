@@ -2,8 +2,6 @@ use crate::common::hash::*;
 
 #[test]
 fn pod_slice_matches_write_of_bytes_and_chunks_by_word() {
-    // `pod_slice` is only safe as a shortcut if it feeds exactly the
-    // slice's bytes through `write`.
     #[repr(C)]
     #[derive(Debug, Clone, Copy, bytemuck::NoUninit)]
     struct Pair {
@@ -23,12 +21,7 @@ fn pod_slice_matches_write_of_bytes_and_chunks_by_word() {
     bytes.write(bytemuck::cast_slice(&pairs));
     assert_eq!(bulk.finish(), bytes.finish(), "case: &[Pair]");
 
-    // `FxHasher::write` consumes `usize`-sized chunks, so one 16-byte
-    // write does not land in the same state as two 8-byte writes. Bulk
-    // and per-element hashing are therefore *not* interchangeable,
-    // however natural the swap looks at a call site. Pinned in the
-    // surprising direction on purpose: a caller who assumes equivalence
-    // for a persisted key gets a silent mismatch rather than a failure.
+    // `FxHasher::write` consumes `usize` chunks, so one 16-byte write differs from two 8-byte writes: bulk and per-element hashing are not interchangeable.
     let mut per_element = Hasher::new();
     for p in &pairs {
         per_element.write(bytemuck::bytes_of(p));
@@ -43,11 +36,7 @@ fn pod_slice_matches_write_of_bytes_and_chunks_by_word() {
 
 #[test]
 fn pod_slice_length_is_not_folded_in() {
-    // Documented contract: `pod_slice` hashes bytes only. Two
-    // different splits of the same byte run collide, which is why
-    // callers hashing a variable-length column must write the
-    // length themselves. Pinned so the omission stays a deliberate
-    // property rather than a latent surprise.
+    // `pod_slice` hashes bytes only, so splits of one byte run collide; callers hashing a variable-length column write the length.
     let a: [u32; 2] = [0x1111_1111, 0x2222_2222];
     let b: [u16; 4] = [0x1111, 0x1111, 0x2222, 0x2222];
     let mut ha = Hasher::new();
@@ -63,9 +52,7 @@ fn pod_slice_length_is_not_folded_in() {
 
 #[test]
 fn new_matches_default_seed() {
-    // `Hasher::new` is a thin wrapper over `FxHasher::default`. If
-    // a future refactor adds a custom seed without updating call
-    // sites, every cache key changes silently — pin the equality.
+    // `Hasher::new` wraps `FxHasher::default`; a custom seed would silently change every cache key.
     let mut wrapped = Hasher::new();
     let mut raw = FxHasher::default();
     let bytes: &[u8] = b"palantir";

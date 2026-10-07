@@ -13,11 +13,7 @@ fn ep(node: u32) -> Endpoint {
     }
 }
 
-/// Stand-in for the production `resolve → record_endpoint`
-/// pairing every widget does (`Widget::resolve` →
-/// `scene::open_node`). The lazy-counter fast path in `resolve`
-/// depends on `curr` being populated between consecutive resolves
-/// of the same raw id, so tests interleave them the same way.
+/// Stand-in for the production `resolve` then `record_endpoint` pairing; the lazy-counter fast path needs `curr` populated between resolves.
 fn open(ids: &mut SeenIds, raw_id: WidgetId, is_explicit: bool, node: u32) -> WidgetId {
     let resolved = ids.resolve(raw_id, is_explicit);
     ids.record_endpoint(resolved, ep(node));
@@ -29,7 +25,6 @@ fn resolve_returns_raw_id_on_first_call() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
     assert_eq!(open(&mut ids, x, false, 1), x);
-    // Fast path didn't touch `counters` — only collisions populate it.
     assert!(ids.counters.is_empty());
 }
 
@@ -77,11 +72,8 @@ fn resolve_queues_pending_only_for_explicit_collisions() {
     assert!(ids.pending.is_empty());
 
     let y = WidgetId::from_hash("y");
-    // First explicit — fast path, no pending.
     let first = ids.resolve(y, true);
     ids.record_endpoint(first, ep(3));
-    // Second explicit — collision, queued. record_endpoint will
-    // drain it; check it was queued first.
     let second = ids.resolve(y, true);
     assert_eq!(ids.pending.len(), 1);
     assert_eq!(ids.pending[0].first_raw_id, y);
@@ -92,17 +84,14 @@ fn resolve_queues_pending_only_for_explicit_collisions() {
 fn record_endpoint_emits_collision_pair_for_explicit_only() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    // First occurrence resolves + opens.
     let first = ids.resolve(x, true);
     assert!(ids.record_endpoint(first, ep(1)).is_none());
-    // Second occurrence resolves + opens — should hand back the pair.
     let second = ids.resolve(x, true);
     let pair = ids
         .record_endpoint(second, ep(2))
         .expect("expected collision pair");
     assert_eq!(pair.first, ep(1));
     assert_eq!(pair.second, ep(2));
-    // Pending drained.
     assert!(ids.pending.is_empty());
 }
 
@@ -128,8 +117,7 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     });
     assert_eq!(ids.endpoint(x), Some(ep(1)));
 
-    // An id resolved in an earlier pass names an entry this pass may
-    // have given to another widget, so recording it is refused.
+    // An earlier pass's id may name an entry this pass gave away: recording is refused.
     let mut ids = SeenIds::default();
     let stale = ids.resolve(x, false);
     ids.pre_record();
@@ -146,9 +134,7 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
     assert!(ids.record_endpoint(fresh, ep(2)).is_none());
 }
 
-/// Two widgets resolve the same raw auto id before either records — the
-/// `.state(ui)` then `.show()` shape. The second is disambiguated against
-/// the first's reservation, and both open in either order.
+/// Two widgets resolve the same raw auto id before either records (`.state(ui)` then `.show()`); both open in either order.
 #[test]
 fn resolving_twice_before_recording_disambiguates() {
     let mut ids = SeenIds::default();
@@ -160,8 +146,6 @@ fn resolving_twice_before_recording_disambiguates() {
     assert!(ids.record_endpoint(second, ep(2)).is_none());
     assert!(ids.record_endpoint(first, ep(1)).is_none());
 
-    // An explicit id that is only reserved is its owner claiming it —
-    // a widget recording a wrapper under the id it resolved.
     let mut ids = SeenIds::default();
     let owner = ids.resolve(x, false);
     assert_eq!(owner.id(), x);
@@ -171,16 +155,11 @@ fn resolving_twice_before_recording_disambiguates() {
         "the reservation's owner claims it, entry and all"
     );
     assert!(ids.record_endpoint(owner, ep(1)).is_none());
-    // Once recorded, an explicit repeat is a collision as ever.
     assert_eq!(ids.resolve(x, true).id(), x.with(1));
 
-    // A reservation lasts one pass.
     ids.pre_record();
     assert_eq!(ids.resolve(x, false).id(), x);
 
-    // And it is no recording: an id resolved and never shown has no
-    // endpoint, is in no frame's recording, and so is never reported
-    // removed either.
     let mut ids = SeenIds::default();
     let y = WidgetId::from_hash("y");
     open(&mut ids, x, false, 1);
@@ -198,12 +177,10 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
     let mut ids = SeenIds::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    // Pass A records a + b, then is discarded by the next
-    // pre_record (double-layout / warmup shape).
+    // Pass A records a + b, then is discarded (double-layout/warmup).
     open(&mut ids, a, false, 1);
     open(&mut ids, b, false, 2);
     ids.pre_record();
-    // Final pass records only a.
     open(&mut ids, a, false, 1);
     let removed = ids.rollover();
     assert!(
@@ -214,17 +191,12 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
         !removed.contains(&a),
         "id re-recorded in the final pass survives"
     );
-    // The discarded set drained at rollover: the next frame's diff
-    // doesn't resurrect b.
     ids.pre_record();
     open(&mut ids, a, false, 1);
     let removed = ids.rollover();
     assert!(removed.is_empty(), "got {removed:?}");
 
-    // The other path: an id the *previous frame* also recorded, dropped
-    // by the settling pass. `discarded` never has to carry it — the
-    // prev-minus-curr diff reports exactly this case — so a settling
-    // pass over steady widgets adds nothing to the set.
+    // An id dropped by the settling pass is reported by the prev-minus-curr diff.
     let c = WidgetId::from_hash("c");
     open(&mut ids, a, false, 1);
     open(&mut ids, c, false, 2);
@@ -249,8 +221,6 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
 fn pre_record_clears_per_frame_state_but_keeps_prev() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    // Force `counters` to be non-empty by opening the same id
-    // twice (collision path populates it).
     open(&mut ids, x, false, 1);
     open(&mut ids, x, false, 2);
     assert!(!ids.counters.is_empty());
@@ -258,9 +228,7 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     ids.rollover();
     assert!(ids.curr.entries.is_empty());
     assert_eq!(ids.prev.entries.len(), 2);
-    // Counters persist across rollover (rollover is the painted-
-    // frame swap; `pre_record` clears per-frame disambiguation
-    // state at the next record cycle).
+    // Counters persist across rollover; `pre_record` clears per-frame state.
     assert!(!ids.counters.is_empty());
 
     ids.pre_record();
@@ -269,11 +237,9 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
 }
 
-/// One resolve of a frame's script.
 #[derive(Clone, Copy, Debug)]
 enum Resolve {
-    /// [`SeenIds::resolve_scoped`] of an auto id at `sites[site]` under
-    /// `parents[parent]`.
+    /// [`SeenIds::resolve_scoped`] of an auto id at `sites[site]` under `parents[parent]`.
     Auto { site: usize, parent: usize },
     /// [`SeenIds::resolve_scoped`] of a salt under `parents[parent]`.
     Salt { salt: usize, parent: usize },
@@ -281,15 +247,9 @@ enum Resolve {
     Raw { raw: WidgetId, explicit: bool },
 }
 
-/// The tracker against plain per-pass hash tables ([`reference`]), over
-/// random frames: collisions of auto and explicit ids, auto ids from a few
-/// call sites under a few parents, ids resolved and recorded out of order
-/// or never recorded, and discarded passes. Most
-/// frames replay the last one's resolves, some with one change at a
-/// random position, so passes run in step, leave it at every position,
-/// and never enter it. Every resolve, every collision pair, every pass's
-/// recording and endpoints, every frame's removed set, and every last-frame
-/// endpoint known by position must agree.
+/// The tracker against plain per-pass hash tables ([`reference`]) over random
+/// frames with collisions, out-of-order or unrecorded ids and discarded passes;
+/// every observable must agree.
 #[test]
 fn matches_the_per_pass_tables_over_random_frames() {
     let (mut in_step, mut out_of_step, mut positional) = (0, 0, 0);
@@ -312,8 +272,6 @@ fn matches_the_per_pass_tables_over_random_frames() {
             WidgetId::from_location(sites[site]).scoped(parents[parent])
         };
         let salts: Vec<_> = (100..104).map(WidgetId::from_hash).collect();
-        // The scoped ids' raw ids join the universe, so raw ids collide with
-        // auto ids and salts too.
         let universe: Vec<_> = (0..10)
             .map(WidgetId::from_hash)
             .chain((0..3).map(|site| auto_raw(site, site % 3)))
@@ -397,7 +355,6 @@ fn matches_the_per_pass_tables_over_random_frames() {
                     if !open.contains(&got) {
                         open.push(got);
                     }
-                    // Record a random open one, so records come out of order.
                     if !open.is_empty() && next(5) != 0 {
                         let resolved = open.swap_remove(next(open.len()));
                         node += 1;
@@ -410,7 +367,6 @@ fn matches_the_per_pass_tables_over_random_frames() {
                         );
                     }
                 }
-                // Whatever is still open stays only reserved.
                 assert_eq!(ids.recorded().collect::<Vec<_>>(), model.recorded(), "{at}");
                 for &id in &probes {
                     assert_eq!(ids.endpoint(id), model.endpoint(id), "endpoint, {at}");
@@ -441,10 +397,7 @@ fn matches_the_per_pass_tables_over_random_frames() {
     );
 }
 
-/// A parent whose id is 0 is a parent: `Configure::id` takes any id. A salt
-/// resolved under no parent one frame, and under a parent of id 0 at the
-/// same position the next, names another raw id, so it must not take the
-/// first frame's id by position.
+/// A parent whose id is 0 is still a parent: a salt under no parent, then under parent 0, names another raw id.
 #[test]
 fn a_parent_of_id_zero_is_not_no_parent() {
     let mut ids = SeenIds::default();

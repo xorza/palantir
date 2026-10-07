@@ -13,9 +13,7 @@ use std::process;
 use std::sync::Barrier;
 use std::thread;
 
-/// A pair covering no pixels differs nowhere, so the verdict is a pass.
-/// A zero *width* would panic inside `chunks_exact`, which rejects a
-/// zero-length chunk, without the early answer.
+/// A pair covering no pixels passes; a zero width would otherwise panic in `chunks_exact`.
 #[test]
 fn a_zero_pixel_pair_passes() {
     let empty = RgbaImage::new(0, 0);
@@ -23,8 +21,7 @@ fn a_zero_pixel_pair_passes() {
     assert_eq!(report.differing_pixels, 0);
     assert!(report.passes());
 
-    // A zero-width strip with real height, and the transpose: both
-    // multiply to no pixels the same way.
+    // Zero width with real height, and the transpose.
     for (w, h) in [(0, 8), (8, 0)] {
         let strip = RgbaImage::new(w, h);
         let report = Tolerance::default().diff(&strip, &strip);
@@ -43,10 +40,7 @@ fn identical_images_pass_exactly() {
     assert_eq!(Tolerance::default(), Tolerance::EXACT);
 }
 
-/// A pixel differs when any channel differs at all, and the verdict
-/// bounds both how many pixels differ and how far the worst one strays.
-/// Here one pixel of 100 is three steps off on red: the count passes a
-/// one-pixel budget, and the delta decides.
+/// A pixel differs on any channel difference; the verdict bounds the differing count and the worst delta.
 #[test]
 fn the_verdict_bounds_both_the_count_and_the_delta() {
     let e = RgbaImage::from_pixel(10, 10, Rgba([100, 100, 100, 255]));
@@ -69,8 +63,7 @@ fn the_verdict_bounds_both_the_count_and_the_delta() {
     }
 }
 
-/// The diff map marks every differing pixel, however small the step, and
-/// dims the rest of `actual` to a quarter.
+/// The diff map marks every differing pixel and dims the rest of `actual` to a quarter.
 #[test]
 fn the_diff_map_marks_every_differing_pixel() {
     let e = RgbaImage::from_pixel(2, 1, Rgba([100, 100, 100, 255]));
@@ -107,14 +100,7 @@ impl Drop for Scratch {
     }
 }
 
-/// An update run rewrites what is missing or failing and leaves a passing
-/// golden alone; a pass clears an earlier failure's output; without the
-/// flag, a failure panics and writes its artifacts, and a missing golden
-/// is written and failed. Two held images compared through `assert_same`
-/// take the same handling, and write no golden.
-///
-/// `near` is one step off `base` in all 16 pixels, inside a tolerance of
-/// two steps over 16 pixels; `far` is forty steps off, outside it.
+/// An update run rewrites missing or failing goldens and leaves passing ones; a pass clears earlier failure output; without the flag a failure panics with artifacts and a missing golden is written then failed. `assert_same` behaves alike and writes no golden.
 #[test]
 fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     let dir = Scratch::new("update");
@@ -177,10 +163,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     );
 }
 
-/// The adapter sidecar: the first comparison records the run's adapter, a
-/// later run on the same one compares as usual, a run on another adapter
-/// fails with that reason before any pixel diff, and an update run adopts
-/// the new adapter.
+/// Adapter sidecar: first run records it, the same adapter compares normally, another adapter fails before any pixel diff, an update run adopts it.
 #[test]
 fn goldens_record_and_hold_their_adapter() {
     let dir = Scratch::new("adapter");
@@ -204,9 +187,7 @@ fn goldens_record_and_hold_their_adapter() {
 
     Goldens::new(&dir.0).check("g", &image, false);
 
-    // Tests compare in parallel, so a run that finds no sidecar has many
-    // writers and many readers at once. Each reader sees the whole adapter
-    // or no file, never a write half done.
+    // Tests run in parallel: a reader sees the whole adapter or no file, never a partial write.
     let names: Vec<String> = (0..8).map(|i| format!("t{i}")).collect();
     let racing = Goldens::new(&dir.0).with_adapter("GPU C");
     for name in &names {
@@ -240,8 +221,7 @@ fn goldens_record_and_hold_their_adapter() {
     assert_eq!(staged, 0, "every staged sidecar is renamed into place");
 }
 
-/// Every golden no name claims is an orphan, in name order; the adapter
-/// sidecar is not a golden, and a set with no directory has none.
+/// Every golden no name claims is an orphan, in name order; the sidecar is not a golden.
 #[test]
 fn orphans_are_the_goldens_no_name_claims() {
     let dir = Scratch::new("orphans");

@@ -1,17 +1,4 @@
-//! DamageEngine CPU-side regression bench. Drives `Ui::frame` over a
-//! ~1056-node grid through the four `Damage` paths and times
-//! the result. Microbenches at the bottom characterise the three
-//! `DamageRegion::add` policy branches (append, cascade-absorb,
-//! min-growth).
-//!
-//! **Doesn't measure GPU work.** `WgpuBackend::submit` (render-pass
-//! setup, scissor changes, queue submission) is not exercised — this
-//! is `FrameCycle::post_record` time only. Decisions about per-pass cost
-//! (e.g. proximity-merge thresholds) need a GPU-aware bench.
-//!
-//! `UiHarness::new(SURFACE)` leaves the cosmic shaper unset, so text measurement
-//! runs through the mono fallback (matches the frame and measure-cache
-//! benches).
+//! DamageEngine CPU-side regression bench: drives `Ui::frame` over a ~1056-node grid through the four `Damage` paths, plus microbenches of the three `DamageRegion::add` branches. Measures `FrameCycle::post_record` only, not GPU work; text measurement uses the mono fallback.
 
 #![expect(
     clippy::print_stderr,
@@ -39,11 +26,7 @@ const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
 const COLS: usize = 32;
 const ROWS: usize = 32;
 
-/// 32×32 grid of small frames inside an outer vstack — approximates
-/// a dashboard / table-of-cells workload. Cells listed in `hot` get
-/// `hot_color`; the rest get a default cold colour. The id-salt
-/// scheme keeps cell identity stable across frames so damage diffs
-/// against the right `prev` snapshot.
+/// 32x32 grid of small frames in a vstack (a dashboard workload); cells in `hot` get `hot_color`. Id salts keep identity stable so damage diffs against the right `prev`.
 fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
     Panel::vstack()
         .id_salt("root")
@@ -75,12 +58,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
         });
 }
 
-/// Same shape and per-frame work as `build_grid`, but every row Panel
-/// gets a chrome fill — so rows are *painting* parents wrapping
-/// painting cells. On a stable frame the damage diff's subtree-skip
-/// predicate (rect + node_hash + subtree_hash + cascade_input all
-/// match prev at the row root) fires at each row, jumping past 32
-/// per-cell entry lookups. Cells listed in `hot` get `hot_color`.
+/// `build_grid` with a chrome fill on every row Panel: rows are painting parents, so on a stable frame the subtree-skip fires at each row.
 fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
     let row_bg = RgbaF32::srgb(0.1, 0.1, 0.12);
     Panel::vstack()
@@ -114,11 +92,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
         });
 }
 
-/// Drive the ack-the-frame contract during benches. `FrameCycle::record_pass`
-/// auto-rewinds damage if the previous `FrameOutput` wasn't marked
-/// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
-/// `Full` mark `Pending` and need an explicit submit-equivalent.
-/// The ack here is unconditional and idempotent.
+/// Acks the frame: `FrameCycle::record_pass` auto-rewinds damage if the previous `FrameOutput` wasn't `Submitted`; `Partial`/`Full` need this explicit, idempotent ack.
 fn run_and_ack(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) {
     let _ = h.frame(&mut record);
 }
@@ -131,13 +105,7 @@ fn damage_kind(h: &UiHarness) -> &'static str {
     }
 }
 
-/// Warm two frames so subsequent iterations land on the steady-state
-/// `Damage` path the test claims. Pass the same closure for both
-/// frames to warm into a `skip` steady state; pass two different
-/// closures (e.g. cold + hot variants of the same scene) so the
-/// second frame's diff produces the `partial` / `full` damage the
-/// bench iter will then exercise. Without warmup the first iter
-/// would always be `Full` (no `prev_surface`) and skew measurements.
+/// Warms two frames so iterations land on the intended `Damage` path (the same closure twice for `skip`, two variants for `partial`/`full`); otherwise the first iter is always `Full`.
 fn warm_and_assert(
     h: &mut UiHarness,
     frame1: impl Fn(&mut Ui),
@@ -150,28 +118,13 @@ fn warm_and_assert(
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
-/// Run frames until the paint-snapshot arena stops growing, and answer
-/// the size it settled at.
-///
-/// The property this replaced compaction to get: a churn workload takes
-/// blocks out of its size classes' free lists rather than extending the
-/// arena, so after warm-up the storage is flat and no frame pays for
-/// another frame's churn. Warming on that — rather than on a fixed frame
-/// count — is also what makes the arms below measure a *settled* arena
-/// instead of one still climbing, and the matching post-bench assertion
-/// is the regression guard: a change that reintroduced tail-appending
-/// would show up as an arena that never stops growing.
+/// Runs frames until the paint-snapshot arena stops growing and returns the size it settled at. A churn workload recycles blocks, so storage is flat after warm-up; warming on that makes the arms measure a settled arena, and the post-bench assertion guards against tail-appending returning.
 fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     h: &mut UiHarness,
     build: impl Fn(u32) -> B,
     from_frame: u32,
 ) -> ArenaSettle {
-    /// Consecutive flat frames that count as settled. Comfortably past
-    /// the 256-canvas rotation in the partial-churn arm, whose period is
-    /// the canvas count.
     const FLAT_FRAMES: u32 = 512;
-    /// Give up rather than spin: a workload that never settles is a
-    /// finding, and the assertion below reports it.
     const MAX_FRAMES: u32 = 4096;
 
     let mut frame = from_frame;
@@ -196,18 +149,11 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     }
 }
 
-/// Where [`warm_until_arena_settles`] left off.
 #[derive(Clone, Copy, Debug)]
 struct ArenaSettle {
-    /// Arena entries once it went flat — the working set's high-water
-    /// mark, which is what the arm reports and re-checks afterwards.
     entries: usize,
-    /// Size classes parked with at least one free block. The other half
-    /// of the health check: a churn whose row counts stay inside a
-    /// handful of classes recycles, and a count that tracks the frame
-    /// number is one whose lengths are drifting.
+    /// Size classes parked with a free block; a count tracking the frame number means drifting lengths.
     classes: usize,
-    /// The frame number the caller's own loop resumes at.
     next_frame: u32,
 }
 
@@ -216,9 +162,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
     let hot = RgbaF32::srgb(0.9, 0.4, 0.2);
     let mut group = run.subgroup(c, "workload");
 
-    // Skip path — identical scene every frame; nothing dirty. Rows
-    // are non-painting Panels so the damage diff walks every painting
-    // leaf individually (no subtree-skip available).
+    // Skip path: nothing dirty; non-painting rows, so the diff walks every painting leaf.
     {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
@@ -235,11 +179,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Skip path with painting row Panels — same node count as `skip`,
-    // but each row is a painting parent of painting cells. On a stable
-    // frame the damage diff's subtree-skip predicate fires at every
-    // row, jumping past the 32 per-cell entry lookups underneath.
-    // Compare against `skip` to isolate the subtree-skip win.
+    // Skip path with painting rows: the subtree-skip fires at every row; compare against `skip` to isolate its win.
     {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
@@ -248,11 +188,6 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             |ui| build_painted_rows(ui, &[], cold),
             "skip",
         );
-        // Sanity: the second warm-up frame must have fired ≥ROWS
-        // jumps (one per stable row subtree). Without this, the bench
-        // silently degrades to the same shape as `skip`.
-        // Pre-existing master regression: skip count drifted below
-        // ROWS; not relevant to the shape-churn measurement below.
         assert!(
             h.engines.damage.counters.subtree_skips() > 0,
             "no subtree skips at all — fixture is broken",
@@ -265,7 +200,6 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Partial 1-rect — one cell flips colour each frame.
     {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cell = [42usize];
@@ -286,9 +220,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Partial multi-rect — two distant cells flip together. LVGL
-    // merge rule rejects (bbox waste huge), so the region keeps both
-    // — drives the multi-pass path.
+    // Partial multi-rect: two distant cells flip; the LVGL merge rule rejects (huge bbox waste), driving the multi-pass path.
     {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
@@ -310,8 +242,6 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Full path — every cell varies each frame; total damage area
-    // exceeds the threshold and escalates to `Full`.
     {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let varying = |frame_n: u32| {
@@ -363,30 +293,9 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         });
     }
 
-    // Shape-count churn benches — exercise the per-shape damage
-    // diff's growth/shrink/orphan path and the periodic
-    // `shape_snaps` compaction sweep. Two cases isolate different
-    // facets of the workload:
-    //
-    // - `shape_churn_partial`: most canvases are stable
-    //   (subtree-skip), one canvas mutates its shape count per
-    //   frame. Orphans accumulate slowly; compactions are rare.
-    //   This is the "real" workload approximation — represents a
-    //   graph canvas where ~1 connection changes per frame.
-    // - `shape_churn_full`: every canvas mutates every frame.
-    //   Maximises the diff merge cost and forces compaction every
-    //   few frames. Stress case for the compaction sweep.
-    //
-    // Both build the same canvas layout, differing only in how
-    // many canvases mutate per frame. The compaction counter is
-    // asserted non-zero during warmup so a silent
-    // degeneration (e.g. all-Skip frames) doesn't pass the bench
-    // unnoticed.
+    // Shape-count churn benches exercise the per-shape diff's grow/shrink/orphan path: `shape_churn_partial` mutates one canvas per frame (like a graph canvas where ~1 connection changes), `shape_churn_full` all of them. The arena settling is asserted during warmup so all-Skip degeneration doesn't pass.
 
-    // Logical surface = 640×400 (SURFACE / scale 2.0). A 16×16 grid
-    // of 40×25 px canvases fits with margin. Earlier vstack-only
-    // layout pushed most canvases off-surface, so the diff's
-    // off-surface skip made the bench measure ~10 widgets, not 256.
+    // Logical surface 640x400: a 16x16 grid of 40x25 px canvases fits; a vstack would push most off-surface.
     let canvas_body = |c: usize, count: u32, ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash(("canvas", c)))
@@ -424,11 +333,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             });
     };
 
-    // Case A: partial churn. 256 canvases in a 16×16 grid, only one
-    // mutates per frame (rotating through the pool). Shapes-per-
-    // canvas = 8. Mutating canvas flips between 7 and 8 shapes —
-    // exercises the grow/shrink-by-one path, the most common real
-    // pattern.
+    // Case A: 256 canvases in a 16x16 grid, one mutates per frame (rotating), flipping between 7 and 8 shapes: the common grow/shrink-by-one pattern.
     {
         const CANVASES: usize = 256;
         const STABLE_COUNT: u32 = 8;
@@ -450,10 +355,6 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
 
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let settled = warm_until_arena_settles(&mut h, build, 0);
-        // Sanity: the arena should hold roughly STABLE_COUNT × CANVASES
-        // live entries. Catches off-surface regressions where most
-        // canvases skip insert and the bench silently measures a much
-        // smaller pool.
         assert!(
             settled.entries >= CANVASES * (STABLE_COUNT as usize - 1),
             "partial churn: arena underpopulated (len={}, expected >= {})",
@@ -473,10 +374,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
                 black_box(&h);
             });
         });
-        // The regression guard: thousands of measured churn frames must
-        // not add one entry. A tail-appending arena would climb here,
-        // and so would a size class that stopped reclaiming its own
-        // blocks.
+        // The regression guard: thousands of churn frames must not add one entry.
         assert_eq!(
             h.engines.damage.paints.slots.len(),
             settled.entries,
@@ -485,12 +383,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         );
     }
 
-    // Case B: full churn. Every canvas mutates every frame.
-    // Stress-tests the merge cost of the per-shape diff itself
-    // plus high-frequency compaction. Damage will likely
-    // escalate to `Full`, which is fine — we measure Pass-1
-    // diff work, not Pass-2 collapse, and the per-shape leg
-    // pushes raw_rects regardless of final paint kind.
+    // Case B: full churn, measuring the per-shape diff merge cost (Pass 1); damage likely escalates to `Full`, which is fine.
     {
         const CANVASES: usize = 256;
         const BASE_SHAPES: u32 = 4;
@@ -527,9 +420,6 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
                 black_box(&h);
             });
         });
-        // Every canvas changes its row count every frame, so this is the
-        // harder half of the guard: four size classes in rotation, and
-        // still not one new entry over the measured run.
         assert_eq!(
             h.engines.damage.paints.slots.len(),
             settled.entries,
@@ -544,16 +434,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
 fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "region/add");
 
-    // Three representative scenarios — one per branch of the
-    // `DamageRegion::add` policy:
-    //
-    // - **append**: 8 disjoint rects, fits exactly under the cap.
-    //   Measures the no-merge / no-min-growth fast path.
-    // - **min_growth**: 16 disjoint rects, forces min-growth from
-    //   the 9th onward. Cliff between this and `append` quantifies
-    //   the cap-overflow cost.
-    // - **cascade**: 8 axis-aligned overlapping rects, all
-    //   pairwise-mergeable, collapse to 1 rect via cascade-absorb.
+    // One scenario per `DamageRegion::add` branch: **append** (8 disjoint rects, exactly under the cap), **min_growth** (16 disjoint, min-growth from the 9th; the cliff vs `append` is the cap-overflow cost), **cascade** (8 overlapping rects collapsing to 1).
     let cases: &[(&str, Vec<Rect>)] = &[
         (
             "append",
@@ -589,28 +470,12 @@ fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
     group.finish();
 }
 
-/// Sibling counts for the paint-order arms. Spaced so the shape of the
-/// curve is readable: if the quadratic pair walk dominates, 512 costs
-/// ~16x what 128 does; if it is noise beside the rest of the diff, the
-/// four numbers stay within a small factor.
+/// Sibling counts for the paint-order arms, spaced to show whether a quadratic pair walk dominates (~16x from 128 to 512).
 const ORDER_FANOUT: [usize; 4] = [64, 128, 256, 512];
 
-/// `count` overlapping sibling frames under one parent, painted in
-/// `order`.
+/// `count` overlapping sibling frames under one parent, painted in `order`.
 ///
-/// A `ZStack` rather than a list, for two reasons. It is the shape a
-/// graph canvas actually has — nodes sit on top of one another, which
-/// is the only situation where raising one *means* anything — and it
-/// keeps every child's extent overlapping every other's, so each
-/// inverted pair the walk finds yields a real intersection instead of
-/// being discarded. That is the worst case, which is what a cliff
-/// hunt wants. Stacking them instead would also overflow the viewport
-/// past a few hundred rows and tip damage to `full`.
-///
-/// Ids travel with the *content*, not the slot, so reordering `order`
-/// leaves every row exact-matched and only their relative positions
-/// change — which is precisely what the inversion check looks for. A
-/// list keyed by slot would re-key the rows instead and never reach it.
+/// A `ZStack`, because stacking is the only case where raising one means anything and every extent overlaps every other (the worst case); a list would overflow the viewport and tip damage to `full`. Ids follow the content, not the slot, so reordering leaves rows exact-matched and only their relative positions change.
 fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
     Panel::zstack()
         .id_salt("order-root")
@@ -626,19 +491,9 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
         });
 }
 
-/// Raising one child to the front, which is what clicking a node on a
-/// graph canvas does.
+/// Raises one child to the front, as clicking a node on a graph canvas does.
 ///
-/// `has_order_inversion` is an O(n) gate, but once it fires
-/// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair — and
-/// raising a single child inverts only `n` of those, so all but a
-/// vanishing fraction of the walk finds nothing. These arms exist to
-/// say whether that difference is visible against the rest of the
-/// damage diff, and from what fanout.
-///
-/// Each iteration alternates between the raised and unraised orders so
-/// every frame trips the inversion; holding one order steady would
-/// settle into `skip` and measure nothing.
+/// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair once `has_order_inversion` fires, while raising one child inverts only `n`; these arms show whether that is visible, and from what fanout. Each iteration alternates orders so every frame trips the inversion.
 fn bench_paint_order_inversion(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "paint_order");
 

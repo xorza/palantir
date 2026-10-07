@@ -1,22 +1,17 @@
-//! State a kind of widget shares across all its instances: one value per
-//! type, for the life of the `Ui`.
+//! State a widget kind shares across instances: one value per type for the `Ui`'s life.
 
 use crate::common::typed_stores::DOWNCAST_ERROR;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::fmt;
 
-/// One boxed value per type, never swept — the home of state no widget
-/// id owns, such as the clock that lets one tooltip after another show
-/// at once. Keyed by type, so a widget's private type is a key no other
-/// code can collide with.
+/// One boxed value per type, never swept: state no widget id owns, such as the clock that lets one tooltip after another show at once.
 #[derive(Default)]
 pub(crate) struct Singletons {
     by_type: FxHashMap<TypeId, Box<dyn Any>>,
 }
 
-// Manual: the values are `dyn Any`, which has no `Debug`. The count is
-// the shape worth reporting.
+// Manual: the values are `dyn Any`, which has no `Debug`; the count is what's worth reporting.
 impl fmt::Debug for Singletons {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Singletons")
@@ -51,8 +46,7 @@ mod tests {
     #[derive(Debug, Default, PartialEq)]
     struct Other(u32);
 
-    /// Absent until first use, defaulted then, kept after, and one per
-    /// type — two types never share a value.
+    /// Absent until first use, defaulted then, kept after, one per type.
     #[test]
     fn one_value_per_type_kept_across_reads() {
         let mut singletons = Singletons::default();

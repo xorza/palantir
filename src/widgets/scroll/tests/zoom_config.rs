@@ -12,77 +12,62 @@ struct InvalidConfig {
 #[test]
 fn zoom_config_rejects_every_invalid_boundary() {
     let cases = [
-        // zero minimum
         InvalidConfig {
             range: 0.0..=1.0,
             step: 1.03,
         },
-        // negative minimum
         InvalidConfig {
             range: -1.0..=1.0,
             step: 1.03,
         },
-        // NaN minimum
         InvalidConfig {
             range: f32::NAN..=1.0,
             step: 1.03,
         },
-        // infinite minimum
         InvalidConfig {
             range: f32::INFINITY..=f32::INFINITY,
             step: 1.03,
         },
-        // negative infinite minimum
         InvalidConfig {
             range: f32::NEG_INFINITY..=1.0,
             step: 1.03,
         },
-        // zero maximum
         InvalidConfig {
             range: 0.1..=0.0,
             step: 1.03,
         },
-        // negative maximum
         InvalidConfig {
             range: 0.1..=-1.0,
             step: 1.03,
         },
-        // NaN maximum
         InvalidConfig {
             range: 0.1..=f32::NAN,
             step: 1.03,
         },
-        // infinite maximum
         InvalidConfig {
             range: 0.1..=f32::INFINITY,
             step: 1.03,
         },
-        // negative infinite maximum
         InvalidConfig {
             range: 0.1..=f32::NEG_INFINITY,
             step: 1.03,
         },
-        // zero step
         InvalidConfig {
             range: 0.1..=10.0,
             step: 0.0,
         },
-        // negative step
         InvalidConfig {
             range: 0.1..=10.0,
             step: -1.0,
         },
-        // NaN step
         InvalidConfig {
             range: 0.1..=10.0,
             step: f32::NAN,
         },
-        // positive infinite step
         InvalidConfig {
             range: 0.1..=10.0,
             step: f32::INFINITY,
         },
-        // negative infinite step
         InvalidConfig {
             range: 0.1..=10.0,
             step: f32::NEG_INFINITY,

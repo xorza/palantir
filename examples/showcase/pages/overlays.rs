@@ -1,9 +1,4 @@
-//! Side-layer widgets. A popup records a side root in the `Popup` layer
-//! that paints above the main tree, escapes ancestor clip, and hit-tests
-//! on top. Tooltips live one layer higher still, with a delay and a
-//! warmup window — move between adjacent triggers quickly and the next
-//! bubble skips the delay. Context menus attach to any sensed widget and
-//! open on secondary-click at the pointer.
+//! Side-layer widgets: popups (above the main tree, escaping clip), tooltips (delay with warmup) and context menus (secondary-click).
 
 use std::time::Duration;
 
@@ -30,9 +25,7 @@ struct State {
     align: AnchorAlign,
     anchored: bool,
     action: Option<&'static str>,
-    /// The roomy menu's theme: the live one with its spacing loosened.
-    /// Built on the first frame and kept, rather than cloned from the
-    /// theme every frame for a menu that is nearly always closed.
+    /// The roomy menu's theme, built once on the first frame.
     roomy: Option<ContextMenuTheme>,
 }
 
@@ -290,7 +283,7 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
     );
 }
 
-/// The live context menu theme with looser spacing everywhere.
+/// The live context menu theme with looser spacing.
 fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     let mut t = ui.theme().context_menu.clone();
     t.padding = Spacing::all(10.0);
@@ -302,12 +295,7 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     t
 }
 
-/// `style` restyles through the theme bundle every menu widget reads:
-/// the panel takes it via `.style`, and the rows — recorded by this
-/// closure, not by `ContextMenu` — take their own halves of it. Every
-/// `style` setter takes an `Option`, so "styled or default" stays a
-/// value threaded through the tree rather than a branch around each
-/// widget.
+/// `style` restyles through the theme bundle every menu widget reads; every `style` setter takes an `Option`, so "styled or default" is a threaded value, not a branch.
 fn attach_menu(
     ui: &mut Ui,
     trigger: &ResponseSnapshot,

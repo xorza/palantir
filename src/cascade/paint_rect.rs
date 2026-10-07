@@ -1,5 +1,4 @@
-//! How much of the screen one node's paint can reach, and what the damage of
-//! it comes to.
+//! How much of the screen one node's paint can reach, and the damage that comes to.
 
 use crate::cascade::paint::{Paint, PaintArena};
 use crate::common::content_hash::ContentHash;
@@ -20,11 +19,7 @@ use crate::shape::stroke_bounds;
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 
-/// Lift an owner-local rect into screen space: translate by the owner's
-/// arranged origin, apply the relevant transform (`parent_transform`
-/// for chrome / clip lift, `shape_transform` for shapes), then clip
-/// to the ancestor clip. One source of truth for the three coord-
-/// space hops the paint emit does.
+/// Lift an owner-local rect into screen space: translate by the owner's arranged origin, apply `parent_transform` (chrome / clip) or `shape_transform` (shapes), then clip to the ancestor clip.
 #[inline]
 fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rect>) -> Rect {
     let r = t.apply_rect(Rect {
@@ -34,40 +29,18 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
     clip_screen(r, clip)
 }
 
-/// A screen rect held inside an optional clip — the shape every rect in
-/// the cascade takes on its way out.
-///
-/// `None` is "no clip on this branch", not "clip to nothing", which is
-/// the whole reason this is worth a name: the `map_or` that says so reads
-/// backwards at a glance, and it was written out at four sites.
+/// A screen rect held inside an optional clip. `None` means "no clip on this branch", not "clip to nothing".
 #[inline]
 pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
     clip.map_or(screen, |c| screen.clamp_to(c))
 }
 
-/// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
-/// inked extent on each axis side, then re-clamp to `clip`.
+/// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its inked extent per side, then re-clamp to `clip`.
 ///
-/// The composer paints glyphs at the ladder-*snapped* scale
-/// (`composer::geometry::snap_text_scale`), while the cascade lifts the rect at
-/// the unsnapped scale. The painted block can be up to
-/// `|snapped − cascade| ≤ STEP/2` longer per axis than the lifted
-/// rect, which works out to `inked × STEP/2` of absolute screen
-/// pixels per side — independent of cascade scale. A local-coord pad
-/// would multiply by cascade and underflow at `cascade < 1`
-/// (zoomed-out content), leaking glyph fringes past the damage rect.
-/// Padding in screen space keeps damage covering the worst-case
-/// painted extent at any zoom.
+/// The composer paints at the ladder-snapped scale but the cascade lifts at the unsnapped one, so the painted block can be `inked × STEP/2` longer per side in screen pixels, independent of cascade scale. Padding in local coords would underflow below scale 1.
 #[inline]
 fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
-    // `screen` is already clipped, so a fully-off-clip run has collapsed
-    // to zero on an axis (a zero-width box pinned at the clip edge). It
-    // has no visible glyphs to pad; inflating it here would re-grow the
-    // box *back across the clip edge*, fabricating a sub-pixel damage
-    // sliver at the viewport edge for text that isn't on screen at all
-    // (the "offscreen node casts a shadow at the window edge" bug). Leave
-    // a non-paintable box empty — `is_paint_empty` also folds in the NaN
-    // and float-boundary near-zero cases a bare `<= 0` compare would miss.
+    // `screen` is already clipped, so a fully-off-clip run has collapsed to zero on an axis. Padding it would re-grow it across the clip edge and fabricate a damage sliver for offscreen text. Leave a non-paintable box empty; `is_paint_empty` also covers NaN and near-zero.
     if screen.is_paint_empty() {
         return screen;
     }
@@ -83,19 +56,7 @@ fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
     clip_screen(inflated, clip)
 }
 
-/// The owner-local bound a stroked shape is damaged against: its recorded
-/// centerline bbox, or the square that bbox sweeps when the shape carries
-/// a rotating paint anim.
-///
-/// The composer culls and batches the spun shape against exactly that
-/// square (`StrokeBounds::new`), and the row this feeds is what
-/// `extend_predamaged` repaints every frame the spin wakes. Left as the
-/// recorded bbox, a spun stroke whose bbox is not a pivot-centred disc
-/// paints outside the region damage cleared for it.
-///
-/// The angle is not needed and not read: the square is the cover at every
-/// angle, so the cascade answers without sampling the animation the
-/// encoder samples one pass later.
+/// The owner-local bound a stroked shape is damaged against: its recorded bbox, or the square it sweeps under a rotating paint anim (what the composer culls against). No angle is read.
 #[inline]
 fn spun_if_animated(bbox: Rect, owner_rect: Rect, anims: &PaintAnims, shape_idx: u32) -> Rect {
     if anims.rotates(shape_idx) {
@@ -105,15 +66,7 @@ fn spun_if_animated(bbox: Rect, owner_rect: Rect, anims: &PaintAnims, shape_idx:
     }
 }
 
-/// Push one paint row and fold its screen rect into the running union
-/// in a single step. [`compute_paint_rect`]'s invariant requires the
-/// union to track exactly the set of pushed non-paint-empty rows;
-/// doing both here makes the two legs impossible to desync at a call
-/// site. A paint-empty screen (shape fully clipped away) still pushes
-/// its row — damage matches rows by identity and needs the slot — and
-/// drops out of the union through [`Rect::union`]'s identity, which is
-/// what keeps the degenerate box pinned at the clip edge from growing
-/// it.
+/// Push one paint row and fold its screen rect into the running union in one step, so [`compute_paint_rect`]'s invariant cannot desync. A paint-empty screen still pushes its row (damage matches by identity) but drops out of the union through [`Rect::union`]'s identity.
 #[inline]
 fn push_paint(arena: &mut PaintArena, union: &mut Rect, screen: Rect, hash: ContentHash) {
     *union = union.union(screen);
@@ -122,25 +75,7 @@ fn push_paint(arena: &mut PaintArena, union: &mut Rect, screen: Rect, hash: Cont
 
 /// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
 ///
-/// Everything here is something the walk **already holds for its own
-/// reasons**, so passing it is reuse rather than a wide-parameter habit;
-/// a field earns its place by that test alone. `shape_transform` (the
-/// `parent ∘ self_anchored` descendants also inherit) and `clips` are
-/// the pointed cases — computed once at the call site so we don't
-/// re-probe the sparse `transform_of` column, recompose the transform,
-/// or re-read the SoA `attrs` column, all of which showed up as
-/// duplicate work in cascade profiling. `visible_rect` is the same
-/// bargain from the other end: the full walk pushes it into `hits` and
-/// `entries` regardless, and deriving it here would apply and intersect
-/// it a second time per node.
-///
-/// What is *not* here is the counterpart: `layout_rect`, the node's
-/// `padding`, and `has_shapes` are one indexed load each off lines this
-/// walk has already touched, and `padding` is read only by the text arm
-/// — so they are derived below instead of widening every node's bundle.
-/// [`Self::has_children`] is the one that *is* here: the walk decides a
-/// leaf's rollup on it, so it already holds it, where it holds nothing
-/// about shapes.
+/// Everything here the walk already holds: `shape_transform` (`parent ∘ self_anchored`) and `clips` are computed once to avoid re-probing columns, and `visible_rect` is pushed into `hits` and `entries` anyway. Cheap indexed loads (`layout_rect`, `padding`, `has_shapes`) are derived below; [`Self::has_children`] is here because the walk decides a leaf's rollup on it.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PaintRectCtx<'a> {
     pub(super) tree: &'a Tree,
@@ -156,37 +91,13 @@ pub(super) struct PaintRectCtx<'a> {
     pub(super) has_children: bool,
 }
 
-/// Emit every paint row for `node` — chrome at row 0 when present,
-/// then direct shapes and child markers in record order — write the
-/// covering [`Span`] into `node_spans[node]`, and return the
-/// screen-space union of the pixel-producing rows — used locally as
-/// the `subtree_paint_rects` seed for the encoder's cull. Damage
-/// recomputes the same union from the `paint_arena` rows on demand
-/// (its cold paths), so it isn't stored per node.
+/// Emit every paint row for `node`: chrome at row 0 when present, then direct shapes and child markers in record order. Write the covering [`Span`] into `node_spans[node]` and return the screen union of the pixel-producing rows, the `subtree_paint_rects` seed for the encoder's cull.
 ///
-/// Chrome rides `parent_transform` (encoder emits chrome before the
-/// body push); shapes ride `shape_transform = parent ∘ self_anchored`
-/// (inside the body push, per `Panel::transform`). Child markers are
-/// pushed raw (zero screen, child `WidgetId` as hash) — they exist so
-/// the damage diff sees the paint-order interleave; the child's pixels
-/// are covered by its own rows.
+/// Chrome rides `parent_transform`; shapes ride `shape_transform`. Child markers are pushed raw (zero screen, child `WidgetId` as hash) so damage sees paint-order interleave.
 ///
 /// # Invariant
 ///
-/// The returned `Rect` is the screen-space union of the non-paint-empty
-/// rows in `arena.rows[paints_start..arena.rows.len()]`, **plus the
-/// clip-only fold below** — so it is bit-identical to what
-/// `PaintRows::union_screens` recomputes from the stored rows for every
-/// node except a chromeless clip-only container, where it is larger by
-/// that container's visible rect.
-///
-/// The difference is deliberate and the two consumers want opposite
-/// halves of it: the encoder culls against this return value and needs
-/// the container's extent, while damage reads the rows and must not
-/// invent pixels for a node that painted none. [`push_paint`] keeps the
-/// union and the pushed rows in lockstep everywhere else; child markers
-/// bypass it (zero rect, no pixels), and the clip-only branch is the
-/// sole fold-without-push case.
+/// The returned `Rect` is the union of the non-paint-empty rows in `arena.rows[paints_start..]` plus the clip-only fold, so it equals `PaintRows::union_screens` except for a chromeless clip-only container, where it adds that container's visible rect: the encoder culls on it, while damage must not invent pixels. [`push_paint`] keeps union and rows in lockstep; child markers bypass it, and the clip-only branch is the one fold-without-push.
 pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     let PaintRectCtx {
         tree,
@@ -201,15 +112,10 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
         clips,
         has_children,
     } = ctx;
-    // The walk read this same slot to build `visible_rect`, so it is a
-    // hot line rather than a fresh fetch.
     let layout_rect = layout.rect[node.idx()];
     let paints_start = arena.rows.len() as u32;
 
-    // Seeded at `Rect::ZERO`, which is what `Rect::union` documents the
-    // identity to be — a paint-empty operand drops out, so a node that
-    // paints nothing folds to zero and a fully-clipped shape cannot drag
-    // the extent to its degenerate box at the clip edge.
+    // Seeded at `Rect::ZERO`, `Rect::union`'s identity: a node painting nothing folds to zero and a fully-clipped shape cannot drag the extent to the clip edge.
     let mut union = Rect::ZERO;
 
     let owner_local = Rect {
@@ -219,9 +125,6 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
 
     match tree.chrome(node) {
         Some(bg) if bg.is_invisible() => {
-            // Kept for a rounded clip and nothing else: a row with an empty
-            // screen, so it damages nothing, and the owner rect in the cull
-            // rollup, as for a chromeless clip below.
             arena.rows.push(Paint {
                 screen: Rect::ZERO,
                 hash: bg.hash,
@@ -239,10 +142,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
             push_paint(arena, &mut union, screen, bg.hash);
         }
         None if clips => {
-            // Chromeless clip-only container: union the owner rect into
-            // the cull rollup so the encoder emits the PushClip/PopClip
-            // pair even when the subtree paints nothing (empty scroll
-            // host, etc.). No Paint row — the node contributes no pixels.
+            // Chromeless clip-only container: union the owner rect into the cull rollup so the encoder emits the PushClip/PopClip pair even when the subtree paints nothing. No Paint row.
             union = visible_rect;
         }
         None => {}
@@ -264,10 +164,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     continue;
                 }
             };
-            // Every direct text shape has one layout-derived entry, whether
-            // measure produced it for a leaf or post-arrange shaping produced
-            // it for a container — handed out by the same cursor the encoder
-            // walks the column with.
+            // Every direct text shape has one layout-derived entry, from measure (leaf) or post-arrange shaping (container), handed out by the cursor the encoder walks the column with.
             let shaped = text_runs.shaped(s, layout);
             let screen = match s {
                 ShapeRecord::Text {
@@ -277,12 +174,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                 } => {
                     let shaped =
                         shaped.expect("a text record always draws its run from the cursor");
-                    // Read here rather than carried in: the text arm is
-                    // the only reader, so a node with no text shape never
-                    // touches the column.
                     let padding = tree.records.layout()[node.idx()].padding;
-                    // The glyphs paint their ink, which can reach past the
-                    // block that places them.
                     let inked = record::text_paint_bbox_local(
                         *local_origin,
                         *align,
@@ -302,8 +194,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     bbox,
                     ..
                 } => {
-                    // The AA fringe is physical, so inflate only after the
-                    // centerline and stroke width reach screen space.
+                    // The AA fringe is physical: inflate only after the centerline and stroke width reach screen space.
                     let local = spun_if_animated(*bbox, layout_rect, &tree.paint_anims, idx);
                     let centerline = lift_to_screen(local, layout_rect.min, shape_transform, None);
                     let screen = stroke_bounds::bbox(
@@ -329,20 +220,13 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     );
                     clip_screen(screen, shape_clip)
                 }
-                // A triangle's stored bbox carries its corner radius but
-                // not the AA fringe, which is physical and cannot be
-                // folded into an owner-local rect — the same reason the
-                // two stroked kinds above add it out here.
+                // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.
                 ShapeRecord::Quad(QuadShape::Triangle { bbox, .. }) => clip_screen(
                     lift_to_screen(*bbox, layout_rect.min, shape_transform, None)
                         .inflated(AA_HALF_WIDTH / display_scale),
                     shape_clip,
                 ),
-                // The three kinds that resolve their whole paint bound in
-                // owner-local space, so one lift finishes each: no stroke
-                // width and no physical fringe to add out here, and no
-                // shaped extent to fold in. A quad's shadow halo is
-                // already inside `QuadShape::bbox_local`.
+                // These kinds resolve their whole bound in owner-local space, so one lift finishes each. A quad's shadow halo is inside `QuadShape::bbox_local`.
                 ShapeRecord::Quad(shape) => lift_to_screen(
                     shape.bbox_local(layout_rect.size),
                     layout_rect.min,
@@ -357,8 +241,7 @@ pub(super) fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) 
                     shape_transform,
                     shape_clip,
                 ),
-                // Bounded by the rect the encoder draws, which overflows
-                // the base under `ImageFit::None`.
+                // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::None`.
                 ShapeRecord::Image {
                     local_rect,
                     source,

@@ -1,5 +1,4 @@
-//! Per-widget fixtures: smallest possible scene that exercises one
-//! widget's render path.
+//! Per-widget fixtures: the smallest scene exercising one widget's render path.
 
 use glam::{UVec2, Vec2};
 use palantir::golden::image::Rgba;
@@ -33,8 +32,7 @@ fn button_hello_matches_golden() {
     assert_matches_golden(GoldenName::ButtonHello, &img);
 }
 
-/// Exercises the rounded-rect SDF AA path: solid fill, visible border,
-/// non-trivial corner radius, padded inside a darker scene.
+/// Rounded-rect SDF AA: solid fill, border, corner radius, in a darker scene.
 #[test]
 fn frame_filled_with_border_matches_golden() {
     let mut h = Harness::new();
@@ -62,11 +60,8 @@ fn frame_filled_with_border_matches_golden() {
     assert_matches_golden(GoldenName::FrameFilledWithBorder, &img);
 }
 
-/// A border paints inside its rect: the border's outer edge is the
-/// rect's edge. On a pixel-aligned rect every pixel centre is a whole
-/// half pixel from an edge, so the SDF coverage there is exactly 0 or 1
-/// and the row through the middle reads, pixel for pixel: clear outside,
-/// then the border for exactly its width, then the fill.
+/// A border paints inside its rect. On a pixel-aligned rect SDF coverage is
+/// exactly 0 or 1, so the middle row reads: clear, border for its width, fill.
 #[test]
 fn a_border_paints_inside_the_rect() {
     let mut h = Harness::new();
@@ -89,7 +84,6 @@ fn a_border_paints_inside_the_rect() {
     let clear = Rgba([0, 0, 0, 255]);
     let border = Rgba([255, 255, 255, 255]);
     let fill = Rgba([255, 0, 0, 255]);
-    // The rect spans x 4..16; the border takes its outer 2 px each side.
     let expected: Vec<_> = (0..20)
         .map(|x| match x {
             4..=5 | 14..=15 => border,
@@ -101,12 +95,9 @@ fn a_border_paints_inside_the_rect() {
     assert_eq!(row, expected);
 }
 
-/// Pins the rounded-clip stencil path. Layered: full-canvas pink, then
-/// a smaller rounded panel (per-corner distinct radii, 1px black
-/// stroke, rounded clip), then a full-fill black child whose square
-/// corners must be trimmed by the stencil mask. Per-corner radii test
-/// the SDF's corner mixing — uniform-radius bug would still pass a
-/// `Corners::all(...)` fixture.
+/// Rounded-clip stencil path: pink canvas, a rounded panel (distinct corner
+/// radii, 1px black stroke), then a black child whose square corners the
+/// stencil must trim. Distinct radii catch corner-mixing bugs.
 #[test]
 fn surface_rounded_clips_full_fill_child() {
     let mut h = Harness::new();
@@ -150,24 +141,12 @@ fn surface_rounded_clips_full_fill_child() {
     assert_matches_golden(GoldenName::SurfaceRoundedClipsFullFillChild, &img);
 }
 
-/// Regression: rounded clip whose rect extends off-screen on every
-/// side. The mask SDF must use the panel's true rect — not the
-/// viewport-clamped scissor — so the rounded corners stay outside
-/// the viewport instead of "sliding inward" into the visible region.
+/// Regression: a rounded clip extending off-screen on every side. The mask
+/// SDF must use the panel's true rect, not the viewport-clamped scissor.
 ///
-/// Panel rect `(-6, -6) .. (194, 144)` over a `120×90` viewport,
-/// radius 24. Three of the four rounded corners (TR / BL / BR) are
-/// fully off-screen; only TL pokes into the viewport — its arc center
-/// at world `(18, 18)` makes the arc cross the viewport's top edge at
-/// `x≈2.1` and left edge at `y≈2.1`, producing a small visible
-/// green-stroked curve plus a `DARK_BG` corner cutout in the top-left.
-/// The rest of the viewport is filled solid black.
-///
-/// Without the fix, the mask SDF uses the viewport-clamped scissor —
-/// so additional spurious rounded notches appear at the TR / BL / BR
-/// viewport corners where the bug-mode mask cuts the panel fill, and
-/// `DARK_BG` shows through there too. The pixel asserts below pin
-/// that exact discrimination.
+/// Panel `(-6, -6) .. (194, 144)` over `120x90`, radius 24: only the TL arc
+/// (centre `(18, 18)`) is visible, with a `DARK_BG` cutout there. The other
+/// corners must be solid black; a clamped mask notches them.
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     let mut h = Harness::new();
@@ -203,13 +182,12 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         })
         .image;
 
-    // sRGB(0.08, 0.08, 0.10) ≈ (20, 20, 25). "near-black" = all
-    // channels well under that; "dark-bg-ish" = R/G near 20.
+    // sRGB(0.08, 0.08, 0.10) ~ (20, 20, 25); near-black means all channels
+    // well under that.
     let is_near_black = |p: Rgba<u8>| p.0[0] < 8 && p.0[1] < 8 && p.0[2] < 8;
     let is_dark_bg = |p: Rgba<u8>| p.0[0] > 12 && p.0[0] < 32 && p.0[2] > 12 && p.0[2] < 40;
 
-    // TL viewport corner is the genuine cutout — DARK_BG should show
-    // through whether the fix is in place or not.
+    // The TL corner is the genuine cutout.
     let tl = *img.get_pixel(0, 0);
     assert!(
         is_dark_bg(tl),
@@ -217,9 +195,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         tl.0,
     );
 
-    // Discriminating pixels: the other three viewport corners must
-    // be solid black under the fix. With the bug (viewport-clamped
-    // mask), each gets a spurious rounded notch and reads DARK_BG.
+    // The other three corners must be solid black.
     for (x, y, label) in [(119, 0, "TR"), (0, 89, "BL"), (119, 89, "BR")] {
         let px = *img.get_pixel(x, y);
         assert!(
@@ -231,7 +207,6 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         );
     }
 
-    // Viewport centre should obviously be black.
     let centre = *img.get_pixel(60, 45);
     assert!(
         is_near_black(centre),
@@ -242,13 +217,9 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     assert_matches_golden(GoldenName::RoundedClipPartiallyOffscreen, &img);
 }
 
-/// Pin the backbuffer-rebuild invariant: when the surface texture
-/// changes size between rounded-clip frames, `WgpuBackend` must
-/// reset its stencil attachment along with the color backbuffer. If
-/// the old stencil leaks across the resize, wgpu validation panics
-/// because the stencil texture's size no longer matches the render
-/// pass attachment. Two rounded-clip renders at different sizes, each
-/// probed where the clip shape decides the pixel.
+/// The backbuffer rebuild on a size change must reset the stencil attachment,
+/// else wgpu validation panics on the size mismatch. Two rounded-clip renders
+/// at different sizes, probed where the clip decides the pixel.
 #[test]
 fn rounded_clip_survives_surface_resize() {
     let mut h = Harness::new();
@@ -270,12 +241,9 @@ fn rounded_clip_survives_surface_resize() {
                     .show(ui, |_| {});
             });
     };
-    // If `ensure_backbuffer` failed to reset `bb.stencil = None`, the
-    // second render would attach a 120×120 stencil to a 240×200 pass and
-    // wgpu validation would panic. Each render must also still draw: the
-    // panel's corner pixel (10, 10) sits outside its 8 px arc — its centre
-    // is 7.5·√2 ≈ 10.6 px from the arc's centre (18, 18) — so it reads
-    // the clear colour, and the centre reads the panel's fill.
+    // A stale stencil would mismatch the pass and panic. Each render must still
+    // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc centre (18, 18),
+    // outside the 8 px arc, so it reads clear; the centre reads the fill.
     let clear = DARK_BG.to_srgba_u8();
     let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba_u8();
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
@@ -295,8 +263,7 @@ fn rounded_clip_survives_surface_resize() {
     }
 }
 
-/// ProgressBar at 50%: the two-`Fill`-leaf split resolves to a
-/// half-width accent fill over the rounded pill track.
+/// ProgressBar at 50%: half-width accent fill over the pill track.
 #[test]
 fn progress_bar_half_matches_golden() {
     let mut h = Harness::new();
@@ -315,9 +282,8 @@ fn progress_bar_half_matches_golden() {
     assert_matches_golden(GoldenName::ProgressBarHalf, &img);
 }
 
-/// Switch on + off with animation disabled: pins the knob at each
-/// rest position and exercises the `Canvas` track + absolutely-positioned
-/// knob path (the only widget that places a child via `.position`).
+/// Switch on and off, animation disabled: knob rest positions and the
+/// `Canvas` track with `.position`ed knob.
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
@@ -350,8 +316,7 @@ fn toggle_switch_states_matches_golden() {
     assert_matches_golden(GoldenName::ToggleSwitchStates, &img);
 }
 
-/// Spinner at t=0 (phase 0): the comet arc renders as a round-capped
-/// GPU arc whose gradient fades from transparent tail to full head.
+/// Spinner at phase 0: a round-capped arc fading from transparent tail to head.
 #[test]
 fn spinner_matches_golden() {
     let mut h = Harness::new();
@@ -370,8 +335,7 @@ fn spinner_matches_golden() {
     assert_matches_golden(GoldenName::Spinner, &img);
 }
 
-/// Slider at 30%: the two-tone track (accent left, grey right) splits at
-/// the round knob via the `Fill`-weight trick — no record-time width.
+/// Slider at 30%: two-tone track split at the knob via `Fill` weights.
 #[test]
 fn slider_thirty_percent_matches_golden() {
     let mut h = Harness::new();
@@ -391,7 +355,6 @@ fn slider_thirty_percent_matches_golden() {
     assert_matches_golden(GoldenName::SliderThirtyPercent, &img);
 }
 
-/// DragValue renders its formatted number + suffix inside button chrome.
 #[test]
 fn drag_value_matches_golden() {
     let mut h = Harness::new();
@@ -416,9 +379,8 @@ fn drag_value_matches_golden() {
     assert_matches_golden(GoldenName::DragValue, &img);
 }
 
-/// ComboBox (closed): button-styled trigger showing the current choice
-/// with a down-chevron drawn as a polyline (font-independent), right of
-/// the label via `SpaceBetween`.
+/// ComboBox (closed): trigger with the choice and a polyline chevron
+/// (font-independent), right via `SpaceBetween`.
 #[test]
 fn combo_box_closed_matches_golden() {
     let mut h = Harness::new();
@@ -442,15 +404,13 @@ fn combo_box_closed_matches_golden() {
     assert_matches_golden(GoldenName::ComboBoxClosed, &img);
 }
 
-/// Modal: a centered card over the dim backdrop, recorded into
-/// `Layer::Modal` so it composites above the `Main` content behind it.
+/// Modal: a centered card over the dim backdrop in `Layer::Modal`.
 #[test]
 fn modal_dialog_matches_golden() {
     let mut h = Harness::new();
     let img = h
         .size(UVec2::new(300, 200))
         .frame(|ui| {
-            // Bright content behind, so the backdrop's dim is visible.
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -469,10 +429,8 @@ fn modal_dialog_matches_golden() {
     assert_matches_golden(GoldenName::ModalDialog, &img);
 }
 
-/// The colour field and both bars at one hue, in each model.
-///
-/// The only end-to-end check that the CPU texture reaches the screen: the
-/// unit tests read the texels, and this reads what the sampler made of them.
+/// The colour field and both bars at one hue, in each model. The only
+/// end-to-end check that the CPU texture reaches the screen.
 #[test]
 fn color_field_and_bars_match_golden() {
     let mut h = Harness::new();
@@ -506,8 +464,8 @@ fn color_field_and_bars_match_golden() {
     assert_matches_golden(GoldenName::ColorFieldAndBars, &img);
 }
 
-/// The whole panel: field, bars, preview chip over its checker, the channel
-/// values, the model switch and the preset row.
+/// The whole panel: field, bars, preview chip, channel values, model switch,
+/// preset row.
 #[test]
 fn color_picker_panel_matches_golden() {
     let mut h = Harness::new();
@@ -531,9 +489,9 @@ fn color_picker_panel_matches_golden() {
     assert_matches_golden(GoldenName::ColorPickerPanel, &img);
 }
 
-/// The focus ring after a Tab press: on the first card, along its own
-/// rounded edge and over its border, and on no other card. The second card
-/// has no chrome, so its edge is the one the ring would paint on its own.
+/// The focus ring after a Tab press: on the first card's rounded edge and
+/// border, on no other. The second card has no chrome, so its edge is where the
+/// ring would paint.
 #[test]
 fn focus_ring_matches_golden() {
     use palantir::{InputEvent, Key, KeyText, Ui};

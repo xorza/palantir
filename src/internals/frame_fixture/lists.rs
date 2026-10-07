@@ -1,6 +1,4 @@
-//! The repeating-content cards. Between them they cover both `Scroll`
-//! axes and both `WrapStack` orientations, and they are what `scale`
-//! actually grows — the bulky tail of the card column.
+//! The repeating-content cards: both `Scroll` axes and both `WrapStack` orientations; what `scale` grows.
 
 use crate::fmt;
 use crate::internals::frame_fixture::tokens;
@@ -23,8 +21,6 @@ use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
-/// Horizontally-scrolled strip — the fixture's only `Scroll::horizontal`,
-/// so both scroll axes are exercised in one tree.
 pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
     tokens::card(ui, "recent", "RECENT CAPTURES", Sizing::HUG, |ui| {
         Scroll::horizontal()
@@ -63,9 +59,7 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
     });
 }
 
-/// Fixed height, not `Fill`: this card lives inside the page scroll, whose
-/// main axis is unbounded, so a `Fill` height would resolve against nothing
-/// and the inner scroll would grow to its full content instead of paging.
+/// Fixed height, not `Fill`: the page scroll's main axis is unbounded, so `Fill` would resolve against nothing.
 pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
     tokens::card(ui, "activity", "ACTIVITY", Sizing::fixed(268.0), |ui| {
         Scroll::vertical()
@@ -135,8 +129,6 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
     });
 }
 
-/// Tag chips beside a badge column — the two `WrapStack` orientations
-/// side by side, each wrapping against a different bounded axis.
 pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
     tokens::card(ui, "tags", "LABELS", Sizing::HUG, |ui| {
         Panel::hstack()
@@ -155,10 +147,7 @@ pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
                         }
                     });
                 Separator::vertical().id_salt("tag-vsep").show(ui);
-                // Wraps against its bounded *height*, so it fills column by
-                // column. Each badge is a fixed-width chip: without one the
-                // columns pack to their own text width and adjacent labels
-                // read as a single run.
+                // Fixed-width badge chips, or the columns pack to text width and adjacent labels read as one run.
                 Panel::wrap_vstack()
                     .id_salt("badge-wrap")
                     .gap(6.0)

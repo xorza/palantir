@@ -1,5 +1,4 @@
-//! Pass count and replay: what triggers a second record, and what must run
-//! only once.
+//! Pass count and replay: what triggers a second record.
 
 use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
@@ -14,12 +13,7 @@ use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
-/// Cascade runs in `post_record` (after each pass's measure+arrange),
-/// not in `finalize_frame`. Means a `request_relayout` re-record can
-/// read pass A's arranged rect via `response_for(id).rect` — the
-/// invariant `ContextMenu::show` relies on to clamp its anchor in
-/// the same frame as the first open, and the general API contract
-/// for any widget that needs its own size mid-frame.
+/// Cascade runs in `post_record`, not `finalize_frame`, so a `request_relayout` re-record can read pass A's rect via `response_for(id).rect` (`ContextMenu::show` clamps its anchor with it).
 #[test]
 fn cascade_visible_to_relayout_pass() {
     let pass = Cell::new(0u32);
@@ -42,14 +36,12 @@ fn cascade_visible_to_relayout_pass() {
         let resp = probe_resp.into_inner().unwrap();
         match pass.get() {
             0 => {
-                // Pass A: no cascade yet for our frame this run — first
-                // ever recording of this widget. Trigger pass B.
+                // Pass A: no cascade yet; triggers pass B.
                 pass_a_rect.set(resp.state.rect);
                 ui.request_relayout();
             }
             1 => {
-                // Pass B: cascade was rebuilt by pass A's post_record,
-                // so response_for now returns pass A's arranged rect.
+                // Pass B: `response_for` returns pass A's arranged rect.
                 pass_b_rect.set(resp.state.rect);
             }
             _ => unreachable!("relayout capped at one retry per frame"),
@@ -67,12 +59,7 @@ fn cascade_visible_to_relayout_pass() {
     assert_eq!(b.size.h, 40.0);
 }
 
-/// `Ui::frame` re-records when the frame contained routed input that could
-/// drive a state mutation, and runs the build closure exactly once
-/// otherwise.
-/// Action coverage has to be exact: false positives waste CPU silently,
-/// false
-/// negatives leave the popup-dismissal class of bugs unfixed.
+/// `Ui::frame` re-records when the frame had routed input that could drive a state mutation, else runs the closure once.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
     use crate::input::input_event::InputEvent;
@@ -109,8 +96,6 @@ fn frame_pass_count_matches_action_trigger() {
             },
             1,
         ),
-        // The press frame first: a press lands a frame before its
-        // release, and the release frame is the one measured.
         (
             "routed click",
             |h| {
@@ -147,8 +132,6 @@ fn frame_pass_count_matches_action_trigger() {
 
     for (label, prime, expected) in cases {
         let mut h = UiHarness::new(UVec2::new(100, 100));
-        // Baseline frame so the under-test `frame` diffs against a real
-        // prior recording, not the never-painted initial state.
         h.frame(build_target);
         prime(&mut h);
 
@@ -164,9 +147,7 @@ fn frame_pass_count_matches_action_trigger() {
             "{label}: expected {expected} build invocation(s), got {}",
             count.get(),
         );
-        // The render frame id must bump exactly once per `frame`
-        // regardless of pass count — pass B's anim ticks must see the same
-        // id as pass A's so the integrator doesn't double-advance.
+        // The render frame id bumps once per `frame`, so pass B's anim ticks see pass A's id.
         assert_eq!(
             h.ui.frame_runtime.render_frame_id,
             render_frame_before + 1,
@@ -175,10 +156,7 @@ fn frame_pass_count_matches_action_trigger() {
     }
 }
 
-/// A routed action requests pass B, but its edge is visible only in pass A.
-/// This lets application code handle a widget action inline without
-/// replaying
-/// the effect.
+/// A routed action requests pass B but its edge is visible only in pass A.
 #[test]
 fn action_effect_runs_once_across_record_replay() {
     let surface = UVec2::new(100, 100);
@@ -211,10 +189,7 @@ fn action_effect_runs_once_across_record_replay() {
     );
 }
 
-/// A relayout request forces a second record pass, exactly as pending
-/// action input does. `frame_value` still records both — skipping pass B
-/// would leave an empty tree — but hands back pass A's value, because
-/// pass A is the one that observes one-frame edges.
+/// A relayout request forces a second record pass; `frame_value` returns pass A's value, which observes one-frame edges.
 #[test]
 fn frame_value_records_both_relayout_passes_and_returns_the_first() {
     let mut h = UiHarness::new(SURFACE);
@@ -232,10 +207,7 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
     assert_eq!(captured, 1, "capture returns the input-observing pass");
 }
 
-/// `Ui::frame` plumbs `now`, `dt`, and the repaint-requested flag
-/// end-to-end: per-call `now` lands in the frame runtime, the derived `dt`
-/// clamps to `MAX_ANIM_DT`, `repaint_requested` resets at the top of every
-/// call, and a flag set during recording surfaces on `FrameOutput`.
+/// `Ui::frame` plumbs `now`, `dt` (clamped to `MAX_ANIM_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
@@ -245,7 +217,6 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             .show(ui, |_| {});
     });
 
-    // Frame A: idle, no repaint request, now = 16ms.
     let repaint = h
         .at(Duration::from_millis(16))
         .frame(|ui| {
@@ -265,8 +236,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "FrameRuntime::dt should be (now - prev) in seconds",
     );
 
-    // Frame B: simulate an unsettled animation tick by setting the
-    // internal flag during recording. The flag must reach `FrameOutput`.
+    // Frame B: an unsettled animation tick during recording must reach `FrameOutput`.
     let repaint = h
         .at(Duration::from_millis(32))
         .frame(|ui| {
@@ -287,8 +257,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "FrameRuntime::dt should be next-frame delta",
     );
 
-    // Frame C: oversized gap (5s) clamps dt to MAX_ANIM_DT; `time` still
-    // tracks true clock so animation math doesn't teleport.
+    // Frame C: a 5s gap clamps dt to MAX_ANIM_DT; `time` still tracks the true clock.
     let _ = h.at(Duration::from_millis(5_032)).frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -300,8 +269,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "FrameRuntime::dt should clamp at MAX_ANIM_DT",
     );
 
-    // Frame D: prior frame's repaint_requested must NOT leak — resets
-    // at the top of every `frame` regardless of pass count.
+    // Frame D: the prior frame's repaint_requested must not leak.
     let repaint = h
         .at(Duration::from_millis(5_048))
         .frame(|ui| {
@@ -316,10 +284,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     );
 }
 
-/// `App::update` reads responses before any record pass of its frame, so
-/// it needs its own quiescence snapshot. Here the last pass ran with the
-/// pointer off the surface, and the press arrived after it: a snapshot
-/// left from that pass would default the whole interaction half out.
+/// `App::update` reads responses before any record pass, so it needs its own quiescence snapshot: a stale one from a pass with the pointer off the surface would default the interaction half out.
 #[test]
 fn update_sees_input_that_arrived_after_a_quiescent_pass() {
     use crate::app::App;

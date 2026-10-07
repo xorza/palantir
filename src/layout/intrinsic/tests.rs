@@ -14,13 +14,8 @@ use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, tex
 use glam::UVec2;
 use std::mem;
 
-/// Driver-triggered intrinsic queries during `run` must populate
-/// the per-node cache. Without this, every `engine.intrinsic` call
-/// would recompute from scratch — the 9% intrinsic cost in the
-/// layout bench would balloon.
-///
-/// Uses the HStack-with-Fill-wrap pattern: pass-2 of
-/// `Stack::measure` queries `MinContent` on each Fill child.
+/// Driver-triggered intrinsic queries during `run` populate the per-node cache; HStack with Fill wrap
+/// triggers them (pass 2 of `Stack::measure`).
 #[test]
 fn intrinsic_cache_populated_after_run() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
@@ -54,9 +49,7 @@ fn intrinsic_cache_populated_after_run() {
     );
 }
 
-/// `engine.intrinsic` must short-circuit on cache hit. We poison
-/// the slot with a sentinel and verify the next query returns it
-/// — a recompute would overwrite the sentinel with the real value.
+/// `engine.intrinsic` short-circuits on a cache hit: a sentinel in the slot must come back.
 #[test]
 fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
@@ -118,17 +111,10 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     );
 }
 
-/// Recursive intrinsic queries must populate descendant slots too,
-/// not just the queried node — `Stack::intrinsic` etc. recurse
-/// through `engine.intrinsic`, which writes the cache at every
-/// level. Without this, deep trees would re-walk on every parent
-/// query.
+/// Recursive intrinsic queries populate descendant slots too.
 #[test]
 fn parent_intrinsic_query_populates_descendant_cache() {
     let mut h = UiHarness::new(UVec2::new(400, 300));
-    // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
-    // Then clear *just the queried slot* on every node so we can
-    // observe which nodes the parent query repopulates.
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -140,10 +126,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
             .response
             .node()
     });
-    // Drop the measure-cache snapshots so `engine.intrinsic` can't
-    // answer the root query from last frame's cached intrinsic — this
-    // test pins the *recursive compute* path that populates descendant
-    // scratch slots, which the cross-frame lookup would otherwise skip.
+    // Drop measure-cache snapshots so the root query takes the recursive compute path.
     h.engines.layout.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
     for entry in &mut h.engines.layout.scratch.intrinsics {
@@ -287,19 +270,9 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
     }
 }
 
-/// One walk over a text leaf answers both axes, and the engine records
-/// the axis the query did not name. A run's min-content and max-content
-/// are `Size`s, so the named axis only picks a lane of what the walk
-/// already holds; without the record, `LayoutPass::measure`'s pair of
-/// min-content queries shapes the same runs twice.
-///
-/// Both lanes are pinned to hand-computed values, because a lane swap
-/// would otherwise make the free lane agree with a cold query that swaps
-/// it the same way. Under the mono metric at 16 px with a 1.0 line-height
-/// multiplier a glyph is 8 px wide and a line is 16 px tall, so with
-/// `WrapWithOverflow` the leaf demands its longest word, `lorem`, on X
-/// and one line on Y:
-///
+/// One walk over a text leaf answers both axes and records the axis not asked about, else
+/// `LayoutPass::measure`'s pair of min-content queries shapes twice. Both lanes are pinned to
+/// hand-computed values: mono at 16 px has 8-wide glyphs and 16-tall lines; the longest word `lorem` on X:
 /// - X: `5 * 8 + 2 * 3` padding `+ 2 * 1` margin = 48
 /// - Y: `16 + 2 * 5` padding `+ 2 * 2` margin = 30
 #[test]

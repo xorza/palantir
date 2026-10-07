@@ -6,9 +6,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     let wid = WidgetId::from_hash("fitting truncate");
     let fitting = shape(16.0).width(200.0).halign(HAlign::Center);
 
-    // `capped_w` is the run's Inter width once the fit has cut it to the
-    // 20 px bound. Ellipsis lands narrower than Truncate because the "…"
-    // it appends has to fit inside the same bound.
+    // `capped_w` is the run's Inter width once cut to the 20 px bound. Ellipsis is narrower than Truncate because its "…" must fit inside the same bound.
     for (ordinal, wrap, capped_w) in [
         (0u16, TextWrap::Truncate, 17.0),
         (1, TextWrap::Ellipsis, 14.0),
@@ -36,7 +34,6 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
             "a fitting {wrap:?} must not mint a bounded cache entry",
         );
 
-        // Over-wide text still resolves through the truncating path.
         let truncated = text.shape_run(run_slot, "wider than twenty", fitting.width(20.0), wrap);
         assert_ne!(
             truncated.buffer_key(),
@@ -46,8 +43,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         assert_eq!(truncated.size.w, capped_w, "{wrap:?} caps inside 20 px");
     }
 
-    // A multi-line source collapses to its first line under Clip/Ellipsis,
-    // so the unbounded root cannot stand in even when its widest line fits.
+    // A multi-line source collapses to its first line under Clip/Ellipsis, so the unbounded root can't stand in even when its widest line fits.
     let multiline = text.shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis);
     let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).key();
     assert_eq!(
@@ -55,19 +51,11 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         bounded_key,
         "multi-line text must resolve through the truncating path",
     );
-    // One line at the 16 px leading `fitting` carries — the collapse is
-    // what makes a two-line source measure a single line tall.
+    // One line at the 16 px leading `fitting` carries; the collapse makes a two-line source measure one line tall.
     assert_eq!(multiline.size.h, one_line_h(fitting));
 }
 
-/// Both truncating fits cut an over-wide label to one line that fits the
-/// committed width. They differ only in the marker: `Ellipsis` appends
-/// `…` and reserves its advance, `Clip` cuts flush. Everything else — the
-/// overflow precondition, the single-line height, the zero wrap floor,
-/// and keying distinctly from each other and from the wrapped buffer at
-/// the same width — is one contract stated once over both.
-///
-/// Pins "labels never overflow their box", which Button relies on.
+/// Both truncating fits cut an over-wide label to one line within the committed width, differing only in the marker (`Ellipsis` reserves `…`, `Clip` cuts flush). Pins "labels never overflow their box", which Button relies on.
 #[test]
 fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     let mut c = CosmicMeasure::default();
@@ -75,7 +63,6 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     let params = shape(16.0).width(120.0);
     let w = params.max_width.unwrap();
 
-    // Precondition: the natural single line genuinely overflows `w`.
     let full = c.measure(long, params.unbounded());
     assert!(
         full.size.w > w,
@@ -108,8 +95,6 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             "{fit:?}: bounded keys reuse the source text hash",
         );
 
-        // An ellipsis that cannot fit its own marker collapses to nothing;
-        // a clip has no marker to reserve and does the same at zero width.
         let zero = measure_truncated(&mut c, long, params.width(0.0), fit);
         assert_eq!(
             zero.size.w, 0.0,
@@ -118,8 +103,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
         keys.push(cut.buffer_key());
     }
 
-    // Clip, ellipsis, and wrap bake three different strings at the same
-    // width, so all three must key distinct cache slots.
+    // Clip, ellipsis and wrap bake three different strings at one width, so each must key a distinct cache slot.
     let wrapped = c.measure(long, params);
     assert_eq!(wrapped.buffer_key().fit(), LineFit::Wrap);
     assert_ne!(keys[0], keys[1], "clip and ellipsis must key distinctly");
@@ -137,28 +121,13 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
 
 #[test]
 fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
-    // Hand-built glyph runs, so the cut is checked against arithmetic
-    // rather than against whatever the installed fonts happen to measure.
-    // Each entry is (start, end, advance) in *visual* order.
+    // Hand-built glyph runs, so the cut is checked against arithmetic, not installed fonts; entries are (start, end, advance) in visual order.
     type Run = &'static [(usize, usize, f32)];
-    // "abc", 10 px per glyph, LTR: visual order is logical order.
     const LTR: Run = &[(0, 1, 10.0), (1, 2, 10.0), (2, 3, 10.0)];
-    // The same three glyphs read right-to-left: the logically-first glyph
-    // is emitted last. A cut driven by visual order would keep the wrong
-    // end of the run.
     const RTL: Run = &[(2, 3, 10.0), (1, 2, 10.0), (0, 1, 10.0)];
-    // "a🇺🇸": one cluster (bytes 1..9) shaping to two 10 px glyphs. Paying
-    // for one of them must not commit the whole cluster's bytes.
     const CLUSTER: Run = &[(0, 1, 10.0), (1, 9, 10.0), (1, 9, 10.0)];
-    // "á" decomposed: a zero-width mark glyph sharing the base's cluster
-    // costs nothing, so it must not hold the cut back.
     const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
-    // "ab<cd>e" with an RTL segment in the middle: visual starts run
-    // 0,1,3,2,4, so the run is logical at both ends and inverted only
-    // across the embedded pair. Every other case here is either sorted
-    // outright or fully reversed, which a first-pair check would call
-    // correctly by luck — this one is what forces the ordering scan to
-    // look at the whole run.
+    // "ab<cd>e" with a middle RTL segment: visual starts 0,1,3,2,4, inverted only across the pair; other cases pass a first-pair check by luck.
     const BIDI: Run = &[
         (0, 1, 10.0),
         (1, 2, 10.0),
@@ -207,8 +176,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             "a zero-width mark rides along with its base",
         ),
         (MARK, 20.0, ANY, 4, "the following glyph is affordable too"),
-        // `max_end` drives the back-off: feeding back the previous answer
-        // must retire at least one more cluster, all the way to nothing.
+        // `max_end` drives the back-off: feeding back the previous answer must retire at least one more cluster, down to nothing.
         (LTR, 1000.0, 3, 2, "the bound retires the last glyph"),
         (LTR, 1000.0, 2, 1, "and the one before it"),
         (LTR, 1000.0, 1, 0, "and the last one standing"),
@@ -254,10 +222,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
             .collect();
         let cut = ClusterGlyph::fitting_prefix(&mut glyphs, avail, max_end);
         assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
-        // Every bounded cut falls strictly below its bound, so feeding the
-        // previous answer back always makes progress — that is what makes
-        // the back-off terminate. Zero is the floor it terminates *at*: the
-        // production loop stops on an empty cut and never re-bounds by it.
+        // Every bounded cut falls strictly below its bound, so feeding the answer back always progresses and the back-off terminates. Zero is the floor: production stops on an empty cut.
         assert!(
             max_end == ANY || max_end == 0 || cut < max_end,
             "a bounded cut must fall strictly below its bound",
@@ -267,18 +232,9 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
 
 #[test]
 fn ellipsis_never_measures_wider_than_its_budget() {
-    // Two ways a cut overruns the budget it was measured against: paying
-    // for only some of a cluster's glyphs while committing all of its bytes
-    // (flag and ZWJ emoji), and reshaping a prefix whose last letter changes
-    // form once it lands at a word end (Arabic medial → final). Both resolve
-    // through fonts this crate does not bundle, so the bound — never an exact
-    // width — is what holds on every machine.
+    // A cut can overrun its budget by paying for only some of a cluster's glyphs while committing all its bytes (flag, ZWJ emoji), or by reshaping a prefix whose last letter changes form at a word end (Arabic). Both use fonts this crate doesn't bundle, so only the bound holds on every machine.
     //
-    // One measurer across every combination, not one per: the cache is
-    // keyed by everything that affects shaping, and
-    // `truncation_from_cached_unbounded_is_order_independent` pins that
-    // prior contents cannot change a result. Sharing it also exercises
-    // that, and spares 15 system-font scans.
+    // One measurer across all combinations: the cache is keyed by everything affecting shaping, and `truncation_from_cached_unbounded_is_order_independent` pins that prior contents can't change a result. Sharing also spares 15 system-font scans.
     let base = shape(16.0);
     let mut c = CosmicMeasure::default();
     for text in [
@@ -292,8 +248,6 @@ fn ellipsis_never_measures_wider_than_its_budget() {
                 for width_px in 0..=160 {
                     let width = width_px as f32;
                     let m = measure_truncated(&mut c, text, base.family(family).width(width), fit);
-                    // Widths are whole pixels and `size.w` is ceil'd, so a
-                    // run that fits its budget cannot round past it.
                     assert!(
                         m.size.w <= width,
                         "{family:?} {fit:?} {text:?}: measured {} against budget {width}",
@@ -307,14 +261,7 @@ fn ellipsis_never_measures_wider_than_its_budget() {
 
 #[test]
 fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
-    // The cut walks the cached unbounded shape's glyphs, which arrive in
-    // *visual* order. In an RTL run the logically-first glyph sits at the
-    // right edge and trailing edges descend, so a cut driven by `x + w`
-    // stops at the first glyph and drops the whole run.
-    // Hebrew, which no bundled face covers: without a Hebrew face every
-    // glyph is the same tofu box and the prefix/suffix widths this case
-    // separates would be identical. The test face is loaded rather than
-    // the machine's fonts scanned, so a host with none still runs it.
+    // The cut walks glyphs in visual order; in an RTL run a cut driven by `x + w` stops at the first glyph and drops the run. Hebrew, because no bundled face covers it (every glyph would be the same tofu box); the test face is loaded, not scanned.
     let mut c = CosmicMeasure::new(FontScope::Bundled);
     c.load_font(HEBREW.into())
         .expect("the Hebrew test face loads");
@@ -325,11 +272,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
             .w
     };
 
-    // Three shin, among the widest Hebrew letters, then three vav, among the
-    // narrowest — and neither takes a positional form, so a cut prefix
-    // reshapes to the same advances it was measured with. Every budget below
-    // is measured off the face rather than named, so the case states what it
-    // needs of the face instead of one face's pixel counts.
+    // Three shin (widest) then three vav (narrowest), neither positional, so a cut prefix reshapes to its measured advances. Budgets are measured off the face.
     let rtl = "\u{5e9}\u{5e9}\u{5e9}\u{5d5}\u{5d5}\u{5d5}";
     let width_of = |c: &mut CosmicMeasure, text: &str| c.measure(text, unbounded).size.w;
     let marker_only = width_of(&mut c, "\u{2026}");
@@ -338,8 +281,6 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     let two_suffix = width_of(&mut c, "\u{5d5}\u{5d5}\u{2026}");
     let whole = width_of(&mut c, rtl);
 
-    // What the face owes the case for either half below to prove
-    // anything: room for a real cut, and two ends that measure apart.
     assert!(
         two_prefix < whole,
         "two letters and the marker must be a cut, not the whole run: \
@@ -351,7 +292,6 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
          {two_prefix} vs {two_suffix}",
     );
 
-    // Room for the marker plus one letter: that letter must survive.
     let one = elide(&mut c, rtl, one_prefix);
     assert_eq!(
         one, one_prefix,
@@ -359,8 +299,6 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
          measures {marker_only}",
     );
 
-    // Room for two: the survivors must be the logical prefix, and not the
-    // logical suffix a visual-order cut reaches for.
     let two = elide(&mut c, rtl, two_prefix);
     assert_eq!(
         two, two_prefix,
@@ -368,8 +306,6 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
          the trailing ones measure",
     );
 
-    // LTR is the control: same code path, and widening the box must reveal
-    // more of the run rather than less.
     let narrow = elide(&mut c, "abcd", 20.0);
     let wide = elide(&mut c, "abcd", 28.0);
     assert!(
@@ -378,16 +314,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
     );
 }
 
-/// A label that already fits its cap is shaped whole — no spurious
-/// ellipsis, and the extent is the natural one *exactly*. Exact, not
-/// approximate: the fitting path reshapes the identical string through
-/// the same measurer, so a pixel of drift means truncation fired when it
-/// should not have and dropped a glyph.
-///
-/// The halign row is the regression that motivated it: a `Center`-aligned
-/// label in a 400 px cap once measured ~half the box wide, because the
-/// shaped buffer baked in the width and the per-line align that the
-/// encoder applies again.
+/// A label that already fits its cap is shaped whole, with exactly the natural extent. The halign row is the regression: a `Center` label in a 400 px cap once measured ~half the box, because the buffer baked in the width and the encoder aligned again.
 #[test]
 fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
     let mut c = CosmicMeasure::default();
@@ -410,10 +337,7 @@ fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
 
 #[test]
 fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
-    // Mono fallback: an elided long word caps at the available width; the
-    // wrap counterpart instead grows height and keeps the longest-word
-    // floor, which only its unbounded root can report — a bounded resolve
-    // hands back an extent, so there is no floor on it to be wrong about.
+    // Mono fallback: an elided long word caps at the available width; the wrap counterpart grows height and keeps the longest-word floor, which only its unbounded root can report.
     let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
     let params = shape(16.0).width(40.0);
     let w = params.max_width.unwrap();
@@ -421,11 +345,8 @@ fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
     let elided = mono_extent(long, params, LineFit::Ellipsis);
     assert_eq!(elided.w, w, "elided mono caps at the width");
     assert_eq!(elided.h, 16.0, "elided mono is one line");
-    // A run that already fits measures its own glyphs, which is what the
-    // cosmic cut answers for a prefix it never had to shorten.
     assert_eq!(mono_extent("ab", params, LineFit::Ellipsis).w, 16.0);
 
-    // 40 px holds five 8 px cells, so 16 characters wrap to four 16 px lines.
     let wrapped = mono_extent(long, params, LineFit::Wrap);
     assert_eq!(wrapped.h, 64.0, "wrap grows height across lines");
     assert_eq!(
@@ -435,20 +356,15 @@ fn mono_ellipsis_caps_width_and_leaves_the_floor_to_the_root() {
     );
 }
 
-/// Truncation reads its probe glyphs from the cached unbounded buffer.
-/// Measure the same input on a fresh measurer and one containing unrelated
-/// cached shapes; both the derived key and exact measurement must agree.
+/// Truncation reads probe glyphs from the cached unbounded buffer: a fresh measurer and one holding unrelated shapes must agree on both derived key and exact measurement.
 #[test]
 fn truncation_from_cached_unbounded_is_order_independent() {
     let long = "the quick brown fox jumps over the lazy dog";
     let target = shape(14.0).width(80.0).halign(HAlign::Left);
 
-    // Fresh measurer: only the target measurement.
     let mut fresh = CosmicMeasure::default();
     let r_fresh = truncate(&mut fresh, long, target, LineFit::Ellipsis);
 
-    // Reused measurer: populate unrelated unbounded, truncated, and ellipsis
-    // cache entries first, then measure the identical target.
     let mut reused = CosmicMeasure::default();
     measure_truncated(
         &mut reused,
@@ -476,8 +392,6 @@ fn truncation_from_cached_unbounded_is_order_independent() {
         "same inputs must map to the same cache key regardless of prior shaping",
     );
 
-    // Truncation actually fired: the ellipsized line is narrower than the
-    // full unbounded shape (and fits within the width budget).
     assert!(
         r_fresh.fitted.size.w < r_fresh.unbounded.size.w,
         "expected truncation: ellipsized {} should be < unbounded {}",
@@ -491,32 +405,18 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     );
 }
 
-/// A continuous font-size zoom over ellipsized text mints a distinct
-/// quantized size every frame, so the ellipsis reservation is recomputed
-/// throughout. Drive a long sweep of sizes through one budget and assert
-/// every one still lands inside it.
-/// The "…" advance is memoized per face, and one slot was not enough.
+/// A continuous font-size zoom over ellipsized text mints a new quantized size every frame; every size must still land inside one budget.
 ///
-/// Record order interleaves faces constantly — a header above its detail
-/// row, bold beside regular in one line, a tree sized per depth — and a
-/// single slot holding only the *last* face missed on every one of those
-/// truncations, giving back the whole ~29% the memo buys.
-///
-/// Driven at a fresh width each round so every call is a truncation
-/// *miss* and actually reaches the memo; a repeated width would hit the
-/// shaped-buffer cache and never ask.
+/// The "…" advance is memoized per face, and one slot was not enough: interleaved faces (header above detail, bold beside regular) missed on every truncation. Driven at a fresh width each round so each call reaches the memo.
 #[test]
 fn the_ellipsis_memo_survives_interleaved_faces() {
     const TEXT: &str = "a label far too long for the column it sits in";
     let mut c = CosmicMeasure::default();
-    // Two faces a real frame would interleave: body text and a heavier,
-    // larger heading.
     let faces = [
         shape(14.0).leading(18.0),
         shape(20.0).leading(24.0).weight(FontWeight::BOLD),
     ];
 
-    // Warm both, so what follows measures reuse rather than first touch.
     for face in faces {
         truncate(&mut c, TEXT, face.width(120.0), LineFit::Ellipsis);
     }
@@ -526,9 +426,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
         "premise: first touch of each face reshapes the marker once",
     );
 
-    // Now alternate, a fresh width each round — a drag over a two-style
-    // list. Every round is a truncation miss, and every one must still
-    // find its face.
+    // Alternate with a fresh width each round (a drag over a two-style list): every round is a truncation miss and must still find its face.
     for round in 0..8 {
         for face in faces {
             truncate(
@@ -550,8 +448,6 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
         "an interleaved second face must not evict the first",
     );
 
-    // And the slots are finite: more distinct faces than they hold does
-    // fall back to reshaping, which is what bounds them.
     let many: Vec<_> = (0..8)
         .map(|i| shape(10.0 + i as f32).leading(24.0))
         .collect();
@@ -574,7 +470,6 @@ fn ellipsis_stays_within_budget_under_size_churn() {
     let long = "the quick brown fox jumps over the lazy dog";
     let width = 60.0;
     for i in 0..261 {
-        // Distinct quantized size each iteration (0.1px steps × 64 ≥ 1).
         let fs = 8.0 + i as f32 * 0.1;
         let r = measure_truncated(
             &mut c,
@@ -590,14 +485,7 @@ fn ellipsis_stays_within_budget_under_size_churn() {
     }
 }
 
-/// A truncating fit paints exactly one visual line, including when the
-/// source has a hard newline in it.
-///
-/// The cut is taken from the *first layout run* of the cached unbounded
-/// probe, so everything past the newline is dropped before the prefix is
-/// ever reshaped. Worth pinning separately from the width cases: a
-/// truncating fit that measured two lines would break every caller that
-/// sizes a row from it.
+/// A truncating fit paints exactly one visual line even with a hard newline: the cut comes from the first layout run of the unbounded probe.
 #[test]
 fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     let mut c = CosmicMeasure::default();
@@ -617,9 +505,6 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
             "{fit:?} must fit the committed width, got w={}",
             r.size.w,
         );
-        // Every glyph kept belongs to the first line: none carries a
-        // source offset from past the newline, and none sits below the
-        // first line's band.
         let newline = text.find('\n').unwrap();
         for g in glyph_positions(&c, r.buffer_key()) {
             assert!(
@@ -631,7 +516,6 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
         }
     }
 
-    // The contrast: wrapping the same text keeps both paragraphs.
     let wrapped = c.measure(text, params);
     assert!(
         wrapped.size.h > one_line_h(params) * 2.0,

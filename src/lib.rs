@@ -5,23 +5,13 @@
         reason = "the README's showcase recording is a bare GitHub attachment URL, the only form GitHub expands into an inline player"
     )
 )]
-// Scoped to the library rather than set in `Cargo.toml`, because a
-// `[lints]` table reaches every target in the package: the bundled
-// examples are minimal teaching code, and a doc comment on each of their
-// throwaway helpers is noise in the one place a reader wants none.
+// Scoped to the library: a `[lints]` table would reach the examples too.
 #![warn(missing_docs)]
-// The README's counter example builds a `WinitHost`, so it only compiles as a
-// doctest when that feature is on. Without it the crate docs open at the
-// orientation section below instead.
+// The README's counter example builds a `WinitHost`, so it is a doctest only
+// with that feature.
 #![cfg_attr(feature = "winit", doc = include_str!("../README.md"))]
-// `WinitHost`, `WinitHostBuilder` and `HostHandle` are the windowed host's own
-// types, and the docs on the backend-agnostic items around them — `Ui`'s
-// window commands, `WindowConfig`, `WindowToken` — say what that host does
-// with each. Those sentences are worth as much to a reader building without
-// the feature, so they stay whole and their links go unresolved in that build
-// rather than every one of them carrying a second, link-free copy of itself.
-// The price is that a link broken for any other reason also passes there —
-// the default build is the one that still reports them.
+// Winit-host types stay linked from backend-agnostic docs, so those links go
+// unresolved without the feature; other broken links still show in the default build.
 #![cfg_attr(
     not(feature = "winit"),
     expect(
@@ -32,124 +22,83 @@
 //!
 //! # Where to start
 //!
-//! - [`prelude`] is the one import an application screen needs — the common
-//!   widgets, the layout vocabulary, and the [`Configure`] trait that carries
-//!   the setters every widget shares.
-//! - [`App`] is the lifecycle trait your application implements. Its
-//!   [`record`](App::record) runs every frame and describes the whole UI from
-//!   scratch — there is no retained widget tree to mutate.
-//! - [`WinitHost`] owns the event loop, windows, and GPU device, and calls
-//!   `record` for you. [`OffscreenHost`] is its headless peer: same `Ui`, same
-//!   frame lifecycle, rendering into a `wgpu::Texture` you supply.
-//! - [`Ui`] is the recorder handed to `record`. Widgets are appended to it,
-//!   cross-frame widget state hangs off it, and [`Ui::layer`] switches which
-//!   of the [`Layer`] arenas (main / popup / modal / tooltip / debug) receives
-//!   subsequent records.
-//! - Widgets are builders terminated by `show(ui)`: [`Button`], [`Text`],
-//!   [`TextEdit`], [`Slider`], [`Checkbox`], [`ComboBox`], [`Scroll`],
-//!   [`Popup`], [`Modal`] and the rest. Layout containers are [`Panel`]
-//!   (h/v/z-stack and canvas) and [`Grid`].
-//! - [`Configure`] carries the settings every node shares — identity, size,
-//!   padding, margin, alignment, visibility — so the same builder methods work
-//!   on any widget. It is a trait, so it has to be in scope; the [`prelude`]
-//!   is the usual way it gets there.
-//! - [`Theme`] is the one serializable style tree; per-widget sub-themes hang
-//!   off it.
-//! - [`GpuView`] hands a widget-sized `wgpu` render target to your own
-//!   [`GpuPaint`] implementation and composites the result like any other
-//!   image, so it clips, rounds, and z-orders with everything else.
-//! - [`widget`] is the other half of the surface: the node, the paint
-//!   primitives, and the text and animation plumbing a widget of your own is
-//!   built from. Nothing there is needed to compose the widgets above.
+//! - [`prelude`] is the one import an application screen needs.
+//! - [`App`] is the lifecycle trait; its [`record`](App::record) runs every frame
+//!   and describes the whole UI from scratch.
+//! - [`WinitHost`] owns the event loop, windows and GPU device; [`OffscreenHost`]
+//!   renders into a `wgpu::Texture` you supply.
+//! - [`Ui`] is the recorder handed to `record`; [`Ui::layer`] switches which
+//!   [`Layer`] arena (main / popup / modal / tooltip / debug) receives records.
+//! - Widgets are builders ended by `show(ui)`: [`Button`], [`Text`], [`TextEdit`],
+//!   [`Slider`], [`Checkbox`], [`ComboBox`], [`Scroll`], [`Popup`], [`Modal`] and
+//!   more. Containers are [`Panel`] (h/v/z-stack and canvas) and [`Grid`].
+//! - [`Configure`] carries the settings every node shares (identity, size,
+//!   padding, margin, alignment, visibility). It is a trait: it must be in scope,
+//!   which the [`prelude`] does.
+//! - [`Theme`] is the one serializable style tree.
+//! - [`GpuView`] hands a widget-sized `wgpu` render target to your [`GpuPaint`].
+//! - [`widget`] is the other half of the surface: what a widget of your own is
+//!   built from.
 //!
 //! # Sizing
 //!
-//! Layout is a WPF-style two pass (measure, then arrange), and [`Sizing`] is
-//! the vocabulary both passes speak:
+//! Layout is a WPF-style two pass (measure, then arrange); [`Sizing`] is its
+//! vocabulary:
 //!
-//! - [`Sizing::fixed`] is an exact extent, and is allowed to exceed the parent.
+//! - [`Sizing::fixed`] is an exact extent, allowed to exceed the parent.
 //! - [`Sizing::HUG`] is `min(content, available)`, floored at the largest
 //!   non-shrinkable thing inside (a fixed descendant, an explicit minimum, the
 //!   longest unbreakable word).
-//! - [`Sizing::fill`] takes the leftover, split between fill siblings by
-//!   weight; a sibling whose floor exceeds its share freezes at the floor and
-//!   the rest re-divide.
+//! - [`Sizing::fill`] takes the leftover, split by weight; a sibling whose floor
+//!   exceeds its share freezes at the floor and the rest re-divide.
 //!
-//! Children clamp down to fit their parent — a parent never grows to fit a
-//! child. Overflow happens only when rigid descendants genuinely do not fit.
+//! Children clamp to their parent; a parent never grows to fit a child.
 //!
 //! # Styling
 //!
 //! Three doors, widest first.
 //!
-//! - **[`Theme`]** is the whole style tree, and
-//!   [`Ui::set_theme`](Ui::set_theme) swaps it. Per-widget bundles hang
-//!   off it — [`Theme::button`], [`Theme::slider`], one per widget kind.
-//! - **`style(&…Theme)`** overrides the bundle for one call site. Every
-//!   themed widget has it, with the same shape everywhere: it takes an
-//!   `Option` as readily as a reference, so `.style(overrides.as_ref())`
-//!   works.
-//! - **A per-axis setter** — [`Text::color`], [`Separator::thickness`],
-//!   [`Spinner::diameter`], [`Modal::backdrop`] — overrides one field
-//!   without building a bundle.
+//! - **[`Theme`]** is the whole style tree ([`Ui::set_theme`](Ui::set_theme)
+//!   swaps it), with per-widget bundles ([`Theme::button`], [`Theme::slider`]).
+//! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
+//!   `Option`, so `.style(overrides.as_ref())` works.
+//! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],
+//!   [`Spinner::diameter`], [`Modal::backdrop`]) overrides one field.
 //!
-//! The third door is deliberately not on every widget. An axis gets a
-//! setter only where it has **one** meaning on that widget. [`Separator`]
-//! draws a single rule, so `color` can only mean that rule's; [`Slider`]
-//! draws a track, a fill and a knob, so a `color` there could not say
-//! which, and [`Button`] carries a colour per interaction state, so one
-//! setter would have to pick a state silently. Those widgets take the
-//! bundle instead, which names every part and every state.
-//!
-//! [`Background`] follows the same rule: a widget with one panel behind
-//! it takes one through its own `background()` — [`Panel`], [`Grid`],
-//! [`Block`], [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`],
-//! [`ContextMenu`] — and a widget whose chrome varies by state or spreads
-//! across parts has no such setter.
+//! The third door exists only where an axis has one meaning: [`Separator`] draws
+//! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a colour per
+//! state, so those take the bundle. [`Background`] follows the same rule: widgets
+//! with one panel behind them have `background()` ([`Panel`], [`Grid`], [`Block`],
+//! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`ContextMenu`]).
 //!
 //! # Feature flags
 //!
 //! | flag | default | what it does |
 //! | --- | --- | --- |
-//! | `winit` | yes | The winit-backed [`WinitHost`] — real windows and a real event loop. Without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
-//! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard, which is what [`TextEdit`]'s cut/copy/paste reaches. [`WinitHost`] always uses it; [`OffscreenHost`] asks through [`OffscreenHostBuilder::system_clipboard`]. Without it every host runs on an in-process buffer. |
-//! | `gpu-debug-markers` | no | Emits GPU debug groups around every draw step for RenderDoc / Xcode captures. Costs two recorded commands and a label copy per step even with no capture tool attached, so it is off unless you intend to capture. |
-//! | `profile-with-tracy` | no | Opens a Tracy zone over each frame pass, and marks a frame set per window. Needs the external Tracy viewer. |
-//! | `internals` | no | Test reach-ins and the test subsystems — adds the `internals` module: the frame harness, the shared fixtures, the headless test GPU. **Not a supported API**: it exists so the integration tests under `tests/` and the showcase can drive the crate, and it breaks without notice. |
-//! | `bench` | no | The source-level benchmark drivers, and the function-only facade the thin targets under `benches/` call. Implies `internals`, and adds the harness crates on top. Not a supported API either. |
-//! | `golden` | no | Adds the `golden` module — golden-image regression testing for suites that draw through Palantir. Its own flag because it is the only part of the surface that costs an image codec. |
+//! | `winit` | yes | The winit-backed [`WinitHost`]; without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
+//! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
+//! | `gpu-debug-markers` | no | GPU debug groups around every draw step for RenderDoc / Xcode captures; costs two commands and a label copy per step. |
+//! | `profile-with-tracy` | no | A Tracy zone per frame pass and a frame set per window. Needs the Tracy viewer. |
+//! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU). **Not a supported API.** |
+//! | `bench` | no | Benchmark drivers and the facade `benches/` calls. Implies `internals`. Not a supported API. |
+//! | `golden` | no | The `golden` module for golden-image tests of suites that draw through Palantir; costs an image codec. |
 //!
 //! # Colour
 //!
-//! [`RgbaF32`] holds **straight-alpha linear RGB**. The convenience constructors
-//! ([`RgbaF32::srgb`], [`RgbaF32::hex`], [`RgbaF32::from_srgba`]) read their
-//! input as sRGB-encoded and linearise it for you; [`RgbaF32::new`] takes
-//! values that are already linear. Everything
-//! downstream — blending, anti-aliasing, animation — runs in linear, and the
-//! sRGB encode happens on the GPU when writing the swapchain. Writing
-//! already-sRGB-encoded values into [`RgbaF32`] skips the linearisation and will
-//! come out wrong.
+//! [`RgbaF32`] holds **straight-alpha linear RGB**. The constructors
+//! ([`RgbaF32::srgb`], [`RgbaF32::hex`], [`RgbaF32::from_srgba`]) read sRGB and
+//! linearise; [`RgbaF32::new`] takes values already linear. Blending, anti-aliasing
+//! and animation run in linear, and the sRGB encode happens on the GPU at swapchain
+//! write, so sRGB values put into [`RgbaF32`] directly come out wrong.
 
-// Re-import `palantir` as a self-alias so proc-macros that emit
-// `::palantir::widget::Animatable` paths (from `palantir-anim-derive`) resolve
-// when the derive is used *inside* the crate (e.g. on `Stroke`,
-// `Background`). Outside the crate this path resolves naturally.
+// Self-alias so derive-emitted `::palantir::widget::Animatable` paths resolve
+// inside the crate.
 
 extern crate self as palantir;
 
-// A macro that says something about one subsystem is declared at the top of
-// the `mod.rs` that owns it, above its module list. `macro_rules!` without
-// `#[macro_export]` is scoped textually, so that placement — and only that
-// placement — hands the macro to every file in that subtree and to nothing
-// outside it. `widgets`, `widgets::theme`, `shape`, `primitives`, and
-// `primitives::paint::brush::gradient` each carry their own set on those terms, and
-// a second subtree wanting one of them is the sign it was filed in the wrong
-// place, not a reason to widen its reach.
-//
-// `common::flag_set` is the exception, and the only one: a bit-flag set is a
-// shape, not a fact about a subsystem, so the module carrying it is
-// `#[macro_use]` and declared first — textual scoping reaches only what comes
-// after it.
+// A macro about one subsystem is declared at the top of the `mod.rs` that owns it:
+// `macro_rules!` without `#[macro_export]` is textually scoped to that subtree.
+// `common::flag_set` is the exception: `#[macro_use]` and declared first.
 
 #[macro_use]
 pub(crate) mod common;
@@ -161,17 +110,13 @@ pub mod bench;
 pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod diagnostics;
-/// Per-output display state (physical size, the system and user scale
-/// factors, pixel-snap, refresh) — cross-cutting host/render vocabulary,
-/// read by `ui`, the renderer, and the host layer; not owned by any one
-/// subsystem.
+/// Per-output display state shared by host and renderer.
 pub(crate) mod display;
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
 pub(crate) mod input;
-/// Everything that does not ship — see the module doc. **Not a supported
-/// API.**
+/// Everything that does not ship. **Not a supported API.**
 #[cfg(any(test, feature = "internals"))]
 pub mod internals;
 pub(crate) mod layout;
@@ -185,42 +130,22 @@ pub(crate) mod widget_core;
 pub(crate) mod widgets;
 pub(crate) mod window;
 
-/// Golden-image regression testing, for suites that draw through Palantir and
-/// want to know when the drawing changes. Behind its own feature: it is the
-/// only thing here that costs an image codec.
+/// Golden-image regression testing for suites that draw through Palantir.
 #[cfg(feature = "golden")]
 pub mod golden;
 
-/// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
-/// the backend (timestamp-query + pipeline-statistics readback).
-/// Consumers (debug overlay, benches) hold a `Clone` of the same
-/// `GpuPassStats` the backend writes into — no global state;
-/// `OffscreenHost::gpu_pass_stats` is the canonical handle.
+/// GPU pass-timing and pipeline-statistics handles; clones share the backend's
+/// `GpuPassStats`.
 pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
-/// The `wgpu` Palantir was built against.
-///
-/// Re-exported because Palantir's surface is not wgpu-free, and cannot be:
-/// [`GpuPaint`] hands out a `Device` and a `CommandEncoder`, [`Gpu`]
-/// is built from a `Device` and a `Queue`, and [`RenderTarget`] borrows a
-/// `Texture`. Those four are the whole of it — every other host, driver and
-/// widget path names a Palantir type instead, and `clippy.toml` fails the
-/// build when a module outside `crate::gpu` reaches for a graphics-API type.
-///
-/// A consumer naming those from its own `wgpu` dependency has to keep that
-/// dependency semver-identical to this one by hand, and a mismatch turns
-/// every one of those types foreign at the call site. Going through this one
-/// cannot skew.
+/// The `wgpu` Palantir was built against. Re-exported because the surface is not
+/// wgpu-free: [`GpuPaint`] hands out a `Device` and `CommandEncoder`, [`Gpu`] is
+/// built from a `Device` and `Queue`, and [`RenderTarget`] borrows a `Texture`. A
+/// consumer's own `wgpu` must match this version exactly or these types go foreign.
 pub use wgpu;
 
-/// Format text straight into the frame's record store, with no `String` in
-/// between.
-///
-/// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!` — the
-/// allocation-free way to author a dynamic label. Widget text setters also
-/// accept a `String`, so `format!` compiles and reads the same; this is the
-/// form to reach for, because the bytes land directly in the arena the
-/// widget was going to copy them into anyway.
+/// Format text straight into the frame's record store with no `String`:
+/// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!`.
 ///
 /// ```
 /// # use palantir::{Button, Configure, Text, Ui, fmt};
@@ -230,9 +155,8 @@ pub use wgpu;
 /// # }
 /// ```
 ///
-/// The result is an [`InternedStr`] valid only for the pass that minted it —
-/// hand it to a widget in the same breath, as above. See [`Ui::fmt`] for the
-/// retention rules and [`Ui::intern`] for the format-less twin.
+/// The result is an [`InternedStr`] valid only for the pass that minted it. See
+/// [`Ui::fmt`] for retention and [`Ui::intern`] for the format-less twin.
 #[macro_export]
 macro_rules! fmt {
     ($ui:expr, $($args:tt)*) => {
@@ -240,12 +164,8 @@ macro_rules! fmt {
     };
 }
 
-/// What an application screen types, in one import.
-///
-/// **Reach for this first.** [`Configure`] carries the setters every widget
-/// shares — `.size()`, `.padding()`, `.gap()`, `.align()` — and it is a
-/// trait, so without it in scope `Button::new().size(..)` does not compile.
-/// A prelude is how you never have to know that.
+/// What an application screen types, in one import. Includes [`Configure`], a
+/// trait, without which `Button::new().size(..)` does not compile.
 ///
 /// ```
 /// use palantir::prelude::*;
@@ -258,10 +178,8 @@ macro_rules! fmt {
 /// }
 /// ```
 ///
-/// It holds the common case and not the whole crate: the theme's
-/// per-widget bundles, the docking model, the hosts, the colour models and
-/// the gradient builders stay at the crate root, and the widget-authoring
-/// half stays in [`widget`]. Import those by name when you need them.
+/// Not the whole crate: theme bundles, the docking model, hosts, colour models and
+/// gradient builders stay at the root; widget authoring stays in [`widget`].
 pub mod prelude {
     pub use crate::{
         Align, App, Axis, Background, Block, Brush, Button, Checkbox, ComboBox, Configure,
@@ -274,20 +192,10 @@ pub mod prelude {
     };
 }
 
-/// Authoring a widget: the node, the paint primitives, and the text and
-/// animation plumbing a widget of your own is built from.
-///
-/// **The other half of the surface.** The crate root is what an application
-/// types — the widgets, the theme, the host, the layout vocabulary. Nothing
-/// here is needed to compose the widgets Palantir ships, and everything here
-/// is needed to write one beside them. Every widget in this crate is written
-/// against exactly this module plus the root, which is what keeps the two
-/// complete: see `examples/showcase/pages/custom_widget.rs`, a widget
-/// built from nothing else.
-///
-/// The split is a namespace, not a permission — these are ordinary public
-/// items with one canonical path each, and an application that draws its own
-/// geometry reaches for [`Shape`](widget::Shape) as readily as a widget does.
+/// Authoring a widget: the node, paint primitives, and text and animation plumbing
+/// a widget of your own is built from. Nothing here is needed to compose shipped
+/// widgets; every widget in this crate uses only this module plus the root (see
+/// `examples/showcase/pages/custom_widget.rs`).
 pub mod widget {
     pub use crate::animation::animatable::Animatable;
     pub use crate::animation::animation_slot::AnimationSlot;
@@ -296,14 +204,13 @@ pub mod widget {
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
-    /// The paint-time animation curves the crate ships. A caller's own curve
-    /// is any `fn(f32) -> f32` over the same range — see [`PaintCurve`].
+    /// The paint-time animation curves the crate ships; a custom curve is any
+    /// `fn(f32) -> f32`, see [`PaintCurve`].
     pub use crate::scene::tree::paint_anims::curves;
     pub use crate::scene::tree::paint_anims::paint_animation::{
         PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
     };
-    /// The bound on [`Ui::add_shape`](crate::Ui::add_shape) — sealed, so it
-    /// names the shape kinds the crate ships and nothing else.
+    /// The bound on [`Ui::add_shape`](crate::Ui::add_shape); sealed.
     pub use crate::shape::Lower;
     pub use crate::shape::Shape;
     pub use crate::shape::curve::CurveShape;
@@ -337,8 +244,7 @@ pub use common::clipboard::{Clipboard, ClipboardUnavailable};
 pub use common::platform::{PLATFORM, Platform};
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
-/// The application's own scale factor, multiplied onto the one the
-/// platform reports. Written through
+/// The application's scale factor, multiplied onto the platform's. Written through
 /// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
 pub use gpu::device::device_requirements::DeviceRequirements;
@@ -349,10 +255,8 @@ pub use gpu::error::SurfaceError;
 pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
-/// The headless render-to-texture host — the offscreen peer of
-/// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
-/// instead of a swapchain (screenshots, thumbnails, server-side
-/// compositing); also backs the visual harness + GPU benches.
+/// The headless render-to-texture host: renders a `Ui` to a caller-supplied
+/// `wgpu::Texture` (screenshots, thumbnails). Also backs the visual harness.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 #[cfg(feature = "winit")]
 pub use host::winit::{
@@ -360,16 +264,15 @@ pub use host::winit::{
     error::{HostDisconnected, WinitHostError},
     handle::HostHandle,
 };
-/// The event a host feeds a `Ui`. Toolkit-independent, so a host of your
-/// own translates its platform's events into these — see
-/// [`OffscreenHost::on_input`].
+/// The event a host feeds a `Ui`; toolkit-independent (see
+/// [`OffscreenHost::on_input`]).
 pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
 pub use input::interaction::button_phase::ButtonPhase;
 pub use input::interaction::button_state::ButtonState;
 pub use input::interaction::drag::Drag;
-/// The verdict [`OffscreenHost::on_input`] reads back, so a host knows
-/// whether an event asks for a repaint.
+/// The verdict [`OffscreenHost::on_input`] reads back: whether an event asks for a
+/// repaint.
 pub use input::interaction::input_delta::InputDelta;
 pub use input::interaction::pointer_action::PointerAction;
 pub use input::interaction::pointer_edge::PointerEdge;
@@ -426,19 +329,11 @@ pub use primitives::paint::shadow::Shadow;
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
 pub use scene::layer::Layer;
-// Signed screen coordinates: `WindowConfig::position`,
-// `WindowPlacement.position`, `RasterImage.bearing`. Re-exported for the
-// reason `UVec2` and `Vec2` are — a consumer naming one of those would
-// otherwise need a `glam` dependency held semver-identical to this one by
-// hand.
+// Signed screen coordinates; re-exported so consumers need no matching `glam`.
 pub use glam::IVec2;
-// Re-exported (not an palantir type) because it's the canonical integer
-// pixel-extent across the public surface — `Display.physical`,
-// `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
-// (`.x` = width, `.y` = height). Saves consumers a direct `glam` dep.
+// Integer pixel extent (`Display.physical`, `WindowConfig` sizes); `.x` is width.
 pub use glam::UVec2;
-// `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
-// `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
+// Used by polyline points, `Configure::position` and `Canvas` placement.
 pub use glam::Vec2;
 pub use gpu::device::gpu_frame_context::GpuFrameContext;
 pub use gpu::device::gpu_init_context::GpuInitContext;

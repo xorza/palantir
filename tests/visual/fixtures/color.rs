@@ -1,13 +1,6 @@
 //! Colours reach the screen as the bytes they were written as.
 //!
-//! The CPU decodes a hex colour to linear light, and the GPU encodes it back
-//! at the sRGB target, so the two halves must be exact inverses, and every
-//! lane between them must hold the value at display precision. A cubic fit on
-//! the CPU side read `#1a1a1a` back as `#171717` and `#0a0a0a` as `#050505`.
-//! Linear bytes in the text, stroke, tint and mesh-vertex lanes then
-//! collapsed sRGB 8, 10 and 16 onto 13. Only a readback showed either. The
-//! ramp sits in the dark range, where one display step is smallest in
-//! linear light.
+//! CPU hex-to-linear decode and the GPU's sRGB encode must be exact inverses, and every lane between must hold display precision. A cubic fit once read `#1a1a1a` back as `#171717`; only a readback showed it. The ramp sits in the dark range, where one display step is smallest in linear light.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -23,8 +16,6 @@ use crate::harness::Harness;
 use palantir::Stroke;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
-/// One column per ramp value, each holding a block, a glyph, a line, an
-/// icon and a mesh in that value.
 const COLUMN: f32 = 20.0;
 const BLOCK_Y: f32 = 0.0;
 const TEXT_Y: f32 = 12.0;
@@ -117,8 +108,6 @@ fn a_dark_ramp_reads_back_as_authored() {
             want,
             "a mesh coloured #{v:02x}{v:02x}{v:02x}"
         );
-        // The glyph's edges are antialiased, so its fully covered pixels are
-        // the brightest in its column, and they carry the colour exactly.
         let brightest = (x..x + COLUMN as u32)
             .flat_map(|px| (TEXT_Y as u32..LINE_Y as u32 - 4).map(move |py| (px, py)))
             .map(|(px, py)| img.get_pixel(px, py).0)

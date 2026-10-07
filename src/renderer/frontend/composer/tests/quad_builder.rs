@@ -1,5 +1,4 @@
-//! A rect quad a composer test feeds, built up from the one most cases
-//! draw.
+//! A rect quad a composer test feeds, built up from the one most cases draw.
 
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
@@ -10,9 +9,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 
-/// A rect quad, opaque white, sharp and strokeless until a setter says
-/// otherwise — so a case spells only what it is about. Drawn at full
-/// alpha.
+/// A rect quad, opaque white, sharp and strokeless until a setter says otherwise, at full alpha.
 #[derive(Debug)]
 pub(super) struct QuadBuilder {
     rect: Rect,

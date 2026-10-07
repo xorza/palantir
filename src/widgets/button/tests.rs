@@ -43,9 +43,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
     assert_eq!(inherited.margin, Spacing::all(4.0));
 }
 
-/// A Button is a Tab stop a click focuses, and a focused one is clicked
-/// by Space and by Enter — once per press, through `clicked()` — while an
-/// unfocused or disabled one takes neither key.
+/// A Button is a Tab stop a click focuses; a focused one is clicked by Space and Enter once per press via `clicked()`, while an unfocused or disabled one takes neither.
 #[test]
 fn space_and_enter_click_a_focused_button() {
     use crate::input::keyboard::key::Key;

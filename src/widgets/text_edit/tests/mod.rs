@@ -50,13 +50,7 @@ fn apply_key_with_clipboard(
     blur
 }
 
-/// Every shape a widget paints, its descendants' included.
-///
-/// A [`Text`](crate::Text) paints on its own leaf; a [`TextEdit`] paints on the
-/// block child that carries its alignment — see [`block_of`] — so a reader
-/// asking "what did this widget draw" has to look through the subtree rather
-/// than at one node. Written once here because several tests below hand the
-/// same closure both kinds.
+/// Every shape a widget paints, descendants included: a [`Text`](crate::Text) paints on its own leaf, a [`TextEdit`] on the block child carrying its alignment ([`block_of`]).
 fn painted_shapes(ui: &Ui, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
     let tree = ui.tree(Layer::Main);
     iter::once(node)
@@ -64,13 +58,7 @@ fn painted_shapes(ui: &Ui, node: NodeId) -> impl Iterator<Item = &ShapeRecord> +
         .flat_map(move |n| tree.shapes_of(n))
 }
 
-/// The block child a field records its shapes on.
-///
-/// A field paints nothing itself but its chrome: the run, the selection wash
-/// and the caret go on a child whose placement inside the inner rect *is* the
-/// text alignment, so that the layout engine resolves it against the rect it
-/// has just arranged rather than the widget guessing from last frame's. See
-/// [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record).
+/// The block child a field records its shapes on. The run, selection wash and caret go on a child whose placement inside the inner rect is the text alignment, so layout resolves it against the freshly arranged rect. See [`PaintInput::record`](crate::widgets::text_edit::paint_input::PaintInput::record).
 fn block_of(ui: &Ui, field: NodeId) -> NodeId {
     ui.tree(Layer::Main)
         .children(field)
@@ -102,10 +90,7 @@ fn shift(key: Key) -> KeyPress {
     KeyPress::with(key, Modifiers::SHIFT)
 }
 
-/// Primary-modifier + key — the chord under which shortcuts like
-/// select-all / copy / cut / paste fire. `Modifiers::ctrl` is the
-/// platform-normalized command bit (Cmd on macOS, Ctrl elsewhere), so
-/// tests just set `ctrl`.
+/// Primary-modifier + key, the chord for select-all / copy / cut / paste. `Modifiers::ctrl` is the platform command bit (Cmd on macOS).
 fn ctrl_press(key: Key) -> KeyPress {
     KeyPress::with(key, Modifiers::CTRL)
 }
@@ -124,8 +109,7 @@ fn editor_and_button(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
                 .id(WidgetId::from_hash("editor"))
                 .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                 .show(ui);
-            // Not focusable: these tests are about a press on a widget a
-            // click does not focus, and a `Button` is focusable by default.
+            // Not focusable: these tests press a widget a click doesn't focus, and `Button` is focusable by default.
             Button::new()
                 .id(WidgetId::from_hash("plain"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
@@ -149,11 +133,7 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
     }
 }
 
-/// Multi-line builder flag: `Enter` inserts `\n` (instead of being
-/// ignored), `Cmd/Ctrl+V` preserves clipboard newlines, and cursor
-/// navigation works in 2D. Driven via `apply_key` directly for the
-/// state-machine assertions; the full show()+layout path is exercised
-/// separately by `align_per_line::multiline_widget_right_aligns_each_line`.
+/// Multi-line flag: `Enter` inserts `\n`, paste preserves newlines, cursor navigation is 2D. Driven via `apply_key`; the show()+layout path is covered by `align_per_line::multiline_widget_right_aligns_each_line`.
 fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

@@ -20,13 +20,12 @@ fn harness() -> UiHarness {
     UiHarness::with_text(UVec2::new(420, 560))
 }
 
-/// How many nodes the popup layer holds — zero while the chip is closed.
+/// Nodes the popup layer holds; zero while closed.
 fn panel_nodes(h: &UiHarness) -> usize {
     h.ui.layout(Layer::Popup).rect.len()
 }
 
-/// One click on a chip at the surface's corner. The input queue lands a
-/// press a frame before the release behind it, so each takes a frame.
+/// One click on a chip at the surface's corner; press and release take a frame each.
 fn click_chip(h: &mut UiHarness, mut frame: impl FnMut(&mut UiHarness)) {
     h.press_at(Vec2::new(10.0, 10.0));
     frame(h);
@@ -34,8 +33,7 @@ fn click_chip(h: &mut UiHarness, mut frame: impl FnMut(&mut UiHarness)) {
     frame(h);
 }
 
-/// The chip opens on a click and closes on the next one, and it keeps that
-/// state without the caller threading it.
+/// The chip opens on a click and closes on the next, keeping state itself.
 #[test]
 fn the_chip_toggles_its_panel() {
     let id = WidgetId::from_hash("color-button-toggle");
@@ -60,12 +58,7 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
 }
 
-/// The popup shows the picker as the caller configured it, under the
-/// chip's `id.with("picker")` unless the picker names its own id. Its
-/// swatch row is off by default, as a picker's is; `history(true)` shows
-/// the picker's own and `swatches` a row of the app's. `texel_size`
-/// reaches the field's texture: one texel per `n` px, rounded up, so the 4
-/// default builds a quarter of the 1 one on each axis.
+/// The popup shows the picker as configured, under `id.with("picker")` unless the picker names an id. The swatch row is off by default; `history(true)` and `swatches` add rows. `texel_size` is one texel per `n` px, rounded up.
 #[test]
 fn panel_settings_reach_the_picker() {
     use crate::primitives::paint::color::color_model::ColorModel;
@@ -137,8 +130,7 @@ fn panel_settings_reach_the_picker() {
     }
 }
 
-/// Opening the panel does not touch the colour. Only a gesture inside it
-/// does.
+/// Opening the panel leaves the colour alone; only a gesture inside changes it.
 #[test]
 fn opening_the_panel_is_not_an_edit() {
     let id = WidgetId::from_hash("color-button-no-edit");
@@ -161,8 +153,7 @@ fn opening_the_panel_is_not_an_edit() {
     assert_eq!(color, before);
 }
 
-/// What one open popup measured: its chrome's corners, its body height, and
-/// the side of the preview chip inside it.
+/// One open popup's chrome corners, body height and preview chip side.
 #[derive(Debug)]
 struct Opened {
     corners: Corners,
@@ -170,7 +161,7 @@ struct Opened {
     preview: f32,
 }
 
-/// Open the chip under `style` and measure what it dropped.
+/// Open the chip under `style` and measure the popup.
 fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let id = WidgetId::from_hash("color-button-theme");
     let mut h = harness();
@@ -201,20 +192,12 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     }
 }
 
-/// The popup wears the picker theme's chrome and gutter, and the panel inside
-/// it takes the same bundle — one `.style(..)` on the chip restyles the whole
-/// of what it drops. The popup painted nothing before, and the panel inside
-/// ignored the chip's style.
-///
-/// Differential, so no value is baked in: against the stock theme, the styled
-/// body is taller by exactly the padding it gained on two edges plus what the
-/// preview chip grew by, and its corners are the styled radius.
+/// The popup and the panel inside it wear the picker theme's chrome and gutter, so one `.style(..)` restyles both. Differential against stock: body taller by the gained padding plus the chip growth, corners the styled radius.
 #[test]
 fn the_popup_takes_the_picker_theme() {
     let stock = ColorPickerTheme::default();
     let custom = ColorPickerTheme {
-        // Same stroke as stock, so the band the tree folds into the padding
-        // is the same on both sides of the difference.
+        // Same stroke as stock, so the folded band matches on both sides.
         popup: Background {
             corners: Corners::all(9.0),
             ..stock.popup.clone()
@@ -233,9 +216,7 @@ fn the_popup_takes_the_picker_theme() {
     assert_eq!(plain.preview, stock.chip_size, "stock preview");
     assert_eq!(styled.preview, custom.chip_size, "styled preview");
 
-    // Two edges of padding, (19 - 8) * 2 = 22, plus the preview's 30: the chip
-    // is taller than the bar beside it on both sides of the difference, so
-    // the bars row grows by exactly what the chip does.
+    // Two edges of padding (19 - 8) * 2 = 22, plus the preview's 30; the bars row grows by what the chip does.
     let padding = custom.popup_padding.sums().h - stock.popup_padding.sums().h;
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }

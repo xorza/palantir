@@ -1,5 +1,5 @@
-//! The assembled colour picker: the panel, what it retains between frames,
-//! and the rule that decides which control's write reaches the bound colour.
+//! The assembled colour picker: the panel, its retained state, and the rule
+//! deciding which control's write reaches the bound colour.
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -35,29 +35,23 @@ use std::rc::Rc;
 mod history;
 
 /// A colour picker: the saturation/value field, a hue bar, an optional alpha
-/// bar, a preview chip, the channel values, the model switch and a swatch
-/// row.
+/// bar, a preview chip, the channel values, the model switch and a swatch row.
 ///
-/// Arranges the family's four other widgets and owns nothing they do not — an
-/// app wanting a different layout takes [`ColorField`], [`ColorStrip`] and
-/// [`ColorSwatch`] and builds it.
+/// Arranges the family's other widgets; an app wanting a different layout
+/// builds it from [`ColorField`], [`ColorStrip`] and [`ColorSwatch`].
 ///
 /// # What writes what
 ///
-/// Each control writes only the part of the colour it owns, and the picker
-/// never rebuilds the rest from its axes. That matters at more than the
-/// margins: a small wedge of sRGB around pure blue is outside the Okhsv cube
-/// (see [`Okhsv`](crate::Okhsv)), so a picker that rebuilt the colour every
-/// time the opacity moved would quietly shift `#0000ff` to `#0037ff`.
+/// Each control writes only the part of the colour it owns; the picker never
+/// rebuilds the rest from its axes. A wedge of sRGB around pure blue lies
+/// outside the Okhsv cube (see [`Okhsv`](crate::Okhsv)), so rebuilding on an
+/// opacity change would shift `#0000ff` to `#0037ff`.
 ///
 /// # Retained state
 ///
-/// The axes, the hex text and the history live in the response map, keyed off
-/// this widget's id. The axes are retained rather than re-derived because
-/// black has no hue and grey has no saturation: a picker that read them back
-/// from the colour every frame would lose the hue the moment the value
-/// reached zero. They *are* re-derived when the bound colour changes from
-/// outside, which is how a caller's own edit moves the handles.
+/// The axes, hex text and history live in the response map keyed off this
+/// widget's id. The axes are retained because black has no hue and grey no
+/// saturation; they are re-derived when the bound colour changes from outside.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorPicker<'a> {
@@ -70,10 +64,8 @@ pub struct ColorPicker<'a> {
     style: Option<&'a ColorPickerTheme>,
 }
 
-/// Where the swatch row's colours come from, if it shows at all.
-///
-/// One field with two setters rather than two fields with a precedence rule:
-/// the last call wins and no combination can conflict.
+/// Where the swatch row's colours come from, if it shows. One field with two
+/// setters, so the last call wins and none can conflict.
 #[derive(Debug)]
 enum Swatches<'a> {
     /// No row. The default.
@@ -88,12 +80,10 @@ enum Swatches<'a> {
 #[derive(Debug, Default)]
 struct PickerState {
     coords: ColorCoords,
-    /// The colour this picker last wrote or seeded from, `None` before the
-    /// first frame. Any other value in the binding is an edit from outside,
-    /// and re-seeds the axes.
+    /// The colour this picker last wrote or seeded from. Any other value in the
+    /// binding is an outside edit and re-seeds the axes.
     written: Option<RgbaF32>,
-    /// The hex field's buffer, rewritten from the colour whenever the field
-    /// does not hold focus.
+    /// The hex field's buffer, rewritten from the colour when unfocused.
     hex: String,
     history: History,
 }
@@ -113,24 +103,20 @@ impl<'a> ColorPicker<'a> {
         }
     }
 
-    /// Show the alpha bar and the opacity value. Off by default: most colours
-    /// an app picks are opaque, and a bar for an axis nobody moves is one
-    /// more thing to read past.
+    /// Show the alpha bar and the opacity value. Off by default.
     pub const fn alpha(mut self, on: bool) -> Self {
         self.alpha = on;
         self
     }
 
-    /// Pin the model instead of letting the user switch it. The switch itself
-    /// only shows when the model is not pinned.
+    /// Pin the model instead of letting the user switch it; the switch hides.
     pub const fn model(mut self, model: ColorModel) -> Self {
         self.model = Some(model);
         self
     }
 
-    /// Show a swatch row the picker fills itself: the preset colours, with
-    /// each committed pick moving to the front. Replaces
-    /// [`swatches`](Self::swatches).
+    /// Show a swatch row the picker fills itself: presets, with each committed
+    /// pick moving to the front. Replaces [`swatches`](Self::swatches).
     pub const fn history(mut self, on: bool) -> Self {
         self.swatches = if on {
             Swatches::Owned
@@ -140,15 +126,15 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// Show a swatch row the app owns. Clicking one picks it; the picker
-    /// never writes to the slice. Replaces [`history`](Self::history).
+    /// Show a swatch row the app owns; clicking picks, and the picker never
+    /// writes the slice. Replaces [`history`](Self::history).
     pub const fn swatches(mut self, colors: &'a [RgbaF32]) -> Self {
         self.swatches = Swatches::Given(colors);
         self
     }
 
-    /// The edge of one texel of the field and the bars, in physical pixels.
-    /// See [`ColorField::texel_size`].
+    /// The edge of one texel of the field and bars, in physical pixels; see
+    /// [`ColorField::texel_size`].
     ///
     /// # Panics
     ///
@@ -159,30 +145,26 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `color_picker`.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// The bound colour as it stands before `show`: what a
-    /// [`ColorButton`](crate::ColorButton) paints its chip with.
+    /// The bound colour before `show`, for a [`ColorButton`](crate::ColorButton) chip.
     pub const fn color(&self) -> RgbaF32 {
         *self.color
     }
 
     /// Record the panel and report what it did to the bound colour.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        // An `Rc` bump on the theme bundle, so the rows can borrow their
-        // styles out of it across the `&mut Ui` the record below takes.
+        // An `Rc` bump so rows can borrow styles across the `&mut Ui` record.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
         let gap = domain::length_at_least(slot.gap, 0.0);
 
-        // The panel is as wide as its field and no wider. Every row below is
-        // `FILL` inside that, which is what keeps the value grid's columns a
-        // fixed width instead of one the digits inside them push around.
+        // As wide as the field; every row is `FILL` inside, keeping the value
+        // grid's columns a fixed width.
         let mut widget = self.widget.gap(gap).default_size((
             Sizing::fixed(domain::length_at_least(slot.field_width, 1.0)),
             Sizing::HUG,
@@ -229,10 +211,8 @@ impl Configure for ColorPicker<'_> {
     }
 }
 
-/// Everything the panel body needs that is not the retained state.
-///
-/// A bundle rather than seven arguments: the body is one function because
-/// the state borrow has to span every row.
+/// Everything the panel body needs besides the retained state, bundled because
+/// the state borrow must span every row.
 #[derive(Debug)]
 struct Inputs<'a> {
     id: WidgetId,
@@ -245,13 +225,13 @@ struct Inputs<'a> {
 }
 
 /// Columns the value grid is built on. Four, so the hex field spans two and
-/// every channel box lands on the same width as the one above it.
+/// every channel box matches the one above it.
 const VALUE_COLUMNS: usize = 4;
 
 /// Space between a channel's caption and its value.
 const LABEL_GAP: f32 = 2.0;
 
-/// What one frame of the panel — or one cell of it — did to the colour.
+/// What one frame of the panel or one cell of it did to the colour.
 #[derive(Debug, Default)]
 struct Edit {
     changed: bool,
@@ -269,17 +249,15 @@ struct Writes {
     /// The hex field, an RGB value or a swatch named a colour outright.
     exact: Option<RgbaF32>,
     committed: bool,
-    /// A pick the history keeps: a pointer gesture released, a value
-    /// typed and committed, a swatch clicked. Not a keyboard nudge — each
-    /// arrow press commits, and sixteen of them would evict the whole row
-    /// with near-identical shades.
+    /// A pick the history keeps: a released pointer gesture, a committed typed
+    /// value, a swatch click. Not a keyboard nudge, as sixteen arrow presses
+    /// would evict the row with near-identical shades.
     remember: bool,
 }
 
-/// The colour the panel shows: the bound one, unless an axis moved this
-/// frame. Built from the axes alone, it would show their clamped reading
-/// of the bound colour — `#0000ff` seeds Okhsv at s = v = 1, which is
-/// `#0037ff` — though the binding still holds `#0000ff`.
+/// The colour the panel shows: the bound one unless an axis moved this frame.
+/// Built from the axes alone it would show their clamped reading (`#0000ff`
+/// seeds Okhsv at s = v = 1, which is `#0037ff`).
 fn shown(state: &PickerState, bound: RgbaF32, writes: &Writes) -> RgbaF32 {
     let color = if writes.axes {
         state.coords.to_color()
@@ -308,8 +286,8 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
     let bar = domain::length_at_least(theme.bar_thickness, 1.0);
     let chip = domain::length_at_least(theme.chip_size, 1.0);
 
-    // An edit from outside moves the handles; the picker's own writes do not
-    // come back through here, which is what lets black keep its hue.
+    // An outside edit moves the handles; the picker's own writes do not come
+    // back through here, which lets black keep its hue.
     if state.written != Some(*color) {
         let model = pinned.unwrap_or_else(|| state.coords.model());
         state.coords = ColorCoords::new(model, *color, state.coords.hue());
@@ -388,7 +366,7 @@ fn body(ui: &mut Ui, state: &mut PickerState, inputs: Inputs<'_>) -> Edit {
 }
 
 /// Fold this frame's writes into the bound colour, rebuilding only the part
-/// the control that moved actually owns.
+/// the moved control owns.
 fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
     let next = if let Some(exact) = writes.exact {
         exact
@@ -417,14 +395,9 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
     }
 }
 
-/// The hex field and the six channel values, in one grid of four equal
-/// columns.
-///
-/// A grid rather than two rows of flexed cells, because the columns have to
-/// agree between the rows: a value box that changed width under a drag —
-/// or sat a gap's width off the one above it — would make a drag read as the
-/// row rearranging itself rather than as one number changing. The mono face
-/// the theme puts on them finishes the job at the digit level.
+/// The hex field and six channel values, in one grid of four equal columns, so
+/// columns agree between rows: a value box changing width under a drag would
+/// read as the row rearranging. The theme's mono face finishes the job.
 #[expect(
     clippy::cast_sign_loss,
     reason = "the channel is clamped to 0..=255 before the cast"
@@ -484,8 +457,7 @@ fn values_grid(
                         .id(hex_id)
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
-                    // A buffer that parses to the colour already shown is no
-                    // edit: tabbing through the field commits nothing.
+                    // A buffer parsing to the colour already shown is no edit.
                     if hex.committed
                         && let Ok(parsed) = state.hex.trim().parse::<RgbaF32>()
                         && !same_rgb(parsed.to_srgba_u8(), quantized)
@@ -496,9 +468,8 @@ fn values_grid(
                     }
                 });
 
-            // The cell beside the hex field shows opacity where the picker
-            // edits alpha, and the value axis where it does not — so the
-            // grid's last free cell completes H, S and V.
+            // The cell beside the hex field shows opacity where alpha is
+            // edited and the value axis otherwise, completing H, S and V.
             if alpha_on {
                 let cell = GridCell::at(0, 2);
                 let r = value_cell(ui, id, theme, "A %", cell, &mut opacity, 100.0);
@@ -554,12 +525,9 @@ fn values_grid(
         });
 }
 
-/// One grid cell: the channel's caption over the value it names, a drag from
-/// zero to `top`, so the number gets the column's whole width.
-///
-/// The caption carries the unit — `A %`, `H °` — rather than the value
-/// carrying a suffix. A three-digit number and a suffix do not both fit a
-/// quarter of the panel, and the unit is the half that never changes.
+/// One grid cell: the channel's caption over its value, a drag from zero to
+/// `top`. The caption carries the unit (`A %`, `H °`) so the number gets the
+/// column's whole width.
 fn value_cell(
     ui: &mut Ui,
     id: WidgetId,
@@ -569,8 +537,8 @@ fn value_cell(
     value: &mut i64,
     top: f64,
 ) -> Edit {
-    // Keyed on the channel letter alone: the caption carries the unit too,
-    // and an id that moved when a unit changed would drop the widget's state.
+    // Keyed on the channel letter alone: an id that moved with the unit would
+    // drop the widget's state.
     let cell_id = id.with(&caption[..1]);
     let mut edit = Edit::default();
     Panel::vstack()

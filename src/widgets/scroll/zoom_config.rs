@@ -1,7 +1,4 @@
-//! Pivot-anchored zoom configuration for a `Scroll::both`.
-//!
-//! [`ZoomModifier`] and [`ZoomPivot`] are [`ZoomConfig`]'s own axes —
-//! neither means anything without it — so all three share a file.
+//! Pivot-anchored zoom configuration for a `Scroll::both`, with its two axes [`ZoomModifier`] and [`ZoomPivot`].
 
 use crate::primitives::math::domain;
 use std::ops::RangeInclusive;
@@ -9,29 +6,24 @@ use std::ops::RangeInclusive;
 /// What kind of input triggers a zoom step. See [`ZoomConfig::with_modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
-    /// Hold `Ctrl` and turn the wheel. Default. Bare wheel pans as
-    /// today. Ctrl is the zoom modifier on every platform (macOS Cmd
-    /// is not honored — matches the shortcut layer).
+    /// `Ctrl` + wheel (default); bare wheel pans. Cmd on macOS is not honored, matching the shortcut layer.
     Ctrl,
-    /// Plain wheel always zooms (rare; for image viewers without pan).
+    /// Plain wheel always zooms (image viewers without pan).
     Always,
-    /// Wheel always pans; only pinch gestures zoom. Touch-first apps.
+    /// Wheel pans; only pinch zooms (touch-first).
     PinchOnly,
 }
 
-/// Where the zoom step pivots — the point that stays fixed across the
-/// scale change.
+/// Where the zoom step pivots: the point that stays fixed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomPivot {
-    /// Pointer position (in widget-local coords). Default — the point
-    /// under the cursor stays put across the zoom step.
+    /// Pointer position in widget-local coords (default).
     Pointer,
     /// Viewport center.
     Center,
 }
 
-/// Per-widget zoom configuration. Attach to a `Scroll::both` via
-/// [`Scroll::zoomable`](crate::Scroll::zoomable) / [`Scroll::zoom_config`](crate::Scroll::zoom_config).
+/// Per-widget zoom configuration for a `Scroll::both`; see [`Scroll::zoomable`](crate::Scroll::zoomable) and [`Scroll::zoom_config`](crate::Scroll::zoom_config).
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct ZoomConfig {
@@ -42,9 +34,7 @@ pub struct ZoomConfig {
 }
 
 impl ZoomConfig {
-    /// Configure the inclusive zoom range and multiplicative wheel factor.
-    /// Both range ends and `step` are *positive*; a reversed range is
-    /// ordered.
+    /// The inclusive zoom range and multiplicative wheel factor; a reversed range is ordered.
     ///
     /// # Panics
     ///

@@ -1,43 +1,15 @@
-//! Per-thread counting allocator. Wraps `System`; while a thread is
-//! "in audit" (set by [`with_audit`] around the measured frames),
-//! increments thread-local counters on every `alloc` / `realloc` and
-//! captures a `backtrace::Backtrace` so failures can point at the
-//! offending call site. `dealloc` is always delegated unchanged — we
-//! count heap *operations*, not residency.
+//! Per-thread counting allocator wrapping `System`. While a thread is in audit
+//! ([`with_audit`]) every `alloc` / `realloc` bumps thread-local counters and
+//! captures an unresolved backtrace; `dealloc` is delegated unchanged (heap
+//! *operations*, not residency).
 //!
-//! Per-thread (not global) counters are deliberate: cargo runs tests
-//! in parallel on the same process, and a global counter would let
-//! other tests' setup allocations on other threads leak into our
-//! audit window. Gating on the per-thread `IN_AUDIT` flag means only
-//! the auditing thread's audit-window allocs ever increment.
+//! Counters are per-thread because cargo runs tests in parallel; the blind spot is
+//! allocation on other threads, which holds while the frame path spawns none.
+//! `CAPTURING` is a re-entry guard so bookkeeping allocs neither recurse nor count.
 //!
-//! The price is a blind spot: an allocation on any other thread is never
-//! counted. That holds for now because the frame path spawns no thread —
-//! the crate has no worker pool. Work handed to one would allocate where
-//! no window sees it, and every audit would still read zero.
-//!
-//! `CAPTURING` is a per-thread re-entry guard so the bookkeeping
-//! allocs (Vec growth in `TRACES`, backtrace internals) neither
-//! recurse forever nor get counted.
-//!
-//! Nothing is counted while the thread is panicking. Beyond the counts
-//! being meaningless once a frame is unwinding rather than rendering,
-//! this is what keeps the suite off a Windows deadlock. Stack walking and
-//! symbol resolution both go through `dbghelp`, which is single-threaded;
-//! the `backtrace` crate and the copy vendored into std serialize on one
-//! shared named mutex to cope, and that mutex is recursive per thread. So
-//! a panic hook printing its own backtrace (`RUST_BACKTRACE=1`, which CI
-//! sets) allocates, re-enters this allocator, and walks the stack again
-//! from inside dbghelp's own call — reacquiring the outer mutex happily
-//! while blocking on dbghelp's internal ones. With a second test thread
-//! panicking at the same time the two wedge each other, and the `alloc`
-//! binary hangs until the job times out.
-//!
-//! Capture is unresolved (`new_unresolved`) so the hot path is just a
-//! stack walk, and symbol resolution runs lazily inside the harness
-//! when a fixture fails. A window keeps the first [`TRACE_CAP`] of
-//! them. Cost is nil for a passing test: a steady-state audit
-//! allocates zero times, so it walks nothing.
+//! Nothing is counted while panicking: on Windows a panic hook printing a backtrace
+//! re-enters this allocator inside single-threaded `dbghelp`, and two panicking
+//! threads deadlock the `alloc` binary.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
@@ -57,26 +29,16 @@ thread_local! {
     static TRACES: RefCell<Vec<Backtrace>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Allocation traces one audit window keeps. The counters stay exact; this
-/// bounds the diagnostic alone.
-///
-/// A failing frame names its offender in the first few sites, and the
-/// harness reports how many it dropped. The bound is what keeps the cost of
-/// a failure flat: every capture walks the stack, and every one the harness
-/// prints resolves symbols. Windows does both through `dbghelp`, behind one
-/// process-wide mutex it shares with the panic printer, at a cost no other
-/// platform charges — an unbounded window there ran four of this harness's
-/// own tests past a minute each, and the job was canceled before they
-/// finished.
+/// Allocation traces one audit window keeps. Counters stay exact; this bounds only
+/// the diagnostic, and failure cost: on Windows an unbounded window ran four
+/// harness tests past a minute each (captures and symbol resolution share
+/// `dbghelp`'s process-wide mutex).
 pub(crate) const TRACE_CAP: usize = 8;
 
 #[inline]
 fn track(size: usize) {
-    // A panicking thread is unwinding, not rendering a frame: what it
-    // allocates belongs to the panic machinery, not to the audit window.
-    // Skipping it is also what keeps this allocator out of `dbghelp`
-    // underneath a panic hook already inside it — see the module docs.
-    // `panicking()` is a thread-local read, so the hot path is unmoved.
+    // A panicking thread is unwinding, not rendering; skipping it keeps this
+    // allocator out of `dbghelp` under a panic hook.
     if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) || thread::panicking() {
         return;
     }
@@ -115,21 +77,19 @@ unsafe impl GlobalAlloc for CountingAllocator {
 pub(crate) struct AuditResult {
     pub(crate) allocs: u64,
     pub(crate) bytes: u64,
-    /// The window's first [`TRACE_CAP`] allocation sites. Past the cap
-    /// `allocs` keeps counting, so it can name more allocations than there
-    /// are traces.
+    /// The window's first [`TRACE_CAP`] allocation sites; `allocs` keeps counting
+    /// past the cap.
     pub(crate) traces: Vec<Backtrace>,
 }
 
-/// RAII guard: clears `IN_AUDIT` on drop so a panic mid-audit can't
-/// strand the flag and poison subsequent operations on this thread.
+/// RAII guard: clears `IN_AUDIT` on drop so a panic mid-audit cannot strand the
+/// flag.
 #[derive(Debug)]
 struct AuditGuard;
 
 impl AuditGuard {
-    /// Panics inside an open window: the inner one would drain the outer
-    /// one's traces on entry and clear its flag on exit, so the outer
-    /// window would go on silently counting nothing.
+    /// Panics inside an open window: the inner would drain the outer's traces and
+    /// clear its flag.
     fn enter() -> Self {
         assert!(
             !IN_AUDIT.with(Cell::get),
@@ -146,14 +106,8 @@ impl Drop for AuditGuard {
     }
 }
 
-/// Run `f` with allocation counting + backtrace capture enabled on
-/// the current thread. Returns the allocation delta and drained
-/// `TRACES` buffer scoped to `f`. On panic inside `f`, the guard's
-/// `Drop` clears `IN_AUDIT` so the thread is left in a clean state
-/// before the panic continues unwinding.
-///
-/// Drains any stale `TRACES` from a previous call on this thread
-/// before entering, so callers don't have to remember.
+/// Run `f` with allocation counting and backtrace capture on this thread, returning
+/// the delta and the traces scoped to `f`. Stale traces are drained first.
 pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
     let guard = AuditGuard::enter();
     TRACES.with(|t| t.borrow_mut().clear());
@@ -168,10 +122,9 @@ pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
     }
 }
 
-/// The counter, the capture and the guard: per-thread semantics the
-/// fixtures rely on without checking — exact counts, silence outside a
-/// window, isolation from sibling threads, a bookkeeping path that stays
-/// out of the count, and a guard that survives a panicking body.
+/// The counter, capture and guard: exact counts, silence outside a window,
+/// sibling-thread isolation, bookkeeping kept out of the count, and a guard that
+/// survives a panicking body.
 #[cfg(test)]
 mod tests {
     use crate::allocator::{TRACE_CAP, with_audit};
@@ -182,7 +135,6 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
 
-    /// Force one heap alloc that the optimizer can't hoist or elide.
     fn one_alloc() {
         black_box(Box::new(black_box(0u64)));
     }
@@ -216,17 +168,9 @@ mod tests {
 
     #[test]
     fn sibling_thread_allocs_do_not_pollute_audit() {
-        // Spawn the worker *before* entering audit (thread::spawn allocates
-        // on the caller). An AtomicBool start flag signals the worker to
-        // begin its burst once we're inside the audit window; `t.join()` is
-        // the trailing happens-before barrier — no second wait needed.
-        //
-        // Why not `std::sync::Barrier`: on macOS, the first
-        // `Barrier::wait` lazily heap-allocates the underlying pthread
-        // `Mutex` (via `OnceBox<Mutex>::get_or_init` → `Box::pin`), which
-        // would land on the auditing thread inside `with_audit` and pollute
-        // the delta. Linux uses futex-based mutexes with no lazy alloc.
-        // Atomics never allocate.
+        // Spawn the worker *before* the audit (spawn allocates on the caller); a
+        // start flag releases its burst inside the window. Not `Barrier`: on macOS
+        // its first `wait` lazily heap-allocates on the auditing thread.
         let go = Arc::new(AtomicBool::new(false));
         let g2 = Arc::clone(&go);
         let t = thread::spawn(move || {
@@ -252,12 +196,9 @@ mod tests {
 
     #[test]
     fn re_entry_guard_keeps_counter_and_traces_aligned() {
-        // The bookkeeping path (Vec growth in TRACES, Backtrace internals)
-        // calls back into the allocator. CAPTURING must suppress those, or the
-        // counter would run past what the body allocated and the capture would
-        // recurse. The sub-cap row allocates TRACES' initial buffer and grows it
-        // once, and the row above the cap is what proves the bound leaves the
-        // count alone.
+        // Bookkeeping (`TRACES` growth, Backtrace internals) re-enters the
+        // allocator and `CAPTURING` must suppress it; the above-cap row proves the
+        // bound leaves the count alone.
         for allocs in [TRACE_CAP - 1, 64] {
             let r = with_audit(|| {
                 for _ in 0..allocs {
@@ -276,12 +217,8 @@ mod tests {
         }
     }
 
-    /// If `with_audit`'s body panics, the guard's Drop must clear IN_AUDIT
-    /// so a follow-up `with_audit` on this thread starts clean. Without the
-    /// guard the flag would stay stuck and the post-panic audit would
-    /// inherit allocations from the unwinding path (drop glue, panic
-    /// reporting, etc.). A nested window is one such panic: it would drain
-    /// the outer window's traces and clear its flag, so it is refused.
+    /// A panic in `with_audit`'s body must leave `IN_AUDIT` cleared for the next
+    /// audit. A nested window is one such panic, so it is refused.
     #[test]
     fn audit_guard_clears_in_audit_on_panic() {
         let scene_panics: fn() = || panic!("scene panicked");

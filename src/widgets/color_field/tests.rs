@@ -68,10 +68,7 @@ fn the_pointer_maps_onto_the_axes() {
     }
 }
 
-/// Dragging past a corner clamps to it, which is the only way a pointer
-/// reaches an axis end — the last pixel's centre is half a pixel short of it.
-/// The gamut edge lives at `s = 1`, so a picker that could not clamp could
-/// not reach it.
+/// Dragging past a corner clamps to it: the only way a pointer reaches an axis end (the gamut edge is `s = 1`).
 #[test]
 fn a_drag_past_the_edge_clamps_to_it() {
     let id = WidgetId::from_hash("field-clamp");
@@ -110,10 +107,7 @@ fn changed_and_committed_are_edges() {
     assert!(!changed && !committed, "no residual signals");
 }
 
-/// Arrows step 0.005 and Shift-arrows ten steps, PageUp/PageDown page the
-/// value axis by 0.1, and Home/End jump the saturation axis to its ends.
-/// Each case starts from `s = v = 0.5`, so the expected axis is that plus
-/// the key's travel, in the order the handler adds it.
+/// Arrows step 0.005 (Shift: ten), PageUp/PageDown page the value axis by 0.1, Home/End jump saturation.
 #[test]
 fn keys_walk_both_axes() {
     use crate::input::keyboard::key::Key;
@@ -147,13 +141,9 @@ fn keys_walk_both_axes() {
     }
 }
 
-/// The texture is sRGB-encoded, because that is what `Rgba8UnormSrgb` decodes
-/// on sample. Writing linear bytes instead would paint the whole field far too
-/// bright, and nothing else in the crate would catch it.
-///
-/// Two columns and three rows put a texel at `s = 0.25, v = 0.5` on hue 0. In
-/// HSV that is `R = v`, `G = B = v(1 - s)` as **encoded** components: 0.5 and
-/// 0.375, so 128 and 96. Read as linear the same colour would be 188 and 166.
+/// The texture is sRGB-encoded (as `Rgba8UnormSrgb` decodes on sample); linear bytes would paint far too
+/// bright. A texel at `s = 0.25, v = 0.5` on hue 0 has HSV `R = v`, `G = B = v(1 - s)` as encoded
+/// components 0.5 and 0.375, so 128 and 96 (188 and 166 if read as linear).
 #[test]
 fn texels_are_srgb_encoded() {
     let mut image = Image::blank(UVec2::new(2, 3));
@@ -164,8 +154,6 @@ fn texels_are_srgb_encoded() {
 #[test]
 fn a_hue_change_repaints_the_whole_field() {
     let id = WidgetId::from_hash("field-repaint");
-    // A surface the field is a small part of, so the damage stays partial
-    // rather than tripping the full-repaint coverage threshold.
     let mut h = UiHarness::new(UVec2::new(800, 600));
     let mut state = coords(0.3, 0.5, 0.5);
     frame(&mut h, id, &mut state);
@@ -242,13 +230,9 @@ struct SampleError {
     at: Vec2,
 }
 
-/// The texel sizes [`texel_size_four_tracks_the_exact_colour`]
-/// compares: exact, the default, and coarse.
 const TEXEL_SIZES: [u32; 3] = [1, 4, 16];
 
-/// The worst channel error of the field at each of [`TEXEL_SIZES`] for one
-/// `hue` slice, drawn at scale 1.5. The exact colour of a pixel is the same
-/// at every factor, so it is converted once and compared three times.
+/// The worst channel error at each of [`TEXEL_SIZES`] for one `hue` slice at scale 1.5.
 fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
     const SCALE: f32 = 1.5;
     let pixels = UVec2::new(
@@ -294,20 +278,11 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
     worst
 }
 
-/// The default resolution holds the field within nine 8-bit steps of the
-/// exact colour, one texel per pixel is exact, and a coarse one is worse.
-/// All three matter: the last is what proves the knob does the work the
-/// first credits it with, and the middle proves the error is the sampling
-/// rather than the conversion.
-///
-/// The bound is where it is because the worst pixel sits on the top edge,
-/// `v = 1`, where the ramp along the gamut boundary is steepest — Okhsv at
-/// the saturated corner, HSV at the white one. See
-/// [`ColorField::texel_size`](crate::ColorField::texel_size) for the table.
+/// The default holds the field within nine 8-bit steps of the exact colour, one texel per pixel is exact,
+/// and a coarse one is worse. The worst pixel is on the top edge, `v = 1`, where the gamut-boundary ramp is
+/// steepest; see [`ColorField::texel_size`](crate::ColorField::texel_size) for the table.
 #[test]
 fn texel_size_four_tracks_the_exact_colour() {
-    // One thread per model and hue slice; each slice's worst is folded in
-    // hue order, so a tie keeps the earlier slice's place.
     let errors = thread::scope(|scope| {
         let sweeps = ColorModel::ALL.map(|model| {
             array::from_fn::<_, 12, _>(|step| {
@@ -344,9 +319,7 @@ fn texel_size_four_tracks_the_exact_colour() {
     }
 }
 
-/// The field's surface — its texture and the image behind it — lives on
-/// the field's own id, so it leaves with the field rather than outliving
-/// it.
+/// The field's surface (texture and image) lives on its own id, so it leaves with the field.
 #[test]
 fn the_surface_leaves_with_the_field() {
     use crate::primitives::paint::color::color_model::ColorModel;

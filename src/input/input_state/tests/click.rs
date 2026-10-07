@@ -10,17 +10,15 @@ use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
-/// A gap between two presses that stays inside [`DOUBLE_CLICK_WINDOW`].
-/// Stated rather than left to the harness clock, which stands still
-/// until a test moves it — every click would otherwise be simultaneous.
+/// A gap inside [`DOUBLE_CLICK_WINDOW`], explicit because the harness clock
+/// stands still until moved.
 const IN_WINDOW: Duration = Duration::from_millis(100);
 const _: () = assert!(IN_WINDOW.as_millis() < DOUBLE_CLICK_WINDOW.as_millis());
 
 #[test]
 fn input_state_press_release_emits_click() {
-    // Frame 1 lays out the button; frame 2 reads .left.clicked() after a
-    // press+release pair lands inside its rect; frame 3 confirms the
-    // click is one-shot.
+    // Frame 1 lays out the button; frame 2 reads .left.clicked() after a press +
+    // release inside its rect; frame 3 confirms the click is one-shot.
     let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = build_button(WidgetId::from_hash("target"));
     h.frame(build);
@@ -47,7 +45,6 @@ fn input_state_press_release_emits_click() {
 
 #[test]
 fn stack_sense_routing() {
-    // (label, sense, click_pos, expects_stack_click, expects_stack_hover, expects_child_click).
     let cases: &[(&str, Sense, Vec2, bool, bool, bool)] = &[
         (
             "sense_none_passes_through",
@@ -124,14 +121,12 @@ fn stack_sense_routing() {
     }
 }
 
-/// A disabled widget covers what it is painted over. It keeps the sense
-/// it declared, so it is still the target the press routes to, and it
-/// answers nothing — the widget beneath neither clicks nor takes the
-/// focus the press would have moved.
+/// A disabled widget covers what it is painted over: it keeps its declared
+/// sense, so the press still routes to it, but it answers nothing; the widget
+/// beneath neither clicks nor takes focus.
 ///
-/// The `Sense::NONE` case is the control: an inert cover really is a
-/// hole, so the stack, the position and the harness are all sound, and
-/// the disabling alone is what stops the press in the other case.
+/// The `Sense::NONE` case is the control: an inert cover is a hole, so only
+/// the disabling stops the press in the other case.
 #[test]
 fn a_disabled_cover_absorbs_the_press_it_is_painted_over() {
     use crate::widgets::block::Block;
@@ -362,9 +357,8 @@ fn secondary_click_press_release_emits_secondary_clicked() {
 
 #[test]
 fn two_left_clicks_within_window_emit_double_clicked() {
-    // Two clicks on the same widget within DOUBLE_CLICK_WINDOW must
-    // set `double_clicked` on the second-click frame. The first click
-    // alone must not fire it (otherwise every click would double).
+    // Two clicks within DOUBLE_CLICK_WINDOW set `double_clicked` on the second;
+    // the first alone must not.
     let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -381,26 +375,21 @@ fn two_left_clicks_within_window_emit_double_clicked() {
         build(ui);
     });
 
-    // First click — must report clicked but not double_clicked.
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "first click should fire `clicked`");
     assert!(!double, "first click must not fire `double_clicked`");
 
-    // Second click, 100 ms on — must report both.
     h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "second click should still fire `clicked`");
     assert!(double, "second click should fire `double_clicked`");
 
-    // One-shot: a follow-up frame with no input clears the flag.
     let [_, still] = h.frame_value(build);
     assert!(!still, "double_clicked is one-shot");
 
-    // Third click within the window must NOT re-fire double_clicked —
-    // the timer reset on the previous fire so the third click is the
-    // first half of a potential new pair.
+    // A third click must NOT re-fire: the timer reset on the previous fire.
     h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
@@ -408,14 +397,10 @@ fn two_left_clicks_within_window_emit_double_clicked() {
     assert!(!double, "third click must not chain another double");
 }
 
-/// A double click that follows an idle gap is still a double click.
-///
-/// A press carries the time it arrived, and an event-driven host runs no
-/// frame at all while nothing happens. Stamped with the frame clock
-/// instead, the first press of a pair would carry the *last frame's*
-/// time — from before the idle — and the pair would measure the idle
-/// rather than the 100 ms between the two presses. Waking an app and
-/// double-clicking it is an ordinary interaction.
+/// A double click after an idle gap is still a double click. A press carries
+/// its arrival time, and an event-driven host runs no frame while idle; stamped
+/// with the frame clock, the first press would carry the last frame's time and
+/// measure the idle instead of the 100 ms between presses.
 #[test]
 fn a_double_click_survives_the_idle_before_it() {
     let mut h = UiHarness::new(BUTTON_SURFACE);
@@ -434,14 +419,12 @@ fn a_double_click_survives_the_idle_before_it() {
         build(ui);
     });
 
-    // Ten seconds of nothing: no input, and so no frame either.
     h.advance(Duration::from_secs(10));
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
     assert!(single, "the waking click is a click");
     assert!(!double, "and the first of a pair is not a double");
 
-    // 100 ms later, well inside the window that separates the two.
     h.advance(IN_WINDOW);
     h.click_at(Vec2::new(50.0, 20.0));
     let [single, double] = h.frame_value(build);
@@ -455,9 +438,8 @@ fn a_double_click_survives_the_idle_before_it() {
 
 #[test]
 fn two_clicks_outside_radius_do_not_double_click() {
-    // Same widget, within the window, but the second press lands more
-    // than `DOUBLE_CLICK_RADIUS` from the first — a slow drift between
-    // presses is two clicks, not a double.
+    // Within the window, but the second press is more than `DOUBLE_CLICK_RADIUS`
+    // away: a slow drift is two clicks.
     let mut h = UiHarness::new(BUTTON_SURFACE);
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -483,8 +465,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
         "control: the first click"
     );
 
-    // Second click on the same Button, inside the window but ~20px
-    // away — must NOT double.
+    // Second click inside the window but ~20px away: must NOT double.
     h.advance(IN_WINDOW);
     h.click_at(Vec2::new(40.0, 20.0));
     let [single, double] = h.frame_value(build);
@@ -497,8 +478,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
 
 #[test]
 fn click_on_different_widget_resets_double_click() {
-    // Two clicks within the window but on different widgets must NOT
-    // fire double_clicked — the gesture is per-id.
+    // Different widgets within the window must NOT double; the gesture is per-id.
     let surface = UVec2::new(300, 80);
     let mut h = UiHarness::new(surface);
     // Each button's click count this frame.
@@ -550,8 +530,7 @@ fn left_and_right_click_are_independent() {
         build(ui);
     });
 
-    // Left-press, then a right press+release while left is still held —
-    // both should latch separately.
+    // Left-press, then a right press+release while left is held: latch separately.
     h.press_at(Vec2::new(50.0, 20.0));
     h.press_button(PointerButton::Right);
     h.release_button(PointerButton::Right);
@@ -562,10 +541,9 @@ fn left_and_right_click_are_independent() {
     assert!(rc, "right click should still fire alongside left");
 }
 
-/// An action absorbed by a frame that never records (inert background
-/// click under `OnDelta`, then a PaintOnly wake) must not stay
-/// latched: the drain clears it, or the next real record pass sees
-/// `take_action_flag() == true` with empty queues and runs a spurious
+/// An action absorbed by a frame that never records (inert click under
+/// `OnDelta`, then a PaintOnly wake) must not stay latched, or the next record
+/// pass sees `take_action_flag() == true` with empty queues and runs a spurious
 /// second layout pass.
 #[test]
 fn drain_per_frame_queues_clears_action_latch() {
@@ -579,10 +557,9 @@ fn drain_per_frame_queues_clears_action_latch() {
 }
 
 /// `press_count` numbers the multi-press run on the press edge (unlike
-/// `clicked`, which fires on the release): presses on the same target
-/// within the double-click window + radius chain 1 → 2 → 3; a press past
-/// the radius restarts at 1. It rides only the frame that processed the
-/// press — other frames read 0.
+/// `clicked`, on release): same-target presses within the window and radius
+/// chain 1, 2, 3; one past the radius restarts at 1. Only the processing frame
+/// carries it; others read 0.
 #[test]
 fn press_started_counts_multi_press_runs() {
     fn probe(h: &mut UiHarness) -> u8 {
@@ -614,8 +591,7 @@ fn press_started_counts_multi_press_runs() {
     h.release();
     probe(&mut h);
 
-    // Past DOUBLE_CLICK_RADIUS (5 px), inside the window: the run
-    // restarts.
+    // Past DOUBLE_CLICK_RADIUS (5 px), inside the window: the run restarts.
     h.advance(IN_WINDOW);
     h.press_at(Vec2::new(80.0, 20.0));
     assert_eq!(probe(&mut h), 1, "far press restarts the run");
@@ -624,16 +600,12 @@ fn press_started_counts_multi_press_runs() {
 
 /// **The collation and the poll never disagree about what happened.**
 ///
-/// [`Ui::pointer_actions`] and [`Ui::response_for`] read the same capture state
-/// from opposite ends — one walks the buttons and says what each did, the other
-/// asks one widget whether any of it was about them. Two answers to one question
-/// is a thing to pin rather than to trust, so every edge below is checked
-/// against the `Response` the same frame hands back.
+/// [`Ui::pointer_actions`] and [`Ui::response_for`] read the same capture
+/// state from opposite ends, so every edge below is checked against the
+/// `Response` the same frame returns.
 ///
-/// Read per pass: a frame whose input settles something records twice, and the
-/// second pass is given none of it, so pass B's answer is `false` for the poll
-/// and empty for the collation alike. That the two agree *about that too* is
-/// half of what this is checking.
+/// Read per pass: a frame that settles input records twice and the second pass
+/// gets none, so pass B is `false` for the poll and empty for the collation.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::interaction::button_phase::ButtonPhase;
@@ -652,8 +624,8 @@ fn pointer_actions_report_the_edges_the_response_reports() {
         edge,
     };
 
-    // The press frame. A capture is latched on the press and destroyed by the
-    // release, so no frame carries both edges.
+    // The press frame. The capture latches on press and is destroyed by release,
+    // so no frame carries both edges.
     h.press_at(Vec2::new(50.0, 20.0));
     let pressed = h.frame_passes(|ui| {
         let edges = ui.pointer_actions().collect::<Vec<_>>();

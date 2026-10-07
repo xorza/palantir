@@ -1,12 +1,6 @@
-//! A settled dock frame, at the scale a real editor runs one: three
-//! panes, two dividers, several chips per strip.
+//! A settled dock frame at a real editor's scale: three panes, two dividers, several chips per strip.
 //!
-//! The claim under audit is the composition, not any one widget. A dock
-//! frame runs a scan over last frame's responses, a recursive walk onto
-//! two `Splitter`s, a `TabStrip` per pane whose items are rebuilt every
-//! frame from the application's own answers, and a per-chip context menu
-//! that stays closed — every one of them a place a fresh `Vec` would be
-//! easy to write and invisible to look at.
+//! Audits the composition: the response scan, the recursive `Splitter` walk, a `TabStrip` per pane rebuilt each frame, and a closed per-chip context menu.
 
 use palantir::internals::frame_fixture::dock_fixture::DockFixture;
 
@@ -18,8 +12,7 @@ fn settled_dock_frame_alloc_free() {
     Audit::new().run(move |ui| dock.record(ui));
 }
 
-/// The two-call surface pays no more than the one-call one: the caller's
-/// own op buffer is the same reused `Vec` `run` keeps internally.
+/// The two-call surface allocates no more than the one-call one: the caller's op buffer is the same reused `Vec`.
 #[test]
 fn scan_then_record_is_alloc_free_too() {
     let mut dock = DockFixture::default();

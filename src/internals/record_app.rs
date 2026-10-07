@@ -4,8 +4,7 @@ use crate::app::App;
 use crate::ui::Ui;
 use crate::window::window_token::WindowToken;
 
-/// An [`App`] that is nothing but its record closure — what every test
-/// driving frames actually wants.
+/// An [`App`] that is only its record closure.
 #[derive(Debug)]
 pub struct RecordApp<F> {
     record: F,

@@ -20,10 +20,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 
-/// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
-/// node has both runs shaped (`text_spans[node].len == 2`) at distinct
-/// `TextShapeKey`s (no identity-reuse collision). Replaces the
-/// old "one ShapeRecord::Text per leaf" hard assert.
+/// Pin: two `ShapeRecord::Text` on one node are both shaped (`text_spans[node].len == 2`) at distinct `TextShapeKey`s.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let mut h = UiHarness::with_text(UVec2::new(400, 400));
@@ -54,11 +51,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     );
 }
 
-/// Pin: encoder emits one `DrawText` per `ShapeRecord::Text` in record
-/// order, and `local_rect: Some(lr)` shifts the emitted rect by
-/// `lr.min` (relative to the owner). Without per-shape `text_ordinal`
-/// indexing or the `local_rect` branch, the second run would either
-/// re-paint the first's shaped buffer or sit on top of the first.
+/// Pin: the encoder emits one `DrawText` per `ShapeRecord::Text` in record order, and `local_rect: Some(lr)` shifts the rect by `lr.min`.
 #[test]
 fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     let mut h = UiHarness::with_text(UVec2::new(400, 400));
@@ -93,13 +86,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     );
 }
 
-/// Pin: the cross-frame measure cache replays multi-text leaves
-/// correctly. Frame 1 populates the cache; frame 2 hits and rebases
-/// the snapshot's subtree-local spans + flat text-shapes back into
-/// the per-frame buffer. Without correct rebase (e.g. forgetting
-/// `dest_start += text_shapes.len()` or storing global indices in
-/// the snapshot), frame 2 would either read from the wrong slot or
-/// see stale `TextShapeKey`s.
+/// Pin: the cross-frame measure cache replays multi-text leaves: frame 2 hits and must rebase the snapshot's subtree-local spans and text-shapes into the per-frame buffer.
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     let mut h = UiHarness::with_text(UVec2::new(400, 400));
@@ -130,51 +117,28 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     );
 }
 
-/// A `Fill` text child costs one bounded reshape per frame of a resize
-/// drag, and the drag stays bounded — through the real layout stack, not
-/// just `TextSystem` in isolation.
-///
-/// Two things could break quietly here. `WrapSlot` caches exactly one
-/// width-bounded resolve per reuse row, so a driver that measured one
-/// node at two widths in a frame would evict it twice over and
-/// `supersede` a buffer it was about to reuse; no driver does that today
-/// (stacks take `intrinsic` for sizing then `measure` once at the
-/// resolved share, and grid does the same per cell), and the 1-shape
-/// count below is what says so. And `supersede` is the only signal that
-/// makes the probation window reachable, so if the reuse row ever stopped
-/// surviving a drag frame, retention would silently fall back to the
-/// 120-frame protected window.
+/// A `Fill` text child costs one bounded reshape per frame of a resize drag, through the real layout stack. `WrapSlot` caches one width-bounded resolve per reuse row, so a driver measuring a node at two widths would evict it and `supersede` a buffer it was about to reuse; the 1-shape count pins that. `supersede` is also the only signal that makes the probation window reachable.
 #[test]
 fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
     // Frame 0 shapes the unbounded root and the first bounded resolve.
     h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
 
-    // Redrawing at the same width reshapes nothing: the layout measure
-    // cache short-circuits the subtree entirely, so `TextSystem` is never
-    // even asked.
+    // Redrawing at the same width reshapes nothing: the measure cache short-circuits the subtree.
     let before = h.ui.shaper().cache_counts();
     h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
     let steady = h.ui.shaper().cache_counts() - before;
     assert_eq!(steady.shapes, 0, "a steady frame must not reshape");
     assert_eq!(steady.supersedes, 0, "nor demote the buffer still in use");
 
-    // Now drag the share. Every frame commits a fresh whole-pixel width.
-    //
-    // Every changed frame demotes the width it replaced, including the
-    // first one after the still frames above — reuse rows outlive a frame
-    // they were not measured in, so the wrap slot is still there to say
-    // which key to supersede.
+    // Drag the share: every frame commits a fresh whole-pixel width and demotes the one it replaced, including the first after the still frames (reuse rows outlive a frame they were not measured in).
     let mut shapes = 0;
     let mut supersedes = 0;
     for frame in 0..12 {
         let before = h.ui.shaper().cache_counts();
         h.frame_value(|ui| chat_message(ui, 40.0 + frame as f32 * 3.0, PARAGRAPH, 14.0));
         let d = h.ui.shaper().cache_counts() - before;
-        // The unbounded root is shaped once for the whole drag; only the
-        // bounded resolve moves. More than one means a driver measured
-        // this node at two widths in the same frame, which would also
-        // thrash the single-slot `WrapSlot`.
+        // The unbounded root is shaped once for the whole drag; more than one means a driver measured this node at two widths in a frame.
         assert!(
             d.shapes <= 1,
             "drag frame {frame} reshaped {} times, so some driver committed \
@@ -203,11 +167,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     );
 }
 
-/// Two `ShapeRecord::Text` runs in one leaf:
-///   slot 0: "first" at `local_rect: Some((0, 0)+100x20)`,
-///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
-/// Returns the leaf NodeId so callers can read `text_spans` /
-/// emitted commands. Used by the multi-text-per-leaf pinning tests.
+/// Two `ShapeRecord::Text` runs in one leaf (slot 0 "first" at `(0, 0)+100x20`, slot 1 "second-with-different-text" at `(0, 22)+100x20`); returns the leaf `NodeId`.
 fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
     let leaf_id = WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {

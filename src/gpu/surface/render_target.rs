@@ -1,37 +1,19 @@
-//! The texture a frame is rendered into, and the one fact about it that
-//! travels outside this module.
+//! The texture a frame renders into, and its format.
 
 use glam::UVec2;
 
-/// A texture Palantir renders a frame into.
-///
-/// The handle every target arrives as: a window's acquired swapchain frame,
-/// and the texture an [`OffscreenHost`](crate::OffscreenHost) caller supplies.
-/// Borrowed rather than owned, because a swapchain frame lives only until it
-/// is presented.
-///
-/// This is the seam an application meets. Palantir's host and driver code
-/// passes it around without naming a graphics-API type, and
-/// [`RenderTarget::new`] is where a caller that owns its own device hands one
-/// in, checked there rather than on the first frame.
+/// A texture Palantir renders a frame into; borrowed.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderTarget<'a> {
     texture: &'a wgpu::Texture,
 }
 
 impl<'a> RenderTarget<'a> {
-    /// Render into `texture`.
-    ///
-    /// The renderer writes linear light and relies on the target to encode
-    /// it, so the format must be an sRGB one or a float one (`Rgba16Float`,
-    /// `Rgba32Float`, `Rg11b10Ufloat`). The texture must allow
-    /// `RENDER_ATTACHMENT`; with `COPY_DST` as well, a host presenting
-    /// through its backbuffer copies onto it, and without it draws onto it.
+    /// Render into `texture`; the format must be sRGB or float, usage must include `RENDER_ATTACHMENT`.
     ///
     /// # Panics
     ///
-    /// Panics when the format is neither sRGB nor float, or the usage lacks
-    /// `RENDER_ATTACHMENT`.
+    /// Panics on a non-sRGB/float format or usage lacking `RENDER_ATTACHMENT`.
     #[track_caller]
     pub fn new(texture: &'a wgpu::Texture) -> Self {
         assert!(
@@ -53,12 +35,7 @@ impl<'a> RenderTarget<'a> {
         TargetFormat(self.texture.format())
     }
 
-    /// Whether a finished frame can be copied onto this target.
-    ///
-    /// False for a GLES swapchain image, which *is* the default framebuffer:
-    /// nothing can be copied onto it, so EGL offers `RENDER_ATTACHMENT` alone.
-    /// The backbuffer reaches such a target by being drawn instead — see
-    /// [`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto).
+    /// Whether a frame can be copied onto this target (false for a GLES swapchain image).
     pub(crate) fn takes_copy(self) -> bool {
         self.texture.usage().contains(wgpu::TextureUsages::COPY_DST)
     }
@@ -68,18 +45,12 @@ impl<'a> RenderTarget<'a> {
     }
 }
 
-/// The texel format of a [`RenderTarget`].
-///
-/// Opaque on purpose. Outside this module a format is compared and keyed on —
-/// a change of it rebuilds the pipelines and invalidates what the driver
-/// retained — and never read for what it means.
+/// The texel format of a [`RenderTarget`]; opaque, only compared and keyed on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
-    /// Name a format directly, for a caller that has one in hand before it
-    /// has a texture to read it off. The format rule is
-    /// [`RenderTarget::new`]'s.
+    /// Name a format directly, under [`RenderTarget::new`]'s rule.
     ///
     /// # Panics
     ///
@@ -93,9 +64,7 @@ impl TargetFormat {
         Self(format)
     }
 
-    /// True if a target in `format` encodes the linear light the shaders
-    /// write. A unorm target would store it as is, and everything renders
-    /// too dark — sRGB 0x80 grey lands as 0x37 — with no error.
+    /// True if a target in `format` encodes linear light (unorm renders too dark).
     fn encodes_linear(format: wgpu::TextureFormat) -> bool {
         format.is_srgb()
             || matches!(
@@ -111,8 +80,7 @@ impl TargetFormat {
     }
 }
 
-/// A render-target extent in the driver's own type. Depth is always one:
-/// every target Palantir draws into is a 2D texture.
+/// A render-target extent; depth is always one.
 pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
     wgpu::Extent3d {
         width: size.x,
@@ -126,11 +94,7 @@ pub(crate) mod internals {
     use crate::gpu::surface::render_target;
     use glam::UVec2;
 
-    /// A single-sample 2D render target of `size` — the one descriptor the
-    /// test device and the bench device both mint targets from.
-    ///
-    /// `label` shows up in RenderDoc and in wgpu's validation errors, so
-    /// it should name the test or driver, not the shape.
+    /// A single-sample 2D render target of `size`.
     pub(crate) fn texture(
         device: &wgpu::Device,
         label: &str,
@@ -159,9 +123,7 @@ mod tests {
     use crate::internals::panic_probe;
     use glam::UVec2;
 
-    /// A target encodes linear light, so its format is sRGB or float, and
-    /// it must take a render pass. Either flaw panics where the target is
-    /// named rather than on the first frame.
+    /// Panics when the format is not sRGB/float or usage lacks a render pass.
     #[test]
     fn targets_check_their_format_and_usage() {
         use wgpu::{TextureFormat as F, TextureUsages as U};

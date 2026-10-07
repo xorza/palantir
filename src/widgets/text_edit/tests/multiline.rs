@@ -50,8 +50,7 @@ fn single_line_widget_normalizes_host_newlines() {
     assert!(changed, "normalizing host content is an observable edit");
 }
 
-/// Paste in multi-line mode preserves clipboard newlines (the
-/// sanitize-on-paste behaviour is gated to single-line only).
+/// Paste in multi-line mode preserves clipboard newlines (sanitizing is single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
     let mut h = UiHarness::with_text(UVec2::new(300, 200));
@@ -68,9 +67,7 @@ fn multiline_paste_keeps_newlines() {
     assert_eq!(st.edit.caret, buf.len());
 }
 
-/// Selection across hard breaks via Shift+Down: anchor at start,
-/// caret moves to the next line at the same x. Selection range
-/// straddles the `\n`.
+/// Shift+Down across hard breaks: anchor at start, caret to the next line at the same x; the selection straddles the newline.
 #[test]
 fn multiline_selection_crosses_newline() {
     let mut h = UiHarness::with_text(UVec2::new(300, 200));
@@ -90,8 +87,7 @@ fn multiline_selection_crosses_newline() {
         st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",
     );
-    // Anchor stays at 3, caret jumped past the \n (byte 6) onto the
-    // second line.
+    // Anchor stays at 3, caret past the newline (byte 6) on the second line.
     assert_eq!(st.edit.selection, Some(3));
     assert!(
         st.edit.caret > 6 && st.edit.caret <= buf.len(),

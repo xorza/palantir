@@ -1,5 +1,5 @@
-//! Driver tests, grouped by the decision each one pins: present-mode
-//! selection, output validity, and the record-store lifecycle.
+//! Driver tests, grouped by the decision each pins: present-mode selection, output
+//! validity, record-store lifecycle.
 
 mod present_mode_tests {
     use crate::damage::Damage;
@@ -11,8 +11,8 @@ mod present_mode_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::render_plan::RenderPlan;
 
-    /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
-    /// against, so a `w×h` damage rect carries `coverage = w·h / 10_000`.
+    /// 100×100 logical surface (10_000 px²) the partial fixtures collapse against:
+    /// a `w×h` rect has `coverage = w·h / 10_000`.
     const SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 
     fn full() -> RenderPlan {
@@ -21,9 +21,8 @@ mod present_mode_tests {
             damage: Damage::Full,
         }
     }
-    /// One `Rect` of `w·h` px², built through `collapse_from` against
-    /// [`SURFACE`] so its coverage is `w·h / 10_000` — exactly what the
-    /// damage engine seals in the real path.
+    /// One `Rect` of `w·h` px² built through `collapse_from` against [`SURFACE`],
+    /// as the damage engine seals it.
     fn partial(w: f32, h: f32) -> RenderPlan {
         let damage = DamageRegion::collapse_from(
             &[Rect::new(0.0, 0.0, w, h)],
@@ -42,9 +41,8 @@ mod present_mode_tests {
 
     #[test]
     fn backbuffer_copy_fills_target_through_backbuffer() {
-        // Fresh target each call: paint via the backbuffer (the requested plan,
-        // Full or Partial), skip copies it out — the whole target is filled.
-        // Backbuffer freshness is irrelevant here (every frame touches it).
+        // Fresh target each call: paint via the backbuffer (Full or Partial), skip
+        // copies it out.
         for fresh in [false, true] {
             assert_eq!(
                 present_path(Some(full()), BackbufferCopy, fresh),
@@ -60,8 +58,6 @@ mod present_mode_tests {
 
     #[test]
     fn direct_adaptive_full_and_skip() {
-        // A whole-surface repaint goes straight in; a skip is a noop. Neither
-        // depends on backbuffer freshness.
         for fresh in [false, true] {
             assert_eq!(
                 present_path(Some(full()), DirectAdaptive, fresh),
@@ -73,14 +69,11 @@ mod present_mode_tests {
 
     #[test]
     fn direct_adaptive_small_partial_tracks_backbuffer_freshness() {
-        // 10×10 = 100 px² ⇒ coverage 0.01, well under the 0.4 promote line.
         let small = partial(10.0, 10.0);
-        // Fresh: the backbuffer mirrors the target, so paint just the region.
         assert_eq!(
             present_path(Some(small), DirectAdaptive, true),
             ViaBackbuffer(small)
         );
-        // Stale (after a direct frame): resync with one full repaint first.
         assert_eq!(
             present_path(Some(small), DirectAdaptive, false),
             ViaBackbuffer(full())
@@ -89,8 +82,6 @@ mod present_mode_tests {
 
     #[test]
     fn direct_adaptive_large_partial_promotes_to_direct() {
-        // 80×80 = 6_400 px² ⇒ coverage 0.64 > 0.4: a large partial repaints
-        // direct (dropping the copy) regardless of backbuffer freshness.
         let large = partial(80.0, 80.0);
         for fresh in [false, true] {
             assert_eq!(
@@ -102,10 +93,9 @@ mod present_mode_tests {
 
     #[test]
     fn direct_adaptive_promote_threshold_is_strict() {
-        // Coverage at-or-below 0.4 stays on the backbuffer path (`>`, not `>=`);
-        // just over promotes. 63×63 = 3_969 (0.3969) vs 64×64 = 4_096 (0.4096) —
-        // straddling the 0.4 line — and 40×100 = 4_000 sits on it exactly,
-        // as `0.4f32`, which only a strict compare keeps on the backbuffer.
+        // At or below 0.4 stays on the backbuffer path (`>`, not `>=`); just over
+        // promotes. 63×63 (0.3969) and 64×64 (0.4096) straddle the line, and 40×100
+        // = 4_000 sits on it as `0.4f32`, which only a strict compare keeps.
         for (w, h) in [(63.0, 63.0), (40.0, 100.0)] {
             assert!(
                 matches!(
@@ -146,10 +136,9 @@ mod output_validity_tests {
         WindowDriver::builder(token, shared, true).build()
     }
 
-    /// A host with no window lifecycle drains a quiet frame exactly as a
-    /// windowed one does — the veto lives a frame either way — and keeps
-    /// the *levels* the recorder reads back, which is the half of the
-    /// output it is allowed to leave inert.
+    /// A host with no window lifecycle drains a quiet frame as a windowed one does
+    /// (the veto lives a frame either way) and keeps the *levels* the recorder
+    /// reads back.
     #[test]
     fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
         let shared = UiResources::isolated_mono();
@@ -194,8 +183,8 @@ mod output_validity_tests {
         closer.deny_window_commands();
     }
 
-    /// A close request reaches the recorder only from the winit host, so
-    /// the veto half needs its write door.
+    /// A close request reaches the recorder only from the winit host, so the veto
+    /// half needs its write door.
     #[cfg(feature = "winit")]
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
@@ -227,9 +216,7 @@ mod output_validity_tests {
         );
         assert!(driver.ui.window_requests().commands.opens.is_empty());
         assert!(driver.ui.window_requests().commands.closes.is_empty());
-        // Drained by `append`, not `mem::take`, so the recorder keeps its
-        // buffers for the next frame instead of reallocating per window
-        // command.
+        // Drained by `append`, not `mem::take`, so the recorder keeps its buffers.
         let open_capacity = driver.ui.window_requests().commands.opens.capacity();
         let close_capacity = driver.ui.window_requests().commands.closes.capacity();
         assert!(open_capacity > 0 && close_capacity > 0);
@@ -240,8 +227,6 @@ mod output_validity_tests {
         driver.drain_window_output(&mut vetoed);
         assert!(vetoed.closes.is_empty());
 
-        // A second drain after the veto must not resurrect the request: the
-        // frame state was consumed, so nothing is pending.
         let mut settled = WindowCommands::default();
         driver.drain_window_output(&mut settled);
         assert!(settled.closes.is_empty());
@@ -257,11 +242,9 @@ mod output_validity_tests {
         );
     }
 
-    /// Vsync is a level like the cursor, not a one-shot request: the drain
-    /// copies it, it survives the drain that delivered it, and it reads back
-    /// through `Ui::vsync` so an app never mirrors it. Collapsing a repeated
-    /// level into no swapchain work is the host's job, not the recorder's —
-    /// see `Window::set_vsync`.
+    /// Vsync is a level like the cursor, not a one-shot: it survives the drain and
+    /// reads back through `Ui::vsync`. Collapsing a repeated level into no
+    /// swapchain work is the host's job (`Window::set_vsync`).
     #[test]
     fn vsync_is_a_level_the_drain_copies_and_the_recorder_keeps() {
         let shared = UiResources::isolated_mono();
@@ -280,7 +263,6 @@ mod output_validity_tests {
             "the level survives the drain that delivered it",
         );
 
-        // Within one pass the last writer wins, matching `set_cursor`.
         driver.ui.set_vsync(Vsync::On);
         driver.ui.set_vsync(Vsync::Off);
         assert_eq!(driver.drain_window_output(&mut commands).vsync, Vsync::Off);
@@ -297,13 +279,11 @@ mod output_validity_tests {
     }
 
     /// `note_target` is the single gate on retained target state: it reports a
-    /// change exactly once per distinct size/format/present-mode, and every
-    /// change clears the last-frame pixels and the damage baseline.
-    ///
-    /// The present-mode axis is what a runtime vsync toggle rides: applying
-    /// one only rewrites the host's `SurfaceConfiguration`, and this gate is
-    /// the sole thing that re-reads it, so a key blind to the field would
-    /// leave the swapchain on the old mode forever.
+    /// change once per distinct size/format/present-mode and every change clears
+    /// the last-frame pixels and the damage baseline. The present-mode axis is what
+    /// a runtime vsync toggle rides: the gate is the sole re-reader of the host's
+    /// `SurfaceConfiguration`, so a key blind to the field would leave the
+    /// swapchain on the old mode.
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
         let shared = UiResources::isolated_mono();
@@ -325,8 +305,8 @@ mod output_validity_tests {
             vsync: Some(Vsync::Off),
             ..reformatted
         };
-        // A texture target is never presented, so it carries no mode at all —
-        // and must still read as a change against an otherwise-equal surface.
+        // A texture target carries no mode, yet must read as a change against an
+        // otherwise-equal surface.
         let offscreen = TargetKey {
             vsync: None,
             ..vsync_off
@@ -347,9 +327,8 @@ mod output_validity_tests {
             assert!(!driver.note_target(changed));
         }
 
-        // Repeats after a change must not re-invalidate: a swapchain window
-        // paints every frame against a steady target and would never keep a
-        // damage baseline if they did.
+        // Repeats after a change must not re-invalidate, or a swapchain window
+        // would never keep a damage baseline.
         driver.output_valid = true;
         driver.backbuffer_fresh = true;
         assert!(!driver.note_target(offscreen));
@@ -357,14 +336,11 @@ mod output_validity_tests {
         assert!(driver.backbuffer_fresh);
     }
 
-    /// The submit-time "same target" check must ignore the pacing, which is
-    /// the one field of the key a render target cannot answer for.
-    ///
-    /// The regression: `render_to_texture` asserted the noted key *equals*
-    /// `TargetKey::of(target)`, and `of` reports `vsync: None` because
-    /// a plain texture has no swapchain. Once a surface key started carrying
-    /// `Some(..)`, the two could never be equal — every debug-build swapchain
-    /// frame tripped it on the first submit.
+    /// The submit-time "same target" check must ignore the pacing, the one key
+    /// field a render target cannot answer for. Regression: `render_to_texture`
+    /// asserted the noted key *equals* `TargetKey::of(target)`, which reports
+    /// `vsync: None` for a plain texture, so every debug-build swapchain frame
+    /// tripped it on first submit.
     #[test]
     fn a_surface_key_describes_its_acquired_texture_whatever_the_pacing() {
         let physical = UVec2::new(3078, 1908);
@@ -375,8 +351,6 @@ mod output_validity_tests {
             vsync: Some(Vsync::On),
         };
 
-        // An acquired swapchain texture reports size + format and nothing
-        // else; every present mode describes it, including no mode at all.
         for vsync in [Some(Vsync::On), Some(Vsync::Off), None] {
             let key = TargetKey { vsync, ..surface };
             assert!(
@@ -385,8 +359,8 @@ mod output_validity_tests {
             );
         }
 
-        // What it must still catch: the target the GPU half was handed is
-        // genuinely not the one the CPU half ran against.
+        // It must still catch a target that is not the one the CPU half ran
+        // against.
         assert!(!surface.describes(UVec2::new(3078, 1907), format), "size");
         assert!(
             !surface.describes(
@@ -395,8 +369,6 @@ mod output_validity_tests {
             ),
             "format"
         );
-        // And the mode axis stays live for `note_target`'s own equality —
-        // that gate is what reconfigures the swapchain.
         assert_ne!(
             surface,
             TargetKey {
@@ -429,9 +401,8 @@ mod output_validity_tests {
             "paint stays pending until acquire and submit complete"
         );
 
-        // The GPU half completes the paint — `offscreen::tests` runs it on
-        // a device. A driver without one has no submit, so the SkipNoop
-        // precondition is set here directly.
+        // The GPU half completes the paint (`offscreen::tests` runs it); a driver
+        // without one has no submit, so the SkipNoop precondition is set here.
         driver.output_valid = true;
 
         let skip = driver.finish_cpu_frame(&mut frontend, report(None));
@@ -451,21 +422,18 @@ mod output_validity_tests {
     }
 }
 
-/// What a driver owns for as long as it exists: its place in the
-/// app-global window directory, and a render-owner id no sibling shares.
+/// What a driver owns while it exists: its place in the app-global window directory
+/// and a render-owner id no sibling shares.
 mod lifecycle_tests {
     use crate::host::window_driver::WindowDriver;
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
-    /// The directory entry belongs to the driver, not to whoever built or
-    /// closed it: `build` mints it and `Drop` retires it.
-    ///
-    /// Both halves matter. A registration made when the builder is created
-    /// would leave a token live for the rest of the session whenever a
-    /// builder is dropped unbuilt, with `Ui::is_window_open` answering true
-    /// for a window that never opened. A retirement left to the host would
-    /// have to be remembered on two different close paths.
+    /// The directory entry belongs to the driver, not whoever built or closed it:
+    /// `build` mints it and `Drop` retires it. Registering at builder creation
+    /// would leave a token live when a builder is dropped unbuilt
+    /// (`Ui::is_window_open` true for a window that never opened), and a retirement
+    /// left to the host would need remembering on two close paths.
     #[test]
     fn a_driver_owns_its_directory_entry_from_build_to_drop() {
         let shared = UiResources::isolated_mono();
@@ -716,10 +684,8 @@ mod display_tests {
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
-    /// The driver mints its `Display` from what it owns, so a scale the
-    /// app wrote during a frame is in the very next one — a host caching
-    /// its own copy is what this arrangement exists to make impossible.
-    /// `pixel_snap` rides the same call and is checked beside it.
+    /// The driver mints its `Display` from what it owns, so a scale the app wrote
+    /// during a frame is in the very next one. `pixel_snap` rides the same call.
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
         let shared = UiResources::isolated_mono();
@@ -740,8 +706,8 @@ mod display_tests {
         assert_eq!(zoomed.system_logical_size(), Size::new(400.0, 300.0));
     }
 
-    /// The scale is app-global, so two drivers over one `UiResources` mint
-    /// the same one however the write reached it.
+    /// The scale is app-global, so two drivers over one `UiResources` mint the same
+    /// one.
     #[test]
     fn two_windows_mint_the_one_scale() {
         let shared = UiResources::isolated_mono();
@@ -781,12 +747,11 @@ mod cutout_census_tests {
     use crate::widgets::panel::Panel;
     use crate::{Configure, Display, Sizing, WindowToken};
 
-    /// Cards whose shadows share the `(8, 4)` key: 3 shade it and 4 pay for
-    /// its table (see the damage oracle's `shadows`). A frame that repaints
-    /// only a tick stays partial at either count. The frame that adds the
-    /// fourth card repaints only that card, and leaves the first three
-    /// showing the shaded form of a key that now reads a table: it repaints
-    /// in full.
+    /// Cards whose shadows share the `(8, 4)` key: 3 shade it and 4 pay for its
+    /// table (see the damage oracle's `shadows`). A frame repainting only a tick
+    /// stays partial at either count; the frame adding the fourth card leaves the
+    /// first three showing the shaded form of a key that now reads a table, so it
+    /// repaints in full.
     #[test]
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();

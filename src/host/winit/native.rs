@@ -1,8 +1,4 @@
-//! Conversions between Palantir's backend-agnostic window vocabulary and
-//! winit's, plus native window creation. Together with
-//! [`input`](crate::host::winit::input) this is the whole of what the
-//! windowed host knows about winit *types* — the rest of the module deals
-//! only in winit's *lifecycle* (the event loop and its callbacks).
+//! Conversions between Palantir's window vocabulary and winit's, plus native window creation.
 
 use std::sync::Arc;
 
@@ -18,7 +14,6 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use winit::window;
 
-/// Map the backend-agnostic cursor vocabulary onto winit's.
 pub(super) const fn cursor(cursor: CursorIcon) -> window::CursorIcon {
     use winit::window::CursorIcon as W;
     match cursor {
@@ -40,9 +35,7 @@ pub(super) fn icon(icon: &Image) -> Icon {
         .expect("validated Image rejected by winit")
 }
 
-/// Build a winit `Window` from a [`WindowConfig`]. Converts the
-/// backend-agnostic logical `UVec2` sizes into winit `LogicalSize` here so the
-/// winit type stays inside this module.
+/// Builds a winit `Window` from a [`WindowConfig`]; winit types stay inside this module.
 pub(super) fn create_window(
     event_loop: &ActiveEventLoop,
     token: WindowToken,
@@ -61,10 +54,7 @@ pub(super) fn create_window(
         attrs = attrs.with_window_icon(Some(icon(image)));
     }
     attrs = with_app_id(attrs, cfg);
-    // Restore a saved position only if it still lands on a connected
-    // monitor — winit does no such clamping, so a window saved on a
-    // since-disconnected display would otherwise reopen off-screen and
-    // unreachable.
+    // Restore a saved position only if it lands on a connected monitor; winit does not clamp.
     if let Some(p) = cfg.placement.position
         && position_on_monitor(event_loop, p)
     {
@@ -76,18 +66,9 @@ pub(super) fn create_window(
         .map_err(|source| WinitHostError::CreateWindow { token, source })
 }
 
-/// Apply [`WindowConfig::with_app_id`] on the platforms that have one.
-///
-/// Wayland's `app_id` and X11's `WM_CLASS` are the *same* winit attribute,
-/// reached through one extension trait per backend, so writing it through
-/// either covers both and whichever session is running reads it. The instance
-/// name repeats the general one: Wayland ignores the instance outright, and
-/// X11's `WM_CLASS(STRING) = "instance", "general"` conventionally carries the
-/// application name twice.
-///
-/// X11 would survive without this — winit falls back to `argv[0]`'s file name
-/// — but Wayland has no fallback at all, so an unnamed window reaches the
-/// shell with nothing to match against its `.desktop` entry.
+/// Applies [`WindowConfig::with_app_id`] where supported. Wayland's `app_id` and X11's `WM_CLASS` are one
+/// winit attribute; the instance name repeats the general one. Wayland has no fallback, so an unnamed
+/// window cannot match its `.desktop` entry.
 #[cfg(any(
     target_os = "linux",
     target_os = "dragonfly",
@@ -96,8 +77,7 @@ pub(super) fn create_window(
     target_os = "openbsd",
 ))]
 fn with_app_id(attrs: WindowAttributes, cfg: &WindowConfig) -> WindowAttributes {
-    // Inside the fn rather than at the top of the file: the trait is only
-    // reachable on these targets.
+    // Inside the fn: the trait is only reachable on these targets.
     use winit::platform::wayland::WindowAttributesExtWayland as _;
 
     match &cfg.app_id {
@@ -106,9 +86,7 @@ fn with_app_id(attrs: WindowAttributes, cfg: &WindowConfig) -> WindowAttributes 
     }
 }
 
-/// Nothing to apply: application identity comes from the `.app` bundle on
-/// macOS and from the executable on Windows, neither of which is a per-window
-/// hint.
+/// Nothing to apply: application identity comes from the `.app` bundle on macOS and the executable on Windows.
 #[cfg(not(any(
     target_os = "linux",
     target_os = "dragonfly",
@@ -120,9 +98,7 @@ const fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttr
     attrs
 }
 
-/// Whether `pos` (physical, window top-left) falls inside any currently
-/// connected monitor's bounds — the guard that keeps a restored position
-/// from placing the window off every screen.
+/// Whether `pos` (physical, window top-left) falls inside any connected monitor's bounds.
 fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
     within_any(
         pos,
@@ -133,8 +109,7 @@ fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
     )
 }
 
-/// Whether `pos` lies in any of `monitors`, each a physical top-left and
-/// extent: the top-left edges inside, the far edges out.
+/// Whether `pos` lies in any of `monitors` (physical top-left and extent): near edges in, far edges out.
 fn within_any(pos: IVec2, monitors: impl IntoIterator<Item = (IVec2, UVec2)>) -> bool {
     monitors.into_iter().any(|(at, size)| {
         let end = at + size.as_ivec2();
@@ -142,7 +117,6 @@ fn within_any(pos: IVec2, monitors: impl IntoIterator<Item = (IVec2, UVec2)>) ->
     })
 }
 
-/// The window's physical extent, as the graphics layer wants it.
 pub(super) fn physical_size(window: &WinitWindow) -> UVec2 {
     let size = window.inner_size();
     UVec2::new(size.width, size.height)
@@ -154,9 +128,7 @@ mod tests {
     use crate::primitives::paint::image::Image;
     use glam::{IVec2, UVec2};
 
-    /// A restored position must land on a screen: inside one of two
-    /// side-by-side monitors counts, their top-left edges included and
-    /// their far edges not, and no monitor at all places nothing.
+    /// A restored position must land on a screen: near edges count, far edges do not, no monitor places nothing.
     #[test]
     fn a_position_is_on_a_monitor_only_inside_its_bounds() {
         let left = (IVec2::new(0, 0), UVec2::new(1920, 1080));

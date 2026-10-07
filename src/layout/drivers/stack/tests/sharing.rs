@@ -1,6 +1,4 @@
-//! How a stack shares its main axis between children that do not all fit:
-//! each gives way from what it wants toward its floor, heights at arrange
-//! and widths before measure.
+//! How a stack shares its main axis between children that do not all fit: each gives way from what it wants toward its floor.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -26,8 +24,7 @@ fn header(ui: &mut Ui, name: &'static str) {
         .show(ui);
 }
 
-/// A vertical scroll over eight 50 px rows: it wants 400, and its floor
-/// on the panned axis is zero.
+/// A vertical scroll over eight 50 px rows: wants 400, floor on the panned axis zero.
 fn scroll(ui: &mut Ui, name: &'static str, pan: Sizing) {
     Scroll::vertical()
         .id(WidgetId::from_hash(name))
@@ -50,15 +47,7 @@ fn bounded(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-/// A 30 px header above a scroll, in a middle vstack, in 100 px — every
-/// pairing of the two sizings.
-///
-/// The header is rigid, so the scroll gives way to the 100 − 30 = 70 its
-/// sibling leaves, whether the middle stack hugs or fills: a Fill middle
-/// measures its content against its whole 100 too, 30 + 100, but its
-/// floor is the header's 30, so it is placed at its 100 and shares that.
-/// A Fill scroll in a Hug middle is the one pairing that stays empty — a
-/// Fill child reports no content, so the middle hugs the header alone.
+/// A 30 px header above a scroll, in a middle vstack, in 100 px: the scroll gives way to the 70 its sibling leaves whether the middle hugs or fills. A Fill scroll in a Hug middle stays empty: a Fill child reports no content.
 #[test]
 fn a_scroll_gives_way_to_its_rigid_sibling() {
     // (label, middle, scroll, middle height, scroll height)
@@ -87,9 +76,7 @@ fn a_scroll_gives_way_to_its_rigid_sibling() {
     }
 }
 
-/// Each Hug stack in a chain gives its own header 30 px of what its parent
-/// placed it at: 100, 70, 40, and 10 left for the scroll — each level
-/// shares at arrange what the one above handed it, measured once.
+/// Each Hug stack in a chain gives its header 30 px of what its parent placed it at: 100, 70, 40, leaving 10 for the scroll.
 #[test]
 fn nested_stacks_share_down_the_chain() {
     let mut h = UiHarness::new(SURFACE);
@@ -112,12 +99,7 @@ fn nested_stacks_share_down_the_chain() {
     assert_eq!(rect(&h, "scroll").min.y, 90.0);
 }
 
-/// Two children that can both give way share the slack in proportion to
-/// how far each can give. In 150 px, scrolls wanting 100 and 150 with
-/// zero floors split 150 by 100 : 150 — 60 and 90.
-///
-/// Children that cannot give way keep their extents and overflow: two
-/// fixed 60 px blocks in 100 stay 60 each.
+/// Children that can both give way share the slack in proportion to how far each can give: in 150 px, scrolls wanting 100 and 150 split 60 and 90. Children that cannot (two fixed 60 px blocks in 100) keep their extents and overflow.
 #[test]
 fn siblings_give_way_in_proportion_to_what_they_can_give() {
     let mut h = UiHarness::new(SURFACE);
@@ -158,10 +140,7 @@ fn siblings_give_way_in_proportion_to_what_they_can_give() {
     assert_eq!(rect(&h, "second"), Rect::new(0.0, 60.0, 120.0, 60.0));
 }
 
-/// The share reaches a scroll through any container that hands a smaller
-/// slot down: a zstack places its child at the slot, down to the child's
-/// floor, and a grid squeezes its Hug row and the cell in it. Either way
-/// the scroll ends at the 70 its header leaves.
+/// The share reaches a scroll through any container that hands a smaller slot down (zstack, grid): the scroll ends at the 70 its header leaves.
 #[test]
 fn a_share_reaches_through_a_zstack_and_a_grid() {
     let mut h = UiHarness::new(SURFACE);
@@ -191,15 +170,7 @@ fn a_share_reaches_through_a_zstack_and_a_grid() {
     assert_eq!(rect(&h, "scroll").size.h, 70.0);
 }
 
-/// Widths are shared before the children measure, so text shapes at the
-/// width it is placed at.
-///
-/// The mono metric's 14 px font is 7 px a character. Two truncating
-/// labels of 30 characters want 210 each and can give way to nothing:
-/// 300 px splits 210 : 210, so each measures at 150 and cuts to it. Two
-/// wrapping labels of 40 and 20 characters want 280 and 140: 300 splits
-/// 280 : 140 into 200 and 100, and each wraps there — 28 characters,
-/// 196 px, and 14 characters, 98 px, a line, so two lines each.
+/// Widths are shared before children measure, so text shapes at its placed width. Mono 14 px = 7 px/char: two truncating 30-char labels want 210 each and split 300 as 150 each; two wrapping labels of 40 and 20 chars split 300 as 200 : 100, wrapping to two lines each.
 #[test]
 fn an_hstack_shares_its_width_before_its_children_measure() {
     let line = |wrap: TextWrap, chars: usize| {
@@ -241,12 +212,7 @@ fn an_hstack_shares_its_width_before_its_children_measure() {
     );
 }
 
-/// A scroll's content takes what it measured to on the panned axis, however
-/// small the viewport: twelve-character labels that can be cut stay 84 px
-/// each in a 100 px scroll, laid end to end past it. What the content has
-/// to give way to is the viewport, which clips it. Both layouts a scroll
-/// holds its content in keep it whole: a horizontal scroll's own stack,
-/// and a two-way scroll's layer, around an hstack of its own.
+/// A scroll's content keeps its measured extent on the panned axis, however small the viewport: twelve-character labels stay 84 px each in a 100 px scroll, and the viewport clips. Holds for a horizontal scroll's stack and a two-way scroll's layer.
 #[test]
 fn scroll_content_does_not_give_way_on_its_panned_axis() {
     type Scrolling = fn() -> Scroll<'static>;
@@ -285,15 +251,7 @@ fn scroll_content_does_not_give_way_on_its_panned_axis() {
     }
 }
 
-/// A width is not taken back at arrange: a child keeps the width its text
-/// was shaped to, and overflows rather than painting text shaped for a
-/// wider box than its rect.
-///
-/// A Hug grid measures a cell in a Fill column at unbounded width — the
-/// grid cannot know the column's width yet — so ten 4-letter words, 49
-/// characters at 7 px each, shape as one 343 px line. In a 200 px stack
-/// the column is arranged narrower, and the cell still takes its 343,
-/// though its floor — its longest word — is 28.
+/// A width is not taken back at arrange: a child keeps the width its text was shaped to and overflows. A Hug grid measures a Fill-column cell at unbounded width, so ten 4-letter words shape as one 343 px line (49 chars at 7 px); in a 200 px stack the cell still takes 343 though its floor is 28.
 #[test]
 fn arrange_does_not_take_a_width_back() {
     let mut h = UiHarness::new(SURFACE);

@@ -1,5 +1,4 @@
-//! What a tab strip wears: the chip look packs, the selection cap, and
-//! the band the chips sit on.
+//! What a tab strip wears: chip look packs, the selection cap, and the band.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
@@ -14,20 +13,13 @@ use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 
-/// Visuals for [`crate::TabStrip`], and so for [`crate::TabbedView`] and
-/// every [`crate::DockView`] pane that records one.
-///
-/// One four-state look pack per selected state, so hover and press
-/// resolve through the same [`StatefulLook::pick`] precedence as every
-/// other widget. The selected chip additionally wears a cap along its
-/// top edge — [`Self::accent`] while the strip holds focus,
-/// [`Self::accent_idle`] while it does not, which is what makes one pane
-/// read as "where actions go".
+/// Visuals for [`crate::TabStrip`], [`crate::TabbedView`] and every
+/// [`crate::DockView`] pane. One four-state look pack per selected state,
+/// picked by [`StatefulLook::pick`]. The selected chip wears a top cap:
+/// [`Self::accent`] while the strip holds focus, else [`Self::accent_idle`].
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TabsTheme {
-    /// Look pack for the selected chip. Its fill defaults to the window
-    /// ground, so the chip's bottom edge dissolves into the content
-    /// below it.
+    /// Look pack for the selected chip; its fill defaults to the window ground.
     pub active: StatefulLook,
     /// Look pack for every other chip.
     pub inactive: StatefulLook,
@@ -35,15 +27,10 @@ pub struct TabsTheme {
     pub accent: RgbaF32,
     /// Selection cap on a strip that does not hold focus.
     pub accent_idle: RgbaF32,
-    /// Cap breadth in logical px. The selected chip lifts its inner top
-    /// inset by the same amount, so the cap adds no height and every
-    /// label sits on the same line.
+    /// Cap breadth in logical px; the selected chip lifts its top inset by the same amount.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub accent_thickness: f32,
-    /// The band behind the chips. [`Background::NONE`] by default: a
-    /// strip reads from its own chips, and an application that wants a
-    /// band under them is saying its chrome continues there — which is
-    /// a fact about that application's surfaces, not about tabs.
+    /// The band behind the chips; [`Background::NONE`] by default.
     pub strip: Background,
     /// Inset between the band's edges and the chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
@@ -51,37 +38,24 @@ pub struct TabsTheme {
     /// Gutter between two chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
-    /// Hairline under the band, drawn only when
-    /// [`Self::rule_thickness`] is set.
+    /// Hairline under the band, drawn only when [`Self::rule_thickness`] is set.
     pub rule: RgbaF32,
-    /// Hairline breadth in logical px. `0.0` — the default — records no
-    /// rule at all, so the chips meet the content below them directly.
+    /// Hairline breadth in logical px; `0.0` records no rule.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub rule_thickness: f32,
-    /// Chip corner radius. Applied to the top corners only — a chip
-    /// meets the content below it square.
+    /// Chip corner radius, top corners only.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub radius: f32,
-    /// Inset between a chip's edges and its label. Named apart from
-    /// [`SlotDefaults::padding`], which this bundle flattens: that one
-    /// is the box default the strip node takes, this one is the chip's
-    /// own inner inset.
+    /// Inset between a chip's edges and its label, apart from [`SlotDefaults::padding`].
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub chip_padding: Spacing,
-    /// Trailing inset a chip takes in place of [`Self::chip_padding`]'s
-    /// right one whenever something sits after the label — a badge, a
-    /// close button, or both.
-    ///
-    /// Their own boxes already carry the breathing room the right inset
-    /// exists to give a bare label, so charging both leaves a chip
-    /// looking like it reserves a slot it does not have.
+    /// Trailing inset replacing [`Self::chip_padding`]'s right one when a badge or close button follows.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub trailing_inset: f32,
-    /// Chip width floor, so a one-glyph label still reads as a tab.
+    /// Chip width floor.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
-    /// Chip width ceiling. What lets a long title ellipsise instead of
-    /// pushing its neighbours out of the band.
+    /// Chip width ceiling, so a long title ellipsises.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub max_width: f32,
     /// Look pack for the chip's close button.
@@ -94,8 +68,7 @@ pub struct TabsTheme {
     /// Status-dot diameter in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub badge_size: f32,
-    /// Gutter between a chip's own children — its icon, label, badge
-    /// and close button.
+    /// Gutter between a chip's icon, label, badge and close button.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
@@ -104,8 +77,7 @@ pub struct TabsTheme {
 }
 
 impl TabsTheme {
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             active,
@@ -144,8 +116,7 @@ impl TabsTheme {
         }
     }
 
-    /// Chips rounded at the top only, so the active one reads as continuous
-    /// with the page below it.
+    /// Chips rounded at the top only.
     pub fn from_palette(p: &Palette) -> Self {
         let radius = 4.0;
         let top = Corners::top(radius);
@@ -222,8 +193,7 @@ impl Default for TabsTheme {
 impl ThemeSlot for TabsTheme {
     type Pick = bool;
 
-    /// The selected or the unselected pack, then its state (`active` =
-    /// pressed).
+    /// The selected or unselected pack, then its state (`active` = pressed).
     fn look(&self, response: &ResponseState, selected: bool) -> &WidgetLook {
         let pack = if selected {
             &self.active

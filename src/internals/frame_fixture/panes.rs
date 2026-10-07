@@ -1,13 +1,8 @@
-//! The split-pane card — the tree's only [`Splitter`].
+//! The split-pane card, the tree's only [`Splitter`].
 //!
-//! Deliberately the smallest honest carrier for one: a splitter is
-//! `FILL`/`FILL`, so it needs a bounded box, and everything else in the
-//! card column sits inside the page scroll, which passes ∞ on its main
-//! axis. Hence the fixed height rather than a hug.
+//! A splitter is `FILL`/`FILL` and needs a bounded box, but the rest of the card column sits in the page scroll, which passes ∞ on its main axis; hence a fixed height, not a hug.
 //!
-//! The ratio is held constant across iterations like every other backing
-//! value here — only `tick` moves — so the divider never perturbs the
-//! steady-state damage the bench arms assert.
+//! The ratio stays constant across iterations (only `tick` moves) so the divider never perturbs the steady-state damage the bench arms assert.
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::frame_fixture::tokens;

@@ -7,35 +7,22 @@ use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::style::LineCap;
 use glam::Vec2;
 
-/// Native GPU stroke payload — a cubic or an arc, per [`CurveBasis`].
-/// The composer adds `origin` and the active push-transform stack
-/// before scaling to physical px and pushing the resulting
-/// `CurveInstance`(s) onto `RenderBuffer.curves`. `bounds` holds the
-/// owner-local centerline AABB, or the spin and its pivot; the composer
-/// applies the shared stroke/cap/AA bound in physical space for culling
-/// and overlap.
+/// Native GPU stroke payload, a cubic or an arc per [`CurveBasis`]. The composer adds `origin` and the push-transform stack, scales to physical px and pushes `CurveInstance`(s) onto `RenderBuffer.curves`. `bounds` is the owner-local centerline AABB, or the spin and pivot; the composer adds the stroke/cap/AA bound for culling.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,
-    /// Cull bound plus the spin, if any. The composer rotates about the
-    /// pivot exactly — a Bézier by affine invariance, a circle by moving
-    /// its centre and shifting both angles.
+    /// Cull bound plus the spin, if any. The composer rotates about the pivot exactly: a Bézier by affine invariance, a circle by moving its centre and shifting both angles.
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
-    /// Solid or ramp — [`GpuFill::curve`] makes it, and can make no other
-    /// kind. A curve reads no gradient geometry lane, so [`GpuFill`] is
-    /// the whole of its paint.
+    /// Solid or ramp; [`GpuFill::curve`] makes no other kind. A curve reads no gradient geometry lane, so [`GpuFill`] is its whole paint.
     pub(crate) fill: GpuFill,
     pub(crate) width: f32,
-    /// Typed Pod wire form; composer widens it only at the GPU
-    /// `CurveInstance.cap` boundary.
+    /// Typed Pod wire form, widened at the GPU `CurveInstance.cap` boundary.
     pub(crate) cap: LineCap,
 }
 
 impl DrawCurvePayload {
-    /// This draw with its alpha scaled by `by`, for
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s
-    /// gate.
+    /// This draw with alpha scaled by `by`, for [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s gate.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         if by == 1.0 {
@@ -47,10 +34,7 @@ impl DrawCurvePayload {
         }
     }
 
-    /// Paints nothing when: zero/negative stroke width, a
-    /// degenerate arc radius (nothing to trace), or a fully transparent
-    /// stroke colour. A ramp whose stops are all transparent is caught
-    /// by `CurveShape`'s no-op test before lowering.
+    /// Paints nothing for non-positive stroke width, a degenerate arc radius, or a transparent stroke colour. An all-transparent ramp is caught earlier by `CurveShape`'s no-op test.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         if is_invisible(self.width) {

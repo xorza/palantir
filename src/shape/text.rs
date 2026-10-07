@@ -1,5 +1,4 @@
-//! The text-run builder. Lowers to `ShapeRecord::Text`, with its source
-//! normalized into the active text arena.
+//! The text-run builder; lowers to `ShapeRecord::Text`.
 
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain::{self, vec2};
@@ -20,28 +19,14 @@ use glam::Vec2;
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct TextShape {
-    /// `None` → encoder owns positioning: the glyph bbox is placed
-    /// inside the owner's padded inner rect via `align`. Used by
-    /// Text/Button/ContextMenu.
-    /// `Some(origin)` → widget owns positioning: bbox origin is
-    /// `owner.min + origin`, encoder is a passthrough (`align`'s
-    /// placement axes are ignored). Used by TextEdit so it can shift
-    /// the text by scroll + alignment offsets the encoder can't
-    /// compute.
+    /// `None`: the encoder places the glyph bbox in the owner's padded inner rect via `align`. `Some(origin)`: the widget owns positioning (bbox origin is `owner.min + origin`, `align`'s placement axes ignored), as TextEdit does for scroll offsets.
     pub(crate) local_origin: Option<Vec2>,
     pub(crate) text: InternedStr,
     pub(crate) color: RgbaF32,
-    /// The face and metrics to shape in — one named type rather than four
-    /// fields, so this and [`ShapeRecord::Text`] mirror each other in one
-    /// field and a shape cache key is minted from it directly.
+    /// The face and metrics to shape in, one named type mirrored by [`ShapeRecord::Text`].
     pub(crate) font: GlyphFont,
     pub(crate) wrap: TextWrap,
-    /// Visual placement *and* cache-key discriminator: the encoder
-    /// positions the glyph bbox inside the owner rect via both axes
-    /// (only when `local_origin = None`), and the layout pipeline
-    /// always threads `align.halign()` into cosmic's per-line
-    /// `set_align` and text cache key. Same field because both
-    /// consumers want the user-intended alignment.
+    /// Visual placement and cache-key discriminator: the encoder places the bbox by both axes (only when `local_origin = None`), and layout threads `align.halign()` into cosmic's `set_align` and the text cache key.
     pub(crate) align: Align,
 }
 
@@ -57,14 +42,7 @@ impl TextShape {
         }
     }
 
-    /// Hand positioning to the caller: the glyph bbox origin becomes
-    /// `owner.min + origin` and the encoder stops placing it, so
-    /// `align`'s placement axes go unread. Used by TextEdit, which
-    /// shifts the run by scroll offsets the encoder cannot compute.
-    ///
-    /// Not `at`, which every rect-shaped kind spells for a whole
-    /// [`Rect`](crate::Rect): a run has a pen position rather than a box,
-    /// and one word cannot mean both.
+    /// Hand positioning to the caller: the glyph bbox origin becomes `owner.min + origin` and `align`'s placement axes go unread. Named `at_origin`, not `at`, since a run has a pen position rather than a box.
     ///
     /// # Panics
     ///
@@ -76,8 +54,7 @@ impl TextShape {
     }
 }
 impl TextShape {
-    /// Ink colour. Straight-alpha linear RGB, like every other colour
-    /// on the CPU side.
+    /// Ink colour: straight-alpha linear RGB.
     ///
     /// # Panics
     ///
@@ -101,7 +78,7 @@ impl TextShape {
         self
     }
 
-    /// Which family to shape in.
+    /// Font family.
     pub const fn family(mut self, family: FontFamily) -> Self {
         self.font.family = family;
         self
@@ -113,7 +90,7 @@ impl TextShape {
         self
     }
 
-    /// Upright or italic.
+    /// Font slant.
     pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.font.slant = slant;
         self
@@ -121,15 +98,12 @@ impl TextShape {
 }
 
 impl sealed::LowerShape for TextShape {
-    /// An unusable face shapes nothing, which is what the two public
-    /// text queries answer too — `TextShapeRequest::unbounded` is the one
-    /// screen, and `metrics_valid` is its predicate.
+    /// An unusable face shapes nothing, as the two public text queries answer too.
     fn is_noop(&self) -> bool {
         self.text.is_empty() || self.color.is_noop() || !self.font.metrics_valid()
     }
 
-    /// `font` is not asked again: `metrics_valid` above rejects a
-    /// non-finite metric already, and it is the stricter question.
+    /// `font` is not asked: `metrics_valid` in `is_noop` is stricter.
     fn has_nan(&self) -> bool {
         self.local_origin.has_nan() || self.color.has_nan()
     }

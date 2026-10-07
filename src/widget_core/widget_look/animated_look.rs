@@ -1,24 +1,15 @@
-//! One frame's resolved look, after the tween between the state a widget
-//! is leaving and the one it is entering.
+//! One frame's resolved look, after tweening between the state a widget leaves and enters.
 
 use crate::primitives::paint::background::Background;
 use crate::widgets::theme::text_style::TextStyle;
 use palantir_anim_derive::Animatable;
 
-/// Resolved + per-frame animated values for a [`WidgetLook`](crate::WidgetLook). Built
-/// by [`WidgetLook::to_animated`](crate::WidgetLook::to_animated). Widgets read `background` and `text`
-/// directly; both fields are already-animated.
-///
-/// `text.color` is the animated color; `text.font_size` and
-/// `text.line_height_factor` are snap-carried from the picked
-/// `WidgetLook`'s overrides folded onto the ambient style — see
-/// `TextStyle`'s `#[animate(snap)]` markings.
-// **Not `Copy`** because `Background` isn't.
+/// Resolved per-frame animated values for a [`WidgetLook`](crate::WidgetLook), built by [`WidgetLook::to_animated`](crate::WidgetLook::to_animated). `text.color` is animated; `text.font_size` and `text.line_height_factor` snap-carry the look's overrides.
+// Not `Copy`: `Background` isn't.
 #[derive(Clone, Debug, Default, PartialEq, Animatable)]
 pub struct AnimatedLook {
     /// The animated background.
     pub background: Background,
-    /// The animated text style, with the look's overrides already folded
-    /// onto the ambient style.
+    /// The animated text style with the look's overrides folded in.
     pub text: TextStyle,
 }

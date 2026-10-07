@@ -1,8 +1,5 @@
-//! Raw-wgpu demo: a slowly auto-rotating colored cube rendered through a
-//! [`GpuView`]. Drag inside the view to orbit it. Shows the full
-//! `GpuPaint` surface — lazy `init`, per-frame `paint` into the
-//! framework-owned target, a private depth buffer recreated on resize,
-//! and continuous repaint driving the animation.
+//! Raw-wgpu demo: a slowly auto-rotating colored cube rendered through a [`GpuView`]; drag to orbit. Shows the full
+//! `GpuPaint` surface: lazy `init`, per-frame `paint`, a private depth buffer recreated on resize, continuous repaint.
 
 #![expect(
     clippy::disallowed_types,
@@ -31,8 +28,6 @@ const fn v(pos: [f32; 3], color: [f32; 3]) -> Vertex {
     Vertex { pos, color }
 }
 
-/// Eight cube corners, each tinted by its position so faces read as
-/// distinct colored gradients.
 const VERTICES: [Vertex; 8] = [
     v([-1.0, -1.0, -1.0], [0.10, 0.10, 0.12]),
     v([1.0, -1.0, -1.0], [0.90, 0.20, 0.25]),
@@ -44,8 +39,7 @@ const VERTICES: [Vertex; 8] = [
     v([-1.0, 1.0, 1.0], [0.25, 0.85, 0.90]),
 ];
 
-/// 12 triangles. Culling is off, so winding doesn't matter — depth alone
-/// resolves occlusion.
+/// 12 triangles; culling is off, so depth alone resolves occlusion.
 const INDICES: [u16; 36] = [
     0, 1, 2, 0, 2, 3, // -z
     4, 6, 5, 4, 7, 6, // +z
@@ -80,8 +74,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// GPU resources, built lazily in [`GpuPaint::init`] (the device isn't
-/// available before first paint).
+/// GPU resources, built lazily in [`GpuPaint::init`] (no device before first paint).
 #[derive(Debug)]
 struct CubeGpu {
     pipeline: wgpu::RenderPipeline,
@@ -93,9 +86,7 @@ struct CubeGpu {
     depth: Option<(wgpu::TextureView, UVec2)>,
 }
 
-/// The app's persistent renderer. `spin` accumulates the auto-rotation;
-/// `yaw`/`pitch` are driven by drag. `'static` (no borrows) so it can
-/// live behind the `Rc<RefCell<…>>` the framework holds across frames.
+/// The app's persistent renderer; `'static` so it can live behind the `Rc<RefCell<…>>` the framework holds.
 #[derive(Debug)]
 struct Cube {
     gpu: Option<CubeGpu>,
@@ -114,7 +105,6 @@ impl Cube {
         }
     }
 
-    /// Apply a drag delta (logical px) to the orbit angles.
     fn orbit(&mut self, dx: f32, dy: f32) {
         self.yaw += dx * 0.01;
         self.pitch = (self.pitch + dy * 0.01).clamp(-1.5, 1.5);
@@ -219,16 +209,12 @@ impl GpuPaint for Cube {
     }
 
     fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
-        // Slow auto-rotation, framerate-independent via real `dt`
-        // (~34°/s). `dt` is ZERO on the first paint, so the cube simply
-        // holds its initial pose that frame.
+        // Slow auto-rotation (~34°/s), framerate-independent via real `dt` (ZERO on the first paint).
         self.spin += 0.6 * ctx.dt.as_secs_f32();
         let mvp = {
             let size = ctx.physical_size.max(UVec2::ONE);
             let aspect = size.x as f32 / size.y as f32;
-            // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the
-            // `directx` RH perspective — the non-deprecated peer of the old
-            // `Mat4::perspective_rh`.
+            // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the `directx` RH perspective.
             let proj = directx::perspective(45f32.to_radians(), aspect, 0.1, 100.0);
             let view = view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
             let model =
@@ -237,9 +223,7 @@ impl GpuPaint for Cube {
         };
 
         let gpu = self.gpu.as_mut().expect("init ran before paint");
-        // Depth matches the color target's size; recreate it when the target
-        // is reallocated (i.e. when `physical_size` changes — every frame the view
-        // is resized).
+        // Depth matches the color target's size; recreate it when `physical_size` changes.
         let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.physical_size);
         if need_depth {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
@@ -292,8 +276,7 @@ impl GpuPaint for Cube {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // Render into the actual target resolution supplied for the view.
-        // Viewport sets the NDC→pixel transform; scissor is belt-and-braces.
+        // Render at the supplied target resolution; the scissor is belt-and-braces.
         let (w, h) = (ctx.physical_size.x.max(1), ctx.physical_size.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);
@@ -305,9 +288,7 @@ impl GpuPaint for Cube {
     }
 }
 
-/// Showcase page. The cube lives in a state row under an id no node
-/// records, so it lasts as long as the `Ui` — the device isn't available
-/// at construction, so its GPU resources build lazily on first paint.
+/// Showcase page. The cube lives in a state row under an id no node records, so it lasts as long as the `Ui`.
 pub(crate) fn build(ui: &mut Ui) {
     let id = WidgetId::from_hash("showcase::gpu_view::cube");
     ui.with_state::<Option<Rc<RefCell<Cube>>>, _>(id, |ui, cube| {
@@ -317,8 +298,7 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn view(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
-    // A GpuView re-renders on every painted frame, so keep frames coming to
-    // animate the spin.
+    // A GpuView re-renders on every painted frame, so keep frames coming to animate the spin.
     ui.request_repaint();
     section(
         ui,
@@ -334,8 +314,7 @@ fn view(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
         },
     );
 
-    // GpuView doesn't sense by default — opt into drag so the returned
-    // `Response` reports the orbit delta.
+    // GpuView doesn't sense by default: opt into drag so `Response` reports the orbit delta.
     let resp = GpuView::new(cube)
         .sense(Sense::DRAG)
         .size((Sizing::FILL, Sizing::FILL))

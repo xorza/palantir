@@ -1,4 +1,4 @@
-//! One frame being composed, and the sink the paint calls arrive through.
+//! One frame being composed, and the sink paint calls arrive through.
 
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
@@ -50,17 +50,9 @@ use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::geometry::StrokeBbox;
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 
-/// One compose pass in flight: the [`Composer`]'s retained scratch bound
-/// to the buffer being filled, the record payloads variable-length draws
-/// read from, and the frame's display.
-///
-/// **This is the algorithm.** Paint streams in through [`PaintSink`], one
-/// call per lowered draw, in authoring order; the group and batch state
-/// machine those handlers drive — what decides where one draw's output
-/// lands relative to the last one's — lives here too, because it reads
-/// and writes the same buffer they do. The `Composer` behind `composer`
-/// is the arena the whole pass is built in — nothing on it takes an
-/// output buffer, and nothing here has to hand one back to it.
+/// One compose pass in flight: the [`Composer`]'s scratch bound to the buffer
+/// being filled, the record payloads, and the display. Paint arrives through
+/// [`PaintSink`] in authoring order; the group and batch state machine lives here.
 #[derive(Debug)]
 pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
@@ -68,11 +60,8 @@ pub(crate) struct ComposeSession<'a> {
     pub(super) out: &'a mut RenderBuffer,
 }
 
-/// A quad-tier draw reduced to physical space — everything
-/// [`ComposeSession::quad`]'s per-shape half derives, and its shared
-/// half consumes. `corners` and `fill_axis` are the two `Quad` lanes
-/// whose meaning depends on the shape: corner radii + brush/shadow axis
-/// for a rect, packed corner points + third point/radius for a triangle.
+/// A quad-tier draw reduced to physical space. `corners` and `fill_axis` mean different things for
+/// a rect and a triangle.
 #[derive(Debug)]
 struct PackedQuad {
     rect: ScaledRect,
@@ -82,18 +71,12 @@ struct PackedQuad {
 }
 
 impl PackedQuad {
-    /// Nothing rounded off its corners and nothing painted outside its
-    /// rect — the shape both the clear fold and the fragment fast path
-    /// start from.
     const fn is_sharp(&self) -> bool {
         is_invisible(self.stroke_width) && self.corners.is_approx_zero()
     }
 
-    /// [`Self::is_sharp`] plus a rect whose physical edges land on whole
-    /// pixels. Alignment is exact, not approximate: exactness is what
-    /// makes the fragment fast path bitwise-identical to the SDF (host
-    /// pixel snapping yields exact integers when active; unsnapped
-    /// fractional rects keep the full SDF for edge AA).
+    /// [`Self::is_sharp`] plus physical edges on whole pixels. Exactness makes the
+    /// fragment fast path bitwise-identical to the SDF.
     fn is_pixel_aligned(&self) -> bool {
         let phys = self.rect.phys;
         let max = phys.max();
@@ -105,21 +88,13 @@ impl PackedQuad {
     }
 }
 
-/// A draw's rect in the two forms every rect-shaped handler needs, from
-/// [`ComposeSession::scaled_rect`]. [`PackedQuad`] carries one rather
-/// than a second pair of fields meaning the same two things.
 #[derive(Debug)]
 struct ScaledRect {
-    /// Physical px — what the emitted instance carries.
     phys: Rect,
-    /// Viewport-clamped integer bounds — what culling and the group's
-    /// overlap tracking test against.
     urect: URect,
 }
 
 impl ScaledRect {
-    /// The bounds of a rect that is already physical — a covering AABB
-    /// the composer computed rather than transformed.
     fn from_phys(phys: Rect, viewport: UVec2) -> Self {
         Self {
             phys,
@@ -129,9 +104,8 @@ impl ScaledRect {
 }
 
 impl ComposeSession<'_> {
-    /// Tile `t ∈ [0, 1]` into `n` contiguous ranges (the last ending at
-    /// exactly `1.0`, so the shader's trailing-cap test fires) and push
-    /// one instance per range; `proto` supplies every other lane.
+    /// Tile `t` in `[0, 1]` into `n` contiguous ranges, the last ending at exactly `1.0` so the
+    /// shader's trailing-cap test fires.
     fn push_sub_instances(&mut self, n: u32, proto: CurveInstance) {
         let inv_n = 1.0 / n as f32;
         for i in 0..n {
@@ -148,30 +122,17 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// Apply the walk transform to a payload's logical rect, scale it to
-    /// physical px, and derive its integer bounds — the opening move of
-    /// `icon`, `image`, `text` and `pack_quad`. Scaling happens once
-    /// because the cull bounds and the emitted instance share the
-    /// result, so a culled draw costs the same as an emitted one.
+    /// Apply the walk transform to a logical rect and scale it to physical px with integer bounds,
+    /// once, for cull and instance alike.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
         let phys = world.scaled_by(self.out.display.scale_factor(), self.out.display.pixel_snap);
         ScaledRect::from_phys(phys, self.out.display.physical)
     }
 
-    /// The part of `whole` that can be seen — inside the surface and inside the
-    /// active clip — in physical pixels, or `None` where that is all of it.
-    ///
-    /// Two things cut a rect down, and both have to be here: the surface, since
-    /// layout may hand back a rect larger than the window, and the scissor, for
-    /// a view scrolled partly out of its pane.
-    ///
-    /// `None` where nothing was cut, so that the usual view — which nothing
-    /// clips — stays on the path it was always on. A fast path rather than a
-    /// distinction that has to hold: an intersection reconstructs its size as
-    /// `(min + size) - min`, which is exact at the coordinates a surface reaches
-    /// but is not exact in general, and answering `Some` where it drifted would
-    /// take the other branch to the same numbers.
+    /// The part of `whole` that can be seen (inside the surface and the active clip),
+    /// or `None` where nothing was cut. `None` keeps the common unclipped view on its
+    /// exact path, since an intersection's `(min + size) - min` is not exact in general.
     fn seen(&self, whole: Rect) -> Option<Rect> {
         let surface = self.out.display.physical;
         let mut clipped = whole.clamp_to(Rect::new(0.0, 0.0, surface.x as f32, surface.y as f32));
@@ -183,14 +144,8 @@ impl ComposeSession<'_> {
 }
 
 impl Drop for ComposeSession<'_> {
-    /// Close the trailing text batch and draw group.
-    ///
-    /// Finalization is a destructor rather than a `finish()` the caller
-    /// must remember: a session dropped un-closed leaves a
-    /// `RenderBuffer` that *looks* populated but whose trailing group
-    /// and batch were never emitted, so the backend schedules neither —
-    /// missing pixels, nothing failing loudly. Since the session holds
-    /// `&mut RenderBuffer`, that borrow also ends exactly here.
+    /// Close the trailing text batch and draw group. A destructor so a dropped session cannot leave
+    /// a `RenderBuffer` that looks populated but is missing its last group.
     fn drop(&mut self) {
         self.close_batch();
         self.flush();
@@ -204,10 +159,6 @@ impl PaintSink for ComposeSession<'_> {
         let viewport_phys = self.out.display.physical;
         let logical_radius = (!p.corners.is_approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
-        // Scaled once: the scissor is the integer cover of this rect and
-        // the rounded mask below is the rect itself, so deriving them
-        // from two calls meant scaling the same rectangle twice per clip
-        // push.
         let phys = world.scaled_by(scale, snap);
         let me = geometry::urect_from_phys(phys.min, phys.max(), viewport_phys);
         let parent = self.composer.clip.top();
@@ -217,24 +168,15 @@ impl PaintSink for ComposeSession<'_> {
         };
         let parent_chain = parent.map_or(Span::default(), |f| f.chain);
         let chain = if let Some(logical_radius) = logical_radius {
-            // Combine current transform's uniform scale with DPR
-            // so radii match the painted SDF's physical size.
             let scale_phys = geometry::phys_scale(self.composer.transform.current(), scale);
-            // `mask_rect` stays unclamped — the SDF needs the
-            // rect's true edges, otherwise corner curves
-            // would shift inward when the clip partially
-            // leaves the viewport.
+            // `mask_rect` stays unclamped: the SDF needs the true edges or corners shift inward
+            // when the clip leaves the viewport.
             let rc = RoundedClip {
                 mask_rect: phys,
                 corners: logical_radius.fit_to(phys.size, scale_phys),
             };
-            // A rounded push nested in rounded ancestors
-            // STACKS: child chain = ancestor chain + own
-            // mask, copied so every chain is one contiguous
-            // span the stencil path can stamp outer→inner.
-            // Re-pushing the innermost mask verbatim adds no
-            // depth (a redundant stamp would test/write the
-            // same pixels).
+            // A rounded push nested in rounded ancestors stacks: child chain = ancestor chain + own
+            // mask. Re-pushing the innermost mask adds no depth.
             if self.out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
                 parent_chain
             } else {
@@ -250,12 +192,8 @@ impl PaintSink for ComposeSession<'_> {
                 Span::new(chain_start, depth)
             }
         } else {
-            // Rect clip nested inside rounded ancestors: inherit
-            // the ancestor chain so children stay stencil-tested
-            // against the active masks. Without this, the child
-            // group would draw with ref=0 over pixels already
-            // stenciled nonzero by the ancestors' masks, and the
-            // stencil_test pipeline would discard every fragment.
+            // A rect clip inside rounded ancestors inherits their chain; else the child group draws
+            // with ref=0 and the stencil test discards every fragment.
             parent_chain
         };
         self.enter_clip(ClipFrame { scissor, chain });
@@ -275,32 +213,19 @@ impl PaintSink for ComposeSession<'_> {
 
     fn quad(&mut self, p: DrawQuadPayload) {
         let packed = self.pack_quad(&p);
-        // The clear fold sits here, at the top level, because what it does
-        // is frame-global — it drops everything composed so far. Reducing
-        // one shape to physical space is [`Self::pack_quad`]'s job and
-        // ends at [`PackedQuad`]; folding a whole frame away is not part
-        // of that and must not hide inside one of its arms.
         if self.fold_into_clear(&p, &packed) {
             return;
         }
-        // Clip-cull: skip emitting the quad when it sits entirely outside
-        // the active scissor. The GPU would scissor it away anyway; this
-        // saves the `quads.push` + per-quad math.
-        //
-        // The clipped rect is also what the overlap test wants, and what
-        // text tests with: the pixels this draw can reach are what a
-        // later draw has to be ordered against, so a quad whose ancestor
-        // clip cut it does not force a flush over ground it never paints.
+        // Skip the quad when entirely outside the scissor. The clipped rect is also the
+        // overlap test's rect, so an ancestor-clipped quad does not force a needless flush.
         let visible = self.composer.clip.clamped(packed.rect.urect);
         if visible.is_paint_empty() {
             return;
         }
         self.quad_forces_flush(visible);
-        // Fragment fast path: a solid, sharp, stroke-less quad whose
-        // physical rect is pixel-aligned rasterizes only interior
-        // fragments (SDF coverage exactly 1.0) — flag the instance so the
-        // shader returns the premultiplied fill directly, skipping the SDF
-        // + composite path. `SOLID` keeps shadows and triangles out.
+        // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
+        // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
+        // shadows and triangles.
         let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
         let fill_kind = if fast {
             p.fill.kind.with_fast()
@@ -323,37 +248,21 @@ impl PaintSink for ComposeSession<'_> {
     fn mesh(&mut self, p: DrawMeshPayload) {
         let scale = self.out.display.scale_factor();
         let viewport_phys = self.out.display.physical;
-        // `draw_mesh` already gated empty/degenerate meshes
-        // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
-        // Inflate by 0.5 phys-px to match polyline's AA-fringe
-        // policy. Mesh today paints inside its vertex hull,
-        // but a future AA edge or displacement shader would
-        // silently produce false negatives — and false
-        // negatives in the overlap test reorder paint. The
-        // same inflated rect feeds the clip cull below.
-        // Mesh skips snapping (matches polyline/curve), so it cannot use
-        // `scaled_rect`; the fold and the scale still go through the same
-        // `phys_bbox` the stroked pair uses, which is what keeps the cull
-        // tracking the other tiers. The integer bounds below are
-        // `urect_from_phys` like every other tier's.
+        // `draw_mesh` already gated empty meshes, so `v_len >= 1`. Inflate by 0.5 phys px
+        // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
+        // skips snapping, so it cannot use `scaled_rect`.
         let xform = self.composer.transform.current();
         let phys = geometry::phys_bbox(xform, p.bbox, p.origin, scale);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect =
             geometry::urect_from_phys(phys.min - fringe, phys.max() + fringe, viewport_phys);
-        // Clip-cull + batch-close: a mesh fully outside the
-        // active scissor (e.g. scrolled out of an ancestor clip)
-        // is skipped; a surviving one closes the open text batch
-        // so its text emits before this above-text geometry.
+        // A surviving mesh closes the open text batch so its text emits before this above-text
+        // geometry.
         if !self.admit_higher_kind(PaintTier::Mesh, mesh_urect) {
             return;
         }
-        // Verts already live in RecordStore owner-local;
-        // span passes through to `MeshDraw` verbatim. The
-        // per-instance translate folds in both the owner
-        // origin and the active push-transform stack so the
-        // shader produces physical coords — no per-vertex CPU
-        // multiply and no per-frame vertex copy.
+        // Verts stay owner-local; the per-instance translate folds in owner origin and transform
+        // stack, so the shader produces physical coords.
         let scale_phys = geometry::phys_scale(xform, scale);
         let phys_translate = (xform.scale * p.origin + xform.translation) * scale;
         self.out.meshes.push(MeshDrawRow {
@@ -382,24 +291,17 @@ impl PaintSink for ComposeSession<'_> {
         if !self.admit_higher_kind(PaintTier::Icon, urect) {
             return;
         }
-        // The raster size is decided here, not upstream: this is the first
-        // point that knows the display scale and every ancestor transform, and
-        // so the first point that knows how many device pixels the icon covers.
         let box_px = Vec2::new(phys_rect.size.w, phys_rect.size.h);
         let key = IconRasterKey::for_box(p.icon, box_px);
         let (origin, size) = if key.is_exact() {
-            // Whole-pixel origin, with the raster centred in the box it was
-            // sized from: it is that box rounded, so centring spreads the
-            // rounding over both edges, and the `Nearest` atlas sampler is
-            // why the origin itself must land on integers.
+            // Whole-pixel origin with the raster centred in its box; the `Nearest` atlas sampler
+            // needs integer origins.
             let centred = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
             (centred.fast_round().as_ivec2(), key.size())
         } else {
-            // Above the exact band the raster is a rung near the box, or the
-            // capped one far below it; drawn at its own size it would stick
-            // out of the box the cull and damage rects come from, or leave a
-            // gap inside it. So the quad is the box, in whole pixels, and the
-            // raster is resampled to fill it.
+            // Above the exact band the raster is a nearby or capped rung; at its own size it
+            // would stick out of or leave a gap in the box the cull and damage rects use. So
+            // the quad is the box and the raster is resampled.
             let min = phys_rect.min.fast_round();
             let max = phys_rect.max().fast_round();
             let size = (max - min).max(Vec2::ONE);
@@ -424,26 +326,16 @@ impl PaintSink for ComposeSession<'_> {
             phys: phys_rect,
             urect: image_urect,
         } = self.scaled_rect(p.rect);
-        // Clip-cull + batch-close: image sits above text in the
-        // kind order (same as mesh), so a surviving draw closes
-        // the open text batch first.
         if !self.admit_higher_kind(PaintTier::Image, image_urect) {
             return;
         }
-        // A `GpuView` is drawn over the part of itself that can be seen rather
-        // than over the whole rect, because that is all its target holds — see
-        // the scheduling below. Its UV stays whole, since the target *is* the
-        // visible part; every other image keeps the rect and UV the encoder
-        // resolved.
+        // A `GpuView` draws over only its visible part, since that is all its target holds; its UV
+        // stays whole.
         let seen = view.and_then(|_| self.seen(phys_rect));
         let composite = seen.unwrap_or(phys_rect);
         self.out.images.push(ImageDrawRow {
-            // Just the registration id — the backend looks it
-            // up in its texture cache; the encoder already
-            // resolved fit into `rect` + UV. A `GpuView` row is
-            // identical (its `id` is the off-screen target's),
-            // so the draw stays uniform; `target` below only
-            // schedules the off-screen paint.
+            // Only the registration id: the encoder already resolved fit into `rect` + UV. `target`
+            // only schedules the off-screen paint.
             id: p.handle,
             instance: ImageInstance {
                 rect: composite,
@@ -454,44 +346,27 @@ impl PaintSink for ComposeSession<'_> {
                 ..bytemuck::Zeroable::zeroed()
             },
         });
-        // A `GpuView` also needs its off-screen target painted: list it with
-        // the size it will be allocated at, where that sits in the view, the
-        // display and raster scales, and the app paint callback riding
-        // alongside the payload. The draw above already composites the result
-        // by `id`.
-        //
-        // **Sized to what is on screen, not to the rect.** Layout is allowed to
-        // hand back a rect larger than the surface — the contains-content rule
-        // says a node overflows its parent rather than clipping its own content
-        // — and a scroll can put most of a view outside its viewport. Following
-        // the rect would allocate, and ask the app to draw, pixels that are
-        // then thrown away: a status line long enough to widen the window's
-        // root is enough to do it.
+        // A `GpuView` also needs its off-screen target painted. Sized to what is on
+        // screen, not the rect: layout may return a rect larger than the surface, and
+        // following it would allocate and draw discarded pixels.
         if let Some(view) = view {
             let scale = self.out.display.scale_factor();
             let cap = i64::from(self.composer.max_texture_dim.get());
             let whole = phys_rect.size;
-            // The cap is measured against the *whole* view, so how much a view
-            // is downsampled does not change with how much of it happens to be
-            // scrolled into sight — a target that resampled itself as the view
-            // slid past would shimmer.
+            // The cap is measured against the whole view so the downsample does not change as the
+            // view scrolls (it would shimmer).
             let downsample =
                 (self.composer.max_texture_dim.get() as f32 / whole.w.max(whole.h)).min(1.0);
             let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
-            // Floored at zero rather than at one, unlike a size: a target has
-            // to have a pixel in it, and a corner has to be allowed to be the
-            // origin — which it is for every view nothing clips.
+            // Floored at zero, unlike a size: a target needs a pixel, and a corner may be the
+            // origin.
             let at = |v: f32| ((v * downsample).floor() as i64).clamp(0, cap) as u32;
             let (used, offset) = match seen {
                 Some(seen) => (seen.size, seen.min - phys_rect.min),
                 None => (whole, Vec2::ZERO),
             };
-            // The window lands inside the view without being made to: an origin
-            // that rounds down and a size that rounds up sum to less than
-            // `offset + used + 1`, and the only integer that can be is at most
-            // the rounded-up whole. So `offset + used <= full` holds of the
-            // arithmetic rather than of a clamp, which is why there is none —
-            // it could never fire. Pinned by
+            // The window lands inside the view by arithmetic, not a clamp: origin rounds
+            // down and size rounds up, so `offset + used <= full`. Pinned by
             // `compose_gpu_view_caps_wide_and_tall_targets_uniformly`.
             self.out.frame_targets.push(RenderTargetDraw {
                 id: p.handle,
@@ -521,23 +396,13 @@ impl PaintSink for ComposeSession<'_> {
             display: self.out.display,
         }
         .urect();
-        // Clip-cull + batch-close: a curve sits above text in the
-        // kind order (same as mesh/image), so a surviving draw
-        // closes the open text batch first.
         if !self.admit_higher_kind(PaintTier::Curve, bbox_urect) {
             return;
         }
-        // Owner origin folds in here so the record stays owner-local
-        // (cross-frame stable). No pixel snapping — snapping geometry
-        // would warp the traced shape; the AA fringe lives in the
-        // shader.
+        // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
+        // the traced shape.
         let to_phys = geometry::phys_point_map(xform, p.origin, scale);
-        // Both bases below rotate about the pivot exactly — a Bézier by
-        // affine invariance, a circle by moving its centre and shifting
-        // both angles.
         let spin = p.bounds.spin();
-        // Style lanes are basis-independent; each arm below fills in
-        // the geometry and its own `kind`.
         let proto = CurveInstance {
             width: width_phys,
             color0: p.fill.color,
@@ -557,15 +422,9 @@ impl PaintSink for ComposeSession<'_> {
                     }
                 }
                 let [p0, p1, p2, p3] = ctrl.map(to_phys);
-                // Adaptive sub-instance count from the post-transform
-                // control-polygon length. Polygon length bounds arc
-                // length from above — slight overshoot, but never
-                // undershoots → no faceting from too-coarse sampling.
-                // Near-straight cubics (`Shape::line` lowers as one;
-                // graph wires often relax to one) short-circuit to a
-                // single instance: every chord of a flat curve lies on
-                // the segment, so the 16 baked chords render it exactly
-                // at any length.
+                // Adaptive sub-instance count from the control-polygon length, which bounds arc
+                // length from above (no faceting). Near-straight cubics use one instance: every
+                // chord of a flat curve lies on the segment.
                 let n = if geometry::cubic_is_flat(p0, p1, p2, p3) {
                     1
                 } else {
@@ -594,16 +453,11 @@ impl PaintSink for ComposeSession<'_> {
                     a0 += spin.angle;
                     a1 += spin.angle;
                 }
-                // The transform stack is translate + uniform scale (no
-                // rotation/skew — see `TranslateScale`), so a circle
-                // maps to a circle: transform the centre, scale the
-                // radius. Angles pass through untouched.
+                // The transform is translate + uniform scale, so a circle stays a circle: transform
+                // the centre, scale the radius.
                 let radius_phys = radius * geometry::phys_scale(xform, scale);
-                // Adaptive sub-instance count from the *exact* arc
-                // length `r·|sweep|` — no control-polygon overshoot.
-                // Same ~1.5 px chord target as the cubic path; at that
-                // density the chord sagitta is `≈ c²/(8r)` ≤ 0.3 px
-                // even at r = 1, buried under the AA fringe.
+                // Sub-instance count from the exact arc length; chord sagitta stays under 0.3 px
+                // even at r = 1.
                 let n = geometry::sub_instance_count(radius_phys * (a1 - a0).abs());
                 let proto = CurveInstance {
                     p0: to_phys(center),
@@ -628,15 +482,9 @@ impl PaintSink for ComposeSession<'_> {
         let xform = self.composer.transform.current();
         let width_phys = p.width * geometry::phys_scale(xform, scale);
 
-        // Compute the inflated physical-px AABB once and
-        // reuse it for cull and overlap tracking. Inflating
-        // by the stroke's outer fringe means the cull never
-        // trims a pixel the stroke would reach, and it
-        // short-circuits before transforming the full point
-        // list — the win for long dense point runs.
-        // Clamped where it is built: the early return below is what skips
-        // the kept-point walk, and `admit_higher_kind` wants this same
-        // clipped rect rather than a second answer to the same question.
+        // Inflated physical AABB, computed once for cull and overlap. Inflating by the
+        // stroke fringe means the cull never trims reachable pixels. Clamped here because
+        // `admit_higher_kind` wants the same clipped rect.
         let visible = self.composer.clip.clamped(
             StrokeBbox {
                 xform,
@@ -660,17 +508,10 @@ impl PaintSink for ComposeSession<'_> {
         let src_points = &self.store.polyline_points[pts_start..pts_end];
         let src_colors = &self.store.polyline_colors[cs_start..cs_end];
 
-        // Transform points into physical-px. Owner-local
-        // origin is folded in here so points stay owner-
-        // local in the record store (cross-frame stable). No
-        // pixel-snap — snapping stroke verts shifts thin
-        // lines off-axis. Hairline regime (<1 phys px) is
-        // the shader's trapezoid-plateau coverage.
+        // Transform points to physical px with owner origin folded in. No snapping: it would shift
+        // thin lines off-axis.
         self.composer.polyline.points.clear();
         let to_phys = geometry::phys_point_map(xform, p.origin, scale);
-        // The spin is lifted out of the run rather than tested per point:
-        // it rotates each owner-local point about the pivot before the
-        // ancestor transform places it, so the shape turns in place.
         if let Some(spin) = p.bounds.spin() {
             let rotor = spin.rotor();
             self.composer
@@ -684,10 +525,8 @@ impl PaintSink for ComposeSession<'_> {
                 .extend(src_points.iter().map(|&q| to_phys(q)));
         }
 
-        // Keep only points beyond the coincidence threshold
-        // from their predecessor — degenerate segments
-        // contribute no geometry and their colors drop
-        // with them.
+        // Keep only points beyond the coincidence threshold from their predecessor; dropped points
+        // take their colors with them.
         self.composer.polyline.kept.clear();
         let mut prev: Option<Vec2> = None;
         for (i, &q) in self.composer.polyline.points.iter().enumerate() {
@@ -700,9 +539,8 @@ impl PaintSink for ComposeSession<'_> {
         if self.composer.polyline.kept.len() < 2 {
             return;
         }
-        // Only now that the polyline will actually emit
-        // geometry — an empty or culled polyline must not
-        // split the batch or the group.
+        // Only now that the polyline will emit geometry: an empty or culled one must not split the
+        // batch or group.
         if !self.admit_higher_kind(PaintTier::Curve, visible) {
             return;
         }
@@ -720,16 +558,8 @@ impl PaintSink for ComposeSession<'_> {
         let kept = kept.as_slice();
         let directions = directions.as_slice();
         let pt = |k: usize| pts[kept[k] as usize];
-        // Segment color(s) for the kept segment `k → k+1`, indexed
-        // through `kept` so the lookup lands on the *original* point
-        // index — a coincident point dropped above takes its color
-        // with it.
-        // A paint animation's alpha rides the payload rather than the
-        // colours, which live in the record store this draw only points
-        // at. Folded in here, where every colour is already read once on
-        // its way into an instance, so a faded polyline costs no copy of
-        // the run. The joint chrome below averages these, so it inherits
-        // the fade without asking for it.
+        // Segment colors for `k -> k+1`, indexed through `kept`. A paint animation's
+        // alpha is folded in here, where each colour is read once, so fading costs no copy.
         let seg_colors = |k: usize| -> (RgbaF16, RgbaF16) {
             let (a, b) = match mode {
                 ColorMode::Single => (src_colors[0], src_colors[0]),
@@ -750,10 +580,7 @@ impl PaintSink for ComposeSession<'_> {
         };
         let n_segs = directions.len();
         for k in 0..n_segs {
-            // Pre-oriented bisector clip planes for the
-            // joint ends, riding the neighbor lanes ("keep"
-            // is `dot(x - endpoint, n) <= 0` in the shader);
-            // zero = cap end, no clip.
+            // Pre-oriented bisector clip planes for the joint ends; zero = cap end, no clip.
             let n_start = if k > 0 {
                 -(directions[k - 1] + directions[k])
             } else {
@@ -780,16 +607,8 @@ impl PaintSink for ComposeSession<'_> {
                 ..bytemuck::Zeroable::zeroed()
             });
         }
-        // One chrome instance per interior joint fills the
-        // convex wedge between the two segment end faces.
-        // The face-plane normals ride the neighbor lanes
-        // pre-oriented for the shader's keep test
-        // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
-        // average of the adjacent colors, taken in linear light and
-        // premultiplied, like every other colour interpolation.
-        // Equal sides — a single colour, or the shared point of a
-        // per-point run — are the common case, and a colour averaged
-        // with itself is itself, so only differing sides pay the unpack.
+        // One chrome instance per interior joint fills the wedge between segment end
+        // faces, in the premultiplied linear average of the adjacent colors.
         for k in 1..n_segs {
             let d_a = directions[k - 1];
             let d_b = directions[k];
@@ -819,12 +638,9 @@ impl PaintSink for ComposeSession<'_> {
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
         let phys_rect = world.scaled_by(scale, self.out.display.pixel_snap);
-        // What the glyphs can reach: their ink from the origin they are
-        // placed at, at its true size — pixel snapping moves the origin,
-        // never the glyphs' extent — padded by the scale-step fraction a
-        // snapped text scale can add, the same pad the run's damage rect
-        // carries (`inflate_text_damage`). Covered, never rounded in, so
-        // the last column of antialiasing is not cut.
+        // What the glyphs can reach: ink from the placed origin at true size, padded by
+        // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
+        // Covered, never rounded in, so the last AA column is not cut.
         let unclipped = {
             let inked = self
                 .composer
@@ -836,33 +652,20 @@ impl PaintSink for ComposeSession<'_> {
             let min = phys_rect.min - lead;
             geometry::urect_from_phys(min - pad, min + size + pad, self.out.display.physical)
         };
-        // `bounds` feeds the batch GPU scissor (union of the
-        // batch's runs — see the strict-bounds rule below) and
-        // the backend's per-line y-cull; there is no per-glyph
-        // clip. Intersect with the active clip-stack top so
-        // ancestor `clip = true` panels actually clip glyphs;
-        // an empty intersection means the run can't reach
-        // pixels — skip the push entirely (cull).
+        // `bounds` feeds the batch GPU scissor and the backend's per-line y-cull; there is no
+        // per-glyph clip. An empty intersection with the clip skips the push.
         let bounds = self.composer.clip.clamped(unclipped);
         if bounds.is_paint_empty() {
             return;
         }
-        // Text sits below mesh/image/curve/polyline in the
-        // kind order — flush if any prior higher-kind draw in
-        // the group overlaps so this text doesn't get
-        // reordered above it. (No need to check quads: text
-        // paints over quads anyway.)
+        // Text sits below mesh/image/curve/polyline in kind order: flush if a prior higher-kind
+        // draw overlaps. Quads need no check.
         if self.composer.higher_kinds.any_overlap(bounds) {
             self.flush();
         }
-        // Batch GPU scissor = `open_grid.union` (union of every
-        // run's `bounds` in the batch). The text shader has
-        // no per-instance clip, so a "strict" run — one
-        // whose ancestor clip cuts the unclipped extent —
-        // can only batch with peers whose `bounds` matches
-        // exactly; anything wider would let the strict
-        // run's glyphs paint past their intended clip.
-        // Non-strict-with-non-strict coalesces freely.
+        // Batch scissor = `open_grid.union`. The text shader has no per-instance clip, so
+        // a strict run (cut by an ancestor clip) batches only with peers of identical
+        // `bounds`; non-strict runs coalesce freely.
         let new_strict = bounds != unclipped;
         if let Some(b) = self.composer.batch.open.as_ref()
             && (b.strict || new_strict)
@@ -870,27 +673,16 @@ impl PaintSink for ComposeSession<'_> {
         {
             self.close_batch();
         }
-        // open_batch must run BEFORE the text push so the
-        // batch's `texts_start` captures this run's index.
+        // `open_batch` must run before the text push so `texts_start` captures this run's index.
         let b = self.open_batch();
         b.strict |= new_strict;
         self.out.texts.push(TextDrawRow {
             origin: phys_rect.min,
             bounds,
-            // Linear straight to the text backend, which
-            // premultiplies at output like the rest of the
-            // renderer's pipelines. No sRGB round trip.
             color: t.color,
             text: t.text,
-            // Snap the ancestor-transform component of the
-            // text scale to discrete 0.5% steps. Continuous
-            // zoom would otherwise mint a fresh glyph
-            // cache key every frame (subpixel font size +
-            // bin shift), forcing swash to re-rasterize
-            // every glyph. Snapping stabilizes the key
-            // across small zoom deltas so the atlas hits.
-            // Quads/meshes keep continuous scale — only
-            // text glyph crispness "steps."
+            // Snap the ancestor-transform part of the text scale to 0.5% steps; continuous zoom
+            // would mint a new glyph cache key every frame.
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
         });
         self.composer.batch.open_grid.push(bounds);
@@ -898,32 +690,22 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 impl ComposeSession<'_> {
-    /// Reduce a quad-tier draw's geometry to physical space. Each arm owns
-    /// both reused `Quad` lanes: a rect fills them with scaled corner
-    /// radii and its brush/shadow axis, a triangle with its packed corner
-    /// points. Everything past this point is shape-blind.
+    /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
         let xform = self.composer.transform.current();
         let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
         match p.geom {
             QuadGeom::Rect { rect, corners } => {
                 let source = self.scaled_rect(rect);
-                // Live shadow parameters are logical-px scalars; scale
-                // them so the shader's `local` coords line up. A gradient
-                // axis is already unit-space and passes through untouched.
+                // Shadow scalars are logical px, so scale them; a gradient axis is unit-space.
                 let fill_axis = if p.fill.kind.is_shadow() {
                     p.fill_axis.scaled(scale_phys)
                 } else {
                     p.fill_axis
                 };
-                // The radii fit the rect they round — for a shadow, its
-                // source, from which the shader derives a drop shadow's own
-                // radii as CSS does.
                 let corners = corners.fit_to(source.phys.size, scale_phys);
-                // A drop shadow's quad is its snapped source moved and
-                // grown here, not snapped again: the source the shader
-                // finds inside it then sits on the pixels the shadowed
-                // fill does, which its clip depends on.
+                // A drop shadow's quad is its snapped source moved and grown, not re-snapped, so
+                // the source inside it lies on the same pixels as the fill.
                 let rect = if p.fill.kind == FillKind::SHADOW_DROP {
                     let geom = ShadowGeom::from_lanes(fill_axis.lanes());
                     let phys = Rect {
@@ -950,26 +732,17 @@ impl ComposeSession<'_> {
                 radius,
             } => {
                 let scale = self.out.display.scale_factor();
-                // Fold owner origin + active transform, scale to physical
-                // px. No pixel-snap — the SDF handles sub-pixel placement;
-                // snapping the covering rect would only shift the AA band.
+                // No snapping: the SDF handles sub-pixel placement.
                 let xf = geometry::phys_point_map(xform, origin, scale);
                 let (a, b, c) = (xf(a), xf(b), xf(c));
                 let radius_phys = (radius * scale_phys).max(0.0);
-                // Covering AABB: the rounded shape (the SDF offsets the
-                // triangle outward by `radius` to round its corners). The
-                // shader grows the quad by the AA ramp, as it does every
-                // quad's. The stroke sits on the *inner* edge (like a
-                // rounded rect), so it adds no outward reach.
+                // Covering AABB of the rounded shape; the stroke sits on the inner edge, so it adds
+                // no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
                 let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys);
-                // Pack the three points as unorm16 shares of the covering
-                // rect, which holds them, so every share is in 0..=1, and
-                // the corner radius as f16, into the reused `corners` /
-                // `fill_axis` lanes; `FillKind::TRIANGLE` tells the shader
-                // to decode them as a triangle rather than rounded-rect
-                // radii / gradient axis.
+                // Pack the points as unorm16 shares of the covering rect and the radius as f16;
+                // `FillKind::TRIANGLE` tells the shader to decode them.
                 let share = |p: Vec2| {
                     let at = (p - phys_rect.min) / Vec2::new(phys_rect.size.w, phys_rect.size.h);
                     [unorm16(at.x), unorm16(at.y)]
@@ -987,28 +760,13 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// Clear fold: an opaque solid sharp unclipped quad covering the whole
-    /// viewport paints exactly what `LoadOp::Clear(fill)` would — every
-    /// covered pixel is deep inside the SDF (coverage exactly 1.0), so the
-    /// outputs are bit-identical. And being opaque over every pixel, it
-    /// hides *everything painted before it*. So: discard the whole scene
-    /// composed so far and record the fill as the pass clear — the frame
-    /// effectively starts at the last such cover.
+    /// Clear fold: an opaque, solid, sharp, unclipped quad covering the viewport is
+    /// bit-identical to `LoadOp::Clear(fill)` and hides everything before it, so
+    /// discard the scene so far and record the fill as the pass clear. The clip must be
+    /// empty: a scissored cover hides only its scissor, and an empty clip guarantees no
+    /// group in flight references the `rounded_clips` state the discard wipes.
     ///
-    /// The root window background is the common case (cover at position 0,
-    /// nothing to discard); a fullscreen page/panel painted over an
-    /// underlay drops the entire hidden underlay too. The active clip must
-    /// be empty: a scissored cover only hides its scissor, and an empty
-    /// clip state also guarantees no group in flight references
-    /// `rounded_clips` state the discard wipes.
-    ///
-    /// Only a rect can reach this: the `SOLID` test rules out shadows and
-    /// triangles, which carry their own `FillKind`. Sharpness is read off
-    /// the *packed* values, the same ones the fragment fast path reads —
-    /// scaling by a positive factor cannot make a zero radius nonzero, so
-    /// the test only ever tightens.
-    ///
-    /// Returns `true` when the quad was folded and must not be emitted.
+    /// Returns `true` when folded; the quad must not be emitted.
     fn fold_into_clear(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) -> bool {
         let phys = packed.rect.phys;
         let covers_viewport = phys.min.x <= EPS
@@ -1016,9 +774,6 @@ impl ComposeSession<'_> {
             && phys.max().x >= self.out.display.physical.as_vec2().x - EPS
             && phys.max().y >= self.out.display.physical.as_vec2().y - EPS;
         if !covers_viewport
-            // Any frame at all, not just one with a rounded chain: a
-            // non-empty chain implies a frame, so testing both asked one
-            // question twice.
             || self.composer.clip.top().is_some()
             || p.fill.kind != FillKind::SOLID
             || !p.fill.color.is_opaque()
@@ -1031,10 +786,8 @@ impl ComposeSession<'_> {
         true
     }
 
-    /// Opaque-cover annotation for the occlusion pruner, `SOLID`-only —
-    /// which is what keeps it off the two shapes that would be wrong to
-    /// record: a shadow's blur reaches past its rect, and a triangle
-    /// covers only its interior, not the whole `rect`.
+    /// Opaque-cover annotation for the occlusion pruner, `SOLID` only: a shadow's blur and a
+    /// triangle's empty corners don't cover the whole `rect`.
     fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, fast: bool) {
         if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
             return;
@@ -1053,10 +806,9 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// Close the in-flight group: if anything was emitted into it,
-    /// push a `DrawGroup` covering the open slice; either way advance
-    /// the per-kind cursors and clear the overlap scratches. Scissor
-    /// + rounded clip are preserved for the next group.
+    /// Close the in-flight group: push a `DrawGroup` if anything was emitted, advance
+    /// the per-kind cursors and clear the overlap scratches. Scissor and rounded clip
+    /// carry over.
     fn flush(&mut self) {
         let composer = &mut *self.composer;
         composer.occlusion.prune(self.out, composer.cursors.quads);
@@ -1069,9 +821,8 @@ impl ComposeSession<'_> {
                 .iter()
                 .any(|&t| higher_end[t.idx()] > composer.cursors.higher[t.idx()])
         {
-            // Push the higher-kind batches BEFORE the group itself so
-            // their `last_group` matches the in-flight group's
-            // eventual index (= current `out.groups.len()`).
+            // Push higher-kind batches before the group so their `last_group` matches its eventual
+            // index.
             let last_group = self.out.groups.len() as u32;
             for tier in PaintTier::ALL {
                 let start = composer.cursors.higher[tier.idx()];
@@ -1096,22 +847,15 @@ impl ComposeSession<'_> {
         };
         composer.higher_kinds.clear();
         composer.occlusion.clear();
-        // Closed-batch text is group-scoped: once we cross a group
-        // boundary, any batch closed *in* this group has rendered (it
-        // drains at its `last_group`), so its rects no longer gate quads.
-        // The open-batch grid is NOT cleared here — it spans groups with
-        // its (still-open) batch.
+        // Closed-batch text is group-scoped: past a group boundary those batches have rendered and
+        // no longer gate quads. The open-batch grid spans groups.
         composer.batch.closed_grid.clear();
         composer.batch.pending_batch_cursor = self.out.text_batches.len();
     }
 
-    /// Finalize the open text batch (if any): push a [`TextBatch`]
-    /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
-    /// batch is active. Called at batch-split events — rounded-clip
-    /// change, a higher-kind append, or a strict-bounds mismatch. The
-    /// finalized output remains pending for the group-scoped closed
-    /// check, so a later quad still flushes for already-closed text that
-    /// shares this group. The grid fill is deferred to [`Self::closed_hit`].
+    /// Finalize the open text batch, if any. Called at batch-split events (rounded-clip
+    /// change, higher-kind append, strict-bounds mismatch). The grid fill is deferred to
+    /// [`Self::closed_hit`].
     fn close_batch(&mut self) {
         let Some(b) = self.composer.batch.open.take() else {
             return;
@@ -1119,11 +863,8 @@ impl ComposeSession<'_> {
         let texts_end = self.out.texts.len() as u32;
         let scissor = self.composer.batch.open_grid.union;
         self.composer.batch.open_grid.clear();
-        // Invariants the schedule cursor relies on: batches are pushed
-        // in walk order so `last_group` is monotonically non-decreasing
-        // (multiple batches can anchor to the same group when a mesh
-        // splits mid-group), and their `texts` spans concatenate
-        // without gaps in `out.texts`.
+        // Schedule-cursor invariants: `last_group` is non-decreasing in walk order, and `texts`
+        // spans concatenate without gaps.
         debug_assert!(
             self.out
                 .text_batches
@@ -1139,28 +880,17 @@ impl ComposeSession<'_> {
         self.out.text_batches.push(TextBatch {
             texts: (b.texts_start..texts_end).into(),
             last_group: b.last_group,
-            // `scissor` is already in physical pixels and clamped to
-            // every contributing run's clip-stack-narrowed bounds, so it
-            // is the GPU scissor for this batch. It has to be: the text
-            // backend implements no per-run shader clipping, so a
-            // scissor any wider than this would let a clipped run's
-            // glyphs paint past their intended bound.
+            // Already physical and clamped to every run's clip-narrowed bounds, so it is the
+            // batch's GPU scissor (the text backend has no per-run clipping).
             scissor,
-            // Every close site runs while the outgoing clip is still the
-            // stack top (`break_for_clip` closes ahead of the push/pop),
-            // so this is the chain all the batch's runs were recorded
-            // under.
+            // Every close site runs while the outgoing clip is still the stack top.
             rounded_clips: self.composer.clip.chain(),
         });
     }
 
-    /// Return a mutable handle to the open batch, opening a fresh one
-    /// when none exists. Idempotent within a batch — repeated calls
-    /// reuse the same `OpenBatch` and only refresh `last_group` to
-    /// the in-flight group's eventual index.
+    /// Return the open batch, opening one if none exists; refreshes `last_group` to the in-flight
+    /// group's eventual index.
     fn open_batch(&mut self) -> &mut OpenBatch {
-        // Read before the borrow of `composer.batch`, which is what keeps
-        // a fresh batch's own group index reachable here.
         let last_group = self.out.groups.len() as u32;
         let texts_start = self.out.texts.len() as u32;
         let b = self.composer.batch.open.get_or_insert(OpenBatch {
@@ -1172,44 +902,24 @@ impl ComposeSession<'_> {
         b
     }
 
-    /// Cull a higher-kind (mesh / image / curve) draw against the active
-    /// clip, then close the open text batch if this draw covers text
-    /// already in it. That order is the rule, not an accident: a culled
-    /// draw paints nothing, so it must neither split the batch nor
-    /// register a rect.
+    /// Cull a higher-kind (mesh / image / curve) draw against the active clip, then
+    /// close the open text batch if this draw covers text already in it. A culled draw
+    /// must neither split the batch nor register a rect.
     ///
-    /// **Why the close is conditional.** A batch renders at the END of
-    /// its last group, and a batch left open lets a later run carry that
-    /// group past this one — so text recorded *before* this draw can
-    /// paint *over* it. The inversion is real, but it is invisible where
-    /// the two rects do not meet, so overlap is the whole test. The open
-    /// batch answers it off the same tiled index [`Self::quad_forces_flush`]
-    /// queries, which pre-rejects on a union AABB before it scans a tile.
-    /// Closing on every higher-kind draw instead costs one text batch per
-    /// draw — one per button of a labelled toolbar.
+    /// The close is conditional: a batch renders at the end of its last group, so text
+    /// recorded before this draw can paint over it, but only where rects meet. Closing
+    /// on every draw would cost one text batch per draw (e.g. per toolbar button). The
+    /// other half is in [`Self::text`]: a run recorded after this draw flushes the group
+    /// when it overlaps `higher_kinds`. Neither test is sound alone.
     ///
-    /// **The other half of the invariant** is in [`Self::text`]: a run
-    /// recorded *after* this draw joins a batch that drains before the
-    /// group's tier batches, so it would paint *under* the draw. That
-    /// path flushes the group when the run overlaps `higher_kinds`.
-    /// Neither test is sound alone — this one covers the text behind the
-    /// draw, that one the text ahead of it.
+    /// Also flushes on a cross-kind conflict with an earlier higher-kind draw (see
+    /// [`HigherKindRects::conflicts`]), then records this rect. Returns `false` when
+    /// culled. Polyline calls it only once its kept-point walk proves it emits geometry.
     ///
-    /// Also flushes the group when the draw cross-kind-conflicts with an
-    /// earlier higher-kind draw (see [`HigherKindRects::conflicts`]), and
-    /// then records the draw's own rect for the group's overlap tracking
-    /// (after the flush, so it isn't wiped with the previous group's
-    /// rects). Returns `false` when culled — the caller should `continue`.
-    ///
-    /// Polyline calls this only after its kept-point walk proves the
-    /// stroke emits geometry (an all-coincident polyline must not split
-    /// the batch), gated behind an early cull.
-    ///
-    /// [`HigherKindRects::conflicts`]: crate::renderer::frontend::composer::higher_kind::HigherKindRects::conflicts
+    /// [`HigherKindRects::conflicts`]:
+    /// crate::renderer::frontend::composer::higher_kind::HigherKindRects::conflicts
     fn admit_higher_kind(&mut self, tier: PaintTier, bounds: URect) -> bool {
-        // Clipped first, so what this tier registers as occupied is what
-        // it paints — the same rect the quad tier and the text tier test
-        // and record.
+        // Clipped first, so the registered rect is what is painted.
         let bounds = self.composer.clip.clamped(bounds);
         if bounds.is_paint_empty() {
             return false;
@@ -1224,30 +934,12 @@ impl ComposeSession<'_> {
         true
     }
 
-    /// Force a flush / batch-close if a quad-tier draw at `overlap`
-    /// overlaps something in the group that would be reordered above it.
-    /// Quad is the lowest paint kind, so any higher-kind draw it overlaps
-    /// would paint *under* it after the backend's intra-group reorder —
-    /// flush to keep record order. Text overlap is checked against both
-    /// the open batch's grid (which may span groups) and
-    /// batches already closed in this group ([`Self::closed_hit`]);
-    /// an open-batch hit additionally closes the batch so its text can't
-    /// coalesce forward and re-cover this quad. The open check goes
-    /// straight to the tiled grid — `any_overlap` pre-rejects on its
-    /// internal union AABB, so no caller-side pre-reject is needed.
+    /// Flush if a quad-tier draw at `overlap` overlaps something in the group that
+    /// would be reordered above it (quad is the lowest kind). Text is checked against
+    /// the open batch's grid and batches closed in this group ([`Self::closed_hit`]); an
+    /// open-batch hit also closes the batch so its text cannot coalesce forward and
+    /// re-cover the quad.
     fn quad_forces_flush(&mut self, overlap: URect) {
-        // Text painted in (or scheduled after) this group sits in two
-        // places: the open batch (`open_grid`, spans groups with its
-        // batch) and batches already closed within this group
-        // (`closed_grid`). A quad overlapping either would be painted
-        // *under* that text by the backend's quads→text order, so flush so
-        // the text renders first.
-        //
-        // An open-batch hit additionally *closes* the batch: leaving it
-        // open would let the overlapping run coalesce forward and schedule
-        // at a later `last_group`, re-covering this quad. A closed-grid
-        // hit needs no close — that text's batch is already finalized at
-        // this group; flushing alone puts the quad in the next group.
         if self.composer.batch.open_grid.any_overlap(overlap) {
             self.close_batch();
             self.flush();
@@ -1256,12 +948,9 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// `true` if `q` overlaps text of a batch closed within the
-    /// in-flight group. Finalized batches remain pending in
-    /// `out.text_batches`; the first query whose `q` hits a pending
-    /// batch scissor drains every pending batch into the closed grid.
-    /// Later queries use the grid, and groups nothing probes near
-    /// closed text never pay the per-rect fill.
+    /// `true` if `q` overlaps text of a batch closed in the in-flight group. The first
+    /// query hitting a pending batch scissor drains all pending batches into the closed
+    /// grid; groups nothing probes never pay the fill.
     fn closed_hit(&mut self, q: URect) -> bool {
         let batch = &mut self.composer.batch;
         let pending = &self.out.text_batches[batch.pending_batch_cursor..];
@@ -1276,44 +965,32 @@ impl ComposeSession<'_> {
         batch.closed_grid.any_overlap(q)
     }
 
-    /// Push `frame` as the clip in force, closing the batch and group
-    /// first if it differs from the one it replaces.
-    ///
-    /// The break runs **before** the stack moves, because [`Self::flush`]
-    /// stamps the closing group with the stack top: the outgoing clip has
-    /// to still be on top when it does.
-    ///
-    /// Named apart from the [`PaintSink`] pair that calls this one and
-    /// [`Self::leave_clip`]. Sharing a name would leave those trait bodies
-    /// terminating only on inherent methods winning resolution, and a
-    /// later rename here would turn `pop_clip` into unbounded recursion
-    /// that still compiles.
+    /// Push `frame` as the clip in force, closing the batch and group first if it
+    /// differs. The break runs before the stack moves, since [`Self::flush`] stamps the
+    /// closing group with the stack top. Named apart from the [`PaintSink`] pair so a
+    /// rename cannot turn `pop_clip` into silent recursion.
     fn enter_clip(&mut self, frame: ClipFrame) {
         self.break_for_clip(Some(frame));
         self.composer.clip.push(frame);
     }
 
-    /// Restore the parent clip. Named apart from the trait pair for the
-    /// reason [`Self::enter_clip`] gives.
+    /// Restore the parent clip; see [`Self::enter_clip`].
     fn leave_clip(&mut self) {
         let parent = self.composer.clip.parent();
         self.break_for_clip(parent);
         self.composer.clip.pop();
     }
 
-    /// Close what the clip in force owns, if `next` differs from it.
-    /// Chains compare by value, so a same-clip push/pop is a no-op and
-    /// accumulated overlap state persists through redundant transitions.
+    /// Close what the clip in force owns, if `next` differs. Chains compare by value, so a
+    /// redundant push/pop is a no-op.
     fn break_for_clip(&mut self, next: Option<ClipFrame>) {
         let next_chain = next.map_or(Span::default(), |frame| frame.chain);
         let chain_changed = !self
             .out
             .chains_equal(next_chain, self.composer.clip.chain());
         if chain_changed {
-            // The stencil mask stack is tied to the active chain; batched
-            // text under the wrong masks would either over- or
-            // under-clip. Close before the group transition, while the
-            // stack top still names the batch's chain.
+            // The stencil mask stack follows the active chain; close before the group transition,
+            // while the stack top still names the batch's chain.
             self.close_batch();
         }
         if next.map(|frame| frame.scissor) != self.composer.clip.scissor() || chain_changed {
@@ -1321,22 +998,16 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// Clear-fold discard: a fullscreen opaque cover proved everything
-    /// composed so far invisible — drop the scene output and every piece of
-    /// scratch that describes it. The *walk* state survives: the clip stack
-    /// is empty by the fold's precondition, and the transform stack stays
-    /// untouched (the cover may sit under an active transform whose pops
-    /// are still ahead in the stream).
+    /// Clear-fold discard: drop the scene output and its scratch. Walk state survives: the clip
+    /// stack is empty by precondition and transform pops may still be ahead.
     fn discard_composed(&mut self) {
         self.out.discard_scene();
         self.composer.reset_group_scratch(self.out.display.physical);
     }
 }
 
-/// The straight colour halfway between `a` and `b`, interpolated
-/// premultiplied: opaque red and transparent black meet at half-red with
-/// half alpha, where a straight average would be a darker red. A midpoint
-/// with no alpha has no hue and comes back transparent black.
+/// The straight colour halfway between `a` and `b`, interpolated premultiplied. A midpoint with no
+/// alpha is transparent black.
 fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
     let (a, b) = (a.premultiplied(), b.premultiplied());
     let alpha = f32::midpoint(a.a, b.a);
@@ -1352,8 +1023,7 @@ fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
     }
 }
 
-/// `v` in `0..=1` as unorm16, the encoding `unpack2x16unorm` decodes:
-/// `bits / 65535`.
+/// `v` in `0..=1` as unorm16, matching `unpack2x16unorm`: `bits / 65535`.
 #[expect(
     clippy::cast_sign_loss,
     reason = "every value is clamped to a non-negative range before the cast"

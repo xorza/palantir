@@ -1,13 +1,4 @@
-//! The face a shaping call is asked for: the five parameters that pick a
-//! font and a size, named once so they travel together.
-//!
-//! Shared vocabulary rather than one caller's parameter bundle. The
-//! authoring shape, the record it lowers to, the probe input, layout's
-//! own lowering, the shape-cache key, and the public
-//! [`TextGlyphs`](crate::widget::TextGlyphs) lease all state a face as this one
-//! value — so the five that mirror each other mirror in one field, and a
-//! swapped pair of metrics is a type error rather than a silent mis-key
-//! that only shows up as a cache miss.
+//! The face a shaping call asks for: font and size parameters, named once so they travel together.
 
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::nan::NanCheck;
@@ -15,65 +6,41 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// Which face to shape in, and how big.
-///
-/// Sizes are logical pixels; the raster scale is
-/// [`TextGlyphs::line`](crate::widget::TextGlyphs::line)'s, because
-/// it is a property of the surface being drawn into rather than of the text.
+/// Which face to shape in, and how big. Sizes are logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphFont {
-    /// Em size in logical pixels.
+    /// Size in logical px.
     pub size: f32,
-    /// Leading is the caller's to choose. Palantir's own widgets derive one
-    /// from the type scale; a single line pinned to a point in space has no
-    /// stack to sit in, so this defaults to the size itself.
+    /// Leading is the caller's choice; defaults to the size itself.
     pub line_height: f32,
-    /// Which family to match a face in.
+    /// Font family.
     pub family: FontFamily,
     /// Which weight to match, on the CSS 1–1000 scale.
     pub weight: FontWeight,
-    /// Upright or italic.
+    /// Font slant.
     pub slant: FontSlant,
 }
 
 impl GlyphFont {
-    /// What every caller that rejects a face says when
-    /// [`Self::metrics_are_valid`] fails — an assert message here, a
-    /// deserialization error in the theme, so a bad size reads the same
-    /// wherever it was authored.
+    /// Shared rejection message, so a bad size reads the same wherever authored.
     pub(crate) const METRICS_ERROR: &'static str =
         "font size and line height must be finite and above the UI epsilon";
 
-    /// Whether a `(size, leading)` pair names a face the shaper can be
-    /// asked for. Takes the two scalars rather than a whole `GlyphFont`
-    /// because the theme validates a line height it has just derived
-    /// from a scaled size, before any face exists to hold them.
+    /// Whether `(size, leading)` names a face the shaper accepts; scalars, so the theme can check a derived line height before a face exists.
     pub(crate) const fn metrics_are_valid(size: f32, line_height: f32) -> bool {
         Self::length_is_valid(size) && Self::length_is_valid(line_height)
     }
 
-    /// The half of [`Self::metrics_are_valid`] one metric answers alone —
-    /// for a theme override that names a size but leaves the leading to
-    /// the style it lands on.
+    /// The half one metric answers alone.
     pub(crate) const fn length_is_valid(px: f32) -> bool {
         px.is_finite() && px > EPS
     }
 
-    /// This face's own metrics, per [`Self::metrics_are_valid`].
     pub(crate) const fn metrics_valid(&self) -> bool {
         Self::metrics_are_valid(self.size, self.line_height)
     }
 
-    /// `size` in the default family, weight and style, led at its own
-    /// size.
-    ///
-    /// Every field is public, so anything else is a struct update over this —
-    /// `GlyphFont { family: FontFamily::MONO, ..GlyphFont::new(16.0) }`, which
-    /// holds in a `const` too.
-    ///
-    /// The three defaults are spelled out rather than asked of [`Default`],
-    /// which a derive does not make a `const fn`. They are what the axes
-    /// beside them call default and have to stay that.
+    /// `size` in the default family, weight and style, led at its own size.
     pub const fn new(size: f32) -> Self {
         Self {
             size,
@@ -99,22 +66,13 @@ mod tests {
     use crate::text::font_weight::FontWeight;
     use crate::text::glyph_font::GlyphFont;
 
-    /// The three axes [`GlyphFont::new`] writes out are the ones the types
-    /// beside it call default.
-    ///
-    /// A `const fn` cannot ask a derived [`Default`], so all three are
-    /// spelled there — and a default moved elsewhere would leave that
-    /// silently disagreeing with every other caller of the same axis.
+    /// Must match the types' own defaults; `const fn` cannot call a derived [`Default`].
     #[test]
     fn the_stock_font_is_the_default_face_and_weight() {
-        // In a const context, which is the whole point of the constructor
-        // being one: a caller pinning a font it never varies gets to state it
-        // as a value rather than build one per call.
         const STOCK: GlyphFont = GlyphFont::new(16.0);
         assert_eq!(STOCK.family, FontFamily::default());
         assert_eq!(STOCK.weight, FontWeight::default());
         assert_eq!(STOCK.slant, FontSlant::default());
-        // Led at its own size, which is what "no stack to sit in" comes to.
         assert_eq!(STOCK.line_height, 16.0);
     }
 }

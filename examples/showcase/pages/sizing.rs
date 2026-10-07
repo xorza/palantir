@@ -1,7 +1,4 @@
-//! Layout mechanics: Sizing (Fixed / Hug / Fill), child alignment with
-//! per-child override, Justify, padding / margin / negative margin, gap,
-//! and Visibility. The colored chips are demo content — they visualize
-//! where layout puts each child.
+//! Layout mechanics: Sizing, child alignment with per-child override, Justify, padding/margin, gap, Visibility. The chips are demo content.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -52,8 +49,6 @@ fn sizing(ui: &mut Ui) {
                 }
             });
             support::row(ui, |ui| {
-                // Padded frames hug their empty content box — effectively
-                // just padding, so the two boxes differ only by pad width.
                 for (i, pad) in [20.0, 40.0].into_iter().enumerate() {
                     Block::new()
                         .id_salt(i)
@@ -158,7 +153,6 @@ fn alignment(ui: &mut Ui) {
                 "child_align places a container's children across its axis: centred in the \
                  row, right in the column. The orange chip overrides it with its own align.",
             );
-            // HStack: children inherit VAlign::Center; orange opts out to Bottom.
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(96.0)))
                 .gap(8.0)
@@ -171,7 +165,6 @@ fn alignment(ui: &mut Ui) {
                     aligned_chip(ui, "c-self-bot", support::B, Align::v(VAlign::Bottom));
                     aligned_chip(ui, "d", support::A, Align::default());
                 });
-            // VStack: children packed to the right edge; orange opts out to Left.
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::fixed(110.0)))
                 .gap(8.0)
@@ -225,8 +218,7 @@ fn spacing(ui: &mut Ui) {
                     .background(swatch_bg(support::A))
                     .show(ui);
             });
-        // The orange box is anchored after the teal one, but its left
-        // margin pulls it backwards 30 px so the two overlap.
+        // The orange box's left margin pulls it back 30 px so the two overlap.
         Panel::hstack()
             .size((Sizing::FILL, Sizing::fixed(60.0)))
             .padding(8.0)

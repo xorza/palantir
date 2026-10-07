@@ -15,10 +15,7 @@ use crate::widgets::popup::tests::support::{ANCHOR, SURFACE};
 /// A builder step a case applies.
 type Step = fn(Popup) -> Popup;
 
-/// The theme's panel background is the popup's last resort: it paints when
-/// the caller set no background, and a default beats it. How the default
-/// and an explicit background resolve is checked for every chrome widget
-/// at once, in `widgets::tests`.
+/// The theme's panel background is the popup's last resort: it paints when the caller set none, and a default beats it. Default-versus-explicit resolution is checked for every chrome widget in `widgets::tests`.
 #[test]
 fn the_theme_panel_is_the_last_resort() {
     let theme_fill = RgbaF32::srgb(0.1, 0.2, 0.3);

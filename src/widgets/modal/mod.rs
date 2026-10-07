@@ -19,17 +19,9 @@ use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::theme::modal::ModalTheme;
 use std::rc::Rc;
 
-/// A centered dialog over a dimming, input-blocking backdrop, recorded
-/// into [`Layer::Modal`] so it draws above everything and hit-tests
-/// first. The panel hugs its content (floored at a min width) and centers
-/// on the surface.
-///
-/// Dismissal: clicking the backdrop (anywhere outside the panel) or
-/// pressing Esc sets [`OverlayResponse::dismissed`] — the host flips its
-/// own open flag. A dialog's own "OK" button closes it from the inside
-/// through the [`CloseHandle`] the body is handed. Clicks on the panel
-/// itself are absorbed, so interacting with dialog content never closes
-/// it.
+/// A centred dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
+/// The backdrop or Esc sets [`OverlayResponse::dismissed`]; the body's
+/// [`CloseHandle`] closes it from inside.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
@@ -40,8 +32,8 @@ pub struct Modal<'a> {
 }
 
 impl<'a> Modal<'a> {
-    /// A modal panel over a backdrop, centred in the window.
     #[track_caller]
+    /// A modal.
     pub fn new() -> Self {
         Self {
             widget: Widget::vstack().sense(Sense::ABSORB_POINTER),
@@ -51,18 +43,13 @@ impl<'a> Modal<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `modal`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// Per-field [`Self::background`] / [`Self::backdrop`] still win over
-    /// it.
+    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::background`] and [`Self::backdrop`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
-    /// One-axis hatch over the resolved bundle — see [`crate::Theme`].
+    /// Backdrop scrim colour, defaulting to [`crate::Theme::modal`]'s.
     ///
     /// # Panics
     ///
@@ -73,21 +60,15 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// Record the backdrop and the panel, with `body` inside the panel.
-    /// The body is handed a [`CloseHandle`] so anything in it can close the
-    /// dialog.
+    /// Records the backdrop and the panel with `body` inside, handed a [`CloseHandle`].
     pub fn show<R>(
         mut self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<R> {
-        // The caller's identity names the *backdrop root*, but the widget
-        // it arrived on is the panel — the root is framework-built below
-        // under the id, and the panel moves onto a child of it.
         let root_id = self.widget.resolve(ui);
 
-        // Handle: `mt.panel` is still borrowed at `scope.record`, which
-        // owns `ui` mutably.
+        // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
         let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
@@ -95,25 +76,18 @@ impl<'a> Modal<'a> {
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
-        // The panel's own id is always derived — the caller's went to the
-        // root — so this is `id`, not `default_id`.
         let panel = self
             .widget
             .id(root_id.with("panel"))
             .default_padding(theme_padding)
             .default_min_size(Size::new(theme_min_width, 0.0));
 
-        // Root fills the surface, dims it, eats stray pointer events, and
-        // centers the panel. The panel re-senses `Sense::ABSORB_POINTER`
-        // so clicks on it never fall through to this dismiss-backdrop.
+        // The root dims the surface; the panel re-senses `Sense::ABSORB_POINTER`.
         let mut root = Widget::zstack()
             .id(root_id)
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
-        // No placement: a modal is a full-surface layer, and the layer's
-        // own default is the surface origin with the whole surface
-        // available.
         let scope = OverlayScope::claim(ui, Layer::Modal, None, Backdrop::Root, &mut root);
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
@@ -134,10 +108,7 @@ impl<'a> Modal<'a> {
 }
 
 impl Modal<'_> {
-    /// Paint `background` as this widget's background.
-    ///
-    /// The panel chrome. Pass [`Background::NONE`] to suppress the themed
-    /// panel chrome for this modal.
+    /// Paints `background` as the panel chrome; [`Background::NONE`] suppresses the themed chrome.
     ///
     /// # Panics
     ///
@@ -149,11 +120,8 @@ impl Modal<'_> {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paints `background` unless the caller set one, for a wrapper theming a
+    /// widget after the caller's setters; an explicit [`Self::background`] wins in either order.
     ///
     /// # Panics
     ///

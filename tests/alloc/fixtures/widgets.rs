@@ -1,10 +1,4 @@
-//! One widget, or one small composition of them, per fixture — the
-//! base layer of the suite.
-//!
-//! Every one of these paints the same tree every frame and budgets a
-//! strict zero, which is the whole claim: recording a settled scene
-//! touches the heap not at all. `churn.rs` covers the scenes that
-//! change, `renderer.rs` the shape counts that stress the frontend.
+//! One widget or small composition per fixture, each painting the same tree every frame on a strict-zero budget.
 
 use crate::harness::{Audit, new_ui};
 use std::time::Duration;
@@ -33,9 +27,7 @@ fn button_only_alloc_free() {
     });
 }
 
-/// A settled colour field re-paints from the texture it already holds: the
-/// rebuild is keyed on the hue, so a frame that does not move one touches the
-/// heap not at all.
+/// A settled colour field re-paints from its texture without allocating.
 #[test]
 fn color_field_alloc_free() {
     let mut coords = ColorCoords::default();
@@ -44,10 +36,7 @@ fn color_field_alloc_free() {
     });
 }
 
-/// A hue drag rewrites the field's texture every frame, and after the first
-/// one that touches the heap not at all: the texels go straight into the
-/// buffer the handle keeps. A fixed warmup, because the scene never settles:
-/// the four frames the probe finds the settled field needs.
+/// A hue drag rewrites the field's texture every frame into the handle's buffer; the scene never settles, so the warmup is fixed.
 #[test]
 fn color_field_hue_drag_alloc_free() {
     let mut coords = ColorCoords::default();
@@ -65,9 +54,7 @@ fn color_strip_alloc_free() {
     });
 }
 
-/// The whole panel, swatch row and hex field included. The hex buffer is
-/// rewritten every frame into the string the picker already holds, which is
-/// the one place this could quietly allocate.
+/// The whole panel, swatch row and hex field included.
 #[test]
 fn color_picker_alloc_free() {
     let mut color = RgbaF32::hex(0x4cd3ff);
@@ -121,10 +108,7 @@ fn grid_8x8_alloc_free() {
     });
 }
 
-/// A settled section, open and closed. The reveal snaps by default, so
-/// neither state repaints — which is the property the closed arm is
-/// really pinning: a section that costs nothing while shut must not keep
-/// asking for frames.
+/// A settled section, open and closed; a shut section must not keep asking for frames.
 #[test]
 fn expander_alloc_free() {
     for open in [false, true] {
@@ -139,8 +123,7 @@ fn expander_alloc_free() {
     }
 }
 
-/// A body kept across a collapse records every frame, so it is the arm
-/// that would show a per-frame `Vec` in the collapsed path.
+/// A body kept across a collapse records every frame, which would show a per-frame `Vec`.
 #[test]
 fn expander_keep_body_alloc_free() {
     Audit::new().run(|ui| {
@@ -153,23 +136,11 @@ fn expander_keep_body_alloc_free() {
     });
 }
 
-/// Mid-tween, which is the one path that reads a remembered height and
-/// installs a clip on the body.
-///
-/// Driven frame by frame rather than through [`Audit::run`], because a
-/// tween needs a clock that moves and the audit's own loop deliberately
-/// holds one still. Primed open so the height is measured, then closed
-/// over a minute-long reveal, so every audited frame lands inside it.
-/// Each frame steps the clock by one 60 Hz frame: a step below the
-/// animation substep carries rather than advances, and the reveal would
-/// stand still on most frames.
-///
-/// The long warmup is the reveal's own settling, not margin: a body
-/// whose `max_size` moves every frame invalidates the measure cache
-/// every frame, so the cache arena and the bounds table each grow once
-/// before their capacity is enough. The budget stays a strict zero — a
-/// tween that kept allocating past that would be the regression this
-/// gate exists to catch.
+/// Mid-tween, the one path that reads a remembered height and clips the body.
+/// Driven frame by frame, not through [`Audit::run`], whose loop holds the clock
+/// still; one 60 Hz step per frame (a smaller step carries below the animation
+/// substep). The long warmup is the reveal settling: a moving `max_size`
+/// invalidates the measure cache each frame until its arenas have grown once.
 #[test]
 fn expander_mid_reveal_alloc_free() {
     let base = ExpanderTheme::default();
@@ -201,8 +172,6 @@ fn expander_mid_reveal_alloc_free() {
         });
     }
     open = false;
-    // The tween starts on the frame that closes the section, which still
-    // reads fully open.
     h.frame(|ui| {
         section(ui, &mut open);
     });
@@ -254,11 +223,7 @@ fn static_text_label_alloc_free() {
     });
 }
 
-/// A `TextEdit` with a stable buffer must record alloc-free in steady
-/// state. Pins the fix that routes the display text through the retained
-/// record store (`Ui::intern`) instead of cloning the buffer into a fresh
-/// `String` every frame — the latter allocated proportional to buffer
-/// length on each record pass.
+/// A `TextEdit` with a stable buffer records alloc-free: display text goes through `Ui::intern`, not a fresh `String`.
 #[test]
 fn text_edit_alloc_free() {
     let mut buf = String::from("the quick brown fox jumps over the lazy dog");
@@ -319,7 +284,7 @@ fn state_map_counter_alloc_free() {
     });
 }
 
-/// Scroll w/ overflow: pins `PostArrangeRegistry` typed-bucket reuse + `ScrollHook::run` in-place.
+/// Scroll with overflow: pins `PostArrangeRegistry` bucket reuse and in-place `ScrollHook::run`.
 #[test]
 fn scroll_overflow_alloc_free() {
     Audit::new().run(|ui| {
@@ -335,7 +300,7 @@ fn scroll_overflow_alloc_free() {
     });
 }
 
-/// Scroll w/ content fitting viewport: pins the hook's `overflow == new_overflow` early-exit.
+/// Scroll with content fitting the viewport: pins the hook's `overflow == new_overflow` early exit.
 #[test]
 fn scroll_fits_alloc_free() {
     Audit::new().run(|ui| {
@@ -351,11 +316,8 @@ fn scroll_fits_alloc_free() {
     });
 }
 
-/// The value and toggle widgets — the ones the frame fixture's tree does
-/// not carry, so nothing else audits them.
-///
-/// The spinner's animation repaints paint-only, so the scene asks for a
-/// repaint each frame to keep every frame a recorded one.
+/// The value and toggle widgets the frame fixture's tree lacks. The spinner
+/// repaints paint-only, so the scene requests a repaint to keep frames recorded.
 #[test]
 fn value_and_toggle_widgets_alloc_free() {
     let mut on = true;
@@ -380,8 +342,7 @@ fn value_and_toggle_widgets_alloc_free() {
     });
 }
 
-/// A tooltip bubble held up over its hovered trigger. The bubble records
-/// only while it is up, so every measured frame asserts it is.
+/// A tooltip held over its trigger; it records only while up, which each frame asserts.
 #[test]
 fn tooltip_bubble_alloc_free() {
     let host = WidgetId::from_hash("tip-host");
@@ -403,9 +364,7 @@ fn tooltip_bubble_alloc_free() {
     });
 }
 
-/// A spinner left alone: after its first frame it only repaints, so
-/// what this measures is the paint-only frame — damage from the retained
-/// tree, with no record, layout or cascade.
+/// A spinner left alone only repaints, so this measures the paint-only frame.
 #[test]
 fn spinner_paint_only_alloc_free() {
     Audit::new().paint_only().run(|ui| {
@@ -413,9 +372,7 @@ fn spinner_paint_only_alloc_free() {
     });
 }
 
-/// The two side-layer overlays. Held open every frame, so what this reads
-/// is the steady state of a layer switch, not the frame one opens on.
-/// Warmed and measured in whole ring revolutions, as every text audit is.
+/// The two side-layer overlays, held open; warmed and measured in whole ring revolutions.
 #[test]
 fn overlays_alloc_free() {
     Audit::new().text().run(|ui| {

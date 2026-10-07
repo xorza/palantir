@@ -1,7 +1,4 @@
-//! The GPU half of the shadow cutout tables: the atlas they are baked into,
-//! the bake pass, and the per-instance stream `vs_shadow` reads beside the
-//! quads. The CPU half, which tables and where, is [`CutoutPlan`], which
-//! each window keeps, since its census describes that window's frames.
+//! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept per window.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
@@ -14,10 +11,7 @@ use std::slice;
 /// The atlas, the bake pipeline and this frame's tables.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    /// Whether tables can be baked at all. Not on GL, where `R32Float` is a
-    /// render target only with `EXT_color_buffer_float`: every corner keeps
-    /// the shaded cutout, and the atlas is a 1×1 stand-in the bind group
-    /// still needs.
+    /// Whether tables can be baked. Not on GL, where `R32Float` renders only with `EXT_color_buffer_float`: corners keep the shaded cutout and the atlas is a 1×1 stand-in.
     bake: bool,
     atlas: wgpu::TextureView,
     layout: wgpu::BindGroupLayout,
@@ -30,12 +24,10 @@ pub(crate) struct CutoutTables {
 }
 
 impl CutoutTables {
-    /// The atlas's texel format: one `f32` cutout per texel, read by
-    /// `textureLoad` and filtered in the shader.
+    /// The atlas texel format: one `f32` cutout, read by `textureLoad`.
     const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
 
-    /// The tables for the quad `shader`, which holds `vs_cutout_bake` and
-    /// `fs_cutout_bake`.
+    /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(device: &wgpu::Device, shader: &wgpu::ShaderModule) -> Self {
         let bake = device.adapter_info().backend != wgpu::Backend::Gl;
         let side = if bake { CutoutPlan::ATLAS_SIZE } else { 1 };
@@ -114,8 +106,7 @@ impl CutoutTables {
         }
     }
 
-    /// Whether this device can bake tables: what every window's
-    /// [`CutoutPlan`] is built with.
+    /// Whether this device can bake tables; what every window's [`CutoutPlan`] is built with.
     pub(crate) const fn bakes(&self) -> bool {
         self.bake
     }
@@ -125,8 +116,7 @@ impl CutoutTables {
         &self.layout
     }
 
-    /// The per-instance stream `vs_shadow` reads at location 9, parallel
-    /// to the quads.
+    /// The per-instance stream `vs_shadow` reads at location 9, parallel to the quads.
     pub(crate) const fn corner_layout() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: size_of::<CornerTables>() as u64,
@@ -135,8 +125,7 @@ impl CutoutTables {
         }
     }
 
-    /// Upload `plan`'s corner tables and bake its tables on `ctx`'s
-    /// encoder, ahead of the pass that draws the shadows.
+    /// Upload `plan`'s corner tables and bake its tables on `ctx`'s encoder before the shadow pass.
     pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, plan: &CutoutPlan) {
         self.corners.upload_instances(ctx, plan.corners());
         self.entries.clear();
@@ -152,10 +141,7 @@ impl CutoutTables {
                 view: &self.atlas,
                 depth_slice: None,
                 resolve_target: None,
-                // Every texel a repainted pixel reads is baked this frame;
-                // the rest is never read. So the pass keeps nothing: a load
-                // would read the whole atlas into tile memory, which on a
-                // tiler costs as much as a frame's shading.
+                // Every texel a repainted pixel reads is baked this frame, so keep nothing: a load would pull the atlas into tile memory.
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
@@ -193,8 +179,7 @@ const BAKE_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
 
 const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![9 => Uint32x4];
 
-// The bake attributes must sit where `BakeTable` keeps its fields, as
-// `QUAD_INSTANCE_ATTRS` checks for `Quad`.
+// The bake attributes must sit where `BakeTable` keeps its fields, as `QUAD_INSTANCE_ATTRS` checks for `Quad`.
 const _: () = {
     use std::mem::offset_of;
     assert!(BAKE_ATTRS[0].offset == offset_of!(BakeTable, table) as u64);

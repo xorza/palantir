@@ -45,10 +45,7 @@ fn visual_hash_helpers_collapse_zero_noise_and_nan_payloads() {
     );
 }
 
-/// Every `FloatHash` type hashes `0.0` and `-0.0` alike, since it
-/// compares them equal — the `Hash` / `Eq` agreement a map relies on.
-/// Through `hash_eq` for the two foreign types, and through `Hash` for
-/// the crate's own.
+/// Every `FloatHash` type hashes `0.0` and `-0.0` alike, as they compare equal (`Hash`/`Eq` agreement): via `hash_eq` for the two foreign types, `Hash` for the crate's own.
 #[test]
 fn signed_zeros_hash_alike_for_every_float_hash_type() {
     use crate::primitives::geometry::size::Size;

@@ -2,7 +2,6 @@ use crate::primitives::geometry::urect::URect;
 
 #[test]
 fn intersect_cases() {
-    // Strict overlap: touching edges return None. Mirror of `Rect::intersects`.
     let cases: &[(&str, URect, URect, Option<URect>)] = &[
         (
             "overlapping",
@@ -68,16 +67,7 @@ fn clamp_to_cases() {
     }
 }
 
-/// The two rectangles answer the same questions the same way.
-///
-/// The point of the pair is that a reader who knows one knows the other, and
-/// the way that decays is quietly: a method that means something subtly
-/// different under the same name is worse than one that is missing. So the
-/// shared vocabulary is checked against [`Rect`] on the same coordinates
-/// rather than each side being checked against hand-written answers.
-///
-/// Whole numbers throughout, which is what makes the comparison exact — the
-/// float rect is being asked the integer rect's questions.
+/// `URect` answers the shared vocabulary exactly as [`Rect`] does, on whole numbers.
 #[test]
 fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
     use crate::primitives::geometry::rect::Rect;
@@ -115,11 +105,8 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
         assert_eq!(ua.max().as_vec2(), ra.max(), "max: {label}");
     }
 
-    // The conversions are inverse on whole pixels, which is what lets the
-    // comparison above stand for anything.
     let r = URect::new(3, 7, 11, 13);
     assert_eq!(URect::covering(Rect::from(r)), r);
-    // And covering rounds outward: a rect inside one pixel covers that pixel.
     assert_eq!(
         URect::covering(Rect::new(2.2, 3.8, 0.1, 0.1)),
         URect::new(2, 3, 1, 1),
@@ -130,11 +117,8 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
         URect::covering(Rect::new(-5.0, -5.0, 10.0, 10.0)),
         URect::new(0, 0, 5, 5)
     );
-    // Nothing finite, nothing covered.
     assert_eq!(URect::covering(Rect::NAN), URect::ZERO);
-    // A clip deep in a long list: physical max past 2^24, where every
-    // f32 is whole. 20_000_000 is exactly representable, and the row
-    // above it ends at 20_000_020.
+    // 20_000_000 is exactly representable above 2^24; its row ends at 20_000_020.
     assert_eq!(
         URect::covering(Rect::new(10.0, 20_000_000.0, 100.0, 20.0)),
         URect::from_min_max(UVec2::new(10, 20_000_000), UVec2::new(110, 20_000_020)),
@@ -145,8 +129,7 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
         u32::MAX,
     );
 
-    // `from_min_max` is `new`'s other spelling, and saturates where a float
-    // rect would debug-assert.
+    // `from_min_max` saturates where a float rect would debug-assert.
     assert_eq!(
         URect::from_min_max(UVec2::new(3, 7), UVec2::new(14, 20)),
         URect::new(3, 7, 11, 13)
@@ -158,14 +141,7 @@ fn the_two_rectangles_agree_on_the_vocabulary_they_share() {
     );
 }
 
-/// The four `u32`s still sit in `x, y, w, h` order.
-///
-/// Load-bearing rather than pedantic: this type is `Pod`, it is hashed through
-/// [`bytemuck::bytes_of`], and its whole reason for storing origin + extent is
-/// that it round-trips with wgpu's `set_scissor_rect(x, y, w, h)` without
-/// arithmetic. Naming the halves `min` and `size` was meant to change how it
-/// reads and nothing about how it lies in memory, and a reordering would be
-/// invisible until a scissor came out transposed.
+/// The four `u32`s stay in `x, y, w, h` order: the type is `Pod`, hashed by bytes, and matches `set_scissor_rect(x, y, w, h)`.
 #[test]
 fn the_fields_still_lie_in_scissor_order() {
     let r = URect::new(1, 2, 3, 4);

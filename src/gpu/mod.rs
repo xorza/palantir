@@ -1,10 +1,6 @@
-//! Every wgpu call in the crate. Pipelines, atlases, the device request and
-//! the surface all live here, so no other module names a `wgpu` type.
+//! Every wgpu call in the crate: pipelines, atlases, the device request and the surface live here, so no other module names a `wgpu` type.
 //!
-//! [`WgpuBackend`](wgpu_backend::WgpuBackend) is the one GPU renderer. It
-//! opens the device through [`device`], records each frame through
-//! [`frame`], draws with the [`pipeline`]s and the [`raster`] tenants over
-//! the [`resource`]s, and lands the result on a [`surface`].
+//! [`WgpuBackend`](wgpu_backend::WgpuBackend) is the one GPU renderer: it opens the device through [`device`], records frames through [`frame`], draws with the [`pipeline`]s and [`raster`] tenants over the [`resource`]s, and lands on a [`surface`].
 
 #![expect(
     clippy::disallowed_types,

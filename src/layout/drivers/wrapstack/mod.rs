@@ -1,18 +1,12 @@
-//! WrapStack driver: HStack/VStack with overflow wrap. Children flow on
-//! the main axis; when the next child wouldn't fit in the remaining
-//! main-axis budget, they wrap to a new line. Cross-axis = sum of line
-//! cross-extents + line gaps.
+//! WrapStack driver: HStack/VStack with overflow wrap. Children flow on the
+//! main axis and wrap to a new line when the next would not fit the remaining
+//! budget. Cross extent = sum of line cross-extents plus line gaps.
 //!
-//! Two gap fields: `gap` is within-line sibling spacing (same role as
-//! Stack's gap); `line_gap` is between-line spacing.
-//!
-//! `Sizing::fill` on the main axis is treated as `Hug` here — wrap
-//! semantics conflict with "consume row leftover", which would need an
-//! explicit per-line distribution this driver does not define.
-//! Cross-axis Fill works
-//! identically to Stack: each line's cross size = max child cross, and
-//! shared arrange-axis resolution makes Fill children grow to that
-//! height without shrinking below their measured content.
+//! `gap` is within-line spacing; `line_gap` is between lines. Main-axis
+//! `Sizing::fill` is treated as `Hug`: consuming row leftover would need a
+//! per-line distribution this driver does not define. Cross-axis Fill works as
+//! in Stack: each line's cross size is the max child cross, and Fill children
+//! grow to it without shrinking below their measured content.
 
 use crate::layout::axis_placement::AxisPlacement;
 use crate::layout::depth_scratch::DepthScratch;
@@ -53,46 +47,37 @@ const fn child_pack(axis: Axis, d: Size) -> ChildPack {
     }
 }
 
-/// The main-axis budget a line breaks against, on the whole-pixel grid
-/// the measure cache keys `available_q` on.
+/// The main-axis budget a line breaks against, on the whole-pixel grid the
+/// measure cache keys `available_q` on.
 ///
-/// Where a line breaks is this driver's one discontinuous output: a
-/// quarter-pixel of available width decides between one line and two, and
-/// so between one line's height and two. The cache restores a whole
-/// subtree under a key that holds whole pixels, so the break has to be
-/// taken on that same grid — otherwise a warm frame answers the height
-/// its key stands for and a cold one answers the fraction, for the same
-/// surface. Text wrapping owes its own width the same, and pays it
-/// through the same [`F32Px::canonical_px`].
+/// Where a line breaks is this driver's one discontinuous output: a quarter
+/// pixel decides between one line and two. The cache restores a subtree under
+/// a whole-pixel key, so the break must use the same grid or a warm frame and
+/// a cold one disagree for the same surface. Text wrapping pays the same
+/// through [`F32Px::canonical_px`].
 ///
-/// Read once per node rather than per child, and by measure and arrange
-/// alike, so the two cannot break lines in different places. Justify is
-/// the one main-axis reader that keeps the raw extent: leftover space is
-/// continuous, and rounding it would push a line off the rect it fills.
+/// Read once per node by measure and arrange alike so they break identically.
+/// Justify keeps the raw extent: leftover space is continuous.
 #[inline]
 fn line_budget(axis: Axis, size: Size) -> f32 {
     axis.main(size).canonical_px()
 }
 
-/// True iff appending a child to the current line would push it past
-/// [`line_budget`]. The first child on an empty line never wraps.
+/// True iff appending a child would push the line past [`line_budget`]. The
+/// first child on an empty line never wraps.
 ///
-/// The extent is quantized like the budget. A Hug stack is arranged at its
-/// widest line, and that width rounds to its budget: compared raw, a line
-/// of 200.4 against the 200 it rounds to would break in arrange where
-/// measure kept it whole, and the second line would fall below the height
-/// measure reported.
+/// The extent is quantized like the budget: a Hug stack is arranged at its
+/// widest line, which rounds to its budget, so a raw 200.4 against 200 would
+/// break in arrange where measure kept it whole.
 #[inline]
 fn would_wrap(line: LinePack, gap: f32, child_main: f32, budget: f32) -> bool {
     line.occupied && (line.main + gap + child_main).canonical_px() > budget
 }
 
-/// Advance the line-packing state by one child. When the child won't fit
-/// on the current line, `complete_line(line_main, line_cross)` runs for
-/// the just-finished line and a fresh line starts with this child;
-/// otherwise the current line extends. The wrap decision **and** the
-/// line-extent arithmetic live here so measure and arrange can't drift on
-/// where lines break.
+/// Advance the line-packing state by one child. On a wrap,
+/// `complete_line(line_main, line_cross)` runs for the finished line and a
+/// fresh line starts with this child. The wrap decision and line-extent
+/// arithmetic live here so measure and arrange cannot drift.
 #[inline]
 fn pack_child(
     line: &mut LinePack,
@@ -119,8 +104,7 @@ fn pack_child(
     }
 }
 
-/// The wrapping stack's line buffer: the children of the line being
-/// filled, in record order.
+/// The wrapping stack's line buffer: the children of the line being filled.
 pub(crate) type WrapScratch = DepthScratch<NodeId>;
 
 #[derive(Debug)]
@@ -131,11 +115,9 @@ impl LayoutDriver for WrapStack {
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Pack children into lines; return content size (max-line-main, sum
-    /// line-cross + line-gaps). Each call recomputes the packing — cheap
-    /// (one pass over children), and arrange uses the same logic on the
-    /// same `desired` values, so the assignment is deterministic across
-    /// both passes.
+    /// Pack children into lines; return (max-line-main, sum line-cross plus
+    /// line-gaps). Arrange repeats the packing on the same `desired` values,
+    /// so both passes agree.
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
@@ -149,9 +131,9 @@ impl LayoutDriver for WrapStack {
         let budget = line_budget(axis, inner_avail);
         let cross_avail = axis.cross(inner_avail);
 
-        // Measure each non-collapsed child once. Pass `INF` on main with the
-        // committed cross — same height-given-width pattern as Stack pass-1
-        // (so wrap text in a child shapes against `cross_avail`).
+        // Each non-collapsed child is measured once, with `INF` on main and
+        // the committed cross (as Stack pass-1), so wrap text shapes against
+        // `cross_avail`.
         let mut max_line_main = 0.0f32;
         let mut total_cross = 0.0f32;
         let mut line = LinePack::default();
@@ -162,8 +144,7 @@ impl LayoutDriver for WrapStack {
             total_cross += line_cross;
             line_count += 1;
         };
-        // Every child is offered an unbounded main, so only the cross
-        // carries their ranges.
+        // Every child is offered an unbounded main, so only the cross carries ranges.
         let mut stable_cross = 0.0f32;
         for c in tree.active_children(node) {
             let d = pass.measure(c, axis.compose_size(f32::INFINITY, cross_avail));
@@ -182,18 +163,17 @@ impl LayoutDriver for WrapStack {
         }
         total_cross += line_gap.gaps_between(line_count);
         // One line stays one line under every budget past its length, and
-        // under every budget past this one, which already held it. A
-        // break was taken at this budget and moves with it.
+        // One line stays one line under every budget past its length; a break
+        // was taken at this budget and moves with it.
         let stable_main = if line_count <= 1 {
             max_line_main.min(axis.main(inner_avail))
         } else {
             Measured::AT_OFFER_ONLY
         };
 
-        // The lines are packed against the budget this measure was given,
-        // and arrange packs them again against the extent it is handed: a
-        // wrap stack placed smaller than it measured would break them
-        // elsewhere. So it gives way to nothing, on either axis.
+        // Arrange packs again against the extent it is handed, so a wrap stack
+        // placed smaller than it measured would break elsewhere: it gives way
+        // to nothing on either axis.
         let size = axis.compose_size(max_line_main, total_cross);
         Measured {
             size,
@@ -209,21 +189,16 @@ impl LayoutDriver for WrapStack {
         let line_gap = panel.gaps.line_gap();
         let justify = panel.justify;
         let parent_child_align = panel.child_align;
-        // Two extents, and the split is the point. Lines break against
-        // the budget, so measure and arrange agree with each other and
-        // with the cache; justify hands out the leftover of the rect
-        // actually arranged, which is continuous and owes the fraction
-        // back to the pixels it fills.
+        // Lines break against the budget, so measure, arrange and the cache
+        // agree; justify hands out the continuous leftover of the arranged
+        // rect.
         let main_avail = axis.main(inner);
         let budget = line_budget(axis, inner);
 
-        // Same packing logic as `measure`. Each row needs lookahead —
-        // can't place a child until we know the row's `line_main` (for
-        // justify) and `line_cross` (for cross-axis place). Buffer node
-        // IDs in the engine's flat `wrap.pool` at this depth's slice,
-        // flush on overflow / end-of-children. SizeSpec come from
-        // `pass.desired(..)` at flush time, so the buffer is just node
-        // IDs.
+        // Same packing as `measure`, with lookahead: a child cannot be placed
+        // until the row's `line_main` (justify) and `line_cross` are known. The
+        // row's node IDs buffer in the wrap scratch at this depth and flush on
+        // overflow or end of children.
         let layouts = tree.records.layout();
         let line_start = pass.wrap_scratch_mut().mark();
         let mut line = LinePack::default();
@@ -251,9 +226,7 @@ impl LayoutDriver for WrapStack {
                 gap: eff_gap,
             } = JustifyOffsets::new(justify, leftover, gap, count);
             let mut main_cursor = start_offset;
-            // Iterate by index so we copy each `NodeId` out before
-            // calling `layout.arrange`, which needs `&mut layout`.
-            // `NodeId` is `Copy`, so no slice borrow into the pool.
+            // Index loop: copy each `NodeId` out, as `pass.arrange` needs `&mut`.
             for i in line_start..line_end {
                 let c = pass.wrap_scratch_mut().at(i);
                 if i > line_start {
@@ -261,9 +234,8 @@ impl LayoutDriver for WrapStack {
                 }
                 let d = pass.desired(c);
                 let s = layouts[c.idx()];
-                // Cross axis: each child placed within the line's cross
-                // extent. Same rule as Stack cross — Fill stretches to
-                // line_cross, Hug aligns per child.
+                // Cross axis within the line's extent, as Stack: Fill stretches
+                // to line_cross, Hug aligns per child.
                 let bounds = tree.bounds(c);
                 let cross_p = AxisPlacement::cross(
                     axis,
@@ -284,30 +256,25 @@ impl LayoutDriver for WrapStack {
                 main_cursor += main_size;
             }
             *cross_cursor += line_cross;
-            // Drop our line from the pool (capacity retained). Recursive
-            // `layout.arrange` calls above may have temporarily extended
-            // and re-truncated the pool past `line_end`; we ignore those
-            // and reset to our depth's start.
+            // Drop our line from the pool. Recursive arranges may have extended
+            // and re-truncated it past `line_end`; reset to our depth's start.
             pass.wrap_scratch_mut().truncate(line_start);
         };
 
-        // Walk all children: collapsed get zeroed at the cursor, active
-        // children pack into the current line and flush on overflow.
+        // Collapsed children are zeroed at the cursor; active ones pack and
+        // flush on overflow.
         for child in tree.children(node) {
             let c = child.id;
             if child.visibility.is_collapsed() {
-                // Anchor inside this layout's inner rect at the current
-                // cursor. Position is stable; size is zero so there's no
-                // visual or input contribution.
+                // Anchored at the cursor with zero size: no visual or input contribution.
                 pass.zero_subtree(c, axis.compose_point(0.0, cross_cursor));
                 continue;
             }
 
             let d = pass.desired(c);
             let pack = child_pack(axis, d);
-            // On wrap, `pack_child` places the just-finished line (which
-            // empties the pool back to this depth's start); the child that
-            // triggered the wrap is then pushed as the new line's first node.
+            // On wrap, `pack_child` places the finished line (emptying the pool
+            // to this depth's start); the triggering child then starts the next.
             pack_child(&mut line, gap, budget, pack, |line_main, line_cross| {
                 place_line(
                     pass,
@@ -330,16 +297,14 @@ impl LayoutDriver for WrapStack {
         }
     }
 
-    /// Intrinsic size on `query_axis`. Approximate for the wrap
-    /// case — we don't run the full packing here, so cross-axis answers
-    /// assume single-line layout (the conservative max-content shape). Main
-    /// axis answers are exact:
+    /// Intrinsic size on `query_axis`. Main-axis answers are exact; cross-axis
+    /// answers approximate a single line (the conservative max-content shape)
+    /// since the full packing is not run.
     ///
-    /// - **MinContent** on main: max child intrinsic on main (the widest
-    ///   single child sets the floor; smaller-than-that and even one row
-    ///   overflows).
-    /// - **MaxContent** on main: sum + within-line gaps (single line).
-    /// - Cross axis: max child intrinsic (single-line approximation).
+    /// - **MinContent** on main: max child intrinsic (the widest child sets
+    ///   the floor).
+    /// - **MaxContent** on main: sum plus within-line gaps.
+    /// - Cross axis: max child intrinsic.
     fn intrinsic(
         layout: &mut LayoutEngine,
         tree: &Tree,
@@ -350,10 +315,8 @@ impl LayoutDriver for WrapStack {
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
         if main_axis != query_axis {
-            // Cross-axis approximation: max child intrinsic on cross. Real
-            // wrapped cross depends on resolved main width — height-given-
-            // width — which we don't compute here. Conservative for typical
-            // toolbar/badge use cases.
+            // Real wrapped cross depends on the resolved main width, which is
+            // not computed here; conservative for toolbar/badge use.
             return query.children_max_at_origin(layout, tree, node, query_axis, interned_text);
         }
         let mut range = IntrinsicRange::ZERO;
@@ -362,8 +325,7 @@ impl LayoutDriver for WrapStack {
             let child = query.child(layout, tree, c, query_axis, interned_text);
             for (req, slot) in range.requested(query) {
                 *slot = match req {
-                    // The widest single child is the floor: narrower than
-                    // that and even a one-child line overflows.
+                    // The widest single child is the floor.
                     LenReq::MinContent => slot.max(child.min),
                     // Everything on one line.
                     LenReq::MaxContent => *slot + child.max,

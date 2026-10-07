@@ -2,19 +2,7 @@
 
 use std::cell::Cell;
 
-/// The dismissal request handed to an overlay's body closure, so content
-/// widgets can close the [`Popup`](crate::Popup) or
-/// [`Modal`](crate::Modal) they are inside.
-///
-/// Lives on the stack for the duration of one `show` call — no ambient
-/// `Ui` state, no nested-overlay signal leak.
-///
-/// Carries only the close request. Reading input needs no handle: a body
-/// records *inside* the overlay's layer and its scope, so plain
-/// [`Ui::key_pressed`](crate::Ui::key_pressed) /
-/// [`Ui::keyboard_events`](crate::Ui::keyboard_events) already answer as
-/// the overlay. Owner-scoped forwarders on this handle would only
-/// re-arrange what the scope already provides.
+/// The dismissal request handed to an overlay's body, so content can close the [`Popup`](crate::Popup) or [`Modal`](crate::Modal) it is inside. Lives on the stack for one `show` call; input needs no handle since a body records inside the overlay's scope.
 #[derive(Debug, Default)]
 pub struct CloseHandle {
     requested: Cell<bool>,
@@ -26,8 +14,7 @@ impl CloseHandle {
         self.requested.set(true);
     }
 
-    /// Whether anything asked to dismiss — what the overlay that handed
-    /// this out reads after its body ran.
+    /// Whether anything asked to dismiss; read by the overlay after its body ran.
     pub const fn requested(&self) -> bool {
         self.requested.get()
     }

@@ -1,11 +1,4 @@
-//! Keyboard focus from end to end: Tab traversal over every kind of
-//! control, the ring that shows only when focus came from the keyboard,
-//! the order and stop settings, arrow groups, the focus an overlay keeps
-//! inside itself and gives back, focus moved from code, the focus
-//! policy, and the ring's theme slot.
-//!
-//! Every section ends in a checklist of what should happen, so the page
-//! is also the by-hand test for the focus work.
+//! Keyboard focus end to end; each section ends in a checklist, so the page doubles as the by-hand focus test.
 
 use crate::shell;
 use crate::support;
@@ -43,8 +36,7 @@ struct State {
     filters: [bool; 3],
     target: String,
     policy: FocusPolicy,
-    /// The control of this page that held focus on the last frame, by
-    /// name — what the readout at the top shows.
+    /// The control that held focus last frame, by name.
     focused: Option<&'static str>,
 }
 
@@ -71,7 +63,6 @@ impl Default for State {
     }
 }
 
-/// Collects which named control is focused this frame.
 #[derive(Debug, Default)]
 struct Seen(Option<&'static str>);
 
@@ -100,8 +91,7 @@ fn page(ui: &mut Ui, s: &mut State) {
     policy(ui, s);
     ring(ui);
 
-    // Responses read the focus the last frame settled on, so a change
-    // shows one frame late; one more frame catches the readout up.
+    // Responses read last frame's focus, so a change shows one frame late.
     if seen.0 != s.focused {
         s.focused = seen.0;
         ui.request_repaint();
@@ -149,7 +139,6 @@ fn tab_order(ui: &mut Ui, s: &mut State, form_id: WidgetId, seen: &mut Seen) {
     );
 }
 
-/// One of every focusable control, labelled in a two-column grid.
 fn form(ui: &mut Ui, s: &mut State, form_id: WidgetId, seen: &mut Seen) {
     const LABELS: [&str; 8] = [
         "Name",
@@ -202,7 +191,6 @@ fn form(ui: &mut Ui, s: &mut State, form_id: WidgetId, seen: &mut Seen) {
                 .grid_cell((4, 1))
                 .show(ui);
             seen.note("Volume", r.response.focused);
-            // A radio group is an arrow group, as WAI-ARIA's is.
             Panel::hstack()
                 .gap(12.0)
                 .arrow_focus(Axis::X)
@@ -515,8 +503,7 @@ fn policy(ui: &mut Ui, s: &mut State) {
     ui.set_focus_policy(s.policy);
 }
 
-/// Edits the live theme's ring rather than a copy: the ring is one slot
-/// for every widget, so the change shows on every page.
+/// Edits the live theme's ring, one slot for every widget.
 fn ring(ui: &mut Ui) {
     section(
         ui,

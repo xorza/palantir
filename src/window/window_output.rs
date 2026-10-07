@@ -4,23 +4,11 @@ use crate::primitives::geometry::rect::Rect;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 
-/// The per-window *levels* a recorder holds and a host applies: settings
-/// it re-reads every frame, as opposed to the one-shot lifecycle edges in
-/// [`WindowCommands`](crate::window::window_commands::WindowCommands).
-///
-/// Retained on [`WindowRequests`](crate::window::window_requests::WindowRequests)
-/// and copied out by each drain, which is what lets a host with no window
-/// to apply them to drop its copy without the app's own view of them
-/// changing.
+/// Per-window levels a recorder re-reads every frame and a host applies, unlike the one-shot edges in [`WindowCommands`](crate::window::window_commands::WindowCommands).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct WindowOutput {
-    /// The cursor this frame asked for; applied on change.
     pub(crate) cursor: CursorIcon,
-    /// The pacing this frame wants. A level: the host diffs it against the
-    /// swapchain it has open and reconfigures only on a change.
     pub(crate) vsync: Vsync,
-    /// The caret IME text goes to, in logical px, or `None` to turn IME
-    /// off: asked for each record pass by the widget that wants it, like
-    /// `cursor`, so a pass that nobody asks in turns it off.
+    /// The IME caret in logical px, or `None` for off; a pass nobody asks in turns it off.
     pub(crate) ime: Option<Rect>,
 }

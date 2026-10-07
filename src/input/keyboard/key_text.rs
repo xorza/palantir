@@ -4,55 +4,31 @@ use std::fmt;
 use std::str;
 use tinyvec::ArrayVec;
 
-/// [`KeyText::CAPACITY`]'s one definition, because a struct cannot name its
-/// own associated const in its field types.
+/// One definition of [`KeyText::CAPACITY`]: a struct cannot name its own associated const in field types.
 const CAPACITY: usize = 14;
 
-/// The text a key press produced — what the platform resolved the
-/// layout, the dead keys and the modifiers *into*, riding beside the key
-/// that produced it.
+/// The text a key press produced, riding beside its key.
 ///
-/// **A key is not its text, and neither derives from the other.** One
-/// press yields a chord to match and a string to type: a dead key
-/// composes two presses into `é`, a Windows dead-key fallback resolves
-/// to the two characters `^e`, and a layout can put any character on any
-/// key. Matching a command against the text, or typing the key's own
-/// name, each break a case the other handles. So a press carries both,
-/// and each consumer reads the one it means —
-/// [`Shortcut`](crate::Shortcut) the key,
-/// [`TextEdit`](crate::TextEdit) the text.
+/// **A key is not its text**: a press yields a chord to match and a string to type, so [`Shortcut`](crate::Shortcut) reads the key and [`TextEdit`](crate::TextEdit) the text.
 ///
-/// **Inline and `Copy`**, so `InputEvent` stays `Copy` and the per-frame
-/// queue stays one flat vector. A key press
-/// produces one grapheme or two, which [`Self::CAPACITY`] holds several times
-/// over. Text longer than that is an IME commit, which the input state
-/// splits into as many presses as it needs, between characters.
+/// **Inline and `Copy`**, so `InputEvent` stays `Copy`; longer text is an IME commit, split into several presses.
 ///
-/// **Control characters never enter.** They are keys rather than text —
-/// Enter reports `"\r"` on Windows, Tab `"\t"`, Ctrl+A `"\u{1}"` — and a
-/// field that typed them would write a carriage return where the user
-/// pressed Enter. Every consumer would otherwise owe the same filter,
-/// so it happens once, here, on the way in.
+/// **Control characters never enter**: they are keys (Enter reports `"\r"`), filtered once, here.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct KeyText {
     utf8: ArrayVec<[u8; CAPACITY]>,
 }
 
 impl KeyText {
-    /// How many UTF-8 bytes one press may carry: three of the widest
-    /// characters a keyboard produces, or fourteen of the narrowest.
-    /// Sized so the whole value is 16 bytes, since `ArrayVec` spends two
-    /// on its own length.
+    /// UTF-8 bytes one press may carry; sized for a 16-byte value (`ArrayVec` spends two on length).
     pub const CAPACITY: usize = CAPACITY;
 
-    /// A press that produced no text — a named key, or a dead key still
-    /// waiting for the one that completes it.
+    /// No text.
     pub const EMPTY: Self = Self {
         utf8: ArrayVec::from_array_empty([0; CAPACITY]),
     };
 
-    /// `text` with its control characters dropped, truncated between
-    /// characters once [`Self::CAPACITY`] is full.
+    /// `text` minus control characters, truncated between characters at [`Self::CAPACITY`].
     pub fn new(text: &str) -> Self {
         let mut out = Self::EMPTY;
         for c in text.chars() {
@@ -63,9 +39,7 @@ impl KeyText {
         out
     }
 
-    /// Append `c` unless it is a control character, which is dropped.
-    /// `false`, appending nothing, when `c` does not fit — the point an
-    /// IME commit splits at.
+    /// Append `c` unless it is a control character; `false` when it does not fit (where an IME commit splits).
     pub(crate) fn push(&mut self, c: char) -> bool {
         if c.is_control() {
             return true;
@@ -79,8 +53,7 @@ impl KeyText {
         true
     }
 
-    /// One character as its own text — the press a keyboard mostly
-    /// makes, spelled without a string to hold it.
+    /// Text of one character.
     pub fn from_char(c: char) -> Self {
         let mut buf = [0u8; 4];
         Self::new(c.encode_utf8(&mut buf))
@@ -91,7 +64,7 @@ impl KeyText {
         str::from_utf8(&self.utf8).expect("whole characters, encoded on the way in")
     }
 
-    /// Whether the press produced no text to type.
+    /// Whether the text is empty.
     pub fn is_empty(&self) -> bool {
         self.utf8.is_empty()
     }
@@ -110,9 +83,6 @@ pub(crate) mod internals {
     use crate::input::keyboard::key_text::KeyText;
 
     impl KeyText {
-        /// What a window reports beside `key` on a plain layout: a
-        /// printable key carries its character, and a named one carries
-        /// nothing.
         pub(crate) fn of_key(key: Key) -> Self {
             match key {
                 Key::Char(c) => Self::from_char(c),
@@ -141,9 +111,6 @@ mod tests {
         assert!(!two.is_empty());
     }
 
-    /// A control character is a key, not text: Enter reports `"\r"` and
-    /// Tab `"\t"`, and a field that typed them would write the byte the
-    /// key stands for.
     #[test]
     fn control_characters_never_enter() {
         for control in ["\r", "\n", "\t", "\u{1}", "\u{7f}"] {
@@ -159,17 +126,13 @@ mod tests {
         );
     }
 
-    /// The cap truncates on a character boundary, so what survives is
-    /// still text.
     #[test]
     fn a_long_commit_truncates_between_characters() {
-        // Four-byte characters: three fit in 15 bytes, the fourth does
-        // not, and no half of it may land.
+        // Four-byte characters: three fit in 15 bytes, no half of a fourth.
         let wide = "𐍈𐍈𐍈𐍈";
         let held = KeyText::new(wide);
         assert_eq!(held.as_str(), "𐍈𐍈𐍈", "three whole characters, not 14 bytes");
         assert_eq!(held.as_str().len(), 12);
-        // One byte per character fills the cap exactly.
         let narrow = "abcdefghijklmnop";
         assert_eq!(KeyText::new(narrow).as_str(), "abcdefghijklmn");
     }

@@ -10,13 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
 
-/// Geometry of a conic (sweep) gradient: the parametric axis 0..1 sweeps
-/// around `center` starting at `start_angle` radians, clockwise on screen:
-/// angles grow from the positive x-axis toward the positive y-axis, which
-/// points down.
-/// Object-space `center` is in 0..1 coordinates. The shader projects each
-/// fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`,
-/// applies `Spread`, samples the LUT.
+/// Geometry of a conic (sweep) gradient: the 0..1 axis sweeps around `center` from `start_angle` radians, clockwise on screen (angles grow from +x toward +y, which points down). `center` is in 0..1 object space. The shader projects each fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
     /// Sweep centre, in object-space `0..1` coordinates.
@@ -34,15 +28,10 @@ pub type ConicGradient = Gradient<ConicGeometry>;
 pub type ConicGradientBuilder = GradientBuilder<ConicGeometry>;
 
 impl Geometry for ConicGeometry {
-    /// Conic gradients commonly implement colour-wheel / hue-rotation
-    /// visuals where straight linear-RGB interpolation gives the most
-    /// predictable hue sweep; Oklab can shift the perceived hue at the
-    /// midpoint. (A future `Oklch{hue}` interpolation would be the truly right
-    /// default.)
+    /// Conic gradients are usually colour wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Linear;
 
-    /// The shader reads these as `(cx, cy, start_angle, _)` on the conic
-    /// branch.
+    /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch.
     fn axis_lanes(&self) -> [f32; 4] {
         [self.center.x, self.center.y, self.start_angle, 0.0]
     }
@@ -77,8 +66,7 @@ impl ConicGradient {
         )
     }
 
-    /// Centred shorthand — `center = (0.5, 0.5)`, starts at angle 0
-    /// (positive x-axis, sweeping clockwise). 2 stops at offsets 0/1.
+    /// Centred shorthand: `center = (0.5, 0.5)`, start angle 0 (+x, clockwise), 2 stops at offsets 0/1.
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

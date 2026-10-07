@@ -1,30 +1,24 @@
-//! Schedule-walk benchmark: CPU cost of turning one `RenderBuffer` into
-//! the ordered `RenderStep` stream `WgpuBackend::render_groups`
-//! dispatches, over frames with many mixed groups.
+//! Schedule-walk benchmark: CPU cost of turning one `RenderBuffer` into the ordered `RenderStep`
+//! stream `WgpuBackend::render_groups` dispatches, over frames with many mixed groups.
 //!
-//! The walk emits `SetScissor` / `SetStencilRef` as *transitions* — one
-//! only where the requested state differs from what it already
-//! established. Each workload below isolates one shape of that:
+//! The walk emits `SetScissor` / `SetStencilRef` as transitions, only where the requested state
+//! differs from what is established. Each workload isolates one shape of that:
 //!
-//! - `distinct_scissors` — every group carries its own rect, so nothing
-//!   can be elided. The control: it measures what the tracking costs
-//!   when it never pays off.
-//! - `shared_scissor` — every group carries the same rect (an unclipped
-//!   frame, or one clip split across quad-budget flushes).
-//! - `quads_then_image` — each group draws quads and an image batch with
-//!   no text between them, so the group re-requests the scissor it
-//!   already holds. The case the renderer review flagged.
-//! - `text_then_image` — the same, plus a text batch whose wider scissor
-//!   really does move the rect. Counter-control: every request here is a
-//!   genuine transition, so the stream must not shrink.
+//! - `distinct_scissors`: every group has its own rect, so nothing can be elided; the control for
+//!   what tracking costs when it never pays off.
+//! - `shared_scissor`: every group has the same rect (an unclipped frame, or one clip split across
+//!   quad-budget flushes).
+//! - `quads_then_image`: each group draws quads and an image batch with no text between them, so
+//!   the group re-requests the scissor it already holds.
+//! - `text_then_image`: the same plus a text batch whose wider scissor really moves the rect;
+//!   every request is a genuine transition, so the stream must not shrink.
 //! - `rounded_chain` — the stencil path with one shared mask chain, where
 //!   the clear / re-stamp elision already applies and the scissor
 //!   requests around it collapse too.
 //!
-//! Walks run at full repaint (`damage = None`): the damage opener adds a
-//! fixed two steps per walk and would only dilute the per-group signal.
-//! Step and scissor counts print once per workload as the secondary
-//! metric; wall time is the decision metric.
+//! Walks run at full repaint (`damage = None`): the damage opener adds a fixed two steps per walk and
+//! would only dilute the per-group signal. Step and scissor counts print once per workload as the
+//! secondary metric; wall time is the decision metric.
 
 #![expect(
     clippy::print_stderr,
@@ -84,9 +78,8 @@ impl Workload {
         matches!(self, Self::RoundedChain)
     }
 
-    /// One rect per group. Distinct rects walk down the viewport in
-    /// 8px bands (wrapping well inside it); the shared variants hand
-    /// every group the same band so consecutive requests match.
+    /// One rect per group. Distinct rects walk down the viewport in 8px bands (wrapping well inside it);
+    /// the shared variants hand every group the same band so consecutive requests match.
     const fn scissor(self, group: usize) -> URect {
         match self {
             Self::DistinctScissors | Self::QuadsThenImage | Self::TextThenImage => {

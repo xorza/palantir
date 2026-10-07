@@ -1,10 +1,6 @@
 use super::*;
 
-/// The coalesce window is one refresh interval, the integer-truncated
-/// nanos of 1e12 / mHz: 60 Hz → 16.667 ms, 120 Hz → 8.333 ms, 144 Hz →
-/// 6.944 ms. A faster panel gets a smaller window, so fewer near-adjacent
-/// wakes collapse. An unknown or zero rate falls back to the default,
-/// which is 120 Hz's window exactly.
+/// The coalesce window is one refresh interval, integer-truncated nanos of 1e12 / mHz: 60 Hz → 16.667 ms, 120 Hz → 8.333 ms, 144 Hz → 6.944 ms. An unknown or zero rate falls back to the default, exactly 120 Hz's window.
 #[test]
 fn coalesce_dt_is_one_refresh_interval() {
     for (millihertz, nanos) in [

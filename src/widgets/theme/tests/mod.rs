@@ -51,8 +51,7 @@ assert_not_impl_any!(AnimatedLook: Copy);
 assert_not_impl_any!(StatefulLook: Copy);
 assert_not_impl_any!(WidgetLook: Copy);
 
-// The one theme type that *is* `Copy`: five scalar fields, and it rides
-// per-row and per-widget paths where the aggregates above never go.
+// The one theme type that is `Copy`; it rides per-row and per-widget paths.
 assert_impl_all!(TextStyle: Copy);
 
 /// A theme as RON text — what the tests below serialize, edit and compare.

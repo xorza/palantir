@@ -1,29 +1,19 @@
-//! A two-byte arena index whose encoding leaves room for `None`, so an
-//! optional one still fits in two bytes.
+//! A two-byte arena index with room for `None`, so `Option<Index16>` is two bytes.
 
 use std::num::NonZeroU16;
 
-/// Arena index whose nonzero encoding keeps `Option<Self>` at two bytes.
+/// Arena index whose nonzero encoding keeps `Option<Self>` at two bytes: the stored value is the index plus one.
 ///
-/// The stored value is one greater than the index, leaving zero for `None`.
-///
-/// **[`Self::LAST`] is a real ceiling on the table, not an internal
-/// detail.** Every table addressed this way holds at most 65 535 rows, and
-/// a row past that panics in release. Each caller names its table, so the
-/// panic says which one filled up rather than only that some `Index16`
-/// did — see [`ExtrasIdx`](crate::scene::tree::extras_idx::ExtrasIdx),
-/// which documents what fills the three it addresses.
+/// **[`Self::LAST`] is a real ceiling.** A table addressed this way holds at most 65 535 rows and a row past that panics in release, naming the table; see [`ExtrasIdx`](crate::scene::tree::extras_idx::ExtrasIdx).
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Index16(NonZeroU16);
 
 impl Index16 {
-    /// The highest index this can hold. One below `u16::MAX` because the
-    /// stored value is the index plus one.
+    /// The highest index held: one below `u16::MAX`, since the stored value is index plus one.
     pub(crate) const LAST: usize = u16::MAX as usize - 1;
 
-    /// The index of a row just pushed onto `table`, named so an overflow
-    /// reports which table filled up.
+    /// The index of a row just pushed onto `table`; the name makes an overflow report which table filled.
     ///
     /// # Panics
     ///
@@ -41,8 +31,7 @@ impl Index16 {
         self.0.get() as usize - 1
     }
 
-    /// The encoded value — the index plus one — that [`Self::from_raw`]
-    /// reads back.
+    /// The encoded value (index plus one) that [`Self::from_raw`] reads back.
     pub(crate) const fn to_raw(self) -> u16 {
         self.0.get()
     }
@@ -83,9 +72,7 @@ mod tests {
         assert_eq!(size_of::<Option<Index16>>(), 2);
     }
 
-    /// The overflow names the table that filled up: the ceiling is a
-    /// property of the caller's arena, and a message that only says
-    /// "Index16" leaves the reader to find which of five tables it was.
+    /// The overflow names the caller's table, since a bare "Index16" leaves the reader to find which of five.
     #[test]
     #[should_panic(expected = "bounds_table exceeded its 65535 row ceiling at row 65535")]
     fn index16_rejects_reserved_maximum() {

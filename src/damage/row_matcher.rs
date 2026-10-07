@@ -1,5 +1,4 @@
-//! Pairing one node's paint rows against last frame's, and turning what
-//! did not pair into damage.
+//! Pairing one node's paint rows against last frame's, and turning the unpaired into damage.
 
 use crate::cascade::paint::Paint;
 use crate::common::block_arena::BlockArena;
@@ -8,114 +7,44 @@ use crate::damage;
 use crate::primitives::geometry::rect::Rect;
 use std::cmp::Ordering;
 
-/// `matched_pos` sentinel for a curr row with no exact match in the
-/// prev span (moved / added / content-changed — the content diff
-/// damages those over their full rects).
+/// `matched_pos` sentinel for a curr row with no exact match in the prev span.
 pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 
 /// Result of [`RowMatcher::diff_changed_leg`].
 #[derive(Debug)]
 pub(super) struct ChangedLeg {
-    /// Span covering this frame's paints — `prev_span` reused when the
-    /// row count is stable, a freshly taken block when it changes.
+    /// Span covering this frame's paints: `prev_span` reused when the row count is stable, a fresh block otherwise.
     pub(super) span: Span,
-    /// True when some pair of matched rows swapped relative order.
-    ///
-    /// Answered here rather than left for the caller to ask, because the
-    /// question is only meaningful about the pairing *this* call
-    /// produced: [`RowMatcher::matched_positions`] is retained scratch,
-    /// and on the fast path it still holds some earlier node's answer.
-    /// A caller that reads it only when this is `true` cannot get the
-    /// stale one.
+    /// True when some pair of matched rows swapped relative order. Answered here because [`RowMatcher::matched_positions`] is retained scratch and on the fast path still holds an earlier node's answer.
     pub(super) order_inverted: bool,
 }
 
-/// Scratch for the content-keyed row matcher, and the phases that fill
-/// it.
-///
-/// One type rather than four loose `Vec`s so the phase order reads as a
-/// call sequence and each phase's doc can state what the previous one
-/// left behind. The sort order in particular is load-bearing twice over,
-/// and stating it on [`PaintKey`] alone would leave it forty lines from
-/// the merge that depends on it.
-///
-/// Every column keeps its capacity across frames, so a steady-state
-/// content reshuffle allocates nothing.
+/// Scratch for the content-keyed row matcher, and the phases that fill it. Phase order reads as a call sequence; every column keeps its capacity across frames.
 #[derive(Debug, Default)]
 pub(super) struct RowMatcher {
-    /// Which prev rows have been claimed by some phase.
+    /// Prev rows claimed by some phase.
     prev_matched: Vec<bool>,
-    /// For each curr row, the prev row it paired with, or
-    /// [`ROW_UNMATCHED`]. Survives the call for the caller's
-    /// order-inversion work: an exact pair emits no content damage, but
-    /// two of them swapping paint order still flips their overlap.
+    /// For each curr row, the prev row it paired with, or [`ROW_UNMATCHED`]. Survives the call for the caller's order-inversion work.
     matched_pos: Vec<u32>,
-    /// `(key, row)` for the rows each side still has unclaimed, sorted.
-    /// Sorted and merged rather than first-fit scanned, which bounds the
-    /// all-rows-shifted case (one shape inserted at the front of a big
-    /// node) at O(n log n) instead of O(n²).
+    /// `(key, row)` for each side's unclaimed rows, sorted: sort-and-merge keeps the all-rows-shifted case at O(n log n).
     prev_keyed: Vec<(PaintKey, u32)>,
     curr_keyed: Vec<(PaintKey, u32)>,
 }
 
 impl RowMatcher {
-    /// Which prev row each curr row paired with on the last
-    /// [`Self::diff_changed_leg`], for the caller's overlap enumeration.
-    /// `ROW_UNMATCHED` where nothing paired.
-    ///
-    /// Only read under [`ChangedLeg::order_inverted`], which no fast-path
-    /// call can set — that is what keeps a caller from reading the
-    /// previous node's pairing.
+    /// Prev row each curr row paired with on the last [`Self::diff_changed_leg`], `ROW_UNMATCHED` where none. Only read under [`ChangedLeg::order_inverted`], which no fast-path call sets.
     #[inline]
     pub(super) fn matched_positions(&self) -> &[u32] {
         &self.matched_pos
     }
 
-    /// Per-paint diff leg for the changed-paints arm, against the block
-    /// `prev_span` names in `paints`. Three strategies in order of cost:
+    /// Per-paint diff leg for the changed-paints arm, against the block `prev_span` names.
     ///
-    /// **Fast path** — bit-identical positional match across the whole
-    /// span. Common when only ancestor state changed: the per-node hash
-    /// flipped but the paints themselves carry the same `(screen, hash)`
-    /// in the same order. Zero damage rects, span reused in place.
+    /// Fast path: a bit-identical positional match emits no damage and reuses the span.
     ///
-    /// **Slow path** — two-pass content-keyed match. Pass 1 pairs
-    /// each curr paint with the first unclaimed prev paint of identical
-    /// `(screen, hash)` (no damage — same shape, same place). Pass 2
-    /// handles still-unmatched curr paints by looking for an unclaimed
-    /// prev with matching `hash` only: if found, emit *both* rects as
-    /// move damage; otherwise emit the curr rect alone (added or
-    /// content-changed). Prev paints left unclaimed are removals.
-    /// Exact-first ordering matters: it preserves the "shape stayed
-    /// put" pairing even when another shape with the same `hash`
-    /// moved within the same node, avoiding the spurious move-damage
-    /// a single-pass matcher would emit. Both passes run as sorted
-    /// merges over `(PaintKey, index)` scratch — ascending-index
-    /// pairing within equal-key runs, the same claims the first-fit
-    /// scan produced, at O(n log n) instead of O(n²) when every row
-    /// shifted (one shape inserted at the front of a big node).
+    /// Slow path: exact `(screen, hash)` pairs first (no damage), then a same-`hash` unclaimed prev row means a move (both rects damaged), else an add. Unclaimed prev rows are removals. Hash-only matching exists because sub-pixel wobble on `Paint.screen` breaks strict `==`.
     ///
-    /// Sub-pixel float wobble on `Paint.screen` (composer's pixel
-    /// snapping runs downstream) makes strict `==` brittle; the
-    /// hash-only fallback recovers the move signal without losing the
-    /// exact-match optimisation.
-    ///
-    /// **Order check** — exact pairs emit no content damage, but two of
-    /// them swapping paint order still flips their overlap's pixels
-    /// (two coincident wires trading which is on top, a raised node,
-    /// a shape crossing a child boundary — child markers make all of
-    /// these row reorders). This leg only *reports* that it happened;
-    /// the caller enumerates the pairs and emits each one's extent
-    /// overlap, because child-marker extents need tree context no part
-    /// of this file holds.
-    ///
-    /// Pass 1's positional pre-pass pairs in-place rows in O(n); only
-    /// the leftovers pay the keyed sort + merge. The retained scratch
-    /// keeps every pass alloc-free across frames; empty leftovers (every
-    /// shape paired positionally) make both merges trivially skip. A
-    /// stable row count refreshes the existing block in place; a changed
-    /// one hands the old block back to its size class and takes one for
-    /// the new length.
+    /// Order check: swapped exact pairs still flip their overlap. This leg only reports it; the caller emits the overlap, which needs tree context.
     pub(super) fn diff_changed_leg(
         &mut self,
         paints: &mut BlockArena<Paint>,
@@ -142,15 +71,7 @@ impl RowMatcher {
             paints.slots[prev_span.range()].copy_from_slice(curr_paints);
             prev_span
         } else {
-            // A row-count change is a different size class as often as
-            // not, so this is a release-then-take rather than a resize.
-            // Release first: a count that moved within its class — a
-            // 40-shape node dropping to 39 — then reclaims *its own*
-            // block, which is what keeps a shape toggled every frame
-            // from growing the arena at all after warm-up. The old block
-            // is unreachable from the moment this returns the new span,
-            // and `curr_paints` is the cascade's buffer, not ours, so
-            // handing it back before the copy cannot alias anything.
+            // Release before take so a count that moved within its size class reclaims its own block and a toggling shape never grows the arena. `curr_paints` is the cascade's buffer, so no aliasing.
             paints.release(prev_span);
             paints.store(curr_paints)
         };
@@ -160,21 +81,9 @@ impl RowMatcher {
         }
     }
 
-    /// Phase 1 — reset, claim every same-index bit-identical pair, and
-    /// key whatever is left over.
+    /// Phase 1: reset, claim every same-index bit-identical pair, and key the rest.
     ///
-    /// The positional pre-pass is what makes the dominant churn shape
-    /// cheap: one shape changed and the rest in place — every wire of a
-    /// dragged canvas node — pairs in O(n) and leaves both keyed lists
-    /// empty, so the merges below skip trivially. Identical rows are
-    /// interchangeable, so which duplicate pairs up doesn't matter.
-    ///
-    /// **Leaves both keyed lists sorted by `(key, row)`.** Ascending row
-    /// within an equal-key run makes the merges claim ascending indices
-    /// on both sides, reproducing the first-fit scan's pairing; and
-    /// `PaintKey` being hash-major is what lets
-    /// [`Self::emit_moves_and_adds`] re-merge the very same buffers on
-    /// hash alone without re-sorting.
+    /// Leaves both keyed lists sorted by `(key, row)`: ascending rows claim ascending indices, and hash-major `PaintKey` lets [`Self::emit_moves_and_adds`] re-merge on hash alone.
     fn reset_for(&mut self, prev: &[Paint], curr: &[Paint]) {
         self.prev_matched.clear();
         self.prev_matched.resize(prev.len(), false);
@@ -206,10 +115,7 @@ impl RowMatcher {
         self.curr_keyed.sort_unstable();
     }
 
-    /// Phase 2 — exact `(screen, hash)` pairs anywhere in the span, not
-    /// just at matching indices. Emits no damage: same shape, same place.
-    ///
-    /// Requires the sorted keyed lists [`Self::reset_for`] leaves.
+    /// Phase 2: exact `(screen, hash)` pairs anywhere in the span. Emits no damage. Needs the sorted lists from [`Self::reset_for`].
     fn claim_exact(&mut self, prev: &[Paint], curr: &[Paint]) {
         let (mut pi, mut ci) = (0, 0);
         while pi < self.prev_keyed.len() && ci < self.curr_keyed.len() {
@@ -219,8 +125,7 @@ impl RowMatcher {
                 Ordering::Less => pi += 1,
                 Ordering::Greater => ci += 1,
                 Ordering::Equal => {
-                    // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
-                    // screens are never `==` — confirm before pairing.
+                    // Key-equal means bit-equal (modulo -0.0), but NaN screens are never `==`.
                     if prev[prow as usize] == curr[crow as usize] {
                         self.prev_matched[prow as usize] = true;
                         self.matched_pos[crow as usize] = prow;
@@ -232,28 +137,9 @@ impl RowMatcher {
         }
     }
 
-    /// Phase 3 — a still-unmatched curr row sharing a prev row's `hash`
-    /// is the same shape somewhere else: emit both rects, the old place
-    /// and the new. One with no partner is an add, so only its own rect
-    /// goes out.
+    /// Phase 3: a curr row sharing a prev row's `hash` is the same shape moved, so both rects are damaged; one with no partner is an add and damages only its own rect.
     ///
-    /// **Requires `curr_keyed` sorted hash-major** — the property
-    /// [`Self::reset_for`] establishes through [`PaintKey`]'s field
-    /// order.
-    /// Iterating it yields non-decreasing hashes, which is the whole
-    /// reason a single never-reset forward cursor over `prev_keyed` can
-    /// serve every curr row. Reset that cursor, or order either list any
-    /// other way, and the pairing degrades silently.
-    ///
-    /// Sub-pixel float wobble on `Paint.screen` (the composer's pixel
-    /// snapping runs downstream) makes strict `==` brittle, which is why
-    /// a hash-only fallback exists at all — but it runs *after* the
-    /// exact phase, so a shape that stayed put keeps its pairing even
-    /// when another shape with the same hash moved within the node.
-    ///
-    /// Child markers can't push anything visible here: their screens are
-    /// zero, so [`damage::push_screen`] drops them. An added or removed
-    /// child's pixels are damaged by its own node's tier instead.
+    /// Requires `curr_keyed` sorted hash-major, so one never-reset forward cursor over `prev_keyed` serves every curr row. Child markers have zero screens and are dropped by [`damage::push_screen`].
     fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], curr: &[Paint]) {
         let mut pi = 0;
         for &(ck, crow) in &self.curr_keyed {
@@ -280,7 +166,7 @@ impl RowMatcher {
         }
     }
 
-    /// Phase 4 — prev rows no phase claimed are gone; clear their pixels.
+    /// Phase 4: prev rows no phase claimed are gone; damage them.
     fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint]) {
         for (row, p) in prev.iter().enumerate() {
             if !self.prev_matched[row] {
@@ -289,11 +175,7 @@ impl RowMatcher {
         }
     }
 
-    /// True when some pair of matched rows inverted its relative order —
-    /// i.e. the matched prev positions aren't non-decreasing in curr
-    /// order. O(n) gate in front of the caller's quadratic pair
-    /// enumeration. Equal adjacent positions can't occur (each prev row
-    /// is claimed at most once), so allow-equal `is_sorted` is exact.
+    /// True when matched prev positions are not non-decreasing in curr order. Equal neighbors cannot occur (each prev row is claimed once), so `is_sorted` is exact.
     fn has_order_inversion(&self) -> bool {
         !self
             .matched_pos
@@ -303,13 +185,7 @@ impl RowMatcher {
     }
 }
 
-/// Sort key for the content-keyed matcher: hash-major (so one sorted
-/// order serves both the exact pass and the hash-only move pass),
-/// then the screen rect's bit pattern with `-0.0` normalized to
-/// `+0.0` (the two compare equal under `Paint ==` and must land in
-/// one run). Key-equal rows still confirm with a real `Paint ==`
-/// before pairing, so NaN screens — key-equal but never `==` —
-/// can't false-pair.
+/// Sort key: hash-major (one order serves both the exact and move passes), then the screen rect's bits with `-0.0` normalized. Key-equal rows are confirmed with `Paint ==` so NaN screens cannot false-pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct PaintKey {
     hash: u64,
@@ -318,8 +194,7 @@ struct PaintKey {
 
 impl PaintKey {
     fn of(p: &Paint) -> PaintKey {
-        // `f + 0.0` folds -0.0 onto +0.0 and leaves every other value
-        // (NaN included) bit-stable.
+        // `f + 0.0` folds -0.0 onto +0.0 and leaves every other bit pattern, NaN included, unchanged.
         let n = |f: f32| (f + 0.0).to_bits();
         PaintKey {
             hash: p.hash.0,

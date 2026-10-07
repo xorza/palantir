@@ -1,10 +1,6 @@
 use super::*;
 
-/// The product is what layout divides by, and the system factor alone
-/// is what the window manager is told. At 2× and 125% a 1000-px
-/// surface is 400 logical px to the UI and 500 to the platform.
-/// `from_physical` leaves the user scale at `ONE`, so the two spaces
-/// coincide until something sets it.
+/// Layout divides by the product of the scales; the window manager gets the system factor alone: at 2x and 125% a 1000-px surface is 400 logical px to the UI, 500 to the platform.
 #[test]
 fn the_two_spaces_divide_by_different_factors() {
     let surface = UVec2::new(1000, 600);
@@ -42,12 +38,7 @@ fn the_two_spaces_divide_by_different_factors() {
     );
 }
 
-/// Every axis that moves the raster fails `raster_eq` and forces the
-/// full repaint that follows from it — the surface, either scale, the
-/// pixel snap. 1× at 200% shares 2× at 100%'s `scale_factor`, and so
-/// its painted pixels, but not its window-manager space. The refresh
-/// rate paces frames and paints nothing, so a monitor move that
-/// changes only it compares equal.
+/// Every axis that moves the raster fails `raster_eq` (surface, either scale, pixel snap); refresh rate paints nothing, so it compares equal.
 #[test]
 fn raster_eq_compares_every_raster_axis_and_only_those() {
     let base = Display::from_physical(UVec2::new(800, 600), 2.0);
@@ -107,8 +98,6 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
     }
 }
 
-/// A scale factor is usable from `EPS` up, finite: the boundary is
-/// inclusive, and zero, negatives and non-finite values are not.
 #[test]
 fn scale_factor_is_valid_from_eps_up() {
     for (factor, valid) in [
@@ -124,9 +113,7 @@ fn scale_factor_is_valid_from_eps_up() {
     }
 }
 
-/// The windowed door keeps a usable platform scale and replaces any
-/// other with 1 — an `f64` past `f32`'s range included, which narrows
-/// to infinity.
+/// The windowed door replaces an unusable platform scale with 1.
 #[cfg(feature = "winit")]
 #[test]
 fn sanitize_system_scale_keeps_a_usable_scale_or_falls_back_to_one() {
@@ -142,9 +129,6 @@ fn sanitize_system_scale_keeps_a_usable_scale_or_falls_back_to_one() {
     }
 }
 
-/// A display built by hand takes the scale rule every door applies —
-/// finite and at least 1e-4 — so a scale the frame would refuse is refused
-/// where it is named. 5e-5 is positive and still refused; 1e-4 is taken.
 #[test]
 fn from_physical_checks_its_scale() {
     use crate::display::SCALE_RULE;

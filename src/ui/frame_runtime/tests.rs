@@ -25,8 +25,7 @@ struct Case {
     expected: FramePlan,
 }
 
-/// A warm frame with nothing but an animation wake pending: it paints
-/// without recording. Each row changes the facts it is about.
+/// A warm frame with only an animation wake pending paints without recording.
 const QUIET: Case = Case {
     label: "quiet",
     previous: true,
@@ -132,16 +131,9 @@ fn frame_classification_covers_external_entry_facts() {
     }
 }
 
-/// What a frame *spends* is bounded, not only what it observed.
+/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `spring::step` takes `MAX_ANIM_DT` as a contract.
 ///
-/// Wall time is clamped as it arrives, but the accumulator carries
-/// whatever earlier frames were too short to spend, and the sum is what
-/// reaches the integrators. [`spring::step`](crate::animation::spring)
-/// takes `MAX_ANIM_DT` as a contract, so a carry riding on top of an
-/// already-clamped delta is a debug panic.
-///
-/// One frame under the accumulator step, then a stall: 1 ms carries, 100 ms clamps,
-/// and 101 ms is what the sum would hand over.
+/// One short frame, then a stall: 1 ms carries, 100 ms clamps, 101 ms is the unbounded sum.
 #[test]
 fn a_spent_delta_stays_inside_the_animation_bound() {
     let mut rt = FrameRuntime::default();
@@ -164,8 +156,6 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
     );
     assert_eq!(rt.dt_accum, 0.0, "a spending frame leaves nothing behind");
 
-    // An ordinary frame still spends its whole delta — the bound is a
-    // ceiling, not a quantization.
     rt.advance_clock(Duration::from_millis(117));
     assert_eq!(
         rt.dt,
@@ -173,9 +163,7 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
         "a 16 ms frame spends 16 ms"
     );
 
-    // An unthrottled loop at 10 µs a frame spends nothing until its
-    // carry crosses the step: 416 frames carry 4.16 ms, under 1/240 s =
-    // 4.1667 ms, and the 417th spends the 4.17 ms at once.
+    // At 10 µs a frame nothing is spent until the carry crosses 1/240 s = 4.1667 ms: 416 frames carry 4.16 ms; the 417th spends 4.17 ms.
     let mut rt = FrameRuntime::default();
     let mut now = Duration::ZERO;
     for frame in 1..=416 {
@@ -185,7 +173,6 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
     }
     now += Duration::from_micros(10);
     rt.advance_clock(now);
-    // The carry is 417 additions of 10 µs in `f32`, summed in order.
     let carried = (0..417).fold(0.0f32, |sum, _| {
         sum + Duration::from_micros(10).as_secs_f32()
     });

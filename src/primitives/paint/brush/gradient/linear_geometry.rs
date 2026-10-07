@@ -1,5 +1,4 @@
-//! The linear gradient's axis: colour runs along a direction the angle
-//! names.
+//! The linear gradient's axis: colour runs along the direction an angle names.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
@@ -9,12 +8,10 @@ use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use std::hash;
 
-/// Geometry of a linear gradient: colour runs along an axis at `angle`
-/// radians (0 = →, π/2 = ↓). Object-space — the gradient spans the brush
-/// owner's bounding rect end-to-end at that angle.
+/// Geometry of a linear gradient: colour runs along `angle` radians (0 = →, π/2 = ↓), spanning the brush owner's bounding rect end to end.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct LinearGeometry {
-    /// Axis direction in radians — `0` runs right, `π/2` runs down.
+    /// Axis direction in radians.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub angle: f32,
 }
@@ -28,14 +25,7 @@ pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 impl Geometry for LinearGeometry {
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
-    /// `dir = (cos(angle), sin(angle))`; the shader projects each
-    /// fragment's 0..1 object-local position onto `dir`, then maps the
-    /// dot product through `(t0, t1)` to the LUT row.
-    ///
-    /// `(t0, t1)` is always `(0, 1)` over the raw `(cos, sin)` axis, so
-    /// a diagonal gradient projects to a sub-1.0 range and relies on
-    /// `Spread::Pad` to clamp. That is not CSS's corner-to-corner
-    /// scaling.
+    /// `dir = (cos(angle), sin(angle))`; the shader projects each 0..1 object-local position onto `dir` and maps the dot through `(t0, t1)` to the LUT row. `(t0, t1)` is always `(0, 1)` over the raw axis, so a diagonal spans a sub-1.0 range and relies on `Spread::Pad`, unlike CSS corner-to-corner scaling.
     fn axis_lanes(&self) -> [f32; 4] {
         let (sin, cos) = self.angle.sin_cos();
         [cos, sin, 0.0, 1.0]
@@ -61,9 +51,7 @@ impl LinearGradient {
         Self::from_stops(LinearGeometry { angle }, stops)
     }
 
-    /// 2-stop shorthand — `c0` at offset 0, `c1` at offset 1. Covers
-    /// the dominant UI-gradient pattern (panel chrome, button
-    /// surfaces, headers).
+    /// 2-stop shorthand: `c0` at offset 0, `c1` at 1; the common UI-gradient case.
     pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(angle, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }

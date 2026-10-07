@@ -1,11 +1,9 @@
-//! Where an encoded run is kept between frames, the arena its glyphs are
-//! packed into, and the hit path that replays one.
+//! Where an encoded run is kept between frames, the arena its glyphs are packed
+//! into, and the hit path that replays one.
 //!
-//! A replay must re-check every glyph's recorded slot generation before
-//! it emits: eviction hands a slot rectangle to another glyph, and a
-//! template holding the old uv would draw that glyph instead. Growth
-//! needs no such check — `etagere::grow` preserves rectangles, so a
-//! cached uv survives it.
+//! A replay must re-check every glyph's recorded slot generation: eviction hands
+//! a slot rectangle to another glyph, and a template with the old uv would draw
+//! that glyph. Growth needs no check; `etagere::grow` preserves rectangles.
 
 use crate::common::block_arena::{BlockArena, BlockSlot};
 use crate::common::expiry_wheel::ExpiryWheel;
@@ -23,8 +21,6 @@ use crate::text::render::GlyphRasterKey;
 
 #[derive(Clone, Copy, Debug)]
 struct EncodedEntry {
-    /// Slice into [`EncodedCache::arena`] holding this run's glyph
-    /// templates.
     span: Span,
     last_use: u64,
 }
@@ -36,16 +32,11 @@ pub(crate) struct EncodedGlyph {
     pub(crate) generation: u32,
 }
 
-/// The link rides in `atlas_slot` because a free block is not a glyph:
-/// nothing reads any field of these slots until the block is
-/// re-allocated, and re-allocation overwrites them.
+/// The link rides in `atlas_slot`: a free block is not a glyph, so nothing reads
+/// its slots until re-allocation overwrites them.
 impl BlockSlot for EncodedGlyph {
-    /// A run is a dozen to a few dozen glyphs, so four slots of slack is
-    /// a small fraction of it — and the rounding is what keeps a run
-    /// whose glyph count shifts by one landing in the class its
-    /// predecessor freed. Exact fit would mint a class per glyph count,
-    /// hundreds of them, sharpening the drift bound the module doc
-    /// describes for no gain a run of this length would notice.
+    /// Four slots of slack lets a run whose glyph count shifts by one land in the class
+    /// its predecessor freed; exact fit would mint a class per count.
     const GRANULE: u32 = 4;
 
     fn free_link(next: u32) -> Self {
@@ -67,36 +58,20 @@ impl BlockSlot for EncodedGlyph {
     }
 }
 
-/// Age-bounded cache of encoded runs over a [`BlockArena`], with each
-/// `EncodedEntry` pointing at its span and each dropped row's block
-/// returned to its size class. After warmup this is alloc-free — arena,
-/// map, free lists and the pending buffer all retain capacity across
-/// frames.
-///
-/// Why blocks rather than an append-only arena with a compaction step is
-/// [the arena's own question](crate::common::block_arena); the numbers it
-/// quotes for a 200 × 40 gesture were measured here.
+/// Age-bounded cache of encoded runs over a [`BlockArena`]. Alloc-free after
+/// warmup. Why blocks rather than compaction: [the arena's
+/// question](crate::common::block_arena).
 #[derive(Debug)]
 pub(crate) struct EncodedCache {
     map: FxHashMap<EncodedKey, EncodedEntry>,
     arena: BlockArena<EncodedGlyph>,
-    /// Where [`Self::stage`] accumulates a row's glyphs before its
-    /// final length is known.
-    /// [`Self::settle`] either copies it into a block or drops it, so an
-    /// incomplete encode costs nothing but the clear.
-    ///
-    /// A separate buffer rather than the arena tail: the tail is no
-    /// longer a bump frontier, and sizing the block from the finished
-    /// row is what lets `block_class(span.len)` recover a block's
-    /// capacity later without storing it per entry.
+    /// Where [`Self::stage`] accumulates a row's glyphs before its length is known.
+    /// Separate from the arena tail so the block is sized from the finished row, which
+    /// lets `block_class(span.len)` recover capacity without storing it.
     pending: Vec<EncodedGlyph>,
-    /// Which rows come due on which frame, so [`Self::sweep`] costs what
-    /// expires rather than what is resident. Runs the same
-    /// file-once/re-file-on-fire protocol the shaped-buffer cache does —
-    /// see [`ExpiryWheel`].
+    /// Which rows come due on which frame, so [`Self::sweep`] costs what expires
+    /// ([`ExpiryWheel`]).
     expiry: ExpiryWheel<EncodedKey>,
-    /// Encode / expiry / re-file tallies. Zero-sized outside benchmark
-    /// and test builds.
     counters: EncodedCounters,
 }
 
@@ -113,13 +88,11 @@ impl Default for EncodedCache {
 }
 
 impl EncodedCache {
-    /// Replay `run_key`'s template into `pass`, shifted to its origin.
-    /// `false` means the run has no live template and the caller owes
-    /// it a full [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run).
-    ///
-    /// One pass emits each instance and refreshes the backing atlas
-    /// slot's LRU stamp together, so `evict_one` cannot reclaim a slot
-    /// this frame still draws from.
+    /// Replay `run_key`'s template into `pass`, shifted to its origin. `false` means
+    /// no live template and the caller owes a full
+    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run). Each
+    /// instance refreshes its atlas slot's LRU stamp, so `evict_one` can't reclaim a
+    /// slot this frame draws.
     pub(super) fn emit_cached(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
@@ -148,12 +121,8 @@ impl EncodedCache {
             slot.last_use = current_frame;
         }
         if stale {
-            // An eviction reused one of this run's slots, so the whole
-            // template is dead. Drop the row now (the map borrow ends
-            // here) rather than re-probing and re-walking it every
-            // frame until the next sweep: a re-encode only replaces it
-            // if this run also survives the y-cull, so a culled run
-            // would otherwise pay the failed lookup indefinitely.
+            // An eviction reused one of this run's slots, so the template is dead. Drop the
+            // row now, or a y-culled run would pay the failed lookup every frame.
             if let Some(dead) = self.map.remove(&run_key.key) {
                 self.arena.release(dead.span);
             }
@@ -163,8 +132,6 @@ impl EncodedCache {
         true
     }
 
-    /// Open one encode, which [`Self::stage`] fills and [`Self::settle`]
-    /// closes.
     pub(super) fn start_row(&mut self) {
         debug_assert!(
             self.pending.is_empty(),
@@ -173,51 +140,27 @@ impl EncodedCache {
         self.counters.encodes.bump();
     }
 
-    /// Append one origin-relative template to the open encode.
     pub(super) fn stage(&mut self, glyph: EncodedGlyph) {
         self.pending.push(glyph);
     }
 
-    /// Drop entries not touched in the last [`ENCODED_CACHE_KEEP_FRAMES`]
-    /// frames, returning each dropped row's block to its size class.
-    ///
-    /// The window is read from the constant rather than taken as an
-    /// argument, because only the constant can be right: [`Self::settle`]
-    /// files each row's ticket against it, so a shorter argument would
-    /// not shorten anything — the ticket simply would not fire until the
-    /// constant had elapsed — and a longer one would make every ticket
-    /// fire early and re-file for the difference.
-    ///
-    /// Runs every frame, deliberately: a cadence gate would make the
-    /// cost lumpy (one frame in N paying for all of them), and uniform
-    /// per-frame cost is worth more here than a lower average.
-    ///
-    /// A `retain` over the whole table would be uniform but uniformly
-    /// proportional to the working set — a text-heavy frame paying for
-    /// every resident row to discover that none had lapsed, measured at
-    /// ~11 µs for 24k rows. Draining [`Self::expiry`] keeps the
-    /// every-frame cadence and drops the proportionality: what a frame
-    /// pays for is what came due on it.
-    ///
-    /// The whole pass is the drain: an expired row hands its block
-    /// straight back to its free list, so there is no second traversal
-    /// and nothing left for a compaction step to do.
+    /// Drop entries untouched for [`ENCODED_CACHE_KEEP_FRAMES`] frames, returning each
+    /// block to its size class. The window is the constant, not an argument:
+    /// [`Self::settle`] files tickets against it. Runs every frame for uniform cost; a
+    /// `retain` would scale with the working set (~11 µs for 24k rows), while draining
+    /// [`Self::expiry`] pays only for what came due.
     pub(super) fn sweep(&mut self, current_frame: u64) {
         let map = &mut self.map;
         let arena = &mut self.arena;
         let probe = &mut self.counters;
-        // No stamp to check: `last_use` only ever moves a deadline out,
-        // so a ticket is never supplanted and every one that fires is
-        // the live one.
+        // No stamp check: `last_use` only moves a deadline out, so every ticket that
+        // fires is live.
         self.expiry.retire(current_frame, |key, _| {
-            // Gone already: `emit_cached` drops a row whose atlas slot
-            // was reused, leaving its ticket behind.
+            // Gone already: `emit_cached` drops a row whose slot was reused, leaving its ticket.
             let Entry::Occupied(slot) = map.entry(key) else {
                 return None;
             };
-            // A hit deliberately files no ticket — that is what keeps a
-            // steadily-drawn run from filing one per frame — so the real
-            // `last_use` is re-read here and a live row is re-filed.
+            // A hit files no ticket; re-read the real `last_use` and re-file a live row.
             let dies_at = dies_at(slot.get().last_use);
             if dies_at > current_frame {
                 probe.refiles.bump();
@@ -229,13 +172,9 @@ impl EncodedCache {
         });
     }
 
-    /// Drop every encoded row, returning each block to its size class.
-    ///
-    /// What a font load owes: a row holds glyph templates pointing at
-    /// atlas slots rasterized from whatever face was resolved when it was
-    /// encoded, and registering a font can change that answer. The atlas
-    /// itself needs no such sweep — its keys carry cosmic's `font_id`,
-    /// and fontdb never reuses one.
+    /// Drop every encoded row. Owed by a font load: templates point at slots
+    /// rasterized from the face resolved at encode time. The atlas needs no sweep; its
+    /// keys carry cosmic's `font_id`, which fontdb never reuses.
     pub(super) fn clear(&mut self) {
         let arena = &mut self.arena;
         for (_, entry) in self.map.drain() {
@@ -244,25 +183,13 @@ impl EncodedCache {
         self.expiry.clear();
     }
 
-    /// Settle the glyphs [`Self::stage`] accumulated: publish them as
-    /// `key`'s template when the encode was `complete`, else drop
-    /// them.
-    ///
-    /// **Only complete encodes may become templates.** `EncodedKey`
-    /// carries neither the run's bounds nor the atlas's occupancy, so a
-    /// template with a hole replays that hole on every later hit and
-    /// never retries — the missing glyph or line would outlive whatever
-    /// caused it. Both incomplete cases are transient: a y-culled line
-    /// comes back into view on the next scroll, and a glyph the atlas
-    /// had no room for fits once the competing pressure clears. An
-    /// incomplete encode leaves any existing row for `key` intact — its
-    /// template is still valid; this attempt simply produced nothing
-    /// better.
+    /// Publish the glyphs [`Self::stage`] accumulated as `key`'s template when the
+    /// encode was `complete`, else drop them. Only complete encodes become templates:
+    /// `EncodedKey` carries neither bounds nor atlas occupancy, so a template with a
+    /// hole would replay it forever. Incomplete cases are transient (y-culled lines
+    /// return; a full atlas clears). An incomplete encode leaves any existing row intact.
     pub(super) fn settle(&mut self, key: EncodedKey, frame: u64, complete: bool) {
-        // Destructured so the row can be held through `map.entry` while
-        // the arena is written beside it — one hash for the whole
-        // operation instead of a probe to read the old span and a second
-        // to write the new row.
+        // Destructured so the row is held through `map.entry` while the arena is written.
         let Self {
             map,
             arena,
@@ -275,18 +202,10 @@ impl EncodedCache {
             return;
         }
         match map.entry(key) {
-            // Release before allocating, so a re-encode reclaims *its
-            // own* block. That is the common case by far — a zoom or
-            // width drag re-encodes the same text, so the row's glyph
-            // count is unchanged and its old block is exactly the right
-            // size class — and this order is what keeps a steady gesture
-            // from growing the arena at all after warm-up. The old block
-            // is unreachable from the moment the row is replaced, and
-            // `pending` is a separate buffer, so handing it back before
-            // the copy cannot alias anything.
-            //
-            // The outstanding ticket is left alone: it re-files off the
-            // refreshed `last_use` when it fires.
+            // Release before allocating so a re-encode reclaims its own block (a zoom or
+            // width drag re-encodes the same glyph count), keeping a steady gesture from
+            // growing the arena. `pending` is separate, so this aliases nothing. The
+            // outstanding ticket re-files off the refreshed `last_use`.
             Entry::Occupied(mut row) => {
                 arena.release(row.get().span);
                 row.insert(EncodedEntry {
@@ -294,9 +213,7 @@ impl EncodedCache {
                     last_use: frame,
                 });
             }
-            // A new row owes the wheel its first ticket, and this arm is
-            // the only place one is filed — which is what makes "one
-            // ticket per row, not one per encode" structural.
+            // A new row owes the wheel its first ticket; this is the only place one is filed.
             Entry::Vacant(slot) => {
                 slot.insert(EncodedEntry {
                     span: arena.store(pending),
@@ -309,63 +226,34 @@ impl EncodedCache {
     }
 }
 
-/// Frames an unused [`EncodedCache`] entry survives before being swept in
-/// [`TextEncoder::end_frame`](super::encoder::TextEncoder::end_frame).
-/// Keeps the cache from growing unboundedly under a long zoom gesture while
-/// comfortably outliving any short flicker (visibility toggle, hover paint)
-/// that drops a run for a frame.
+/// Frames an unused [`EncodedCache`] entry survives before
+/// [`TextEncoder::end_frame`](super::encoder::TextEncoder::end_frame) sweeps it.
 ///
 /// # Why this is below [`crate::text::RENDERED_RUN_KEEP_FRAMES`]
 ///
-/// That constant states what the ordering is for. This window sits well
-/// under it, and the `const _` assertion below stops a later edit from
-/// inverting them.
-///
-/// **How far under is this side's own question.** `EncodedKey`
-/// folds `scale_q` and (through
-/// [`TextShapeKey`](crate::text::key::TextShapeKey)) `max_w_q`, so a zoom
-/// or width drag mints a fresh key per run per frame that will never be
-/// asked for again — and with one window and no demotion signal each of
-/// those lives the full span. The resident population is
-/// `runs × (KEEP + 1)`, so the window *is* the population multiplier: at
-/// the ceiling's 120 that is 121 frames of dead gesture keys, ~27 MB of
-/// glyph templates for a text-dense drag, on an arena that never
-/// shrinks.
-///
-/// 30 frames is half a second at 60 Hz. What it costs is a re-encode
-/// for a run that goes untouched for 0.5–2 s and then comes back, which
-/// is a shaper walk rather than a reshape — the buffer is still
-/// resident on the longer window, which is the whole point of the
-/// ordering. What it buys is a 4x smaller resident population for a
-/// one-constant change, with no demotion signal to design and no new
-/// way for the cache to be wrong.
-///
-/// The real fix for gesture churn is still a demotion signal, which
-/// would cut the population to `runs × 5` regardless of this number.
-/// This is the cheap lever, not a substitute for it.
+/// `EncodedKey` folds `scale_q` and `max_w_q`, so a zoom or width drag mints a
+/// never-reused key per run per frame, each living the full span: `runs × (KEEP +
+/// 1)` entries (~27 MB at the shaped-buffer ceiling's 120) on an arena that never
+/// shrinks. 30 frames is half a second at 60 Hz; the cost is a shaper walk (the
+/// buffer is still resident) for a run untouched 0.5–2 s that returns, the gain a
+/// 4x smaller population. A demotion signal would be better; this is the cheap lever.
 pub(super) const ENCODED_CACHE_KEEP_FRAMES: u64 = 30;
 
-/// The frame a row last used on `last_use` is first dead — what the wheel
-/// files under. One expression, read by the filing in
-/// [`EncodedCache::settle`] and by the re-file in [`EncodedCache::sweep`],
-/// so the two cannot name different frames.
+/// The frame after `last_use` on which a row is first dead, shared by
+/// [`EncodedCache::settle`] and [`EncodedCache::sweep`].
 const fn dies_at(last_use: u64) -> u64 {
     last_use + ENCODED_CACHE_KEEP_FRAMES + 1
 }
 
-/// A buffer must outlive the encoded entry that would come asking for
-/// it. Stated as an assertion rather than a comment because the two
-/// constants now live apart, and the failure it guards is silent —
-/// crossing them costs a reshape per miss and nothing reports it.
+/// A buffer must outlive the encoded entry that asks for it; crossing the
+/// constants silently costs a reshape per miss.
 const _: () = assert!(
     ENCODED_CACHE_KEEP_FRAMES <= RENDERED_RUN_KEEP_FRAMES,
     "the shaped-buffer window must cover the encoded-run window",
 );
 
-// Gated with the churn fixture's two readers exactly — the `text_atlas`
-// benchmark and the retention tests below — rather than on `internals`,
-// which the two integration suites enable without ever building a churn
-// fixture.
+// Gated with the churn fixture's readers, not `internals`, which integration
+// suites enable without a churn fixture.
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use super::*;
@@ -378,10 +266,8 @@ pub(crate) mod internals {
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
     use crate::text::key::TextShapeKey;
 
-    /// What a unit test outside this module may ask a live cache,
-    /// which is the resident population and the templates under it.
-    /// A key is opaque here — [`EncodedKey`]'s fields stay private to
-    /// `encode`, so it serves only to name a row across frames.
+    /// What a unit test outside this module may ask a live cache. [`EncodedKey`]'s
+    /// fields are private to `encode`, so a key only names a row across frames.
     #[cfg(test)]
     impl EncodedCache {
         pub(crate) fn rows(&self) -> usize {
@@ -405,13 +291,9 @@ pub(crate) mod internals {
         }
     }
 
-    /// Churn harness: `runs` rows **re-keyed every frame**, which is what
-    /// a zoom (a fresh `scale_q` per `TEXT_SCALE_STEP` rung) or a resize
-    /// drag (a fresh `max_w_q` per committed width) produces.
-    ///
-    /// Not modelled on `bins`: that component takes only 16 values and a
-    /// pan cycles back through them, so sub-pixel motion re-hits its
-    /// entries instead of minting new ones.
+    /// Churn harness: `runs` rows re-keyed every frame, as a zoom (fresh `scale_q`) or
+    /// resize drag (fresh `max_w_q`) does. Not modelled on `bins`: a pan cycles its 16
+    /// values and re-hits entries.
     #[derive(Debug, Default)]
     pub(crate) struct ChurnBench {
         cache: EncodedCache,
@@ -430,9 +312,8 @@ pub(crate) mod internals {
             }
         }
 
-        /// One gesture frame: every run mints a key it will never be
-        /// asked for again, encodes its glyphs into the arena, and the
-        /// sweep runs. Returns the resident row count.
+        /// One gesture frame: every run mints a never-reused key and encodes; the sweep
+        /// runs. Returns the resident row count.
         pub(crate) fn churn_frame(&mut self) -> usize {
             self.frame += 1;
             for run in 0..self.runs {
@@ -451,9 +332,7 @@ pub(crate) mod internals {
                 }
                 let key = EncodedKey {
                     text: TextShapeKey::fixture(),
-                    // The churn axis: one fresh rung per frame.
                     scale_q: self.frame as u32,
-                    // Run identity, stable across the gesture.
                     area_color: u64::from(run),
                     bins: 0,
                 };
@@ -477,21 +356,15 @@ pub(crate) mod internals {
             self.cache.counters.counts()
         }
 
-        /// The *arena*'s tallies rather than the cache's — whether a
-        /// saturated gesture still extends the block storage.
+        /// The arena's tallies: whether a saturated gesture still extends block storage.
         #[cfg(test)]
         pub(crate) fn block_counts(&self) -> BlockArenaCounts {
             self.cache.arena.counters.counts()
         }
     }
 
-    /// Sweep harness for the `encoded_cache_sweep` benchmark. Populates
-    /// a cache with `rows` live rows of `glyphs_per_row` each — the
-    /// steady-state shape a text-heavy frame leaves behind — so a
-    /// benchmark iteration measures [`EncodedCache::sweep`] alone,
-    /// isolated from the encode work that surrounds it in `end_frame`.
-    /// Gated with that benchmark alone — unlike [`ChurnBench`], nothing
-    /// here answers a question a test asks.
+    /// Sweep harness for the `encoded_cache_sweep` benchmark: `rows` live rows of
+    /// `glyphs_per_row`, so an iteration measures [`EncodedCache::sweep`] alone.
     #[cfg(feature = "bench")]
     #[derive(Debug, Default)]
     pub(crate) struct SweepBench {
@@ -501,15 +374,8 @@ pub(crate) mod internals {
 
     #[cfg(feature = "bench")]
     impl SweepBench {
-        /// Build `rows` rows **one per frame**, so their expiry tickets
-        /// land on distinct buckets exactly as a real scene's inserts
-        /// do.
-        ///
-        /// Populating them all on one frame would be easier and wrong:
-        /// every ticket would share a bucket, and the measurement would
-        /// alternate between frames that drain nothing and one frame in
-        /// a ring that drains everything — a burst the fixture invented,
-        /// not one the cache produces.
+        /// Build one row per frame so expiry tickets land on distinct buckets as in a
+        /// real scene.
         pub(crate) fn new(rows: u32, glyphs_per_row: u32) -> Self {
             let mut cache = EncodedCache::default();
             let mut frame = 0;
@@ -528,10 +394,7 @@ pub(crate) mod internals {
                         generation: 1,
                     });
                 }
-                // Through `settle`, not by poking the map: it is what
-                // files the expiry ticket and reserves the block, and a
-                // fixture missing either would measure a sweep with
-                // nothing to do.
+                // Through `settle`: it files the ticket and reserves the block.
                 let key = EncodedKey {
                     text: TextShapeKey::fixture(),
                     scale_q: row,
@@ -539,33 +402,22 @@ pub(crate) mod internals {
                     bins: 0,
                 };
                 cache.settle(key, frame, true);
-                // Park `last_use` beyond any frame the bench reaches, so
-                // rows never expire and every fired ticket is re-filed.
-                // That is the steady-state load: a drawn run refreshes
-                // `last_use` on the encoded-cache hit path and files
-                // nothing, so the sweep's whole job is re-filing.
+                // Park `last_use` beyond any frame the bench reaches: rows never expire and every
+                // fired ticket re-files, the steady-state load.
                 cache
                     .map
                     .get_mut(&key)
                     .expect("settle just inserted this row")
                     .last_use = u64::MAX / 2;
-                // Keep the wheel's clock in step with the inserts, or
-                // tickets more than a ring out get clamped together and
-                // the stagger is lost before the bench starts.
+                // Keep the wheel's clock in step with the inserts, or far tickets clamp together.
                 cache.sweep(frame);
             }
             Self { cache, frame }
         }
 
-        /// One steady-state `end_frame` sweep: the clock advances, the
-        /// handful of tickets that came due are re-filed, and nothing
-        /// expires — exactly the pass a frame pays when the cache is
-        /// warm and every row is still on screen. Returns the surviving
-        /// row count so the caller can assert the fixture stayed intact.
-        ///
-        /// The frame *must* advance per call. Sweeping the same frame
-        /// twice is a no-op under a deadline wheel, so a fixed-frame
-        /// harness would measure an early return and guard nothing.
+        /// One steady-state `end_frame` sweep: the clock advances, a few tickets re-file,
+        /// nothing expires. The frame must advance per call; a repeat is a no-op under a
+        /// deadline wheel. Returns the surviving row count.
         pub(crate) fn sweep_steady(&mut self) -> usize {
             self.frame += 1;
             self.cache.sweep(self.frame);

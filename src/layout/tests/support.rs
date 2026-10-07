@@ -1,7 +1,4 @@
-//! Builders for the recurring widget patterns used by the cross-driver
-//! tests in this directory: chat-message HStacks, two-column grids with
-//! wrapping text, and the paragraph they wrap. Local helpers — keep
-//! narrow, only generalize when a third caller appears.
+//! Builders for patterns the cross-driver tests share: chat-message HStacks, two-column grids with wrapping text, and the paragraph they wrap. Keep narrow; generalize on a third caller.
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
@@ -15,23 +12,15 @@ use crate::scene::tree::node_id::NodeId;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 
-/// The paragraph the wrapping cases shape: nine words, so every narrow
-/// width breaks it somewhere.
+/// The paragraph the wrapping cases shape: nine words, so every narrow width breaks it.
 pub(super) const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
-/// The measured height of `lines` lines of `font_px` text: the default
-/// style's line height per line, on the shaper's 1/64-px grid, ceiled to
-/// whole pixels as the measurer does. Widths have no such formula — they
-/// are the bundled faces' glyph advances, the same on every machine.
+/// Measured height of `lines` lines of `font_px` text: the default line height per line on the shaper's 1/64-px grid, ceiled to whole pixels as the measurer does. Widths are the bundled faces' advances.
 pub(super) fn lines_h(lines: u32, font_px: f32) -> f32 {
     (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
 }
 
-/// Test helper: the leaf's single shaped-text result. Asserts the
-/// span holds exactly one entry — every cross-driver test today builds
-/// single-Text leaves; a multi-text caller should index
-/// `result.text_shapes[span.range()]` itself rather than pretend index
-/// 0 is meaningful.
+/// The leaf's single shaped-text result; asserts the span holds exactly one entry (multi-text callers should index `result.text_shapes[span.range()]`).
 pub(super) fn shaped_text(result: &LayerLayout, id: NodeId) -> ShapedText {
     let span = result.text_spans[id.idx()];
     assert_eq!(
@@ -42,10 +31,7 @@ pub(super) fn shaped_text(result: &LayerLayout, id: NodeId) -> ShapedText {
     result.text_shapes[span.start as usize]
 }
 
-/// `Grid` with two `Hug` columns × one `Hug` row. The wrapping `Text`
-/// in column 0 is the unit under test; column 1 carries a short label
-/// to keep the second column from collapsing. Returns the wrapping
-/// node so the test can read its shape afterwards.
+/// `Grid` with two `Hug` columns and one `Hug` row; the wrapping `Text` in column 0 is under test, column 1 a short label that keeps it from collapsing. Returns the wrapping node.
 pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> NodeId {
     let mut text_node = None;
     Grid::new()
@@ -71,9 +57,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
     text_node.unwrap()
 }
 
-/// VStack containing a `(Fill × Hug)` HStack with a Fixed-size avatar
-/// followed by a wrapping `Fill` text. Models the chat-message
-/// pattern. Returns the message text node.
+/// VStack holding a `(Fill × Hug)` HStack of a Fixed avatar and a wrapping `Fill` text (the chat-message pattern). Returns the text node.
 pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
     let mut message_node = None;
     Panel::vstack().auto_id().show(ui, |ui| {

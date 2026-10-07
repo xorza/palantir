@@ -1,67 +1,16 @@
-//! Command-recording benchmark: the host CPU cost of translating one
-//! frame's `RenderStep` stream into wgpu commands, i.e. everything
-//! `WgpuBackend::run_main_pass` does between opening the main render pass
-//! and the end-of-pass command replay its drop runs.
+//! Command-recording benchmark: the host CPU cost of translating one frame's `RenderStep` stream into wgpu commands inside `WgpuBackend::run_main_pass`.
 //!
-//! This is the one frame cost that scales with the *number* of draw steps
-//! rather than the number of pixels, and no other benchmark sees it. The
-//! `schedule` bench measures `for_each_step` alone — the pure step
-//! emitter, no wgpu. The `image_pipeline` / `curve_pipeline` GPU benches
-//! are deliberately fragment-bound. `frame/*_gpu` covers recording only
-//! as a sliver of a whole-frame number dominated by GPU execution.
+//! This cost scales with draw-step count, not pixels, and no other benchmark sees it.
 //!
-//! Every arm is a **pair**: one shape that pays per item and one that
-//! pays once, with the *same* painted content in both. What moves between
-//! the two is bind / draw / state-set count, so the difference is the
-//! headroom available to a change that collapses those.
+//! Every arm is a pair painting the same content, one paying per item and one paying once; the difference is the headroom for a change that collapses bind / draw / state-set count.
 //!
-//! - `groups/per_item` vs `groups/single` — N clipped cells (each its own
-//!   scissor, so each opens a `DrawGroup`) against the same N rects
-//!   unclipped, which the composer folds into one group and one
-//!   instanced draw. Bounds what per-step overhead costs at all, and is
-//!   the fixture for bind-tracking work.
-//! - `images/distinct` vs `images/shared` — N images on N textures
-//!   against N images on one. Both record N binds + N single-instance
-//!   draws today; run-coalescing would collapse `shared` to one of each
-//!   and must leave `distinct` alone. `distinct` is therefore the control
-//!   that must not regress, not a second workload.
-//! - `text/per_group` vs `text/single` — N clipped text cells (N text
-//!   batches, five unconditional commands each) against N runs in one
-//!   batch. `TextBackend::render_batch` opts out of the backend's bind
-//!   tracking entirely, so the gap here is what letting it participate
-//!   could recover.
+//! - `groups/per_item` vs `groups/single`: N clipped cells (a `DrawGroup` each) against N unclipped rects folded into one group and draw.
+//! - `images/distinct` vs `images/shared`: N textures against one. `distinct` is the control that must not regress.
+//! - `text/per_group` vs `text/single`: N clipped text cells (N batches) against N runs in one batch. Net out the per-step rate from the `groups` pair first: splitting batches also churns scissors.
 //!
-//! Read the text pair with one correction. Nothing splits a text batch
-//! on a plain scissor change, so the only way to *get* consecutive text
-//! batches is a split that also churns scissors — `per_group` records
-//! two scissor steps per item on top of its batch. Its gap over `single`
-//! therefore bundles generic per-step cost with the per-batch text cost.
-//! Net the first out with the per-step rate the `groups` pair measures
-//! (its gap divided by its own step gap) before crediting anything to
-//! text. All three arms print their step and scissor counts for exactly
-//! this arithmetic.
+//! Method: GPU instrumentation stays off so no timestamp writes land in the measured pass. Each arm renders `WARMUP_FRAMES`, samples `last_main_pass_cpu` over `EVIDENCE_FRAMES` and reports min and median; min is the keep-or-revert signal. Criterion measures the same window via `iter_custom` but its interval stays wide: use it for ordering and large regressions.
 //!
-//! Method: GPU instrumentation stays **off**, so `gpu_timings` is `None`
-//! and no timestamp writes land inside the pass being measured — the
-//! numbers would otherwise include the commands the measurement added.
-//! Each arm renders `WARMUP_FRAMES` frames, then samples
-//! `last_main_pass_cpu` over `EVIDENCE_FRAMES` and reports min /
-//! median. Min is the keep-or-revert signal (the upper half measures
-//! interference from the rest of the machine, not recording). Criterion
-//! measures the same window through `iter_custom`, which keeps saved
-//! baselines and the per-step throughput rate working — but harvesting
-//! one ~10 µs sample costs a whole frame, so its budget buys few
-//! iterations per sample and its interval stays wide (tens of percent).
-//! Read criterion for the ordering and for catching a large regression;
-//! read the min for anything finer.
-//!
-//! Whole-frame wall time is deliberately never reported. A frame is
-//! ~70x the recording it contains, and its frontend costs move the
-//! *opposite* way across the `groups` pair, so it ranks the arms
-//! backwards.
-//!
-//! Step and draw-list counts print alongside each result. They explain a
-//! result — they don't replace its elapsed time.
+//! Whole-frame wall time is never reported: it moves the opposite way across the `groups` pair.
 
 #![expect(
     clippy::print_stderr,
@@ -93,28 +42,14 @@ use std::hint::black_box;
 use std::time::Duration;
 
 const PHYSICAL: UVec2 = UVec2::new(512, 512);
-/// Cells per axis. `GRID * GRID` items tile the viewport exactly, with no
-/// gaps — every arm's dirty rects then merge into a region covering well
-/// over `FULL_REPAINT_THRESHOLD`, which is what keeps each frame a single
-/// `Full` walk. A gapped or centered layout could settle into `Partial`
-/// and silently start measuring up to `DAMAGE_RECT_CAP` walks instead;
-/// `Fixture::frame` asserts against that.
+/// Cells per axis. `GRID * GRID` items tile the viewport with no gaps, so dirty rects merge past `FULL_REPAINT_THRESHOLD` and every frame stays a single `Full` walk; `Fixture::frame` asserts it.
 const GRID: usize = 16;
 const ITEMS: usize = GRID * GRID;
 const CELL: f32 = PHYSICAL.x as f32 / GRID as f32;
-/// Edge of each source texture in the image arms. Tiny on purpose: these
-/// arms measure binds and draws, and a large texture would only add
-/// upload and sampling cost outside the measured window.
 const TEXEL: u32 = 8;
-/// Text-arm run content. Must shape wider than `CELL` at the default
-/// style so a clipped cell cuts it in X — that cut is what marks the run
-/// *strict* and splits the text batch. `TextWrap`'s default `SingleLine`
-/// overflows a narrow slot rather than wrapping, so the width survives
-/// the `Fixed(CELL)` cell intact.
+/// Text-arm run content. Must shape wider than `CELL` so a clipped cell cuts it in X, which marks the run strict and splits the text batch. The default `SingleLine` overflows rather than wraps.
 const LABEL: &str = "Palantir record pass";
-/// Frames rendered before sampling starts — enough to settle the glyph
-/// atlas, the image bind-group cache, and every dynamic buffer's capacity
-/// growth, so no sample includes a first-touch allocation.
+/// Frames rendered before sampling, enough to settle the glyph atlas, image bind-group cache and buffer growth.
 const WARMUP_FRAMES: usize = 64;
 const EVIDENCE_FRAMES: usize = 256;
 
@@ -149,23 +84,12 @@ impl Workload {
         }
     }
 
-    /// Whether each cell clips. Only the two per-item arms do, and for
-    /// two different reasons: a clipping cell carries its own scissor,
-    /// which opens a `DrawGroup` per item, and it cuts `LABEL`'s extent in
-    /// X, which makes each text run *strict* and so splits the text batch
-    /// (a plain scissor change does not — text batches deliberately span
-    /// groups; see `Composer::close_batch`). The image arms are both
-    /// unclipped on purpose: their pair must differ **only** in whether
-    /// adjacent draws repeat a `TextureId`, so both sit in one group and
-    /// one batch.
+    /// Whether each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X (strict run, split batch). The image pair is unclipped so it differs only in `TextureId` repeats.
     const fn clipped(self) -> bool {
         matches!(self, Self::GroupPerItem | Self::TextPerGroup)
     }
 
-    /// Textures the image arms register. `ImagesDistinct` gives every
-    /// item its own so no two adjacent draws share a bind group;
-    /// `ImagesShared` gives them all one, the run a coalescing pass would
-    /// collapse. Zero for the non-image arms.
+    /// Textures the image arms register: `ImagesDistinct` one per item, `ImagesShared` one for all. Zero for the other arms.
     const fn textures(self) -> usize {
         match self {
             Self::ImagesDistinct => ITEMS,
@@ -175,17 +99,11 @@ impl Workload {
     }
 }
 
-/// Device without `TIMESTAMP_QUERY`: the host also passes
-/// `collect_gpu_stats(false)`, but requesting the feature at all would
-/// leave the door open for a future default that writes timestamps into
-/// the very pass this benchmark times.
+/// Device without `TIMESTAMP_QUERY`, so a future default cannot write timestamps into the timed pass.
 fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Bare)
 }
 
-/// Solid `TEXEL`-square source. Content is irrelevant to a bind/draw
-/// count — `seed` only varies it so two registrations can't be folded
-/// together by any future content-hash dedup in the image registry.
 fn texels(seed: usize) -> Vec<u8> {
     let tone = (seed % 251) as u8;
     let mut pixels = Vec::with_capacity((TEXEL * TEXEL * 4) as usize);
@@ -195,17 +113,11 @@ fn texels(seed: usize) -> Vec<u8> {
     pixels
 }
 
-/// Cell `i`'s top-left corner, walking the grid in row-major order so
-/// items are laid out in the same order they were recorded — adjacent
-/// draws are adjacent on screen, and no cell overlaps another.
 fn cell_origin(i: usize) -> Vec2 {
     Vec2::new((i % GRID) as f32 * CELL, (i / GRID) as f32 * CELL)
 }
 
-/// Per-frame paint toggle. Every item's colour flips each frame, so the
-/// whole viewport is dirty and the frame stays `Full`. Geometry never
-/// changes, which keeps layout and measure fully cached — the record
-/// closure is the only thing that re-runs.
+/// Per-frame paint toggle: every colour flips so the frame stays `Full`, while geometry stays cached.
 const fn tint(phase: bool) -> RgbaF32 {
     if phase {
         RgbaF32::WHITE
@@ -250,9 +162,7 @@ fn record(ui: &mut Ui, handles: &[ImageHandle], workload: Workload, phase: bool)
         });
 }
 
-/// Draw-list shape behind one arm's timing: what the composer produced
-/// and what the schedule made of it. `steps` is the exact number of
-/// `RenderStep`s the measured pass dispatched.
+/// Draw-list shape behind one arm's timing. `steps` is the exact number of `RenderStep`s the measured pass dispatched.
 #[derive(Clone, Copy, Debug, Default)]
 struct Counts {
     groups: usize,
@@ -276,8 +186,6 @@ struct Fixture {
 impl Fixture {
     fn new(gpu: &BenchGpu, workload: Workload) -> Self {
         let mut host = gpu.offscreen_builder().build();
-        // No theme panel background: each arm should record exactly the
-        // one shape family it names, not that plus a chrome quad per cell.
         host.ui().theme_mut().panel_background = None;
         let handles = (0..workload.textures())
             .map(|seed| {
@@ -310,33 +218,18 @@ impl Fixture {
         let phase = *phase;
         let mut app = RecordApp::new(|ui| record(ui, handles, workload, phase));
         let report = host.frame(target.as_target(), 1.0, &mut app);
-        // A `Partial` frame walks the schedule once per damage rect, so a
-        // drift to Partial would quietly turn every number below into a
-        // multi-walk measurement that isn't comparable across arms.
+        // A `Partial` frame walks the schedule once per damage rect, which would make the numbers incomparable.
         assert_eq!(
             report.paint(),
             FramePaint::Full,
             "{} must repaint fully every frame",
             workload.label()
         );
-        // Drain before recording the next frame. Two reasons, and the
-        // second is why `Wait` rather than `Poll`:
-        //
-        // - The staging belt recalls its chunks from a map callback that
-        //   only fires on a poll. Unpolled, every frame allocates a fresh
-        //   chunk and the arm ends up measuring belt growth.
-        // - Recording into a device with frames still in flight is
-        //   measurably noisier and, worse, *biased*: under `Poll` the
-        //   `images` pair inverts, because queued submissions contend with
-        //   the very command recording being timed. `Wait` costs a GPU
-        //   round-trip per frame — which lands outside the measured window
-        //   — and buys samples that are comparable across arms.
+        // Drain so the staging belt recalls chunks (its map callback fires only on a poll). `Wait` not `Poll`: frames in flight bias recording.
         gpu().wait();
     }
 
-    /// Replay the schedule over the frame just composed to count the
-    /// steps the measured pass dispatched. Runs outside the measured
-    /// window, on the same `damage = None` full walk `run_main_pass` used.
+    /// Replay the schedule over the composed frame to count the steps dispatched, outside the measured window, on the same `damage = None` full walk.
     fn counts(&self) -> Counts {
         let buffer = offscreen_support::last_render_buffer(&self.host);
         let walk = Walk::new(buffer);
@@ -352,12 +245,10 @@ impl Fixture {
         }
     }
 
-    /// The sample in milliseconds, the unit the evidence report prints.
     fn record_ms(&self) -> f32 {
         self.record_time().as_secs_f32() * 1e3
     }
 
-    /// The sample as criterion's `iter_custom` accumulates it.
     fn record_time(&self) -> Duration {
         self.host
             .gpu_pass_stats()
@@ -366,9 +257,7 @@ impl Fixture {
     }
 }
 
-/// Sorted-sample summary. The minimum is the keep-or-revert signal: the
-/// benchmark shares a machine with everything else running on it, so the
-/// upper half of the distribution measures interference, not recording.
+/// Sorted-sample summary. The minimum is the keep-or-revert signal; the upper half is interference.
 #[derive(Clone, Copy, Debug)]
 struct Summary {
     min: f32,
@@ -420,29 +309,16 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     );
 
     let mut group = run.group(c);
-    // `iter_custom` reports only the recording window, but criterion still
-    // has to pay a whole ~0.5 ms frame to harvest each ~microsecond
-    // sample. Left at the defaults it would size its iteration count off
-    // the sample and spend minutes of wall clock per arm. These budgets
-    // buy thousands of iterations per sample — enough for a tight
-    // estimate — in a few seconds.
+    // `iter_custom` reports only the recording window, but each sample costs a whole frame to harvest, so default budgets would spend minutes per arm. These buy thousands of iterations per sample in seconds.
     group.sample_size(20);
     group.warm_up_time(Duration::from_millis(5));
     group.measurement_time(Duration::from_millis(50));
     for workload in Workload::ALL {
         let mut fixture = Fixture::new(gpu, workload);
         let counts = report_evidence(&mut fixture);
-        // Per-step, not per-frame: the arms differ by two orders of
-        // magnitude in step count, and per-step cost is the comparable
-        // quantity across a pair.
         group.throughput(Throughput::Elements(counts.steps as u64));
         group.bench_function(workload.label(), |bencher| {
-            // Whole-frame wall time is NOT a usable proxy here and is
-            // deliberately not reported: a frame is ~70x the recording it
-            // contains, and the frontend costs that dominate it move the
-            // *opposite* way across the `groups` pair (one big group prunes
-            // occlusion over 256 quads at once; 256 small ones don't). It
-            // ranks the arms backwards. Only the recording window counts.
+            // Whole-frame wall time is not reported; see the module doc.
             bencher.iter_custom(|iters| {
                 let mut total = Duration::ZERO;
                 for _ in 0..iters {

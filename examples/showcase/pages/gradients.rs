@@ -1,8 +1,4 @@
-//! Gradient brushes. Each tile paints a `Block` whose `Background.fill`
-//! carries one gradient variant, so the full path — composer, atlas
-//! bake, shader sample, premultiplied blend — runs every frame. Stop
-//! colours stay vivid so spread and interpolation differences read at a
-//! glance.
+//! Gradient brushes. Each tile paints a `Block` whose `Background.fill` carries one gradient variant, exercising composer, atlas bake, shader sample and premultiplied blend every frame. Vivid stops make spread and interpolation differences read at a glance.
 
 use crate::support;
 use crate::support::{api, demo_cell, note, section, tiles};
@@ -113,8 +109,7 @@ fn diagonal(ui: &mut Ui) {
     );
 }
 
-/// Radial centred at (0.5, 0.5) with a circular radius of 0.5 (touches
-/// the bounding square mid-edges). Bright core, dark rim.
+/// Radial centred at (0.5, 0.5), radius 0.5 (touches the square's mid-edges); bright core, dark rim.
 fn radial_centered(ui: &mut Ui) {
     gradient_frame(
         ui,
@@ -122,8 +117,7 @@ fn radial_centered(ui: &mut Ui) {
     );
 }
 
-/// Off-centre radial — the bright core hugs the top-left, the rim
-/// reaches further along the diagonal.
+/// Off-centre radial: the core hugs the top-left, the rim reaches further along the diagonal.
 fn radial_offset(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::new(0.25, 0.3),
@@ -137,8 +131,7 @@ fn radial_offset(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Elliptical radius — wider horizontally than vertically. Stretches
-/// the core into an oval.
+/// Elliptical radius, wider than tall; stretches the core into an oval.
 fn radial_ellipse(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::splat(0.5),
@@ -148,9 +141,7 @@ fn radial_ellipse(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Conic colour-wheel centred in the tile. Six saturated stops sweep
-/// clockwise from the positive-x axis, with stop 0 == stop 1 so the seam
-/// hides at angle 0.
+/// Conic colour wheel: six saturated stops sweep clockwise from +x, stop 0 == stop 1 so the seam hides at angle 0.
 fn conic_wheel(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),
@@ -168,8 +159,7 @@ fn conic_wheel(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Conic(g)));
 }
 
-/// Conic with a non-zero `start_angle` — the same sweep, rotated. Pin
-/// for the `(theta - start_angle) / TAU` shader math.
+/// Conic with non-zero `start_angle`: the same sweep rotated; pins the `(theta - start_angle) / TAU` shader math.
 fn conic_rotated(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),
@@ -194,9 +184,7 @@ fn reflect(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Radial whose stops end at r = 0.125; past it the ramp starts over, so
-/// the tile shows rings. A linear gradient's axis spans the box exactly,
-/// so its `t` never leaves 0..1 and no spread mode shows on one.
+/// Radial whose stops end at r = 0.125; past it the ramp starts over, giving rings. A linear axis spans the box exactly, so `t` never leaves 0..1 and no spread mode shows.
 fn repeat(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::splat(0.5),
@@ -207,8 +195,7 @@ fn repeat(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Red to green in Oklab — no muddy grey through the middle the way a
-/// straight linear-RGB blend gives.
+/// Red to green in Oklab: no muddy grey midpoint as in a linear-RGB blend.
 fn oklab(ui: &mut Ui) {
     let g = LinearGradient::two_stop(0.0, RED, GREEN).with_interpolation(Interpolation::Oklab);
     gradient_frame(ui, filled(Brush::Linear(g)));

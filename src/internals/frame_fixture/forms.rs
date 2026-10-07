@@ -1,9 +1,4 @@
-//! The data-entry cards: the request form, the settings grid, the
-//! property table, and the notes field. Between them they carry every
-//! value-bound widget in the fixture and both `Grid` flavours — the
-//! statically-sized one in [`settings_card`] and the row-count-driven one
-//! in [`properties_card`]. The notes field sits behind the tree's one
-//! [`Expander`], held open.
+//! The data-entry cards: request form, settings grid, property table and notes field. They carry every value-bound widget and both `Grid` flavours: static ([`settings_card`]) and row-count-driven ([`properties_card`]). The notes field sits behind the tree's one [`Expander`], held open.
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::frame_fixture::tokens;
@@ -58,11 +53,7 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
                 }
                 Button::new().id_salt("submit").label("Submit").show(ui);
             });
-        // `Collapsed`, not `Hidden`: the validation line a real form keeps
-        // recorded but out of the way while the input is valid. `Hidden`
-        // would still reserve its row and leave a gap under the controls;
-        // the paint-skip path it covers is exercised in the stat strip,
-        // where a ZStack sibling can hide without moving anything.
+        // `Collapsed`, not `Hidden`: the validation line stays recorded but out of the way, whereas `Hidden` would reserve its row. The paint-skip path is exercised in the stat strip.
         Text::new("Name is required")
             .id_salt("form-error")
             .style(&tokens::caption_style().with_color(tokens::WARN))
@@ -71,10 +62,7 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
     });
 }
 
-/// Settings as a two-column `Grid` (label | control) rather than loose
-/// rows, so the controls align on a real track edge — and so the fixture
-/// carries a second, statically-sized Grid alongside the dynamic one in
-/// [`properties_card`].
+/// Settings as a two-column `Grid` (label | control), aligning controls on a real track edge and giving the fixture a static Grid beside the dynamic [`properties_card`].
 pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "settings", "SETTINGS", Sizing::HUG, |ui| {
         let rows = [Track::HUG; 6];
@@ -110,8 +98,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                             .show(ui);
                     });
 
-                // Full-width rule, drawn with a spanning cell so the grid
-                // carries span coverage in its simplest honest form.
+                // Full-width rule as a spanning cell, the simplest span coverage.
                 Block::new()
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
@@ -196,9 +183,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
                 ];
                 for row in 0..rows {
                     let r = row as u16;
-                    // Zebra band: a full-width cell under the row's three
-                    // cells. Grid children may share a cell, so this both
-                    // reads as a table and covers a multi-column span.
+                    // Zebra band: a full-width cell under the row's three; Grid children may share a cell, so this also covers a multi-column span.
                     if row % 2 == 0 {
                         Block::new()
                             .id_salt(("pband", row))
@@ -234,13 +219,7 @@ pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize
     });
 }
 
-/// The notes field, behind the tree's only [`Expander`].
-///
-/// Held open, like every other backing value here — only `tick` moves —
-/// so the body records the same tree on every iteration. The library
-/// default leaves the reveal un-animated, which is what keeps
-/// `frame/cached_*` able to settle to no damage: an animating one would
-/// request a repaint on every frame of the tween.
+/// The notes field, behind the tree's only [`Expander`]. Held open like every backing value, so the body records the same tree each iteration; the default un-animated reveal lets `frame/cached_*` settle to no damage.
 pub(super) fn notes_card(state: &mut FrameFixture, ui: &mut Ui) {
     tokens::card(ui, "notes", "NOTES", Sizing::HUG, |ui| {
         Expander::new("scratch")

@@ -1,19 +1,6 @@
-//! Authoring a widget from the published API, and nothing else.
+//! Authoring a widget from the published API only: `Stepper` (`[ − ] value [ + ]` over a caller-owned `&mut i32`) is built as an outside crate would be.
 //!
-//! `Stepper` — `[ − ] value [ + ]` over a caller-owned `&mut i32` — is
-//! built the way a widget in another crate would be: `Widget` plus the
-//! `Configure` builder, `Ui::response_for` to read last frame,
-//! `Ui::add_shape` to paint the ± glyphs, and `focusable` plus
-//! `Widget::key_pressed` for the keyboard. The focus ring is the
-//! framework's, so the widget draws none of its own.
-//!
-//! It reaches no crate internal, but nothing here enforces that — the
-//! showcase builds with `internals` on. The listing beside the demo is
-//! the check, not the compiler.
-//!
-//! Its chrome reads the showcase's own `ELEMENT` ladder rather than hexes of
-//! its own, so it rests, hovers and presses at the rungs every shipped
-//! widget beside it does.
+//! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
 
 use crate::support;
 use crate::support::{Column, api, columns, section, well};
@@ -23,26 +10,18 @@ use palantir::{
     Shadow, Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
 };
 
-/// Large enough to read beside 13 px body copy, small enough that the pair
-/// plus the value still reads as one control.
 const BUTTON: f32 = 28.0;
-/// Reserved, so the buttons hold still as the number travels from one digit
-/// to three.
+/// Reserved, so the buttons hold still from one digit to three.
 const VALUE_W: f32 = 34.0;
 /// Fixed, so every stepper on the page starts at one x.
 const LABEL_W: f32 = 62.0;
-/// Sized to the longest entry in [`surface`]'s list, so every description
-/// starts at one x.
+/// Sized to the longest entry in [`surface`]'s list, so descriptions start at one x.
 const ITEM_W: f32 = 146.0;
 const CODE_SIZE: f32 = 12.0;
-/// Room around the buttons for the focus ring, which paints inside the
-/// widget's own rect.
+/// Room around the buttons for the focus ring, which paints inside the widget's rect.
 const RING_ROOM: f32 = 3.0;
-/// Leaves a 12 px bar centred in a [`BUTTON`]-square node.
 const GLYPH_INSET: f32 = 8.0;
 
-/// Shown beside the demo, so the page carries what an application writes as
-/// well as what it gets.
 const CALL_SITE: &[&str] = &[
     "Stepper::new(&mut volume)",
     "    .range(0, 100)",
@@ -111,12 +90,10 @@ fn demo(ui: &mut Ui, s: &mut State) {
     });
 }
 
-/// A record body, named so the check below can spell `Widget::record`'s
-/// signature.
+/// A record body, named so the check can spell `Widget::record`'s signature.
 type Body = fn(&mut Ui);
 
-/// What an outside crate would need to write the same widget, each name
-/// checked by [`api!`] so the list cannot drift from the API.
+/// What an outside crate needs to write the same widget, each name checked by [`api!`].
 fn surface(ui: &mut Ui) {
     let surface = [
         (api!(type Widget), "what it records, built and configured"),
@@ -171,8 +148,6 @@ fn surface(ui: &mut Ui) {
     });
 }
 
-/// Centred across the control's height, so a 12 px label sits on the axis of
-/// a 28 px button.
 #[track_caller]
 fn labelled(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
@@ -199,9 +174,7 @@ struct Stepper<'a> {
 }
 
 impl<'a> Stepper<'a> {
-    /// `#[track_caller]` so the auto-derived id reflects *this* call site:
-    /// two `Stepper::new(...)`s on different lines get distinct ids, and so
-    /// distinct per-widget state, for free.
+    /// `#[track_caller]` so two `Stepper::new(...)`s on different lines get distinct ids and state.
     #[track_caller]
     fn new(value: &'a mut i32) -> Self {
         Self {
@@ -229,8 +202,7 @@ impl<'a> Stepper<'a> {
     }
 
     fn show(self, ui: &mut Ui) -> Response<'_> {
-        // Clicks apply *before* recording, so the new value paints this
-        // frame rather than the next.
+        // Clicks apply before recording, so the new value paints this frame.
         let mut widget = self.widget;
         let id = widget.resolve(ui);
         let minus_id = id.with("minus");
@@ -244,8 +216,7 @@ impl<'a> Stepper<'a> {
             *self.value = self.value.saturating_add(self.step).min(self.max);
         }
         if ui.is_focus_within(id) {
-            // Sampled, not short-circuited: each read also subscribes its
-            // chord, so the frame wakes for it.
+            // Sampled, not short-circuited: each read also subscribes its chord.
             let up = widget.key_pressed(ui, Shortcut::key(Key::ArrowUp));
             let down = widget.key_pressed(ui, Shortcut::key(Key::ArrowDown));
             let home = widget.key_pressed(ui, Shortcut::key(Key::Home));
@@ -267,8 +238,7 @@ impl<'a> Stepper<'a> {
         // Straight into the record store — no `String` is built at all.
         let label = fmt!(ui, "{}", self.value);
 
-        // No fill of its own: the corners are for the framework's focus
-        // ring, which follows the chrome's shape.
+        // No fill of its own: the corners serve the framework's focus ring.
         let chrome = Background::rounded(
             RgbaF32::TRANSPARENT,
             Corners::all(support::RADIUS + RING_ROOM),
@@ -301,8 +271,7 @@ enum Glyph {
     Plus,
 }
 
-/// `id` is an explicit child id rather than an auto-derived one, so the node
-/// resolves to what [`Stepper::show`] already read a response for.
+/// `id` is explicit so the node resolves to what [`Stepper::show`] read a response for.
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
     let fill = if state.pressed() {
         support::ELEM_STRONG
@@ -322,7 +291,6 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
         .size((Sizing::fixed(BUTTON), Sizing::fixed(BUTTON)))
         .sense(Sense::CLICK);
     widget.record(ui, Some(&chrome), |ui| {
-        // Node-local coordinates, 0..BUTTON on each axis.
         let mid = BUTTON / 2.0;
         let far = BUTTON - GLYPH_INSET;
         paint_bar(ui, &[Vec2::new(GLYPH_INSET, mid), Vec2::new(far, mid)]);

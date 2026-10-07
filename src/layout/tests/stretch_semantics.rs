@@ -1,9 +1,4 @@
-//! Pin: `Sizing::fill` is a **WPF Stretch** — measure-time it reports
-//! content size; arrange-time it fills its allocated slot.
-//!
-//! These tests pin the contract we want, independent of the current
-//! implementation. Where an existing test in this crate contradicts
-//! one of these, this file wins and the older test is updated.
+//! Pin: `Sizing::fill` is a WPF Stretch: content size at measure, fills its slot at arrange.
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -11,10 +6,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// **Pin (the darkroom node case):** a Hug container that holds Fill
-/// children sizes to its content, not to the grandparent's allocation.
-/// `Sizing::fill` is *not* a measure-time expansion — it cannot inflate
-/// a Hug ancestor.
+/// A Hug container holding Fill children sizes to its content, not the grandparent's allocation.
 #[test]
 fn hug_parent_with_fill_children_hugs_to_content() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -34,15 +26,11 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     });
     let parent = h.arranged(node_id);
     let button = h.arranged(button_id);
-    // Parent hugs to button's content width — somewhere near the
-    // "Hi" label width plus button padding, definitely less than 100.
     assert!(
         parent.size.w < 100.0,
         "Hug parent must hug to content, not balloon to surface; got w={}",
         parent.size.w,
     );
-    // Button still stretches to the parent's inner width (its allocated
-    // slot) — Stretch arrange semantics.
     assert_eq!(
         button.size.w, parent.size.w,
         "Fill child arranges to fill parent's inner; got button.w={} parent.w={}",
@@ -50,9 +38,7 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     );
 }
 
-/// **Pin:** Fill child inside a Fixed-width parent stretches to the
-/// full inner width at arrange. Pre-existing behavior; pinned here so
-/// the Hug-fix doesn't regress it.
+/// **Pin:** a Fill child inside a Fixed-width parent stretches to the full inner width at arrange.
 #[test]
 fn fill_child_stretches_to_fixed_parent() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -72,8 +58,7 @@ fn fill_child_stretches_to_fixed_parent() {
     assert_eq!(r.size.w, 400.0);
 }
 
-/// **Pin:** two equal-weight Fill siblings in a Fixed-width HStack
-/// each get half of the parent's inner width at arrange.
+/// Two equal-weight Fill siblings in a Fixed-width HStack each get half the inner width at arrange.
 #[test]
 fn equal_weight_fill_siblings_split_fixed_parent_equally() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -100,10 +85,7 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
     assert_eq!(rb.size.w, 200.0);
 }
 
-/// **Pin (the darkroom canvas node case):** a Hug-sized VStack
-/// positioned inside a Fill canvas hugs to its content rather than
-/// ballooning to the surface, even when its internal layout uses a Fill
-/// row — and that row arranges to the hugged width.
+/// A Hug VStack in a Fill canvas hugs its content, even with an internal Fill row, which arranges to the hugged width.
 #[test]
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let surface = UVec2::new(1600, 800);
@@ -134,19 +116,11 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     });
     let node = h.arranged(node_id);
     let row = h.arranged(row_id);
-    // The node hugs to its content (the 50-wide frame), not the
-    // surface (1600).
     assert_eq!(node.size.w, 50.0, "Hug node must hug to content");
-    // The Fill row stretches to the node's inner width.
     assert_eq!(row.size.w, node.size.w);
 }
 
-/// **Pin:** a Hug HStack containing a Hug button and a Fill spacer
-/// sizes to the button's width only (WPF DesiredSize semantics for
-/// Stretch is content). The spacer contributes nothing to measure;
-/// it only consumes leftover at arrange — but in a Hug parent the
-/// arranged size equals the content size, so the spacer has zero
-/// leftover to fill.
+/// A Hug HStack with a Hug button and a Fill spacer sizes to the button only: the spacer has zero leftover.
 #[test]
 fn hug_hstack_with_fill_spacer_hugs_to_button() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
@@ -165,8 +139,6 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
     let r_root = h.arranged(root);
     let r_button = h.arranged(button);
     let r_spacer = h.arranged(spacer);
-    // Root hugs to the button — no expansion via the Fill spacer.
     assert_eq!(r_root.size.w, r_button.size.w);
-    // The spacer in a Hug parent has zero leftover.
     assert_eq!(r_spacer.size.w, 0.0);
 }

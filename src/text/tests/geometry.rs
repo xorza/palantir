@@ -6,10 +6,9 @@ use crate::text::probe::Caret;
 use crate::text::render::RunPlacement;
 use std::ops;
 
-/// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
-/// `font_size * 0.5` wide. Caret x is independent of `line_height`
-/// (advance only depends on font_size + glyph). Empty string and
-/// zero offset short-circuit to zero.
+/// `cursor_xy(...).x` on the mono fallback: each ASCII byte is
+/// `font_size * 0.5` wide, independent of `line_height`. Empty text and zero
+/// offset give zero.
 #[test]
 fn cursor_xy_x_cases() {
     let cases: &[(&str, &str, usize, f32, f32, f32)] = &[
@@ -33,18 +32,16 @@ fn cursor_xy_x_cases() {
     }
 }
 
-/// Caret-x at each byte boundary advances *with* the run's reading
-/// direction, from the edge the direction starts on.
+/// Caret x at each byte boundary advances with the run's reading direction,
+/// from the edge the direction starts on.
 ///
-/// LTR, bundled Inter at 16 px: the advances are h 9.4609375, e 9.328125,
-/// l 3.875 and o 9.59375, so the carets are their running sums.
+/// LTR, bundled Inter at 16 px: advances h 9.4609375, e 9.328125, l 3.875,
+/// o 9.59375; the carets are their running sums.
 ///
-/// RTL: no bundled face covers Hebrew, so each letter shapes as the
-/// 10.5 px missing-glyph box — the direction comes from the text, not the
-/// face. Byte 0 sits at the right edge, 4 × 10.5 = 42, and the caret walks
-/// left. Each letter is two bytes, so the odd offsets fall inside a letter
-/// and resolve to the caret after it. A glyph-start scan would report
-/// each glyph's left edge instead, a full letter off.
+/// RTL: no bundled face covers Hebrew, so each letter is the 10.5 px
+/// missing-glyph box. Byte 0 sits at the right edge, 4 × 10.5 = 42, and the
+/// caret walks left. Letters are two bytes, so odd offsets resolve to the
+/// caret after the letter; a glyph-start scan would be a letter off.
 #[test]
 fn cursor_xy_walks_with_the_paragraph_direction() {
     let shaper = TextShaper::new();
@@ -74,19 +71,17 @@ fn cursor_xy_walks_with_the_paragraph_direction() {
         carets(rtl_text),
         [42.0, 31.5, 31.5, 21.0, 21.0, 10.5, 10.5, 0.0, 0.0],
     );
-    // The measured extent spans every glyph rather than stopping at the
-    // last one in the array, which in an RTL run is the leftmost — that
-    // would report the run as one letter wide and let the backend clip
-    // it. One letter alone rounds its 10.5 up to 11.
+    // The extent spans every glyph, not just the last in the array (leftmost
+    // in RTL), or the run would measure one letter wide. One letter alone
+    // rounds 10.5 up to 11.
     assert_eq!(shaper.measure(rtl_text, shape).extent.size.w, 42.0);
     assert_eq!(shaper.measure("\u{5e9}", shape).extent.size.w, 11.0);
 }
 
 #[test]
 fn byte_at_xy_mono_fallback() {
-    // Mono shaper: glyph_w = font_size * 0.5 = 8 px at 16 px font.
-    // `byte_at_xy` ignores y on the mono path. Picks the boundary
-    // whose prefix-x is closest to `target_x`.
+    // Mono shaper: glyph_w = 8 px at 16 px font; `byte_at_xy` ignores y and
+    // picks the boundary whose prefix-x is closest to `target_x`.
     let m = TextShaper::test_mono();
     let cases: &[(&str, f32, usize)] = &[
         ("origin", 0.0, 0),
@@ -104,8 +99,8 @@ fn byte_at_xy_mono_fallback() {
 }
 
 /// Real shaping: each caret x of "hello" hits back to its own offset, and
-/// either side of a glyph's midpoint picks the nearer edge. The `h` spans
-/// 0 to 9.4609375, so its midpoint is 4.73046875. An x past the end clamps.
+/// either side of a glyph's midpoint picks the nearer edge (`h` spans
+/// 0 to 9.4609375, midpoint 4.73046875). An x past the end clamps.
 #[test]
 fn byte_at_xy_cosmic_path_hits_each_caret_and_clamps() {
     let m = TextShaper::new();
@@ -124,12 +119,8 @@ fn byte_at_xy_cosmic_path_hits_each_caret_and_clamps() {
     );
 }
 
-/// An empty range emits nothing — and, being a sink rather than a
-/// container, leaves whatever the caller already had alone. Clearing
-/// belongs to the caller now (`resolve_geometry` does it unconditionally
-/// before probing), because the only caller that retains rects owns a
-/// reused buffer and a sink that cleared it would be reaching past its
-/// job.
+/// An empty range emits nothing and leaves the caller's buffer alone;
+/// clearing belongs to the caller (`resolve_geometry`).
 #[test]
 fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
     let m = TextShaper::new();
@@ -174,7 +165,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
             range: 0..11,
             max_width: None,
         },
-        // "def" only — lines before AND after the range must emit nothing.
+        // "def" only: lines before and after the range emit nothing.
         Case {
             label: "middle_line_only",
             text: "abc\ndef\nghi",
@@ -212,9 +203,9 @@ fn selection_rects_match_cosmic_highlight_spans() {
             let start = probe::cursor_from_byte(buffer, case.text, case.range.start);
             let end = probe::cursor_from_byte(buffer, case.text, case.range.end);
             for run in buffer.layout_runs() {
-                // Raw `highlight` marks any run whose line differs from both
-                // cursors as fully selected; cosmic's editor guards it with
-                // this line-range check, so the oracle must too.
+                // Raw `highlight` marks a run whose line differs from both
+                // cursors as fully selected; cosmic's editor guards with this
+                // line-range check, so the oracle must too.
                 if run.line_i < start.line || run.line_i > end.line {
                     continue;
                 }
@@ -235,10 +226,9 @@ fn selection_rects_match_cosmic_highlight_spans() {
             "case: {}",
             case.label
         );
-        // Independent of the oracle (which shares the line-range guard):
-        // hand-computed placement for the partial-range cases. A line is
-        // 16 × 1.2 = 19.2 px, snapped to round(19.2 × 64) / 64 = 19.203125,
-        // so the three unwrapped source lines sit at y = 0, lh and 2 · lh.
+        // Independent of the oracle: hand-computed placement for partial
+        // ranges. A line is 16 × 1.2 = 19.2 px, snapped to
+        // round(19.2 × 64) / 64 = 19.203125; the lines sit at y = 0, lh, 2 · lh.
         let lh = 19.203125;
         assert_eq!(16.0 * LINE_HEIGHT_MULT, 19.2, "premise: production leading");
         let ys: Vec<f32> = actual.iter().map(|r| r.min.y).collect();
@@ -255,13 +245,11 @@ fn selection_rects_match_cosmic_highlight_spans() {
     }
 }
 
-/// Byte offsets map to cosmic cursors through the shaped buffer's own
-/// lines, so every line ending cosmic splits at — `\n`, `\r`, `\r\n`,
-/// `\n\r` — starts a line where cosmic starts one. Each row is
-/// `(offset, line, index, back)`: the cursor an offset maps to, and the
-/// offset that cursor maps back to. An offset on line text round-trips;
-/// one inside a two-byte ending sits at its line's end; one past the text
-/// clamps to the text's end.
+/// Byte offsets map to cosmic cursors through the shaped buffer's own lines,
+/// so every ending cosmic splits at (`\n`, `\r`, `\r\n`, `\n\r`) starts a
+/// line there. Rows are `(offset, line, index, back)`: the cursor an offset
+/// maps to and the offset it maps back to. An offset inside a two-byte ending
+/// sits at its line's end; one past the text clamps to the end.
 #[test]
 fn byte_offsets_map_through_cosmic_lines() {
     // (offset, line, index, back)
@@ -315,10 +303,8 @@ fn byte_offsets_map_through_cosmic_lines() {
 }
 
 /// A truncated run shapes its kept prefix and the ellipsis, so a hit
-/// anywhere on it answers a byte of the source no later than the cut,
-/// on a char boundary: `"ééééé"` cut to `"é…"` answers 0 or 2, never the
-/// 3 that indexing the source with the shown text's offsets gave — inside
-/// the second `é`.
+/// answers a source byte no later than the cut, on a char boundary:
+/// `"ééééé"` cut to `"é…"` answers 0 or 2, never 3 (inside the second `é`).
 #[test]
 fn a_truncated_run_hits_inside_its_kept_prefix() {
     let m = TextShaper::new();
@@ -342,9 +328,8 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
         max_width: Some(width + 0.5),
     });
     assert_eq!(probe.size().w, width, "premise: the run is cut to \"é…\"");
-    // The kept `é` advances 9.328125, so x left of its midpoint
-    // 4.6640625 answers byte 0, and the rest of the run — the ellipsis
-    // included — answers the cut at byte 2.
+    // The kept `é` advances 9.328125: x left of its midpoint 4.6640625
+    // answers byte 0, the rest (ellipsis included) answers the cut at byte 2.
     assert_eq!(probe.caret_at(2).x, 9.328125);
     let mut x = -2.0;
     while x < width + 4.0 {
@@ -359,9 +344,9 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
     );
 }
 
-/// Two-line buffer: the caret on line 1 sits one line below line 0,
-/// which pins multi-line caret routing through cosmic's layout_runs. A
-/// line is 16 × 1.2 = 19.2 px, snapped to round(19.2 × 64) / 64.
+/// Two-line buffer: the line-1 caret sits one line (16 × 1.2 = 19.2 px,
+/// snapped to round(19.2 × 64) / 64) below line 0, pinning multi-line routing
+/// through cosmic's layout_runs.
 #[test]
 fn cursor_xy_multiline_y_top_advances_per_line() {
     let m = TextShaper::new();
@@ -379,25 +364,18 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
     }
 }
 
-/// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands
-/// on the empty second line. Cosmic's per-line halign offset only
-/// shifts existing glyphs, so an empty line has `line_w = 0` and
-/// cosmic reports `x = 0` whatever the alignment; the empty-line branch
-/// routes through `empty_line_x` to put the caret where the first typed
-/// glyph will actually appear.
-///
-/// That edge is the *block's*, not the wrap target's: the block is what
-/// the owner aligns inside its rect, so measuring the caret against the
-/// wrap target here would align it a second time and carry it past the
-/// text it belongs to.
+/// Right-aligned multi-line buffer: the caret at byte 4 ("abc\n|") lands on
+/// the empty second line. Cosmic reports `x = 0` there whatever the
+/// alignment, so the empty-line branch uses `empty_line_x`. That edge is the
+/// block's, not the wrap target's: measuring against the wrap target would
+/// align twice.
 #[test]
 fn cursor_xy_on_empty_line_respects_right_align() {
     let m = TextShaper::new();
     let text = "abc\n";
     let shape = ui_shape(16.0).width(200.0).halign(HAlign::Right);
     let block = m.measure(text, shape).extent.size.w;
-    // "abc" is 28 px, far narrower than the 200 px wrap target, so the
-    // block edge and the wrap target cannot be mistaken for each other.
+    // "abc" is 28 px, far narrower than the 200 px wrap target.
     assert_eq!(block, 28.0);
     let lh = 19.203125;
     assert_eq!(
@@ -410,31 +388,23 @@ fn cursor_xy_on_empty_line_respects_right_align() {
         "right-aligned caret on the empty trailing line sits at the block's \
          right edge",
     );
-    // The left-aligned counterpart still anchors at zero, so the helper
-    // does not always answer the right edge.
+    // Left-aligned still anchors at zero.
     assert_eq!(
         m.cursor_xy(text, text.len(), shape.halign(HAlign::Left)).x,
         0.0,
     );
 }
 
-/// A width-bounded run measures the glyphs it contains, not the distance
-/// from the wrap target's left edge to them.
-///
-/// Cosmic anchors a line wherever alignment and direction put it, so the
-/// gap in front of a non-left-aligned run used to count as part of the
-/// run's own width — 200 px of "measurement" for 43 px of glyphs. The
-/// owner then aligned that full-width block inside its rect, so a hugging
-/// container inflated to the whole offer and its damage rect with it.
-///
-/// The RTL row is the case reachable without an explicit `text_align`:
-/// cosmic lays a right-to-left run out from `line_width` leftward
-/// (`shape.rs`'s `start_x`) whatever the alignment, so `HAlign::Auto` hit
-/// this too.
+/// A width-bounded run measures its glyphs, not the distance from the wrap
+/// target's left edge. Cosmic anchors a line where alignment and direction
+/// put it, so the gap before a non-left-aligned run once counted as width
+/// (200 px for 43 px of glyphs), inflating a hugging container to the whole
+/// offer. The RTL row is reachable without `text_align`: cosmic lays RTL runs
+/// out leftward from `line_width` (`shape.rs`'s `start_x`), so `HAlign::Auto`
+/// hit it too.
 #[test]
 fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
-    // The RTL row is Arabic, which no bundled face covers, so this case
-    // loads the Arabic test face to shape anything but tofu.
+    // The RTL row is Arabic, which no bundled face covers; load the Arabic test face.
     let mut m = CosmicMeasure::new(FontScope::Bundled);
     m.load_font(ARABIC.into())
         .expect("the Arabic test face loads");
@@ -442,9 +412,8 @@ fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
     let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
     for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {
         let unbounded = m.measure(text, ui_shape(16.0)).size.w;
-        // The run fits the wrap target on one line, so binding a width
-        // cannot change how wide the glyphs are — only where cosmic puts
-        // them. Every alignment must therefore report the natural width.
+        // The run fits on one line, so binding a width changes only where
+        // cosmic puts the glyphs: every alignment reports the natural width.
         for halign in [
             HAlign::Auto,
             HAlign::Left,
@@ -466,17 +435,14 @@ fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
     }
 }
 
-/// Caret and hit-test must stay exact inverses now that both correct for
-/// the block origin by hand — `cursor_xy` subtracts it, `byte_at_xy` adds
-/// it back. Cosmic guarantees the round trip in *its* coordinates, so a
-/// sign slip in either correction would break it in ours while each half
-/// still looked plausible on its own.
+/// Caret and hit-test must stay exact inverses: `cursor_xy` subtracts the
+/// block origin and `byte_at_xy` adds it back, and a sign slip in either
+/// would break the round trip in our coordinates, not cosmic's.
 #[test]
 fn caret_and_hit_test_round_trip_in_block_local_space() {
     let m = TextShaper::new();
-    // Two hard-broken lines of very different widths under right align:
-    // the narrow line carries a non-zero block-local offset, which is
-    // exactly where an unpaired correction would show up.
+    // Two hard-broken lines of different widths under right align: the narrow
+    // line has a non-zero block-local offset, where an unpaired correction shows.
     let text = "wwwwww\ni";
     let shape = ui_shape(16.0).width(300.0).halign(HAlign::Right);
     for byte in [0usize, 1, 3, 6, 7, 8] {
@@ -485,8 +451,7 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
             "byte {byte} must be a boundary"
         );
         let caret = m.cursor_xy(text, byte, shape);
-        // Probe just inside the caret so the hit lands on the glyph the
-        // offset belongs to rather than on the boundary between two.
+        // Probe just inside the caret so the hit lands on its glyph.
         let hit = m.byte_at_xy(
             text,
             caret.x + 0.5,
@@ -497,19 +462,15 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
     }
 }
 
-/// A run's ink outsets, cross-checked against the rasterizer: every
-/// glyph is drawn as the backend draws it, at scale 1 from the block's
-/// origin, and the coverage that lands past the block on each side has to
-/// be inside the outset — and the outset no more than one whole pixel
-/// past it, which is the rounding up to whole pixels.
+/// A run's ink outsets, cross-checked against the rasterizer: glyphs drawn as
+/// the backend draws them, at scale 1 from the block origin. Coverage past
+/// the block on each side must be inside the outset, and the outset no more
+/// than one whole pixel past it (the rounding up).
 ///
-/// Each case reaches past the block its own way: an italic `f` hangs its
-/// top right and its tail left, at a variable face's regular and bold
-/// instances alike; a synthetic italic leans right through the skew
-/// alone; a ring above a capital and a descender below a line one font
-/// size tall leave the line box; and a glyph with a negative left side
-/// bearing starts left of its pen. A plain `x` in a UI-leading line stays
-/// inside on every side.
+/// Cases: an italic `f` hangs top right and tail left, at a variable face's
+/// regular and bold; a synthetic italic leans right via skew alone; a ring
+/// above a capital and a descender below leave the line box; a negative left
+/// bearing starts left of the pen. A plain `x` stays inside on every side.
 #[test]
 fn ink_outsets_cover_what_the_rasterizer_draws() {
     let inter_regular_only = || {

@@ -1,5 +1,4 @@
-//! The drop-shadow builder. Lowers to
-//! `ShapeRecord::Quad(QuadShape::Shadow)`.
+//! The drop-shadow builder; lowers to `ShapeRecord::Quad(QuadShape::Shadow)`.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -30,8 +29,7 @@ impl ShadowShape {
 }
 
 impl ShadowShape {
-    /// Paint into `rect`, in owner-relative coords, instead of the
-    /// owner's whole arranged rect.
+    /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
     ///
     /// # Panics
     ///
@@ -67,13 +65,7 @@ impl sealed::LowerShape for ShadowShape {
         self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 
-    /// Pure repacking — the f16 lane squeeze happens in
-    /// `LoweredShadow`'s `From<Shadow>`, and the paint extent is derived
-    /// downstream by
-    /// [`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)
-    /// from the same `ShadowGeom::halo` the composer grows a drop shadow
-    /// by, so damage and paint can't disagree about the halo. Nothing
-    /// is staged, so nothing goes through `lower::`.
+    /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeom::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree. Nothing is staged, so nothing goes through `lower::`.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_rect,

@@ -7,11 +7,7 @@ use std::slice;
 
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`].
 ///
-/// Three ways in, one per question the caller is asking: `Index<Layer>`
-/// / `IndexMut<Layer>` for a known layer, [`Self::iter`] /
-/// [`Self::iter_mut`] when the layer doesn't matter, and
-/// [`Self::iter_paint_order`] when it does. The backing array is private
-/// so those stay the only spellings.
+/// `Index<Layer>`/`IndexMut<Layer>` for a known layer, [`Self::iter`]/[`Self::iter_mut`] when the layer doesn't matter, [`Self::iter_paint_order`] when it does; the array is private so these stay the only ways in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub(crate) struct PerLayer<T>([T; Layer::COUNT]);
@@ -23,8 +19,7 @@ impl<T: Default> Default for PerLayer<T> {
 }
 
 impl<T> PerLayer<T> {
-    /// Every layer's slot, order unspecified — for folds that don't care
-    /// which layer a value came from.
+    /// Every layer's slot, order unspecified.
     pub(crate) fn iter(&self) -> slice::Iter<'_, T> {
         self.0.iter()
     }
@@ -33,8 +28,7 @@ impl<T> PerLayer<T> {
         self.0.iter_mut()
     }
 
-    /// Iterate `(Layer, &T)` in [`Layer::PAINT_ORDER`] — bottom-up
-    /// (under-first). Reverse for topmost-first hit-test traversal.
+    /// `(Layer, &T)` in [`Layer::PAINT_ORDER`], bottom-up; reverse for topmost-first hit-test.
     pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &T)> {
         Layer::PAINT_ORDER
             .iter()

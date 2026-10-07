@@ -4,45 +4,28 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::record_store::recorded_gradients::GradientId;
 
-/// No `Hash` derive, deliberately: a `Gradient`'s [`GradientId`] is a
-/// per-frame index into the record store, so a derived hash would make
-/// the same paint a different value on every frame.
-/// [`Self::hash_parts`] is the one way to fold a fill into a key.
+/// No `Hash` derive: a `Gradient`'s [`GradientId`] is a per-frame index, so a derived hash would change every
+/// frame; [`Self::hash_parts`] folds a fill into a key.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ShapeBrush {
     Solid(RgbaF16),
-    /// A gradient interned in the record store. The reference and its
-    /// content hash travel as one value, the way a
-    /// [`RecordedText`](crate::primitives::text::recorded_text::RecordedText)
-    /// carries its span and hash: `id` is where the content is this
-    /// frame, and `hash` is what the content is, computed once at
-    /// lowering by [`brush`](crate::shape::lower::brush).
+    /// An interned gradient: `id` is where the content is this frame, `hash` what it is (computed at lowering).
     Gradient {
         id: GradientId,
         hash: u64,
     },
 }
 
-/// What a curve's stroke colour multiplies: nothing, or a ramp interned
-/// in the record store.
+/// What a curve's stroke colour multiplies: nothing, or an interned ramp.
 ///
-/// The interned pair is inline in the variant rather than a struct of
-/// its own: a struct would carry its padding with it, and the tag could
-/// not share the id's word. Inline, the value is 16 B, which is what
-/// lets `ShapeRecord::Curve` fit its 88 B.
+/// Inline pair, not a struct, so the value is 16 B and `ShapeRecord::Curve` fits its 88 B.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CurveRamp {
     None,
-    /// `id` is where the ramp is this frame and `hash` is what it is —
-    /// the same split as [`ShapeBrush::Gradient`].
-    Interned {
-        id: GradientId,
-        hash: u64,
-    },
+    Interned { id: GradientId, hash: u64 },
 }
 
-/// What a lowered fill contributes to a hash: a variant tag and the
-/// payload the variant's identity is in.
+/// What a lowered fill contributes to a hash: a variant tag and payload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BrushHash {
     pub(crate) tag: u8,
@@ -50,15 +33,7 @@ pub(crate) struct BrushHash {
 }
 
 impl ShapeBrush {
-    /// This fill's hash identity.
-    ///
-    /// A `Gradient`'s [`GradientId`] is a frame-local index into the
-    /// record store, so it is never the payload: the content hash it
-    /// carries beside the id is.
-    ///
-    /// One derivation, read by the shape-record hash and by the chrome
-    /// hash, so a fill cannot be one thing to the damage diff and
-    /// another to the measure cache.
+    /// Hash identity: a `Gradient` contributes its content hash, never its frame-local id.
     #[inline]
     pub(crate) const fn hash_parts(self) -> BrushHash {
         match self {
@@ -74,9 +49,7 @@ impl ShapeBrush {
     }
 }
 
-/// A gradient's geometry never reaches this far: `lower::brush` screens
-/// it at intern time, so a `Gradient` here is known-finite and only its
-/// solid sibling needs testing.
+/// Gradient geometry is screened at intern time, so only the solid variant needs testing.
 impl NanCheck for ShapeBrush {
     #[inline]
     fn has_nan(&self) -> bool {
@@ -94,10 +67,8 @@ mod tests {
     use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::shape::paint::shape_brush::ShapeBrush;
 
-    /// A gradient's hash payload is the lowering-time content hash, not
-    /// its frame-local id: two records naming different ids under the
-    /// same stops hash alike, and the same id under different stops does
-    /// not.
+    /// A gradient's hash payload is its lowering-time content hash, not its frame-local id: equal
+    /// stops under different ids hash alike; the same id under different stops does not.
     #[test]
     fn a_gradient_hashes_by_its_stops_and_not_its_frame_local_id() {
         let gradient = |id, hash| {

@@ -1,10 +1,5 @@
-//! User-supplied raster images — the pure data types.
-//!
-//! [`Image`] is a decoded pixel buffer and [`ImageFit`] is the
-//! intrinsic-size-to-rect mapping. The stateful lifecycle (registration,
-//! GPU upload/release, the RAII `ImageHandle`, the `TextureId` identity)
-//! lives in [`crate::renderer::image_registry`] — `primitives` stays a
-//! pure leaf.
+//! User-supplied raster images: the pure data types. The stateful lifecycle
+//! lives in [`crate::renderer::image_registry`].
 
 pub(crate) mod error;
 
@@ -15,33 +10,24 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use glam::{UVec2, Vec2};
 
-/// How an image's intrinsic size maps onto its paint rect. Same
-/// semantics as CSS `object-fit`. `Fill` (the default) stretches the
-/// image to exactly fill the rect — fastest, no UV crop needed.
-/// `Contain` / `None` produce a smaller paint rect inside the owner;
-/// `Cover` produces a UV crop so the full rect is painted with the
-/// image's centered portion. `Tile` repeats the image across the rect.
+/// How an image's intrinsic size maps onto its paint rect, as CSS `object-fit`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ImageFit {
-    /// Stretch the image to fill the rect exactly. Aspect ratio not
-    /// preserved. The default.
+    /// Stretch to fill the rect exactly, ignoring aspect ratio. The default.
     #[default]
     Fill,
-    /// Preserve aspect ratio; fit the image entirely inside the rect.
-    /// Letterboxes (transparent margins) if aspect ratios differ.
+    /// Preserve aspect ratio and fit inside the rect, letterboxing.
     Contain,
-    /// Preserve aspect ratio; fill the rect entirely. Crops the
-    /// image's longer axis (centered).
+    /// Preserve aspect ratio and fill the rect, cropping the longer axis
+    /// (centered).
     Cover,
-    /// Paint at the image's intrinsic pixel size, centered in the rect.
-    /// An image larger than the rect overflows it, uncropped.
+    /// Paint at intrinsic pixel size, centered; a larger image overflows
+    /// uncropped.
     None,
-    /// Repeat the image across the paint rect. The UV is taken raw from
-    /// `offset`/`scale` (intrinsic image size ignored) and wrapped with
-    /// `fract()` in the shader: `scale` is the number of repeats across
-    /// the rect (`uv_size`), `offset` the scroll phase (`uv_min`). The
-    /// caller drives both — e.g. a pannable/zoomable dotted backdrop
-    /// sets `scale = viewport / tile_px`, `offset = -pan / tile_px`.
+    /// Repeat across the paint rect. The UV is taken raw from `offset` and
+    /// `scale` (intrinsic size ignored) and wrapped with `fract()` in the
+    /// shader: `scale` is the repeat count (`uv_size`), `offset` the scroll
+    /// phase (`uv_min`).
     Tile {
         /// Scroll phase, as a raw UV origin.
         offset: Vec2,
@@ -50,14 +36,10 @@ pub enum ImageFit {
     },
 }
 
-/// How texels are interpolated when an image paints at a size other
-/// than its intrinsic one. `Linear` (the default) is bilinear
-/// smoothing; `Nearest` keeps hard texel edges — pixel-art upscales,
-/// checkerboards, pixel peeping. [`Shape::image`](crate::widget::Shape::image) chooses this
-/// independently for minification and magnification. Implemented as a
-/// UV texel-center snap in the image shader, so every combination
-/// shares one sampler and one bind group per texture. Serde (lowercase)
-/// lets hosts persist a filter choice in their config files.
+/// How texels are interpolated when an image paints at a size other than its
+/// intrinsic one; [`Shape::image`](crate::widget::Shape::image) picks it
+/// separately for minification and magnification. Implemented as a UV
+/// texel-center snap, so every combination shares one sampler and bind group.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFilter {
@@ -68,54 +50,38 @@ pub enum ImageFilter {
     Nearest,
 }
 
-/// Extra taps taken when an image *minifies*, and how they combine.
+/// Extra taps taken when an image minifies, and how they combine.
 ///
-/// One bilinear tap reads a 2×2 texel neighbourhood however far the image is
-/// shrunk, so at 5× minification about 4 of each pixel's ~27 source texels
-/// reach the screen — and *which* 4 moves with the fractional UV, so panning
-/// makes fine detail scintillate: a starfield, a wire grid, a downscaled
-/// screenshot's text. Spreading taps across the pixel's derivative footprint
-/// reads enough of it for that to stop.
+/// One bilinear tap reads a 2×2 neighbourhood however far the image shrinks,
+/// and which texels it reads moves with the fractional UV, so panning makes
+/// fine detail scintillate. Spreading taps across the pixel's derivative
+/// footprint stops that.
 ///
-/// Opt in per shape via [`ImageShape::downsample`](crate::widget::ImageShape::downsample).
-/// The taps cost fill rate on every fragment the image minifies into, which is
-/// why they are not the default — a UI icon or a 1:1 blit should not pay for
-/// them. Magnified and 1:1 draws take the single tap whatever this says, since
-/// there is no footprint left to cover.
-///
-/// Coverage is exact to 8× minification (the tap grid is capped, and each
-/// bilinear tap spans 2 texels); past that it is a bounded, evenly spread
-/// sample of the footprint rather than the whole of it.
-///
-/// No serde, unlike [`ImageFilter`]: nothing persists this yet, and the derive
-/// can arrive with the first host that puts it in a config file.
+/// Opt in via [`ImageShape::downsample`](crate::widget::ImageShape::downsample);
+/// the taps cost fill rate. Magnified and 1:1 draws take the single tap.
+/// Coverage is exact to 8× minification (the tap grid is capped); past that it
+/// is an evenly spread sample of the footprint.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ImageDownsample {
-    /// One bilinear tap — what the sampler does on its own. The default, and
-    /// exactly right whenever the image is not being shrunk.
+    /// One bilinear tap. The default.
     #[default]
     Single,
-    /// Average the taps: the area filter, and the honest answer for
-    /// photographic content — what a correct downscale of that region looks
-    /// like.
+    /// Average the taps: the area filter, right for photographic content.
     Mean,
-    /// Keep the brightest tap, by luminance, so a point source survives a
-    /// footprint it occupies a fraction of. Averaging a one-texel star across a
-    /// 5×5 footprint costs it 25× of its peak, and a starfield zoomed out
-    /// reads as empty; this keeps the star — and its colour, since a whole tap
-    /// wins rather than each channel separately — at the cost of sitting
-    /// brighter than the true area average.
+    /// Keep the brightest tap by luminance, so a point source survives
+    /// minification (averaging a one-texel star over a 5×5 footprint costs it
+    /// 25× of its peak). Whole taps win, keeping colour, but it reads brighter
+    /// than the true average.
     Peak,
 }
 
-/// A CPU pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the
-/// backend uploads it into a `Rgba8UnormSrgb` texture, scaling each
-/// colour by its own alpha on the way, because the sampler filters what
-/// the texture holds and straight colour filtered across a soft edge
-/// darkens it. Window icons use the same validated storage.
+/// A CPU pixel buffer: straight (non-premultiplied) sRGB RGBA8. The backend
+/// premultiplies on upload to a `Rgba8UnormSrgb` texture, since filtering
+/// straight colour across a soft edge darkens it. Window icons use the same
+/// storage.
 ///
-/// Registration stages the borrowed pixels without retaining a CPU copy.
-/// Keep the buffer to refill it for [`ImageHandle::update`](crate::ImageHandle::update).
+/// Registration stages the borrowed pixels without keeping a CPU copy; keep
+/// the buffer to refill it for [`ImageHandle::update`](crate::ImageHandle::update).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub(crate) size: UVec2,
@@ -141,14 +107,12 @@ impl Image {
         Ok(Self { size, pixels })
     }
 
-    /// Transparent black at `size`: what a surface fills before it registers,
-    /// and refills before each [`ImageHandle::update`](crate::ImageHandle::update).
+    /// Transparent black at `size`, for a surface to fill before registering
+    /// and before each [`ImageHandle::update`](crate::ImageHandle::update).
     ///
     /// # Panics
     ///
-    /// Panics for a zero dimension or an unrepresentable byte length — the
-    /// size errors [`Self::from_srgba8`] returns. A blank image is sized by
-    /// the caller's own code, not read from data.
+    /// Panics for the size errors [`Self::from_srgba8`] returns.
     pub fn blank(size: UVec2) -> Self {
         Self {
             size,
@@ -161,13 +125,12 @@ impl Image {
         self.size
     }
 
-    /// The texels, row-major: sRGB-encoded channels and a straight alpha
-    /// — what an application draws with, and what the upload converts.
+    /// The texels, row-major: sRGB-encoded channels, straight alpha.
     pub fn texels(&self) -> &[SrgbaU8] {
         bytemuck::cast_slice(&self.pixels)
     }
 
-    /// The texels for writing. The size is fixed, so the slice is too.
+    /// The texels for writing.
     pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
         bytemuck::cast_slice_mut(&mut self.pixels)
     }
@@ -193,9 +156,8 @@ impl Image {
         &mut self.texels_mut()[start..start + width]
     }
 
-    /// Copy `row` into every other row. A texture that varies along one
-    /// axis only is built as one row and repeated, which keeps a bar's
-    /// rebuild at one conversion per column.
+    /// Copy `row` into every other row, so a texture varying along one axis is
+    /// built as one row.
     ///
     /// # Panics
     ///
@@ -242,13 +204,10 @@ impl FitRect {
 }
 
 impl ImageFit {
-    /// Fit an image of `intrinsic` logical px into `base`. The one
-    /// resolver: the encoder draws with the answer and the cascade bounds
-    /// the shape's damage by its `rect`, so the two cannot disagree about
-    /// where an overflowing image paints.
+    /// Fit an image of `intrinsic` logical px into `base`. The one resolver:
+    /// the encoder draws with it and the cascade bounds damage by its `rect`.
     ///
-    /// An empty `intrinsic` or `base` — an image with no registry entry,
-    /// an app GPU view — paints `base` at full UV.
+    /// An empty `intrinsic` or `base` paints `base` at full UV.
     pub(crate) const fn resolve(self, base: Rect, intrinsic: Vec2) -> FitRect {
         let (iw, ih) = (intrinsic.x, intrinsic.y);
         let (bw, bh) = (base.size.w, base.size.h);
@@ -262,8 +221,7 @@ impl ImageFit {
                 FitRect::whole(centered_in(base, iw * scale, ih * scale))
             }
             Self::Cover => {
-                // The larger axis ratio decides the scale, so the image
-                // overhangs `base`; the UV crops the overhang, centred.
+                // The larger axis ratio decides the scale; the UV crops the overhang.
                 let scale = (bw / iw).max(bh / ih);
                 let uv_w = bw / (iw * scale);
                 let uv_h = bh / (ih * scale);
@@ -274,8 +232,7 @@ impl ImageFit {
                 }
             }
             Self::None => FitRect::whole(centered_in(base, iw, ih)),
-            // The shader wraps the raw UV with `fract`; `scale` and
-            // `offset` already say the repeat count and phase.
+            // The shader wraps the raw UV with `fract`.
             Self::Tile { offset, scale } => FitRect {
                 rect: base,
                 uv_min: offset,
@@ -285,8 +242,7 @@ impl ImageFit {
     }
 }
 
-/// A `w`x`h` box centred inside `base` — where every aspect-preserving
-/// fit puts the leftover space.
+/// A `w`x`h` box centred inside `base`.
 const fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
     Rect {
         min: Vec2::new(

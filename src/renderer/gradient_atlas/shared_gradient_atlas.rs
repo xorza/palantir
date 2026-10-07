@@ -16,13 +16,7 @@ pub(crate) struct SharedGradientAtlas {
 }
 
 impl SharedGradientAtlas {
-    /// Atlas whose growth ceiling is the device's
-    /// `max_texture_dimension_2d` — one LUT row is one texture row, so
-    /// that limit is the hardware bound — clamped by the
-    /// [`MAX_ATLAS_ROWS`] policy ceiling, since growth never reverses
-    /// and the hardware number is far above any sane frame. `None`
-    /// (deviceless tests, benches) falls back to
-    /// [`DEFAULT_MAX_ATLAS_ROWS`].
+    /// Atlas whose growth ceiling is the device's `max_texture_dimension_2d` (one LUT row per texture row), clamped by the [`MAX_ATLAS_ROWS`] policy ceiling since growth never reverses. `None` (deviceless) uses [`DEFAULT_MAX_ATLAS_ROWS`].
     pub(crate) fn new(texture_limit: TextureLimit) -> Self {
         let max_rows = texture_limit
             .max_dimension()
@@ -33,11 +27,7 @@ impl SharedGradientAtlas {
         }
     }
 
-    /// Rows the atlas currently holds — the height the backend's LUT
-    /// texture must match. Starts at
-    /// [`INITIAL_ATLAS_ROWS`](crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS)
-    /// and only
-    /// ever grows.
+    /// Rows the atlas holds, the height the backend's LUT texture must match. Starts at [`INITIAL_ATLAS_ROWS`](crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS) and only grows.
     pub(crate) fn rows(&self) -> u32 {
         self.cpu.borrow().capacity()
     }
@@ -47,8 +37,7 @@ impl SharedGradientAtlas {
         self.cpu.borrow_mut().register(ramp)
     }
 
-    /// Hand this frame's dirty rows to `upload`, if there are any. Clean
-    /// frames never call it.
+    /// Hand this frame's dirty rows to `upload`, if any.
     #[inline]
     pub(crate) fn flush_with(&self, upload: impl FnOnce(FlushedRows<'_>)) {
         let mut atlas = self.cpu.borrow_mut();
@@ -69,11 +58,7 @@ pub(crate) mod internals {
             self.cpu.borrow().max_rows()
         }
 
-        /// `register` calls so far. Lets the encoder's resolver
-        /// tests prove their per-pass memo suppresses repeat
-        /// registrations — a memoized call and a cache hit are otherwise
-        /// indistinguishable from outside. Accumulates for the life of
-        /// the atlas, so readers take a delta.
+        /// `register` calls so far, letting resolver tests prove their per-pass memo suppresses repeats. Accumulates for the atlas's life; read a delta.
         pub(crate) fn registrations(&self) -> u32 {
             self.cpu.borrow().counters.counts().registrations
         }

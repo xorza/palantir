@@ -1,11 +1,6 @@
-//! The fixture's design tokens and the two pieces of scaffolding every
-//! section is built from.
+//! The fixture's design tokens and the scaffolding every section builds from.
 //!
-//! Colours are chosen so the console reads as a real screen on the
-//! showcase's `frame bench` page, but their *only* load-bearing property
-//! is that the chrome they feed stays non-noop: [`card_bg`] must keep a
-//! real drop shadow (it is the sole driver of `emit_shadow`'s chrome
-//! branch) and a hairline border, or the workload silently loses coverage.
+//! The colours' only load-bearing property is that the chrome they feed stays non-noop: [`card_bg`] must keep a real drop shadow (the sole driver of `emit_shadow`'s chrome branch) and a hairline border, or the workload loses coverage.
 
 use crate::internals::demo_swatches;
 use crate::primitives::geometry::corners::Corners;
@@ -20,26 +15,20 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
-// Surface ladder and ink. The fixture's own — the showcase runs a
-// different one deliberately, so these are two designs that happen to
-// both be dark, not one duplicated.
+// Surface ladder and ink: the fixture's own; the showcase runs a different dark one deliberately.
 pub(super) const APP_BG: RgbaF32 = RgbaF32::hex(0x0f1116);
 pub(super) const CARD_BG: RgbaF32 = RgbaF32::hex(0x1a1d25);
 pub(super) const WELL_BG: RgbaF32 = RgbaF32::hex(0x13151b);
 pub(super) const BORDER: RgbaF32 = RgbaF32::hex(0x2b303d);
 pub(super) const TEXT_DIM: RgbaF32 = RgbaF32::hex(0x8b93a7);
 
-// Accents, aliased from the shared set under the names this tree reads
-// them by: what a swatch *means* here is a threshold breach or a healthy
-// delta, not "the second distinct colour".
+// Accents aliased from the shared set under this tree's meaning: a threshold breach or healthy delta.
 pub(super) const ACCENT: RgbaF32 = demo_swatches::TEAL;
 pub(super) const WARN: RgbaF32 = demo_swatches::ORANGE;
 pub(super) const OK: RgbaF32 = demo_swatches::LIME;
 pub(super) const VIOLET: RgbaF32 = demo_swatches::VIOLET;
 
-/// Raised card: fill + hairline border + a real chrome drop shadow. The
-/// shadow is the only thing in the fixture that drives the chrome branch
-/// of `emit_shadow`, so keep it non-noop.
+/// Raised card: fill, hairline border and a real chrome drop shadow, the only driver of `emit_shadow`'s chrome branch; keep it non-noop.
 pub(super) fn card_bg() -> Background {
     Background {
         fill: CARD_BG.into(),
@@ -53,8 +42,7 @@ pub(super) fn card_bg() -> Background {
     }
 }
 
-/// Recessed well — canvases and scroll strips sit on this so their
-/// bounds read against the card they're inside.
+/// Recessed well for canvases and scroll strips, so their bounds read against the card.
 pub(super) fn well_bg() -> Background {
     Background {
         fill: WELL_BG.into(),
@@ -80,9 +68,7 @@ pub(super) fn body_style() -> TextStyle {
     TextStyle::default().with_font_size(13.0)
 }
 
-/// Titled card: section caption over `body`, on [`card_bg`]. `h` is the
-/// card's own height — `HUG` for the ones that fit their content, a
-/// `Fixed` for the two that must not grow with theirs.
+/// Titled card: caption over `body` on [`card_bg`]. `h` is the card's height: `HUG` for most, `Fixed` for the two that must not grow with content.
 pub(super) fn card(
     ui: &mut Ui,
     id: &'static str,

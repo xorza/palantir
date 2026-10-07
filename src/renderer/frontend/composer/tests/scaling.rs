@@ -87,25 +87,16 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     }
 }
 
-/// A NaN stroke width normalizes away like any other non-painting
-/// width, uniformly for every quad shape. `Shapes::add`
-/// is what catches it loudly, at the authoring boundary; this pins the
-/// release-side fallback, which is to fail safe.
-///
-/// Pinned end to end rather than at the payload, because the interesting
-/// claim is about what reaches the GPU: **no NaN ever does**, on either
-/// geometry. Before `ShapeStroke` carried an `f32` width the two arms
-/// disagreed here — rect forwarded NaN to the instance, triangle scrubbed
-/// it via `.max(0.0)` — and nothing was checking that they agreed.
+/// A NaN stroke width normalizes away like any non-painting width, uniformly
+/// for every quad shape. `Shapes::add` catches it loudly at authoring; this
+/// pins the release-side fallback end to end: no NaN reaches the GPU, on
+/// either geometry.
 #[test]
 fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     let nan_stroke: ShapeStroke = Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN).into();
     let display = params(2.0, UVec2::new(400, 400));
 
-    // An opaque fill keeps the draw alive, so the quad reaches the
-    // buffer and its stroke lanes can be inspected. With a transparent
-    // fill the whole payload gates out instead — also fine, but it
-    // proves nothing about the lanes.
+    // An opaque fill keeps the draw alive so the stroke lanes can be inspected.
     let buf = run(
         |b, _arena| {
             b.draw_quad(
@@ -151,8 +142,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
         "the triangle arm must agree with the rect arm",
     );
 
-    // A NaN stroke on a shape with nothing else to paint is simply
-    // dropped — the fill and the stroke are both no-ops.
+    // A NaN stroke on an otherwise unpainted shape is dropped.
     let buf = run(
         |b, _arena| {
             b.draw_quad(
@@ -217,9 +207,8 @@ fn compose_scales_radius_and_stroke_under_transform() {
     assert_eq!(q.stroke_width, 3.0);
 }
 
-/// Pin: text-run scale snaps to the additive 0.5% ladder so continuous
-/// zoom produces stable glyph cache keys across adjacent frames.
-/// Quads (next test) intentionally do not snap — only text quantizes.
+/// Text-run scale snaps to the additive 0.5% ladder so continuous zoom gives
+/// stable glyph cache keys. Quads (next test) do not snap.
 #[test]
 fn compose_snaps_text_scale_to_discrete_steps() {
     // 1.013 is between 1.010 and 1.015; rounds to 1.015.
@@ -240,9 +229,8 @@ fn compose_snaps_text_scale_to_discrete_steps() {
     );
 }
 
-/// Pin: a quad pushed under the same fractional transform keeps its
-/// continuous scale — only text snaps. Otherwise a zoomed layout
-/// would visibly jitter as quad sizes step alongside font cache keys.
+/// A quad under the same fractional transform keeps its continuous scale;
+/// only text snaps.
 #[test]
 fn compose_keeps_quad_scale_continuous_under_zoom() {
     let buf = run(
@@ -251,8 +239,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
             draw(b, Rect::new(0.0, 0.0, 100.0, 50.0));
             b.pop_transform();
         },
-        // Unsnapped: the pixel snap rounds every quad's edges, zoomed or
-        // not; what this pins is that no scale rung applies on top.
+        // Unsnapped: the pixel snap rounds every quad's edges; no scale rung applies on top.
         &params_unsnapped(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
@@ -266,11 +253,7 @@ fn compose_keeps_quad_scale_continuous_under_zoom() {
 #[test]
 fn compose_propagates_transform_scale_to_text_runs() {
     // A `TranslateScale(_, 2.0)` ancestor must surface on the emitted
-    // TextDrawRow.scale so the raster pass paints proportionally larger
-    // glyphs.
-    // Without this the rect stretches but the glyph rasters stay at
-    // the originally-shaped size — visible as text "not zooming" inside
-    // a zoomed Scroll viewport.
+    // `TextDrawRow.scale`, or glyph rasters stay at the shaped size.
     let buf = run(
         |b, _arena| {
             b.push_transform(TranslateScale::from_scale(2.0));
@@ -319,10 +302,9 @@ fn compose_transforms_clip_rects_to_screen_space() {
     assert_eq!((s.min.x, s.min.y, s.size.x, s.size.y), (20, 20, 40, 40));
 }
 
-/// The composer is where an icon stops being a logical rect and becomes a
-/// raster: it applies the display scale, runs the size ladder, and lands the
-/// quad on whole pixels. Hand-computed at the scale that makes the point —
-/// 1.5, where a 24 px icon is 36 physical and nothing divides evenly.
+/// The composer applies the display scale, runs the icon size ladder, and
+/// lands the quad on whole pixels. Hand-computed at 1.5, where a 24 px icon is
+/// 36 physical and nothing divides evenly.
 #[test]
 fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     use crate::renderer::frontend::composer::tests::support::icon;
@@ -357,9 +339,8 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
         "icons in one group coalesce into one batch, and so one draw",
     );
 
-    // 50 logical px at 1.5 → 75 physical, past the exact band: the ladder
-    // rounds the raster up to 76, and the quad is the box, 75 px at
-    // (15, 15), the raster resampled into it.
+    // 50 logical px at 1.5 -> 75 physical, past the exact band: the ladder
+    // rounds the raster up to 76; the quad is the 75 px box at (15, 15).
     let out = run(
         |buf, _| {
             icon(
@@ -392,7 +373,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
 }
 
 /// Two icons in one group share a batch; an overlapping curve above them
-/// splits the group, exactly as it would for any other higher-kind tier.
+/// splits it.
 #[test]
 fn icons_batch_together_and_respect_tier_order() {
     use crate::renderer::frontend::composer::tests::support::icon;
@@ -413,10 +394,9 @@ fn icons_batch_together_and_respect_tier_order() {
     assert_eq!(out.batches(PaintTier::Icon)[0].items.len, 2);
 }
 
-/// A triangle's corner points reach the GPU as unorm16 shares of the
-/// quad that covers it, so a 3000 px triangle decodes, the way `quad_pipeline/shader.wgsl`
-/// does it — `min + bits / 65535 · size` — to within `3000 / 65535 / 2`
-/// ≈ 0.023 px of each point. As f16 lanes they stepped 2 px past 2048.
+/// A triangle's corners reach the GPU as unorm16 shares of the covering quad,
+/// decoded as `quad_pipeline/shader.wgsl` does (`min + bits / 65535 * size`)
+/// to within `3000 / 65535 / 2` ~ 0.023 px of each point.
 ///
 /// The covering quad is the points' bounds grown by the corner radius
 /// alone, since the shader grows every quad by its AA ramp: (13.3, 7.1) to
@@ -470,10 +450,9 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
 }
 
-/// The display's pixel snap reaches the composed quad: the same
-/// fractional rect at DPR 1.5 lands on whole pixels with the snap on and
-/// keeps its exact quarter-pixel edges with it off — see
-/// `Rect::scaled_by` for the arithmetic.
+/// The display's pixel snap reaches the composed quad: a fractional rect at
+/// DPR 1.5 lands on whole pixels with snap on and keeps quarter-pixel edges
+/// with it off (see `Rect::scaled_by`).
 #[test]
 fn compose_snaps_quad_edges_only_under_pixel_snap() {
     for (display, want) in [

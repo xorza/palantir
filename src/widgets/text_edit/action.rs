@@ -77,11 +77,7 @@ impl EditAction {
         }
     }
 
-    /// Every variant, so [`Self::from_keypress`] scans against the one
-    /// list. The bound-chord set is [`Self::shortcut`]'s business alone
-    /// — an unbound action returns `None` there and simply never
-    /// matches, which is what keeps a second hand-curated subset (and
-    /// its drift) out of this file.
+    /// Every variant, so [`Self::from_keypress`] scans one list. Bound chords are [`Self::shortcut`]'s business alone: an unbound action returns `None` and never matches, keeping a second hand-curated subset out.
     const ALL: [Self; 7] = [
         Self::Undo,
         Self::Redo,

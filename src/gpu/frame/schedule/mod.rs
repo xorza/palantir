@@ -1,10 +1,6 @@
-//! Per-frame render schedule — the ordered sequence of conceptual GPU
-//! operations that paints every group in a `RenderBuffer`.
-//!
-//! Both production (`WgpuBackend::render_groups`) and unit tests
-//! consume this same step stream via [`for_each_step`], so the order
-//! asserted in tests can't drift from the order actually issued to
-//! wgpu. Pure data — no GPU calls live here.
+//! Per-frame render schedule: the ordered GPU steps painting every group of a
+//! `RenderBuffer`. Production and tests share this step stream via
+//! [`for_each_step`], so asserted order can't drift from issued order.
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -18,45 +14,29 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 use std::fmt;
 
-/// One clip chain staged into the mask-quad buffer: the source span it
-/// was read from, and the run it was written to.
+/// One clip chain staged into the mask-quad buffer: its source span and run.
 #[derive(Clone, Copy, Debug)]
 struct StagedChain {
     chain: Span,
     masks: Span,
 }
 
-/// Per-group and per-text-batch spans, and the deduplicated mask quads
-/// they index.
-///
-/// **Value-equal chains always share one span.** [`PassState::establish`]
-/// decides whether a group can keep the chain already stamped by
-/// comparing these spans, so a span is only a sound stand-in for the
-/// chain behind it while the staging is deduplicated across the whole
-/// frame rather than against a neighbour.
+/// Per-group and per-text-batch spans plus the deduplicated mask quads they index.
+/// Value-equal chains share one span: [`PassState::establish`] compares spans to
+/// decide whether a group keeps the stamped chain.
 #[derive(Debug, Default)]
 pub(crate) struct MaskPlan {
     pub(crate) groups: Vec<Span>,
     pub(crate) batches: Vec<Span>,
-    /// Every distinct chain staged this frame. Retained so the sweep
-    /// costs no allocation.
     staged: Vec<StagedChain>,
-    /// See [`Self::quads`]. Retained like `staged`.
     quads: Vec<Quad>,
 }
 
 impl MaskPlan {
-    /// Rebuild the plan for `buffer`: the mask spans and the deduplicated
-    /// mask quads they index.
-    ///
-    /// The scan over already-staged chains is linear in the number of
-    /// *distinct* chains, not in the group count: a chain exists only where
-    /// authoring nested a rounded clip, so the list is a handful of entries
-    /// on any real frame and one on most. A neighbour-only comparison would
-    /// be O(1), but it breaks the span-per-chain invariant above the moment
-    /// anything sits between two groups that share a chain — including a
-    /// group the walk goes on to skip entirely, which leaves the chain
-    /// stamped and then denies the elision that would have kept it.
+    /// Rebuild the plan for `buffer`. The scan over staged chains is linear in
+    /// distinct chains (rare: nested rounded clips). A neighbour-only comparison
+    /// would break the span-per-chain invariant when anything, even a skipped group,
+    /// sits between two groups sharing a chain.
     pub(crate) fn build(&mut self, buffer: &RenderBuffer) {
         self.groups.clear();
         self.batches.clear();
@@ -102,135 +82,79 @@ impl MaskPlan {
         }
     }
 
-    /// The mask quads the spans index, one per level of each distinct
-    /// chain, in the order the spans name them.
     pub(crate) fn quads(&self) -> &[Quad] {
         &self.quads
     }
 }
 
-/// One conceptual step of the per-frame render schedule. Variants
-/// describe *what* to do, not *how*; the consumer holds context
-/// (whether the pass has a stencil, the actual `RenderPass`) to
-/// translate each into wgpu calls.
+/// One step of the schedule: what to do, not how.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RenderStep {
-    /// Pre-clear quad inside the damage scissor: paints the clear
-    /// color (alpha 1) over last frame's pixels so AA fringes don't
-    /// compound across animation frames. Emitted only when
-    /// `damage_scissor` is `Some`.
+    /// Pre-clear quad inside the damage scissor so AA fringes don't compound across
+    /// frames. Only when `damage_scissor` is `Some`.
     PreClear,
-    /// Narrow the render-pass scissor to this physical-px rect.
-    /// Emitted both for per-group narrowing and for text-scissor
-    /// expansion mid-group.
     SetScissor(URect),
-    /// Set the stencil reference value (stencil-path frames only):
-    /// the chain depth for content draws (`Equal(depth)` passes only
-    /// inside every stamped mask), level `k` before stamping mask
-    /// level `k`, and `0` before a mask clear (`Replace` writes the
-    /// reference). Elided when the pass already holds the value.
+    /// Set the stencil reference (stencil-path frames only): chain depth for content,
+    /// level `k` before stamping level `k`, `0` before a clear. Elided when held.
     SetStencilRef(u32),
-    /// Bind the mask-stamp pipeline (`Equal` + `IncrementClamp`) +
-    /// draw the mask quad at this index: writes `ref + 1` where the
-    /// SDF passes and the stencil already equals the reference — one
-    /// nesting level per draw, so a chain stamps outer→inner with the
-    /// reference stepping 0, 1, ….
+    /// Bind the mask-stamp pipeline (`Equal` + `IncrementClamp`) and draw the mask
+    /// quad at this index, writing `ref + 1`.
     MaskStamp(u32),
-    /// Bind the mask-clear pipeline (`Always` + `Replace`, at ref 0) +
-    /// draw the mask quad at this index. One draw of a chain's
-    /// *outermost* quad resets the whole chain — inner stamps only
-    /// ever incremented inside the outer's SDF.
+    /// Bind the mask-clear pipeline (`Always` + `Replace`, ref 0) and draw the mask
+    /// quad at this index; a chain's outermost quad resets the whole chain.
     MaskClear(u32),
-    /// Bind the quad pipeline (stencil-test variant when stencil is
-    /// active, plain otherwise) + draw this run of a group's quads.
-    Quads { range: Span },
-    /// The same for a run of shadow quads, through the shadow pipeline.
-    /// A group's quad range splits into `Quads` and `Shadows` runs, in
-    /// paint order, wherever the kind changes.
-    Shadows { range: Span },
-    /// Render a coalesced text batch via the text-renderer pool slot.
-    /// Emitted once per batch, immediately after the last group in
-    /// the batch has drawn its quads (any meshes in that group still
-    /// follow). One `Text { batch }` step → one text-backend render →
-    /// one wgpu draw call covering every run in the batch.
-    Text { batch: usize },
-    /// Bind `tier`'s pipeline and replay batch `batch` of it, pulling
-    /// the batch's items from `RenderBuffer::batches(tier)[batch]`.
-    ///
-    /// **One variant carrying the tier, not one variant per tier.** The
-    /// step a tier maps to is not a decision — it is the same tier — so
-    /// carrying it leaves nothing to state wrongly, and a new tier needs
-    /// no variant here at all.
-    ///
-    /// What each tier does with the batch differs, which is why the
-    /// backend still matches on it:
-    ///
-    /// - **Mesh** — one bind, then N `draw_indexed`, one per `MeshDraw`.
-    /// - **Image** — one `draw` per row, switching the per-image bind
-    ///   group between draws.
-    /// - **Icon** — one instanced draw for the whole batch; every icon
-    ///   shares one atlas bind group whatever mix the batch holds.
-    /// - **Curve** — one bind, one `draw_indexed` covering every
-    ///   `CurveInstance`. The "one draw call per scissor group" native
-    ///   strokes target.
-    TierBatch { tier: PaintTier, batch: usize },
+    Quads {
+        range: Span,
+    },
+    /// The same for shadow quads. A group's quad range splits into runs wherever the
+    /// kind changes.
+    Shadows {
+        range: Span,
+    },
+    /// Render a coalesced text batch in one draw, right after the batch's last group
+    /// draws its quads.
+    Text {
+        batch: usize,
+    },
+    /// Replay batch `batch` of `tier` from `RenderBuffer::batches(tier)`. Per tier:
+    /// **Mesh** one `draw_indexed` per `MeshDraw`; **Image** one `draw` per row;
+    /// **Icon** one instanced draw; **Curve** one `draw_indexed` for every
+    /// `CurveInstance`.
+    TierBatch {
+        tier: PaintTier,
+        batch: usize,
+    },
 }
 
-/// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
-/// `emit`. Pure logic — no GPU calls.
+/// Walk `buffer.groups` and emit one [`RenderStep`] at a time via `emit`.
+/// `masks` is the frame's [`MaskPlan`] when the pass has a stencil, else `None`.
 ///
-/// `masks` is the frame's [`MaskPlan`] when the pass has a stencil
-/// attachment, and `None` when it has none — a frame without one has
-/// no chains to establish.
+/// Ordering invariants:
 ///
-/// Per-frame ordering invariants pinned by the emitted sequence:
-///
-/// 1. When `damage_scissor` is `Some`, the very first emitted steps
-///    are `SetScissor(damage_scissor)` then [`PreClear`] — before
-///    any group draws. AA-fringe drift would otherwise accumulate.
-/// 2. Each group narrows the scissor to its `effective` rect before
-///    issuing its own draws.
-/// 3. Stencil-path groups establish their mask chain before their
-///    draws: each chain level stamps at `stencil_ref = level`
-///    (`Equal` + `IncrementClamp`, so level `k` writes `k + 1` only
-///    inside its ancestors), then content draws at
-///    `stencil_ref = depth`. A stale chain clears with ONE draw of
-///    its outermost mask quad at ref 0, replayed under the
-///    *stamp-time* scissor before the next `SetScissor` — a clear
-///    under the next scissor would miss stamped pixels wherever the
-///    two scissors differ. Groups sharing the still-stamped chain
-///    (with a scissor inside the stamp's) elide the clear + re-stamp
-///    pair. A walk never ends with a chain stamped: a tail clear runs
-///    after the last group, because the pass clears the stencil once
-///    (not per damage rect) and AA padding can make nominally-disjoint
-///    rects' scissors overlap, so residue would leak into the next
-///    rect's walk.
-/// 4. Text always renders *after* its group's quads so a child quad
-///    declared after a label correctly occludes that label. A batch
-///    drained past damage-skipped groups first establishes *its own*
-///    chain (same clear / stamp / elision rules as a group), so its
-///    text can't stencil-test against a foreign mask; the group that
-///    follows re-establishes its own state.
-/// 5. Groups whose effective scissor is empty (or doesn't intersect
-///    `damage_scissor`) emit no steps at all.
-/// 6. `SetScissor` and `SetStencilRef` are *transitions*, not
-///    announcements: [`PassState`] emits one only when the requested
-///    value differs from what the walk has already established, so the
-///    rect a draw runs under is the last distinct one emitted before
-///    it, not necessarily the step immediately preceding. The first
-///    scissor of each walk always emits. Invariant 3's "clear under the
-///    stamp-time scissor" therefore reads as *no intervening
-///    `SetScissor`* between a `MaskClear` and the stamp's rect.
+/// 1. With `damage_scissor` `Some`, the first steps are
+///    `SetScissor(damage_scissor)` then [`PreClear`].
+/// 2. Each group narrows the scissor to its `effective` rect before its draws.
+/// 3. Stencil-path groups establish their mask chain first: level `k` stamps at
+///    `stencil_ref = k`, content draws at `depth`. A stale chain clears with one
+///    draw of its outermost quad at ref 0 under the stamp-time scissor (a clear
+///    under another scissor misses stamped pixels). Groups sharing the stamped
+///    chain elide the clear and re-stamp. A walk never ends with a chain stamped:
+///    the pass clears the stencil once, and AA padding can make disjoint damage
+///    scissors overlap, so residue would leak into the next walk.
+/// 4. Text renders after its group's quads. A batch drained past damage-skipped
+///    groups establishes its own chain.
+/// 5. Groups with an empty effective scissor, or one missing `damage_scissor`,
+///    emit nothing.
+/// 6. `SetScissor` and `SetStencilRef` are transitions: [`PassState`] emits one
+///    only when the value changes. The first scissor of each walk always emits.
 ///
 /// [`PreClear`]: RenderStep::PreClear
 pub(crate) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
     masks: Option<&MaskPlan>,
-    // `&mut dyn` rather than `impl FnMut`: [`PassState`] is the single
-    // emit point and holds the callback for the whole walk, so a generic
-    // parameter would be erased there anyway — buying a monomorphisation
-    // per caller and no devirtualised call.
+    // `&mut dyn`: [`PassState`] holds the callback for the whole walk, so a generic
+    // would be erased there anyway.
     emit: &mut dyn FnMut(RenderStep),
 ) {
     ScheduleWalk {
@@ -248,9 +172,6 @@ pub(crate) fn for_each_step(
     .run();
 }
 
-/// One schedule walk: the frame it walks, the per-kind cursors, and the
-/// pass state every step is emitted through. [`for_each_step`] builds one
-/// and runs it to the end.
 #[derive(Debug)]
 struct ScheduleWalk<'a> {
     buffer: &'a RenderBuffer,
@@ -269,29 +190,16 @@ impl ScheduleWalk<'_> {
             self.state.push(RenderStep::PreClear);
         }
 
-        // Text batches map to a group via `last_group`; the schedule
-        // emits `RenderStep::Text` when the walk reaches that group
-        // (after its quads, before its meshes). `last_group` values are
-        // monotonically increasing across batches (composer pushes in
-        // order), so one cursor per kind suffices instead of a per-group
-        // scan.
+        // Text batches map to a group via `last_group`, monotonic across batches, so one
+        // cursor per kind suffices.
         //
-        // **Damage-pass drain.** A batch whose `last_group` falls in a
-        // damage-skipped group must still render — earlier groups in the
-        // batch may sit inside the damage rect, and dropping the whole
-        // batch would silently erase their text. So before each rendered
-        // group's setup, drain any batches whose `last_group < i`: emit
-        // them now (paint-safe — the composer's overlap rule guarantees
-        // no quad in `(last_group, i)` overlapped them, and any of those
-        // skipped groups' quads don't paint this pass). A trailing drain
-        // after the loop catches batches anchored in tail-skipped groups.
-        // Each drained batch establishes its own mask chain, so drained
-        // text never stencil-tests against whatever chain the walk left
-        // stamped.
+        // Damage-pass drain: a batch whose `last_group` is damage-skipped must still
+        // render, since earlier groups in it may be in the damage rect. Before each
+        // rendered group, batches with `last_group < i` are emitted (the composer's
+        // overlap rule means no quad in `(last_group, i)` overlapped them). A trailing
+        // drain covers tail-skipped groups.
         for (i, g) in buffer.groups.iter().enumerate() {
-            // Silently drop mesh/image/curve batches that anchored in
-            // earlier damage-skipped groups — they had no visible scissor
-            // so their draws don't paint.
+            // Drop mesh/image/curve batches anchored in earlier damage-skipped groups.
             for tier in PaintTier::ALL {
                 advance_past_skipped(
                     buffer.batches(tier),
@@ -311,20 +219,12 @@ impl ScheduleWalk<'_> {
             if effective.is_paint_empty() {
                 continue;
             }
-            // Drain batches stuck behind earlier damage-skipped groups
-            // BEFORE this group's own setup, so the next quad/meshes
-            // emitted (in this group) can paint over the drained text.
-            // Drained first so a batch sharing the still-stamped chain
-            // elides its stamp; the group establish below then clears /
-            // restamps as its own chain requires.
+            // Drain stuck batches first so later quads paint over the drained text and a
+            // batch sharing the stamped chain elides its stamp.
             self.drain_text_batches(i);
 
-            // A group can be content-less at walk time — its only text
-            // coalesced into a batch draining at a later group. Skip the
-            // scissor / chain establish entirely then: a scissor with no
-            // draws is a dead command, and on the stencil path the
-            // establish would stamp a whole mask chain for nothing (the
-            // next consumer establishes its own state regardless).
+            // A group can be content-less at walk time (its text drains later); establishing
+            // would emit a dead scissor and stamp a mask chain for nothing.
             let has_content = g.quads.len != 0
                 || pending_at(&buffer.text_batches, self.cursors.text, i)
                 || self.has_tier_batch_at(i);
@@ -333,36 +233,21 @@ impl ScheduleWalk<'_> {
                 self.emit_group_body(i, effective);
             }
         }
-        // Trailing drain — batches anchored in tail-skipped groups. Runs
-        // BEFORE the tail clear so a batch whose chain is still stamped
-        // elides, and a foreign one establishes its own.
+        // Trailing drain, before the tail clear so a still-stamped chain elides.
         self.drain_text_batches(usize::MAX);
-        // Tail clear: never let a stamped chain survive the walk. The pass
-        // clears the stencil once, not per damage rect, and AA padding can
-        // make nominally-disjoint rects' scissors overlap — residue here
-        // would be read by the next rect's walk.
         self.state.clear_active();
     }
 
-    /// Whether group `group` has a mesh, image, icon or curve batch still
-    /// to emit.
     fn has_tier_batch_at(&self, group: usize) -> bool {
         PaintTier::ALL
             .iter()
             .any(|&t| pending_at(self.buffer.batches(t), self.cursors.higher[t.idx()], group))
     }
 
-    /// Drain every text batch whose `last_group < target`, emitting each
-    /// with its own bounds-union scissor (intersected with the damage
-    /// region) so the text backend's missing per-fragment x-clip doesn't
-    /// leak glyphs past a clipped owner's scissor (e.g. into a scrollbar
-    /// gutter). On the stencil path each batch also establishes its own
-    /// mask chain first — same clear / stamp / elision rules as a group —
-    /// so text drained past damage-skipped groups never stencil-tests
-    /// against a foreign mask. `target = i` drains stuck batches before
-    /// group `i`'s emits; `target = i + 1` drains the in-flight group's
-    /// own batches after its quads; `target = usize::MAX` drains tail
-    /// batches anchored in skipped groups.
+    /// Drain every text batch whose `last_group < target`, each with its own
+    /// bounds-union scissor intersected with the damage region (the text backend has
+    /// no per-fragment x-clip). `target = i` drains stuck batches before group `i`;
+    /// `i + 1` the group's own after its quads; `usize::MAX` the tail.
     fn drain_text_batches(&mut self, target: usize) {
         let batches = &self.buffer.text_batches;
         while self.cursors.text < batches.len() && batches[self.cursors.text].last_group() < target
@@ -380,9 +265,6 @@ impl ScheduleWalk<'_> {
         }
     }
 
-    /// The group's quads as runs of one pipeline each, in paint order: a
-    /// `Shadows` run wherever the shadow kind starts, a `Quads` run
-    /// wherever it stops.
     fn emit_quad_runs(&mut self, quads: Span) {
         let range = quads.range();
         let mut start = range.start;
@@ -399,27 +281,19 @@ impl ScheduleWalk<'_> {
         }
     }
 
-    /// The draws every non-skipped group emits, identical under both the
-    /// stencil and non-stencil paths: the group's quads, then its text
-    /// batches (drained after the quads so a child quad occludes a
-    /// label), then its mesh / image / curve batches — after
-    /// re-requesting the group's own scissor + stencil state, since the
-    /// text drain may have widened the scissor or restamped a different
-    /// chain. Shared by the stencil and non-stencil paths so the two
-    /// can't drift; the caller gates it on the group having any content.
+    /// The draws every non-skipped group emits: quads, text batches, then mesh /
+    /// image / curve batches, after re-requesting the group's scissor and stencil
+    /// (the text drain may have changed them). Caller gates it on content.
     fn emit_group_body(&mut self, i: usize, effective: URect) {
         self.emit_quad_runs(self.buffer.groups[i].quads);
         self.drain_text_batches(i + 1);
         if !self.has_tier_batch_at(i) {
             return;
         }
-        // Restore the group's own state: the text drain above may have
-        // widened the scissor or restamped a different chain. Both
-        // requests collapse to nothing when it didn't — the common case,
-        // since most groups with a higher-kind batch carry no text at all.
+        // Restore the group's own state; a no-op when the text drain left it untouched.
         self.state.narrow(|masks| masks.groups[i], effective);
-        // Paint order is `PaintTier::ALL`'s order, which is `Ord`'s — the
-        // property the composer's flush arbitration rests on.
+        // Paint order is `PaintTier::ALL`'s, which is `Ord`'s; the composer's flush
+        // arbitration rests on it.
         for tier in PaintTier::ALL {
             drain_group_batches(
                 self.buffer.batches(tier),
@@ -432,48 +306,31 @@ impl ScheduleWalk<'_> {
     }
 }
 
-/// A stamped stencil chain: the mask quads stamped (outer→inner — the
-/// stencil holds `k + 1` inside chain level `k`) plus the scissor
-/// active when it was stamped. The clear must replay under that same
-/// scissor — a clear under any later scissor misses stamped pixels
-/// wherever the two differ.
+/// A stamped stencil chain: mask quads (outer to inner) and the stamp-time
+/// scissor, which the clear must replay.
 #[derive(Clone, Copy, Debug)]
 struct ActiveMask {
     masks: Span,
     scissor: URect,
 }
 
-/// The render-pass state one schedule walk has established, and the
-/// single point every step is emitted from. Branch-specific code
-/// *requests* the state its draws need ([`Self::narrow`],
-/// [`Self::clear_active`]) without knowing what the previous branch
-/// left behind; a request matching the tracked value emits nothing.
-/// wgpu records every `set_scissor_rect` / `set_stencil_reference` as a
-/// real command, so a group re-requesting the scissor it already holds
-/// (its text drain never widened it) would pay for a no-op.
+/// The render-pass state one walk has established, and the single point steps are
+/// emitted from. Branches request state ([`Self::narrow`], [`Self::clear_active`]);
+/// a matching request emits nothing, since wgpu records every scissor and stencil
+/// set as a real command.
 ///
-/// Deduplication is only sound because `SetScissor` / `SetStencilRef`
-/// are the *only* steps that touch either piece of state — no draw arm
-/// in `WgpuBackend::render_groups`, including the text backend's
-/// `render_batch`, sets a scissor or stencil reference of its own.
-///
-/// Tracked per *walk*, not per pass: one pass runs a walk per damage
-/// rect, so the first scissor request of every walk emits and no walk
-/// inherits another rect's state. A walk always exits with no chain
-/// stamped and ref 0 (`chain.len == 0` establishes reset the ref; the
-/// tail [`Self::clear_active`] closes any stamped chain), which is what
-/// lets those walks share a pass that clears the stencil once.
+/// Dedup is sound only because `SetScissor` / `SetStencilRef` are the only steps
+/// touching that state. Tracked per walk (one pass runs a walk per damage rect);
+/// a walk exits with no chain stamped and ref 0.
 struct PassState<'a> {
     emit: &'a mut dyn FnMut(RenderStep),
-    /// The frame's mask chains, `Some` exactly when the pass has a
-    /// stencil attachment to stamp them into.
+    /// The frame's mask chains; `Some` exactly when the pass has a stencil.
     masks: Option<&'a MaskPlan>,
     cur_scissor: Option<URect>,
     cur_ref: u32,
     active: Option<ActiveMask>,
 }
 
-// Manual: `emit` is a `&mut dyn FnMut`, which has nothing to format.
 impl fmt::Debug for PassState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PassState")
@@ -504,9 +361,8 @@ impl PassState<'_> {
         }
     }
 
-    /// Bring the pass to "ready to draw the content of the chain
-    /// `chain` picks out of the plan, inside `scissor`". Without a
-    /// stencil there is no plan, and only the scissor moves.
+    /// Bring the pass to "ready to draw the content of `chain` inside `scissor`".
+    /// Without a stencil only the scissor moves.
     fn narrow(&mut self, chain: impl FnOnce(&MaskPlan) -> Span, scissor: URect) {
         match self.masks {
             Some(masks) => self.establish(chain(masks), scissor),
@@ -514,8 +370,7 @@ impl PassState<'_> {
         }
     }
 
-    /// Clear the stamped chain (if any) under its own stamp-time
-    /// scissor: one draw of the outermost mask quad at ref 0.
+    /// Clear the stamped chain under its stamp-time scissor.
     fn clear_active(&mut self) {
         if let Some(prev) = self.active.take() {
             self.scissor(prev.scissor);
@@ -524,16 +379,11 @@ impl PassState<'_> {
         }
     }
 
-    /// Bring the stencil to "`chain` stamped under `scissor`, ref =
-    /// depth" and narrow the pass scissor to `scissor`. Elides the
-    /// clear + re-stamp when the same chain is already stamped and its
-    /// stamp scissor covers `scissor` — a wider scissor exposes pixels
-    /// the stamp never wrote, which would wrongly fail `Equal`.
-    ///
-    /// "The same chain" is read off the staged span, which stands in for
-    /// the chain only because [`MaskPlan`] gives value-equal chains one
-    /// span frame-wide. Two spans holding identical clips would elide
-    /// nothing and pay a clear plus a full re-stamp for it.
+    /// Bring the stencil to "`chain` stamped under `scissor`, ref = depth" and
+    /// narrow the scissor. Elides the clear and re-stamp when the same chain is
+    /// stamped and its stamp scissor covers `scissor` (a wider one would expose
+    /// unwritten pixels and fail `Equal`). "Same chain" is the staged span, unique
+    /// per value in [`MaskPlan`].
     fn establish(&mut self, chain: Span, scissor: URect) {
         let keep = chain.len != 0
             && self.active.is_some_and(|prev| {
@@ -560,45 +410,27 @@ impl PassState<'_> {
     }
 }
 
-/// Per-kind walk cursors for a [`ScheduleWalk`]. Each field is the index
-/// of the next unconsumed batch of that kind; the cursors only advance
-/// (batches are emitted in `last_group` order), so the whole walk is
-/// linear in the batch count.
+/// Per-kind walk cursors: the next unconsumed batch of each kind.
 #[derive(Debug, Default)]
 struct ScheduleCursors {
     text: usize,
-    /// One per [`PaintTier`], indexed by `PaintTier::idx`.
     higher: [usize; PaintTier::COUNT],
 }
 
-/// Advance `cursor` past every batch whose `last_group` falls before
-/// group `before` — they anchored in damage-skipped groups and don't
-/// paint this pass.
+/// Advance `cursor` past batches anchored in damage-skipped groups.
 fn advance_past_skipped(batches: &[GroupBatch], cursor: &mut usize, before: usize) {
     while *cursor < batches.len() && batches[*cursor].last_group() < before {
         *cursor += 1;
     }
 }
 
-/// `true` if the batch at `cursor` anchors to group `group` — i.e. this
-/// group has a pending batch of that kind to emit.
-///
-/// **One generic helper, not a family.** This is the only one written
-/// over [`PerGroupBatch`], because anchoring is the only rule the two
-/// batch kinds share. [`advance_past_skipped`] is concrete because only
-/// higher-kind cursors skip, and [`ScheduleWalk::drain_text_batches`]
-/// drains on a *range* predicate rather than [`drain_group_batches`]'s equality one
-/// because every text batch also needs its own bounds-union scissor, a
-/// damage intersection, an empty-skip and its own mask chain. That is
-/// different work, not a missed reuse.
+/// `true` if the batch at `cursor` anchors to group `group`. Generic over
+/// [`PerGroupBatch`] because anchoring is all the batch kinds share.
 fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> bool {
     cursor < batches.len() && batches[cursor].last_group() == group
 }
 
-/// Drain every batch anchored to group `group`, emitting `step(idx)`
-/// for the batch's render step. The caller has already narrowed the
-/// scissor (and stencil state) back to the group's own. One call per
-/// [`PaintTier`], so every tier's per-group emit shape is this one.
+/// Drain every batch anchored to group `group`, emitting `step(idx)`.
 fn drain_group_batches(
     batches: &[GroupBatch],
     cursor: &mut usize,
@@ -612,15 +444,12 @@ fn drain_group_batches(
     }
 }
 
-// `bench` only, not `any(test, …)`: the sole consumer is the
-// `schedule` benchmark, which that feature gates too.
 #[cfg(feature = "bench")]
 pub(crate) mod internals {
     use super::*;
 
-    /// What one schedule walk emitted: the step total plus the two
-    /// pass-state transition counts [`PassState`] deduplicates. Counts
-    /// explain a benchmark result — they don't replace its wall time.
+    /// What one schedule walk emitted: the step total and the transition counts
+    /// [`PassState`] deduplicates.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct WalkCounts {
         pub(crate) steps: usize,
@@ -628,9 +457,7 @@ pub(crate) mod internals {
         pub(crate) stencil_refs: usize,
     }
 
-    /// Schedule-walk harness for the `schedule` benchmark: stages the
-    /// mask plan once up front so an iteration measures only
-    /// [`for_each_step`].
+    /// Schedule-walk harness for the `schedule` benchmark.
     #[derive(Debug, Default)]
     pub(crate) struct Walk {
         plan: MaskPlan,

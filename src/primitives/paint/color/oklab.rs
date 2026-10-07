@@ -1,12 +1,6 @@
-//! Conversions between linear RGB and Oklab, Björn Ottosson's perceptual
-//! space.
+//! Linear RGB ↔ Oklab, Björn Ottosson's perceptual space.
 
-/// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
-/// (<https://bottosson.github.io/posts/oklab/>). Used by the gradient LUT
-/// bake when `Interpolation::Oklab` is selected — interpolation in Oklab gives
-/// perceptually-uniform transitions without the muddy red↔green
-/// midpoint that linear-RGB lerps produce. Output components are
-/// roughly `L ∈ 0..1, a/b ∈ -0.5..0.5`.
+/// Linear-RGB → Oklab, with matrix constants from Ottosson's reference (<https://bottosson.github.io/posts/oklab/>). Used by the gradient LUT bake for `Interpolation::Oklab`. Output is roughly `L ∈ 0..1, a/b ∈ -0.5..0.5`.
 #[inline]
 pub(crate) fn from_linear(r: f32, g: f32, b: f32) -> [f32; 3] {
     let l = 0.412_221_47 * r + 0.536_332_55 * g + 0.051_445_995 * b;
@@ -22,10 +16,7 @@ pub(crate) fn from_linear(r: f32, g: f32, b: f32) -> [f32; 3] {
     ]
 }
 
-/// Inverse of [`from_linear`]. Cube of the intermediate trichromatic
-/// values can be negative for out-of-gamut Oklab values — gradient
-/// lerps stay in-gamut by construction (both endpoints are valid
-/// linear sRGB), so this is fine for the bake path.
+/// Inverse of [`from_linear`]. The intermediate cubes can go negative for out-of-gamut Oklab; gradient lerps stay in-gamut, so the bake path is fine.
 #[inline]
 pub(crate) fn to_linear(lab: [f32; 3]) -> [f32; 3] {
     let l = lab[0];

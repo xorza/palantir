@@ -1,20 +1,11 @@
-//! Backtrace filter + pretty-printer for audit failures. Resolves
-//! captured `backtrace::Backtrace`s lazily (capture used
-//! `new_unresolved`) and renders only the frames a debug-this reader
-//! cares about: palantir `src/...` (where the bug usually lives) and
-//! the entry point inside `tests/alloc/fixtures/...` (the call site).
-//! Std/runtime, external deps, and the audit machinery itself are
-//! dropped. Demangled names are stripped of the `alloc::` test-binary
-//! prefix and the `::h<hash>` suffix.
+//! Backtrace filter and pretty-printer for audit failures: resolves backtraces lazily and keeps only palantir `src/...` frames and the fixture entry point; names lose the `alloc::` prefix and `::h<hash>` suffix.
 
 use backtrace::Backtrace;
 use std::env;
 use std::fmt::Write as _;
 use std::path::{self, Path};
 
-/// Render `bt` as a tight call stack from fixture closure down to the
-/// allocating call site. With `PALANTIR_ALLOC_FULL_BT=1`, bypass the
-/// filter and dump the raw resolved backtrace instead.
+/// Render `bt` as a call stack from fixture closure down to the allocating call site; `PALANTIR_ALLOC_FULL_BT=1` dumps the raw backtrace instead.
 pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
     bt.resolve();
     if env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
@@ -33,10 +24,7 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
             let Some(rel) = user_relative(&path) else {
                 continue;
             };
-            // Stop after the first fixture frame — that's the entry
-            // point into the scene closure; further frames are
-            // #[test] wrappers that all point at the same file with
-            // no extra signal.
+            // Stop after the first fixture frame; further frames are `#[test]` wrappers with no extra signal.
             match classify(&rel) {
                 FrameKind::Other => continue,
                 FrameKind::Fixture if seen_fixture_frame => break 'outer,
@@ -65,11 +53,9 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
 enum FrameKind {
     /// Library code under `src/...` — interesting; the bug usually lives here.
     Src,
-    /// Fixture entry point under `tests/alloc/fixtures/...` — interesting once
-    /// per trace as the call site that triggered the alloc trail.
+    /// Fixture entry point under `tests/alloc/fixtures/...`, kept once per trace.
     Fixture,
-    /// Anything else (harness internals under `tests/alloc/`, plus everything
-    /// that's not part of the user crate at all) — rejected.
+    /// Everything else (harness internals, non-crate code).
     Other,
 }
 
@@ -83,29 +69,12 @@ fn classify(rel: &str) -> FrameKind {
     }
 }
 
-/// Drop the `alloc::` test-binary-crate prefix from a demangled symbol
-/// name, including occurrences inside generic parameters
-/// (`frame<alloc::harness::tests::…>`). The test binary built from
-/// `tests/alloc/main.rs` is named `alloc`, so the prefix is the same
-/// everywhere and adds no information.
+/// Drop the `alloc::` test-binary prefix from a demangled symbol, including inside generic parameters.
 fn strip_test_crate_prefix(name: &str) -> String {
     name.replace("alloc::", "")
 }
 
-/// Crate-relative tail of a captured filename, or `None` if the path isn't
-/// inside this crate, with separators normalised to `/`.
-///
-/// The platforms hand back different shapes for the crate's *own* files.
-/// DWARF joins each name onto the compilation directory, so Linux and macOS
-/// report an absolute path (`/home/.../palantir/src/widgets/button.rs`);
-/// strip the crate root resolved at compile time, so we don't depend on the
-/// project directory's case or name (`Palantir` vs `palantir`). A PDB keeps
-/// what cargo passed instead, so Windows reports the same file already
-/// relative and backslash-separated, sometimes led by a `.` component.
-///
-/// An absolute path with no manifest prefix belongs to a dependency or to
-/// std, so reject it. A relative one can only be ours: cargo passes every
-/// dependency by absolute path.
+/// Crate-relative tail of a captured filename, or `None` outside this crate, with `/` separators. DWARF reports an absolute path (strip the compile-time crate root, so project directory case does not matter); a PDB reports a relative, backslash-separated one, maybe led by `.`. An absolute path with no manifest prefix is a dependency or std; a relative one is ours, since cargo passes dependencies by absolute path.
 fn user_relative(path: &str) -> Option<String> {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let rel = match path.strip_prefix(manifest) {
@@ -123,13 +92,11 @@ mod tests {
     use super::{FrameKind, classify, user_relative};
     use std::path::{MAIN_SEPARATOR_STR, Path};
 
-    /// Rewrite `/` as whatever the running platform's debug info would carry,
-    /// so one table covers the DWARF and the PDB shape at once.
+    /// Rewrite `/` as the platform's separator so one table covers the DWARF and PDB shapes.
     fn native(path: &str) -> String {
         path.replace('/', MAIN_SEPARATOR_STR)
     }
 
-    /// Whether the frame filter would print this file at all.
     fn kept(path: &str) -> bool {
         user_relative(path).is_some_and(|rel| !matches!(classify(&rel), FrameKind::Other))
     }
@@ -166,9 +133,7 @@ mod tests {
             .join("not-palantir")
             .join("src/lib.rs");
         assert!(!kept(&outside.to_string_lossy()));
-        // std ships a path that is absolute on unix and rootless on Windows,
-        // so this one is rejected by the manifest prefix on one platform and
-        // by `src/` not matching `/rustc/...` on the other.
+        // std's path is absolute on unix and rootless on Windows, so it is rejected by manifest prefix on one and by `src/` not matching `/rustc/...` on the other.
         assert!(!kept(
             "/rustc/0000000000000000000000000000000000000000/library/std/src/rt.rs"
         ));

@@ -1,5 +1,4 @@
-//! One pane's last-frame geometry, and the drop it classifies a pointer
-//! into.
+//! One pane's last-frame geometry, and the drop it classifies a pointer into.
 
 use glam::Vec2;
 
@@ -10,38 +9,23 @@ use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
 use crate::widgets::tabs::tab_strip::TabStrip;
 
-/// One pane's last-frame geometry, as the drop classification needs it.
-///
-/// A struct rather than a parameter list: `pane` and `strip` are both
-/// `Rect`, so transposing them type-checks and yields a plausible but
-/// wrong classification.
-///
-/// Last frame's rects are the right ones to measure against. Panes hold
-/// still while a tab is dragged, so the picture the user drops onto is
-/// the picture the arithmetic runs against.
+/// One pane's last-frame geometry for drop classification; a struct because `pane` and `strip` are both
+/// `Rect`, so transposed arguments would type-check. Panes hold still during a tab drag.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaneGeometry<'a> {
     pub(crate) group: TabGroupId,
-    /// The whole pane — strip row and content together.
     pub(crate) pane: Rect,
-    /// The strip row alone, along the pane's top edge.
     pub(crate) strip: Rect,
-    /// The strip's chip rects, in tab order.
     pub(crate) chips: &'a [Rect],
-    /// Whether this pane may still split — the nesting cap. When it
-    /// cannot, every edge wedge degrades to a join.
+    /// Whether this pane may still split (nesting cap); if not, edge wedges degrade to a join.
     pub(crate) can_split: bool,
-    /// Which split directions the dock offers.
     pub(crate) allowed: AllowedSplits,
-    /// How far in from each edge the split wedges reach, as a fraction
-    /// of the content rect.
+    /// Reach of the split wedges in from each edge, as a fraction of the content rect.
     pub(crate) edge_fraction: f32,
-    /// Breadth of the insertion caret drawn between two chips.
     pub(crate) caret_width: f32,
 }
 
-/// Where a drop over one pane would land, plus the region to highlight
-/// while the pointer hovers it.
+/// Where a drop over one pane would land, plus the region to highlight.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DropTarget {
     pub(crate) drop: DockDrop,
@@ -49,13 +33,8 @@ pub(crate) struct DropTarget {
 }
 
 impl PaneGeometry<'_> {
-    /// Classify pointer `p` against this pane — the caller has already
-    /// established that `p` is over it.
-    ///
-    /// The strip band yields an insertion slot between chips, the
-    /// content's inner box joins the group, and the outer band splits
-    /// toward the nearest edge. A pane at the nesting cap, or one whose
-    /// nearest edge the dock does not offer, degrades to a join.
+    /// Classifies pointer `p` (known to be over this pane): strip band inserts, inner box joins, outer band
+    /// splits toward the nearest offered edge; at the nesting cap or without an offered edge it joins.
     pub(crate) fn classify(&self, p: Vec2) -> DropTarget {
         let Self {
             group,
@@ -92,9 +71,7 @@ impl PaneGeometry<'_> {
             return join;
         }
 
-        // Outer band: split toward the nearest offered edge, compared on
-        // normalised distance so a wide pane does not bias toward top and
-        // bottom.
+        // Outer band: nearest offered edge by normalised distance, so a wide pane does not bias top/bottom.
         let w = content.size.w.max(1.0);
         let h = content.size.h.max(1.0);
         let edges = [
@@ -117,8 +94,6 @@ impl PaneGeometry<'_> {
     }
 }
 
-/// The inner box of `content` the join zone occupies — `fraction` in
-/// from each edge on both axes.
 fn center_box(content: Rect, fraction: f32) -> Rect {
     let f = fraction.clamp(0.0, 0.5);
     Rect::new(
@@ -129,7 +104,6 @@ fn center_box(content: Rect, fraction: f32) -> Rect {
     )
 }
 
-/// The half of `content` a split on `side` would give the dragged tab.
 fn half_rect(content: Rect, side: SplitSide) -> Rect {
     let Rect { min, size } = content;
     match side {
@@ -140,10 +114,7 @@ fn half_rect(content: Rect, side: SplitSide) -> Rect {
     }
 }
 
-/// The insertion caret between the strip's chips: on the boundary of
-/// slot `index` — before `chips[index]`, or after the last chip for an
-/// append. An empty strip cannot happen, but degrades to the strip's
-/// left inset if it ever does.
+/// The insertion caret on the boundary of slot `index`; an empty strip degrades to the left inset.
 fn caret_rect(strip: Rect, chips: &[Rect], index: usize, width: f32) -> Rect {
     let x = match (chips.get(index), chips.last()) {
         (Some(next), _) => next.min.x - 1.5,

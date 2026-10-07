@@ -1,7 +1,5 @@
-//! Pin: child-positioner layouts (ZStack, Canvas) and Hug-axis
-//! propagation must not silently switch to `INFINITY` when the
-//! parent has a finite slot — that would make any nested grid fall
-//! back to max-content and break wrapping under constrained widths.
+//! Pin: child-positioner layouts (ZStack, Canvas) and Hug-axis propagation must not pass `INFINITY` when the
+//! parent has a finite slot, or a nested grid falls back to max-content and breaks wrapping.
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
@@ -21,9 +19,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
-/// The paragraph wrapped at a 200 px surface: four 16 px lines in the 93
-/// px the bundled faces break it to, the same on every machine. A grid
-/// that fell back to max-content would shape it as one long line.
+/// The paragraph wrapped at a 200 px surface: four 16 px lines in 93 px; max-content would shape one line.
 fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
     assert_eq!(
         support::shaped_text(ui.layout(Layer::Main), node)
@@ -33,10 +29,7 @@ fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
     );
 }
 
-/// Regression: a constrained ZStack (`Sizing::fill`/`Fixed`) must pass
-/// its inner size to children, not `INFINITY`. Without this,
-/// Grid Auto resolution falls back to max-content for any grid nested
-/// inside a ZStack (Phase-1 column intrinsics need a finite slot).
+/// A constrained ZStack must pass its inner size to children, not `INFINITY`, or a nested grid falls back to max-content.
 #[test]
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
@@ -52,8 +45,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
-/// Regression: same as above but for Canvas — also a "child-positioner"
-/// layout that historically passed `INFINITY` regardless of its own size.
+/// As above for Canvas, also a child-positioner layout.
 #[test]
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
@@ -69,9 +61,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     assert_wrapped_at_200(&h.ui, node.unwrap());
 }
 
-/// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
-/// size to its child. The per-axis fix above keeps the original
-/// `INFINITY` behavior on Hug axes precisely to avoid this.
+/// A `Hug` ZStack containing a `Fill` child must not recursively size to it; Hug axes keep `INFINITY`.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
     let mut h = UiHarness::new(UVec2::new(800, 600));
@@ -97,12 +87,8 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     assert_eq!(r.size.h, 40.0);
 }
 
-/// Pin: a `Hug` grid with a `Fill` column has the Fill column collapse
-/// to 0 at arrange (no leftover available). The measure pass handles
-/// this by leaving Fill cols unresolved → cells in Fill cols get
-/// `INFINITY` available width → text shapes at natural (single line),
-/// so row heights don't grow weirdly when the window resizes
-/// horizontally.
+/// A `Hug` grid's Fill column collapses to 0 at arrange; its cells get `INFINITY` width so text stays single-line
+/// and row heights don't grow on horizontal resize.
 #[test]
 fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: u32) -> f32 {
@@ -136,16 +122,11 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
             .h
     }
 
-    // One 14 px line at both widths: the Fill column of a Hug grid gets
-    // INF, so the window's width never reaches the text.
     let one_line = support::lines_h(1, 14.0);
     assert_eq!([measure(2000), measure(200)], [one_line, one_line]);
 }
 
-/// Pin: a `Fill` grid with a `Fill` column DOES wrap text in the Fill
-/// column — measure and arrange agree on the Fill col width (both equal
-/// inner_avail's leftover after Hug + Fixed). This is the property-grid
-/// pattern.
+/// A `Fill` grid with a `Fill` column wraps text in it: measure and arrange agree on its width.
 #[test]
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
@@ -188,9 +169,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     );
 }
 
-/// Regression: a VStack section containing a `(Fill, Hug)` Grid with a
-/// Hug+Fill column layout and wrapping text in the Fill col must size
-/// to the *wrapped* row heights, not the single-line intrinsic.
+/// A VStack section containing a `(Fill, Hug)` Grid with a wrapping Fill column sizes to the wrapped row heights.
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));
@@ -241,9 +220,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     );
 }
 
-/// Regression: a Hug-axis ZStack containing a Hug Grid with wrapping
-/// cells in a Fill col must let the grid measure under the constrained
-/// cross axis.
+/// A Hug-axis ZStack containing a Hug Grid with wrapping Fill-column cells lets the grid measure under the constrained cross axis.
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     let mut h = UiHarness::with_text(UVec2::new(400, 600));

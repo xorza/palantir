@@ -1,39 +1,19 @@
-//! Observability for the damage diff. `common::counters` explains the
-//! gated-cell pattern and why the two gates exist.
-//!
-//! The two cells take different gates, because they answer to different
-//! callers. `subtree_skips` is the `damage` bench's headline metric, so
-//! it is [`BenchOnly`]; `dirty` is a `Vec` cell only tests read, and the
-//! module rule puts anything that allocates on
-//! [`TestOnly`] — the alloc suite
-//! asserts steady-state frames allocate nothing and would otherwise
-//! measure the probe. It would have been affordable either way (`dirty`
-//! pushes only on a node that actually changed, so a steady-state frame
-//! appends nothing), but affordable is not a reason to widen a gate.
+//! Observability for the damage diff. `subtree_skips` is the `damage` bench's headline metric ([`BenchOnly`]);
+//! `dirty` allocates and only tests read it, so it is [`TestOnly`] (else the alloc suite would measure the probe).
 
 use crate::common::counters::{BenchOnly, TestOnly};
 use crate::scene::tree::node_id::NodeId;
 
-/// What the diff walk did this pass.
-///
-/// Reset by [`Self::begin_pass`] at the top of every `compute`, so the
-/// counts describe one pass rather than accumulating — `dirty` is a log,
-/// and a log of every pass since the engine was built answers nothing.
+/// What the diff walk did this pass, reset by [`Self::begin_pass`] at the top of every `compute`.
 #[derive(Debug, Default)]
 pub(crate) struct DamageCounters {
-    /// Nodes whose paint rows the diff re-read — the ones that actually
-    /// changed. Tests assert both the count and the identities, and
-    /// nothing else asks — so this one takes the narrow gate, which is
-    /// also the gate the module rule demands of a cell that pushes to a
-    /// `Vec`.
+    /// Nodes whose paint rows the diff re-read (the ones that changed); only tests read it.
     dirty: TestOnly<Vec<NodeId>>,
-    /// Whole-subtree skips taken. The headline steady-state metric: a
-    /// tree that skips at the root does one of these and nothing else.
+    /// Whole-subtree skips taken: the headline steady-state metric.
     subtree_skips: BenchOnly<u32>,
 }
 
 impl DamageCounters {
-    /// Clear both counters for a new pass, retaining `dirty`'s capacity.
     #[inline]
     pub(crate) fn begin_pass(&mut self) {
         self.dirty.clear();
@@ -45,13 +25,7 @@ impl DamageCounters {
         self.dirty.push(node);
     }
 
-    /// Record a subtree skip covering `span` nodes.
-    ///
-    /// Takes the span rather than being called conditionally because only
-    /// a skip of more than one node is interesting — a `span == 1` "skip"
-    /// covers just the node itself and would drown the metric. Keeping
-    /// that rule here lets the walk call this unconditionally rather than
-    /// wrap it in a test-shaped `if` at the call site.
+    /// Records a subtree skip of `span` nodes; only more than one counts (`span == 1` would drown the metric).
     #[inline]
     pub(crate) fn subtree_skipped(&mut self, span: usize) {
         if span > 1 {
@@ -60,10 +34,7 @@ impl DamageCounters {
     }
 }
 
-/// Reads are gated with their callers, one gate each rather than one
-/// wide gate and an `allow(dead_code)`: `dirty` is asserted only by
-/// tests, while `subtree_skips` is also the `damage` bench's headline
-/// metric.
+/// Reads are gated with their callers: tests assert `dirty`, `subtree_skips` is also the bench's metric.
 #[cfg(test)]
 impl DamageCounters {
     pub(crate) fn dirty(&self) -> &[NodeId] {

@@ -1,57 +1,37 @@
 //! Intrusive most-recently-used list over gradient atlas row ids.
 //!
-//! Two `u32` columns indexed by row, so a touch is four stores and an
-//! eviction candidate is one load. Every row in `1..capacity` is a
-//! member for the atlas's whole life — a row is never inserted or
-//! removed, only moved — which is what lets [`MruList::touch`] skip the
-//! "is it linked?" branch a general list would need.
+//! Two `u32` columns indexed by row. Rows `1..capacity` are members for the
+//! atlas's whole life (only moved, never inserted or removed), so
+//! [`MruList::touch`] needs no "is it linked?" branch. Row 0 is the permanent
+//! magenta fallback and is never a member.
 //!
-//! Row 0 is the atlas's permanent magenta fallback and is never a
-//! member.
-//!
-//! ## Why the tail alone answers eviction
-//!
-//! [`CpuGradientAtlas::register`] moves a row to the head on
-//! every registration — hit or claim — and stamps it with the current
-//! epoch. Nothing ever moves a row backward, so every row registered
-//! this epoch sits strictly ahead of every row that wasn't: **the
-//! epoch-current rows are exactly a head prefix.** The atlas therefore
-//! reads [`MruList::tail`] and checks one epoch stamp instead of
-//! scanning for a victim — if the tail is epoch-current then every row
-//! is, and the atlas must grow rather than repaint a row this frame's
-//! draws already reference.
+//! Why the tail alone answers eviction: [`CpuGradientAtlas::register`] moves a
+//! row to the head on every registration and stamps the epoch, and nothing
+//! moves a row backward, so the epoch-current rows are a head prefix. The atlas
+//! checks the tail's stamp; if it is current, every row is, and the atlas must
+//! grow rather than repaint a row this frame's draws reference.
 //!
 //! [`CpuGradientAtlas::register`]:
 //!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
 
-/// Absent link. Distinguishable from every real row id because the row
-/// count is bounded by
-/// [`MAX_ATLAS_ROWS`](crate::renderer::gradient_atlas::MAX_ATLAS_ROWS).
-///
-/// The block arena's free lists carry the same value for the same
-/// reason; see [`crate::common::block_arena`] for why the two are not
-/// one constant. The lists themselves have less in common than the
-/// sentinel suggests — this one is a doubly-linked total order over a
-/// fixed membership, that one a per-class LIFO stack whose members come
-/// and go.
+/// Absent link; no real row id equals it because rows are bounded by
+/// [`MAX_ATLAS_ROWS`](crate::renderer::gradient_atlas::MAX_ATLAS_ROWS). See
+/// [`crate::common::block_arena`] for why its free lists use a separate constant.
 const NIL: u32 = u32::MAX;
 
 #[derive(Debug)]
 pub(super) struct MruList {
-    /// Toward the head — the more-recently-used neighbour, `NIL` at the
-    /// head. Indexed by row; slot 0 is unused.
+    /// Toward the head (more recently used), `NIL` at the head. Slot 0 unused.
     prev: Vec<u32>,
-    /// Toward the tail — the less-recently-used neighbour, `NIL` at the
-    /// tail. Indexed by row; slot 0 is unused.
+    /// Toward the tail (less recently used), `NIL` at the tail. Slot 0 unused.
     next: Vec<u32>,
     head: u32,
     tail: u32,
 }
 
 impl MruList {
-    /// List over rows `1..capacity`, least-recently-used end first, so a
-    /// fresh atlas hands out ascending row ids and a warm-up frame's
-    /// dirty span stays contiguous from the low end.
+    /// List over rows `1..capacity`, LRU end first, so a fresh atlas hands out
+    /// ascending ids and a warm-up frame's dirty span stays contiguous.
     pub(super) fn seeded(capacity: u32) -> Self {
         let mut list = Self {
             prev: Vec::new(),
@@ -63,16 +43,13 @@ impl MruList {
         list
     }
 
-    /// The least-recently-used row — the atlas's eviction candidate.
     pub(super) fn tail(&self) -> u32 {
         debug_assert_ne!(self.tail, NIL, "MRU list is empty");
         self.tail
     }
 
-    /// Link rows `first..end` in behind the current tail, largest id
-    /// first so the smallest ends up last. Newly grown rows hold no
-    /// gradient, so they belong at the eviction end and get claimed
-    /// before any resident row is evicted.
+    /// Link rows `first..end` behind the tail, largest id first. New rows hold no
+    /// gradient, so they sit at the eviction end and are claimed first.
     pub(super) fn extend_to(&mut self, first: u32, end: u32) {
         self.prev.resize(end as usize, NIL);
         self.next.resize(end as usize, NIL);
@@ -116,12 +93,9 @@ impl MruList {
         self.head = row;
     }
 
-    /// Every `next` link has a matching `prev`, the walk terminates at
-    /// the recorded tail, and it visits exactly the rows `1..len`. A
-    /// corrupted list would otherwise surface as a wrong eviction far
-    /// from the mistake, so [`CpuGradientAtlas::grow`] asserts on it.
-    /// Allocation-free — a `debug_assert!` body is compiled into release
-    /// even though it never runs there.
+    /// Every `next` has a matching `prev`, the walk ends at the recorded tail and
+    /// visits exactly rows `1..len`. [`CpuGradientAtlas::grow`] asserts on it so
+    /// corruption doesn't surface as a far-off wrong eviction.
     ///
     /// [`CpuGradientAtlas::grow`]:
     ///     crate::renderer::gradient_atlas::CpuGradientAtlas::grow
@@ -160,9 +134,8 @@ pub(crate) mod internals {
     use super::*;
 
     impl MruList {
-        /// Rows from most- to least-recently-used. Walks `next`; pair it
-        /// with [`MruList::is_well_formed`], which proves the `prev`
-        /// links agree, to cover both directions.
+        /// Rows from most- to least-recently-used via `next`; pair with
+        /// [`MruList::is_well_formed`] to cover `prev`.
         pub(crate) fn to_vec(&self) -> Vec<u32> {
             let mut out = Vec::new();
             let mut row = self.head;
@@ -179,10 +152,8 @@ pub(crate) mod internals {
 mod tests {
     use super::*;
 
-    /// A seeded list holds every row once, most-recently-used first,
-    /// with the *smallest* row at the eviction end — so the first
-    /// claims walk 1, 2, 3… and a warm-up frame dirties one low
-    /// contiguous span.
+    /// A seeded list holds every row once, MRU first, with the smallest row at the
+    /// eviction end, so the first claims walk 1, 2, 3.
     #[test]
     fn seeded_list_evicts_ascending_from_row_one() {
         let list = MruList::seeded(5);
@@ -191,8 +162,7 @@ mod tests {
         assert_eq!(list.tail(), 1);
     }
 
-    /// Touching walks a row to the head from any position — head
-    /// (no-op), middle, and tail — and the tail follows.
+    /// Touching moves a row to the head from head (no-op), middle or tail.
     #[test]
     fn touch_moves_to_head_from_every_position() {
         let mut list = MruList::seeded(5);
@@ -210,9 +180,7 @@ mod tests {
         assert!(list.is_well_formed());
     }
 
-    /// Grown rows land behind every resident row and in ascending order,
-    /// so an empty row is always claimed before a resident one is
-    /// evicted.
+    /// Grown rows land behind every resident row in ascending order.
     #[test]
     fn extend_appends_new_rows_at_the_eviction_end() {
         let mut list = MruList::seeded(3);
@@ -224,8 +192,8 @@ mod tests {
         assert!(list.is_well_formed());
     }
 
-    /// Draining every row through the tail and back to the head — what
-    /// a full round of evictions does — leaves the links intact.
+    /// Draining every row through the tail and back to the head leaves the links
+    /// intact.
     #[test]
     fn full_rotation_preserves_structure() {
         let mut list = MruList::seeded(8);

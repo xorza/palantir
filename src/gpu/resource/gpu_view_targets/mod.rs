@@ -1,11 +1,6 @@
-//! The off-screen targets a [`GpuView`](crate::widgets::gpu_view::GpuView)
-//! paints into, and the bind groups a draw samples them through.
+//! The off-screen targets a [`GpuView`](crate::widgets::gpu_view::GpuView) paints into, and the bind groups a draw samples them through.
 //!
-//! Registered images are the other population a draw can sample. Those
-//! live in [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore),
-//! and the two build against one [`TextureBinding`], so a composite of a
-//! view binds exactly like an image. [`TextureId::reserve`](crate::primitives::identity::texture_id::TextureId::reserve)
-//! mints both populations' ids, so an id cannot mean two things.
+//! Registered images live in [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore); both build against one [`TextureBinding`], and [`TextureId::reserve`](crate::primitives::identity::texture_id::TextureId::reserve) mints both id populations, so an id is unambiguous.
 
 mod view_target;
 
@@ -29,9 +24,7 @@ const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 #[derive(Debug)]
 pub(crate) struct GpuViewTargets {
-    /// One entry per view a live render stream still records. Inserted on
-    /// the first paint, replaced on a resize, removed by the per-submit
-    /// eviction or [`Self::retire_owner`].
+    /// One entry per view a live render stream still records: inserted on first paint, replaced on resize, removed by per-submit eviction or [`Self::retire_owner`].
     targets: FxHashMap<TextureId, ViewTarget>,
     binding: TextureBinding,
 }
@@ -62,7 +55,7 @@ impl GpuViewTargets {
             live,
             display_scale,
         } = views;
-        // `live` arrives sorted — see `Frontend::build`.
+        // `live` arrives sorted; see `Frontend::build`.
         debug_assert!(
             draws
                 .iter()
@@ -71,9 +64,7 @@ impl GpuViewTargets {
         );
         for draw in draws {
             let target = self.ensure(ctx.device, draw.id, draw.used, owner);
-            // A view the frame composites again without asking it to
-            // repaint — damage that crosses a `repaint(false)` view —
-            // still holds the pixels it was painted with.
+            // A view composited again without a repaint (damage crossing a `repaint(false)` view) keeps its painted pixels.
             let stamp = draw.stamp(display_scale);
             if target.painted == Some(stamp) {
                 continue;
@@ -116,13 +107,7 @@ impl GpuViewTargets {
         });
     }
 
-    /// Drop every target belonging to a render stream that will never submit
-    /// again, freeing its textures and bind groups.
-    ///
-    /// [`keep_target`](crate::gpu::resource::gpu_view_targets::view_target::keep_target)
-    /// preserves foreign owners' entries on every submit, so
-    /// a closed window's targets would otherwise be held by the surviving
-    /// windows for the life of the host.
+    /// Drop every target of a render stream that will never submit again, freeing textures and bind groups. [`keep_target`](crate::gpu::resource::gpu_view_targets::view_target::keep_target) preserves foreign owners' entries each submit, so a closed window's targets would otherwise outlive it.
     #[cfg_attr(
         not(feature = "winit"),
         expect(dead_code, reason = "the winit host is the only caller today")
@@ -195,9 +180,7 @@ mod tests {
         }
     }
 
-    /// A target painted for a draw's stamp is composited again without a
-    /// paint; a moved epoch, size, offset or scale paints. Each row is one
-    /// submit and whether it ran the callback.
+    /// A target painted for a draw's stamp is composited again without a paint; a moved epoch, size, offset or scale paints. Each row is one submit and whether it ran the callback.
     #[test]
     fn an_unchanged_stamp_skips_the_paint() {
         let gpu = headless_test_gpu();

@@ -1,13 +1,6 @@
-//! The per-layer structural diff: [`LayerWalk`] and the [`Tier`] it
-//! sorts each node into.
+//! The per-layer structural diff: [`LayerWalk`] and the [`Tier`] it sorts each node into.
 //!
-//! The decision and the work stay apart. [`NodeSnapshot`] is `Copy`, so
-//! [`LayerWalk::classify`] reads a copy and hands back a plain [`Tier`];
-//! by the time any arm runs, nothing is borrowed and each arm is an
-//! ordinary `&mut self` method. Deciding on a live map `Entry` instead
-//! costs an arm its `&mut self`, and every way around that — aliased
-//! locals, an index sentinel carrying work past the borrow — is worse
-//! than the copy.
+//! [`NodeSnapshot`] is `Copy`, so [`LayerWalk::classify`] decides on a copy and returns a plain [`Tier`]; deciding on a live map `Entry` would cost each arm its `&mut self`.
 
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::cascade::paint::{Paint, PaintRows};
@@ -25,35 +18,18 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 
-/// What the diff decided about one node, before it did anything about
-/// it. Ordered cheapest-and-most-common first; [`LayerWalk::classify`]
-/// is the single place that ordering is written down.
+/// What the diff decided about one node, cheapest and most common first.
 #[derive(Clone, Copy, Debug)]
 enum Tier {
-    /// New and out of the map, for one of two reasons: it has no paint
-    /// rows at all, which is the row invariant; or it is childless and
-    /// every row it has is off-surface, which keeps a zoomed-out canvas
-    /// from filling the map with thousands of never-visible snapshots.
-    /// The second omission is repaid by [`Tier::SubtreeMoved`]'s insert
-    /// leg the frame a move brings the rows on-surface.
+    /// New and out of the map: no paint rows (the row invariant), or childless with every row off-surface, which keeps a zoomed-out canvas from filling the map. [`Tier::SubtreeMoved`]'s insert leg repays the latter when a move brings rows on-surface.
     Untracked,
-    /// No snapshot — everything this node paints is new.
+    /// No snapshot; everything this node paints is new.
     Added,
-    /// Authoring, cascade state and parent all match. `subtree_hash`
-    /// rolls up this node's own `node_hash`, so by induction every
-    /// descendant is bit-identical and the walk jumps the subtree. The
-    /// dominant steady-state path: an idle frame takes this at the root
-    /// and does nothing else.
+    /// Authoring, cascade state and parent all match, so by `subtree_hash` induction every descendant is bit-identical and the walk jumps the subtree. An idle frame takes this at the root.
     SubtreeUnchanged,
-    /// Authoring and parent match but `cascade_input` moved — a scroll
-    /// tick, a pan, a sibling shift, an ancestor that stopped painting.
-    /// Same widgets; every node that still paints has the same rows and
-    /// row hashes, and the rest paint nothing. So damage is exactly
-    /// "what the subtree painted before ∪ what it paints now" rather than
-    /// the per-row matcher's two-rects-per-row flood.
+    /// Authoring and parent match but `cascade_input` moved (scroll, pan, sibling shift). Rows are unchanged, so damage is the subtree's prior extent ∪ current one, not the per-row flood.
     SubtreeMoved,
-    /// This node is unchanged; a descendant is not. Its own arena rows
-    /// stay correct, so only the rollup needs refreshing.
+    /// This node is unchanged; a descendant is not. Only the rollup refreshes.
     DescendantChanged,
     /// This node's own paints changed.
     PaintsChanged(NodeSnapshot),
@@ -61,28 +37,19 @@ enum Tier {
     Evicted(NodeSnapshot),
 }
 
-/// One layer's structural diff.
-///
-/// Built fresh per layer so the mutable diff state is reborrowed from
-/// `DamageEngine` each time. Every field the arms mutate is a field
-/// here, which is what lets them be methods: disjoint field borrows keep
-/// each arm's writes apart without local aliases.
+/// One layer's structural diff, built per layer so mutable diff state is reborrowed from `DamageEngine`.
 #[derive(Debug)]
 pub(super) struct LayerWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
     pub(super) paints: &'a mut BlockArena<Paint>,
     pub(super) matcher: &'a mut RowMatcher,
     pub(super) raw_rects: &'a mut Vec<Rect>,
-    /// Per-row screen extents for the order-inversion check. Only filled
-    /// on the rare frame a node's row order actually inverted.
+    /// Per-row screen extents for the order-inversion check; filled only when a node's row order inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
     pub(super) inversions: &'a mut InvertedOverlaps,
     pub(super) counters: &'a mut DamageCounters,
     pub(super) surface: Rect,
-    /// On a force-full frame the caller discards the region, so the arms
-    /// skip their rect pushes — a resize storm does no rect work, and
-    /// `raw_rects`' retained capacity tracks real incremental frames
-    /// rather than the whole tree.
+    /// On a force-full frame the caller discards the region, so arms skip rect pushes.
     pub(super) force_full: bool,
     pub(super) layer: Layer,
     pub(super) tree: &'a Tree,
@@ -95,8 +62,6 @@ impl LayerWalk<'_> {
         let mut i = 0;
         while i < n {
             let parent_key = self.parent_key(i);
-            // Loaded once and handed down: it is what every tier below
-            // keys on, and the column read was repeated in each of them.
             let wid = self.tree.records.widget_id()[i];
             let advance = match self.classify(i, wid, parent_key) {
                 Tier::Untracked => 1,
@@ -121,15 +86,7 @@ impl LayerWalk<'_> {
         }
     }
 
-    /// The `parent_key` node `i` sits under: its parent's `WidgetId`
-    /// bits, or the layer discriminant when it is a root — so a subtree
-    /// migrating between layers can't read as unchanged.
-    ///
-    /// Two indexed loads off columns the tree records at `open_node`.
-    /// The ancestor stack this replaced had to be maintained at every
-    /// node of the outer walk *and* every node of a moved subtree, to
-    /// serve a value the moved-subtree leg reads only on the rare
-    /// insert.
+    /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the layer discriminant for a root, so a subtree changing layers cannot read as unchanged.
     fn parent_key(&self, i: usize) -> u64 {
         match self.tree.parent_of(i) {
             Some(parent) => self.tree.records.widget_id()[parent.idx()].0,
@@ -137,35 +94,20 @@ impl LayerWalk<'_> {
         }
     }
 
-    /// The map read here *is* the classification; the arms that write probe
-    /// the same bucket again. Deliberate — see the module doc for what
-    /// holding a live `Entry` across the tier dispatch cost — and cheap:
-    /// `prev` hashes by identity, so the repeat is a touch on the line the
-    /// classification just pulled in.
+    /// The map read is the classification; writing arms re-probe the bucket. Deliberate and cheap: `prev` hashes by identity.
     fn classify(&self, i: usize, wid: WidgetId, parent_key: u64) -> Tier {
         let Some(prev) = self.prev.get(&wid).copied() else {
             let rows = self.cascade.paint_arena.rows_of(i);
-            // The row invariant, first: a node with no rows never enters
-            // the map. A container the cascade wrote an empty span for —
-            // its own `Visibility` is not `Visible`, whatever its
-            // children are — is the case that is not also childless.
             if rows.is_empty() {
                 return Tier::Untracked;
             }
-            // The off-surface skip, second, and only for a childless
-            // node: a container's rows are child markers carrying zero
-            // rects, so "nothing on-surface" says nothing about what the
-            // subtree paints.
             return if !self.tree.has_children(i) && !rows.any_on_surface(self.surface) {
                 Tier::Untracked
             } else {
                 Tier::Added
             };
         };
-        // A reparent or layer move keeps every hash — `cascade_input`
-        // folds ancestor *state*, not identity — yet flips compositing
-        // order against outside overlappers. So it disqualifies every
-        // skip tier.
+        // A reparent or layer move keeps every hash but flips compositing order, so it disqualifies every skip tier.
         let same_parent = prev.parent_key == parent_key;
         let same_subtree = prev.subtree_hash == self.tree.rollups.subtree[i];
         let same_cascade = prev.cascade_input == self.cascade.cascade_inputs[i];
@@ -199,11 +141,7 @@ impl LayerWalk<'_> {
     }
 
     fn on_descendant_changed(&mut self, i: usize, wid: WidgetId) -> usize {
-        // `classify` reaches this tier only after reading this node's
-        // snapshot, so the bucket is there. Stated rather than skipped
-        // past: a missing one would mean the walk lost a node between the
-        // two lookups, and quietly declining to refresh the subtree hash
-        // leaves the node reporting a stale one every frame after.
+        // `classify` read this snapshot first, so the bucket exists; a miss would leave a stale subtree hash forever.
         let snap = self
             .prev
             .get_mut(&wid)
@@ -213,8 +151,7 @@ impl LayerWalk<'_> {
     }
 
     fn on_evicted(&mut self, i: usize, wid: WidgetId, prev: NodeSnapshot) -> usize {
-        // Rows → rowless: push everything the node *was* painting, then
-        // drop it.
+        // Rows → rowless: push everything the node was painting, then drop it.
         self.raw_rects
             .extend(self.paints.slots[prev.paint_span.range()].screens());
         self.prev.remove(&wid);
@@ -236,38 +173,18 @@ impl LayerWalk<'_> {
             .matcher
             .diff_changed_leg(self.paints, self.raw_rects, prev.paint_span, curr);
 
-        // Exact-matched rows emitted no content damage, but a pair whose
-        // relative paint order inverted (a raised node, a shape crossing
-        // a child boundary, two coincident shapes swapping) still flips
-        // its overlap's pixels. Moved and added rows already pushed full
-        // rects covering any overlap they sit in, so only exact pairs
-        // participate.
+        // Exact-matched rows emit no content damage, but a pair whose paint order inverted still flips its overlap. Only exact pairs participate; moved and added rows already cover theirs.
         if leg.order_inverted {
             self.emit_inverted_overlaps(node);
         }
 
-        // A `cascade_input` change (ancestor disable, clip-saturated
-        // pan, visibility toggle) alters pixels of rows the per-shape
-        // diff matched exactly and emitted nothing for — a hidden node's
-        // untouched shapes must still clear. So the union repaints on
-        // any `cascade_input` flip, *including* frames where some row
-        // also changed: gating on geometry left the exact-matched rows
-        // undamaged when a visibility flip landed on the same frame as a
-        // mid-tween shape. A pure `node_hash` flip with unchanged
-        // `cascade_input` means the authoring stream differed without
-        // touching own pixels — most commonly a child added or removed,
-        // already covered by the subtree/eviction diff. Repainting the
-        // union there would spuriously re-damage every direct shape,
-        // e.g. all canvas connections when an unrelated node is deleted.
+        // Any `cascade_input` change alters pixels of exact-matched rows, so the union repaints on every flip. A pure `node_hash` flip (a child added or removed) is covered by the subtree diff; the union there would re-damage every direct shape.
         if prev.cascade_input != self.cascade.cascade_inputs[i] {
             let union = self.cascade.paint_arena.rows_of(i).union_screens();
             damage::push_screen(self.raw_rects, union);
         }
 
-        // Reparent / layer move at otherwise-identical content: the
-        // whole subtree moved together, so damage its current painted
-        // extent. Descendants keep their skip — their snapshots are
-        // intact and this push already covers them.
+        // Reparent / layer move at identical content: damage the subtree's current extent; descendants keep their skip.
         if prev.parent_key != parent_key {
             let extent = self.cascade.subtree_paint_rects[i];
             damage::push_screen(self.raw_rects, extent);
@@ -279,28 +196,11 @@ impl LayerWalk<'_> {
         1
     }
 
-    /// Tier [`Tier::SubtreeMoved`]: damage the union of what the subtree
-    /// painted and what it paints now, then re-baseline every node in it
-    /// without re-deriving anything the induction already gives us.
+    /// Tier [`Tier::SubtreeMoved`]: damage the union of what the subtree painted and paints now, then re-baseline every node in it.
     ///
-    /// Equal `subtree_hash` pins the row *count* of every node that still
-    /// paints, which is what makes the in-place `copy_from_slice` below
-    /// sound: each snapshot keeps the block it already holds, so no span
-    /// moves and only `cascade_input` needs refreshing. The one other
-    /// case is a node the cascade made invisible — a `Hidden` or
-    /// `Collapsed` ancestor — which has no rows at all; its snapshot is
-    /// evicted here, because the ancestor's own tier never reaches it.
-    /// A node with no snapshot was skipped as [`Tier::Untracked`] back
-    /// when it painted nothing visible; the frame a move brings its rows
-    /// on-surface it gets inserted here, which is what keeps every node
-    /// painting visible pixels in the map for later prev-extent folds
-    /// and for the removed-widget eviction tail.
+    /// Equal `subtree_hash` pins each painting node's row count, so the in-place `copy_from_slice` is sound and only `cascade_input` refreshes. A node the cascade made invisible has no rows and is evicted here. A node with no snapshot is inserted when a move brings its rows on-surface.
     fn on_subtree_moved(&mut self, i: usize) -> usize {
         let end = self.tree.subtree_end_of(i);
-        // Seeded, like the curr extent read below it: both fold through
-        // `Rect::union`'s identity, so a subtree that painted nothing
-        // comes out `Rect::ZERO` on either side and the two arms of this
-        // one test read the same way.
         let mut prev_extent = Rect::ZERO;
         for j in i..end {
             let wid = self.tree.records.widget_id()[j];
@@ -314,10 +214,6 @@ impl LayerWalk<'_> {
                 }
                 continue;
             }
-            // One probe: the refresh below is the only write, so it takes the
-            // `&mut` up front rather than reading the snapshot and coming back
-            // for the same bucket — this runs per moved node, which is every
-            // node under a pan.
             if let Some(snap) = self.prev.get_mut(&wid) {
                 snap.cascade_input = self.cascade.cascade_inputs[j];
                 let paint_span = snap.paint_span;
@@ -335,21 +231,13 @@ impl LayerWalk<'_> {
             self.counters.mark_dirty(NodeId(j as u32));
         }
         damage::push_screen(self.raw_rects, prev_extent);
-        // Rolled-up curr extent from the cascade — `Rect::ZERO` for an
-        // invisible subtree, so a hide transition damages only the prev
-        // pixels the evictions above folded in.
-        //
-        // Off the column, like every other "what does this subtree paint"
-        // this frame. The prev half above cannot be: last frame's column
-        // is gone, and the retained rows are all that is left of it.
+        // Rolled-up curr extent from the cascade; `Rect::ZERO` for an invisible subtree. The prev half cannot use the column, since last frame's is gone.
         let curr_extent = self.cascade.subtree_paint_rects[i];
         damage::push_screen(self.raw_rects, curr_extent);
         end - i
     }
 
-    /// Damage the extent overlap of every exact-matched row pair whose
-    /// relative paint order inverted since last frame. Reached only
-    /// behind [`RowMatcher::has_order_inversion`](crate::damage::row_matcher::RowMatcher::has_order_inversion).
+    /// Damage the overlap of every exact-matched row pair whose paint order inverted. Reached only behind [`RowMatcher::has_order_inversion`](crate::damage::row_matcher::RowMatcher::has_order_inversion).
     fn emit_inverted_overlaps(&mut self, node: NodeId) {
         self.build_row_extents(node);
         self.inversions.push(
@@ -359,14 +247,7 @@ impl LayerWalk<'_> {
         );
     }
 
-    /// Screen-space extent per row of `node`'s paint span, in row order:
-    /// chrome and direct shapes keep their own `Paint.screen`; a child
-    /// marker's zero rect is swapped for its subtree's painted extent —
-    /// the pixels that actually move when the child's paint order flips.
-    ///
-    /// Rows are 1:1 with chrome + the node's `TreeItems` stream, since
-    /// the cascade emits them from the same walk, so one cursor advances
-    /// across both.
+    /// Screen extent per row of `node`'s paint span: chrome and shapes keep their `Paint.screen`; a child marker's zero rect becomes its subtree's painted extent. One cursor advances across rows and the `TreeItems` stream.
     fn build_row_extents(&mut self, node: NodeId) {
         let arena = &self.cascade.paint_arena;
         let node_span = arena.node_spans[node.idx()];
@@ -377,10 +258,6 @@ impl LayerWalk<'_> {
             row += 1;
         }
         for item in self.tree.tree_items(node) {
-            // Every item — shape *and* child marker — owns one arena
-            // row, so the cursor advances on both. An explicit `row`
-            // rather than `node_span.start + out.len()`: the latter makes
-            // the output vector's length double as the read cursor.
             let extent = match item {
                 TreeItem::ShapeRecord(..) => arena.rows[row].screen,
                 TreeItem::Child(child) => self.cascade.subtree_paint_rects[child.id.idx()],

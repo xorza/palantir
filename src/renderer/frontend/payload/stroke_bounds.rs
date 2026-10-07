@@ -1,26 +1,17 @@
-//! A stroked shape's cull bound, and the spin it may carry — shared by
-//! the polyline and curve payloads.
+//! A stroked shape's cull bound and optional spin, shared by the polyline and curve payloads.
 
 use crate::primitives::geometry::rect::Rect;
 use glam::Vec2;
 
-/// Where a stroked shape rotates, for the shapes that do.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Spin {
-    /// Owner-local point the shape turns about.
     pub(crate) pivot: Vec2,
     /// Radians, applied to each point before the ancestor transform.
     pub(crate) angle: f32,
 }
 
 impl Spin {
-    /// This spin's rotation, prepared once.
-    ///
-    /// The `sin`/`cos` pair lives in the returned rotor rather than in
-    /// each call, because every caller turns *many* points — a cubic's
-    /// control polygon, a polyline's whole vertex run — and paying for
-    /// the pair per point is what hoisting it by hand at three sites was
-    /// avoiding.
+    /// Rotation with `sin`/`cos` computed once, since callers turn many points.
     #[inline]
     pub(crate) fn rotor(self) -> SpinRotor {
         SpinRotor {
@@ -30,9 +21,6 @@ impl Spin {
     }
 }
 
-/// A [`Spin`]'s rotation with its trigonometry already done — what turns
-/// owner-local points about the pivot before the ancestor transform
-/// places them.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SpinRotor {
     rotor: Vec2,
@@ -46,25 +34,15 @@ impl SpinRotor {
     }
 }
 
-/// A stroked shape's owner-local cull bound, and its spin if it has one.
-///
-/// One value rather than a `bbox: Rect` beside a `rotation: f32`,
-/// because the two were not independent: a non-zero rotation meant the
-/// rect was no longer the centerline AABB but the rotation-invariant
-/// square about the pivot, and `bbox.center()` was the only way the
-/// composer could recover that pivot once the owner rect was gone.
-/// Encoding it here means the still case cannot carry a stale pivot and
-/// the spun case cannot lose one.
+/// Cull bound plus optional spin; spun shapes cull against the rotation-invariant square about the pivot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum StrokeBounds {
-    /// Centerline AABB, owner-local.
     Still(Rect),
-    /// A spun shape sweeps a disc about `spin.pivot`, so what it is
-    /// culled and batched against is that disc's bounding square —
-    /// rotation-invariant, which is what keeps the composer's overlap
-    /// tracking correct at every angle. Stroke reach is applied after
-    /// it, in physical space.
-    Spun { spin: Spin, radius: f32 },
+    /// Bounding square of the disc swept about `spin.pivot`; stroke reach is applied later, in physical space.
+    Spun {
+        spin: Spin,
+        radius: f32,
+    },
 }
 
 impl Default for StrokeBounds {
@@ -74,17 +52,6 @@ impl Default for StrokeBounds {
 }
 
 impl StrokeBounds {
-    /// Pair a lowered centerline bbox with the spin it will be drawn
-    /// under — **the producing end of the spin pivot contract**: a shape
-    /// spins about its owner box's centre, and the composer rotates about
-    /// the pivot this records.
-    ///
-    /// A spun shape sweeps a disc about its owner box's centre, so what it
-    /// is culled against is that disc's bounding square, which is
-    /// rotation-invariant and keeps the composer's overlap tracking
-    /// correct at every angle. The pivot rides along explicitly instead of
-    /// being recovered from the square's centre, so neither end has to
-    /// know that the rect changed meaning.
     #[inline]
     pub(crate) fn new(owner_rect: Rect, bbox: Rect, rotation: f32) -> Self {
         if rotation == 0.0 {
@@ -100,7 +67,6 @@ impl StrokeBounds {
         }
     }
 
-    /// Owner-local rect the composer culls and batches against.
     #[inline]
     pub(crate) const fn cull_rect(self) -> Rect {
         match self {
@@ -109,7 +75,6 @@ impl StrokeBounds {
         }
     }
 
-    /// The spin to draw under, or `None` for the common still case.
     #[inline]
     pub(crate) const fn spin(self) -> Option<Spin> {
         match self {

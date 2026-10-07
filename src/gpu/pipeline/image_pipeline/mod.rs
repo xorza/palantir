@@ -1,14 +1,10 @@
-//! GPU side of user images. Mirrors [`crate::gpu::pipeline::mesh_pipeline::MeshPipeline`]
-//! but draws textured quads — per-instance rect + tint, plus a
-//! per-image bind group selected at draw time.
+//! GPU side of user images: like [`crate::gpu::pipeline::mesh_pipeline::MeshPipeline`]
+//! but draws textured quads (per-instance rect + tint, per-image bind group).
 //!
-//! The bind groups themselves belong to the two texture stores the
-//! backend hands [`ImagePipeline::draw`] — the registered images of
-//! [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore),
-//! borrowed once for the pass, and [`GpuViewTargets`] for the `GpuView`
-//! targets — the same split the text pass makes between its encoder and
-//! the atlas it fills. Both build against one binding shape, so a
-//! composite of a view binds exactly like an image.
+//! Bind groups belong to the two stores the backend hands
+//! [`ImagePipeline::draw`]: [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore)
+//! and [`GpuViewTargets`]. Both build against one binding shape, so a view
+//! composite binds like an image.
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -24,12 +20,9 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::image::ImageInstance;
 use rustc_hash::FxHashMap;
 
-/// One batch of image draws: the frame's whole per-draw texture column,
-/// and the slice of it this batch owns.
-///
-/// `items` is the same [`Span`] that indexes the per-frame instance
-/// buffer, so the textures and the instances they draw cannot come from
-/// different batches.
+/// One batch of image draws: the frame's per-draw texture column and this
+/// batch's slice of it. `items` is the same [`Span`] that indexes the instance
+/// buffer, so textures and instances can't come from different batches.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
@@ -40,15 +33,13 @@ pub(crate) struct ImageBatch<'a> {
 pub(crate) struct ImagePipeline {
     instance_buffer: DynamicBuffer<ImageInstance>,
     shader: wgpu::ShaderModule,
-    /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl ImagePipeline {
-    /// Format-independent image resources: the shader and the instance
-    /// buffer. The pipelines are built by
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`].
+    /// Format-independent resources: shader and instance buffer. Pipelines come
+    /// from [`Self::build_variants`] via
+    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Image.module(device);
 
@@ -74,10 +65,8 @@ impl ImagePipeline {
         }
     }
 
-    /// Build the base + stencil-test color pipelines against `format` —
-    /// the only format-dependent image objects; the per-image textures,
-    /// bind groups and the shared [`TextureBinding`] are all format-independent.
-    /// Called by `FormatPipelines` per format.
+    /// Build the base and stencil-test color pipelines against `format`, the only
+    /// format-dependent image objects. Called by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
@@ -114,23 +103,14 @@ impl ImagePipeline {
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
-    /// Draw one image batch. `ids` is the frame's whole per-draw texture
-    /// column and `items` selects this batch's slice of it — the same
-    /// `Span` that indexes the per-frame instance buffer, so the textures
-    /// and the instances they draw cannot come from different batches.
+    /// Draw one image batch. `ids` is the frame's per-draw texture column and
+    /// `items` selects this batch's slice (see [`ImageBatch`]).
     ///
-    /// Adjacent draws sharing a texture collapse into a single
-    /// `set_bind_group` + instanced `draw` (see [`image_runs`]). The
-    /// repeated-icon and repeated-`GpuView`-composite cases are the ones
-    /// this targets; an alternating sequence yields one run per draw and
-    /// records exactly what it did before.
+    /// Adjacent draws sharing a texture collapse into one `set_bind_group` +
+    /// instanced `draw` (see [`image_runs`]).
     ///
-    /// An **absent id is skipped** (no warning, no draw) — it just means
-    /// the owning [`ImageHandle`](crate::ImageHandle) was dropped before
-    /// this draw. Drawing nothing is the
-    /// defined behaviour for a missing texture. Every draw in a run
-    /// shares one id, so the miss check runs once per run and skips the
-    /// whole run, which is exactly the per-draw behaviour it replaces.
+    /// An **absent id is skipped** silently: its owning
+    /// [`ImageHandle`](crate::ImageHandle) was dropped. The check runs once per run.
     pub(crate) fn draw(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
@@ -139,8 +119,7 @@ impl ImagePipeline {
         targets: &GpuViewTargets,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
-            // Registered images first: they are the common draw, and a
-            // view composite is the one that pays the second probe.
+            // Registered images first: they are the common draw.
             let Some(bind_group) = images
                 .get(&run.id)
                 .map(|entry| &entry.bind_group)
@@ -154,8 +133,7 @@ impl ImagePipeline {
     }
 }
 
-/// One maximal run of consecutive draws in a batch that share a
-/// [`TextureId`], and therefore a bind group.
+/// A maximal run of consecutive draws in a batch sharing a [`TextureId`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ImageRun {
     id: TextureId,
@@ -164,16 +142,9 @@ struct ImageRun {
 
 /// Split a batch's texture ids into maximal runs of *adjacent* equal ids.
 ///
-/// Adjacency is the whole trick: only neighbours merge, so paint order is
-/// preserved exactly and nothing is sorted. A non-adjacent repeat (`A B A`)
-/// stays three runs — collapsing it would reorder the draws, and the
-/// one-entry "last binding" cache that would spare the second `A` its hash
-/// probe cannot help either, since by construction no two consecutive runs
-/// share an id.
-///
-/// Instance indices are contiguous within a batch (the composer appends a
-/// batch's rows in draw order), so each run is one `Span` and needs no
-/// per-draw arithmetic. Lazy — allocates nothing.
+/// Only neighbours merge, so paint order is preserved and nothing is sorted;
+/// `A B A` stays three runs. Instance indices are contiguous within a batch,
+/// so each run is one `Span`. Lazy; allocates nothing.
 fn image_runs(ids: &[TextureId], first_instance: u32) -> impl Iterator<Item = ImageRun> + '_ {
     let mut next = first_instance;
     ids.chunk_by(|a, b| a == b).map(move |run| {
@@ -191,16 +162,13 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     1 => Float32x2, // rect.size
     2 => Float32x2, // uv_min
     3 => Float32x2, // uv_size
-    // Tint is linear straight-alpha; the shader multiplies it by the
-    // sampled texel and premultiplies at write.
+    // Tint is linear straight-alpha; the shader premultiplies at write.
     4 => Float16x4, // tint
     5 => Uint32,    // flags (`ImageFlags`)
 ];
 
-// Compile-time guard: attribute offsets must match the `ImageInstance`
-// fields they feed. `array_stride == size_of` alone wouldn't catch a
-// same-size field reorder or a format/field size mismatch; `offset_of!`
-// does.
+// Attribute offsets must match the `ImageInstance` fields; `offset_of!`
+// catches a same-size reorder that `array_stride == size_of` would miss.
 const _: () = {
     use std::mem::offset_of;
     assert!(IMAGE_INSTANCE_ATTRS[0].offset == offset_of!(ImageInstance, rect.min) as u64);
@@ -222,12 +190,9 @@ mod tests {
         raw.iter().copied().map(TextureId).collect()
     }
 
-    /// Expand runs back into the one-draw-per-image sequence the
-    /// pre-coalescing loop issued: `(instance index, texture)` in order.
-    /// Equality with the input is the correctness property — same
-    /// textures, same instances, same order, nothing dropped or
-    /// duplicated. It also proves the spans tile the batch with no gap
-    /// and no overlap, which a run-count assertion alone would not.
+    /// Expand runs back into one `(instance index, texture)` per draw. Equality
+    /// with the input proves same textures, instances and order, and that spans
+    /// tile the batch without gap or overlap.
     fn expand(ids: &[TextureId], first_instance: u32) -> Vec<(usize, TextureId)> {
         image_runs(ids, first_instance)
             .flat_map(|run| {
@@ -245,13 +210,10 @@ mod tests {
             ("single", &[7], 1),
             ("all same", &[7, 7, 7, 7], 1),
             ("adjacent groups", &[7, 7, 9, 9, 9, 4], 3),
-            // Controls that must NOT shrink. Alternating is the case a
-            // one-entry last-binding cache is also powerless against:
-            // consecutive runs never share an id.
+            // Controls that must NOT shrink: alternating ids never merge.
             ("alternating", &[7, 9, 7, 9], 4),
             ("all unique", &[1, 2, 3, 4], 4),
-            // Equal ids either side of a different one stay three runs —
-            // merging them would reorder paint.
+            // Equal ids either side of a different one stay three runs.
             ("non-adjacent repeat", &[7, 9, 7], 3),
         ];
         for (label, raw, expected_runs) in cases {
@@ -265,9 +227,8 @@ mod tests {
 
     #[test]
     fn runs_index_the_batch_slice_not_the_frame() {
-        // A batch starts partway into the shared instance buffer, so the
-        // first run begins at `first_instance` and the rest follow it —
-        // getting this wrong draws another batch's instances.
+        // A batch starts partway into the shared instance buffer; the first run
+        // begins at `first_instance`.
         let ids = textures(&[7, 7, 9]);
         let runs: Vec<_> = image_runs(&ids, 5).collect();
         assert_eq!(

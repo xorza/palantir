@@ -21,10 +21,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// Pin: the very first frame has no `prev_frame` entries, so every
-/// painting node is "added" → marked dirty and contributes its rect.
-/// The root Panel records no chrome and no direct shapes, so it's
-/// non-painting and stays out of `dirty`/`region`.
+/// The first frame has no `prev_frame`, so every painting node is added; the non-painting root stays out of `dirty`/`region`.
 #[test]
 fn first_frame_marks_every_painting_node_dirty() {
     let mut h = UiHarness::cold(DISPLAY.physical);
@@ -38,17 +35,10 @@ fn first_frame_marks_every_painting_node_dirty() {
         .filter(|s| s.len > 0)
         .count();
     assert_eq!(h.engines.damage.counters.dirty().len(), painting);
-    // First frame is `force_full`, so `compute` short-circuits to
-    // `Damage::Full` after the structural diff — and the Vacant arm
-    // skips its raw-rect pushes (the region would be discarded), so
-    // the buffer stays empty and its retained capacity never balloons
-    // to whole-tree size on the first frame or a resize storm.
     assert!(h.engines.damage.raw_rects.is_empty());
 }
 
-/// Pin: re-recording identical authoring → zero dirty nodes,
-/// damage rect is `None`. The steady-state ideal: idle UI does
-/// nothing.
+/// Re-recording identical authoring gives zero dirty nodes and no damage rect.
 #[test]
 fn unchanged_authoring_produces_no_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -63,9 +53,7 @@ fn unchanged_authoring_produces_no_damage() {
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
 
-/// Pin: an authoring change on one leaf marks just that leaf
-/// dirty; the parent (whose own fields didn't change and whose
-/// rect is identical) stays clean.
+/// An authoring change on one leaf dirties just that leaf; the unchanged parent stays clean.
 #[test]
 fn fill_change_marks_only_the_changed_leaf() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -82,18 +70,13 @@ fn fill_change_marks_only_the_changed_leaf() {
         h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
-    // DamageEngine rect = Frame's rect (50x50 at (0,0)). RgbaF32 change
-    // doesn't move the rect, so prev == curr; the union is the
-    // single rect.
     assert_eq!(
         h.damage_region().iter_rects().next(),
         Some(h.ui.arranged_rect(Layer::Main, dirty_id))
     );
 }
 
-/// Pin: a sibling reflow (Fixed-width sibling resizes) shifts
-/// downstream rects — those neighbors are detected dirty by rect
-/// comparison even though their authoring didn't change.
+/// A sibling reflow shifts downstream rects, so neighbors are dirty by rect comparison.
 #[test]
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -116,8 +99,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
     frame(&mut h, |ui| build(50.0, ui));
     frame(&mut h, |ui| build(80.0, ui));
 
-    // `a` changed authoring (size). `b`'s authoring is unchanged
-    // but its arranged x shifts from 50 → 80. Both are dirty.
+    // `a` changed authoring; `b`'s x shifts 50 -> 80. Both are dirty.
     let dirty_ids: Vec<WidgetId> = h
         .engines
         .damage
@@ -130,9 +112,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
 }
 
-/// Pin: a widget that disappears between frames contributes its
-/// previous rect to damage — the renderer must repaint that
-/// region to erase the leftover pixels.
+/// A widget that disappears contributes its previous rect to damage.
 #[test]
 fn removed_widget_contributes_prev_rect_to_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -158,15 +138,11 @@ fn removed_widget_contributes_prev_rect_to_damage() {
             .show(ui, |_| {});
     });
 
-    // Button is gone; root Panel is non-painting (no chrome) so it
-    // never entered prev. Only contribution is the Button's prev
-    // rect, surfaced via the `removed` list.
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, vec![prev_button_rect]);
 }
 
-/// Pin: an added widget that wasn't in last frame contributes
-/// its current rect to damage and lands in the dirty list.
+/// An added widget contributes its current rect and lands in the dirty list.
 #[test]
 fn added_widget_contributes_curr_rect_to_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -199,14 +175,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
     assert!(!h.damage_region().is_empty());
 }
 
-/// Pin (motivating workload): hovering a button causes exactly one
-/// node — the button — to be dirty, with damage rect == button's
-/// rect. This is the bread-and-butter case Stage 3 is designed for:
-/// pointer hover changes a small region; partial repaint should win.
-///
-/// Hit-test response lags by one frame (recording reads last frame's
-/// state), so we run enough frames at each pointer position to let
-/// the damage stream settle, then assert on the *transition* frame.
+/// Hovering a button dirties exactly the button; hit-test lags a frame, so frames settle before the transition is asserted.
 #[test]
 fn button_hover_damage_covers_only_the_button() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -235,8 +204,6 @@ fn button_hover_damage_covers_only_the_button() {
         });
     };
 
-    // Pointer parked off-button. Settle for two frames so hit-test +
-    // damage are at steady state (no diff).
     h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
@@ -248,12 +215,7 @@ fn button_hover_damage_covers_only_the_button() {
     let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
-    // Move pointer onto the hot button. The *next* post_record computes
-    // hover=true. The frame *after* that records the button as
-    // hovered → its fill differs → it lands in the dirty set alone.
-    // `on_input` recomputes hover against the existing hit_index
-    // immediately, so the *next* recording sees `hovered=true` and
-    // emits the hovered fill. DamageEngine = button rect only.
+    // `on_input` recomputes hover against the existing hit_index, so the next recording emits the hovered fill.
     h.move_to(target);
     build(&mut h, &mut hot_node, &mut cold_node);
 
@@ -274,7 +236,6 @@ fn button_hover_damage_covers_only_the_button() {
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
-    // Next frame at same cursor → no diff (settled).
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
         h.engines.damage.counters.dirty().is_empty(),
@@ -282,8 +243,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
 }
 
-/// Pin: leaving the button (un-hover) is symmetric — the only diff
-/// is the button's fill flipping back, damage = button rect.
+/// Un-hovering is symmetric: damage is the button rect.
 #[test]
 fn button_unhover_damage_covers_only_the_button() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -312,7 +272,6 @@ fn button_unhover_damage_covers_only_the_button() {
         });
     };
 
-    // Settle two frames with cursor over the hot button.
     build(&mut h, &mut hot_node, &mut cold_node);
     let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
     h.move_to(hot_rect.min + Vec2::new(5.0, 5.0));
@@ -323,7 +282,6 @@ fn button_unhover_damage_covers_only_the_button() {
         "settled hover"
     );
 
-    // Pointer leaves the button.
     h.move_to(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     assert_eq!(h.engines.damage.counters.dirty().len(), 1);
@@ -338,23 +296,9 @@ fn button_unhover_damage_covers_only_the_button() {
     );
 }
 
-/// A spinning stroke is damaged against the square it sweeps, not the
-/// bbox it was recorded with — the same square the composer culls it
-/// against (`StrokeBounds::new`), so the region `extend_predamaged`
-/// repaints every frame covers every angle the spin reaches.
+/// A spinning stroke is damaged against the square it sweeps, matching `StrokeBounds::new`, so `extend_predamaged` covers every angle.
 ///
-/// Fixture is the encoder's spun-polyline test: an 80x40 owner, a line
-/// from (10,10) to (70,30), pivot at the owner centre (40,20), so the
-/// far endpoint sits
-/// r = sqrt(30^2 + 10^2) = 31.623 from it. Rotated a quarter turn that
-/// endpoint lands at pivot + (-10,30), which is outside both the owner
-/// box and the recorded bbox. The stroke pad is a 0.5 half-width plus
-/// the 0.5 physical fringe at scale 1, and a two-point line has no join
-/// and a butt cap, so it adds exactly 1 on each side.
-///
-/// The time is left at zero, where the sampled rotation is zero and the
-/// encoder emits the still bbox: the cascade covers the sweep from the
-/// registration alone, which is what lets it answer without sampling.
+/// Fixture: 80x40 owner, line (10,10)-(70,30), pivot (40,20), far endpoint r = sqrt(30^2 + 10^2) = 31.623. A quarter turn puts it at pivot + (-10,30), outside the owner box. The pad is 0.5 half-width plus 0.5 fringe (butt cap, no join): 1 per side. Time zero, so the cascade covers the sweep from the registration alone.
 #[test]
 fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     use crate::scene::tree::paint_anims::curves;
@@ -391,15 +335,12 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     let owner = h.rect(owner_id).expect("the owner arranged");
     let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
     let span = h.ui.cascade().layers[Layer::Main].paint_arena.node_spans[node_idx];
-    // No background on the owner, so its one row is the polyline.
     assert_eq!(span.len, 1, "the owner paints the one animated shape");
     let row = h.ui.cascade().layers[Layer::Main].paint_arena.rows[span.start as usize].screen;
 
     let pivot = owner.min + Vec2::new(40.0, 20.0);
     let want = Rect::square_about(pivot, 30.0_f32.hypot(10.0)).inflated(1.0);
     assert_eq!(row, want, "the damage is the swept square");
-    // The recorded bbox stops at the owner box, so the quarter-turn
-    // endpoint is the pixel the old bound left undamaged.
     let quarter_turn = pivot + Vec2::new(-10.0, 30.0);
     assert!(
         row.contains(quarter_turn),
@@ -411,9 +352,7 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
     );
 }
 
-/// `NodeSnapshot.paint_span` covers one entry per Paint row on the
-/// node — chrome at row 0 when present, then each direct shape — with
-/// matching rect and canonical hash. Mirrors `Cascade::paint_arenas`.
+/// `NodeSnapshot.paint_span` has one entry per Paint row (chrome at row 0, then direct shapes), mirroring `Cascade::paint_arenas`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::widget::Shape;
@@ -443,14 +382,12 @@ fn node_snapshot_decomposition_matches_cascade() {
     let node_span = h.ui.cascade().layers[layer].paint_arena.node_spans[node_idx];
     let layer_paints = &h.ui.cascade().layers[layer].paint_arena.rows;
 
-    // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];
     assert!(
         chrome_paint.screen.area() > 0.0,
         "chrome panel must have non-zero chrome rect",
     );
 
-    // Snapshot mirrors the cascade arena slice.
     let snap_paints = h
         .engines
         .damage
@@ -468,14 +405,8 @@ fn node_snapshot_decomposition_matches_cascade() {
         );
     }
 
-    // The force-full first frame skips the Vacant pushes (its region
-    // is discarded) — the buffer stays empty.
     assert!(h.engines.damage.raw_rects.is_empty());
 
-    // A widget added on an *incremental* frame hits the same Vacant
-    // arm with the pushes live: one rect per paint row (chrome + each
-    // shape). The unchanged "multi" subtree-skips and contributes
-    // nothing, so the buffer holds exactly the newcomer's rows.
     let two_lines = |ui: &mut Ui| {
         ui.add_shape(Shape::line(
             Vec2::new(0.0, 0.0),
@@ -514,21 +445,11 @@ fn node_snapshot_decomposition_matches_cascade() {
     assert_eq!(h.engines.damage.raw_rects[2], snap2_paints[2].screen);
 }
 
-/// Slice 4 headline: a multi-shape owner whose shapes are spatially
-/// disjoint pushes only the *changed* shape's rect pair on a frame
-/// where one endpoint moved. Reproduces the darkroom graph pattern
-/// (canvas owns N bezier connections; drag one node, only the
-/// connections actually touching it should enter damage). Pre-slice-4
-/// the Occupied-changed arm pushed `prev_rect ∪ curr_rect = union of
-/// all shapes`; slice 4 pushes only the moved shape's prev + curr.
+/// A multi-shape owner with disjoint shapes pushes only the moved shape's rect pair (the darkroom graph pattern).
 #[test]
 fn per_shape_damage_only_pushes_changed_shapes() {
     use crate::widget::Shape;
 
-    // Two stable shapes (drawn at fixed coords) + one shape whose
-    // endpoint shifts between frames. Frame N records all three;
-    // frame N+1 shifts only the third — the diff must push exactly
-    // that shape's pair of rects.
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |moving_y: f32, ui: &mut Ui| {
         Panel::hstack()
@@ -543,8 +464,6 @@ fn per_shape_damage_only_pushes_changed_shapes() {
                     Shape::rect(Rect::new(60.0, 0.0, 20.0, 10.0))
                         .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
-                // The moving shape, far from the other two, so its
-                // bbox doesn't merge with theirs in the damage region.
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, moving_y, 20.0, 10.0))
                         .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
@@ -552,7 +471,6 @@ fn per_shape_damage_only_pushes_changed_shapes() {
             });
     };
 
-    // Frame 1 (cold) and frame 2 (steady — no diff).
     frame(&mut h, |ui| build(120.0, ui));
     frame(&mut h, |ui| build(120.0, ui));
     assert!(
@@ -560,14 +478,9 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         "steady frame must produce no diff"
     );
 
-    // Frame 3 nudges shape 2's y endpoint. Slice 4 contract: only
-    // shape 2's prev rect (at y=120) and curr rect (at y=140) enter
-    // the damage region. Chrome (canvas background) is unchanged in
-    // geometry AND authoring → no chrome push. Shapes 0 and 1 are
-    // bit-identical → no push.
+    // Frame 3 nudges shape 2's y: only its prev (y=120) and curr (y=140) rects enter damage.
     let prev_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     let prev_arena_len = h.engines.damage.paints.slots.len();
-    // paint_snaps row 0 is chrome; shapes follow at offset 1.
     let prev_shape2_rect = h
         .engines
         .damage
@@ -591,10 +504,6 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         "an in-place refresh must not touch the allocator at all",
     );
 
-    // The damage region must intersect both old and new positions of
-    // shape 2 (so the pixels-at-old-position get cleared and
-    // pixels-at-new-position get painted). It must NOT intersect the
-    // disjoint regions occupied by shapes 0 and 1 — those didn't move.
     let region = h.damage_region();
     let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
     assert!(
@@ -608,12 +517,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
          curr_rect = {curr_shape2_rect:?}, region = {region:?}",
     );
 
-    // Sentinel: a rect on the chrome's top edge between shapes 0/1
-    // (y < 120) must NOT be in the region — chrome didn't change,
-    // shapes 0/1 are unchanged, only the moving shape's y-band gets
-    // damaged. Pre-slice-4 the whole `paint_rect` union (covering
-    // the entire 180×180 canvas) would have hit. This is the
-    // tight-damage win.
+    // Sentinel on the chrome's top edge (y < 120): the whole 180x180 paint_rect union would hit it.
     let stale_chrome_band = Rect::new(40.0, 40.0, 20.0, 20.0); // inside chrome, away from moved shape
     assert!(
         !intersects(stale_chrome_band),
@@ -622,11 +526,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     );
 }
 
-/// Chrome authoring change (hover fill flip, no rect change) must
-/// push the chrome rect even though the geometric rect is identical.
-/// Chrome is row 0 of the node's paint span and carries its own
-/// authoring hash via `Paint.hash`; without that, a hover-color flip
-/// would fall through the rect-only guard and emit no damage at all.
+/// A chrome authoring change (same rect) must push the chrome rect: it is row 0 and carries its own hash via `Paint.hash`.
 #[test]
 fn chrome_authoring_change_pushes_chrome_paint_row() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -651,10 +551,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     );
 }
 
-/// The focus ring arriving on a node damages that node and nothing else:
-/// it rides the node's chrome row, and the row's hash carries it, so a
-/// chromeless stop gains a row whose rect is its own, and its unfocused
-/// neighbour is untouched.
+/// The focus ring arriving damages that node only: it rides the chrome row, whose hash carries it.
 #[test]
 fn a_focus_ring_damages_only_its_node() {
     use crate::input::keyboard::key::Key;
@@ -693,15 +590,7 @@ fn a_focus_ring_damages_only_its_node() {
     );
 }
 
-/// Painting-only invariant: every `DamageEngine.prev` entry covers
-/// at least one Paint row. A chrome-only owner used to land in `prev`
-/// with `shape_span.len == 0` (chrome was tracked in a separate
-/// column); under the unified `paint_arena`, chrome is row 0 of the
-/// node's span, so the same owner now has `paint_span.len == 1`.
-/// The removal tail in `DamageEngine::compute` pushes every prev
-/// entry's rows on the frame its widget leaves, so an entry with no rows
-/// would leave pixels unrepainted — this test pins the producer side of
-/// that contract.
+/// Every `DamageEngine.prev` entry covers at least one Paint row (chrome is row 0), else `DamageEngine::compute`'s removal tail leaves pixels unrepainted.
 #[test]
 fn chrome_only_owner_has_nonzero_paint_span() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -722,7 +611,6 @@ fn chrome_only_owner_has_nonzero_paint_span() {
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
-    // Every entry in `prev` covers at least one row.
     for (k, s) in &h.engines.damage.prev {
         assert!(
             s.paint_span.len > 0,
@@ -731,24 +619,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     }
 }
 
-/// Pin: changing the *content* of a `Shape::Text` with
-/// `local_origin: Some(_)` damages the shaped-text bbox, not just the
-/// origin point.
-///
-/// Before the fix, the local bbox for `Text { local_origin: Some(_) }`
-/// returned `{ min: origin, size: ZERO }` — a degenerate point, because
-/// the glyph extent isn't known to the record. Cascade dutifully stored
-/// that point in the shape's paint row; damage then pushed two zero-size
-/// rects when text changed → effectively no damage from the text shape. The
-/// user-visible symptom: type a character in a `TextEdit`, and only the
-/// caret-sized strip got repainted while the rest of the text went
-/// stale.
-///
-/// Post-fix, cascade looks up the shaped extent from
-/// `LayerLayout::text_shapes` (already computed by the measure pass)
-/// and stores the tight `(origin, measured)` rect. The diff pushes
-/// prev + curr extents, so the damage region covers the union of both
-/// strings' bboxes.
+/// Changing a `Shape::Text` with `local_origin: Some(_)` damages the shaped-text bbox, not just the origin point: prev and curr extents come from `LayerLayout::text_shapes`.
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::shape::Shape;
@@ -757,9 +628,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
 
-    // Mono fallback geometry: glyph width = font_size * 0.5, line
-    // height = font_size. With font_size = 14, "abc" measures
-    // 21×14 and "abcdef" measures 42×14.
+    // Mono geometry: glyph width = font_size * 0.5, line height = font_size; at 14, "abc" is 21x14 and "abcdef" 42x14.
     const FONT: f32 = 14.0;
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
 
@@ -798,13 +667,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         "steady frame must produce no diff"
     );
 
-    // Cache prev shaped rect (size of "abc") off the previous snapshot
-    // so the assertion below can reason from the actual measured
-    // values rather than hand-recomputing mono geometry.
-    // Damage rects inflate by `TEXT_SCALE_STEP * measured` total per
-    // axis (`STEP/2` per side) to cover composer ladder snaps — see
-    // `text_paint_bbox_local`. Expected shaped size scales by the
-    // same factor.
+    // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see `text_paint_bbox_local`).
     let inflate = 1.0 + TEXT_SCALE_STEP;
     let prev_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
@@ -824,11 +687,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     let region = h.damage_region();
     let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
 
-    // Probe deep inside the new "abcdef" rect but past where the old
-    // "abc" rect ended (x = origin.x + 30 ≈ middle of "abcdef", past
-    // the 21-px width of "abc"). Pre-fix this point is *not* in damage
-    // (per-shape rect was a zero-size point at origin); post-fix it is
-    // (curr rect spans origin..origin+42px).
+    // Probe at origin.x + 30: inside the new "abcdef" rect (42px) but past the old "abc" (21px).
     let inside_new_only = Rect::new(ORIGIN.x + 30.0, ORIGIN.y + 5.0, 1.0, 1.0);
     assert!(
         intersects(inside_new_only),
@@ -836,8 +695,6 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
          probe = {inside_new_only:?}, region = {region:?}",
     );
 
-    // Also assert prev's middle gets damaged (so the old glyph
-    // pixels actually clear).
     let inside_old = Rect::new(ORIGIN.x + 10.0, ORIGIN.y + 5.0, 1.0, 1.0);
     assert!(
         intersects(inside_old),
@@ -846,13 +703,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 }
 
-/// A run's damage covers its glyphs' ink, not only the block that places
-/// them: an italic `f` reaches past its advance on both sides, and that
-/// coverage has to be repainted when the run changes. The row is the
-/// block grown by the ink the shaper measured, then padded by the
-/// composer's scale-step fraction of that inked extent, as
-/// `inflate_text_damage` pads it. The run's draw carries the same ink,
-/// which is what its scissor covers.
+/// A run's damage covers its glyphs' ink (an italic `f` reaches past its advance): the block grown by the measured ink, then padded by the scale-step fraction as `inflate_text_damage` does.
 #[test]
 fn a_text_run_damages_its_ink_past_the_block() {
     const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
@@ -911,16 +762,9 @@ fn a_text_run_damages_its_ink_past_the_block() {
     assert_eq!(paint.calls[0].as_text().unwrap().ink, shaped.extent.ink);
 }
 
-/// Pin: a visibility flip landing on the SAME frame as a paint-row
-/// change must still damage the exact-matched rows. The union push for
-/// a `cascade_input` change used to be gated on "every row matched",
-/// so hiding a node while one of its shapes was mid-change damaged
-/// only the changed shape — the chrome and untouched shapes kept
-/// their stale pixels on screen.
+/// A visibility flip on the same frame as a paint-row change must still damage the exact-matched rows, not only the changed shape.
 #[test]
 fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
-    // Chrome corner far from the line, so its damage is geometrically
-    // distinguishable from the changed shape's.
     const CHROME_PROBE: Rect = Rect::new(44.0, 44.0, 2.0, 2.0);
     const LINE_PROBE: Rect = Rect::new(10.0, 9.0, 2.0, 2.0);
     let node = |ui: &mut Ui, hidden: bool, color: RgbaF32| {

@@ -1,14 +1,5 @@
-//! Turning a row of laid-out text into the glyph instances a pass draws.
-//!
-//! The miss half of the hit/miss split [the module doc](super) states:
-//! take the shaper's glyph lease, touch or rasterize each glyph, and
-//! stage the finished row on the [`EncodedCache`]. The hit half is the
-//! cache's own [`EncodedCache::emit_cached`], because what it must
-//! re-check before it emits is the cache's recorded slot generations.
-//!
-//! Filing a raster in the atlas is not here either: that is
-//! [`RasterPass::insert_raster`], which the icon side calls with an SVG
-//! where this one calls with a glyph.
+//! The miss half of the hit/miss split in [the module doc](super): turns a
+//! laid-out text row into glyph instances. The hit half is [`EncodedCache::emit_cached`].
 
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
@@ -21,29 +12,19 @@ use crate::gpu::raster::text_backend::encode::cache::{EncodedCache, EncodedGlyph
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::IVec2;
 
-/// The glyph-shaped half of the text pass: the encoded-run cache and the
-/// per-miss extraction scratch. The atlas it fills and the instance
-/// buffer it emits into belong to the [`RasterPass`] every method takes,
-/// which the icon side fills the same way from an entirely different
-/// rasterizer.
+/// The glyph half of the text pass: the encoded-run cache and per-miss scratch.
 #[derive(Debug, Default)]
 pub(crate) struct TextEncoder {
     cache: EncodedCache,
     /// Retained per-miss extraction scratch.
     placed: Vec<PlacedGlyph>,
-    /// The shaper's font epoch as of the last batch — see
-    /// [`Self::sync_fonts`].
+    /// The shaper's font epoch at the last batch.
     font_epoch: u32,
 }
 
 impl TextEncoder {
-    /// Drop every encoded row when the shaper's font database has moved
-    /// under it.
-    ///
-    /// Checked before a batch emits rather than swept after one: a
-    /// registered font changes which physical face a family resolves to,
-    /// and a frame that painted from stale templates has already painted
-    /// the wrong glyphs. One `u32` compare per batch buys that.
+    /// Drops every encoded row when the shaper's font database has moved,
+    /// before a batch emits, since stale templates would paint the wrong glyphs.
     pub(crate) fn sync_fonts(&mut self, font_epoch: u32) {
         if self.font_epoch != font_epoch {
             self.font_epoch = font_epoch;
@@ -51,15 +32,9 @@ impl TextEncoder {
         }
     }
 
-    /// Cache-hit fast path. Returns `true` if `run_key` resolved to a
-    /// live entry and the run's glyphs were emitted; `false` falls
-    /// through to [`Self::encode_run`].
-    ///
-    /// **A forward that stays one.** The hit/miss split has to live at
-    /// the caller, because only the caller can open the glyph lease a
-    /// miss needs and an all-hit frame must not open. Folding the two
-    /// would put the shaper inside this type, and publishing the cache
-    /// would widen it for one method.
+    /// Cache-hit fast path: `true` if `run_key` hit and was emitted, else fall
+    /// through to [`Self::encode_run`]. A forward because only the caller can
+    /// open the glyph lease a miss needs, which an all-hit frame must not open.
     pub(crate) fn try_emit_cached(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
@@ -68,19 +43,14 @@ impl TextEncoder {
         self.cache.emit_cached(pass, run_key)
     }
 
-    /// Sweep the encoded-run cache against the shaper's `frame` clock
-    /// reading. The atlas beside it ages on the same reading through
-    /// [`RasterPass::end_frame`].
+    /// Sweeps the encoded-run cache against the shaper's `frame` clock.
     pub(crate) fn end_frame(&mut self, frame: u64) {
         self.cache.sweep(frame);
     }
 
-    /// Encode one run that missed the encoded cache: extract its glyph
-    /// placements through the shaper's glyph lease (which restores evicted
-    /// buffers and applies the y-cull), touch/insert atlas slots, emit
-    /// `RasterQuad`s and populate the encoded cache as a side
-    /// effect. Callers are expected to have already filtered out
-    /// invalid keys and cache hits.
+    /// Encodes one run that missed the cache: extracts placements through the
+    /// shaper's lease, touches or inserts atlas slots, emits `RasterQuad`s and
+    /// fills the cache. Callers filter invalid keys and hits first.
     pub(crate) fn encode_run(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
@@ -97,27 +67,18 @@ impl TextEncoder {
             font_epoch: _,
         } = self;
         cache.start_row();
-        // The run's colour — already baked into the cache identity,
-        // reused as the emit colour.
         let color: RgbaF16 = bytemuck::cast(run_key.key.area_color);
 
-        // `culled` records whether the extraction dropped any line — see
-        // `EncodedCache::settle` for why that bars caching.
+        // Whether extraction dropped any line; see `EncodedCache::settle`.
         let culled = glyphs.extract_glyphs(request, placement, placed);
-        // …and `starved` the same for a glyph the atlas had no room for.
+        // The same for a glyph the atlas had no room for.
         let mut starved = false;
 
-        // Build a fresh cache entry as a side effect of the slow walk.
-        // Slots used earlier this frame cannot be eviction candidates,
-        // so an atlas eviction during the walk cannot invalidate a
-        // template already appended here.
+        // Slots used this frame are not eviction candidates, so a mid-walk eviction can't invalidate a template.
         for g in placed.iter() {
             let idx = if let Some(i) = pass.atlas.touch(&g.raster_key) {
                 i
             } else {
-                // No image at all is permanent — the same key
-                // rasterizes to nothing next frame too — so a run
-                // that skips this glyph is still a complete encode.
                 let Some(image) = glyphs.rasterize(g.raster_key) else {
                     continue;
                 };
@@ -137,8 +98,6 @@ impl TextEncoder {
             let quad = placement.quad(IVec2::new(g.x, g.y), color);
             pass.instances.push(quad);
             cache.stage(EncodedGlyph {
-                // The template is the same quad shifted to the run's
-                // own origin, so a hit replays it by adding that back.
                 instance: RasterQuad {
                     pos: [
                         quad.pos[0] - run_key.origin_x,
@@ -151,18 +110,12 @@ impl TextEncoder {
             });
         }
 
-        // The caller already filtered invalid keys; valid-key here is a
-        // precondition. Partially visible or atlas-starved runs
-        // re-encode each frame; the reverse (a cached full template
-        // replayed under narrower bounds) is safe — the batch scissor is
-        // the real clip.
+        // Partially visible or atlas-starved runs re-encode each frame; replaying a full template under narrower bounds is safe (the scissor clips).
         let complete = !culled && !starved;
         cache.settle(run_key.key, current_frame, complete);
     }
 }
 
-/// Reach-in for the GPU text tests, which assert on what a hit and an
-/// invalidation leave in the encoded cache.
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::raster::text_backend::encode::cache::EncodedCache;

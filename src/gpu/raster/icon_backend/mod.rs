@@ -1,15 +1,12 @@
-//! Icon render pass — a [`RasterPass`] filled from resvg instead of swash.
+//! Icon render pass: a [`RasterPass`] filled from resvg instead of swash.
 //!
-//! Everything from the atlas a quad reads to the draw that consumes it
-//! lives on `RasterPass`, and the text side owns an instance of the same
-//! type. What is here is the icon-shaped half: the loaded sets, the SVG
-//! rasterizer, and the prewarm that keeps a filtered icon off the frame
-//! path.
+//! The atlas-to-draw machinery lives on `RasterPass`, shared with text. Here:
+//! the loaded sets, the SVG rasterizer, and the prewarm that keeps filtered
+//! icons off the frame path.
 //!
-//! Rasterization happens here rather than upstream because this is the last
-//! point before the draw, and the first at which the icon's true device size
-//! is known — the composer has already folded in the display scale and every
-//! ancestor transform. Misses rasterize inline, exactly as a glyph miss does.
+//! Rasterization is here because it is the first point where the icon's true
+//! device size is known (display scale and ancestor transforms folded in).
+//! Misses rasterize inline, like a glyph miss.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
@@ -23,17 +20,14 @@ use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconId;
 use crate::renderer::render_buffer::icon::IconDrawRow;
 
-/// The state one [`IconBackend::prewarm`] pass covered. Both halves matter: a
-/// scale change invalidates every raster, and a set loaded afterwards has
-/// never been warmed at any scale.
+/// What one [`IconBackend::prewarm`] pass covered: a scale change invalidates
+/// every raster, and a later-loaded set was never warmed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PrewarmMark {
-    /// Raster scale, by bits — the value is only ever compared, never used
-    /// as a number, so exact equality is what is wanted here.
+    /// Raster scale, by bits: only compared, so exact equality is wanted.
     scale_bits: u32,
-    /// [`IconRegistry::epoch`], not a count of resident sets: a set
-    /// released and another loaded leaves the count where it was while
-    /// leaving nothing this pass warmed still loaded.
+    /// [`IconRegistry::epoch`], not a set count: releasing one set and loading
+    /// another keeps the count but leaves nothing warmed.
     epoch: u64,
 }
 
@@ -41,11 +35,10 @@ struct PrewarmMark {
 pub(crate) struct IconBackend {
     pass: RasterPass<IconRasterKey>,
     rasterizer: IconRasterizer,
-    /// The sets the `Ui` side has loaded. Shared, so an icon loaded on frame
-    /// N is rasterizable on frame N.
+    /// The sets the `Ui` side has loaded; shared so a set loaded on frame N
+    /// rasterizes on frame N.
     icons: IconRegistry,
-    /// What [`Self::prewarm`] has already covered, or `None` before it has
-    /// run at all.
+    /// What [`Self::prewarm`] covered, or `None` before the first run.
     warmed: Option<PrewarmMark>,
 }
 
@@ -59,23 +52,15 @@ impl IconBackend {
                     vbuf: "palantir.icon.vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.icon",
-                        // The reverse split from text: a colour icon set is the
-                        // expected content here and a tintable one the exception, so
-                        // the colour side is the one sized to hold a working set
-                        // without an immediate grow chain.
+                        // The reverse of text: colour icons are the expected content, so the colour
+                        // side is sized to avoid an immediate grow chain.
                         initial_mask_px: 256,
                         initial_color_px: 512,
-                        // The same 16 MiB as text, and for once the arithmetic agrees
-                        // across a 4x difference in bytes per texel: it caps the
-                        // colour side at 2048², which holds roughly 450 icons at 48²
-                        // — far past any plausible working set — while a larger
-                        // budget would only matter under a zoom deep enough that
-                        // `MAX_ICON_RASTER_PX` has already bound the raster. A
-                        // separate knob because that agreement is a coincidence of the
-                        // numbers, not a property of the two tenants.
+                        // The same 16 MiB as text: it caps the colour side at 2048^2, far past a
+                        // plausible icon working set. A separate knob because the match between
+                        // tenants is coincidence, not a property.
                         max_bytes: 16 << 20,
-                        // 4 MiB reaches 1024² on the colour side, which holds a
-                        // working set of a few hundred icons without evicting once.
+                        // 4 MiB reaches 1024^2 on the colour side, enough for a few hundred icons.
                         eager_growth_bytes: 4 << 20,
                     },
                     initial_instances: 256,
@@ -87,17 +72,14 @@ impl IconBackend {
         }
     }
 
-    /// Rasterize every filtered icon in every loaded set at `scale`, before
-    /// the frame path can ask for one.
+    /// Rasterize every filtered icon in every loaded set at `scale` before the
+    /// frame path asks for one.
     ///
-    /// An SVG filter costs 10-20x an unfiltered icon of the same size and
-    /// grows superlinearly, so a toolbar of them met lazily is a dropped
-    /// frame rather than a hitch. Only icons whose survey flagged `filtered`
-    /// prewarm: everything else is cheap enough to meet on demand, and
-    /// warming it would rasterize icons the session may never draw.
+    /// An SVG filter costs far more than an unfiltered icon and grows
+    /// superlinearly, so lazily meeting a toolbar of them drops a frame. Only
+    /// icons flagged `filtered` prewarm; the rest are cheap on demand.
     ///
-    /// Re-runs when the scale changes (every raster is invalid) or when a set
-    /// is loaded (it has never been warmed).
+    /// Re-runs when the scale changes or a set is loaded.
     pub(crate) fn prewarm(&mut self, ctx: &mut GpuCtx<'_>, scale: f32) {
         let mark = PrewarmMark {
             scale_bits: scale.to_bits(),
@@ -127,8 +109,7 @@ impl IconBackend {
         }
     }
 
-    /// Encode one batch of icon rows into instances, rasterizing any that the
-    /// atlas does not already hold.
+    /// Encode one batch of icon rows into instances, rasterizing atlas misses.
     pub(crate) fn prepare_batch(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -143,7 +124,6 @@ impl IconBackend {
             let slot = self.pass.atlas.slots[idx as usize]
                 .placement
                 .expect("an icon raster is at least 1x1, so its slot owns a rectangle");
-            // An icon's bearing is zero, so the pen is the quad's top-left.
             let mut quad = slot.quad_sized(row.origin, row.size, row.color);
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
@@ -152,10 +132,9 @@ impl IconBackend {
         }
     }
 
-    /// The atlas slab index holding `key`, rasterizing on a miss. `None` when
-    /// the icon could not be rasterized, or when the atlas is at its ceiling
-    /// with nothing evictable — the second is transient, so the icon simply
-    /// misses this frame and is retried on the next.
+    /// The atlas slab index holding `key`, rasterizing on a miss. `None` when the
+    /// icon could not be rasterized, or the atlas is at its ceiling with nothing
+    /// evictable (transient; retried next frame).
     fn slot(&mut self, device: &wgpu::Device, key: IconRasterKey) -> Option<u32> {
         if let Some(idx) = self.pass.atlas.touch(&key) {
             return Some(idx);
@@ -168,32 +147,23 @@ impl IconBackend {
         }
     }
 
-    /// Unload what a released icon set left behind, then hand the frame
-    /// boundary to the pass. Runs for every submit, including one that
-    /// prepared no icon batch.
-    ///
-    /// `frame` is the shared text clock, returned by
+    /// Unload what a released icon set left behind, then hand the frame boundary
+    /// to the pass; runs for every submit. `frame` is the shared text clock from
     /// [`TextBackend::end_frame`](crate::gpu::raster::text_backend::TextBackend::end_frame),
-    /// so both tenants of a `RasterAtlas` age on one clock and a keep
-    /// count means the same span in either.
+    /// so both atlas tenants age on one clock.
     pub(crate) fn end_frame(&mut self, frame: u64) {
         {
-            // Destructured so the drain's closure can hold the two caches
-            // mutably while the registry is borrowed — disjoint fields
-            // that `self.icons.drain_released(|s| self.…)` could not
-            // express.
+            // Destructured so the drain closure can borrow the two caches mutably while
+            // the registry is borrowed.
             let Self {
                 icons,
                 rasterizer,
                 pass,
                 ..
             } = self;
-            // Both stores key on `IconSetId`, and the registry is about to
-            // hand the slot to another set — so this has to happen before
-            // any later frame can mint an id that reads as the same slot.
-            // One pass over each store however many sets went, which is
-            // what keeps a caller that loads a fresh atlas per frame from
-            // paying a full walk of both on every one of them.
+            // Both stores key on `IconSetId`, and the registry is about to reuse the
+            // slot, so this must precede any later frame minting a colliding id. One pass
+            // per store however many sets were released.
             icons.drain_released(|sets| {
                 rasterizer.forget_sets(sets);
                 pass.atlas.forget(|key| !sets.contains(&key.icon.set));

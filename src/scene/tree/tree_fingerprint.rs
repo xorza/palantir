@@ -2,45 +2,17 @@
 
 use crate::common::content_hash::ContentHash;
 
-/// Whole-tree fingerprints stamped by
-/// [`Tree::post_record`](crate::scene::tree::Tree::post_record). Not
-/// per-node — one value each per finalized tree — which is why they sit
-/// beside the per-node columns
-/// ([`SubtreeRollups`](crate::scene::tree::subtree_rollups::SubtreeRollups))
-/// rather than inside them. Both are read together by the cascade's
-/// incremental-update gate.
+/// Whole-tree fingerprints stamped by [`Tree::post_record`](crate::scene::tree::Tree::post_record), read by
+/// the cascade's incremental-update gate; one value each per finalized tree, hence beside the per-node
+/// [`SubtreeRollups`](crate::scene::tree::subtree_rollups::SubtreeRollups).
 #[derive(Debug, Default)]
 pub(crate) struct TreeFingerprint {
-    /// Tree-wide hash of what the cascade's structural tables are built
-    /// from: each node's widget id, nesting, flag word, visibility and
-    /// Tab order key. Geometry and paint stay out — the cascade
-    /// refreshes those in place — so a change here is the one that
-    /// forces a full rebuild.
+    /// Hash of what the cascade's structural tables are built from (widget id, nesting, flags, visibility, Tab
+    /// order key); geometry and paint stay out, so a change here forces a full rebuild.
     pub(crate) cascade_static: ContentHash,
-    /// Three counts folded together — stored shapes, chrome rows, and
-    /// nodes — so that any move in how many paint rows this tree's
-    /// nodes emit between them shows as a different hash.
-    ///
-    /// A [`ContentHash`] rather than the counts or their sum, because
-    /// the one question asked of it is "same or not": an ordering on it
-    /// would mean nothing.
-    ///
-    /// The cascade's incremental walk can only repair a node's paint
-    /// rows *in place*, so it bails the moment a node's row count moves
-    /// — and `cascade_static` deliberately excludes chrome and direct
-    /// shapes, precisely so paint-only edits stay on the incremental
-    /// path. The gap between those two facts is a widget that adds a
-    /// shape without moving (a caret appearing, a focus ring, a hover
-    /// highlight): `can_update` waved it through, the walk got partway
-    /// and gave up, and the whole cascade was rebuilt anyway. This lets
-    /// `can_update` see that case coming.
-    ///
-    /// A conservative signal, and only ever an optimisation — the walk's
-    /// per-node length check stays the correctness backstop. It can miss
-    /// (one node gains a shape while another loses one, leaving the
-    /// counts level), and it can over-fire (an *invisible* node gaining
-    /// chrome bumps the count without emitting a row). Neither changes
-    /// the answer the length check reaches — a miss just arrives at it
-    /// later, an over-fire pays one wasted rebuild to get there.
+    /// Counts of stored shapes, chrome rows and nodes folded together, so any move in how many paint rows
+    /// nodes emit changes the hash. It lets `can_update` foresee that the incremental walk, which repairs paint
+    /// rows only in place, would bail (a widget adding a shape without moving, e.g. a caret). A conservative
+    /// optimisation: it can miss or over-fire, and the per-node length check stays the correctness backstop.
     pub(crate) paint_counts: ContentHash,
 }

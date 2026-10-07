@@ -18,16 +18,13 @@ use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::cell::RefCell;
 
-/// Pin: an empty frame drives the full pipeline without panicking and
-/// produces no draw commands.
+/// Pin: an empty frame draws nothing.
 #[test]
 fn empty_ui_drives_a_frame_safely() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|_| {});
 
-    // Empty UI on the first frame: damage is `None` (skip). Force `Full`
-    // to exercise encode/compose and assert the buffers come out empty.
-    // No mesh/polyline bytes were recorded, so the Ui record store is empty.
+    // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
     frontend.build(
         h.ui.frame_scene(),
@@ -41,7 +38,6 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
 
-    // Synthetic viewport root: even an empty user record produces one node.
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
     assert!(h.engines.damage.prev.is_empty());
     assert!(h.engines.damage.counters.dirty().is_empty());
@@ -49,8 +45,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
 
-/// Pin: an empty frame followed by a populated frame works (the
-/// recorder retains no per-frame state across frames).
+/// Pin: an empty frame then a populated one works.
 #[test]
 fn empty_then_populated_frame() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
@@ -58,11 +53,8 @@ fn empty_then_populated_frame() {
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
-    // Synthetic viewport root + user Panel = 2 records.
     assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 2);
-    // The user Panel is rowless (no chrome, no shapes, no children) so
-    // it gets no prev entry; the viewport root tracks it as a
-    // child-marker row — one entry total.
+    // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
     assert_eq!(h.engines.damage.prev.len(), 1);
 }
 
@@ -74,8 +66,7 @@ fn frame_rejects_zero_scale_factor() {
     let _ = h.frame(|_| {});
 }
 
-/// Pin: `Display::logical_rect` divides physical by `scale_factor()`,
-/// which is both factors — so the user scale takes room out of layout.
+/// Pin: `Display::logical_rect` divides by both scale factors.
 #[test]
 fn display_logical_rect_scales() {
     let d = Display::from_physical(UVec2::new(800, 600), 2.0);
@@ -88,10 +79,7 @@ fn display_logical_rect_scales() {
     assert_eq!(zoomed.logical_rect(), Rect::new(0.0, 0.0, 200.0, 150.0));
 }
 
-/// On a true first frame the user closure runs **twice** — once for the
-/// blackout warmup pass, once for the real pass. The second frame runs
-/// it once. The existing `double_layout` arm fires when an input action
-/// or a `request_relayout` lands; warmup is the only third trigger.
+/// The first frame runs the user closure twice (warmup, real pass).
 #[test]
 fn cold_start_runs_record_closure_twice_on_first_frame() {
     let mut h = cold_ui();
@@ -108,9 +96,7 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
     );
 }
 
-/// The warmup pass must see an empty `InputState`. A `PointerMoved`
-/// delivered before frame 1 must be invisible to widgets recording
-/// during warmup, then visible during the real pass.
+/// Warmup sees an empty `InputState`; a pre-frame `PointerMoved` appears only in the real pass.
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
     let mut h = cold_ui();
@@ -133,17 +119,10 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
     );
 }
 
-/// Hover routing on frame 1: pointer is over a clickable widget when
-/// the window first opens. Before this fix, `Ui::on_input` would
-/// hit-test against an empty cascade so `hovered` would stay `None`
-/// until the second frame. The warmup builds the cascade and
-/// `refresh_pointer_targets` routes the held pointer against it.
+/// Pointer over a widget at window open: `hovered` is set on frame 1.
 #[test]
 fn cold_start_routes_held_pointer_against_warmup_cascade() {
     let mut h = cold_ui();
-    // Cursor lands inside the future button rect (button is anchored at
-    // (0,0) with 60×30 size below). Delivered before any frame ran;
-    // cascade is empty so on_input can't resolve a target.
     h.move_to(Vec2::new(20.0, 10.0));
     assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
 
@@ -164,8 +143,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     );
 }
 
-/// First frame, no input — assert the contract pinned by the in-engine
-/// `assert!(!first_frame || matches!(damage, Damage::Full))`.
+/// First frame, no input: `Damage::Full`.
 #[test]
 fn cold_start_first_frame_damage_is_full() {
     let mut h = cold_ui();
@@ -188,10 +166,7 @@ fn cold_start_first_frame_damage_is_full() {
     );
 }
 
-/// Relayout / repaint requests issued during the blackout pass must
-/// not bias the real-pass `double_layout` gate — otherwise a widget
-/// whose first record legitimately asks for relayout would force a
-/// third record pass on frame 1 (warmup + pass-A + pass-B).
+/// Requests during the blackout pass must not bias the real pass's `double_layout` gate.
 #[test]
 fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     let mut h = cold_ui();
@@ -199,11 +174,7 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     h.frame(|ui| {
         calls += 1;
         if calls == 1 {
-            // Simulate a widget whose first-frame measure depends on
-            // state that wasn't seeded yet — fires once during warmup,
-            // then is satisfied. Without the reset in `frame`,
-            // this leaks into the real pass's `double_layout` arm and
-            // we'd see calls == 3 below.
+            // Fires once in warmup; without the reset in `frame` it leaks into the real pass.
             ui.request_relayout();
         }
     });
@@ -213,10 +184,7 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     );
 }
 
-/// The warm `UiHarness` constructors mark the recorder as warm by
-/// synthesizing a `prev_stamp`. Tests must observe single-record
-/// semantics on their first `run_at` so they don't have to reason
-/// about the double-call contract for every assertion.
+/// Warm `UiHarness` constructors fake `prev_stamp`, giving single-record semantics.
 #[test]
 fn warm_constructors_skip_the_warmup_pass() {
     let mut h = UiHarness::new(SURFACE);
@@ -228,11 +196,7 @@ fn warm_constructors_skip_the_warmup_pass() {
     );
 }
 
-/// What the warmup pass asks of the input outlives the pass: an app that
-/// moves focus once, on its first record, does so during warmup. Each row
-/// starts from a focus and makes one request on the first record only.
-/// Both passes then record with the requested focus, and the frame ends
-/// on it.
+/// Focus requests made during warmup outlive it.
 #[test]
 fn warmup_keeps_focus_requests() {
     let target = WidgetId::from_hash("warmup-focus");
@@ -261,9 +225,7 @@ fn warmup_keeps_focus_requests() {
     }
 }
 
-/// A scope withdrawn during warmup is gone for the visible pass. Focus
-/// sits inside `inner`, so with `inner` live the Escape that arrived
-/// before frame 1 is granted to it; withdrawn, the grant falls to `root`.
+/// A scope withdrawn during warmup is gone for the visible pass.
 #[test]
 fn warmup_keeps_scope_releases() {
     use crate::input::key_class::KeyFilter;

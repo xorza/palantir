@@ -7,9 +7,7 @@ use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
 use std::hash;
 
-/// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
-/// Star) with optional `[min, max]` clamps. Defaults: `min = 0.0`,
-/// `max = INFINITY` (no clamp).
+/// One row or column definition for a `Grid`: a `Sizing` with `[min, max]` clamps.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Track {
@@ -19,17 +17,13 @@ pub struct Track {
 }
 
 impl Track {
-    /// This track's Hug floor: its content's min-content extent, raised
-    /// to the track's own `min` and capped at its `max`. The one place
-    /// the three bounds are combined, so the measure solve, the arrange
-    /// solve, and the intrinsic aggregator cannot disagree about which
-    /// wins.
+    /// This track's Hug floor: min-content raised to `min` and capped at `max`; one place so measure, arrange and intrinsic agree.
     #[inline]
     pub(crate) const fn content_floor(&self, min_content: f32) -> f32 {
         min_content.max(self.min).min(self.max)
     }
 
-    /// A track sized by `size`, with no bounds of its own.
+    /// A track with the given sizing.
     pub const fn new(size: Sizing) -> Self {
         Self {
             size,
@@ -38,10 +32,7 @@ impl Track {
         }
     }
 
-    /// The four constructors mirror [`Sizing`]'s name for name — `HUG`,
-    /// `FILL`, `fixed`, `fill` — because a track *is* a sizing plus two
-    /// clamps, and one vocabulary is what keeps `fill` from meaning a
-    /// constructor here and an accessor there.
+    /// The four constructors mirror [`Sizing`]'s name for name.
     pub const HUG: Self = Self::new(Sizing::HUG);
 
     /// A track taking an equal share of the leftover; [`Self::fill`]
@@ -68,9 +59,7 @@ impl Track {
         Self::new(Sizing::fill(weight))
     }
 
-    /// Set the lower size clamp. `min`: a *length*. The order against the
-    /// maximum is coerced: the minimum wins, as in CSS and WPF, so a
-    /// maximum below it is raised to it.
+    /// Set the lower size clamp (a *length*); a maximum below it is raised.
     ///
     /// # Panics
     ///
@@ -82,8 +71,7 @@ impl Track {
         self
     }
 
-    /// Set the upper size clamp. `max`: an *extent*, so `+inf` is the
-    /// unbounded maximum. A maximum below the minimum is raised to it.
+    /// Set the upper size clamp (an *extent*; `+inf` is unbounded); raised to the minimum if below it.
     ///
     /// # Panics
     ///
@@ -94,9 +82,7 @@ impl Track {
         self
     }
 
-    /// One `u64` for the two clamps rather than a `write_u32` each — the
-    /// pairing [`FloatHash`] already gives [`glam::Vec2`], on a value the
-    /// grid hashes per track per frame.
+    /// One `u64` for the two clamps, as [`FloatHash`] does for [`glam::Vec2`].
     #[inline]
     fn hash_bits<H: hash::Hasher, F: Fn(f32) -> u32 + Copy>(&self, h: &mut H, bits: F) {
         self.size.hash_bits(h, bits);

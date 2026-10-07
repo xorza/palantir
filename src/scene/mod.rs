@@ -1,8 +1,4 @@
-//! Recorded scene state. [`forest::Forest`] owns one arena per layer;
-//! [`crate::cascade`] and [`crate::damage`] turn that recording into the
-//! immutable per-frame data consumed by input and rendering.
-//! [`record_store`] retains the variable-sized payloads referenced by
-//! recorded shapes.
+//! Recorded scene state. [`forest::Forest`] owns one arena per layer; [`crate::cascade`] and [`crate::damage`] turn it into the per-frame data input and rendering consume; [`record_store`] retains the variable-sized payloads recorded shapes reference.
 
 pub(crate) mod endpoint;
 pub(crate) mod forest;

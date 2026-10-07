@@ -1,40 +1,28 @@
-//! Vocabulary for "things that can animate." A type is `Animatable`
-//! when it supports interpolation, spring displacement arithmetic, and a
-//! squared distance measured in its own settle tolerance. Value-dependent
-//! snap-only fields normalize before that arithmetic. Built-in impls
-//! cover `f32`, `Vec2`, `RgbaF32`. Domain types (`Stroke`,
-//! `Background`, ...) opt in via `#[derive(Animatable)]` — see
-//! `palantir-anim-derive` and the type-erased `AnimMap` storage.
+//! Vocabulary for "things that can animate." An `Animatable` type supports
+//! interpolation, spring displacement arithmetic, and a squared distance in its
+//! own settle tolerance; value-dependent snap-only fields normalize first.
+//! Built-in impls cover `f32`, `Vec2`, `RgbaF32`; domain types opt in via
+//! `#[derive(Animatable)]` (`palantir-anim-derive`, type-erased `AnimMap`).
 
 use crate::primitives::math::domain::EPS;
 use glam::Vec2;
 
-/// Math-only trait. Storage is decoupled (type-erased `AnimMap`
-/// keyed on `TypeId`), so adding a new `Animatable` type doesn't
-/// require touching central code.
+/// Math-only trait; storage is the type-erased `AnimMap` keyed on `TypeId`.
 ///
-/// `PartialEq` supertrait lets `tick` short-circuit retarget
-/// detection with a bytewise compare — most frames have an unchanged
-/// target, so we skip the sub + magnitude pair on the steady-state
-/// path. All built-in and derived types already implement
-/// `PartialEq`.
+/// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
+/// unchanged.
 ///
-/// `Clone` (not `Copy`): the heavy `Animatable` types — `Background`
-/// (124 B), `Brush` (60 B with inline gradient stops), `Stroke` — ride
-/// the recording chain once per chromed widget per frame, where
-/// auto-`Copy` costs a `vmovups` ladder per hop (~35 % self in the node
-/// opener when they were `Copy`). A `Copy` supertrait here would bring
-/// that back in through the bound, so duplication sites spell
-/// `.clone()` and every copy stays a call-site decision; small `Copy`
-/// types (`f32`, `Vec2`, `RgbaF32`) still pass through the trait at zero
-/// cost because `Copy → Clone` is a no-op codegen. Both sizes are
-/// pinned by `hot_struct_sizes_are_pinned`.
+/// `Clone`, not `Copy`: heavy types (`Background`, `Brush`, `Stroke`) ride the
+/// recording chain once per chromed widget per frame, where auto-`Copy` was
+/// measurably costly. A `Copy` supertrait would bring that back, so copies
+/// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned
+/// by `hot_struct_sizes_are_pinned`.
 pub trait Animatable: Clone + PartialEq + 'static {
-    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`.
-    /// A curve may overshoot it, so an implementation must not clamp.
+    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`. A curve may
+    /// overshoot, so implementations must not clamp.
     fn lerp(a: Self, b: Self, t: f32) -> Self;
-    /// Componentwise difference — the displacement a spring works on.
     #[must_use]
+    /// Difference `self - other`.
     fn sub(self, other: Self) -> Self;
     /// Componentwise sum, the inverse of [`Self::sub`].
     #[must_use]
@@ -42,49 +30,40 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// Componentwise multiplication by a scalar.
     #[must_use]
     fn scale(self, k: f32) -> Self;
-    /// Squared Euclidean length in the type's own unit. For scalars:
-    /// `self * self`. For vectors: dot(self, self). For derived compound
-    /// types: sum of component squared magnitudes.
+    /// Squared Euclidean length in the type's own unit (`self * self` for
+    /// scalars, `dot(self, self)` for vectors, summed components for derives).
     fn magnitude_squared(self) -> f32;
-    /// Squared length in units of this type's settle tolerance: under
-    /// `1.0`, a displacement this size is too small to see, and a motion
-    /// may end on its target instead of travelling it.
+    /// Squared length in units of this type's settle tolerance: under `1.0` a
+    /// displacement is too small to see and motion may end on its target.
     ///
-    /// **Unit-free by default.** An `f32` is a pixel in one animation and
-    /// a 0..1 fraction of a 200 px body in the next, so the default
-    /// divides [`Self::magnitude_squared`] by `EPS²` (`EPS = 1e-4`) — fine
-    /// enough for either. A type that knows its unit says so: `RgbaF32`
-    /// settles at `1/4096`, under one 8-bit sRGB step near black.
+    /// **Unit-free by default:** an `f32` may be pixels or a 0..1 fraction, so the
+    /// default divides [`Self::magnitude_squared`] by `EPS²` (`EPS = 1e-4`). A type
+    /// that knows its unit says so: `RgbaF32` settles at `1/4096`, under one 8-bit
+    /// sRGB step near black.
     ///
-    /// The derive sums its fields' own distances, so a compound never
-    /// settles a pixel field at a colour's tolerance or the reverse. A
-    /// derive whose struct has one unit of its own names it with
-    /// `#[animate(settle_eps = ...)]` instead.
+    /// The derive sums its fields' own distances, so pixel and colour fields keep
+    /// their own tolerances. A derive with one unit of its own uses
+    /// `#[animate(settle_eps = ...)]`.
     #[inline]
     fn settle_distance_squared(self) -> f32 {
         self.magnitude_squared() / (EPS * EPS)
     }
-    /// The additive identity — zero displacement, and the velocity a
-    /// fresh spring starts at.
+    /// The additive identity: zero displacement and a fresh spring's velocity.
     fn zero() -> Self;
 
     /// Normalize fields that cannot participate in spring arithmetic.
     ///
-    /// Runs when a spring takes a new target or a row becomes a spring —
-    /// the only moments a value can meet a target it cannot do arithmetic
-    /// against. Between them the value is `target.add(offset)`, so an
-    /// [`Self::add`] that keeps `self` for such a field is what keeps it
-    /// compatible. Compound derives forward this hook fieldwise.
-    /// Implementations can install the target and clear only their
-    /// matching velocity without disturbing independently animated
-    /// sibling fields.
+    /// Runs when a spring takes a new target or a row becomes a spring. Between
+    /// those the value is `target.add(offset)`, so an [`Self::add`] that keeps
+    /// `self` for such a field keeps it compatible. Compound derives forward this
+    /// fieldwise; implementations may install the target and clear only their
+    /// matching velocity.
     #[inline]
     fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) {}
 }
 
-// Written per type rather than as a blanket impl over `Add + Sub +
-// Mul<f32>`: the blanket would claim every such type in the crate and
-// beyond, and `Animatable` is a decision each type makes.
+// Per type, not a blanket over `Add + Sub + Mul<f32>`, which would claim every
+// such type: `Animatable` is each type's decision.
 impl Animatable for f32 {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
@@ -139,13 +118,9 @@ impl Animatable for Vec2 {
     }
 }
 
-// `RgbaF32` derives `Animatable` (see `primitives/paint/color/mod.rs`); the
-// generated impl is per-component lerp/add/sub/scale,
-// sum-of-squared-component magnitude_squared, all-zeros for `zero()`.
+// `RgbaF32` derives `Animatable` (see `primitives/paint/color/mod.rs`).
 //
-// No `Option<T>` blanket: when a struct's field is "absent or value"
-// (e.g. a stroke), use a sentinel value (`Stroke::NONE`) rather
-// than `Option<Stroke>` and let the paint-time `is_noop` filter
-// handle the absent case. A blanket impl can only return `Some(...)`
-// from arithmetic, which forces every consumer to scrub the no-op
-// output back to `None` for hash equality.
+// No `Option<T>` blanket: for "absent or value" fields use a sentinel
+// (`Stroke::NONE`) and let the paint-time `is_noop` filter handle absence. A
+// blanket could only return `Some(...)`, forcing consumers to scrub no-ops
+// back to `None` for hash equality.

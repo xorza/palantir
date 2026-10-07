@@ -20,32 +20,26 @@ const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
 /// A headless device and its queue, waited idle when the lease drops.
 #[derive(Debug)]
 pub struct HeadlessTestGpuLease {
-    /// The leased device's queue.
+    /// The queue.
     pub queue: wgpu::Queue,
-    /// The leased device.
+    /// The device.
     pub device: wgpu::Device,
-    /// The adapter the device opened on — its name, backend and driver —
-    /// which a golden suite records beside its goldens.
+    /// The adapter the device opened on; golden suites record it.
     pub adapter: String,
 }
 
 impl HeadlessTestGpuLease {
-    /// What every test driver's target allows: draw into it, and copy
-    /// either way for readback and clears.
+    /// Usages every test target allows: draw into it, copy either way.
     pub const TARGET_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
         .union(wgpu::TextureUsages::COPY_DST)
         .union(wgpu::TextureUsages::COPY_SRC);
 
-    /// The device and queue, as a host takes them.
+    /// Borrowed handles to the device and queue.
     pub fn handles(&self) -> Gpu {
         Gpu::new(self.device.clone(), self.queue.clone())
     }
 
-    /// A 2D `Rgba8UnormSrgb` render target of `size`, with
-    /// [`Self::TARGET_USAGES`] — what most tests draw into.
-    ///
-    /// `label` shows up in RenderDoc and in wgpu's validation errors, so it
-    /// should name the test, not the shape.
+    /// A 2D `Rgba8UnormSrgb` render target of `size` with [`Self::TARGET_USAGES`]; `label` names the test in RenderDoc and validation errors.
     pub fn target(&self, label: &str, size: UVec2) -> wgpu::Texture {
         self.target_with(
             label,
@@ -55,9 +49,7 @@ impl HeadlessTestGpuLease {
         )
     }
 
-    /// [`Self::target`] in a format and with usages of the caller's
-    /// choosing — for a test about a format, or about what a target
-    /// without one of the usages does.
+    /// [`Self::target`] in a chosen format and usages.
     pub fn target_with(
         &self,
         label: &str,
@@ -78,27 +70,17 @@ impl HeadlessTestGpuLease {
             .expect("wait for the headless test device");
     }
 
-    /// A new device under this process's GPU lock, which the first device
-    /// takes and every later one shares — or why there is none, worded
-    /// for the panic every caller turns it into.
+    /// A new device under this process's GPU lock, or why there is none, worded for the caller's panic.
     fn request() -> Result<Self, String> {
         static PROCESS_LOCK: OnceLock<File> = OnceLock::new();
         PROCESS_LOCK.get_or_init(lock_gpu_process);
         let started = Instant::now();
         let gpu = loop {
-            // The same preference the benches take. A test is worth little
-            // if it draws on an adapter no user is looking at: where a machine
-            // offers more than one — a laptop with its integrated GPU exposed,
-            // or anywhere a software rasterizer is installed alongside a real
-            // driver — `LowPower` picks the other one, and every golden then
-            // records what that other one drew.
+            // HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
             match RequestedGpu::headless(PowerPreference::HighPerformance, wgpu::Features::empty())
             {
                 Ok(gpu) => break gpu,
-                // Only a missing adapter is worth waiting on — another test
-                // binary may still be tearing its own down. No backend at all,
-                // an adapter that cannot meet the requirements, or a refused
-                // device will say exactly the same thing two seconds later.
+                // Only a missing adapter is worth retrying: another test binary may still be tearing its own down.
                 Err(GpuRequestError::RequestAdapter { .. })
                     if started.elapsed() < ADAPTER_RETRY_TIMEOUT =>
                 {
@@ -129,13 +111,9 @@ impl Drop for HeadlessTestGpuLease {
 
 /// Lease the one GPU shared by this process.
 ///
-/// Initialization takes an interprocess OS lock that remains held until the
-/// test process exits, preventing another Palantir test binary from entering
-/// its GPU section concurrently.
+/// Initialization takes an interprocess OS lock held until the process exits, so no other Palantir test binary uses the GPU concurrently.
 ///
-/// A failed request is kept as well: every later lease in the process
-/// panics with the same message at once, instead of each GPU test paying
-/// the adapter retry again.
+/// A failed request is cached: later leases panic with the same message at once.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
     static GPU: OnceLock<Result<HeadlessTestGpuLease, String>> = OnceLock::new();
     match GPU.get_or_init(HeadlessTestGpuLease::request) {
@@ -148,19 +126,12 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
     }
 }
 
-/// Lease a device no other test has touched, for a test whose numbers
-/// depend on the device's history.
-///
-/// Part of what wgpu allocates per submission is sized by every resource
-/// the device has seen, so on the shared device a test counts what the
-/// tests before it left behind. Under the same interprocess lock as
-/// [`headless_test_gpu`].
+/// Lease a device no other test has touched, for tests whose numbers depend on device history (wgpu sizes per-submission allocation by every resource seen). Same lock as [`headless_test_gpu`].
 pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
     HeadlessTestGpuLease::request().unwrap_or_else(|why| panic!("{why}"))
 }
 
-/// `name (backend, driver driver_info)`, leaving out the driver fields a
-/// backend does not report — Metal reports neither.
+/// `name (backend, driver driver_info)`, omitting driver fields the backend does not report.
 fn adapter_identity(info: &wgpu::AdapterInfo) -> String {
     let driver = [info.driver.as_str(), info.driver_info.as_str()]
         .into_iter()
@@ -175,11 +146,7 @@ fn adapter_identity(info: &wgpu::AdapterInfo) -> String {
 }
 
 fn lock_gpu_process() -> File {
-    // The scope stays one working copy, as it was when the file sat under the
-    // manifest directory: two checkouts test in parallel, two binaries of one
-    // checkout take turns. The hashed manifest path carries that scope into a
-    // directory every checkout shares. It also keeps two users off one file,
-    // which the sticky bit on `/tmp` would leave unopenable for the second.
+    // One scope per working copy: two checkouts test in parallel, two binaries of one checkout take turns; the hashed manifest path carries that scope into a shared directory and keeps users off each other's file.
     let mut hasher = DefaultHasher::new();
     env!("CARGO_MANIFEST_DIR").hash(&mut hasher);
     let path = env::temp_dir().join(format!("palantir-gpu-test-{:016x}.lock", hasher.finish()));

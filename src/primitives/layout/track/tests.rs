@@ -18,9 +18,7 @@ fn bounds_accept_valid_ranges_in_either_order() {
     assert_eq!(PINNED.max, 5.0);
 }
 
-/// A minimum is a length and a maximum an extent, so each panics with its
-/// kind's rule. Their order is coerced rather than checked: the minimum
-/// wins, so a maximum below it is raised to it in either setter order.
+/// A minimum is a length and a maximum an extent, so each panics with its kind's rule. Order is coerced: the minimum wins, raising a lower maximum in either setter order.
 #[test]
 fn bounds_validate_their_kinds_and_coerce_their_order() {
     type Case = (&'static str, fn() -> Track);

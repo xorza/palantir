@@ -1,5 +1,4 @@
-//! Reading a `PaintCapture` back: what counts as a rect, a shadow, a clip
-//! pair.
+//! Reading a `PaintCapture` back: what counts as a rect, a shadow, a clip pair.
 
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
@@ -9,10 +8,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 
-/// A plain rectangle draw. Rects, shadows, and triangles all record as
-/// [`PaintCall::Quad`] now, and a shadow shares the rect *geometry* — so
-/// isolating a rectangle takes both tests: rect geometry, and a fill
-/// kind that isn't the shadow SDF.
+/// A plain rectangle draw: rect geometry with a fill kind that isn't the shadow SDF (shadows share the geometry).
 pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
     match call {
         PaintCall::Quad(p)
@@ -24,7 +20,6 @@ pub(super) fn as_rect(call: &PaintCall) -> Option<&DrawQuadPayload> {
     }
 }
 
-/// The shadow half of the same split.
 pub(super) fn as_shadow(call: &PaintCall) -> Option<&DrawQuadPayload> {
     match call {
         PaintCall::Quad(p) if p.fill.kind.is_shadow() => Some(p),
@@ -36,9 +31,7 @@ pub(super) fn count_draw_rects(cmds: &PaintCapture) -> usize {
     cmds.calls.iter().filter(|c| as_rect(c).is_some()).count()
 }
 
-/// The screen rect of the rect quad [`screen_rects_by_fill`] found filled
-/// with `color`, compared as the encoder stores it: `RgbaF16`, bit for
-/// bit.
+/// The screen rect of the quad found filled with `color`, compared bit for bit.
 pub(super) fn rect_with_fill(drawn: &[(RgbaF16, Rect)], color: RgbaF32) -> Option<Rect> {
     let color = RgbaF16::from(color);
     drawn
@@ -47,8 +40,6 @@ pub(super) fn rect_with_fill(drawn: &[(RgbaF16, Rect)], color: RgbaF32) -> Optio
         .map(|(_, rect)| *rect)
 }
 
-/// Walk a recorded paint stream and return the effective screen-space rect
-/// for each `Rect` call, keyed by its fill colour.
 pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
@@ -72,8 +63,6 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
                 clip = Some(intersected);
             }
             PaintCall::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            // Rectangles only — shadows and triangles ride the same
-            // call now, and `as_rect` is what still separates them.
             call if as_rect(call).is_some() => {
                 let p = as_rect(call).unwrap();
                 let screen = t.apply_rect(quad_rect(p));
@@ -97,7 +86,6 @@ pub(super) fn screen_rects_by_fill(cmds: &PaintCapture) -> Vec<(RgbaF16, Rect)> 
     out
 }
 
-/// The logical-px paint rect of a rect-geometry quad.
 #[track_caller]
 pub(super) fn quad_rect(p: &DrawQuadPayload) -> Rect {
     match p.geom {

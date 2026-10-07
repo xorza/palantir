@@ -1,45 +1,28 @@
-//! The device ceiling every texture this crate touches is measured
-//! against.
+//! The device ceiling every texture is measured against.
 
 use crate::renderer::error::ImageTooLarge;
 use glam::UVec2;
 use std::num::NonZeroU32;
 
-/// The selected device's `max_texture_dimension_2d` — the single ceiling
-/// palantir imposes on any texture it allocates or accepts.
+/// The device's `max_texture_dimension_2d`, the one ceiling for any texture palantir allocates or accepts.
 ///
-/// **One value, threaded as one thing.** The gradient atlas caps its row
-/// count under it, image registration rejects a source past it, and
-/// [`Ui::max_image_dimension`](crate::Ui::max_image_dimension) reports it
-/// so a caller can size a downscale against the device actually in use.
-/// A bare `Option<NonZeroU32>` threaded to all three from the same call site
-/// would leave nothing but the argument name saying they are the same
-/// number, and would put the enforcement inside the image registry, whose
-/// job is the upload/release lifecycle and not this.
-///
-/// `None` is a standalone CPU recorder: no device to ask, and so no
-/// ceiling to enforce.
+/// The gradient atlas, image registration and
+/// [`Ui::max_image_dimension`](crate::Ui::max_image_dimension) share it as one type. `None` is a standalone CPU recorder: no device, no ceiling.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TextureLimit(Option<NonZeroU32>);
 
 impl TextureLimit {
-    /// The ceiling a device granted at creation — see
-    /// `Gpu::max_texture_dim`.
+    /// The ceiling a device granted at creation; see `Gpu::max_texture_dim`.
     pub(crate) const fn from_device(max_dimension: NonZeroU32) -> Self {
         Self(Some(max_dimension))
     }
 
-    /// The largest width or height this limit accepts, or `None` where
-    /// there is no device and so no ceiling.
+    /// The largest width or height accepted, or `None` with no device.
     pub(crate) const fn max_dimension(self) -> Option<NonZeroU32> {
         self.0
     }
 
-    /// Reject `size` when either axis exceeds the ceiling.
-    ///
-    /// Rejects rather than shrinks: a caller that wants the biggest
-    /// texture a machine will take asks [`Self::max_dimension`] first and
-    /// scales its source, which is a decision only it can make.
+    /// Reject `size` when either axis exceeds the ceiling; never shrinks, since scaling is the caller's call.
     pub(crate) fn accepts(self, size: UVec2) -> Result<(), ImageTooLarge> {
         match self.0.map(NonZeroU32::get) {
             Some(max_dimension) if size.x > max_dimension || size.y > max_dimension => {
@@ -60,9 +43,7 @@ mod tests {
     use glam::UVec2;
     use std::num::NonZeroU32;
 
-    /// What the accessor reports is exactly what the check enforces — a
-    /// caller sizing a downscale against it must land on the largest image
-    /// that still registers, not one past it.
+    /// The accessor reports exactly what the check enforces.
     #[test]
     fn the_reported_ceiling_is_the_one_enforced() {
         let limit = TextureLimit::from_device(NonZeroU32::new(4).unwrap());
@@ -79,7 +60,7 @@ mod tests {
         }
     }
 
-    /// A deviceless recorder reports the ceiling it enforces: none.
+    /// A deviceless recorder reports none.
     #[test]
     fn a_deviceless_limit_accepts_any_size() {
         let limit = TextureLimit::default();

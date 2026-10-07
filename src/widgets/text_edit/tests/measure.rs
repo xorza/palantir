@@ -1,11 +1,5 @@
-//! Measurement stability across focus transitions. A `Hug`-width
-//! editor's desired width must not snap to zero when it gains focus
-//! with an empty buffer — the placeholder shape is recorded with a
-//! transparent brush in that state so the leaf still has content to
-//! measure.
-//!
-//! See `text_edit::mod.rs::show` ("Text or placeholder…" block) and
-//! `AxisPlacement::arrange` for the two invariants this test guards.
+//! Measurement stability across focus transitions: a `Hug` editor's width must not snap to zero on focus with
+//! an empty buffer (the placeholder is recorded with a transparent brush so the leaf has content).
 
 use crate::widgets::text_edit::tests::*;
 
@@ -34,24 +28,17 @@ fn frame(h: &mut UiHarness, buf: &mut String) -> NodeId {
     node.unwrap()
 }
 
-/// Empty-buffer editor inside a `Hug` parent: width when focused must
-/// equal width when unfocused. Previously the focused branch skipped
-/// recording the placeholder shape (only the buffer, which is empty,
-/// was recorded), so the leaf measured to zero content and the parent
-/// snapped to the editor's `min_size` floor — visible jitter every
-/// click.
+/// An empty-buffer editor in a `Hug` parent has the same width focused and unfocused.
 #[test]
 fn empty_editor_width_is_stable_across_focus() {
     let mut h = UiHarness::new(SIZE);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
-    // Two unfocused warm-up frames so layout cache stabilises.
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
     let w_unfocused = h.ui.arranged_rect(Layer::Main, node).size.w;
 
-    // Focus the editor and re-measure.
     h.set_focus(id);
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
@@ -69,9 +56,7 @@ fn empty_editor_width_is_stable_across_focus() {
 
 const LONG: &str = "the quick brown fox jumps over the lazy dog";
 
-/// Build one `container_w`-wide `Fixed` hstack holding a single-line
-/// editor sized `editor_w` on the main axis. Two frames so the layout
-/// cache stabilises, matching `frame` above.
+/// A `container_w`-wide `Fixed` hstack holding a single-line editor sized `editor_w`, primed two frames.
 fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
@@ -93,24 +78,14 @@ fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w:
     node.unwrap()
 }
 
-/// A `Fill`-width single-line editor must shrink *below* its own text
-/// content when its container is narrower than the text, and stretch to
-/// exactly fill a container wider than the text. The editor clips
-/// (`ClipMode::Rect`) and scrolls, so its recorded text uses
-/// `TextWrap::Scroll` — zero min-content — and the Fill floor is the
-/// editor's padding, not the buffer's natural width. Before this fix
-/// `TextWrap::SingleLine` reported the full text width as min-content, so
-/// the Fill floor froze at the text width: the field refused to get
-/// smaller than its content and overflowed any narrower container.
-///
-/// A `Hug`-width editor still hugs its buffer (its own `min_size.w`
-/// reservation floors it) — checked here as the natural-width baseline.
+/// A `Fill`-width single-line editor shrinks below its text in a narrow container and fills a wide one: it
+/// clips and scrolls, so its text uses `TextWrap::Scroll` (zero min-content) and the Fill floor is its padding.
+/// A `Hug` editor still hugs its buffer, the natural-width baseline.
 #[test]
 fn fill_width_editor_shrinks_below_text_content() {
     const NARROW_W: f32 = 120.0;
     let mut h = UiHarness::new(UVec2::new(2100, 200));
 
-    // Natural text width: a Hug editor in a wide container hugs its buffer.
     let mut buf = LONG.to_string();
     let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
     let text_w = h.ui.arranged_rect(Layer::Main, hug).size.w;
@@ -119,7 +94,6 @@ fn fill_width_editor_shrinks_below_text_content() {
         "fixture requires the text ({text_w}) to be wider than the narrow container ({NARROW_W})",
     );
 
-    // Fill editor in a narrow container shrinks to fill it, well below the text.
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
     let fill_w = h.ui.arranged_rect(Layer::Main, fill).size.w;
@@ -166,10 +140,7 @@ fn stable_editor_uses_one_direct_layout_probe() {
     }
 }
 
-/// The placeholder takes every form of text a widget takes, and each one
-/// measures the same: borrowed, owned, interned this pass, and `fmt!`
-/// output. The interned form is read back out of the arena while the
-/// field still measures, which is the case a plain `&str` never meets.
+/// The placeholder takes every text form (borrowed, owned, interned, `fmt!`) and each measures the same.
 #[test]
 fn every_text_form_measures_the_same_placeholder() {
     use crate::primitives::text::text_input::TextInput;

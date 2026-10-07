@@ -1,19 +1,11 @@
-//! Scalar helpers the engines keep one definition of: the [`F32Px`] and
-//! [`Vec2Ext`] methods on the scalars themselves, and a free conversion
-//! whose exact form is a contract rather than a detail.
+//! Scalar helpers the layout and paint engines share one definition of.
 
 use glam::Vec2;
 
-/// A 0..1 value as a byte: rounded half up, saturating outside the
-/// range, and zero for NaN.
+/// A 0..1 value as a byte: rounded half up, saturating, zero for NaN.
 ///
-/// The saturation is the whole body. Rust's float→int `as` is saturating
-/// by language guarantee, not by LLVM accident, so NaN already yields 0,
-/// anything under the range already yields 0, and anything over it
-/// already yields `u8::MAX`. Range checks would be three predicates paid
-/// per channel per colour to reach what the final instruction reaches
-/// anyway. Adding the half before the truncation is round-half-up, which
-/// over a non-negative product is `round`.
+/// Rust's saturating float-to-int `as` is the clamp; range checks would
+/// only repeat what the cast does.
 #[inline]
 #[expect(
     clippy::cast_sign_loss,
@@ -23,78 +15,44 @@ pub(crate) const fn unit_to_u8(x: f32) -> u8 {
     (x * 255.0 + 0.5) as u8
 }
 
-/// The `f32` operations the layout and paint engines keep one definition
-/// of. The snap and quantize family replaces a libm call the hot paths
-/// cannot afford, and says so at each; the gap count is the one every
-/// stacking container spells.
+/// `f32` operations the layout and paint engines share.
 ///
-/// Crate-private on purpose: nothing a widget does needs them, and the
-/// grids they snap to are cache identities, not an API.
+/// Crate-private: the snap grids are cache identities, not API.
 pub(crate) trait F32Px {
-    /// This gap laid *between* `count` items: `count - 1` of them, and
-    /// none at all for one item or none.
-    ///
-    /// One definition because every container that stacks children spells
-    /// it — the two stacks, the wrap stack's lines, a grid's tracks and
-    /// each span inside them — and each of them once for measure and
-    /// again for arrange. The saturating step is the whole content: an
-    /// empty container has no gaps, and `0 - 1` on a `usize` is not zero.
+    /// This gap laid *between* `count` items: `count - 1` of them, none for
+    /// one item or none.
     fn gaps_between(self, count: usize) -> f32;
 
-    /// Exact `f32::round` (round half away from zero) without the libm
-    /// call: baseline x86-64 has no `roundss` (SSE4.1), so `.round()`
-    /// compiles to an out-of-line `roundf` call in the per-quad snap
-    /// and pixel-alignment paths. Integer-pipeline trick from Go 1.10's
-    /// `math.Round`: add a half-ulp at the fraction position (the
-    /// mantissa carry performs the round-up), then clear the fraction.
-    /// Bit-identical to `f32::round` for every f32 bit pattern —
-    /// including NaN payloads, ±inf, and `(-0.5, -0.0]` → `-0.0` —
-    /// at ~3.5× the speed of the libm call.
+    /// Exact `f32::round` (half away from zero) without the libm call:
+    /// baseline x86-64 has no `roundss`, so `.round()` is an out-of-line
+    /// `roundf`. Bit-identical to `f32::round` for every bit pattern.
     fn fast_round(self) -> f32;
 
-    /// The whole pixel that covers `self` — `ceil` as the `u32` every
-    /// caller of it wants, without the out-of-line `ceilf` baseline
-    /// x86-64 makes of `f32::ceil` (no SSE4.1 `roundss`) — the same
-    /// reason [`Self::fast_round`] exists, on the same per-quad scissor
-    /// path.
+    /// `ceil` as a `u32`, without the out-of-line `ceilf` (same reason as
+    /// [`Self::fast_round`]).
     ///
-    /// Truncate, then bump when the truncation lost something. Exact for
-    /// every non-negative value: below `2^24` a `u32` round-trips through
-    /// `f32`, and from `2^24` up every `f32` is already whole, so the
-    /// truncation is the answer, saturating at `u32::MAX`.
+    /// Exact for non-negative values, saturating at `u32::MAX`.
     fn ceil_px(self) -> u32;
 
-    /// `self` has no fractional part — equivalent to `x == x.round()`
-    /// minus the libm call. NaN reports `false` like the equality it
-    /// replaces; magnitudes ≥ 2^63 (unreachable for pixel coordinates)
-    /// report `false`, which only forgoes a fast path.
+    /// `self` has no fractional part, like `x == x.round()` minus the libm
+    /// call. NaN and magnitudes beyond `i64` report `false`.
     fn is_integral(&self) -> bool;
 
-    /// Snap to the whole-pixel grid that cache identities key on, as an
-    /// integer so the result can be compared and hashed exactly.
+    /// Snap to the whole-pixel grid that cache keys use, as an integer so it
+    /// compares and hashes exactly.
     ///
-    /// One definition on purpose: a measure-cache `available_q` and a text
-    /// run's wrap width both quantize through here, and were they to land
-    /// on different grids a cached subtree could be blitted against a shape
-    /// measured at another width. Non-finite (an unbounded axis) saturates
-    /// rather than wrapping through the `as` cast.
+    /// One definition so the measure cache and text wrap widths share a grid.
+    /// Non-finite saturates to `i32::MAX`.
     fn quantize_px(self) -> i32;
 
-    /// [`Self::quantize_px`]'s grid, back in `f32`, for the extents that
-    /// are *compared against* a cache key rather than hashed into one.
+    /// [`Self::quantize_px`]'s grid in `f32`, for extents *compared against*
+    /// a cache key rather than hashed into one.
     ///
-    /// Every discontinuous decision taken against an available extent
-    /// owes this: a line break, a truncation, a fit test. The key its
-    /// answer is cached under holds whole pixels, so a decision taken on
-    /// the fraction can fall the other side of a boundary from the one
-    /// the key stands for, and a warm frame then answers what a cold one
-    /// would not. A continuous output — a flex shrink, a track share —
-    /// has no boundary to fall the wrong side of, and reads the raw
-    /// extent.
+    /// Discontinuous decisions (line break, truncation, fit test) owe this:
+    /// a decision on the raw fraction can land on the other side of the
+    /// boundary the key stands for. Continuous outputs read the raw extent.
     ///
-    /// A negative extent names no space and answers zero, which is what
-    /// an over-constrained layout's callers want of a width driven below
-    /// nothing.
+    /// A negative extent answers zero.
     fn canonical_px(self) -> f32;
 }
 
@@ -115,20 +73,17 @@ impl F32Px for f32 {
         let mut bits = self.to_bits();
         let e = (bits >> SHIFT) & 0xff;
         if e < BIAS {
-            // |x| < 1: ±0, or ±1 once |x| ≥ 0.5 (e == BIAS - 1).
             bits &= SIGN_MASK;
             if e == BIAS - 1 {
                 bits |= ONE;
             }
         } else if e < BIAS + SHIFT {
-            // Fraction bits exist: the half-ulp add carries through the
-            // mantissa (into the exponent at a .5 crossing — that IS the
-            // round-up), the mask clears what's left of the fraction.
+            // The half-ulp add carries through the mantissa (into the exponent at
+            // a .5 crossing, which is the round-up); the mask clears the fraction.
             let e = e - BIAS;
             bits += HALF >> e;
             bits &= !(FRAC_MASK >> e);
         }
-        // e ≥ BIAS + SHIFT: already integral, or inf/NaN — unchanged.
         f32::from_bits(bits)
     }
 
@@ -138,9 +93,6 @@ impl F32Px for f32 {
         reason = "the input is a non-negative pixel coordinate, debug-asserted before the cast"
     )]
     fn ceil_px(self) -> u32 {
-        // Any magnitude: from 2^24 up every f32 is a whole number, so the
-        // truncation below is already the ceiling, saturating at
-        // `u32::MAX` past the range.
         debug_assert!(
             self >= 0.0,
             "ceil_px is for a non-negative pixel coordinate, got {self}",
@@ -171,9 +123,7 @@ impl F32Px for f32 {
 
 /// [`F32Px`] applied per component, for the paint paths that snap a point.
 pub(crate) trait Vec2Ext {
-    /// Componentwise [`F32Px::fast_round`]. `Vec2::round` is two
-    /// out-of-line `roundf` calls on baseline x86-64, which is what this
-    /// exists to keep off the per-icon and per-quad snap paths.
+    /// Componentwise [`F32Px::fast_round`], avoiding two `roundf` calls.
     fn fast_round(self) -> Vec2;
 }
 
@@ -184,8 +134,8 @@ impl Vec2Ext for Vec2 {
     }
 }
 
-/// Marker trait for primitive numeric types accepted by `From` impls on
-/// `Sizing`, `Size`, `Corners`, `Spacing`, etc.
+/// Primitive numeric types accepted by the `From` impls on `Sizing`,
+/// `Size`, `Corners`, `Spacing`.
 pub(crate) trait Num: Copy {
     fn as_f32(self) -> f32;
 }

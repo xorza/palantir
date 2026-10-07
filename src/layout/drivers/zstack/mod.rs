@@ -1,5 +1,4 @@
-//! The stacking driver: every child measures against the same slot and
-//! arranges into it, so they overlap rather than flow.
+//! The stacking driver: every child measures against and arranges into the same slot, so they overlap.
 
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::axis_placement::AxisPlacement;
@@ -21,9 +20,7 @@ use glam::{BVec2, Vec2};
 pub(super) struct ZStack;
 
 impl ZStack {
-    /// [`LayoutDriver::arrange`], with the children given no give on the
-    /// axes `rigid` sets — a scroll's panned axes, where its content
-    /// takes what it measured to however small the viewport.
+    /// [`LayoutDriver::arrange`] with no give on the axes `rigid` sets (a scroll's panned axes, where content takes what it measured).
     pub(super) fn arrange_in(pass: &mut LayoutPass<'_>, node: NodeId, inner: Size, rigid: BVec2) {
         let slot = Rect {
             min: Vec2::ZERO,
@@ -52,17 +49,9 @@ impl LayoutDriver for ZStack {
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// ZStack: children all at the same position (top-left of inner rect).
-    /// Every child is offered the inner extent on both axes, Hug ones
-    /// included, so children — a grid committing cell widths, wrapping
-    /// text — get a finite constraint whenever the ZStack has one. A Hug
-    /// ZStack resolves to `min(content, available)`, so that extent is the
-    /// most it can grow to; a Fill child reports its content at measure
-    /// (`AxisSlot::resolve`), so hugging it does not feed back. Same
-    /// pattern Stack uses on its cross axis.
+    /// Children all sit at the inner rect's top-left and are offered the inner extent on both axes, Hug ones included, so grids and wrapping text get a finite constraint whenever the ZStack has one. A Hug ZStack resolves to `min(content, available)`; a Fill child reports its content at measure (`AxisSlot::resolve`), so hugging it doesn't feed back (as Stack does on its cross axis).
     ///
-    /// Content size = `max(child desired)` per axis, so the panel hugs the
-    /// largest child (cross-axis fall-back when ZStack is Hug).
+    /// Content size is `max(child desired)` per axis.
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
@@ -72,18 +61,12 @@ impl LayoutDriver for ZStack {
         pass.measure_per_axis_hug(node, inner_avail, |_, _| Vec2::ZERO)
     }
 
-    /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
-    /// positioned per its `align_x` / `align_y` (with the ZStack's
-    /// `child_align` as fallback when child's own axis is `Auto`).
-    /// Defaults pin to top-left unless the child has `Sizing::fill` — then `Auto`
-    /// falls back to stretch on that axis.
+    /// Each child gets a slot in `inner` sized by its `Sizing` and placed by `align_x` / `align_y`, falling back to the ZStack's `child_align` when `Auto`. Defaults to top-left; a `Sizing::fill` child's `Auto` stretches.
     fn arrange(pass: &mut LayoutPass<'_>, node: NodeId, (): Self::Payload, inner: Size) {
         Self::arrange_in(pass, node, inner, BVec2::FALSE);
     }
 
-    /// Intrinsic size of a ZStack: max over children on the queried axis.
-    /// Children stack at the same origin, so the parent hugs the largest
-    /// child.
+    /// Intrinsic size: max over children on the queried axis.
     fn intrinsic(
         layout: &mut LayoutEngine,
         tree: &Tree,

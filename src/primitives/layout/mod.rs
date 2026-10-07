@@ -1,11 +1,6 @@
-//! The vocabulary a node declares its layout in — sizing, alignment,
-//! justification, clipping, grid and scroll modes, overlay placement — and
-//! the bounds screens the pass math trusts them through.
+//! The vocabulary a node declares layout in (sizing, alignment, justification, clipping, grid and scroll modes, overlay placement) and the bounds screens the pass math trusts.
 //!
-//! Authoring code writes these through `Configure`, the scene records them,
-//! and the drivers in [`crate::layout`] read them. What little behaviour lives here is the resolution
-//! that belongs to the vocabulary rather than to a pass — where an
-//! overlay lands beside its anchor, and what counts as a usable bound.
+//! The drivers in [`crate::layout`] read it; the little behaviour here is overlay placement beside an anchor and what counts as a usable bound.
 
 pub(crate) mod align;
 pub(crate) mod anchor;

@@ -5,13 +5,11 @@ use crate::primitives::paint::image::{Image, ImageFit};
 use glam::{UVec2, Vec2};
 
 /// A 100×50 image in a 200×200 rect, per fit:
-/// - `Fill` keeps the full 200×200 rect (image stretched).
-/// - `Contain` scales by min(200/100, 200/50) = 2 → 200×100, centred.
-/// - `Cover` scales by max(200/100, 200/50) = 4 → 400×200, painted at
-///   200×200 over the centred half of the width: `uv_size.x = 0.5`,
-///   `uv_min.x = 0.25`.
-/// - `None` paints the intrinsic 100×50, centred.
-/// - `Tile` takes the raw UV and the full rect.
+/// - `Fill`: the full rect (stretched).
+/// - `Contain`: scale min(2, 4) = 2 → 200×100, centred.
+/// - `Cover`: scale max(2, 4) = 4 → 400×200, painted 200×200 over the centred half of the width: `uv_size.x = 0.5`, `uv_min.x = 0.25`.
+/// - `None`: intrinsic 100×50, centred.
+/// - `Tile`: raw UV, full rect.
 #[test]
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
@@ -44,7 +42,6 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
             Vec2::ONE,
         ),
         (tile, img, base, Vec2::new(0.5, 0.25), Vec2::new(3.0, 2.0)),
-        // No intrinsic size: the base rect at full UV.
         (ImageFit::Contain, Vec2::ZERO, base, Vec2::ZERO, Vec2::ONE),
     ];
     for (fit, intrinsic, rect, uv_min, uv_size) in rows {
@@ -105,9 +102,7 @@ fn repeat_row_copies_one_row_into_the_others() {
     }
 }
 
-/// Debug-only: release still panics on the out-of-range copy, but
-/// from the slice rather than the screen, so only the debug build
-/// can pin the row it names.
+/// Debug-only: release panics on the out-of-range copy from the slice, not the named row.
 #[cfg(debug_assertions)]
 #[test]
 #[should_panic(expected = "row 3 of 3")]

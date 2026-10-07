@@ -3,15 +3,11 @@
 use crate::text::extent::TextExtent;
 use crate::text::key::TextShapeKey;
 
-/// Result of shaping one `ShapeRecord::Text` during the measure pass. `Tree`
-/// records only the authoring inputs; this is the layout-side derived state.
+/// Result of shaping one `ShapeRecord::Text` in the measure pass; `Tree` records only the authoring inputs.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {
     pub(crate) extent: TextExtent,
-    /// The buffer the renderer replays, or `None` where the run shaped
-    /// none — which in production is nothing, and under the gated mono
-    /// metric is every run. As wide as a bare key: see
-    /// [`TextShapeKey::text_hash`].
+    /// The buffer the renderer replays, or `None` where the run shaped none (never in production; every run under the gated mono metric).
     pub(crate) key: Option<TextShapeKey>,
 }
 
@@ -21,10 +17,7 @@ pub(crate) mod internals {
     use crate::text::key::TextShapeKey;
 
     impl ShapedText {
-        /// The key of the buffer this run shaped under. Panics where
-        /// none was shaped, which every case reaching here rules out by
-        /// driving a cosmic harness; one *about* an absent key reads
-        /// [`ShapedText::key`] instead.
+        /// The key of the buffer this run shaped under; panics where none was shaped.
         pub(crate) fn buffer_key(&self) -> TextShapeKey {
             self.key.expect("this fixture shapes a buffer")
         }

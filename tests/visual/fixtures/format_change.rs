@@ -1,15 +1,7 @@
-//! Surface format change mid-session — the window moved to an HDR /
-//! wide-gamut output and the compositor renegotiated the swapchain's
-//! color format. The renderer auto-detects the target's format change and
-//! forces a full repaint at the new format.
-//!
-//! The shared backend keys its render pipelines by swapchain format and
-//! builds a new format's set lazily on first submit
-//! (`WgpuBackend::ensure_format`); the per-window backbuffer self-heals
-//! (recreates) on a format change. These fixtures pin that a new format
-//! produces a working renderer rendering identical perceptual pixels,
-//! and that format-independent resources (the uploaded image texture)
-//! survive the switch with no re-upload.
+//! Surface format change mid-session (a window moved to an HDR output): the
+//! renderer forces a full repaint, the backend keys pipelines by swapchain
+//! format (`WgpuBackend::ensure_format`), and the uploaded image texture
+//! survives with no re-upload.
 
 #![expect(
     clippy::disallowed_types,
@@ -28,10 +20,7 @@ use wgpu::TextureFormat;
 use crate::goldens::assert_same;
 use crate::harness::Harness;
 
-/// A scene touching multiple format-dependent pipelines: a bordered,
-/// rounded frame (quad pipeline) wrapping a button with a text label
-/// (quad + text atlas). Both pipelines get rebuilt on the format flip,
-/// so an incorrect rebuild shows up as a pixel mismatch.
+/// A scene touching several format-dependent pipelines: a bordered rounded frame around a labelled button.
 fn scene(ui: &mut palantir::Ui) {
     Panel::vstack()
         .auto_id()
@@ -56,14 +45,8 @@ fn scene(ui: &mut palantir::Ui) {
         });
 }
 
-/// Render at the host's original sRGB format, then simulate the host
-/// observing a sudden format change to a different sRGB format, recreate
-/// the backend, and render the same scene again. Both formats are sRGB,
-/// so the GPU's linear→sRGB encode produces the same perceptual pixels —
-/// after correcting BGRA channel order the two renders must match.
-/// Equivalence is the assertion: it proves the rebuilt pipelines render
-/// correctly against the new format rather than panicking or drawing
-/// garbage.
+/// Renders at the original sRGB format, then another with the backend
+/// recreated; after BGRA reordering the renders must match.
 #[test]
 fn recreate_backend_on_format_change_renders_identically() {
     let size = UVec2::new(200, 120);
@@ -75,10 +58,7 @@ fn recreate_backend_on_format_change_renders_identically() {
         .frame(scene)
         .image;
 
-    // Guard against a vacuous comparison: the scene must actually paint
-    // content distinct from the clear color, otherwise two all-clear
-    // frames would match even if the rebuild drew nothing. The card's
-    // center sits well inside the blue frame fill.
+    // Guard against a vacuous comparison: the card's centre must differ from the clear colour.
     let bg = before.get_pixel(2, 2);
     let center = before.get_pixel(size.x / 2, size.y / 2);
     assert_ne!(
@@ -86,25 +66,17 @@ fn recreate_backend_on_format_change_renders_identically() {
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
-    // Render the same scene against the new format. The renderer notices
-    // the target's format changed and forces a full repaint at the new
-    // format (building its pipeline set lazily); `Harness::frame`
-    // swizzles the BGRA readback back into RGBA space for comparison.
+    // `Harness::frame` swizzles the BGRA readback to RGBA.
     let after = h
         .size(size)
         .format(TextureFormat::Bgra8UnormSrgb)
         .frame(scene)
         .image;
 
-    // Both formats are 8-bit sRGB on one device: the shaders write the
-    // same linear values and the hardware encodes them the same way, so
-    // the bytes match once the readback is swizzled.
     assert_same("format_change_scene", &after, &before);
 }
 
-/// Repeated format changes keep working: the lazy per-format pipeline map
-/// caches each format's set, so flipping away and back reuses the cached
-/// sets. Render at the original format again — still correct.
+/// Flipping formats away and back reuses the cached per-format pipeline sets.
 #[test]
 fn repeated_format_changes_keep_rendering() {
     let size = UVec2::new(160, 100);
@@ -116,9 +88,6 @@ fn repeated_format_changes_keep_rendering() {
         .frame(scene)
         .image;
 
-    // Flip to a second format (auto-detected, repaints fully), then back
-    // to the original — its pipeline set is still cached from the baseline
-    // render above.
     let _ = h
         .size(size)
         .format(TextureFormat::Bgra8UnormSrgb)
@@ -133,9 +102,7 @@ fn repeated_format_changes_keep_rendering() {
     assert_same("format_change_round_trip", &restored, &baseline);
 }
 
-/// A 64×64 four-quadrant image (TL red, TR green, BL blue, BR white).
-/// Channel-distinct quadrants make a BGRA-vs-RGBA mishandling obvious,
-/// and the hard quadrant edges survive `ImageFit::Fill` scaling.
+/// A 64×64 four-quadrant image; distinct channels expose BGRA-vs-RGBA mishandling.
 fn test_image() -> Image {
     const N: u32 = 64;
     const H: u32 = N / 2;
@@ -155,10 +122,6 @@ fn test_image() -> Image {
 }
 
 thread_local! {
-    /// The owning handle must outlive every frame's submit (it keeps the
-    /// GPU texture alive), so register once and hold it here for the
-    /// whole test run — exactly what this fixture is asserting survives a
-    /// format change.
     static TEST_IMAGE: RefCell<Option<palantir::ImageHandle>> =
         const { RefCell::new(None) };
 }
@@ -180,11 +143,8 @@ fn image_scene(ui: &mut palantir::Ui) {
         });
 }
 
-/// The point of the surgical rebuild: a format change must rebuild only
-/// the render pipelines and **keep** the uploaded image texture — the
-/// image format (`Rgba8UnormSrgb`) is independent of the swapchain
-/// color format. Asserts the GPU texture cache survives the flip (no
-/// drop, no re-upload) and that the image still renders identically.
+/// A format change rebuilds only the pipelines and keeps the uploaded image
+/// texture (`Rgba8UnormSrgb`): no drop or re-upload, identical pixels.
 #[test]
 fn images_survive_format_change_without_reupload() {
     let size = UVec2::new(128, 128);
@@ -201,10 +161,7 @@ fn images_survive_format_change_without_reupload() {
         "image should be resident in the GPU cache after the first render",
     );
 
-    // Render the same image at a new format. The format change is
-    // auto-detected and builds the new format's pipeline set lazily; the
-    // uploaded image texture (format-independent) must survive untouched —
-    // drawn from the surviving cache (count unchanged), pixel-identical.
+    // The format-independent texture survives: cache count unchanged.
     let after = h
         .size(size)
         .format(TextureFormat::Bgra8UnormSrgb)
@@ -226,9 +183,7 @@ fn images_survive_format_change_without_reupload() {
     assert_same("format_change_image", &after, &before);
 }
 
-/// A unorm target would store the renderer's linear light as is and draw
-/// every colour too dark with no error, so naming one as a target refuses
-/// it.
+/// A unorm target would draw linear light too dark without error, so it is refused.
 #[test]
 #[should_panic(expected = "a render target's format must be sRGB or float")]
 fn a_unorm_target_is_refused() {

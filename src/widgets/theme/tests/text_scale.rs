@@ -5,8 +5,7 @@ use super::pretty;
 use crate::widgets::theme::Theme;
 use ron::ser;
 
-/// The size a disabled button shapes its label at. The look names only
-/// the colour, so this is always `theme.text`'s size.
+/// The size a disabled button shapes its label at; the look names only colour, so it is `theme.text`'s.
 fn disabled_size(theme: &Theme) -> f32 {
     theme
         .button
@@ -59,7 +58,7 @@ fn scale_text_is_relative_and_total() {
     assert_eq!(tooltip_size(&theme), tooltip * 1.5);
     assert_eq!(value_size(&theme), value * 1.5);
 
-    // And inverts back to the baseline: 1.5 × (1 / 1.5) = 1.0.
+    // Inverts to baseline: 1.5 × (1 / 1.5) = 1.0.
     theme.scale_text(1.0 / 1.5);
     assert_eq!(theme.text.font_size, body);
     assert_eq!(tooltip_size(&theme), tooltip);
@@ -85,8 +84,7 @@ fn scale_text_reaches_every_font_size() {
                     walk(&format!("{path}.{name}"), value, &after[key]);
                 }
             }
-            // A present `Option` is a node of its own, so it is stepped
-            // through rather than compared whole.
+            // A present `Option` is a node of its own, stepped through rather than compared whole.
             (Value::Option(Some(before)), Value::Option(Some(after))) => {
                 walk(path, before, after);
             }
@@ -108,9 +106,7 @@ fn scale_text_reaches_every_font_size() {
         }
     }
 
-    /// The theme as a generic tree. `Value` cannot name an enum variant, but
-    /// both sides are flattened the same way, so what is compared here still
-    /// differs exactly where the theme does.
+    /// The theme as a generic tree. `Value` can't name an enum variant, but both sides flatten alike, so differences still show.
     fn tree(theme: &Theme) -> Value {
         ron::from_str(&ser::to_string(theme).expect("serialize")).expect("reparse")
     }
@@ -191,11 +187,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::math::domain::EPS;
     const FACTOR: &str = "text scale factor must be finite and positive";
     const RESULT: &str = "text scale would make font size or line height invalid";
-    // A look's override is checked as the face it folds into. The first
-    // overflows on its own size: f32::MAX / 2 × 4 is inf, while the ambient
-    // 16 × 4 = 64 is fine. The second is valid alone and against the ambient
-    // at 1×, but at 1/1000 its leading is 16 × 0.001 × 0.001 = 0.000016 px,
-    // under EPS = 0.0001, while the ambient's own 0.016 × 1.2 is above it.
+    // A look's override is checked as the face it folds into. The first overflows alone (f32::MAX / 2 × 4 is inf; ambient 16 × 4 = 64 is fine). The second is valid alone and at 1× but at 1/1000 its leading 16 × 0.001 × 0.001 = 0.000016 px is under EPS = 0.0001, while the ambient 0.016 × 1.2 is above.
     let big_override = |theme: &mut Theme| {
         theme.button.looks.normal.text.font_size = Some(f32::MAX / 2.0);
     };
@@ -220,17 +212,13 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
         let after = pretty(&theme);
         assert_eq!(after, before, "{label}: theme was partially mutated");
     }
-    // The default theme takes both override cases' factors, so the
-    // override is what each of them rejects.
+    // The default theme takes both factors, so the override is what each rejects.
     for factor in [4.0, 0.001] {
         Theme::default().scale_text(factor);
     }
 }
 
-/// A scaled theme is just a theme with bigger fonts: nothing beside the
-/// sizes records that a scale was applied, so a round-trip through TOML
-/// reproduces it exactly and a further scale composes off the parsed
-/// sizes.
+/// A scaled theme is just a theme with bigger fonts: a TOML round-trip reproduces it exactly and a further scale composes off the parsed sizes.
 #[test]
 fn scaled_theme_survives_a_serde_roundtrip() {
     let baseline = Theme::default();

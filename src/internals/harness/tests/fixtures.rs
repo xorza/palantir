@@ -16,10 +16,7 @@ fn clipboard_round_trips_through_the_harness() {
 fn arena_interns_without_ever_recording() {
     let mut harness = UiHarness::arena();
     let interned = harness.ui().intern("label");
-    // Lowered through the real path rather than read off the handle:
-    // `InternedStr` is a span plus an epoch and owns nothing, so the
-    // store is the only thing that can resolve it — which is exactly the
-    // property this harness exists to make reachable without a frame.
+    // Lowered through the real path: `InternedStr` is a span plus an epoch and owns nothing, so only the store resolves it, which is what this harness makes reachable without a frame.
     let store = &harness.ui.forest().record_store;
     let recorded = store.record_text(interned);
     assert_eq!(store.interned_text().resolve(recorded.span), "label");

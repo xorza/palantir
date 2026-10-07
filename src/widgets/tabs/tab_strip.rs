@@ -1,5 +1,4 @@
-//! The chip row on its own: geometry, the selection cap, the close
-//! button, the badge, overflow, keyboard travel, and drag sensing.
+//! The chip row on its own: geometry, selection cap, close button, badge, overflow, keyboard travel, drag sensing.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
@@ -34,52 +33,30 @@ use crate::widgets::theme::text_style::TextStyle;
 use glam::Vec2;
 use std::rc::Rc;
 
-/// What a strip does with more chips than it has room for.
+/// What a strip does with more chips than fit.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TabOverflow {
-    /// The chips pan under the wheel. The default: no chrome of its own,
-    /// so a strip that never overflows looks exactly as it would
-    /// without it.
+    /// Chips pan under the wheel. The default; no chrome of its own.
     #[default]
     Scroll,
-    /// [`Self::Scroll`], plus a trailing chevron listing every chip.
-    /// Recorded only while a chip is out of sight, whole or in part.
-    ///
-    /// A pick from that list arrives as
-    /// [`TabStripResponse::menu_picked`] — a caller that turns this on
-    /// reads that field beside [`TabStripResponse::clicked`], or the
-    /// menu closes on a choice that does nothing.
+    /// [`Self::Scroll`] plus a trailing chevron listing every chip. Read [`TabStripResponse::menu_picked`] beside [`TabStripResponse::clicked`], or the menu closes on a choice that does nothing.
     Menu,
 }
 
-/// What one pass over a strip found — the chip the user acted on, by
-/// slot in the item slice the strip was handed.
+/// What one pass over a strip found: the chip acted on, by slot. Every field is a one-frame edge.
 ///
-/// Every field is a one-frame edge, so a caller reads them and acts;
-/// nothing latches.
-///
-/// Activation is reported by where it came from, because the callers do
-/// not all see the same sources. One that polls the chips itself a phase
-/// earlier — the dock's navigation scan does — already has the click,
-/// and acts on [`Self::keyed`] and [`Self::menu_picked`]; everyone else
-/// takes any of the three, which is [`Self::activated`]. A menu pick is
-/// its own field for exactly that reason: it happens inside a popup whose
-/// ids no chip scan can reach.
+/// Activation is reported by source: a caller that polls chips a phase earlier (the dock's navigation scan) acts on [`Self::keyed`] and [`Self::menu_picked`]; everyone else on [`Self::activated`].
 #[derive(Debug)]
 pub struct TabStripResponse<'a> {
-    /// The strip's own pointer/click/hover [`Response`]. Which chip was
-    /// hit is in the fields below.
+    /// The strip's own [`Response`].
     pub response: Response<'a>,
-    /// The chip a click on the chip itself activated.
+    /// The chip a click activated.
     pub clicked: Option<usize>,
     /// The chip a keyboard move activated.
     pub keyed: Option<usize>,
-    /// The chip chosen from the overflow menu — a pointer activation
-    /// like [`Self::clicked`], reported apart because it lands on a
-    /// popup entry rather than on the chip a caller can poll.
+    /// The chip chosen from the overflow menu.
     pub menu_picked: Option<usize>,
-    /// The chip whose close button was clicked. Wins over `clicked` —
-    /// the button sits inside the chip, so one press reaches both.
+    /// The chip whose close button was clicked; wins over `clicked`.
     pub closed: Option<usize>,
     /// The chip whose drag latched this frame.
     pub drag_started: Option<usize>,
@@ -87,13 +64,7 @@ pub struct TabStripResponse<'a> {
     pub drag_stopped: Option<usize>,
 }
 
-/// A row of tab chips, and nothing below it.
-///
-/// The shared half of [`TabbedView`](crate::TabbedView) and
-/// [`DockView`](crate::DockView): both record this widget, with the same
-/// [`TabsTheme`], the same chip ids and the same overflow behaviour.
-/// Used alone it is a plain segmented selector that draws no content of
-/// its own.
+/// A row of tab chips, the shared half of [`TabbedView`](crate::TabbedView) and [`DockView`](crate::DockView) (same [`TabsTheme`], chip ids and overflow). Alone it is a plain segmented selector.
 ///
 /// ```
 /// # use palantir::{TabItem, TabStrip, Ui};
@@ -105,10 +76,7 @@ pub struct TabStripResponse<'a> {
 /// # }
 /// ```
 ///
-/// **Chip ids come from [`TabItem::key`], never from the slot.** A
-/// caller that reads chips outside `show` — the dock's navigation-phase
-/// scan does — derives the same ids through [`Self::chip_id`] and
-/// [`Self::close_id`].
+/// **Chip ids come from [`TabItem::key`], never the slot.** Derive them outside `show` with [`Self::chip_id`] and [`Self::close_id`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TabStrip<'a> {
@@ -121,26 +89,18 @@ pub struct TabStrip<'a> {
 }
 
 impl TabStripResponse<'_> {
-    /// The chip activated this frame by any of the three sources — a
-    /// click, a keyboard move, or an overflow-menu pick. What a caller
-    /// that owns its selection outright acts on.
+    /// The chip activated this frame by click, keyboard move, or overflow-menu pick.
     pub fn activated(&self) -> Option<usize> {
         self.clicked.or(self.keyed).or(self.menu_picked)
     }
 }
 
 impl<'a> TabStrip<'a> {
-    /// A strip over `items`. It writes nothing back — every outcome
-    /// arrives through [`TabStripResponse`].
+    /// A strip over `items`. Writes nothing back; outcomes arrive through [`TabStripResponse`].
     #[track_caller]
     pub fn new(items: &'a [TabItem]) -> Self {
         Self {
-            // Focusable so a press on a chip lands the keyboard here and
-            // the keys below have somewhere to travel from. The scope
-            // takes exactly the classes `keyboard_travel` acts on — the
-            // arrows, Home and End, and Ctrl+Tab — so bare Tab reaches the
-            // application's focus traversal and every other class walks
-            // straight past.
+            // Focusable so a press lands the keyboard here; the scope takes only what `keyboard_travel` acts on, so bare Tab reaches the app's traversal.
             widget: Widget::vstack()
                 .size((Sizing::FILL, Sizing::HUG))
                 .focusable(true)
@@ -153,40 +113,31 @@ impl<'a> TabStrip<'a> {
         }
     }
 
-    /// Which chip wears the selection cap. Unset caps nothing; an index
-    /// past the end is an *index* coerced for display, so it caps the
-    /// last chip, and an empty strip caps nothing.
+    /// Which chip wears the selection cap; unset caps nothing. An index past the end is coerced to the last chip.
     pub fn selected(mut self, selected: impl Into<Option<usize>>) -> Self {
         self.selected = selected.into();
         self
     }
 
-    /// Whether this strip's own view holds the application's focus.
-    /// `false` dims the cap to [`TabsTheme::accent_idle`], so one strip
-    /// among several reads as the one actions go to. Default `true` — a
-    /// lone strip is always the live one.
+    /// Whether this strip's view holds focus; `false` dims the cap to [`TabsTheme::accent_idle`]. Default `true`.
     pub const fn focused(mut self, focused: bool) -> Self {
         self.focused = focused;
         self
     }
 
-    /// What the strip does with chips that do not fit. Default
-    /// [`TabOverflow::Scroll`].
+    /// What the strip does with chips that do not fit. Default [`TabOverflow::Scroll`].
     pub const fn overflow(mut self, overflow: TabOverflow) -> Self {
         self.overflow = overflow;
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `tabs`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `tabs`.
     pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// The chip id for `key` under a strip recorded with `strip` as its
-    /// id. The one derivation, so a caller polling last frame's
-    /// responses asks the same question the strip answered.
+    /// The chip id for `key` under a strip with id `strip`; the one derivation.
     pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId {
         strip.with(("tab", key))
     }
@@ -196,27 +147,17 @@ impl<'a> TabStrip<'a> {
         strip.with(("tab_close", key))
     }
 
-    /// The scrolling band the chips pan inside. The strip's own rect is
-    /// what a drop classification measures against; this is the clipped
-    /// viewport, which is how the overflow chevron knows a chip is out
-    /// of sight.
+    /// The scrolling band the chips pan inside: the clipped viewport the overflow chevron measures against.
     fn band_id(strip: WidgetId) -> WidgetId {
         strip.with("band")
     }
 
-    /// The slot an insertion at `x` addresses, over the strip's chip
-    /// rects in slot order: the count of chips whose centre it has
-    /// passed. `chips.len()` appends.
-    ///
-    /// Takes an iterator rather than a slice so a caller with the rects
-    /// already buffered and one reading them straight out of
-    /// [`Ui::response_for`] both reach the same rule without either
-    /// allocating for the other's shape.
+    /// The slot an insertion at `x` addresses: the count of chips whose centre it has passed; `chips.len()` appends.
     pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
         chips.into_iter().filter(|c| c.center().x < x).count()
     }
 
-    /// Record the strip, and its overflow menu when one is open.
+    /// Records the strip, and its overflow menu when open.
     pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.tabs);
@@ -276,9 +217,6 @@ impl<'a> TabStrip<'a> {
             }
             keyboard_travel(ui, id, items.len(), selected, &mut hits);
         });
-        // A pick that did not come from a click may be out of sight: the
-        // next frame pans the band to it. A click needs no pan — the chip
-        // was where the pointer was.
         if let Some(slot) = hits.keyed.or(hits.menu_picked) {
             ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
         }
@@ -310,30 +248,25 @@ impl Configure for TabStrip<'_> {
     }
 }
 
-/// What a strip keeps between frames: a chip a keyboard move or a menu
-/// pick selected, which the next frame pans into sight.
+/// A chip a keyboard move or menu pick selected, which the next frame pans into sight.
 #[derive(Debug, Default)]
 struct StripState {
     reveal: Option<u64>,
 }
 
-/// The part of the band a chip can be seen in: its rect, clipped by its
-/// ancestors, deflated by the padding the band clips its content to.
+/// The part of the band a chip can be seen in: its rect clipped by ancestors and deflated by the band's padding.
 fn band_clip(ui: &Ui, strip: WidgetId, t: &TabsTheme) -> Option<Rect> {
     let band = ui.response_for(TabStrip::band_id(strip)).rect?;
     Some(band.deflated_by(t.strip_padding))
 }
 
-/// Where a chip would be with nothing cutting it: its arranged rect under
-/// its own transform. Its visible rect is clipped to the band, so a chip
-/// half out of sight reads as wholly inside.
+/// Where a chip would be uncut: its arranged rect under its transform.
 fn chip_extent(ui: &Ui, strip: WidgetId, key: u64) -> Option<Rect> {
     let chip = ui.response_for(TabStrip::chip_id(strip, key));
     chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
 }
 
-/// The pan that brings the chip a keyboard move or menu pick selected
-/// into the band's clip, from last frame's rects, and forget the request.
+/// The pan bringing the selected chip into the band's clip, from last frame's rects; forgets the request.
 fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
     let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
         return Vec2::ZERO;
@@ -351,7 +284,6 @@ fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
     }
 }
 
-/// The edges one pass over the chips collected, in slot order.
 #[derive(Debug, Default)]
 struct StripHits {
     clicked: Option<usize>,
@@ -362,22 +294,16 @@ struct StripHits {
     drag_stopped: Option<usize>,
 }
 
-/// One strip's shared draw state, threaded through its chips.
 #[derive(Debug)]
 struct ChipCtx<'a> {
     theme: &'a TabsTheme,
-    /// The ambient text style a look's text overrides fold onto.
     ambient: TextStyle,
-    /// The strip every chip id derives from.
     strip: WidgetId,
-    /// Whether the strip's view holds focus — the cap's full-or-dim
-    /// question.
     focused: bool,
 }
 
 impl ChipCtx<'_> {
-    /// One chip: the cap-bearing outer box, the filled inner box, and
-    /// the icon, label, badge and close button inside it.
+    /// One chip: cap-bearing outer box, filled inner box, and icon, label, badge, close button inside.
     fn record(
         &self,
         ui: &mut Ui,
@@ -394,10 +320,6 @@ impl ChipCtx<'_> {
         } else {
             Sense::CLICK
         };
-        // The cap is the outer box's own fill, showing through the top
-        // inset the inner box leaves it. Rounded to the full radius
-        // while the inner takes a tighter one, so the band follows the
-        // corner instead of cutting across it.
         let cap = if selected { t.accent_thickness } else { 0.0 };
         let mut widget = Widget::hstack()
             .id(chip_id)
@@ -407,10 +329,7 @@ impl ChipCtx<'_> {
             .padding(Spacing::new(0.0, cap, 0.0, 0.0))
             .sense(sense);
         let state = widget.response(ui);
-        // The chip's own look paints the *inner* box, so the plan is
-        // applied for its spacing defaults and its animation row while
-        // the background travels one level down — the `ToggleChrome`
-        // shape.
+        // The look paints the inner box, so the plan applies for spacing and animation while the background goes a level down (the `ToggleChrome` shape).
         let look = t
             .plan(&state, selected, self.ambient)
             .apply(ui, &mut widget);
@@ -423,10 +342,7 @@ impl ChipCtx<'_> {
             corners: Corners::top((t.radius - cap).max(0.0)),
             ..look.background
         };
-        // The selected chip lifts its inner top inset by the cap, so the
-        // cap adds no height and every label sits on the same line. A
-        // chip carrying a badge or a close button trades its right inset
-        // for that glyph's own box — see `TabsTheme::trailing_inset`.
+        // The selected chip lifts its inner top inset by the cap, so height is unchanged; a badge or close button trades the right inset for its box (`TabsTheme::trailing_inset`).
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
         let trailing = if item.badge.is_reserved() || item.closable {
             t.trailing_inset
@@ -443,8 +359,6 @@ impl ChipCtx<'_> {
             closable,
             ..
         } = *item;
-        // Probed once, and only for a chip that has one: the look, the
-        // glyph style and the click all come off the same response.
         let close = closable.then(|| GlyphButton::resolve(ui, t, close_id, self.ambient));
 
         let inner = Widget::hstack()
@@ -464,9 +378,6 @@ impl ChipCtx<'_> {
                         ui.add_shape(Shape::icon(handle));
                     });
                 }
-                // The label senses nothing, so a press on it falls
-                // through to the chip — which is where both the click
-                // and the drag edges are read.
                 Text::new(label)
                     .id(chip_id.with("label"))
                     .style(&text)
@@ -476,9 +387,6 @@ impl ChipCtx<'_> {
                     let fill = if badge.is_inked() {
                         Background::rounded(t.badge, Corners::all(t.badge_size * 0.5))
                     } else {
-                        // Not a transparent fill: the default paints no
-                        // quad at all, which is what "reserve the space,
-                        // draw nothing" means here.
                         Background::NONE
                     };
                     let dot = Widget::leaf()
@@ -515,19 +423,12 @@ impl ChipCtx<'_> {
     }
 }
 
-/// A small glyph button in the strip — a chip's close cross, and the
-/// overflow chevron.
-///
-/// Both wear [`TabsTheme::close`] and both centre a single glyph in a
-/// square box, so both resolve here: one probe of the response, feeding
-/// the look, the glyph style and the click alike. Only the box's
-/// placement differs, and that stays at each site.
+/// A small glyph button: a chip's close cross and the overflow chevron, both wearing [`TabsTheme::close`].
 #[derive(Debug)]
 struct GlyphButton {
     state: ResponseState,
     background: Background,
-    /// The picked look's text, with the leading removed — a glyph this
-    /// much shorter than its line would otherwise ride high in the box.
+    /// The look's text with the leading removed, else the glyph rides high.
     text: TextStyle,
 }
 
@@ -545,7 +446,6 @@ impl GlyphButton {
         }
     }
 
-    /// The glyph, centred in a box the caller has already placed.
     fn glyph(&self, ui: &mut Ui, id: WidgetId, glyph: &'static str) {
         Text::new(glyph)
             .id(id.with("glyph"))
@@ -555,15 +455,7 @@ impl GlyphButton {
     }
 }
 
-/// The trailing chevron and the menu behind it — recorded only while at
-/// least one chip is scrolled out of the band.
-///
-/// The menu lists **every** chip, not only the hidden ones. Which chips
-/// are out of sight is read from last frame's rects, as every
-/// measurement during a record is, so a list of only those would drop
-/// and re-add rows as the band scrolls under the open menu. What that
-/// staleness costs here is one frame of the chevron itself, which is a
-/// button appearing rather than a row moving under the pointer.
+/// The trailing chevron and its menu, recorded only while a chip is scrolled out of the band. The menu lists every chip: visibility comes from last frame's rects, so listing only hidden ones would add and drop rows under the open menu.
 fn overflow_menu(
     ui: &mut Ui,
     strip: WidgetId,
@@ -572,12 +464,7 @@ fn overflow_menu(
     ambient: TextStyle,
     hits: &mut StripHits,
 ) {
-    // The window a chip shows through: the band clipped by its ancestors
-    // and deflated by the padding its content is clipped to — a chip cut
-    // under that padding is out of sight too. Against the chip's uncut
-    // extent, at the crate's tolerance, so a chip that fills the clip
-    // exactly cannot flicker the chevron on a rounding difference between
-    // two paths.
+    // The window a chip shows through: the band clipped by ancestors and deflated by its padding, compared at `EPS` so an exact fit can't flicker the chevron.
     let Some(clip) = band_clip(ui, strip, t) else {
         return;
     };
@@ -585,15 +472,11 @@ fn overflow_menu(
         chip_extent(ui, strip, item.key)
             .is_some_and(|full| full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS)
     };
-    // The menu is keyed by the chevron that opens it, a node that records
-    // whenever the menu can be open, so its state leaves with the chevron.
     let button_id = strip.with("overflow");
     if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
         return;
     }
     let chevron = GlyphButton::resolve(ui, t, button_id, ambient);
-    // The chevron sits outside the scrolling band, so it takes the
-    // strip's own trailing inset as a margin rather than inheriting it.
     let [_, _, band_r, band_b] = t.strip_padding.as_array();
     let button = Widget::zstack()
         .id(button_id)
@@ -632,13 +515,7 @@ fn overflow_menu(
     }
 }
 
-/// Keyboard travel along the strip, on the WAI-ARIA tab pattern: arrows
-/// step, `Home` / `End` jump to the ends, and `Ctrl+Tab` cycles. Each of
-/// them activates what it lands on, so the caller handles a keyboard
-/// move exactly as it handles a click.
-///
-/// Only while focus is inside the strip, and read inside the strip's own
-/// record so the scope it declares is the one that grants the press.
+/// Keyboard travel on the WAI-ARIA tab pattern: arrows step, `Home`/`End` jump, `Ctrl+Tab` cycles; each activates what it lands on. Only while focus is in the strip, read in its own record so its scope grants the press.
 fn keyboard_travel(
     ui: &mut Ui,
     strip: WidgetId,
@@ -649,19 +526,13 @@ fn keyboard_travel(
     if len == 0 || !ui.is_focus_within(strip) {
         return;
     }
-    // With nothing selected, a step lands on the end it moves from: Right
-    // selects the first chip, not the second.
     let step = |forward: bool| match selected.map(|here| here.min(len - 1)) {
         Some(here) if forward => (here + 1) % len,
         Some(here) => (here + len - 1) % len,
         None if forward => 0,
         None => len - 1,
     };
-    // Every chord is sampled, not short-circuited: `key_pressed` both
-    // reads the press and keeps the chord subscribed for the wake gate,
-    // so one of them firing must not drop the others' subscription that
-    // frame. Modifier sets match exactly, so `Ctrl+Tab` never fires on
-    // `Ctrl+Shift+Tab` and the two orders below cannot cross.
+    // Every chord is sampled, not short-circuited, so `key_pressed` keeps each subscribed for the wake gate. Modifier sets match exactly: `Ctrl+Tab` never fires on `Ctrl+Shift+Tab`.
     let back = ui.key_pressed(Shortcut::key(Key::ArrowLeft));
     let forward = ui.key_pressed(Shortcut::key(Key::ArrowRight));
     let first = ui.key_pressed(Shortcut::key(Key::Home));

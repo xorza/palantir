@@ -32,16 +32,14 @@ use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 use std::time::Duration;
 
-/// Per-`WidgetId` text reuse cache: an unchanged Text across frames
-/// must hit the reuse-slot cache and skip shaping. Covers
-/// single-line, wrapped, and grid-intrinsic-query paths.
+/// An unchanged Text hits the per-`WidgetId` reuse cache and skips shaping
+/// (single-line, wrapped, grid-intrinsic paths).
 #[test]
 fn text_reshape_skipped_when_unchanged() {
     type Build = fn(&mut Ui);
 
-    // First-frame dispatches: a run that fits its slot resolves once,
-    // unbounded. One wider than its slot resolves again, bounded at the
-    // width it wraps to. The grid's label fits (1), and its fill-column
+    // A run fitting its slot resolves once, unbounded; a wider one resolves
+    // again, bounded at its wrap width. The grid label fits (1); its fill-column
     // sentence is wider than what the label leaves of 200 px (2).
 
     let single: Build = |ui| {
@@ -102,8 +100,7 @@ fn text_reshape_skipped_when_unchanged() {
     }
 }
 
-/// Pin: changing the Text's content invalidates the reuse entry and
-/// drives a fresh measure.
+/// Changing the Text's content invalidates the reuse entry and re-measures.
 #[test]
 fn text_reshape_runs_when_content_changes() {
     let render = |content: &'static str| {
@@ -127,8 +124,7 @@ fn text_reshape_runs_when_content_changes() {
     );
 }
 
-/// Pin: when a Text widget disappears from the tree, its `text_reuse`
-/// entry is evicted on the same frame.
+/// A Text that leaves the tree has its `text_reuse` entry evicted that frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
@@ -154,17 +150,10 @@ fn text_reuse_evicts_disappeared_widgets() {
     );
 }
 
-/// A widget that records fewer runs than last frame loses the rows above
-/// its new count, on the measure pass that saw the drop.
-///
-/// Without it a list that once showed many entries keeps a row per
-/// entry it ever had, for as long as the widget stays in the tree —
-/// `end_frame` sweeps whole widgets and never trailing ordinals.
-///
-/// Driven through the harness rather than [`TextSystem::trim_rows`]
-/// directly, because what this pins is the *wiring*: the count comes
-/// from `LayoutPass::shape_text_runs`, which is the one place that knows
-/// it, and a unit test on the method would pass with that call deleted.
+/// A widget that records fewer runs than last frame loses the rows above its
+/// new count on that measure pass; `end_frame` only sweeps whole widgets.
+/// Driven through the harness because the count comes from
+/// `LayoutPass::shape_text_runs`.
 #[test]
 fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
     let wid = WidgetId::from_hash("multi-run");
@@ -259,12 +248,10 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     );
 }
 
-/// Half the period of [`blinking_text`]'s blink.
 const HALF: Duration = Duration::from_millis(500);
 
-/// A leaf of `text` that blinks on a square wave, one step per [`HALF`].
-/// A blinking text boundary is what makes the harness produce paint-only
-/// frames at all: it repaints on a timer without re-recording.
+/// A leaf of `text` that blinks on a square wave, one step per [`HALF`]; its
+/// timer repaint yields paint-only frames.
 fn blinking_text(ui: &mut Ui, text: &str) {
     let widget = Widget::leaf().size((Sizing::fixed(160.0), Sizing::fixed(30.0)));
     widget.record(ui, None, |ui| {
@@ -295,17 +282,10 @@ fn blinking_text(ui: &mut Ui, text: &str) {
 /// Every frame that reaches the screen advances the shared text clock,
 /// `PaintOnly` ones included.
 ///
-/// Retention is the mild half of why. The sharp half is the glyph
-/// atlas: `eviction_candidate` only offers a slot whose `last_use <
-/// current_frame`, so a stalled clock means *nothing* is evictable. A
-/// full atlas then starves every insert — `Rasterized::AtlasFull`,
-/// glyphs dropped from painted text — and cannot recover on its own,
-/// because the only thing that would free a slot is the clock the
-/// paint-only streak is not turning.
-///
-/// The clock ticks in `TextSystem::end_frame`, which lives in
-/// `finalize_frame` and so runs only for `FullRecord`. This pins the
-/// separate tick the `PaintOnly` arm owes.
+/// A stalled clock makes nothing atlas-evictable (`last_use < current_frame`),
+/// so a full atlas starves inserts and can't recover. The clock normally
+/// ticks in `TextSystem::end_frame` (`FullRecord` only); this pins the
+/// separate `PaintOnly` tick.
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
     let shared = UiResources::isolated_text();
@@ -316,8 +296,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     assert_eq!(first.repaint_after, Some(HALF));
     let recorded = shaper.frame();
 
-    // Several paint-only frames in a row: the streak that used to
-    // freeze the clock outright.
+    // Several paint-only frames in a row.
     let mut at = HALF;
     for step in 1..=3u32 {
         let report = ui
@@ -336,13 +315,8 @@ fn paint_only_frames_advance_the_shared_text_clock() {
         at += HALF;
     }
 
-    // The clock advancing is only half of it. What the streak has to
-    // produce is *ageing*: a populated cache whose entries are no longer
-    // being asked for must reach its retention window and expire, on
-    // paint-only frames alone. A stalled clock ticks nothing out, which
-    // is the failure this streak is long enough to see — the run's
-    // buffer was promoted to the protected window when it was recorded,
-    // and no paint-only frame looks it up again.
+    // Ageing too: entries no longer asked for must expire on paint-only frames
+    // alone; a stalled clock ticks nothing out.
     let before = shaper.cache_counts();
     for step in 0..=RENDERED_RUN_KEEP_FRAMES {
         let report = ui
@@ -421,9 +395,8 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     );
 }
 
-/// Pin: when authoring is unchanged but the wrap target (parent's
-/// available width) shifts between frames, the cached *unbounded* shape
-/// is preserved — only the *wrap* reshape runs again.
+/// Changing only the wrap target keeps the cached unbounded shape; only the
+/// wrap reshape reruns.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
     let render = |slot_w: f32| {
@@ -458,9 +431,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
     );
 }
 
-/// The two single-axis hatches on [`Text`] reach the record
-/// independently, so `.bold().italic()` is bold italic rather than one
-/// axis overwriting the other. Both default to the theme's.
+/// `.bold().italic()` reach the record independently; both default to the theme's.
 #[test]
 fn text_face_hatches_compose_on_the_lowered_record() {
     let mut h = UiHarness::new(SURFACE);
@@ -551,17 +522,9 @@ fn widget_text_inputs_lower_exact_bytes() {
     }
 }
 
-/// `InternedStr` is valid for the record pass that minted it and no
-/// longer. The store clears its arena and takes a fresh epoch at the top
-/// of every pass, so a handle held across one addresses bytes that are
-/// gone — and resolving it anyway would record whatever text now sits at
-/// those offsets, which is a wrong-label bug with nothing to trace it
-/// back to.
-///
-/// Three cases, one rule. A later *frame*; the second pass of a
-/// double-layout *frame*, which is the easy one to trip by caching a
-/// handle in app state; and another *window*, whose store never shared
-/// the epoch at all.
+/// `InternedStr` is valid only for the record pass that minted it; the store
+/// clears with a fresh epoch each pass. Three cases: a later frame, the
+/// second pass of a double-layout frame, and another window.
 #[test]
 fn interned_handles_do_not_outlive_their_record_pass() {
     fn intern_in_own_pass(h: &mut UiHarness) -> InternedStr {
@@ -570,7 +533,6 @@ fn interned_handles_do_not_outlive_their_record_pass() {
         escaped.expect("the pass ran")
     }
 
-    // A later frame in the same window.
     let mut h = UiHarness::new(SURFACE);
     let stale = intern_in_own_pass(&mut h);
     panic_probe::assert_panics_with(
@@ -582,8 +544,7 @@ fn interned_handles_do_not_outlive_their_record_pass() {
         },
     );
 
-    // Pass B of one frame: pass A interns and asks for a relayout, and
-    // pass B records the handle pass A minted.
+    // Pass A interns and asks for a relayout; pass B records its handle.
     let mut h = UiHarness::new(SURFACE);
     let mut held = None;
     panic_probe::assert_panics_with(
@@ -601,7 +562,6 @@ fn interned_handles_do_not_outlive_their_record_pass() {
         },
     );
 
-    // Another window, which never shared the epoch.
     let mut source = UiHarness::new(SURFACE);
     let foreign = intern_in_own_pass(&mut source);
     let mut destination = UiHarness::new(SURFACE);
@@ -617,10 +577,8 @@ fn interned_handles_do_not_outlive_their_record_pass() {
     );
 }
 
-/// The rule the panic above enforces, stated positively: interning in
-/// the pass that records is the whole contract, and it holds across the
-/// second pass of a double-layout frame — where the closure runs twice
-/// and each run mints its own handle.
+/// Interning in the recording pass is the contract, including the second pass
+/// of a double-layout frame, where each run mints its own handle.
 #[test]
 fn interning_per_pass_records_the_expected_bytes() {
     let mut h = UiHarness::cold(SURFACE);
@@ -653,12 +611,10 @@ fn interning_per_pass_records_the_expected_bytes() {
 
 /// The shared text clock counts host frames, not window frames.
 ///
-/// Each window's first frame opens a round and ticks nothing. After that,
-/// two windows that paint in rounds tick the clock once per round — three
-/// rounds, three ticks, where one tick per window frame would give six.
-/// A window that paints twice while its sibling waits ticks on each of
-/// its own repeats, because each one starts a new host frame: two ticks,
-/// and the sibling's frame after them ticks nothing.
+/// A window's first frame opens a round and ticks nothing. Two windows
+/// painting in rounds tick once per round (3 rounds, 3 ticks, not 6). A
+/// window repainting alone ticks on each repeat (2 ticks), none for the
+/// sibling after.
 #[test]
 fn the_text_clock_ticks_once_per_host_frame() {
     let shared = UiResources::isolated_mono();

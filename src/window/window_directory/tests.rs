@@ -17,8 +17,7 @@ fn directory_clones_observe_the_same_live_windows() {
     assert!(recorder.contains(WindowToken(2)));
 }
 
-/// Two drivers under one token, or a drop of a token never added, is
-/// a host bug the directory refuses rather than records.
+/// Two drivers under one token, or dropping a never-added token, is a host bug the directory refuses.
 #[test]
 fn a_duplicate_add_or_an_unknown_remove_panics() {
     let directory = WindowDirectory::default();

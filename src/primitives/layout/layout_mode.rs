@@ -1,5 +1,4 @@
-//! Which driver lays a node's children out, and the per-mode settings that
-//! driver reads — grid tracks, scroll axes, wrap direction.
+//! Which driver lays out a node's children, and its per-mode settings.
 
 use crate::common::index16::Index16;
 use crate::primitives::layout::axis::Axis;
@@ -43,10 +42,7 @@ impl From<PackedLayoutMeta> for LayoutMode {
     }
 }
 
-// One index type per side table a `LayoutMode` variant carries a
-// definition through, so a grid index cannot reach the scrollbar
-// table, over the one `Index16` that bounds-checks it and names the
-// table it overflowed.
+// One index type per side table, so a grid index can't reach the scrollbar table.
 
 /// Index into `Tree::grid_defs`.
 #[repr(transparent)]
@@ -54,7 +50,6 @@ impl From<PackedLayoutMeta> for LayoutMode {
 pub(crate) struct GridDefId(Index16);
 
 impl GridDefId {
-    /// The encoded index a packed layout mode carries.
     pub(crate) const fn to_raw(self) -> u16 {
         self.0.to_raw()
     }
@@ -70,15 +65,12 @@ impl From<GridDefId> for usize {
     }
 }
 
-/// Index into `Tree::scrollbar_defs`. A side table rather than an
-/// inline payload because the def is far wider than the 16 bits
-/// `LayoutMode` packs into.
+/// Index into `Tree::scrollbar_defs`, a side table as the def exceeds the 16 bits `LayoutMode` packs.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ScrollbarsDefId(Index16);
 
 impl ScrollbarsDefId {
-    /// The encoded index a packed layout mode carries.
     pub(crate) const fn to_raw(self) -> u16 {
         self.0.to_raw()
     }

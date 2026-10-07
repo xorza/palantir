@@ -39,8 +39,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
     let kids = h.main_child_rects(root);
     assert_eq!(kids.len(), 2);
 
-    // "Hi" → 16w label + 24 padding + 2×1 stroke = 42w. Canonical line
-    // height = round(19.2×64)/64 = 19.203125, so total height = 33.203125.
+    // "Hi": 16 label + 24 padding + 2 stroke = 42w; line height round(19.2×64)/64 = 19.203125, so 33.203125.
     let a = kids[0];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
@@ -122,11 +121,6 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     }
 }
 
-/// Two equal-weight Fill buttons inside a Fill-width HStack split the
-/// 400 px slot evenly at arrange — independent of their label widths.
-/// (Was set up against a Hug HStack which hugs to content per WPF
-/// semantics; that case is covered by
-/// `layout::tests::stretch_semantics::hug_hstack_with_fill_spacer_hugs_to_button`.)
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
@@ -158,10 +152,8 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 
 #[test]
 fn hstack_justify_distributes_leftover() {
-    // 200-wide parent, 40-wide children, no gap. Two children leave 120:
-    // Center leads with 60, End starts the last child at 200 − 40 = 160,
-    // SpaceAround pads 30 / 60 / 30. Three children leave 80, which
-    // SpaceBetween splits into two 40 px gaps.
+    // 200-wide parent, 40-wide children. Two leave 120: Center leads 60, End starts the last at 160,
+    // SpaceAround pads 30/60/30. Three leave 80: SpaceBetween makes two 40 px gaps.
     let cases: &[(&str, Justify, &[f32])] = &[
         ("center", Justify::Center, &[60.0, 100.0]),
         ("end", Justify::End, &[120.0, 160.0]),
@@ -273,14 +265,12 @@ fn hstack_align_center_centers_child_on_cross_axis() {
             .node()
     });
     let r = h.main_child_rects(root)[0];
-    // Cross axis 100, child 20 → centered at 40.
     assert_eq!(r.min.y, 40.0);
     assert_eq!(r.size.h, 20.0);
 }
 
 #[test]
 fn negative_left_margin_spills_outside_slot() {
-    // CSS-style negative margin: smaller slot, larger render, shifted negative.
     let mut h = UiHarness::new(UVec2::new(200, 100));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -301,13 +291,7 @@ fn negative_left_margin_spills_outside_slot() {
     assert_eq!(r.size.h, 30.0);
 }
 
-/// Pass-2 must not double-count non-Fill children in `total_main`. A Hug
-/// HStack with a Hug button and a Fill frame in a 200-wide parent tracks
-/// to the button's content width (WPF Stretch semantics: the Fill
-/// frame contributes its content — zero, here — to the measure, then
-/// expands at arrange). Pre-WPF behavior reported 200 (parent's
-/// available); a buggy double-count would have reported ~242
-/// (button + Fill's measured share).
+/// Pass 2 must not double-count non-Fill children in `total_main` (a double-count gives ~242).
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let mut h = UiHarness::new(UVec2::new(200, 100));
@@ -325,10 +309,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let desired = h.engines.layout.cache.captured_desired();
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
-    // Hug HStack tracks the button's content width — no inflation from
-    // the Fill filler, and no double-count. The button is "Hi" at mono's
-    // 8 px per char, 12 px padding and the 1 px border folded into it on
-    // each side: 16 + 24 + 2 = 42.
+    // No inflation from the Fill filler: "Hi" at mono's 8 px per char plus 12 px padding and 1 px border per side = 42.
     assert_eq!([button_w, root_w], [42.0, 42.0]);
 }
 
@@ -408,10 +389,6 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
     }
 }
 
-/// Pin: a Fill child's `max_size` caps its arranged width when the
-/// freeze loop's share would otherwise exceed the cap. (Measure-time
-/// Fill returns content per WPF Stretch; the `max_size` clamp applies
-/// in the arrange freeze loop.)
 #[test]
 fn hstack_fill_max_size_caps_arranged_share() {
     let mut h = UiHarness::new(UVec2::new(400, 100));
@@ -438,9 +415,6 @@ fn hstack_fill_max_size_caps_arranged_share() {
     );
 }
 
-/// Pin: a parent's `max_size` clamps what its children see as
-/// `available` during measure. Regression: `measure_dispatch` derived
-/// `inner_avail` from raw `available` ignoring `bounds.max_size`.
 #[test]
 fn parent_max_size_clamps_children_available() {
     let mut h = UiHarness::new(UVec2::new(1000, 200));
@@ -470,12 +444,6 @@ fn parent_max_size_clamps_children_available() {
     );
 }
 
-/// `Sizing::fill` stretches to the parent's cross-axis slot regardless
-/// of the child's `align`. Setting `.align(Align::LEFT/CENTER/RIGHT)` on a
-/// Fill child used to silently downgrade it to its content size (since
-/// cross-axis placement only stretched when `align == Auto && Fill`); now Fill
-/// is sufficient on its own. `align` is meaningful only for Hug/Fixed
-/// children, which actually have room to be offset inside their slot.
 #[test]
 fn fill_cross_axis_stretches_regardless_of_align() {
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
@@ -512,11 +480,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
     }
 }
 
-/// 200×100 hstack with `child_align(VAlign::Center)` and two 40×20
-/// children. The first child always inherits the parent default (y=40);
-/// the second child either inherits (no override → y=40) or overrides
-/// (`VAlign::Bottom` → y=80). Pins both inherit-default propagation
-/// and that an override on one child doesn't leak to its sibling.
+/// A child's `align` override must not leak to its sibling, which inherits `child_align`.
 #[test]
 fn hstack_child_align_per_axis_with_overrides() {
     let cases: &[(&str, Option<Align>, f32)] = &[

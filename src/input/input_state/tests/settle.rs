@@ -1,13 +1,5 @@
-//! Which pointer edges buy a same-frame settle — a second record pass —
-//! and which do not. The pass *count* is the contract:
-//! `InputState::frame_had_action` is what `Ui::frame` reads to decide, and
-//! the second pass is a whole re-record, so a spurious settle roughly
-//! doubles the frame.
-//!
-//! The two deliberately-narrow arms are the point of this file: a bare
-//! press and a `ReleaseKind::Miss` write only state their own target
-//! reads, so neither qualifies, while a click, a drag stop, a drag latch,
-//! and any `PointerWake::BUTTONS` subscriber all do.
+//! Which pointer edges buy a same-frame settle (a second record pass): click, drag stop/latch and
+//! `PointerWake::BUTTONS` subscribers do; a bare press and `ReleaseKind::Miss` do not.
 
 use std::time::Duration;
 
@@ -22,7 +14,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 
-/// Bigger than the button, so the pointer has inert surface to sit on.
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn button_id() -> WidgetId {
@@ -42,17 +33,12 @@ fn button_watching_buttons(ui: &mut Ui) {
     ui.watch_pointer(PointerWake::BUTTONS);
 }
 
-/// A harness one frame into `record`, and where its button landed.
 #[derive(Debug)]
 struct Warm {
     h: UiHarness,
-    /// The button's rect — the press/release coordinates are derived
-    /// from it rather than assumed, so the tests don't silently drift
-    /// with root alignment.
     button: Rect,
 }
 
-/// One warm frame of `record`.
 fn warm(record: fn(&mut Ui)) -> Warm {
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
@@ -62,8 +48,7 @@ fn warm(record: fn(&mut Ui)) -> Warm {
     Warm { h, button: rect }
 }
 
-/// Record passes the next frame, 16 ms on, runs — 1 for no settle, 2 for
-/// a settle.
+/// Record passes the next frame (16 ms on) runs: 1 for no settle, 2 for a settle.
 fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
     let mut n = 0;
     let _ = h.advance(Duration::from_millis(16)).frame(|ui| {
@@ -75,8 +60,6 @@ fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
 
 #[test]
 fn a_bare_press_does_not_settle_but_a_watched_one_does() {
-    // The capture reaches only the press target and `focused` is read
-    // live, so nothing recorded earlier in the pass can be stale.
     let Warm {
         mut h,
         button: rect,
@@ -88,8 +71,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
         "a press on a button settles nothing"
     );
 
-    // Same press, but a `BUTTONS` subscriber makes the write opaque —
-    // this is the arm `Modal` relies on to dismiss itself.
+    // A `BUTTONS` subscriber makes the write opaque; `Modal` relies on this to dismiss itself.
     let Warm {
         mut h,
         button: rect,
@@ -101,8 +83,6 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
         "a BUTTONS subscriber cannot be reasoned about, so it settles",
     );
 
-    // A press that hits nothing at all still settles nothing, and (unlike
-    // the two above) does not even need to record.
     let Warm { mut h, .. } = warm(button);
     h.press_at(Vec2::new(180.0, 180.0));
     assert_eq!(
@@ -114,10 +94,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
 
 #[test]
 fn a_missed_release_does_not_settle_but_a_click_does() {
-    // Release back on the press target: `ReleaseKind::Click`. Apps act on
-    // this edge, so it keeps its settle.
-    // The press lands a frame before its release (`InputQueue`), so the
-    // release frame is the one measured.
+    // A click settles (apps act on it); the press lands a frame before its release (`InputQueue`).
     let Warm {
         mut h,
         button: rect,
@@ -127,9 +104,7 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     h.release();
     assert_eq!(passes(&mut h, button), 2, "a click settles");
 
-    // Slip off the button and release: `ReleaseKind::Miss`. The travel is
-    // under DRAG_THRESHOLD so no drag latches — otherwise this would be a
-    // `DragStopped` and settle for a different reason.
+    // A miss stays under DRAG_THRESHOLD, else it would be a `DragStopped`.
     let Warm {
         mut h,
         button: rect,
@@ -151,10 +126,7 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
     );
 }
 
-/// The tally behind the frame-stats overlay's `settle n/m`, which is how
-/// a real gesture's cost gets read in the running app. A sustained drag is
-/// the case that matters: after the latch frame, holding and moving must
-/// cost exactly one record pass each.
+/// After the latch frame, holding and moving cost exactly one record pass each (`settle n/m` overlay).
 #[test]
 fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     let Warm {
@@ -168,7 +140,6 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     let _ = passes(&mut h, button);
 
-    // Eight more frames of holding and moving — the whole gesture body.
     for step in 2..10 {
         h.move_to(origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0));
         let _ = passes(&mut h, button);
@@ -194,14 +165,12 @@ fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
     } = warm(button);
     let origin = rect.center();
 
-    // Frame 1 of the gesture: crossing the threshold latches the drag,
-    // which is its own settle arm (`PointerMoved`, not the press).
+    // Frame 1: crossing the threshold latches the drag, its own settle arm (`PointerMoved`).
     h.press_at(origin);
     h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     assert_eq!(passes(&mut h, button), 2, "the latch settles");
 
-    // Frame 2: the release is `DragStopped` on its own, with no latch in
-    // the batch to mask it.
+    // Frame 2: the release is `DragStopped` with no latch in the batch to mask it.
     h.release();
     assert_eq!(passes(&mut h, button), 2, "the drag stop settles");
 }

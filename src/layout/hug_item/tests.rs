@@ -10,17 +10,7 @@ type Case = (
     f32,
 );
 
-/// Each branch of the share, with exact shares.
-///
-/// - 30 + 400 wanted in 100, floors 30 and 0: the rigid 30 keeps its
-///   extent and the other takes the 70 of slack — all of the range it
-///   can give is its own.
-/// - 100 + 300 wanted in 200, floors 0 and 100: 100 of slack over a range
-///   of 100 + 200 = 300 gives 100/3 and 200/3.
-/// - Floors 60 + 60 in 100: both stay at their floors and overflow.
-/// - 50 + 50 wanted in 100, or in an unbounded budget: each its want, and
-///   the shares hold from the 100 they sum to.
-/// - Nothing wanted holds anywhere.
+/// Each branch of the share, with exact shares: rigid 30 + 400 in 100 gives 30/70; 100 + 300 in 200 with floors 0 and 100 splits 100 of slack as 100/3 and 200/3; floors 60 + 60 in 100 overflow; 50 + 50 get their wants in 100 or unbounded; nothing wanted holds anywhere.
 #[test]
 fn hug_items_give_way_in_proportion_to_their_range() {
     const AT: f32 = Measured::AT_OFFER_ONLY;

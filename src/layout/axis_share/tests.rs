@@ -3,14 +3,7 @@ use crate::layout::fill_item::FillItem;
 use crate::layout::hug_item::HugItem;
 use crate::layout::measured::Measured;
 
-/// The three phases in their order, with exact shares.
-///
-/// - A 30 px rigid item and a scroll wanting 400 beside a Fill item with
-///   a 20 px floor, in 100: the floor is set aside, the Hug items share
-///   80 — the rigid 30 and the scroll's 50 — and the Fill item takes the
-///   20 left.
-/// - The same items in 500: the Hug items take the 430 they want, and the
-///   Fill item the 70 left; the shares hold from 430 + 20 = 450.
+/// The three phases in order. A 30 px rigid item and a scroll wanting 400 beside a Fill item with a 20 px floor: in 100 the floor is set aside, the Hug items share 80 (30 and 50) and Fill takes 20; in 500 the Hug items take their 430, Fill the 70 left, and shares hold from 430 + 20 = 450.
 #[test]
 fn fill_floors_come_first_then_hug_then_fill() {
     // (label, budget, hug shares, fill share, stable_from)

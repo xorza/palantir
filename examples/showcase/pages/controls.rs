@@ -1,10 +1,4 @@
-//! Form controls in one composition. The left column is a settings form
-//! wiring switches, checkboxes, radios, a combo box, a slider, a
-//! DragValue and themed buttons together: "Airplane mode" cascade-disables
-//! the network group (the panel's `disabled` flows to every descendant),
-//! and Apply drives a fake sync through `Ui::animate` (ProgressBar +
-//! Spinner). The right column demos ButtonTheme styling, label eliding,
-//! spinner sizing, and echoes the live form state.
+//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, spinner sizing, and echoes the live form state.
 
 use crate::support;
 use crate::support::{Column, api, columns, note, note_style, readout, row, section, well};
@@ -43,8 +37,7 @@ struct State {
     volume: f64,
     fps: i64,
     syncing: bool,
-    /// The two disclosure demos below hold one of these each, so the
-    /// state a collapsed body keeps — or loses — is visible.
+    /// Each disclosure demo holds one, so the state a collapsed body keeps or loses is visible.
     skipped_note: String,
     kept_note: String,
 }
@@ -104,15 +97,7 @@ pub(crate) fn build(ui: &mut Ui) {
     });
 }
 
-/// The three things an [`Expander`] decides: whether it starts open,
-/// whether its reveal animates, and whether its body keeps recording
-/// while closed.
-///
-/// The second column is the demo worth reading. Type into both fields,
-/// collapse both sections, then reopen them: the upper one is reset,
-/// because Palantir sweeps the cross-frame state of any widget that
-/// stops being recorded, and the lower one is not, because `keep_body`
-/// records it collapsed instead.
+/// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates, and whether its body keeps recording while closed. In the second column, type into both fields, collapse and reopen: the upper resets because Palantir sweeps the state of unrecorded widgets, the lower doesn't because `keep_body` records it collapsed.
 fn disclosure(ui: &mut Ui, s: &mut State) {
     let base = ExpanderTheme::default();
     let animated = ExpanderTheme {
@@ -378,8 +363,7 @@ fn group(ui: &mut Ui, label: &'static str) {
         .show(ui);
 }
 
-/// Transparent fill, accent stroke — reads as "selectable surface"
-/// against the rest of the theme.
+/// Transparent fill, accent stroke: reads as a "selectable surface".
 fn outlined_style() -> ButtonTheme {
     let accent = support::ACCENT;
     let stroke = Stroke::new(accent, 1.5);

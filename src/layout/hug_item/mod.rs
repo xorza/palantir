@@ -1,20 +1,8 @@
-//! The one `Sizing::HUG` sharer: when content-sized siblings want more
-//! than their container has, each gives way from what it wants toward
-//! what it cannot go below, in proportion to how far it can give.
-//!
-//! Both drivers land here — the stack's non-Fill children and the grid's
-//! Phase-2 Hug tracks — so a Hug child gives way the same inside a
-//! `Panel` and inside a `Grid`. A rigid item is one whose floor is its
-//! extent: it keeps it, and overflows with the rest when even the floors
-//! do not fit.
+//! The one `Sizing::HUG` sharer: when content-sized siblings want more than the container has, each gives way from what it wants toward its floor, in proportion to how far it can give. Shared by the stack's non-Fill children and the grid's Hug tracks. A rigid item (floor = extent) keeps its size and overflows.
 
 use crate::layout::measured::Measured;
 
-/// One participant in a Hug share.
-///
-/// `key` is the caller's own handle — a child `NodeId` for the stack, a
-/// track index for the grid — carried through untouched so a share comes
-/// back attached to whatever asked for it.
+/// One participant in a Hug share. `key` is the caller's handle (child `NodeId` or track index), carried through untouched.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct HugItem<K> {
     pub(super) key: K,
@@ -40,17 +28,9 @@ impl<K> HugItem<K> {
         }
     }
 
-    /// Share `budget` across `items`, writing each one's extent into its
-    /// own [`Self::size`]:
-    /// - every item at what it wants when that all fits, or the budget is
-    ///   unbounded;
-    /// - every item at its floor when even the floors do not fit;
-    /// - otherwise each at its floor plus the slack, shared in proportion
-    ///   to how far it can give, `hi - lo`.
+    /// Share `budget` across `items`, writing each extent into its [`Self::size`]: all at what they want when that fits or the budget is unbounded; all at their floor when floors don't fit; otherwise floor plus slack in proportion to `hi - lo`.
     ///
-    /// Returns the least finite budget from which the shares hold — see
-    /// [`Measured::stable_from`]: what the items want, summed, while it
-    /// fits, and [`Measured::AT_OFFER_ONLY`] once one gives way.
+    /// Returns the least finite budget from which the shares hold; see [`Measured::stable_from`].
     pub(super) fn share(items: &mut [Self], budget: f32) -> f32 {
         let (lo_sum, hi_sum) = items.iter().fold((0.0_f32, 0.0_f32), |(lo, hi), item| {
             (lo + item.lo, hi + item.hi)

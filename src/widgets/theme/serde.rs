@@ -1,8 +1,4 @@
-//! Wire-format policy that no single type owns.
-//!
-//! A `#[serde(with = ...)]` codec applies to one *field*, so it has no
-//! type of its own to sit beside. That is what keeps these here rather
-//! than in the file of the struct that reaches for one.
+//! Wire-format policy no single type owns: a `#[serde(with = ...)]` codec applies to a field, so it has no type to sit beside.
 
 pub(super) mod duration_seconds {
     use std::time::Duration;

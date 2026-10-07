@@ -1,15 +1,11 @@
-//! The suite's golden names, as a type rather than string literals, so a
-//! golden with no fixture fails a test instead of lying in the directory.
+//! The suite's golden names as a type, so a golden with no fixture fails a test.
 
 use std::env;
 use std::fs;
 
 use crate::goldens;
 
-/// One golden the suite draws. A fixture names its golden through this
-/// type, so a removed fixture leaves its variant unused, which the lint
-/// gate rejects, and a variant missing from [`GoldenName::ALL`] leaves its
-/// file an orphan, which [`every_golden_file_belongs_to_a_fixture`] rejects.
+/// One golden the suite draws; an unused variant (removed fixture) fails the lint gate, and one missing from [`GoldenName::ALL`] orphans its file ([`every_golden_file_belongs_to_a_fixture`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GoldenName {
     AddShapeRoundedRectLinearGradient,
@@ -167,9 +163,7 @@ impl GoldenName {
     }
 }
 
-/// No golden file lies in the directory without a fixture that draws it.
-/// Under `UPDATE_GOLDEN`, the orphans are deleted, as an update run
-/// rewrites the goldens it touches.
+/// No golden file lies in the directory without a fixture that draws it. Under `UPDATE_GOLDEN`, orphans are deleted.
 #[test]
 fn every_golden_file_belongs_to_a_fixture() {
     let orphans = goldens::goldens().orphans(GoldenName::ALL.map(GoldenName::name));

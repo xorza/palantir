@@ -1,5 +1,4 @@
-//! Rules every chrome-bearing widget keeps alike, checked across all of
-//! them because no trait holds them in step.
+//! Rules every chrome-bearing widget keeps alike; no trait holds them in step, so they are checked here.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::internals::harness::UiHarness;
@@ -29,7 +28,6 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(400, 300);
 const ID: &str = "chrome-default";
 
-/// Which of the two chrome setters a case calls, and in which order.
 #[derive(Clone, Copy, Debug)]
 enum Chrome {
     DefaultOnly,
@@ -42,7 +40,6 @@ const DEFAULT_FILL: RgbaF32 = RgbaF32::new(0.9, 0.1, 0.1, 1.0);
 const EXPLICIT_FILL: RgbaF32 = RgbaF32::new(0.1, 0.1, 0.9, 1.0);
 
 impl Chrome {
-    /// Apply the case to `w` through the widget's own two setters.
     fn apply<W>(
         self,
         w: W,
@@ -59,8 +56,6 @@ impl Chrome {
         }
     }
 
-    /// The fill the case paints: the default only when nothing explicit
-    /// was set, in either order.
     const fn want(self) -> RgbaF32 {
         match self {
             Self::DefaultOnly => DEFAULT_FILL,
@@ -69,7 +64,6 @@ impl Chrome {
     }
 }
 
-/// A trigger the pointer rests on, for the tooltip and the popup trigger.
 fn hovered_trigger() -> ResponseSnapshot {
     ResponseSnapshot {
         id: WidgetId::from_hash("chrome-trigger"),
@@ -81,8 +75,6 @@ fn hovered_trigger() -> ResponseSnapshot {
     }
 }
 
-/// One widget kind: how to record it under a case, and the id and layer
-/// of the node its chrome lands on.
 struct Kind {
     name: &'static str,
     record: fn(&mut Ui, Chrome),
@@ -94,9 +86,8 @@ fn own_id() -> WidgetId {
     WidgetId::from_hash(ID)
 }
 
-/// Every widget with `background(bg)` has `default_background(bg)`
-/// beside it, and the two resolve alike on all of them: the default fills
-/// in only where the caller set no background, in either call order.
+/// Every widget with `background(bg)` has `default_background(bg)`; the default fills in only
+/// where the caller set no background, in either call order.
 #[test]
 fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
     let kinds = [
@@ -231,8 +222,7 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         for case in cases {
             let mut h = UiHarness::new(SURFACE);
             ContextMenu::open(&mut h.ui, own_id(), Vec2::new(20.0, 20.0));
-            // Two frames: the tooltip turns visible on the frame after the
-            // pointer settles on its trigger.
+            // Two frames: the tooltip turns visible the frame after the pointer settles.
             h.frame(|ui| (kind.record)(ui, case));
             h.frame(|ui| (kind.record)(ui, case));
             let node = h
@@ -254,10 +244,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
     }
 }
 
-/// A background is checked where it enters a widget, through either
-/// setter: a NaN fill colour, a negative border width, a NaN corner, a
-/// corner past the f16 range and a NaN shadow blur each panic with their
-/// kind's rule.
+/// Backgrounds are checked where they enter a widget through either setter: NaN fill, negative border
+/// width, NaN or f16-overflowing corner and NaN shadow blur each panic with their kind's rule.
 #[test]
 fn chrome_setters_check_the_background() {
     use crate::internals::panic_probe;
@@ -332,8 +320,6 @@ fn widget_setters_check_their_kinds() {
             panic_probe::assert_panics_with(domain::LENGTH_RULE, || set(bad));
         }
     }
-    // A line height is positive, as a theme file states it: zero leading
-    // stacks every line on the first.
     let positive_cases: [fn(f32); 2] = [
         |v| drop(Text::new("t").line_height_factor(v)),
         |v| {
@@ -382,9 +368,6 @@ fn widget_setters_check_their_kinds() {
         drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
     });
 
-    // The layout and overlay setters a frame calls: a pane floor and a
-    // margin are lengths, a pan and a point are offsets, a cap is an
-    // extent, a rect is geometry, and a slider step is positive.
     let mut ratio = 0.5_f32;
     let _ = Splitter::row(&mut ratio).min_pane(0.0);
     let length: [fn(); 4] = [
@@ -443,14 +426,9 @@ fn widget_setters_check_their_kinds() {
     }
 }
 
-/// The frame property behind every coercing input: at its worst — NaN and
-/// infinite fractions, stale and out-of-range indices, empty lists,
-/// reversed ranges, a minimum above its maximum — each one still lays out
-/// and paints, and no NaN reaches an arranged rect or a paint call.
-///
-/// The paint side reads the capture's `Debug` text, because it is the one
-/// view that walks every payload of every call: a NaN prints as `NaN`
-/// whatever field or lane it sits in.
+/// At worst-case input (NaN/infinite fractions, stale indices, empty lists, reversed ranges) each
+/// coercing widget still lays out and paints, and no NaN reaches a rect or paint call (the capture's
+/// `Debug` text shows a NaN in any field).
 #[test]
 fn coercing_inputs_at_their_worst_paint_no_nan() {
     use crate::primitives::layout::sizing::Sizing;
@@ -546,10 +524,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     );
 }
 
-/// Every widget that declares its own input scope takes its keys while an
-/// application root's scope encloses it — the case where reading as the
-/// record position, the node around the widget, reads as the root and
-/// misses the key the widget was granted.
+/// A widget with its own input scope takes its keys under an application root's scope.
 #[test]
 fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     use crate::input::key_class::KeyFilter;
@@ -569,8 +544,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
             .show(ui, body)
             .inner
     }
-    /// Settle, focus `focus`, settle, press `key`, and record two frames —
-    /// a splitter's ratio comes back on the frame after the key.
+    /// Settle, focus `focus`, settle, press `key`, record two frames (a splitter's ratio lands a frame later).
     fn press(focus: WidgetId, key: Key, mut record: impl FnMut(&mut Ui)) {
         let mut h = UiHarness::new(SURFACE);
         h.frame(&mut record);

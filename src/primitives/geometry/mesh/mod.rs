@@ -1,6 +1,5 @@
-//! App-supplied triangle geometry: the vertex the GPU takes, the indexed
-//! mesh an app builds, and the index and bounds screens that keep a
-//! malformed one from reaching the renderer.
+//! App-supplied triangle geometry: the GPU vertex, the indexed mesh an app
+//! builds, and the screens that keep a malformed one from the renderer.
 
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
@@ -13,31 +12,28 @@ use glam::Vec2;
 use std::cell::Cell;
 use std::hash::Hasher as _;
 
-/// One vertex of a user-supplied mesh. 12 B (pos 8 + color 4), no
-/// padding — directly castable into a wgpu vertex buffer.
+/// One vertex of a user-supplied mesh: 12 B (pos 8 + color 4), no padding,
+/// castable straight into a wgpu vertex buffer.
 ///
-/// `pos` is in **owner-local logical px** (origin = the shape's
-/// owner-rect top-left, after `local_rect.min` offset if set). The
-/// composer bakes the accumulated transform + DPI scale into a
-/// physical-px copy at compose time.
+/// `pos` is in owner-local logical px (origin at the owner-rect top-left,
+/// after `local_rect.min`); the composer bakes in the transform and DPI scale.
 ///
-/// `color` is **sRGB-encoded bytes with a straight alpha**, the form a
-/// colour is authored in: a hex colour survives exactly, and any other
-/// lands within half a display step. The mesh shader decodes it per
-/// vertex with the exact sRGB transfer function, so the rasterizer
-/// interpolates linear light across the face, and premultiplies at output.
+/// `color` is sRGB-encoded bytes with straight alpha: a hex colour survives
+/// exactly, any other lands within half a display step. The shader decodes it
+/// per vertex, so the rasterizer interpolates linear light, and premultiplies
+/// at output.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct MeshVertex {
     /// Position in the owner's local logical pixels.
     pub pos: Vec2,
-    /// Vertex colour, sRGB-encoded — see the type doc.
+    /// Vertex colour, sRGB-encoded.
     pub color: SrgbaU8,
 }
 
 impl MeshVertex {
-    /// Construct at `pos` with any `Into<SrgbaU8>` colour — an `RgbaF32`
-    /// (encoded exactly at the boundary) or an `SrgbaU8` (stored as is).
+    /// Construct at `pos`; an `RgbaF32` colour is encoded exactly here, an
+    /// `SrgbaU8` stored as is.
     pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self {
         Self {
             pos,
@@ -46,34 +42,23 @@ impl MeshVertex {
     }
 }
 
-/// User-side mesh builder. The framework copies the vertex/index
-/// slices into the active `Tree`'s arena at `add_shape` time, so the
-/// `Mesh` only has to outlive the `add_shape` call.
+/// User-side mesh builder. The framework copies the slices into the active
+/// `Tree`'s arena at `add_shape`, so the `Mesh` need only outlive that call.
 ///
-/// Indices are `u32` — the mesh pipeline draws its shared arena index
-/// stream with `wgpu::IndexFormat::Uint32`.
-///
-/// Winding is conventionally CCW but the pipeline doesn't cull —
-/// either order paints.
+/// Indices are `u32` (`wgpu::IndexFormat::Uint32`). Winding is conventionally
+/// CCW but the pipeline does not cull.
 #[derive(Default, Clone, Debug)]
 pub struct Mesh {
     pub(crate) vertices: Vec<MeshVertex>,
     pub(crate) indices: Vec<u32>,
-    /// The largest index pushed, kept as indices go in so
-    /// [`Self::is_noop`] screens an index past the last vertex at one
-    /// compare. Meaningless while `indices` is empty.
+    /// The largest index pushed, so [`Self::is_noop`] screens an index past
+    /// the last vertex at one compare. Meaningless while `indices` is empty.
     max_index: u32,
-    /// Lazy cache of `content_hash`. `None` = not computed or
-    /// invalidated. Set by `content_hash`; cleared by every public
-    /// mutator. Internal arena pushes bypass the cache by going
-    /// straight at `pub(crate)` fields — fine, since arena meshes
-    /// never call `content_hash`. A retained `Mesh` redrawn every frame
-    /// is lowered (and so hashed) once per frame; the cache turns that
-    /// per-frame O(n) re-hash into a hit after the first frame.
+    /// Lazy cache of `content_hash`, cleared by every public mutator.
+    /// Internal arena pushes bypass it; arena meshes never hash. It turns a
+    /// retained mesh's per-frame O(n) re-hash into a hit.
     cached_hash: Cell<Option<u64>>,
-    /// Lazy cache of owner-local AABB. Same memoization contract as
-    /// `cached_hash` — a retained mesh re-lowered each frame would
-    /// otherwise recompute its AABB every frame.
+    /// Lazy cache of the owner-local AABB, same contract as `cached_hash`.
     cached_bbox: Cell<Option<Rect>>,
 }
 
@@ -90,8 +75,7 @@ impl Mesh {
         }
     }
 
-    /// [`Self::new`] with both buffers reserved, for a mesh whose size
-    /// is known before it is filled.
+    /// [`Self::new`] with both buffers reserved.
     #[inline]
     pub fn with_capacity(vertices: usize, indices: usize) -> Self {
         Self {
@@ -103,8 +87,7 @@ impl Mesh {
         }
     }
 
-    /// Drop the contents and the cached hash and bbox, keeping the
-    /// capacity — how a retained mesh is refilled each frame.
+    /// Drop the contents and cached hash and bbox, keeping capacity.
     #[inline]
     pub fn clear(&mut self) {
         self.vertices.clear();
@@ -114,27 +97,23 @@ impl Mesh {
         self.cached_bbox.set(None);
     }
 
-    /// Non-paintable: missing vertices, indices that don't form whole
-    /// triangles, or an index past the last vertex. Mirror of
-    /// `DrawMeshPayload::is_noop` at the user-mesh layer.
+    /// Non-paintable: no vertices, indices not forming whole triangles, or an
+    /// index past the last vertex. Mirrors `DrawMeshPayload::is_noop`.
     #[inline]
     pub fn is_noop(&self) -> bool {
         self.vertices.is_empty()
             || self.indices.len() < 3
             || !self.indices.len().is_multiple_of(3)
             // A release build reaches here with what `triangle`'s debug
-            // assert would have caught: the GPU would read another
-            // mesh's vertices, or past the arena.
+            // assert would have caught.
             || self.max_index as usize >= self.vertices.len()
-            // A NaN vertex reaches the AABB by the fold's NaN contract,
-            // so this `O(1)` read stands in for scanning every position.
-            // `bbox` is memoized, so repeat calls are a load.
+            // A NaN vertex reaches the AABB by the fold's NaN contract, so
+            // this memoized read stands in for scanning every position.
             || self.bbox().has_nan()
     }
 
-    /// Stable visual hash of vertices + indices. Memoized — repeat calls
-    /// on an unmutated mesh return the cached value. Mutating through any
-    /// public method invalidates the cache.
+    /// Stable visual hash of vertices and indices. Memoized until a public
+    /// mutator runs.
     pub fn content_hash(&self) -> u64 {
         if let Some(h) = self.cached_hash.get() {
             return h;
@@ -150,8 +129,7 @@ impl Mesh {
         v
     }
 
-    /// Push a vertex; returns its index for use in [`Self::triangle`].
-    /// `color` accepts `RgbaF32` or `SrgbaU8`.
+    /// Push a vertex; returns its index for [`Self::triangle`].
     ///
     /// # Panics
     ///
@@ -172,11 +150,9 @@ impl Mesh {
     ///
     /// # Panics
     ///
-    /// Panics in a debug build if any index does not refer to an
-    /// existing vertex. Debug-only because this is per item of a
-    /// caller's build loop — a mesh of ten thousand triangles pays it
-    /// ten thousand times, and a mesh is rebuilt per frame. A release
-    /// build draws nothing for the mesh instead: see [`Self::is_noop`].
+    /// Panics in a debug build if an index does not refer to an existing
+    /// vertex. Debug-only because it runs per triangle of a per-frame build; a
+    /// release build draws nothing instead ([`Self::is_noop`]).
     #[inline]
     pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
         debug_assert!(
@@ -191,15 +167,9 @@ impl Mesh {
         self.cached_hash.set(None);
     }
 
-    /// Append another mesh, offsetting its indices into this mesh's
-    /// vertex space.
-    ///
-    /// Published surface with no in-crate caller on purpose: `vertices`
-    /// and `indices` are private, so rebasing one mesh onto another is
-    /// not something a consumer can write from outside. Every other
-    /// builder method has a spelling a caller could reach for instead;
-    /// this one is the whole of mesh composition.
-    ///
+    /// Append another mesh, offsetting its indices into this mesh's vertex
+    /// space. Public because `vertices` and `indices` are private, so a
+    /// consumer cannot compose meshes otherwise.
     /// # Panics
     ///
     /// Panics if the combined vertex indices cannot be represented by `u32`.
@@ -228,9 +198,7 @@ impl Mesh {
         self.cached_bbox.set(None);
     }
 
-    /// Owner-local AABB of `vertices`. Memoized; first call after any
-    /// public mutation does one O(n) pass, repeat calls are free.
-    /// Empty mesh returns `Rect::ZERO`.
+    /// Owner-local AABB of `vertices`, memoized; empty gives `Rect::ZERO`.
     pub fn bbox(&self) -> Rect {
         if let Some(b) = self.cached_bbox.get() {
             return b;
@@ -240,9 +208,7 @@ impl Mesh {
         b
     }
 
-    /// Convenience: filled triangle in a single color (`RgbaF32` or
-    /// `SrgbaU8`). Bbox falls out of the three known vertices —
-    /// pre-cached so the first `bbox()` call is free.
+    /// Filled triangle in a single colour, with its bbox pre-cached.
     ///
     /// # Panics
     ///
@@ -255,18 +221,14 @@ impl Mesh {
         let i1 = m.vertex(b, color);
         let i2 = m.vertex(c, color);
         m.triangle(i0, i1, i2);
-        // Through `Aabb`, not a bare `min`/`max` fold: those are IEEE
-        // `minNum`/`maxNum` and drop a NaN operand, which would hand
-        // `is_noop` a finite box for a NaN vertex and pass it to the GPU.
+        // Through `Aabb`, not a bare `min`/`max` fold: those drop a NaN
+        // operand and would hand `is_noop` a finite box for a NaN vertex.
         m.cached_bbox.set(Some(Aabb::of_iter([a, b, c])));
         m
     }
 
-    /// Convenience: filled convex polygon (fan triangulation around the
-    /// first vertex). For non-convex polygons the result is visually
-    /// wrong — caller's responsibility. `color` accepts `RgbaF32` or
-    /// `SrgbaU8`. Bbox is pre-cached, so the first `bbox()` call is
-    /// free.
+    /// Filled convex polygon (fan around the first vertex), bbox pre-cached.
+    /// A non-convex polygon renders wrong.
     ///
     /// # Panics
     ///
@@ -285,10 +247,8 @@ impl Mesh {
             m.triangle(i0, prev, next);
             prev = next;
         }
-        // Separate pass through `Aabb` rather than folded into the fan
-        // above: a bare `min`/`max` fold is IEEE `minNum`/`maxNum` and
-        // drops a NaN operand, which would hand `is_noop` a finite box
-        // for a NaN vertex and pass it to the GPU.
+        // Through `Aabb`, not folded into the fan: a bare `min`/`max` fold
+        // drops a NaN operand.
         m.cached_bbox.set(Some(Aabb::of(points)));
         m
     }
@@ -305,13 +265,9 @@ const fn checked_rebased_index(base: u32, index: u32) -> u32 {
         .expect("appended mesh index exceeds u32 range")
 }
 
-// Deliberately *not* fused into the copy loops in
-// `shape/lower/`. Fusing the AABB pass into the copy pass
-// reads like the win and measures as the opposite: splitting them is
-// ~3x faster past a handful of points, because each half then gets to be
-// the fast version of itself — the fold vectorizes when nothing else
-// shares the loop body, and the copy becomes one `memcpy` instead of
-// per-point `push`es. Hence the shared `Aabb`.
+// Not fused into the copy loops in `shape/lower/`: splitting the AABB pass
+// from the copy is ~3x faster past a handful of points, since the fold
+// vectorizes and the copy becomes one `memcpy`.
 fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     Aabb::of_iter(verts.iter().map(|v| v.pos))
 }

@@ -5,12 +5,7 @@ use std::error;
 use std::fmt;
 use std::rc::Rc;
 
-/// No clipboard backend could answer.
-///
-/// Distinct from an empty clipboard, and the distinction is the reason
-/// [`Clipboard::text`] returns a `Result` rather than a `String`: a paste
-/// that cannot tell the two apart replaces the selection it was asked to
-/// fill with nothing.
+/// No clipboard backend could answer. Distinct from an empty clipboard, which is why [`Clipboard::text`] returns a `Result`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClipboardUnavailable;
 
@@ -41,8 +36,7 @@ impl fmt::Debug for SystemBackend {
 
 #[cfg(feature = "system-clipboard")]
 impl SystemBackend {
-    /// arboard reports an empty clipboard, and one holding no text, as
-    /// `ContentNotAvailable`. Both are a clipboard with nothing to paste.
+    /// arboard reports an empty clipboard and one with no text as `ContentNotAvailable`; both mean nothing to paste.
     fn answer(read: Result<String, arboard::Error>) -> Result<String, ClipboardUnavailable> {
         match read {
             Ok(text) => Ok(text),
@@ -85,10 +79,7 @@ impl Backend for MemoryBackend {
 #[derive(Debug, PartialEq, Eq)]
 enum Authority {
     Primary,
-    /// The last write reached only the fallback. `primary_then` is what the
-    /// primary held at that moment: a read that finds anything else there
-    /// means another application copied since, which makes the primary the
-    /// newer clipboard again.
+    /// The last write reached only the fallback. `primary_then` is what the primary held then; any other value on a later read means another application copied since.
     Fallback {
         primary_then: Option<String>,
     },
@@ -167,15 +158,9 @@ impl ClipboardState {
     }
 }
 
-/// The host's clipboard, as a handle a widget can hold.
+/// The host's clipboard, a cheap `Rc` clone a widget can hold.
 ///
-/// Obtained from [`Ui::clipboard`](crate::Ui::clipboard), which is the
-/// only way in — a clipboard belongs to a host, and one built beside that
-/// host would answer for nobody. The clone it hands back is an `Rc` bump,
-/// so a widget takes one before a keyboard walk and passes it to whatever
-/// handles the paste, instead of carrying the whole `Ui` there.
-///
-/// Text only, today.
+/// Obtained only from [`Ui::clipboard`](crate::Ui::clipboard); a clipboard belongs to a host. Text only.
 #[derive(Clone, Debug)]
 pub struct Clipboard {
     state: Rc<RefCell<ClipboardState>>,
@@ -201,18 +186,12 @@ impl Clipboard {
         Self::new(primary, Box::<MemoryBackend>::default())
     }
 
-    /// The clipboard's text. An empty clipboard answers `Ok("")`, so a
-    /// caller that only wants to know whether there is anything to paste
-    /// tests the string rather than the `Result`.
+    /// The clipboard's text. An empty clipboard is `Ok("")`, so test the string, not the `Result`.
     pub fn text(&self) -> Result<String, ClipboardUnavailable> {
         self.state.borrow_mut().text()
     }
 
-    /// Replace the clipboard's text.
-    ///
-    /// A widget that acts on the write — a cut, which deletes what it just
-    /// copied — checks the result first. Losing the copy and the selection
-    /// together is the one outcome the user cannot undo from the clipboard.
+    /// Replace the clipboard's text. An action that deletes what it copied (cut) must check the result first.
     pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable> {
         self.state.borrow_mut().set_text(text)
     }

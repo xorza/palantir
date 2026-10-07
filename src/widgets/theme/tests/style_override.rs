@@ -1,5 +1,4 @@
-//! What every widget's `style` setter is: the `Option`-taking setter, and the one
-//! naming of a widget's theme slot that resolves it.
+//! What every widget's `style` setter is: the `Option`-taking setter naming a theme slot.
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
@@ -24,13 +23,7 @@ use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 200);
 
-/// A styled instance and an unstyled one, side by side, with the override
-/// passed *as data*: `Some(&theme)` and `None` both go through the same
-/// `.style(…)` call. Expressing "styled or default" without branching around
-/// the widget is the point of the `impl Into<Option<&T>>` signature.
-///
-/// Pinned on padding rather than colour because padding lands in layout,
-/// where the test can read it back off the arranged rect.
+/// A styled and an unstyled instance side by side, the override passed as data (`Some(&theme)` or `None`) through the same `.style(…)` call, which is the point of `impl Into<Option<&T>>`. Pinned on padding, which lands in layout and reads back off the rect.
 #[test]
 fn style_takes_an_option_and_none_falls_back_to_the_slot() {
     let theme = Theme {
@@ -66,8 +59,7 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
         let node = h.node_for_widget_id(id);
         h.ui.arranged_rect(Layer::Main, node).size.w
     };
-    // 20 px of padding a side against 4 px a side: the styled button is
-    // exactly 2 × (20 − 4) = 32 px wider around the same one-glyph label.
+    // 20 px padding a side against 4: the styled button is 2 × (20 − 4) = 32 px wider.
     assert_eq!(
         widths(styled_id) - widths(plain_id),
         32.0,
@@ -75,8 +67,7 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
     );
 }
 
-/// `Text`'s slot is `Theme::text`, not a per-widget bundle — the same
-/// `style` shape reaching a different kind of slot.
+/// `Text`'s slot is `Theme::text`, not a per-widget bundle.
 #[test]
 fn text_style_none_inherits_the_ambient_text_style() {
     let theme = Theme {
@@ -101,15 +92,11 @@ fn text_style_none_inherits_the_ambient_text_style() {
         let node = h.node_for_widget_id(id);
         h.ui.arranged_rect(Layer::Main, node).size.h
     };
-    // Twice the font size, twice the single line's height.
+    // Twice the font size, twice the line height.
     assert_eq!(height(styled_id), height(plain_id) * 2.0);
 }
 
-/// A per-axis setter reaches the shaper, and outranks the bundle beneath it.
-///
-/// [`Text`] and [`TextEdit`](crate::TextEdit) offer the same chain, so both
-/// are pinned. The editor is the case that could have missed the fold: it
-/// resolves its face through an animated look rather than a plain style.
+/// A per-axis setter reaches the shaper and outranks the bundle beneath it, for [`Text`] and [`TextEdit`](crate::TextEdit) (which resolves its face through an animated look).
 #[test]
 fn per_axis_setters_outrank_the_style_bundle() {
     const AMBIENT: f32 = 20.0;
@@ -158,8 +145,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
             .show(ui);
     });
 
-    // Unset axes keep the ambient style's value; a set axis replaces it,
-    // whatever the bundle under it said.
+    // Unset axes keep the ambient value; a set axis replaces it.
     let face = face_of(&h, plain);
     assert_eq!(face.font.size, AMBIENT);
     assert_eq!(face.font.weight, FontWeight::REGULAR);
@@ -167,7 +153,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 
     let face = face_of(&h, axes);
     assert_eq!(face.font.size, PER_AXIS);
-    // `line_height_factor(2.0)` is a multiple of the *overridden* size.
+    // `line_height_factor(2.0)` multiplies the overridden size.
     assert_eq!(face.font.line_height, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
     assert_eq!(face.font.slant, FontSlant::Italic);
@@ -193,9 +179,7 @@ struct RecordedFace {
     color: RgbaF16,
 }
 
-/// The family chainers set that axis and no other, on a style and on an
-/// override set alike: the override replaces the base's `SANS` and keeps its
-/// size.
+/// The family chainers set that axis only, on a style and an override set alike: the override replaces the base's `SANS` and keeps its size.
 #[test]
 fn with_family_sets_only_the_family_axis() {
     let base = TextStyle::default();

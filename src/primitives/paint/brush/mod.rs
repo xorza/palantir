@@ -1,13 +1,8 @@
 //! What fills a shape: a solid colour or a gradient.
 //!
-//! **Where colours blend, they blend premultiplied.** Every interpolation
-//! between two colours — a gradient's stops (in linear light, or Oklab
-//! under [`Interpolation::Oklab`](crate::Interpolation)), a mesh's vertex colours, a
-//! polyline's per-point colours and the average its joins paint — weighs
-//! each colour by its alpha first, the rule CSS Color 4 §12.3 sets for
-//! gradients. A fade from opaque white to transparent black is therefore
-//! white at half alpha midway: the transparent end's hue contributes
-//! nothing, rather than darkening the blend.
+//! Colours blend premultiplied wherever they interpolate (gradient stops, mesh vertices,
+//! polyline per-point colours, join averages), per CSS Color 4 §12.3: opaque white fading to
+//! transparent black is white at half alpha midway, not darkened.
 
 pub(crate) mod gradient;
 
@@ -26,37 +21,23 @@ use crate::primitives::paint::brush::gradient::radial_geometry::{
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
-/// Paint source for gradient-capable fills.
-///
-/// `Solid(RgbaF32)` is the hot 99% path — 16 B inline, animation-lerpable.
-/// `Linear`/`Radial`/`Conic` carry their geometry plus a
-/// [`GradientStops`](crate::GradientStops) array inline, which
-/// is what sizes the whole enum; gradient morph animations snap across
-/// variants and across distinct gradients of the same variant.
-// `Brush` is intentionally **not `Copy`**: the gradient variants carry
-// 40 B of inline stops, and the recording chain threads it (usually
-// inside a `Background`) through three or four functions per chromed
-// widget. `animation::animatable::Animatable` states the argument once
-// for all three types it applies to.
+/// Paint source for gradient-capable fills; gradient morphs snap across variants.
+// Not `Copy`: the gradient variants carry inline stops and the recording chain threads a brush
+// through several functions per widget; see `Animatable`.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
-    /// One colour everywhere.
+    /// One colour.
     Solid(RgbaF32),
-    /// A gradient along a line.
+    /// Linear gradient.
     Linear(LinearGradient),
-    /// A gradient out from a centre.
+    /// Radial gradient.
     Radial(RadialGradient),
-    /// A gradient around a centre.
+    /// Conic gradient.
     Conic(ConicGradient),
 }
 
 impl Brush {
-    /// Panics unless a solid brush's colour is a [colour](domain::color)
-    /// and a gradient's geometry holds its kinds: angles are
-    /// [angles](domain::angle), centres [offsets](domain::offset), a radial
-    /// radius a [length](domain::length) on each axis. A gradient's stops
-    /// are checked when they are made. The check a brush faces where it
-    /// enters a shape or a node.
+    /// Panics unless the colour or gradient geometry holds its kinds ([`domain`]); stops are checked when made.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -78,11 +59,11 @@ impl Brush {
         }
     }
 
-    /// Paints nothing. The identity a fill falls back to.
+    /// Paints nothing.
     pub const TRANSPARENT: Self = Self::Solid(RgbaF32::TRANSPARENT);
 
-    /// Paints nothing visible.
     #[inline]
+    /// Whether the brush paints nothing.
     pub const fn is_noop(&self) -> bool {
         match self {
             Brush::Solid(c) => c.is_noop(),
@@ -92,10 +73,8 @@ impl Brush {
         }
     }
 
-    /// Extracts the underlying `RgbaF32` for the solid fast path. Returns
-    /// `None` for gradient variants. Takes `&self` so callers with a borrowed
-    /// `Brush` don't need to clone just to pull out the solid color.
     #[inline]
+    /// The colour, if solid.
     pub const fn as_solid(&self) -> Option<RgbaF32> {
         match self {
             Brush::Solid(c) => Some(*c),
@@ -170,10 +149,7 @@ impl From<ConicGradientBuilder> for Brush {
 impl Animatable for Brush {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
-        // Match on `(&a, &b)` instead of `(a, b)` so the gradient
-        // fallback can still hand back one of the originals without
-        // re-`Clone` — the tuple-by-value pattern needs `Brush: Copy`,
-        // and the trait requires only `Clone`.
+        // Match by reference so the gradient fallback can return an original without cloning.
         match (&a, &b) {
             (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(RgbaF32::lerp(*x, *y, t)),
             // Gradient morphs snap until interpolation between gradient payloads exists.

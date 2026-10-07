@@ -23,29 +23,19 @@ use crate::widgets::theme::context_menu::ContextMenuTheme;
 use glam::Vec2;
 use std::rc::Rc;
 
-/// Cross-frame response for one context-menu site, keyed off the trigger
-/// widget's id in [`StateMap`](crate::ui::state::StateMap).
-/// `open_at = Some` is the single source of truth for "menu open".
+/// Open state for one context-menu site, keyed off the trigger's id.
 #[derive(Default, Clone, Copy, Debug)]
 struct ContextMenuState {
     open_at: Option<Vec2>,
 }
 
-/// A right-click / programmatically-opened popup menu attached to a
-/// trigger widget. State lives in `StateMap` keyed off the trigger
-/// id, so opening / dismissing survives across frames without the
-/// caller threading a flag.
+/// A right-click or programmatically opened popup menu attached to a trigger.
 ///
-/// **The one overlay that owns its own open state.**
-/// [`Popup`] and [`Modal`](crate::Modal) make the caller hold
-/// the flag and record them only while it is set. A menu is raised by a
-/// gesture rather than by application state, so there is nothing an
-/// application would keep the flag *for* — [`Self::is_open`],
-/// [`Self::open`] and [`Self::close`] are the whole of what it would have
-/// written.
+/// Unlike [`Popup`] and [`Modal`](crate::Modal), it owns its open state
+/// ([`Self::is_open`], [`Self::open`], [`Self::close`]), since a gesture
+/// raises it rather than application state.
 ///
-/// Typical usage chains [`Self::on`] off a trigger's `Response`,
-/// which auto-opens at the pointer on a right-click (`right.clicked()`):
+/// [`Self::on`] opens it at the pointer on a right-click:
 ///
 /// ```
 /// # use palantir::{Button, ContextMenu, Configure, MenuItem, Ui};
@@ -57,48 +47,29 @@ struct ContextMenuState {
 /// # }
 /// ```
 ///
-/// For programmatic opens (keyboard shortcut, custom gesture) call
-/// [`Self::open`] before [`Self::for_id`]`(id).show(...)`.
+/// For programmatic opens call [`Self::open`] before
+/// [`Self::for_id`]`(id).show(...)`.
 ///
-/// Closes on outside-click, on Esc, when any [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem) inside
-/// reports `clicked()`, or when a [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem)'s declared
-/// [`Shortcut`](crate::input::shortcut::Shortcut) matches a keypress this frame.
+/// Closes on outside-click, Esc, a clicked item, or an item's matching
+/// [`Shortcut`](crate::input::shortcut::Shortcut).
 ///
-/// Chain `.size(...)`, `.max_size(...)`, `.min_size(...)`, `.padding(...)`,
-/// `.gap(...)`, and `.background(...)` to configure the menu body. Theme-driven
-/// defaults fill in any field the caller leaves untouched (`chrome`, `padding`,
-/// `min_size.w`, `gap`). Identity and input behavior remain owned by the trigger.
-///
-/// [`Self::style`] swaps the whole [`ContextMenuTheme`] for one instance.
-/// It restyles the *panel* only — the rows are recorded by the caller's
-/// body closure, so pass the matching sub-themes down to them
-/// ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style), [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).
+/// [`Self::style`] restyles the panel only; pass sub-themes to the rows.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ContextMenu<'a> {
     for_id: WidgetId,
-    /// The trigger reported a right-click this frame, so `show` opens the
-    /// menu at the pointer first.
+    /// The trigger reported a right-click this frame.
     open_on_show: bool,
-    /// The popup this menu *is*. It owns the body node from the start,
-    /// so the caller's [`Configure`] calls land on the node that
-    /// actually records — there is no second node to keep in sync or
-    /// swap in at `show`. Its anchor is a placeholder until `show`
-    /// re-anchors it (see [`Popup::anchor`]); a closed menu returns
-    /// before recording, so the placeholder never places anything.
-    ///
-    /// It owns the chrome too, so `.background(..)` and the theme
-    /// fallback land in one place rather than in a field here that
-    /// `show` has to remember to copy across.
+    /// The popup this menu is. Its anchor is a placeholder until `show`; a
+    /// closed menu returns before recording. It owns the chrome too, so
+    /// `.background(..)` and the theme fallback land in one place.
     popup: Popup,
     style: Option<&'a ContextMenuTheme>,
 }
 
 impl<'a> ContextMenu<'a> {
-    /// The menu's identity is the trigger's, settled here rather than at
-    /// `show`: the popup's `#[track_caller]` id would resolve to *this*
-    /// line for every menu in the program, so nothing may be left
-    /// depending on it.
+    /// Identity is the trigger's, settled here because the popup's
+    /// `#[track_caller]` id would resolve to this line for every menu.
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,
@@ -108,10 +79,9 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    /// Attach a menu to the trigger `snapshot` was taken from: the menu
-    /// takes the trigger's id, and [`Self::show`] opens it at the pointer
-    /// on the frame the trigger reports a right-click. Pass via
-    /// `trigger.snapshot()` to detach from the trigger's `&Ui` borrow.
+    /// Attach a menu to the trigger `snapshot` was taken from; `show` opens
+    /// it at the pointer on a right-click. Use `trigger.snapshot()` to
+    /// release the `&Ui` borrow.
     pub fn on(snapshot: &ResponseSnapshot) -> Self {
         Self {
             open_on_show: snapshot.right.clicked(),
@@ -119,30 +89,18 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `context_menu`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
-    ///
-    /// Restyles the *panel* only — the rows are recorded by the caller's
-    /// body closure, so pass the matching sub-bundles to them
-    /// ([`MenuItem::style`](crate::widgets::context_menu::menu_item::MenuItem::style),
-    /// [`MenuSeparator::style`](crate::widgets::context_menu::menu_separator::MenuSeparator::style)).
+    /// Per-instance override of [`crate::Theme`]'s `context_menu`. Restyles
+    /// the panel only; rows take their own sub-themes.
     pub fn style(mut self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the menu and return the popup's own per-frame outcome.
+    /// Record the menu and return the popup's outcome.
     ///
-    /// [`OverlayResponse`] directly rather than a menu-specific wrapper:
-    /// a context menu *is* a popup here, so it reports
-    /// [`closed`](OverlayResponse::closed) — the same close predicate
-    /// every other overlay-trigger widget branches on. Its `inner` is an
-    /// `Option` because a closed menu never runs the body.
-    ///
-    /// The body closure records [`MenuItem`](crate::widgets::context_menu::menu_item::MenuItem)s inside
-    /// [`Layer::Menu`], which is what lets a menu be raised from inside a
-    /// popup or a dialog; the menu auto-closes on outside-click, Esc, or an
-    /// item click.
+    /// `inner` is `None` when the menu is closed and the body did not run.
+    /// The body records in [`Layer::Menu`], so a menu can be raised from
+    /// inside a popup or dialog.
     pub fn show<R>(
         self,
         ui: &mut Ui,
@@ -153,12 +111,7 @@ impl<'a> ContextMenu<'a> {
         {
             ContextMenu::open(ui, self.for_id, p);
         }
-        // Esc dismissal is owned by the `Dismiss` popup below — it folds into
-        // `resp.closed()`, so no hand-rolled Escape check here.
-        //
-        // Read via `state` so a never-opened menu doesn't materialize a
-        // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
-        // path); the row only needs to exist after `open`.
+        // Read via `state` so a never-opened menu stores no StateMap row.
         let Some(open_at) = ui
             .state::<ContextMenuState>(self.for_id)
             .and_then(|st| st.open_at)
@@ -169,11 +122,8 @@ impl<'a> ContextMenu<'a> {
         let ui_theme = Rc::clone(ui.theme());
         let ctx = self.style.unwrap_or(&ui_theme.context_menu);
 
-        // The menu is the popup, configured: the caller's `Configure`
-        // calls already landed on it, the menu theme fills in whatever
-        // they left alone, and `Popup::show` resolves the result against
-        // the surface. Identity falls back to the trigger's — a menu has
-        // no call site of its own worth keying on.
+        // The caller's `Configure` calls already landed on the popup; the
+        // theme fills the rest. Identity falls back to the trigger's.
         let resp = self
             .popup
             .layer(Layer::Menu)
@@ -182,7 +132,6 @@ impl<'a> ContextMenu<'a> {
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
-            // Up and Down walk the rows, as a native menu's do.
             .arrow_focus(Axis::Y)
             .show(ui, |ui, handle| Some(body(ui, handle)));
         if resp.closed() {
@@ -192,8 +141,8 @@ impl<'a> ContextMenu<'a> {
         resp
     }
 
-    /// Open the context menu keyed off `for_id` at surface-space
-    /// `point`. Idempotent — repeated calls move an open menu.
+    /// Open the menu keyed off `for_id` at surface-space `point`. Idempotent;
+    /// repeated calls move an open menu.
     ///
     /// # Panics
     ///
@@ -203,9 +152,8 @@ impl<'a> ContextMenu<'a> {
         ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = Some(vec2::offset(point)));
     }
 
-    /// Close the context menu keyed off `for_id`. No-op if already closed.
+    /// Close the menu keyed off `for_id`. No-op if closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        // Probed first, so closing a closed menu stores nothing.
         if ui
             .state::<ContextMenuState>(for_id)
             .is_some_and(|s| s.open_at.is_some())
@@ -214,9 +162,7 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    /// `true` while the menu keyed off `for_id` is open.
-    /// Cheap immutable probe — no row is allocated for triggers that
-    /// have never been opened.
+    /// Whether the menu keyed off `for_id` is open. Allocates no row.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
         ui.state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.open_at.is_some())
@@ -224,11 +170,8 @@ impl<'a> ContextMenu<'a> {
 }
 
 impl ContextMenu<'_> {
-    /// Paint `background` as the menu panel's background.
-    ///
-    /// Unset is the default; the theme fallback in [`Self::show`] fills
-    /// it in from the resolved theme's `panel`. Pass
-    /// [`Background::NONE`] to suppress the themed menu chrome.
+    /// Paint `background` as the menu panel's background; the theme's `panel`
+    /// fills it when unset. [`Background::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///
@@ -239,12 +182,9 @@ impl ContextMenu<'_> {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
-    ///
+    /// Paint `background` unless the caller set one, for a wrapper theming
+    /// a widget after the caller's setters ran. An explicit
+    /// [`Self::background`] wins in either order.
     /// # Panics
     ///
     /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
@@ -255,9 +195,7 @@ impl ContextMenu<'_> {
     }
 }
 
-/// Forwards to the popup this menu wraps, so `.size(...)` /
-/// `.padding(...)` / `.id(...)` configure the node that actually
-/// records — the menu keeps no node of its own.
+/// Forwards to the popup this menu wraps; the menu keeps no node of its own.
 impl Configure for ContextMenu<'_> {
     fn configure(&mut self) -> ConfigureWidget<'_> {
         self.popup.configure()

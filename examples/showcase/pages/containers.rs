@@ -1,8 +1,4 @@
-//! Container drivers: the four stack panels (HStack / VStack / ZStack /
-//! Canvas), flow-then-wrap WrapHStack / WrapVStack (`.gap` spaces
-//! siblings within a line, `.line_gap` spaces lines, `.justify` applies
-//! per line), and Grid with fixed / fill / hug / clamped tracks plus
-//! cell spanning.
+//! Container drivers: stacks, Canvas, wrap stacks and Grid with fixed, fill, hug and clamped tracks plus spanning.
 
 use crate::support;
 use crate::support::{
@@ -127,8 +123,7 @@ pub(crate) fn build(ui: &mut Ui) {
                  the window to see the Fill tracks divide the room again.",
         );
         tiles(ui, |ui| {
-            // Classic three-column app shell: fixed sidebar | flexible
-            // content | hugging right rail; the header spans all three.
+            // Three-column shell: fixed sidebar, flexible content, hugging right rail; the header spans all three.
             demo_cell_at(
                 ui,
                 "app shell — fixed | fill | hug, header spans",
@@ -156,9 +151,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         });
                 },
             );
-            // The left Fill is bounded [110, 160] so it grows with the
-            // tile only within that range; the right Fill absorbs every
-            // leftover pixel.
+            // The left Fill is bounded [110, 160]; the right Fill absorbs the rest.
             demo_cell_at(
                 ui,
                 "clamped track — Fill min 110 max 160 | Fill",
@@ -220,9 +213,6 @@ fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: RgbaF32) {
         .show(ui);
 }
 
-/// Pill-shaped tag chip — the chip look IS the demo content here, so it
-/// carries its own fill and stroke. Both are translucent accent, so the
-/// cloud harmonizes with the rest of the page.
 fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
     let a = support::A;
     Panel::hstack()

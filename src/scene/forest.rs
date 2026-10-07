@@ -1,7 +1,5 @@
-//! The recorded half of the scene: one arena per layer, plus the
-//! per-frame identity tracker and layer stack that recording needs.
-//! `cascade` and `damage` turn what lands here into the immutable
-//! per-frame data input and rendering read.
+//! The recorded half of the scene: one arena per layer, plus the per-frame
+//! identity tracker and layer stack that recording needs.
 
 use crate::common::tracy;
 use crate::layout::drivers::scrollbars::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
@@ -27,94 +25,53 @@ use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
 use std::time::Duration;
 
-/// One arena per [`Layer`]. Recording dispatches `open_node`,
-/// `add_shape`, `close_node` to `trees[current_layer.idx()]`.
-/// Pipeline passes iterate trees via [`PerLayer::iter_paint_order`];
-/// known-layer access indexes `trees[layer]` directly.
+/// One arena per [`Layer`]; recording dispatches to `trees[current_layer.idx()]`.
 #[derive(Debug, Default)]
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
-    /// Variable-sized payloads referenced by shape records in `trees`.
-    /// Cleared with the trees on a record pass and retained with them across
-    /// `PaintOnly` frames.
+    /// Variable-sized payloads referenced by shape records; cleared on a record pass, retained across `PaintOnly` frames.
     pub(crate) record_store: RecordStore,
-    /// Per-layer recording-only state (ancestor stack + pending
-    /// anchor). Lives off `Tree` so downstream passes holding `&Tree`
-    /// can't reach transient state; cleared by `pre_record`, drained
-    /// at each top-level `close_node`. Disjoint from `trees` so
-    /// `open_node` can borrow both via field access.
+    /// Per-layer recording-only state, kept off `Tree` so downstream passes can't reach it. Cleared by `pre_record`.
     scratch: PerLayer<RecordingScratch>,
-    /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
-    /// detection + auto-id disambiguation), reset by `pre_record`, and
-    /// rolled over by `FrameCycle::finalize_frame` (which fans `ids.removed`
-    /// out to per-widget caches). Lives on `Forest` so any path that
-    /// reaches `open_node` — including direct callers that bypass
-    /// `Widget::record` — gets the same collision check.
+    /// Per-frame `WidgetId` tracker (collision detection, auto-id disambiguation). Lives here so every path to `open_node` gets the check.
     pub(crate) ids: SeenIds,
-    /// Explicit-id collisions recorded this frame — each carries the
-    /// first-occurrence and disambiguated nodes (with their layers).
-    /// Read by `encoder::emit_collision_overlays` after the regular
-    /// paint walk; cleared by the next `pre_record`. Public-in-crate
-    /// so tests can introspect.
+    /// Explicit-id collisions this frame, read by `encoder::emit_collision_overlays`.
     ///
-    /// Recorded in every profile so the `internals` harness can assert
-    /// on it, but only *painted* in a development build — see
-    /// `encoder::emit_collision_overlays`.
+    /// Recorded in every profile for tests, but only painted in a development build.
     pub(crate) collisions: Vec<CollisionRecord>,
-    /// Stack of active side-layer scopes; empty for the `Main` baseline.
-    /// `push_layer` pushes, `pop_layer` pops and restores the parent
-    /// scope. A nested layer must rank strictly higher than the scope it
-    /// opens from (`push_layer` asserts `layer > current`) — the
-    /// cross-layer paint/hit order is `Layer::PAINT_ORDER` with no
-    /// per-node z, so a lower nest would paint under its parent. Real
-    /// case: a tooltip rising from a popup or modal body. Strictly
-    /// increasing ⇒ each layer appears at most once, keeping the
-    /// per-`Tree` `pending_placement` slot single-occupancy. Retained across
-    /// frames (cleared with capacity kept in `pre_record`) so
-    /// steady-state recording is alloc-free.
+    /// Active side-layer scopes; empty for the `Main` baseline.
+    ///
+    /// A nested layer must rank strictly above its parent (`push_layer` asserts): paint and hit order is `Layer::PAINT_ORDER` with no per-node z. That also keeps each layer on the stack at most once, so `pending_placement` is single-occupancy.
     layer_stack: Vec<Layer>,
 }
 
 impl Forest {
-    /// Active layer for the next `open_node`. `Main` between/outside
-    /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
+    /// Active layer for the next `open_node`; `Main` outside `Ui::layer` scopes.
     #[inline]
     pub(crate) fn current_layer(&self) -> Layer {
         self.layer_stack.last().copied().unwrap_or(Layer::Main)
     }
 
-    /// Recorded nodes across every layer. The cascade sizes its flat
-    /// per-node tables against this and the measure cache checks its
-    /// snapshot against it, so it is one method rather than the same
-    /// fold spelled three ways.
+    /// Recorded nodes across every layer.
     pub(crate) fn total_nodes(&self) -> usize {
         self.trees.iter().map(|tree| tree.records.len()).sum()
     }
 
-    /// Top-level roots across every layer — the companion count to
-    /// [`Self::total_nodes`], read by the measure cache's snapshot key.
+    /// Top-level roots across every layer.
     pub(crate) fn total_roots(&self) -> usize {
         self.trees.iter().map(|tree| tree.roots.len()).sum()
     }
 
-    /// Intern a grid's track definition into the current layer's tree.
-    /// The returned handle is what a `Node::grid` packs, and `open_node`
-    /// debug-asserts that a grid node's handle resolves — pushing
-    /// through the active layer here is what makes that hold by
-    /// construction rather than by every caller remembering.
+    /// Interns a grid's track definition into the current layer's tree, so `open_node`'s handle check holds by construction.
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
         let layer = self.current_layer();
         self.trees[layer].push_grid_def(rows, cols)
     }
 
-    /// Intern a bar overlay's definition into the current layer's tree,
-    /// with the viewport it names resolved to the node this pass recorded
-    /// it as. Companion to [`Self::push_grid_def`]; same layer contract.
+    /// Interns a bar overlay's definition into the current layer's tree, with its viewport resolved to the node recorded this pass.
     ///
-    /// A direct probe of the id map the pass is filling, so the viewport
-    /// must be open already — unlike the cascade lookups on `Ui`, which
-    /// answer for last frame.
+    /// Probes the id map being filled, so the viewport must already be open.
     ///
     /// # Panics
     ///
@@ -138,19 +95,9 @@ impl Forest {
         self.trees[layer].push_scrollbars_def(ResolvedScrollbarsDef { def, content })
     }
 
-    /// Resolve `ident` against the currently-open parent into the id this
-    /// frame will record under.
+    /// Resolves `ident` against the open parent into the id this frame records under.
     ///
-    /// Both halves are the tracker's: [`Ident::raw_id`] mixes in the
-    /// parent so identity follows tree position rather than record
-    /// order, and [`SeenIds::resolve`] eagerly disambiguates a raw id
-    /// that already opened this frame. Neither is meaningful without the
-    /// other — a raw id that skipped disambiguation would collide, and a
-    /// disambiguated id that skipped the parent would move with record
-    /// order — so they resolve together here rather than being paired up
-    /// again by every caller. A parent-scoped ident goes to the tracker as
-    /// its inputs, the call site or salt and the parent, so a frame in step
-    /// with the last one never hashes its raw id.
+    /// Parent mixing and disambiguation must happen together: without the first the id moves with record order, without the second it collides. Parent-scoped idents pass their inputs to the tracker so an unchanged frame never hashes the raw id.
     #[inline]
     pub(crate) fn widget_id(&mut self, ident: Ident) -> ResolvedId {
         let parent = self.current_parent_id();
@@ -173,11 +120,7 @@ impl Forest {
         }
     }
 
-    /// Finalize every tree. Pure structural pass — the surface needed
-    /// to evaluate each root's placement is passed to `LayoutEngine::run`.
-    /// The paint-anim wake fold is centralised in
-    /// [`Self::min_paint_anim_wake`] and run at the tail of
-    /// `Ui::frame` for both record + paint-only paths.
+    /// Finalizes every tree.
     pub(crate) fn post_record(&mut self) {
         tracy::zone!();
         let active = self.current_layer();
@@ -197,11 +140,7 @@ impl Forest {
         }
     }
 
-    /// Minimum `next_wake` across every layer's paint anims, or `None`
-    /// when nothing wants a wake — no anims at all, or every one of
-    /// them settled. Called from `Ui::frame` after both
-    /// record and paint-only paths so the next anim boundary is queued
-    /// regardless of which path ran.
+    /// Minimum `next_wake` across every layer's paint anims, or `None` when nothing wants a wake.
     pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Option<Duration> {
         self.trees
             .iter()
@@ -210,22 +149,9 @@ impl Forest {
             .min()
     }
 
-    /// Open a node whose id has already been resolved + disambiguated
-    /// upstream by [`crate::widget::Widget::resolve`] (which calls
-    /// `SeenIds::resolve` eagerly so the returned id matches what the
-    /// tree, cascade, and `response_for` see). This function takes
-    /// that resolution verbatim, opens the node in the active tree, and
-    /// records the endpoint the tree assigned via
-    /// `SeenIds::record_endpoint`, which writes the id's entry without a
-    /// second hash probe (also emitting any pending explicit collision
-    /// pair).
+    /// Opens a node whose id was already resolved by [`crate::widget::Widget::resolve`], and records its endpoint (also emitting any pending explicit collision pair).
     ///
-    /// `chrome` is `Some(Background { .. })` for nodes with a background
-    /// paint and `None` otherwise. The `Background` is borrowed, not
-    /// owned, so it isn't re-copied through the `Widget::record → here →
-    /// Tree::open_node → shapes::lower::background` chain on every
-    /// chromed widget — see [`Background`]'s own note for why it is not
-    /// `Copy`.
+    /// `chrome` is borrowed so a chromed widget doesn't re-copy its `Background` down the record chain.
     #[inline]
     pub(crate) fn open_node(
         &mut self,
@@ -235,11 +161,8 @@ impl Forest {
         ring: Stroke,
     ) {
         let layer = self.current_layer();
-        // Disjoint borrow: record storage, `trees`, and `scratch` are separate
-        // fields, so all three can be borrowed for the same call.
         let store = &mut self.record_store;
-        // A ring with no background rides an empty one, which paints
-        // nothing and widens no padding.
+        // A ring with no background rides an empty one.
         let chrome = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
             bg: chrome.unwrap_or(&Background::NONE),
             ring,
@@ -257,10 +180,7 @@ impl Forest {
         }
     }
 
-    /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion
-    /// reserves stack slots in whatever function it inlines into, taxing
-    /// every open with a bigger frame for a path that fires only on a
-    /// caller bug.
+    /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion would enlarge its stack frame.
     #[cold]
     #[inline(never)]
     fn report_explicit_collision(&mut self, collision: CollisionRecord) {
@@ -283,9 +203,7 @@ impl Forest {
         tree.close_node(scratch);
     }
 
-    /// Shared gate for the `add_*` recording entry points: a shape can
-    /// only attach to a currently-open node, so widgets can't leak
-    /// shapes outside an `open_node` / `close_node` scope.
+    /// Gate for the `add_*` entry points: a shape needs an open node.
     fn assert_node_open(&self, layer: Layer, what: &str) {
         debug_assert!(
             !self.scratch[layer].open_frames.is_empty(),
@@ -293,43 +211,21 @@ impl Forest {
         );
     }
 
-    /// Whether a record pass is in flight — i.e. *some* layer has a node
-    /// open.
+    /// Whether a record pass is in flight, i.e. some layer has a node open.
     ///
-    /// `record_pass` opens `WidgetId::VIEWPORT` on `Main` before handing
-    /// the `Ui` to the app and closes it after, so this is `true` for
-    /// exactly the window in which recording-only entry points are legal.
-    ///
-    /// Deliberately not `current_layer()`: [`Ui::layer`](crate::Ui::layer) pushes a layer
-    /// without opening anything in it, so an overlay scope that has not
-    /// recorded a widget yet would read as "not recording" on its own
-    /// layer while the frame's record is very much in flight. This is a
-    /// frame-level question, not a per-layer one — unlike
-    /// [`Self::assert_node_open`], which really is asking about the layer
-    /// a shape is about to attach to.
+    /// Not `current_layer()`: [`Ui::layer`](crate::Ui::layer) pushes a layer without opening a node in it, which would misread as not recording.
     pub(crate) fn is_recording(&self) -> bool {
         self.scratch.iter().any(|s| !s.open_frames.is_empty())
     }
 
-    /// Lower a user-facing [`Shape`](crate::widget::Shape) (curve flattening, span
-    /// stamping, hashing) and append it to the active tree's shape buffer.
-    /// Asserts a node is currently open so widgets can't leak shapes
-    /// outside an `open_node` / `close_node` scope.
+    /// Lowers a user-facing [`Shape`](crate::widget::Shape) and appends it to the active tree's shape buffer.
     pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
         self.push_shape("add_shape", |tree, store, _| {
             tree.shapes.add(shape, store).is_some()
         });
     }
 
-    /// Append a `GpuView` shape (a
-    /// [`ShapeRecord::Image`](crate::shape::record::ShapeRecord::Image)
-    /// sourced from an
-    /// [`ImageSource::GpuView`](crate::shape::paint::image_source::ImageSource::GpuView))
-    /// to the active node. Only the redraw `epoch` rides the shape — the
-    /// view's `id` + app `paint` live in `Ui::gpu_views` keyed by the
-    /// owner's `WidgetId`; this is assembled by `Ui::add_gpu_view`, not lowered
-    /// from a user-facing [`Shape`](crate::widget::Shape), so it skips the lowering
-    /// path and can never noop-collapse.
+    /// Appends a `GpuView` shape to the active node. Only the redraw `epoch` rides the shape; it skips lowering and never noop-collapses.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         self.push_shape("add_gpu_view", |tree, _, _| {
             tree.shapes.add_gpu_view(epoch);
@@ -337,21 +233,14 @@ impl Forest {
         });
     }
 
-    /// Same as [`Self::add_shape`], but registers a `PaintAnimation` against
-    /// the freshly-pushed shape so the encoder applies the sampled
-    /// `PaintMod` at paint time and [`Self::min_paint_anim_wake`] folds
-    /// the anim's `next_wake` into the host's repaint queue. Drops silently
-    /// (no entry pushed) if the shape itself was noop-collapsed.
-    /// Effectively invisible shapes stay authored but omit their
-    /// animation row until a visible record pass resumes them.
+    /// [`Self::add_shape`] plus a `PaintAnimation` registered against the new shape. No entry is pushed if the shape noop-collapsed or the node is effectively invisible.
     pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnimation) {
         self.push_shape("add_shape_animated", |tree, store, frame| {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
             tree.shapes.fold_paint_anim(shape_idx, &anim);
-            // The row is charged either way — an invisible pass still
-            // authors the shape — so only the animation row is skipped.
+            // The paint row is charged either way.
             if frame.effectively_visible {
                 tree.paint_anims.push_entry(PaintAnimEntry {
                     anim,
@@ -364,17 +253,9 @@ impl Forest {
         });
     }
 
-    /// Shared body of every `add_*` entry point: gate on an open node,
-    /// hand `push` the active tree, the record store and the open frame,
-    /// and charge that frame one paint row for whatever it actually
-    /// stored.
+    /// Shared body of the `add_*` entry points: gates on an open node, runs `push`, and charges one paint row if `push` returns `true`.
     ///
-    /// `push` answers "did this store a paint row" — `false` when the
-    /// shape noop-collapsed, so the row counter only advances for a
-    /// shape that survived. The frame comes in read-only and *before*
-    /// the bump, which is what the animated entry point needs: its
-    /// animation row is stamped with the row this shape is about to
-    /// take.
+    /// `push` sees the frame before the bump, so an animation row is stamped with the row its shape takes.
     #[inline]
     fn push_shape(
         &mut self,
@@ -383,8 +264,6 @@ impl Forest {
     ) {
         let layer = self.current_layer();
         self.assert_node_open(layer, what);
-        // Disjoint borrow: record storage, `trees`, and `scratch` are
-        // separate fields, so all three can be borrowed for the same call.
         let tree = &mut self.trees[layer];
         let frames = &mut self.scratch[layer].open_frames;
         let frame = frames
@@ -397,25 +276,9 @@ impl Forest {
 
     pub(crate) fn push_layer(&mut self, layer: Layer, placement: Placement) {
         let active = self.current_layer();
-        // A nested side layer must paint *above* the scope it's raised
-        // from. The cross-layer scheme has no per-node z-index — paint
-        // and hit order are entirely `Layer::PAINT_ORDER` — so `layer`
-        // must rank strictly higher than the active scope. This admits
-        // the real cases (a tooltip rising from a popup or modal body:
-        // Tooltip > Popup, Tooltip > Modal) and rejects a lower-or-equal
-        // nest, which would record fine but then render *underneath* its
-        // parent (occluded, un-hittable). Equal is rejected too: it would
-        // also clobber the single per-layer `pending_placement` slot.
-        // Strictly increasing ⇒ each layer appears at most once on the
-        // stack, so that slot stays single-occupancy without a guard.
+        // A nested layer must paint above the scope it's raised from (e.g. Tooltip over Popup), and equal would clobber `pending_placement`.
         //
-        // Asserted in release: nothing downstream reads the rank again,
-        // so a lower-or-equal nest produces no error of its own — the
-        // scope paints under the parent it was raised from and overwrites
-        // the placement that parent is waiting on, and the frame comes out
-        // subtly wrong. That is public-API misuse on a cold path, which is
-        // the one case this crate spends a release assert on. `Ui::layer`
-        // runs once per side scope, not per node.
+        // Release assert: a violation raises no error downstream, the frame is just subtly wrong. Cold path, once per side scope.
         assert!(
             layer > active,
             "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
@@ -448,32 +311,23 @@ impl Forest {
         scratch.owner_disabled = false;
     }
 
-    /// Borrow the tree for the [`Self::current_layer`] — the one
-    /// `open_node` / `add_shape` dispatch to. Convenience over
-    /// `tree(current_layer())` for the very common case.
     #[inline]
     fn current_tree(&self) -> &Tree {
         &self.trees[self.current_layer()]
     }
 
-    /// Recording-only scratch for the active layer. Read by
-    /// [`Self::current_parent_id`] and [`Self::ancestor_disabled`].
     #[inline]
     fn current_scratch(&self) -> &RecordingScratch {
         &self.scratch[self.current_layer()]
     }
 
-    /// Whether an ancestor of the node being recorded in the active layer
-    /// is disabled — this frame's half of the disabled cascade, which the
-    /// cascade itself reports a frame late.
+    /// Whether an ancestor of the node being recorded is disabled; the cascade reports it a frame late.
     #[inline]
     pub(crate) fn ancestor_disabled(&self) -> bool {
         self.current_scratch().ancestor_disabled()
     }
 
-    /// `WidgetId` of the innermost open node in the active layer — the
-    /// parent context auto/salted ids resolve against (`Widget::resolve`)
-    /// — or `None` at the top of a layer with no node open yet.
+    /// `WidgetId` of the innermost open node in the active layer, or `None` before any.
     #[inline]
     pub(crate) fn current_parent_id(&self) -> Option<WidgetId> {
         let tree = self.current_tree();
@@ -492,9 +346,7 @@ pub(crate) mod internals {
     use crate::scene::tree::node_id::NodeId;
 
     impl Forest {
-        /// The node carrying `id` on `layer`. A linear scan — fine for
-        /// tests, which is the only caller; the production path reaches
-        /// nodes by `NodeId` already.
+        /// The node carrying `id` on `layer`; linear scan.
         pub(crate) fn node_for_widget_id(&self, layer: Layer, id: WidgetId) -> NodeId {
             let idx = self.trees[layer]
                 .records

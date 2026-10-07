@@ -1,9 +1,5 @@
-//! Grid driver: the measure / arrange / intrinsic entry points the
-//! layout engine dispatches a `LayoutMode::Grid` node to.
-//!
-//! The track-sizing solve itself is
-//! [`AxisScratch`](axis_scratch::AxisScratch); the state it reads and
-//! writes lives in [`GridContext`](grid_context::GridContext).
+//! Grid driver: the measure / arrange / intrinsic entry points for a `LayoutMode::Grid` node; the track solve
+//! is [`AxisScratch`](axis_scratch::AxisScratch), its state [`GridContext`](grid_context::GridContext).
 
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::engine::LayoutEngine;
@@ -35,25 +31,15 @@ use crate::layout::drivers::grid::measure::measure_inner;
 pub(super) struct Grid;
 
 impl LayoutDriver for Grid {
-    /// Index of this grid's track definition in `Tree::grid_defs`.
     type Payload = GridDefId;
 
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// WPF-style grid measure. Resolves Fixed tracks, walks children once
-    /// feeding each `Σ spanned-track sizes` (or `∞` if any spanned track is
-    /// unresolved — the WPF infinity trick → child reports intrinsic), then
-    /// resolves Hug tracks from span-1 children's desired sizes. Star tracks
-    /// contribute 0 to the grid's content size — final star sizes only resolve
-    /// in arrange. The full constraint solver is documented on
+    /// WPF-style grid measure: resolves Fixed tracks, feeds each child the sum of its spanned tracks (`∞` if any
+    /// is unresolved, so the child reports intrinsic), then resolves Hug tracks from span-1 children. Star tracks
+    /// resolve only in arrange. Per-depth scratch is clobbered by sibling grids between measure and arrange, so
+    /// Hug sizes live in `grid.track_state` (`GridTrackStore`) for the whole pass. The solver is documented on
     /// [`AxisScratch::resolve_axis`](crate::layout::drivers::grid::axis_scratch::AxisScratch::resolve_axis).
-    ///
-    /// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
-    /// and gets clobbered by sibling grids between this measure and the
-    /// matching arrange. Hug sizes therefore live in `grid.track_state`
-    /// (`GridTrackStore`), keyed by `GridDef` index, durable for the whole
-    /// layout pass. Both are heap-resident and capacity-retained across
-    /// frames; no fixed track-count limit.
     fn measure(
         pass: &mut LayoutPass<'_>,
         node: NodeId,
@@ -72,19 +58,8 @@ impl LayoutDriver for Grid {
         pass.grid_mut().depth_stack.exit();
     }
 
-    /// Intrinsic size of a Grid: per-track contribution aggregated from
-    /// span-1 cells, summed across tracks plus gaps. Answers "what would
-    /// the Grid prefer to be on this axis?" so callers can read it without
-    /// running `measure`.
-    ///
-    /// Per-track contribution mirrors `Track`'s `Sizing` interpretation:
-    /// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.
-    /// - `Hug`: starts at `Track.min`, grown by span-1 cells' intrinsic on
-    ///   the same axis, clamped to `[Track.min, Track.max]`.
-    /// - `Fill(_)`: same content floor as Hug; weight is ignored until
-    ///   distribution.
-    ///
-    /// Span > 1 cells are excluded, matching `measure`.
+    /// Intrinsic size of a Grid: span-1 cells' per-track contributions summed across tracks plus gaps (span > 1
+    /// cells are excluded, as in `measure`); `Fixed` clamps to `[min, max]`, `Hug` and `Fill` share a content floor.
     fn intrinsic(
         layout: &mut LayoutEngine,
         tree: &Tree,
@@ -95,10 +70,7 @@ impl LayoutDriver for Grid {
         interned_text: &InternedText<'_>,
     ) -> IntrinsicRange {
         let def = tree.grid_defs[usize::from(idx)];
-        // An empty dimension means no cells, so the grid measures to
-        // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
-        // *both* axes — a declared `Fixed` track on the non-empty axis
-        // contributes nothing when there's nothing to place in it.
+        // An empty dimension means no cells, so the grid measures `Size::ZERO` (see `measure_inner`) on both axes.
         if def.cols.len == 0 || def.rows.len == 0 {
             return IntrinsicRange::ZERO;
         }

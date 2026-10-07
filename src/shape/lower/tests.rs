@@ -27,8 +27,6 @@ fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
     }
 }
 
-/// A white fill with `corners`, the shape every chrome case here
-/// varies one field of.
 fn with_corners(corners: Corners) -> Background {
     Background {
         corners,
@@ -36,13 +34,7 @@ fn with_corners(corners: Corners) -> Background {
     }
 }
 
-/// The four ways a `Background` can carry a NaN, one per field.
-///
-/// All four are covered because no no-op predicate owns the question
-/// for any of them: "the radius is NaN" is not a reason the
-/// background paints nothing, and `is_approx_zero` reports NaN as
-/// non-zero by design so a NaN cannot take the sharp-corner fast
-/// path.
+/// The four ways a `Background` can carry a NaN, one per field; no no-op predicate owns the question.
 fn nan_backgrounds() -> [(&'static str, Background); 4] {
     [
         (
@@ -74,11 +66,7 @@ fn nan_backgrounds() -> [(&'static str, Background); 4] {
     ]
 }
 
-/// The three gradient kinds hash apart even on identical stops and
-/// geometry, because [`gradient_brush`] folds a discriminant byte in
-/// before the geometry. Without it a linear and a radial over the
-/// same two stops would share a content hash, and a brush swap
-/// between them would raise no damage.
+/// The three gradient kinds hash apart on identical stops: [`gradient_brush`] folds in a discriminant byte.
 #[test]
 fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
     let mut store = RecordStore::default();
@@ -108,9 +96,7 @@ fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
     assert_eq!(distinct.len(), 3, "{hashes:?}");
 }
 
-/// A sane background reaches the row unchanged, and every field it
-/// carries reaches the hash — which is what makes the sanitizing
-/// below a change of behaviour rather than a no-op.
+/// A sane background reaches the row unchanged and every field reaches the hash.
 #[test]
 fn background_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
@@ -130,8 +116,7 @@ fn background_lowering_keeps_an_authored_field() {
         ringed.hash, kept.hash,
         "the ring must reach the chrome hash"
     );
-    // A transparent border paints nothing, but its width is the padding
-    // edge an inset shadow paints inside, so the row and its hash keep it.
+    // A transparent border paints nothing, but its width is the inset shadow's padding edge, so it is kept.
     let clear_border = Background {
         border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
         ..with_corners(sane)
@@ -144,8 +129,6 @@ fn background_lowering_keeps_an_authored_field() {
         "the border's width must reach the chrome hash"
     );
 
-    // Every other field, one at a time off the same base: each must
-    // land on a hash of its own.
     let shadow = Shadow {
         color: RgbaF32::BLACK,
         offset: glam::Vec2::new(1.0, 2.0),
@@ -239,17 +222,9 @@ fn background_lowering_keeps_an_authored_field() {
     }
 }
 
-/// Chrome is the paint path `Shapes::add` never sees, so `background`
-/// is its NaN gate — and it sanitizes where the shape path drops,
-/// because `chrome_table` keeps a row for `ClipMode::Rounded` even
-/// when the paint is no-op. A dropped background would fix the fill
-/// and leave the stencil mask reading the NaN.
-///
-/// **The claim is one both profiles keep: a NaN never reaches the
-/// row.** A debug build says so by asserting, a release build by
-/// falling each field back to what its NaN already meant, and the
-/// `catch_unwind` accepts either — the same shape
-/// `the_nan_gate_drops_every_shape_kind` pins the shape path with.
+/// `background` is the NaN gate for chrome, which `Shapes::add` never sees. It sanitizes rather than drops,
+/// since `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op. A NaN never reaches
+/// the row: debug asserts, release falls each field back, and `catch_unwind` accepts either.
 #[test]
 fn a_nan_background_field_never_reaches_the_row() {
     let mut store = RecordStore::default();
@@ -257,8 +232,6 @@ fn a_nan_background_field_never_reaches_the_row() {
         let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
             background(&mut store, &authored, Stroke::NONE)
         })) else {
-            // The gate asserted, which is the loudest form of "did
-            // not reach the row".
             continue;
         };
         assert!(
@@ -270,9 +243,7 @@ fn a_nan_background_field_never_reaches_the_row() {
         );
     }
 
-    // A radius falls back to *no rounding* specifically, not merely
-    // to something finite: that is what leaves a `ClipMode::Rounded`
-    // stencil readable rather than clipping to a shape nobody chose.
+    // A radius falls back to no rounding so a `ClipMode::Rounded` stencil never clips to a shape nobody chose.
     if let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         background(
             &mut store,

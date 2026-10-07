@@ -1,38 +1,10 @@
-//! `WinitHost` — the winit [`ApplicationHandler`] glue around a
-//! [`WinitRuntime`]. Its lifecycle is encoded by [`HostPhase`]: bootstrap
-//! inputs become one runtime containing the app, shared render core, surface
-//! manager, and complete live-window set; a failure short-circuits the
-//! callback-driven loop so [`WinitHost::run`] can return it.
+//! `WinitHost` — the winit [`ApplicationHandler`] glue around a [`WinitRuntime`], with its lifecycle encoded by [`HostPhase`].
 //!
-//! This file owns only what winit's *lifecycle* dictates — deferred
-//! construction (winit hands out `&ActiveEventLoop` only inside callbacks) and
-//! event dispatch. Everything a windowed host would do regardless of winit
-//! lives in [`runtime`]; the winit *types* are converted in [`native`] and
-//! [`input`].
+//! This file owns only what winit's lifecycle dictates: deferred construction (winit hands out `&ActiveEventLoop` only inside callbacks) and event dispatch. Shared host work lives in [`runtime`]; winit types are converted in [`native`] and [`input`].
 //!
-//! The caller-supplied app implements the [`App`] trait: [`App::update`]
-//! runs once before a fully recorded frame, while [`App::record`] may replay
-//! for cold-start warmup or relayout. The app is built by a closure handed to
-//! [`WinitHostBuilder::build`], invoked once the first window's `Ui` +
-//! [`HostHandle`] are ready (before the first frame) — so startup wiring
-//! (theme tweaks, restoring persisted state, stashing the handle) happens
-//! there.
+//! The app implements [`App`]: [`App::update`] runs once before a fully recorded frame, [`App::record`] may replay for warmup or relayout. The closure given to [`WinitHostBuilder::build`] makes the app once the first window's `Ui` and [`HostHandle`] are ready.
 //!
-//! **Multi-window model.** Every window is an independent UI tree — its own
-//! `Ui` (input / focus / layout / `Display`) and
-//! [`WindowDriver`](crate::host::window_driver::WindowDriver) — all rendering
-//! serially through the one shared [`HostCore`](crate::host::core::HostCore).
-//! Windows are addressed by a caller-chosen [`WindowToken`]; winit's opaque
-//! `WindowId` stays internal for event routing. The app opens / closes windows
-//! from inside `record` via [`Ui::open_window`] / [`Ui::close_window`].
-//!
-//! Submodules: [`config`] ([`WinitHostConfig`]), [`error`]
-//! ([`WinitHostError`]), [`handle`] ([`HostHandle`] + [`UserEvent`]),
-//! [`input`] (winit event translation), [`native`] (winit type conversion
-//! and window creation), [`runtime`] ([`WinitRuntime`]), [`window_set`]
-//! (the live windows), and [`window`] (per-window swapchain frames). The
-//! backend-agnostic window vocabulary ([`WindowToken`], [`WindowConfig`])
-//! lives in [`crate::window`].
+//! Usage:
 //!
 //! Usage:
 //!
@@ -94,10 +66,7 @@ use winit::error::EventLoopError;
 
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
-/// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the
-/// bootstrap window's token + config and the caller's app factory. Consumed —
-/// winit hands out `&ActiveEventLoop` only inside callbacks, so window +
-/// GPU + app construction all wait here until then.
+/// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the bootstrap window's token and config, and the app factory. Window, GPU and app construction wait for winit's event loop.
 pub(super) struct Bootstrap<T: 'static> {
     pub(super) token: WindowToken,
     pub(super) config: WinitHostConfig,
@@ -132,10 +101,7 @@ impl<T: 'static> fmt::Debug for HostPhase<T> {
     }
 }
 
-/// Top-level winit-driven palantir runtime. Owns the caller-supplied app
-/// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls its
-/// update/record lifecycle once per redraw, per window. `HostPhase` makes
-/// bootstrap and running ownership mutually exclusive.
+/// Top-level winit-driven runtime. Owns the app `T: App` and calls its update/record lifecycle once per redraw, per window. `HostPhase` makes bootstrap and running ownership mutually exclusive.
 pub struct WinitHost<T: 'static> {
     phase: HostPhase<T>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
@@ -164,80 +130,49 @@ impl<T> WinitHostBuilder<T>
 where
     T: App + 'static,
 {
-    /// Set the bootstrap window's full configuration.
+    /// Set the bootstrap window's configuration.
     pub fn window(mut self, window: WindowConfig) -> Self {
         self.config.window = window;
         self
     }
 
-    /// Set the bootstrap window's title — the shorthand for the one field of
-    /// [`Self::window`] nearly every app sets.
+    /// Set the bootstrap window's title; shorthand for the field of [`Self::window`] nearly every app sets.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.config.window.title = title.into();
         self
     }
 
-    /// Which faces every window shapes against. Defaults to
-    /// [`FontScope::System`], because a window sits beside the machine's
-    /// other applications and should fall back the way they do: the OS
-    /// fonts are the glyph fallback that keeps scripts the bundled faces do
-    /// not cover from rendering as tofu. The scan runs on its own thread
-    /// beside GPU init, so it costs no wall time on a warm disk cache.
-    ///
-    /// The door both hosts share — see
-    /// [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts),
-    /// which defaults the other way.
+    /// Which faces every window shapes against. Defaults to [`FontScope::System`] for OS glyph fallback; see [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts).
     pub const fn fonts(mut self, scope: FontScope) -> Self {
         self.config.fonts = scope;
         self
     }
 
-    /// Start every window with `vsync` — the launch-time twin of
-    /// [`Ui::set_vsync`](crate::Ui::set_vsync), in the same backend-neutral
-    /// vocabulary.
-    ///
-    /// Prefer this over asking for the same thing from the first frame: set
-    /// here it reaches the *initial* swapchain, where the runtime request
-    /// would build one swapchain and immediately replace it.
+    /// Start every window with `vsync`, avoiding a first-frame swapchain rebuild.
     pub const fn vsync(mut self, vsync: Vsync) -> Self {
         self.config.vsync = vsync;
         self
     }
 
-    /// Set the adapter power preference used at startup.
-    ///
-    /// `LowPower` by default, unlike the headless paths, which ask for
-    /// `HighPerformance`. The difference is deliberate: a window is a user
-    /// interface and on a hybrid laptop the integrated GPU draws it without
-    /// waking the discrete one, while a bench or a golden test is worth
-    /// little unless it runs on the adapter a user is looking at. An
-    /// application that draws something heavier should say so here.
+    /// Adapter power preference. `LowPower` by default, unlike the headless paths (`HighPerformance`).
     pub const fn power_preference(mut self, preference: PowerPreference) -> Self {
         self.config.power_preference = preference;
         self
     }
 
-    /// Opt into GPU timestamp and pipeline-statistics collection. Off by
-    /// default, because the per-frame readback round-trip is non-trivial.
-    /// Gates device-feature requests at startup; every window inherits the
-    /// result.
+    /// Opt into GPU timestamp and pipeline-statistics collection; off by default for its per-frame readback.
     pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
         self.config.collect_gpu_stats = collect;
         self
     }
 
-    /// Whether axis-aligned paint edges snap to physical pixels. On by
-    /// default, which is what a window wants: an unsnapped edge lands
-    /// between texels and antialiases into a soft line. Turn it off for a
-    /// view that animates position continuously, where the snap reads as a
-    /// stutter.
+    /// Whether axis-aligned paint edges snap to physical pixels. On by default; turn off for continuous position animation.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.config.pixel_snap = pixel_snap;
         self
     }
 
-    /// Create the event loop and runtime host. `create_app` remains deferred
-    /// until winit provides the first active event-loop callback and its `Ui`.
+    /// Create the event loop and runtime host; `create_app` runs on the first active callback.
     ///
     /// # Errors
     ///
@@ -246,15 +181,8 @@ where
         self,
         create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
     ) -> Result<WinitHost<T>, WinitHostError> {
-        // EventLoop is built up front so `handle()` can hand out a proxy
-        // before `run()` is called — that's the whole point of letting
-        // threads spawn knowing where to send their pokes.
         let mut event_loop_builder = EventLoop::<UserEvent<T>>::with_user_event();
-        // winit installs a default macOS menu whose Quit item binds ⌘Q to
-        // `terminate:`, which kills the process before the event loop can
-        // hand the app a `CloseRequested` to veto (save-on-exit prompts).
-        // Drop that menu so ⌘Q arrives as an ordinary key event the app
-        // handles like any other quit request.
+        // winit's default macOS menu binds ⌘Q to `terminate:`, killing the process before the app can veto `CloseRequested`. Drop it so ⌘Q arrives as an ordinary key event.
         #[cfg(target_os = "macos")]
         {
             use winit::platform::macos::EventLoopBuilderExtMacOS;
@@ -281,8 +209,7 @@ impl<T> WinitHost<T>
 where
     T: App + 'static,
 {
-    /// Start configuring a winit-driven host whose bootstrap window is
-    /// addressed by `first_token`.
+    /// Start configuring a host whose bootstrap window is `first_token`.
     pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T> {
         WinitHostBuilder {
             first_token,
@@ -291,22 +218,18 @@ where
         }
     }
 
-    /// Return a cheap-to-clone, `Send` handle for cross-thread repaint
-    /// requests and run-on-main scheduling. Stable for the lifetime of
-    /// the host — call before `run()` and ship the handle to worker
-    /// threads.
+    /// A cheap-to-clone, `Send` handle for cross-thread repaint requests and run-on-main scheduling.
     pub fn handle(&self) -> HostHandle<T> {
         HostHandle {
             proxy: self.proxy.clone(),
         }
     }
 
-    /// Drive the already-constructed event loop to completion.
+    /// Drive the event loop to completion.
     ///
     /// # Errors
     ///
-    /// Returns event-loop failures and any window, surface, adapter, or device
-    /// failure encountered during deferred startup or secondary-window creation.
+    /// Returns event-loop failures and window, surface, adapter or device failures.
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
@@ -317,7 +240,6 @@ where
         finish_run(failure, event_loop_result)
     }
 
-    /// The live runtime, or `None` before `resumed` and after a failure.
     fn running(&mut self) -> Option<&mut WinitRuntime<T>> {
         match &mut self.phase {
             HostPhase::Running(runtime) => Some(runtime),
@@ -384,7 +306,6 @@ where
             event_loop.set_control_flow(ControlFlow::Wait);
             return;
         };
-        // Service in-frame window open/close requests before scheduling.
         if let Err(error) = runtime.drain_window_requests(event_loop) {
             self.fail(event_loop, error);
             return;
@@ -398,8 +319,6 @@ where
             return;
         };
         let max_texture_dim = runtime.surfaces.max_texture_dim;
-        // Resolved once for the whole event: the dispatch below names the
-        // window by its slot, so a redraw does not look it up again.
         let Some(slot) = runtime.slot_of_id(id) else {
             return;
         };
@@ -427,13 +346,7 @@ where
             WindowEvent::RedrawRequested => runtime.draw(slot),
 
             WindowEvent::CloseRequested => {
-                // Don't remove the window here — flag it and force a frame.
-                // `Window::frame` surfaces the flag as `Ui::close_requested`
-                // so the app can veto (`Ui::keep_open`) to show a "save
-                // changes?" prompt; absent a veto the frame emits the close
-                // through the normal command path and
-                // `drain_window_requests` makes the all-windows-closed exit
-                // decision as before.
+                // Flag it and force a frame instead of removing the window: `Window::frame` surfaces `Ui::close_requested` so the app can veto with `Ui::keep_open`.
                 win.close_requested = true;
                 win.next = FramePresent::Immediate;
             }
@@ -443,13 +356,8 @@ where
                 win.invalidate_system_facts();
                 win.next = FramePresent::Immediate;
             }
-            // Nothing else to do with a move: the position is a fact the
-            // app asks for, and the monitor under the window is what the
-            // driver paces by. Both are cached — see `WindowFacts`.
             WindowEvent::Moved(_) => win.invalidate_system_facts(),
-            // Windows reports a minimize as a resize to zero, and winit
-            // sends no `Occluded` there: treat it as hidden, so the window
-            // stops laying out and painting a 1×1 surface.
+            // Windows reports a minimize as a zero-size resize and sends no `Occluded`; treat it as hidden.
             WindowEvent::Resized(new) if new.width == 0 || new.height == 0 => {
                 win.set_minimized(true);
             }
@@ -462,17 +370,7 @@ where
                     max_texture_dim,
                     UVec2::new(new.width, new.height),
                 );
-                // Stash the new size only — `Window::frame` notices the
-                // mismatch against its noted target key and reconfigures the
-                // surface once before acquiring the next swapchain texture.
-                //
-                // Defer the paint: inline drawing in this handler lags
-                // noticeably on Wayland even with `pre_present_notify` wired
-                // up — the paint blocks on FIFO vsync inside
-                // `surface.get_current_texture` and the compositor queue
-                // drains faster than we drain it. Letting `about_to_wait`
-                // coalesce into one `RedrawRequested` per loop tick gives the
-                // smoother feel in practice.
+                // Stash the new size only; `Window::frame` reconfigures the surface before the next acquire. Painting inline here lags on Wayland (it blocks on FIFO vsync), so defer to one `RedrawRequested` per loop tick.
                 if win.surface.resize(size) {
                     win.next = FramePresent::Immediate;
                 }
@@ -480,8 +378,7 @@ where
             WindowEvent::Occluded(occluded) => {
                 win.set_occluded(occluded);
                 if !occluded {
-                    // A window can be moved or re-parented while it is
-                    // hidden, and no `Moved` arrives for one that is.
+                    // A window moved while hidden gets no `Moved`.
                     win.invalidate_system_facts();
                     win.next = FramePresent::Immediate;
                 }

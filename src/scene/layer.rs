@@ -2,34 +2,22 @@
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Which recording arena a widget lands in. Each layer is an independent
-/// tree; they are painted bottom-up in declaration order and hit-tested
-/// top-down, so a popup rejects a pointer before the content beneath it
-/// ever sees the event — no per-node z-index anywhere.
+/// Which recording arena a widget lands in. Layers paint bottom-up in
+/// declaration order and hit-test top-down; there is no per-node z-index.
 ///
-/// Switch arenas with [`Ui::layer`](crate::Ui::layer). Widgets that manage
-/// their own overlay ([`Popup`](crate::Popup), [`Modal`](crate::Modal),
-/// [`Tooltip`](crate::Tooltip)) do this for you.
+/// Switch with [`Ui::layer`](crate::Ui::layer); `Popup`, `Modal` and
+/// `Tooltip` do it for you.
 pub enum Layer {
-    /// Ordinary content. Everything lands here unless it asks otherwise.
+    /// Ordinary content; the default.
     #[default]
     Main = 0,
-    /// Transient overlays anchored to a trigger — dropdowns, pickers, a
-    /// form standing beside what it is about.
+    /// Overlays anchored to a trigger: dropdowns, pickers.
     Popup = 1,
     /// Dialogs that take the whole window, above popups.
     Modal = 2,
-    /// Context menus, above both — because a menu is raised *from* something,
-    /// and a popup and a dialog are both things it can be raised from.
-    ///
-    /// Its own rank rather than sharing the popup's, and that is what a layer
-    /// is *for*: an overlay must paint above the scope that raised it, and one
-    /// that shared a rank with its own parent could not — see
-    /// `Forest::push_layer`. A right-click in a field of a popup is the
-    /// ordinary case, and a shared rank leaves it with nowhere to go.
+    /// Context menus, above both. Own rank so a menu raised from a popup paints above it (see `Forest::push_layer`).
     Menu = 3,
-    /// Hover bubbles, above every one of those, so they can annotate a menu
-    /// item as readily as a dialog.
+    /// Hover bubbles, above everything else.
     Tooltip = 4,
     /// Diagnostics overlays. Painted last, hit-tested first.
     Debug = 5,
@@ -38,11 +26,7 @@ pub enum Layer {
 impl Layer {
     pub(crate) const COUNT: usize = 6;
 
-    /// Every layer, back to front. Hit order is this reversed.
-    ///
-    /// Paint order *is* declaration order — the discriminants are the
-    /// paint sequence — and the assertion below holds this table to them.
-    /// An array rather than a slice so callers keep iterating by value.
+    /// Every layer, back to front. Hit order is reversed. Held to the discriminants by the assertion below.
     pub(crate) const PAINT_ORDER: [Layer; Layer::COUNT] = [
         Layer::Main,
         Layer::Popup,
@@ -58,8 +42,7 @@ impl Layer {
     }
 }
 
-// Entry `i` of the paint order has discriminant `i`, and the last
-// variant closes the count.
+// Entry `i` has discriminant `i`.
 const _: () = {
     let mut i = 0;
     while i < Layer::COUNT {

@@ -1,5 +1,4 @@
-//! A node's layout mode, and the two cases where it is not known yet — a
-//! grid or a bar overlay built before its definition was interned.
+//! A node's layout mode, and the two cases where it is not yet known (a grid or bar overlay built before its definition was interned).
 
 use crate::primitives::layout::layout_mode::LayoutMode;
 use std::mem;
@@ -12,15 +11,9 @@ pub(crate) enum NodeMode {
 }
 
 impl NodeMode {
-    /// Whether `mode` refines this one rather than replacing it with
-    /// something else.
+    /// Whether `mode` refines this one rather than replacing it.
     ///
-    /// Two nodes learn their payload after the builder chain has run,
-    /// because it lives in the tree and the chain has no `Ui`: a grid
-    /// takes its tracks, and a bar overlay its definition. Both arrive
-    /// through [`Node::set_mode`](crate::scene::node::Node::set_mode), and
-    /// this is the rule it holds them to — an installed mode refines a
-    /// node, it never turns a grid into a stack.
+    /// A grid's tracks and a bar overlay's definition arrive after the builder chain (it has no `Ui`) through [`Node::set_mode`](crate::scene::node::Node::set_mode); an installed mode refines a node, never turns a grid into a stack.
     #[inline]
     pub(super) fn accepts(self, mode: LayoutMode) -> bool {
         match self {

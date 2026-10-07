@@ -1,30 +1,23 @@
-//! Where a child sits in a grid parent — its row, its column, and how far
-//! it spans.
+//! Where a child sits in a grid parent.
 
 use crate::common::span::Span;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain;
 use std::hash;
 
-/// Per-child placement inside a `Grid` parent. Inert when the parent is not a
-/// `LayoutMode::Grid`. `(row, col)` is the top-left cell; `(row_span,
-/// col_span)` extends the slot toward the bottom-right (defaults to 1×1).
+/// Per-child placement in a `Grid` parent; inert otherwise. `(row, col)` is the top-left cell, spans default to 1.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 #[must_use]
 pub struct GridCell {
     pub(crate) row: u16,
     pub(crate) col: u16,
-    /// At least one: [`Self::with_span`] checks it.
     pub(crate) row_span: u16,
-    /// At least one: [`Self::with_span`] checks it.
     pub(crate) col_span: u16,
 }
 
 impl hash::Hash for GridCell {
-    /// One `write` of the packed 8-byte `[u16; 4]` rather than the
-    /// derived four `write_u16`s — folded into every `BoundsExtras`
-    /// node hash via `BoundsExtras::hash`.
+    /// One `write` of the packed `[u16; 4]` instead of four `write_u16`s; hot in `BoundsExtras::hash`.
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
@@ -32,7 +25,7 @@ impl hash::Hash for GridCell {
 }
 
 impl GridCell {
-    /// The cell at `(row, col)`, one track wide and one tall.
+    /// One cell at `row`, `col`.
     pub const fn at(row: u16, col: u16) -> Self {
         Self {
             row,
@@ -42,9 +35,7 @@ impl GridCell {
         }
     }
 
-    /// This cell widened to cover `row_span` rows and `col_span`
-    /// columns. Both are *counts*: a zero-track span names no cell, which
-    /// is a caller bug rather than data to coerce.
+    /// This cell widened to `row_span` rows and `col_span` columns, both *counts*.
     ///
     /// # Panics
     ///
@@ -60,29 +51,27 @@ impl GridCell {
         }
     }
 
-    /// The zero-based row.
+    /// First row.
     pub const fn row(self) -> u16 {
         self.row
     }
 
-    /// The zero-based column.
+    /// First column.
     pub const fn col(self) -> u16 {
         self.col
     }
 
-    /// The rows covered, at least one.
+    /// Rows spanned.
     pub const fn row_span(self) -> u16 {
         self.row_span
     }
 
-    /// The columns covered, at least one.
+    /// Columns spanned.
     pub const fn col_span(self) -> u16 {
         self.col_span
     }
 
-    /// Track-index span on `axis`: `(col, col_span)` for X,
-    /// `(row, row_span)` for Y. Bundles the start/length pair the grid
-    /// track math slices with, so the two can't be passed swapped.
+    /// Track-index span on `axis`: `(col, col_span)` for X, `(row, row_span)` for Y.
     #[inline]
     pub(crate) fn track_span(self, axis: Axis) -> Span {
         match axis {
@@ -91,10 +80,7 @@ impl GridCell {
         }
     }
 
-    /// The cell at track `main` along `axis` and the first track across
-    /// it, one track each way. The write half of `track_span`: an
-    /// axis-generic parent (a `Splitter`) lays its children out along one
-    /// axis and shouldn't have to know which field that is.
+    /// The cell at track `main` along `axis`, first track across. The write half of `track_span`.
     pub const fn along(axis: Axis, main: u16) -> Self {
         match axis {
             Axis::X => Self::at(0, main),
@@ -103,8 +89,7 @@ impl GridCell {
     }
 }
 
-/// A bare `(row, col)` names the common cell — one track each way — so
-/// the placement most children want stays a pair at the call site.
+/// A bare `(row, col)` is a one-by-one cell.
 impl From<(u16, u16)> for GridCell {
     fn from((row, col): (u16, u16)) -> Self {
         Self::at(row, col)

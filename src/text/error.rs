@@ -6,11 +6,7 @@ use std::fmt::{Display, Formatter};
 use std::io;
 use std::path::PathBuf;
 
-/// A font could not be registered.
-///
-/// A `Result` rather than an assert because both arms are untrusted
-/// input: a path the app builds at runtime, and bytes that may not be a
-/// font at all.
+/// A font could not be registered; a `Result` as path and bytes are untrusted.
 #[derive(Debug)]
 pub enum FontLoadError {
     /// The file could not be read or memory-mapped.
@@ -22,8 +18,7 @@ pub enum FontLoadError {
     },
     /// The bytes parsed to no usable face.
     NoFaces,
-    /// The faces parsed, but the process-wide family table is full and none
-    /// of the families they name is in it already.
+    /// The process-wide family table is full and none of the parsed families is in it.
     FamilyTableFull,
 }
 

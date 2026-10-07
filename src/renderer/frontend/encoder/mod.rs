@@ -1,10 +1,5 @@
-//! The encode pass: walk the cascaded scene and turn each node's shapes
-//! into paint calls, one layer at a time ([`layer_ctx`]).
-//!
-//! [`Encoder`] holds what the walk retains between frames, [`geometry`]
-//! owns the rect math every shape kind resolves through, and
-//! [`GradientResolver`] resolves each gradient once per frame rather than
-//! once per shape that names it.
+//! The encode pass: walk the cascaded scene into paint calls, one layer at a time ([`layer_ctx`]);
+//! [`geometry`] owns the shared rect math, [`GradientResolver`] resolves each gradient once per frame.
 
 #[cfg(debug_assertions)]
 mod collision_overlay;
@@ -23,13 +18,11 @@ use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::paint::shape_brush::ShapeBrush;
 
-/// Retained encoder state.
 #[derive(Debug)]
 pub(crate) struct Encoder {
     gradients: GradientResolver,
 }
 
-/// The gradient atlas, and the scratch a frame resolves gradients into.
 #[derive(Debug)]
 struct GradientResolver {
     atlas: SharedGradientAtlas,
@@ -37,8 +30,7 @@ struct GradientResolver {
 }
 
 impl GradientResolver {
-    /// Open the frame's pass over `gradients`. Last frame's rows are
-    /// forgotten, because another window may have evicted them.
+    /// Opens the frame's pass over `gradients`, forgetting last frame's rows (another window may have evicted them).
     fn begin<'a>(&'a mut self, gradients: &'a [RecordedGradient]) -> GradientPass<'a> {
         self.resolved.clear();
         self.resolved.resize(gradients.len(), None);
@@ -50,8 +42,6 @@ impl GradientResolver {
     }
 }
 
-/// One frame's gradients, each resolved to its atlas row the first time a
-/// shape names it.
 #[derive(Debug)]
 pub(super) struct GradientPass<'a> {
     gradients: &'a [RecordedGradient],
@@ -67,7 +57,6 @@ impl GradientPass<'_> {
         }
     }
 
-    /// `id`'s gradient with its atlas row, registered once per pass.
     fn resolve(&mut self, id: GradientId) -> ResolvedGradient {
         let idx = id.0 as usize;
         if let Some(resolved) = self.resolved[idx] {
@@ -94,26 +83,10 @@ impl Encoder {
         }
     }
 
-    /// Walk every tree in the scene forest in paint order, emitting logical-px
-    /// paint commands into `out`. No GPU work, no scale/snap math — that
-    /// lives in the composer + backend. Per-tree layout rows come off
-    /// the scene layout, cascade rows off the scene cascade, keyed by layer.
+    /// Walks every tree in paint order, emitting logical-px paint commands into `out`. `Damage::Partial` culls
+    /// subtrees whose `paint_rect` intersects no damage rect; callers skip the call when nothing is damaged.
     ///
-    /// `plan` is the paint plan for this frame:
-    /// - `Damage::Full` paints everything (first frame, surface change,
-    ///   full-repaint fallback).
-    /// - `Damage::Partial(damage)` runs damage-aware subtree
-    ///   culling: a node whose `paint_rect` doesn't intersect any rect in
-    ///   `region` short-circuits the whole subtree's recursion *and* its
-    ///   Push/Pop emission. Caller's responsibility to skip the call
-    ///   entirely when there's no damage to paint.
-    ///
-    /// The sink arrives ready for a fresh frame — a `ComposeSession` from
-    /// `Composer::begin`, or an empty capturing sink.
-    ///
-    /// Deliberately carries no profiling span: the sink composes
-    /// inline, so this covers the same work as [`Frontend::build`], and a
-    /// second span would count the compose twice.
+    /// No profiling span: [`Frontend::build`]'s covers it, as the sink composes inline.
     ///
     /// [`Frontend::build`]: crate::renderer::frontend::Frontend::build
     pub(crate) fn encode(
@@ -132,8 +105,7 @@ impl Encoder {
         let mut gradients = self
             .gradients
             .begin(scene.forest.record_store.gradients.records.as_slice());
-        // Matches the backend's padded physical scissor; both derive from
-        // `renderer::render_plan::RenderPlan::AA_PADDING`.
+        // Matches the backend's padded physical scissor; both derive from `RenderPlan::AA_PADDING`.
         let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor());
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
             let layer_cascades = &scene.cascade.layers[layer];

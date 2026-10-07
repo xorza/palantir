@@ -1,6 +1,4 @@
-//! The three fixed frames around the scrolling card column: the top app
-//! bar, the left nav rail, and the status bar that carries the counter
-//! the `frame/partial_*` arms mutate.
+//! The three fixed frames around the card column: top app bar, left nav rail, and the status bar holding the counter the `frame/partial_*` arms mutate.
 
 use std::time::Duration;
 
@@ -82,8 +80,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                     .delay(Duration::ZERO)
                     .show(ui);
             }
-            // Cascade `disabled` flattening — and a real UI state, not a
-            // marker: the deploy action is unavailable until a run finishes.
+            // Cascade `disabled` flattening, as a real UI state: deploy is unavailable until a run finishes.
             Button::new()
                 .id_salt("deploy")
                 .label("Deploy")
@@ -111,10 +108,7 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..items {
-                        // Every 8th row is a group caption, so the long list
-                        // is a grouped nav tree rather than N identical
-                        // buttons — and the scroll viewport measures two
-                        // different node shapes instead of one.
+                        // Every 8th row is a group caption, so the scroll viewport measures two node shapes.
                         if i % 8 == 0 {
                             let head = fmt!(ui, "GROUP {}", i / 8);
                             Text::new(head)
@@ -175,10 +169,7 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
                 .child_align(Align::CENTER)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    // Footer "live counter": the partial-damage arm mutates
-                    // `state.tick` each iter. Fixed width pins layout so the
-                    // changing digits can't shift siblings — damage collapses
-                    // to this single Text node's arranged rect.
+                    // Live counter: the partial-damage arm mutates `state.tick`; fixed width keeps digits from shifting siblings, so damage is this Text's rect.
                     Text::new(fmt!(ui, "Frame {:08}", state.tick))
                         .id_salt("footer-status")
                         .style(&TextStyle::default().with_font_size(12.0))
@@ -197,18 +188,9 @@ pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
         .response
         .snapshot();
 
-    // Toast on the Popup layer, parked above the *right* end of the status
-    // bar — anchoring to the bar's full rect would drop it over the sidebar.
-    // Reading the bar's rect (last frame's, hence the frame-0 fallback)
-    // keeps it placed at any viewport size: the showcase page is window-sized,
-    // the bench target is far taller.
+    // Toast on the Popup layer above the right end of the status bar (anchoring to the full rect would cover the sidebar). Reading the bar's rect (last frame's, hence the frame-0 fallback) works at any viewport size.
     //
-    // `PassThrough`, not the default: this toast is re-recorded every frame,
-    // and a modal popup that never closes is a permanently dead host — the
-    // click-eater swallows every pointer event bound for `Main` and the key
-    // claim silences the keyboard. Standalone that was invisible (nothing
-    // else was on screen to reach), but the fixture shares a window as the
-    // showcase page. A toast annotates; it does not interrupt.
+    // `PassThrough`: re-recorded every frame, a modal toast would be a permanently dead host (the click-eater and key claim block `Main`), and the fixture shares a window with the showcase page.
     let bar_rect = bar.rect.unwrap_or(Rect::new(12.0, 12.0, 240.0, 34.0));
     let anchor = Rect::new(
         bar_rect.min.x + (bar_rect.size.w - TOAST_W).max(0.0),

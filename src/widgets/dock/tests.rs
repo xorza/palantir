@@ -1,6 +1,5 @@
-//! The dock tree's invariants: the six operations, the re-pack every
-//! structural change ends with, the depth cap, and what `validate`
-//! refuses. Plus the pane geometry one recorded frame produces.
+//! The dock tree's invariants: the six operations, the re-pack after each
+//! structural change, the depth cap, what `validate` refuses, and pane geometry.
 
 use glam::{UVec2, Vec2};
 
@@ -88,8 +87,7 @@ fn a_new_dock_is_a_single_pinned_group() {
     assert_eq!(d.pinned(), Tab::Main);
 }
 
-/// A refused close leaves the tree alone: the pinned tab never closes,
-/// and a tab that is not open anywhere resolves to nothing.
+/// A refused close leaves the tree alone; an unopened tab resolves to nothing.
 #[test]
 fn close_is_dropped_for_the_pinned_tab_or_one_that_is_not_open() {
     let mut d = seeded();
@@ -99,11 +97,8 @@ fn close_is_dropped_for_the_pinned_tab_or_one_that_is_not_open() {
     assert_eq!(d, before, "neither operation removed a tab");
 }
 
-/// The invariant the whole click path rests on. An operation is built from one
-/// frame's chip response and applied a phase later, with the strip able
-/// to rearrange in between. Because an operation names its *tab* rather than
-/// its slot, the rearrangement cannot redirect it onto whatever slid
-/// into that slot.
+/// An operation names its tab, not its slot, so a strip rearrangement between
+/// building and applying it cannot redirect it.
 #[test]
 fn tab_ops_follow_their_tab_across_a_rearrangement() {
     let mut d = seeded();
@@ -113,8 +108,7 @@ fn tab_ops_follow_their_tab_across_a_rearrangement() {
         [Tab::Main, Tab::Prefs, viewer(1)]
     );
 
-    // Built while the viewer sits at slot 2, applied after `Prefs` left
-    // and the viewer slid down to slot 1.
+    // Built with the viewer at slot 2, applied after it slid to slot 1.
     let close_viewer = DockOperation::CloseTab { tab: viewer(1) };
     d.apply(DockOperation::CloseTab { tab: Tab::Prefs });
     assert_eq!(group_of(&d, primary).tabs, [Tab::Main, viewer(1)]);
@@ -127,9 +121,8 @@ fn tab_ops_follow_their_tab_across_a_rearrangement() {
     );
 }
 
-/// Pointer-driven focus moves `focused` and nothing else, and a group
-/// that has gone since the press was read leaves it where it was rather
-/// than stranding a dead id that would fail validation at the next save.
+/// Pointer-driven focus moves `focused` only, and a vanished group leaves it
+/// alone rather than stranding a dead id.
 #[test]
 fn focus_moves_only_the_focused_group() {
     let mut d = seeded();
@@ -161,9 +154,8 @@ fn focus_moves_only_the_focused_group() {
     d.validate().unwrap();
 }
 
-/// `OpenTab` is "show me X" whole: it lands the tab in the focused group
-/// only when it is not open already, and otherwise reuses — and focuses
-/// — whichever pane holds it.
+/// `OpenTab` lands the tab in the focused group only when not already open;
+/// otherwise it focuses the pane holding it.
 #[test]
 fn open_tab_reuses_an_existing_tab_and_focuses_its_pane() {
     let mut d = seeded();
@@ -196,9 +188,8 @@ fn split_move_and_collapse_roundtrip() {
     let mut d = seeded();
     let primary = d.primary().id;
 
-    // Split the viewer off to the right: a Row split, primary first, the
-    // new single-tab group second and focused. The re-packed vector is
-    // pre-order `[split, primary, new]`, which validation pins.
+    // Row split, primary first, new single-tab group second and focused;
+    // pre-order `[split, primary, new]`.
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     d.validate().unwrap();
     let root = root_split(&d);
@@ -215,7 +206,7 @@ fn split_move_and_collapse_roundtrip() {
     assert_eq!(second.tabs, [viewer(1)]);
     assert_eq!(d.focused(), second.id, "the new pane takes focus");
 
-    // Moving the tab back into the primary strip collapses the split.
+    // Moving back into the primary strip collapses the split.
     d.apply(DockOperation::MoveTab {
         tab: viewer(1),
         to: DockDrop::Into {
@@ -268,7 +259,7 @@ fn degenerate_and_forbidden_moves_change_nothing() {
     split_off(&mut d, viewer(1), lone, SplitSide::Bottom);
     assert_eq!(d, before, "a lone-tab self-split is a no-op");
 
-    // A vanished target group is a no-op, not a panic.
+    // A vanished target group is a no-op.
     let gone = d.absent_group();
     d.apply(DockOperation::MoveTab {
         tab: Tab::Prefs,
@@ -298,14 +289,12 @@ fn closing_the_last_tab_collapses_and_refocuses() {
     );
 }
 
-/// A strip is addressed by index and read by identity, so removing a
-/// tab keeps the pane on the tab it was showing. Only removing that tab
-/// picks another, and it picks the neighbour that took the slot.
+/// A strip is addressed by index and read by identity, so removing a tab keeps
+/// the pane on the tab it showed; only removing that tab picks the neighbour
+/// that took its slot.
 ///
 /// Fixture: `[Main, Prefs, v1, v2]` showing v1 at slot 2. Dropping Prefs
-/// slides v1 and v2 down one — an index held still would then show v2,
-/// which is a tab switch nobody asked for on the way to closing a
-/// different tab.
+/// slides v1 down; a held index would wrongly show v2.
 #[test]
 fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
     let showing_v1 = || {
@@ -349,14 +338,14 @@ fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
         "closing the shown tab falls to the one that took its slot",
     );
 
-    // The last slot has no successor, so its neighbour is behind it.
+    // The last slot's neighbour is behind it.
     let mut d = showing_v1();
     d.apply(DockOperation::ActivateTab { tab: viewer(2) });
     d.apply(DockOperation::CloseTab { tab: viewer(2) });
     d.validate().unwrap();
     assert_eq!(d.primary().active_tab(), viewer(1));
 
-    // A filter removes by the same rule, however many tabs it takes.
+    // A filter removes by the same rule.
     let mut d = showing_v1();
     d.retain_tabs(|tab| tab != Tab::Prefs);
     d.validate().unwrap();
@@ -368,9 +357,8 @@ fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
     );
 }
 
-/// The pinned tab holds the tree non-empty, so a filter is never offered
-/// it. Filtering everything away leaves the dock its one pinned tab
-/// rather than a state `validate` rejects and `primary` panics on.
+/// The pinned tab is never offered to a filter: filtering everything leaves
+/// the one pinned tab, not a state `validate` rejects.
 #[test]
 fn retain_tabs_never_drops_the_pinned_tab() {
     let mut d = seeded();
@@ -387,9 +375,8 @@ fn retain_tabs_never_drops_the_pinned_tab() {
 
 #[test]
 fn a_same_group_reorder_uses_pre_move_indices() {
-    // Strip `[Main, Prefs, v1, v2]`; every index below is a slot in
-    // *that* strip, the way drop-zone arithmetic over the visible chips
-    // computes it.
+    // Strip `[Main, Prefs, v1, v2]`; indices are slots in that strip, as
+    // drop-zone arithmetic computes them.
     let reordered = |from: Tab, index: usize| {
         let mut d = seeded();
         let primary = d.primary().id;
@@ -405,8 +392,7 @@ fn a_same_group_reorder_uses_pre_move_indices() {
         d.primary().tabs.clone()
     };
 
-    // Rightward: "Prefs before v2" (slot 3) must not overshoot to the
-    // end just because the removal of Prefs shifted v2 left.
+    // Rightward: "Prefs before v2" (slot 3) must not overshoot after Prefs leaves.
     assert_eq!(
         reordered(Tab::Prefs, 3),
         [Tab::Main, viewer(1), Tab::Prefs, viewer(2)]
@@ -425,9 +411,8 @@ fn a_same_group_reorder_uses_pre_move_indices() {
 
 #[test]
 fn dock_path_packs_distinct_addresses() {
-    // Sibling and cross-depth addresses never alias: the sentinel bit
-    // keeps `[first]` (0b10), `[second]` (0b11), `[first, first]`
-    // (0b100) and the root (0b1) all distinct.
+    // The sentinel bit keeps `[first]` (0b10), `[second]` (0b11),
+    // `[first, first]` (0b100) and the root (0b1) distinct.
     let paths = [
         DockPath::ROOT,
         DockPath::ROOT.first(),
@@ -477,8 +462,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
         "the ratio clamps to the floor"
     );
 
-    // A non-finite ratio names no split, so it centres one rather than
-    // landing NaN, or an infinity's end, in the tree.
+    // A non-finite ratio centres the split rather than landing NaN.
     for ratio in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         d.apply(DockOperation::SetRatio {
             split: DockPath::ROOT,
@@ -492,7 +476,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
         ratio: 0.01,
     });
 
-    // Paths landing on a group, or walking past a leaf, are ignored.
+    // Paths landing on a group or walking past a leaf are ignored.
     d.apply(DockOperation::SetRatio {
         split: DockPath::ROOT.first(),
         ratio: 0.5,
@@ -517,8 +501,7 @@ fn split_depth_is_capped_without_losing_the_tab() {
         d.find_or_insert(viewer(n), primary);
     }
 
-    // Chain splits off the freshly focused group: each nests one level
-    // deeper, up to the default cap of four.
+    // Each split nests one level deeper, up to the default cap of four.
     let mut target = primary;
     for n in 1..=4 {
         split_off(&mut d, viewer(n), target, SplitSide::Right);
@@ -528,8 +511,7 @@ fn split_depth_is_capped_without_losing_the_tab() {
     assert_eq!(d.groups().count(), 5);
     assert!(!d.can_split(target), "the chain reached the cap");
 
-    // The fifth split would nest past the cap: refused outright, so the
-    // tree is untouched and the tab stays where it was.
+    // The fifth split exceeds the cap: refused, tree untouched.
     let before = d.clone();
     split_off(&mut d, viewer(5), target, SplitSide::Bottom);
     assert_eq!(d, before, "an over-deep split is a no-op");
@@ -539,9 +521,8 @@ fn split_depth_is_capped_without_losing_the_tab() {
     );
 }
 
-/// A lower cap refuses sooner, and the refusal is the *model's*, not
-/// only the widget's — the two knobs have to move together or a drag
-/// would offer a drop `apply` then dropped on the floor.
+/// A lower cap refuses sooner, in the model as well as the widget, or a drag
+/// would offer a drop `apply` then dropped.
 #[test]
 fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
     let mut d = DockState::new("test.dock", Tab::Main).with_max_depth(1);
@@ -596,7 +577,7 @@ fn nested_splits_stay_canonical() {
         "pane order is left to right, top to bottom"
     );
 
-    // Collapse the inner split; the outer one survives.
+    // Collapse the inner split; the outer survives.
     d.apply(DockOperation::MoveTab {
         tab: viewer(2),
         to: DockDrop::Into {
@@ -627,16 +608,13 @@ fn serde_roundtrips_through_ron() {
     assert_eq!(back, d);
 }
 
-/// A saved layout that breaks an invariant fails to load, with that
-/// invariant's error, rather than loading into a state that panics on a
-/// later operation.
+/// A saved layout that breaks an invariant fails to load with that error.
 #[test]
 fn loading_rejects_each_corruption() {
     type Corrupt = fn(&mut DockState<Tab>);
 
-    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted
-    // one invariant at a time through the gated raw access — no public
-    // operation can produce these states — then saved and read back.
+    // Base: `[split, primary(Main, Prefs), viewer-pane(v1)]`, corrupted one
+    // invariant at a time through gated raw access, saved and read back.
     let base = {
         let mut d = seeded();
         let primary = d.primary().id;
@@ -687,8 +665,7 @@ fn loading_rejects_each_corruption() {
             "split ratio",
         ),
         (
-            // The next split would mint an id a group already holds, and
-            // every operation addressed to that group would then be ambiguous.
+            // The next split would mint an id a group already holds.
             "group counter repeats a live id",
             |d| d.set_next_group_unchecked(0),
             "cannot mint a fresh id",
@@ -719,8 +696,7 @@ fn loading_rejects_each_corruption() {
                 let DockNode::Split(s) = &mut d.nodes_mut()[0] else {
                     panic!("the root is a split");
                 };
-                // The root then points only at slot 1; slots 2.. are
-                // orphaned.
+                // The root points only at slot 1; slots 2.. are orphaned.
                 *s = DockSplit {
                     first: NodeIndex(1),
                     second: NodeIndex(1),
@@ -767,9 +743,8 @@ fn load_err(d: &DockState<Tab>) -> String {
         .to_string()
 }
 
-/// A duplicate tab is refused too. Split out from the table above
-/// because it needs a *second* group to put the copy in, so the
-/// corruption is a push rather than an edit in place.
+/// A duplicate tab is refused too; it needs a second group, so it is a push
+/// rather than an in-place edit.
 #[test]
 fn loading_rejects_a_tab_that_appears_twice() {
     let mut d = seeded();
@@ -783,12 +758,11 @@ fn loading_rejects_a_tab_that_appears_twice() {
     assert!(err.contains("appears twice"), "unexpected error: {err}");
 }
 
-/// The classification is pure rectangle arithmetic, so it is checked
-/// against hand-computed geometry rather than through a recorded frame.
+/// Pure rectangle arithmetic, checked against hand-computed geometry.
 ///
-/// The pane is `(0, 0)` to `(400, 300)` with a 30 px strip on top, so
-/// the content is `(0, 30)` to `(400, 300)`. At `edge_fraction = 0.25`
-/// the join box is `(100, 97.5)` to `(300, 232.5)`.
+/// The pane is `(0, 0)` to `(400, 300)` with a 30 px strip on top, so the
+/// content is `(0, 30)` to `(400, 300)`. At `edge_fraction = 0.25` the join
+/// box is `(100, 97.5)` to `(300, 232.5)`.
 #[test]
 fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     let group = TabGroupId(7);
@@ -809,8 +783,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         caret_width: 3.0,
     };
 
-    // Chip centres sit at x = 36 and x = 99, so a pointer at 50 is past
-    // the first and short of the second.
+    // Chip centres sit at x = 36 and 99; a pointer at 50 is between them.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(50.0, 15.0));
     assert_eq!(hit.drop, DockDrop::Into { group, index: 1 });
     assert_eq!(
@@ -821,14 +794,12 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     );
     assert_eq!(hit.highlight.size.w, 3.0);
 
-    // The inner box appends to the strip and highlights the whole
-    // content rect.
+    // The inner box appends to the strip and highlights the whole content rect.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(200.0, 165.0));
     assert_eq!(hit.drop, DockDrop::Into { group, index: 2 });
     assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 400.0, 270.0));
 
-    // Near the left edge: normalised distance picks Left over Top even
-    // though the pane is wider than it is tall.
+    // Near the left edge, normalised distance picks Left over Top.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
     assert_eq!(
         hit.drop,
@@ -839,8 +810,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     );
     assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 200.0, 270.0));
 
-    // At the cap, and under a policy that forbids the nearest edge,
-    // every wedge degrades to a join.
+    // At the cap, or where the policy forbids the nearest edge, wedges join.
     let capped = geometry(false, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
     assert_eq!(capped.drop, DockDrop::Into { group, index: 2 });
     let column_only = geometry(true, AllowedSplits::Column).classify(Vec2::new(20.0, 60.0));
@@ -888,9 +858,8 @@ impl DockTabs for Labels {
 
 const SURFACE: UVec2 = UVec2::new(600, 400);
 
-/// Two panes side by side tile the surface: the split gives each half
-/// the width, each pane's strip sits along its own top edge, and every
-/// chip lands inside the strip that drew it.
+/// Two panes tile the surface: each gets half the width, its strip along its
+/// top edge, and every chip lands inside its own strip.
 #[test]
 fn a_split_dock_tiles_its_panes_and_strips() {
     let mut d = seeded();
@@ -910,13 +879,11 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let right_pane = h
         .rect(DockView::pane_id(&d, right))
         .expect("the right pane arranged");
-    // A 0.5 ratio halves the 600 px less the splitter's 1 px rule, and
-    // both panes take the full height.
+    // 0.5 halves the 600 px less the splitter's 1 px rule; full height each.
     assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
     assert_eq!(right_pane, Rect::new(300.5, 0.0, 299.5, 400.0));
 
-    // Each strip rides its pane's top edge at the pane's width, one 27.2
-    // px chip row under 4 px of top padding; the content takes the rest.
+    // One 27.2 px chip row under 4 px of top padding; content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
         let strip = h
             .rect(DockView::strip_id(&d, group))
@@ -940,8 +907,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         );
     }
 
-    // Chip ids are the strip's, keyed on the tab — the same derivation
-    // the navigation scan polls.
+    // Chip ids are the strip's, keyed on the tab, as the navigation scan polls.
     let chip = TabStrip::chip_id(
         DockView::strip_id(&d, primary),
         DockView::tab_key(Tab::Prefs),
@@ -950,14 +916,12 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let strip = h
         .rect(DockView::strip_id(&d, primary))
         .expect("the strip arranged");
-    // The Prefs chip sits in its own strip, below the 4 px padding and
-    // down to the strip's bottom.
+    // The Prefs chip sits below the 4 px padding, down to the strip's bottom.
     assert_eq!(chip_rect, Rect::new(86.5, 4.0, 76.0, strip.size.h - 4.0));
 }
 
-/// A click on a chip travels through the navigation scan, so the pane it
-/// switches to is drawn on the frame the click lands rather than the one
-/// after.
+/// A chip click goes through the navigation scan, so the new pane draws on
+/// the frame of the click.
 #[test]
 fn a_chip_click_switches_the_pane_on_the_same_frame() {
     let mut d = seeded();
@@ -984,9 +948,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
     assert!(content.is_some(), "the pane kept its content area");
 }
 
-/// The close button wins over the activation the same press would
-/// otherwise be read as — the button sits inside the chip, so one click
-/// reaches both.
+/// The close button wins over the activation the same press would be read as.
 #[test]
 fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut d = seeded();
@@ -1012,13 +974,9 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     d.validate().unwrap();
 }
 
-/// A tab chosen from the overflow menu activates, the way a chip click
-/// does.
-///
-/// The dock's navigation scan reads chip and close-button ids a phase
-/// before the strip records, and a popup entry has neither. So the pick
-/// arrives through the strip's own report or it does not arrive: the
-/// menu would close on a choice that changed nothing.
+/// A tab chosen from the overflow menu activates like a chip click. The
+/// navigation scan reads chip ids before the strip records and a popup entry
+/// has none, so the pick must arrive through the strip's own report.
 #[test]
 fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
@@ -1040,8 +998,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     let mut d = seeded();
     d.apply(DockOperation::ActivateTab { tab: Tab::Main });
     let mut tabs = Labels;
-    // Narrow enough that three chips cannot all be shown, which is what
-    // puts the chevron on the strip.
+    // Narrow enough that three chips cannot all show, putting the chevron on.
     let mut h = UiHarness::new(UVec2::new(120, 200));
     for _ in 0..3 {
         frame(&mut h, &mut d, &mut tabs);
@@ -1070,10 +1027,9 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     );
 }
 
-/// An app that raised the cap can load the layouts it saved. Five nested
-/// splits exceed the default cap of four; the saved file still loads, and
-/// the loaded state's own cap (the default, until the app sets its own)
-/// refuses a further split there.
+/// An app that raised the cap can load layouts it saved: five nested splits
+/// exceed the default cap of four, yet load, and the loaded state's own cap
+/// refuses a further split.
 #[test]
 fn a_layout_deeper_than_the_default_cap_loads() {
     let mut d = DockState::new("deep.dock", Tab::Main).with_max_depth(6);
@@ -1096,8 +1052,7 @@ fn a_layout_deeper_than_the_default_cap_loads() {
     assert!(loaded.clone().with_max_depth(6).can_split(group));
 }
 
-/// The tab a drag carries is the dock's state, kept on the dock's own id:
-/// it is there while a chip drag is live, and it leaves with the dock.
+/// A chip drag's carried tab is kept on the dock's own id and leaves with it.
 #[test]
 fn a_carried_tab_leaves_with_the_dock() {
     use crate::widgets::dock::tab_drag::TabDrag;

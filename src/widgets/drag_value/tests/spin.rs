@@ -1,5 +1,4 @@
-//! The focused chip as a spin button: focus opens no editor, the arrows
-//! step, and a typed character replaces the value.
+//! The focused chip as a spin button.
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -13,8 +12,7 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(300, 100);
 
-/// The press that starts a scrub focuses the chip, and the scrub still
-/// writes and commits: focus alone opens no editor.
+/// A scrub's press focuses the chip, yet focus alone opens no editor.
 #[test]
 fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     let id = WidgetId::from_hash("dv-spin-scrub");
@@ -39,10 +37,7 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     assert_eq!(canonical, 30.0, "20 px at speed 1");
 }
 
-/// A focused chip steps by one unit of its last decimal — 0.01 at two
-/// decimals — and ten with Shift, each step one commit, held by the
-/// range: 5 → 5.01 → 5.11 → 5.10, then End-ward steps stop at 5.15.
-/// An integer binding steps by one.
+/// A focused chip steps by its last decimal (0.01 at two decimals), ten with Shift, one commit each, held by the range: 5 → 5.01 → 5.11 → 5.10, then stops at 5.15. An integer binding steps by one.
 #[test]
 fn the_arrows_step_a_focused_chip() {
     let id = WidgetId::from_hash("dv-spin-step");
@@ -90,9 +85,7 @@ fn the_arrows_step_a_focused_chip() {
     assert_eq!(count, 8, "an integer steps by one");
 }
 
-/// A character typed into the focused chip opens the editor on that
-/// frame and replaces the value with itself; Enter commits it and leaves
-/// the chip focused, so the arrows step on from the typed value.
+/// A typed character opens the editor and replaces the value; Enter commits and keeps focus.
 #[test]
 fn typing_into_the_focused_chip_replaces_the_value() {
     let id = WidgetId::from_hash("dv-spin-type");

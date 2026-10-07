@@ -7,10 +7,7 @@ use std::mem;
 
 #[test]
 fn warm_constructors_run_one_pass_and_cold_runs_two() {
-    // Rule 1. `cold` leaves `prev_stamp` unseeded so frame 1 adds the
-    // blackout warmup pass; every other constructor seeds it. The count
-    // is the contract — `FrameProcessing` cannot report the warmup, so a
-    // test that got this wrong would silently read the input-blind pass.
+    // Rule 1. `cold` leaves `prev_stamp` unseeded so frame 1 adds the blackout warmup pass; `FrameProcessing` can't report it, so a wrong count would silently read the input-blind pass.
     let mut passes = PassCounter::default();
 
     let mut warm = UiHarness::new(SURFACE);
@@ -28,7 +25,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     });
     assert_eq!(passes.take(), 2, "a cold frame 1 records warmup + pass A");
 
-    // Frame 2 is single either way — the warmup is a frame-1 event only.
+    // Frame 2 is single either way; warmup is frame 1 only.
     cold.frame(|ui| {
         passes.0 += 1;
         button(ui);
@@ -46,19 +43,14 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
 
 #[test]
 fn frame_value_returns_pass_a_not_the_drained_second_pass() {
-    // Rules 4 and 5. A click makes the frame double-record; pass B runs
-    // after `drain_per_frame_queues`, so it sees `clicked() == false`.
-    // Reading the last pass — the `let mut x = …; frame(|ui| x = …)`
-    // shape — silently loses the edge.
+    // Rules 4 and 5. A click double-records; pass B runs after `drain_per_frame_queues` and sees `clicked() == false`, so reading the last pass loses the edge.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
     harness.click_at(INSIDE);
-    // The press frame; the release — the click — is the next frame's.
+    // The press frame; the click is the next frame's release.
     harness.step(button);
 
-    // Instrumenting the raw `frame` closure, which runs on every pass —
-    // this is what a caller writing `let mut x = …; frame(|ui| x = …)`
-    // would end up reading.
+    // The raw `frame` closure runs on every pass; this is what `let mut x = …; frame(|ui| x = …)` reads.
     let mut per_pass = Vec::new();
     let report = harness.frame(|ui| {
         button(ui);
@@ -72,8 +64,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
         "the click frame records twice and only pass A sees the edge",
     );
 
-    // Same click, through `frame_value`: the scene still records on both
-    // passes, but the value comes from the one that saw the edge.
+    // Same click through `frame_value`: both passes record, the value comes from the one that saw the edge.
     harness.click_at(INSIDE);
     harness.step(button);
     let mut passes = 0;
@@ -89,8 +80,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
 
 #[test]
 fn response_in_sees_the_click_that_a_between_frames_read_misses() {
-    // Rule 3. `frame_quiescent` is snapshotted at record-pass start, so
-    // a read taken between frames reflects the *previous* frame's input.
+    // Rule 3. `frame_quiescent` is snapshotted at record-pass start, so a read between frames reflects the previous frame's input.
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, button);
     harness.click_at(INSIDE);
@@ -116,8 +106,7 @@ fn frame_without_baseline_forces_a_full_repaint() {
     );
 }
 
-/// Counts record-closure invocations per frame — the fact the whole
-/// protocol follows from.
+/// Counts record-closure invocations per frame, the fact the protocol follows from.
 #[derive(Debug, Default)]
 struct PassCounter(u32);
 

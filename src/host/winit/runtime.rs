@@ -1,12 +1,4 @@
-//! [`WinitRuntime`] — the windowed host once it is actually running: the
-//! caller's app, the shared [`HostCore`] every window renders through, the
-//! surface authority, and the live-window set.
-//!
-//! Almost nothing here is winit-specific; what is, is confined to the four
-//! leaves the event loop owns — creating a window, requesting a redraw,
-//! setting the control flow, and exiting. The rest (window registry, command
-//! draining, diagnostics sync, present scheduling) is the same bookkeeping any
-//! windowed host would do.
+//! [`WinitRuntime`]: the running windowed host.
 
 use std::time::Instant;
 
@@ -35,12 +27,8 @@ use std::mem;
 pub(super) struct WinitRuntime<T> {
     /// The caller's app, created once the first window's `Ui` existed.
     pub(super) app: T,
-    /// Retained native-surface creation and presentation state.
     pub(super) surfaces: SurfaceManager,
-    /// Shared resources, CPU frontend, and GPU backend — every window's `Ui`
-    /// clones the first, and every window's frames run through the other two.
     pub(super) core: HostCore,
-    /// Live windows, addressed by either key through [`WindowSet`].
     windows: WindowSet,
     pending_commands: WindowCommands,
 }
@@ -63,9 +51,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
         let config = &bootstrap.config;
-        // Started before the window exists and joined below, so the font
-        // scan overlaps window creation and GPU init rather than adding to
-        // them. An early return leaves the thread to finish and drop.
+        // Started before the window exists so the font scan overlaps window creation.
         let fonts = FontScan::spawn(config.fonts);
         let window = native::create_window(event_loop, token, &config.window)?;
         let SurfaceStartup {
@@ -109,10 +95,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         })
     }
 
-    /// Resolve the window winit reports events for as `id`, once per
-    /// event: the dispatch below acts on the slot rather than handing back
-    /// a borrow, so a redraw does not scan the set a second time to find
-    /// the window its caller has already found.
+    /// Resolve the window winit reports events for as `id`, once per event.
     pub(super) fn slot_of_id(&self, id: WindowId) -> Option<WindowSlot> {
         self.windows.slot_of_id(id)
     }
@@ -125,8 +108,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.windows.by_token(token)
     }
 
-    /// Paint one window; it stores its own schedule and drains its commands
-    /// into the runtime's pending queue.
+    /// Paint one window; it drains its commands into the pending queue.
     pub(super) fn draw(&mut self, slot: WindowSlot) {
         let single_window = self.windows.len() == 1;
         self.windows.at(slot).frame(
@@ -146,21 +128,14 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
     }
 
-    /// Drain every window's [`Ui::open_window`](crate::Ui::open_window) /
-    /// [`Ui::close_window`](crate::Ui::close_window) queue and apply it. Runs
-    /// in `about_to_wait`, the one callback that always holds
-    /// `&ActiveEventLoop` after event processing. Requests are collected out
-    /// of the pending queue *first* so the subsequent creates don't alias the
-    /// list we're iterating.
+    /// Drain every window's open/close queue and apply it, in `about_to_wait`; requests are collected first so creates don't alias the pending list.
     pub(super) fn drain_window_requests(
         &mut self,
         event_loop: &ActiveEventLoop,
     ) -> Result<(), WinitHostError> {
         let mut commands = WindowCommands::default();
         commands.append(&mut self.pending_commands);
-        // Closes first, so a same-frame close + open of one token
-        // recreates the window instead of tripping `spawn_window`'s
-        // duplicate-token guard and losing it.
+        // Closes first, so a same-frame close + open of one token recreates the window instead of tripping `spawn_window`'s duplicate-token guard.
         for token in commands.closes {
             self.close_window(token);
         }
@@ -168,20 +143,14 @@ impl<T: App + 'static> WinitRuntime<T> {
             self.spawn_window(event_loop, pending.token, &pending.config)?;
         }
         if self.windows.is_empty() {
-            // Every window closed (titlebar X or `close_window`) — nothing
-            // left to drive.
             event_loop.exit();
         }
         Ok(())
     }
 
-    /// Repaint everything when an app-global setting changed, so a write in
-    /// one window shows up in the others: the debug overlay's flags, and the
-    /// user scale every window's `Display` is minted from.
+    /// Repaint everything when an app-global setting changed (debug overlay flags, user scale).
     ///
-    /// Both signals are taken before either is tested — `||` would short-
-    /// circuit past the second, leaving its change to fire a stray repaint
-    /// on whatever moved next.
+    /// Both signals are taken before either is tested; `||` would short-circuit past the second and leave a stray repaint.
     pub(super) fn repaint_on_shared_change(&mut self) {
         let overlay = self.core.resources.diagnostics().overlay.take_change();
         let user_scale = self.core.resources.user_scale().take_change();
@@ -190,11 +159,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
     }
 
-    /// Fold every window's [`FramePresent`] into one [`ControlFlow`]. A window
-    /// wanting `Immediate` (or a deadline already due) gets its own
-    /// `request_redraw`; the loop wakes for it regardless of the `WaitUntil`.
-    /// Future deadlines contribute their instant; the nearest wins so no
-    /// window out-sleeps its own schedule.
+    /// Fold every window's [`FramePresent`] into one [`ControlFlow`]; the nearest deadline wins.
     pub(super) fn schedule(&self, event_loop: &ActiveEventLoop, now: Instant) {
         let earliest = earliest_wake(
             self.windows.iter().map(|win| (win, win.next.resolve(now))),
@@ -230,8 +195,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(())
     }
 
-    /// Tear down the window holding `token`; a no-op if none does. The render
-    /// stream retires before the driver drops — see [`HostCore::retire`].
+    /// Tear down the window holding `token`, if any; the render stream retires before the driver drops.
     fn close_window(&mut self, token: WindowToken) {
         if let Some(win) = self.windows.take(token) {
             self.core.retire(&win.driver);
@@ -239,8 +203,6 @@ impl<T: App + 'static> WinitRuntime<T> {
     }
 }
 
-/// The host config's device-and-swapchain half, in the graphics layer's own
-/// words.
 const fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
     HostGpuConfig {
         power_preference: config.power_preference,
@@ -249,9 +211,7 @@ const fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
     }
 }
 
-/// The nearest future deadline among `presents`, handing each window that
-/// wants a frame now to `redraw`. `None` when every window is idle or
-/// redrawing, which leaves the loop to wait for an event.
+/// The nearest future deadline among `presents`; windows wanting a frame now go to `redraw`.
 fn earliest_wake<W>(
     presents: impl IntoIterator<Item = (W, FramePresent)>,
     mut redraw: impl FnMut(W),
@@ -273,8 +233,6 @@ mod tests {
     use crate::host::winit::window::FramePresent;
     use std::time::{Duration, Instant};
 
-    /// Immediate windows redraw, in order; the nearest future deadline
-    /// wins whatever order it arrives in; idle windows add nothing.
     #[test]
     fn the_nearest_deadline_wins_and_immediates_redraw() {
         let t0 = Instant::now();

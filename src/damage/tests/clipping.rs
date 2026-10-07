@@ -16,14 +16,11 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// Pin: a child whose layout rect overflows a clipped panel (e.g. a
-/// scrolled-offscreen row inside a `Scroll` viewport) contributes
-/// only its *visible* portion to the damage region. The fix replaces
-/// `Cascade.screen_rect` with `Cascade.visible_rect` (raw screen rect
-/// intersected with the active ancestor clip) as the damage rect
-/// source — without it, panning a long list under a small viewport
-/// would inflate the damage union to the full content extent and
-/// trip `FULL_REPAINT_THRESHOLD` every frame.
+/// A child whose layout rect overflows a clipped panel (e.g. a scrolled-away row
+/// in a `Scroll`) contributes only its *visible* portion to damage: the damage
+/// rect source is `Cascade.visible_rect` (screen rect clipped by the ancestor
+/// clip), else panning a long list would trip `FULL_REPAINT_THRESHOLD` every
+/// frame.
 #[test]
 fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -32,9 +29,8 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let child_size = 200.0;
     let build = |fill: RgbaF32, h: &mut UiHarness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
-            // Root hstack so the inner zstack honors its `Fixed` size
-            // (root nodes get stretched to the surface anchor by the
-            // layout engine, which would defeat the clip).
+            // Root hstack so the inner zstack honors its `Fixed` size; root nodes are
+            // stretched to the surface anchor, which would defeat the clip.
             Panel::hstack()
                 .id(WidgetId::from_hash("clip-host"))
                 .show(ui, |ui| {
@@ -57,9 +53,8 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     };
 
     build(BLUE, &mut h, &mut child_node);
-    // Authoring change on the child only — fill flips. The child's
-    // layout rect is `child_size × child_size` (way past the clip),
-    // but the damage rect must stay inside the parent's clip.
+    // Authoring change on the child only (fill flips). Its layout rect is far past
+    // the clip, but the damage rect must stay inside the parent's clip.
     build(RED, &mut h, &mut child_node);
 
     let region = h.damage_region();
@@ -73,12 +68,10 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     );
 }
 
-/// Pin: a node that paints a drop shadow contributes its **inflated**
-/// paint bounds (`rect + offset`, then `4σ + max(spread, 0)` on each side) to the
-/// damage region, not just the arranged rect. Both routes — direct
-/// `Shape::Shadow` push and `Background::shadow` chrome — must reach
-/// the same `paint_rect` so a tab swap clears the full halo, not just
-/// the layout rect.
+/// A node painting a drop shadow contributes its **inflated** paint bounds
+/// (`rect + offset`, then `4*sigma + max(spread, 0)` per side) to damage. Both
+/// `Shape::Shadow` and `Background::shadow` chrome must reach the same
+/// `paint_rect`, so a tab swap clears the full halo.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     type Build = fn(&mut Ui);
@@ -149,13 +142,10 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |_| {});
         });
         let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
-        // `DamageEngine::prev` stores the raw paint_rect including
-        // the shadow halo, which extends off the top-left of the
-        // 200×200 surface for a 50×50 frame at origin. The damage
-        // region, however, clips each rect to the surface in
-        // `collapse_from` (off-surface pixels can never be painted
-        // and would bias the Full-repaint threshold), so the emitted
-        // damage is the visible portion of `prev_rect`.
+        // `DamageEngine::prev` stores the raw paint_rect including the halo, which
+        // extends off the top-left of the 200x200 surface. The damage region clips each
+        // rect to the surface in `collapse_from` (off-surface pixels can't be painted
+        // and would bias the Full-repaint threshold), so the damage is the visible part.
         assert_eq!(
             rects,
             vec![prev_rect.clamp_to(DISPLAY.logical_rect())],
@@ -164,12 +154,9 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     }
 }
 
-/// Pin: a drop-shadow whose halo extends past a clipping ancestor
-/// contributes only the **clipped** halo to damage. The shadow's
-/// overhang is folded into `paint_rect` in owner-local space before
-/// the ancestor clip is applied, so a `ClipMode::Clip` parent caps
-/// the contribution at the parent's bounds — otherwise the halo
-/// pretends to paint pixels the GPU's scissor will discard.
+/// A drop-shadow halo past a clipping ancestor contributes only the **clipped**
+/// halo to damage: the overhang is folded into `paint_rect` in owner-local space
+/// before the ancestor clip, so a `ClipMode::Clip` parent caps it at its bounds.
 #[test]
 fn shadow_overhang_inside_clipped_parent_is_clamped() {
     use crate::Shadow;
@@ -221,31 +208,19 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     }
 }
 
-/// Pin: a direct shape on a clipped node has its per-shape rect (the
-/// column the damage diff reads from) clipped to the node's own clip
-/// mask — not just the ancestor clip.
+/// A direct shape on a clipped node has its per-shape rect (the column the
+/// damage diff reads) clipped to the node's own clip mask, not just the ancestor
+/// clip. `compute_paint_rect` once clipped to `parent_clip` only, so a
+/// `Shape::Text` with a scroll `local_origin` reported its full shaped extent and
+/// a scrolling multi-line `TextEdit` produced damage spanning the entire text.
 ///
-/// Before the fix, `compute_paint_rect` clipped each shape's screen
-/// rect to `parent_clip` only. A `Shape::Text` with `local_origin`
-/// expressing a scroll offset reported its **full** shaped extent as
-/// the per-shape rect (cosmic-text's measured `Size` for the whole
-/// buffer). For a multi-line `TextEdit` taller than its visible rect,
-/// scrolling produced damage rects spanning the entire text — way
-/// past the editor's own `ClipMode::Rect`. The encoder's GPU scissor
-/// clips the actual pixels, so the user *saw* tight repaints, but
-/// the damage region driving the scissor pass was over-large,
-/// inflating the partial-redraw quad to the unclipped text bbox.
-///
-/// This test fakes the scenario with a rounded-rect shape extending
-/// past the host's clip on the right edge; pre-fix the per-shape rect
-/// captures the full 400-px-wide shape, post-fix it's clipped to the
-/// host's deflated mask.
+/// Faked with a rounded-rect shape extending past the host's clip on the right;
+/// the per-shape rect must be the host's deflated mask, not the full 400 px.
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
-    // WindowDriver panel: 80×40, padding 4 each side via background. The
-    // direct shape extends to x=400 (well past 80). After the cascade
-    // walk, `shape_rects[idx]` must be clipped to the host's deflated
-    // mask, not span the full 400 px.
+    // WindowDriver panel: 80x40, padding 4 per side via background. The direct
+    // shape extends to x=400; after the cascade walk `shape_rects[idx]` must be
+    // clipped to the host's deflated mask.
     let mut h = UiHarness::new(DISPLAY.physical);
     let host_id = WidgetId::from_hash("clip-host");
     let build = |ui: &mut Ui| {
@@ -266,9 +241,8 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     frame(&mut h, build);
     frame(&mut h, build);
 
-    // Locate the host node by widget id and read its first shape's
-    // cascaded screen rect. Pre-fix the rect spans the full 400 px;
-    // post-fix it's clamped to (host_width − padding-fold).
+    // Read the host node's first shape's cascaded screen rect: it must be clamped
+    // to (host_width - padding-fold), not span 400 px.
     let cascade = &h.ui.cascade();
     let host_ep = *cascade.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascade.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
@@ -276,10 +250,9 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let tree = h.ui.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
-    // The host paints chrome (the BLUE background), so row 0 of its
-    // span is the chrome `Paint` — whose screen always equals the
-    // 80×40 arranged rect and would pass the assertion below even
-    // with the clip regressed. The direct shape under test is row 1.
+    // The host paints chrome (the BLUE background), so row 0 is the chrome `Paint`,
+    // whose screen is always the 80x40 arranged rect and would pass even with the
+    // clip regressed. The shape under test is row 1.
     let paint_arena = &cascade.layers[Layer::Main].paint_arena;
     let node_span = paint_arena.node_spans[host_ep.node.idx()];
     assert_eq!(node_span.len, 2, "chrome row + shape row");
@@ -291,11 +264,10 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     );
 }
 
-/// A transparent container with a rounded clip keeps a chrome row only
-/// so the mask can read its corners. The row paints nothing, so adding
-/// the container damages only its child: a 100×100 container at the
-/// origin holding a 20×20 child at its top-left, both added in one
-/// frame, damages exactly the child's 20×20.
+/// A transparent container with a rounded clip keeps a chrome row only so the
+/// mask can read its corners. The row paints nothing, so adding the container
+/// damages only its child: a 100x100 container holding a 20x20 child at its
+/// top-left, added in one frame, damages exactly 20x20.
 #[test]
 fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
     use crate::primitives::geometry::corners::Corners;

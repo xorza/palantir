@@ -1,13 +1,10 @@
-//! Registered image lifetimes shared by the host, its recorders, and the
-//! backend.
+//! Registered image lifetimes shared by the host, its recorders and the backend.
 //!
-//! [`ImageHandle`](image_handle::ImageHandle) is the RAII owner of one
-//! registered image, and the registry is what every handle reaches. The
-//! texels go straight to the [`ImageStore`] the backend attaches when the
-//! host builds it over the same resources — the trait carries the
-//! immediacy contract — so the registry keeps no CPU copy and waits for
-//! no frame. A registry no backend was ever built over is a deviceless
-//! recorder: it keeps ids, sizes and generations and discards the texels.
+//! [`ImageHandle`](image_handle::ImageHandle) is the RAII owner of one registered image; the registry
+//! is what every handle reaches. Texels go straight to the [`ImageStore`] the backend attaches when
+//! the host builds it over the same resources (the trait carries the immediacy contract), so the
+//! registry keeps no CPU copy and waits for no frame. A registry no backend was built over is a
+//! deviceless recorder: it keeps ids, sizes and generations and discards the texels.
 //!
 //! The pure data types live elsewhere —
 //! [`Image`] / [`ImageFit`](crate::primitives::paint::image::ImageFit) in
@@ -30,19 +27,15 @@ use std::rc::Rc;
 /// Cheap to clone: every clone reaches the one store.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ImageRegistry {
-    /// Set once, by the backend that draws these images, and never for a
-    /// standalone CPU recorder — the same convention
-    /// [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) uses
-    /// for its ceiling. A clone copies the cell as it stands, which is why
-    /// the host attaches before it mints a recorder.
+    /// Set once, by the backend that draws these images, and never for a standalone CPU recorder, as
+    /// [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) does for its ceiling. A clone
+    /// copies the cell as it stands, so the host attaches before it mints a recorder.
     store: OnceCell<Rc<dyn ImageStore>>,
 }
 
 impl ImageRegistry {
-    /// Give the registry the store its texels go to. The one backend a
-    /// host builds calls this at its construction, through the host's own
-    /// registry and before the host mints a recorder, so every clone a
-    /// handle or a window later takes carries the store.
+    /// Gives the registry the store its texels go to. The host's one backend calls this at construction,
+    /// before the host mints a recorder, so every later clone carries the store.
     ///
     /// # Panics
     ///

@@ -1,11 +1,6 @@
-//! Every number a theme file can carry is either rejected on load or
-//! safe to render.
+//! Every number a theme file can carry is rejected on load or safe to render.
 //!
-//! The walk finds the numbers in the serialized default theme rather than
-//! in a hand list, so a field added without a validator fails here the day
-//! it is added. Each literal is replaced, one at a time, with values a
-//! hand-edited file can hold; a document that still loads is rendered
-//! through a scene that draws every themed widget.
+//! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::harness::UiHarness;
@@ -22,11 +17,9 @@ use glam::UVec2;
 use std::ops::Range;
 use std::panic;
 
-/// What a hand-edited file can put where a number belongs.
 const SUSPECTS: [&str; 5] = ["NaN", "inf", "-inf", "-1.0", "0.0"];
 
-/// Byte ranges of the numeric literals in `ron`, skipping anything inside
-/// a string and any digit that is part of an identifier.
+/// Byte ranges of numeric literals in `ron`, outside strings and identifiers.
 fn numbers(ron: &str) -> Vec<Range<usize>> {
     let bytes = ron.as_bytes();
     let mut out = Vec::new();
@@ -68,7 +61,6 @@ fn numbers(ron: &str) -> Vec<Range<usize>> {
     out
 }
 
-/// Every themed widget, so a loaded theme is read by each consumer.
 fn probe(ui: &mut Ui, fixture: &mut FrameFixture, color: &mut RgbaF32) {
     fixture.render(1, ui);
     Spinner::new()
@@ -82,15 +74,13 @@ fn probe(ui: &mut Ui, fixture: &mut FrameFixture, color: &mut RgbaF32) {
         .show(ui, |_, _| {});
 }
 
-/// The line a byte offset sits on, to say which field a failure was.
 fn line_of(ron: &str, at: usize) -> &str {
     let start = ron[..at].rfind('\n').map_or(0, |i| i + 1);
     let end = ron[at..].find('\n').map_or(ron.len(), |i| at + i);
     ron[start..end].trim()
 }
 
-/// Walk shard `shard` of [`SHARDS`]: every `SHARDS`-th number, so the
-/// shards stay even however many numbers the theme holds.
+/// Every `SHARDS`-th number.
 fn walk(shard: usize) {
     let base = pretty(&Theme::default());
     for span in numbers(&base).into_iter().skip(shard).step_by(SHARDS) {
@@ -127,8 +117,7 @@ fn the_walk_finds_the_theme_numbers() {
     );
 }
 
-/// Split so each shard stays under the suite's per-test budget and the
-/// shards run in parallel.
+/// Fits the per-test budget.
 const SHARDS: usize = 8;
 
 #[test]

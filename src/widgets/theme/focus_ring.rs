@@ -1,16 +1,11 @@
-//! The ring the framework draws around the widget that holds keyboard
-//! focus.
+//! The ring drawn around the keyboard-focused widget.
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::widgets::theme::palette::Palette;
 
-/// The ring around the focused widget, drawn by the framework rather than
-/// by any widget, and only while focus came from the keyboard — the rule
-/// CSS states as `:focus-visible`.
+/// The ring around the focused widget, drawn by the framework, only while focus came from the keyboard (CSS `:focus-visible`).
 ///
-/// It paints with the widget's chrome, inside the widget's arranged rect
-/// and with its chrome's corners, so the widget's own clip never cuts it
-/// and the layout never moves to make room for it.
+/// It paints inside the widget's arranged rect with its chrome's corners, so the widget's clip never cuts it and layout never moves.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FocusRingTheme {
     /// Ring colour.

@@ -3,13 +3,7 @@ use crate::primitives::geometry::spacing::*;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
-/// A NaN edge is reportable, and reported per-lane — the four are one
-/// `u64` and a check that only looked at the first would pass a NaN
-/// bottom margin straight into layout.
-///
-/// Paired with `Corners`, which is the same eight bytes: the two
-/// agreeing here is what says the screening `Corners` has had all
-/// along now covers spacing too.
+/// A NaN edge is reported per lane: the four share one `u64`, so checking only the first would pass a NaN bottom margin.
 #[test]
 fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
     assert!(!Spacing::all(4.0).has_nan(), "a whole spacing is finite");
@@ -31,16 +25,13 @@ fn a_nan_on_any_edge_is_screened_like_a_nan_corner() {
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
-    // Left + right = 1 + 3, top + bottom = 2 + 4.
     assert_eq!(s.sums(), Size::new(4.0, 6.0));
 }
 
 /// Documents the f16 precision contract.
 #[test]
 fn f16_precision_contract() {
-    // Integers are exact to 2048. Past it the f16 step is 2, then 4 from
-    // 4096, and a tie rounds to the even mantissa: 2049 → 2048, 2051 →
-    // 2052, 4097 and 4098 → 4096, 4099 → 4100.
+    // Integers are exact to 2048; past it the f16 step is 2, then 4 from 4096, ties to even: 2049 → 2048, 2051 → 2052, 4097/4098 → 4096, 4099 → 4100.
     for (value, stored) in [
         (2048.0, 2048.0),
         (2049.0, 2048.0),
@@ -67,12 +58,9 @@ fn as_array_and_from_array_round_trip() {
 fn xy_ctor_repeats_axes() {
     let s = Spacing::xy(3.0, 7.0);
     assert_eq!(s.as_array(), [3.0, 7.0, 3.0, 7.0]);
-    // Left + right = 3 + 3, top + bottom = 7 + 7.
     assert_eq!(s.sums(), Size::new(6.0, 14.0));
 }
 
-/// Tuple `From` impls — easy place to swap component order during
-/// a refactor. Pin both forms.
 #[test]
 fn from_tuple_preserves_component_order() {
     let xy: Spacing = (3, 7).into();

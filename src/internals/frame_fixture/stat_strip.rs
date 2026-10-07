@@ -1,5 +1,4 @@
-//! The metric strip under the app bar — the one node group that carries
-//! all four `Brush` variants as chrome fills at once.
+//! The metric strip under the app bar: the one node group carrying all four `Brush` variants as chrome fills.
 
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
@@ -77,9 +76,7 @@ pub(super) fn show(ui: &mut Ui) {
                                 ),
                             })
                             .show(ui);
-                        // Cascade `Hidden` flattening — the alert ring this
-                        // tile would show on a threshold breach. A ZStack
-                        // sibling, so reserving its box costs no layout.
+                        // Cascade `Hidden` flattening: the alert ring this tile would show on a threshold breach. A ZStack sibling, so reserving its box costs no layout.
                         Block::new()
                             .id_salt(("stat-alert", i))
                             .size((Sizing::FILL, Sizing::FILL))

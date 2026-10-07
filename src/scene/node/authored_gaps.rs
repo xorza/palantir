@@ -5,14 +5,7 @@ use crate::scene::node::gaps::Gaps;
 use half::f16;
 use std::fmt;
 
-/// The authoring half of [`Gaps`]: each lane is either a caller's value
-/// or still untouched, so a widget can lay a themed default under user
-/// intent the way the six `Option` fields beside it on
-/// [`Node`](crate::scene::node::Node) do.
-///
-/// The two readings are `Option<f32>`, and the unset state has no
-/// spelling outside this file — [`Self::resolve`] is the only way out,
-/// and what it produces is a plain [`Gaps`].
+/// The authoring half of [`Gaps`]: each lane is a caller's value or untouched, so a widget can lay a themed default under user intent (as the six `Option` fields on [`Node`](crate::scene::node::Node) do). [`Self::resolve`] is the only way out and yields a plain [`Gaps`].
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AuthoredGaps([u16; 2]);
@@ -27,14 +20,10 @@ impl fmt::Debug for AuthoredGaps {
 }
 
 impl AuthoredGaps {
-    /// The bit pattern no lane can otherwise hold: an f16 quiet NaN.
-    ///
-    /// A gap is finite and non-negative ([`domain::is_gap`]), so no
-    /// value a caller can store lands here. That makes NaN free to carry
-    /// the untouched state without widening the packed pair.
+    /// The bit pattern no lane otherwise holds: an f16 quiet NaN. A gap is finite and non-negative ([`domain::is_gap`]), so NaN can carry "untouched" without widening the pair.
     const UNSET: u16 = 0x7E00;
 
-    /// A pair with neither lane set — every `Node` starts here.
+    /// A pair with neither lane set; every `Node` starts here.
     pub(crate) const UNSET_PAIR: Self = Self([Self::UNSET; 2]);
 
     #[inline]
@@ -47,8 +36,7 @@ impl AuthoredGaps {
         Self::lane(self.0[1])
     }
 
-    /// What layout reads: an untouched lane becomes `0.0`, an explicit
-    /// one keeps the value the caller gave.
+    /// What layout reads: an untouched lane is `0.0`, an explicit one keeps its value.
     #[inline]
     pub(crate) fn resolve(self) -> Gaps {
         Gaps::new(

@@ -1,5 +1,4 @@
-//! Headless wgpu device + one-frame render + texture readback into
-//! an `image::RgbaImage`.
+//! Headless wgpu device, one-frame render and texture readback into an `image::RgbaImage`.
 
 #![expect(
     clippy::disallowed_types,
@@ -21,15 +20,7 @@ use palantir::{
 use crate::fixtures::DARK_BG;
 use std::iter;
 
-/// The palette every fixture renders under, pinned so that
-/// `Palette::DEFAULT` is free to move. Which colours the crate ships is a
-/// design choice rather than something this suite tests, and without the
-/// pin ten goldens sit on that choice.
-///
-/// Hue-coded rather than grayscale, so a recipe that reaches for the wrong
-/// rung shows in the diff image as a hue instead of as nine levels of
-/// gray. Inks are light and descend in luminance, surfaces are dark and
-/// ascend, and the accent pair is the only saturated mid-tone.
+/// The palette every fixture renders under, pinned so `Palette::DEFAULT` can move without ten goldens depending on it; hue-coded so a wrong rung shows as a hue in the diff.
 pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
@@ -46,24 +37,18 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BYTES_PER_PIXEL: u32 = 4;
 
-/// What one captured frame drew and how it was painted.
 #[derive(Debug)]
 pub(crate) struct Capture {
     pub(crate) image: RgbaImage,
-    /// How the frame repainted the target. A repeat render of an
-    /// unchanged scene skips and copies the backbuffer, so a test about
-    /// encoder replay asserts this before trusting the pixels.
+    /// How the frame repainted the target; check it before trusting pixels from a repeat render, which skips and copies the backbuffer.
     pub(crate) paint: FramePaint,
 }
 
-/// A headless host plus the surface every frame renders at: size, scale,
-/// clear colour, target format and debug overlay are held here and stay
-/// until changed, so a frame call names only its scene.
+/// A headless host plus the surface every frame renders at; settings persist until changed.
 #[derive(Debug)]
 pub(crate) struct Harness {
     pub(crate) host: OffscreenHost,
     gpu: HeadlessTestGpuLease,
-    /// See [`Self::without_copy_dst`].
     target_usages: wgpu::TextureUsages,
     /// Unset until [`Self::size`]: no surface is right for every fixture.
     physical: Option<UVec2>,
@@ -79,12 +64,8 @@ impl Harness {
 
     pub(crate) fn new_with_pixel_snap(pixel_snap: bool) -> Self {
         let gpu = headless_test_gpu();
-        // Fresh target texture per frame → must fill the whole target each
-        // frame, so use the public backbuffer+copy path.
-        // A fixed clock makes goldens reproducible: any animated widget (the
-        // spinner's paint-time spin, caret blink, springs) samples a fixed
-        // phase every run instead of a wall-clock-jittered one — the spinner
-        // renders at exactly angle 0, its documented "phase 0" state.
+        // Fresh target texture per frame: fill it via the public backbuffer+copy path.
+        // A fixed clock makes goldens reproducible (the spinner at angle 0).
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::new())
             .pixel_snap(pixel_snap)
@@ -103,36 +84,28 @@ impl Harness {
         }
     }
 
-    /// Render as a target that cannot be copied into would — a GLES swapchain
-    /// image. The renderer then presents its backbuffer by drawing it rather
-    /// than copying it.
+    /// Render as a GLES swapchain image would: the backbuffer is drawn, not copied.
     pub(crate) const fn without_copy_dst(mut self) -> Self {
         self.target_usages = NO_COPY_DST_USAGES;
         self
     }
 
-    /// The target's size in physical pixels, for this frame and the next.
     pub(crate) const fn size(&mut self, physical: UVec2) -> &mut Self {
         self.physical = Some(physical);
         self
     }
 
-    /// The system scale the host is told, `1.0` until set.
     pub(crate) const fn scale(&mut self, scale: f32) -> &mut Self {
         self.scale = scale;
         self
     }
 
-    /// The window clear colour, [`DARK_BG`] until set.
     pub(crate) const fn clear(&mut self, clear: RgbaF32) -> &mut Self {
         self.clear = clear;
         self
     }
 
-    /// The target format, `Rgba8UnormSrgb` until set. Pixels come back in
-    /// RGBA byte order whatever the format: BGRA targets are swizzled on
-    /// readback. A change from the last frame's format is auto-detected
-    /// by the renderer, which repaints in full at the new one.
+    /// The target format, `Rgba8UnormSrgb` until set; pixels come back in RGBA order (BGRA is swizzled on readback).
     pub(crate) const fn format(&mut self, format: wgpu::TextureFormat) -> &mut Self {
         self.format = format;
         self
@@ -164,8 +137,6 @@ impl Harness {
         );
 
         let mut image = readback(&self.gpu.device, &self.gpu.queue, &target, physical);
-        // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
-        // Swap R/B so callers always compare in RGBA space.
         if matches!(
             self.format,
             wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm
@@ -180,9 +151,7 @@ impl Harness {
         }
     }
 
-    /// `n` discarded frames of `scene`, for state that populates over
-    /// several (scrollbars reading their `ScrollState`, damage seeding its
-    /// baseline).
+    /// `n` discarded frames of `scene`, for state that builds over several.
     pub(crate) fn prime(&mut self, n: u32, mut scene: impl FnMut(&mut Ui)) -> &mut Self {
         for _ in 0..n {
             self.frame(&mut scene);
@@ -190,16 +159,13 @@ impl Harness {
         self
     }
 
-    /// [`Self::prime`] then [`Self::frame`], over one scene.
     pub(crate) fn settled_frame(&mut self, n: u32, mut scene: impl FnMut(&mut Ui)) -> Capture {
         self.prime(n, &mut scene);
         self.frame(scene)
     }
 }
 
-/// What a GLES swapchain image offers: it *is* the default framebuffer, so
-/// nothing can be copied onto it. `COPY_SRC` is the harness's own, for
-/// readback.
+/// A GLES swapchain image: the default framebuffer, so nothing can be copied onto it; `COPY_SRC` is the harness's, for readback.
 const NO_COPY_DST_USAGES: wgpu::TextureUsages =
     HeadlessTestGpuLease::TARGET_USAGES.difference(wgpu::TextureUsages::COPY_DST);
 

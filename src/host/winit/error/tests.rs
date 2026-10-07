@@ -16,10 +16,7 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     );
     assert!(event_loop.source().is_some());
 
-    // A device request fails while a window opens its surface, so it
-    // arrives as that window's surface error. The surface forwards the
-    // request's words and hands on *its* cause rather than itself, so a
-    // chain printer never meets the same sentence twice.
+    // A device request failing during a window's surface open arrives as that window's surface error; it hands on its cause, not itself, so chain printers never repeat a sentence.
     let unmet = UnmetRequirements::Limit {
         name: "max_immediate_size",
         required: 16,
@@ -50,14 +47,10 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
 
 #[test]
 fn host_disconnected_reports_the_loss_and_costs_nothing_to_return() {
-    // `run_on_main` returns this by value on a path the caller reaches
-    // during shutdown; a payload would be dead weight, since there is
-    // no `&mut T` left to re-run the closure against.
+    // Returned by value during shutdown, so no payload.
     assert_eq!(size_of::<HostDisconnected>(), 0);
 
-    // The message has to name the consequence, not just the cause —
-    // "event loop exited" alone reads as routine shutdown, while the
-    // point is that submitted work was thrown away.
+    // The message names the consequence (work was thrown away), not just "event loop exited".
     let err = HostDisconnected;
     assert_eq!(
         err.to_string(),
@@ -65,8 +58,6 @@ fn host_disconnected_reports_the_loss_and_costs_nothing_to_return() {
     );
     assert!(err.source().is_none());
 
-    // Usable through `?` into a boxed error, which is how a background
-    // thread would actually propagate it.
     let boxed: Box<dyn Error> = Box::new(err);
     assert!(boxed.to_string().contains("not delivered"));
 }

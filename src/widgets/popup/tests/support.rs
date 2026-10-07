@@ -1,5 +1,4 @@
-//! The anchored body a popup test records, and the main-panel probe under
-//! it.
+//! The anchored body a popup test records, and the main-panel probe under it.
 
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -29,8 +28,7 @@ pub(super) struct BodyPass {
     pub(super) main_clicked: bool,
 }
 
-/// A clickable `Main` panel with a popup over it. Read inside the record
-/// pass, the only place a one-frame edge is live.
+/// A clickable `Main` panel with a popup over it; read inside the record pass, where one-frame edges are live.
 pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
     let main_id = WidgetId::from_hash("main-bg");
     let mut dismissed = false;

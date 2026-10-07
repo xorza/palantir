@@ -1,5 +1,4 @@
-//! How a track resolves: fixed, fill weights, hug, and the floors under
-//! each.
+//! How a track resolves: fixed, fill weights, hug, and the floors under each.
 
 use crate::layout::drivers::grid::axis_scratch::AxisScratch;
 use crate::layout::drivers::grid::axis_scratch::HugRanges;
@@ -52,8 +51,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
-    // Hug col 0: max(button widths). Buttons measure label at 8px/char +
-    // default padding 24 + 2*1 chrome stroke → label_w + 26.
+    // Hug col 0: max(button widths); a button is label at 8px/char + 24 padding + 2 stroke = label_w + 26.
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -105,10 +103,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     assert_eq!(long_btn.min.x, 0.0);
 }
 
-/// A `Hug` grid column whose cells are `FILL`-width hugs to the *widest*
-/// cell's content, and every cell stretches to that width. Backs the node
-/// editor's value column: each editor fills the column so they're a uniform
-/// width, while the column sizes to the longest value (no overflow).
+/// A `Hug` column of `FILL`-width cells hugs to the widest cell's content and every cell stretches to it.
 #[test]
 fn hug_column_stretches_fill_cells_to_widest_content() {
     let mut h = UiHarness::new(UVec2::new(400, 200));
@@ -154,8 +149,8 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
     );
 }
 
-/// A `Hug` column with a `.max()` clamp caps the track. Shrinkable content
-/// follows that slot; Fixed content keeps its exact extent and overflows.
+/// A `.max()` on a `Hug` column caps the track: shrinkable content follows, Fixed content
+/// keeps its exact extent and overflows.
 #[test]
 fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::text::wrap::TextWrap;
@@ -182,7 +177,6 @@ fn hug_column_max_caps_shrinkable_and_rigid_content() {
     let btn = h.main_child_rects(root)[0];
     assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
 
-    // The track caps at 150, but the Fixed(200) child remains exact.
     let rigid = rigid_first_col_rects(Track::HUG.with_max(150.0), 100);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(
@@ -256,8 +250,7 @@ fn grid_fill_weights_and_clamps() {
         assert_eq!(kids[1].size.w, *want1, "case: {label} col1");
     }
 
-    // The first track caps at 100px and donates the 300px remainder to col 1;
-    // its Fixed(200) child overflows without changing track distribution.
+    // Col 0 caps at 100px and donates 300px to col 1; its Fixed(200) child overflows without changing the tracks.
     let rigid = rigid_first_col_rects(Track::FILL.with_max(100.0), 400);
     assert_eq!(rigid[0].size.w, 200.0, "Fixed child remains exact");
     assert_eq!(rigid[1].min.x, 100.0, "col 0 track is capped at 100px");
@@ -266,12 +259,8 @@ fn grid_fill_weights_and_clamps() {
 
 #[test]
 fn grid_fill_col_floors_at_descendant_min_content() {
-    // Two equal-weight Fill cols, surface 300 wide. Cell (0,0) holds a
-    // Fixed-width 200 frame: that's the col's MinContent intrinsic
-    // floor. Without the floor, weights split 150/150 and the rigid
-    // frame overflows its cell. With the capped Phase 3 content floor,
-    // col 0 clamps to 200 and col 1 takes the 100 remainder — matches
-    // Stack's freeze-loop floor.
+    // Two Fill cols in 300px; col 0 holds a Fixed 200 frame, its MinContent floor: without it they split
+    // 150/150 and the frame overflows; with it col 0 clamps to 200, col 1 takes 100.
     let mut h = UiHarness::new(UVec2::new(300, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -303,11 +292,8 @@ fn grid_fill_col_floors_at_descendant_min_content() {
 
 #[test]
 fn grid_fill_row_floors_at_descendant_min_content() {
-    // Symmetric Y-axis case: two equal-weight Fill rows, surface 100
-    // tall. Cell (0,0) holds a Fixed-height 60 frame; cell (1,0) is
-    // open. Without floor: rows split 50/50 and the rigid frame
-    // overflows. With the floor (Phase 2 records the child's Y
-    // min-content into hug_min): row 0 clamps to 60, row 1 takes 40.
+    // Y twin: two Fill rows in 100px, row 0 holding a Fixed 60 frame; its Y min-content (Phase 2, hug_min)
+    // floors row 0 at 60, leaving 40 for row 1, instead of a 50/50 split.
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -339,18 +325,8 @@ fn grid_fill_row_floors_at_descendant_min_content() {
 
 #[test]
 fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
-    // Two Hug rows, each holding a Fixed-height 60 frame, in a grid
-    // whose own height is fixed at 100 — the one way to cramp rows, since
-    // a Fill grid floors its height at its content and never gets here.
-    // A Fixed frame's Y min-content is its 60, so each row's range is
-    // `[60, 60]` and `hug_min_sum` is 120 against 100 remaining: the solve
-    // takes the cramped arm, every row keeps its 60, and the grid
-    // overflows by 20.
-    //
-    // With the min left unwritten the range read `[0, 60]` and the solve
-    // took the slack arm instead — 0 + 100 * 60/120 = 50 per row — so
-    // row 1 began at y = 50 and both rigid frames overflowed cells that
-    // had no reason to shrink.
+    // Two Hug rows of Fixed 60 frames in a 100px grid: each range is `[60, 60]`, `hug_min_sum` 120 > 100,
+    // so the cramped arm keeps both at 60 and the grid overflows by 20 (an unwritten min gave 50 per row).
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -382,8 +358,7 @@ fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
     assert_eq!(kids[1].size.h, 60.0, "row 1 keeps its measured height");
 }
 
-/// Pins implicit contract: `Fixed`/`Hug` resolved, `Fill` unresolved so
-/// cells see `INF` (WPF intrinsic trick that defers Fill until arrange).
+/// `Fixed`/`Hug` resolve; `Fill` stays unresolved so cells see `INF` (WPF defers Fill to arrange).
 #[test]
 fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let tracks = [Track::fixed(50.0), Track::HUG, Track::FILL];
@@ -411,8 +386,7 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     );
 }
 
-/// Pin: each Hug row resolves to its own cells' max desired height,
-/// independent of other rows.
+/// Each Hug row resolves to its own cells' max desired height, independent of other rows.
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

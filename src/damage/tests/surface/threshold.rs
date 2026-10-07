@@ -7,9 +7,7 @@ use crate::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one
 use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 
-/// Pin: a single-leaf fill flip stays in the partial-repaint regime —
-/// `filter(surface)` returns `Partial(rect)`, because the rect is well
-/// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
+/// A single-leaf fill flip stays partial: far below the full-repaint threshold.
 #[test]
 fn damage_filter_returns_partial_when_small() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -30,45 +28,29 @@ fn damage_filter_returns_partial_when_small() {
     );
 }
 
-/// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
-/// strictly above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise
-/// Partial. The check is `>`, not `>=`, so coverage exactly at the
-/// threshold stays Partial. `total_area` sums per-rect areas of the
-/// post-merge region, so adjacent rects that the proximity-merge
-/// rule collapses contribute their merged-bbox area (which here
-/// equals the input sum since they tile cleanly). Inputs go through
-/// `collapse_from` (the only constructor that seals `coverage`); the
-/// `region()` helper builds the unsealed *expected* values, which
-/// still match because coverage is excluded from `PartialEq`.
+/// Coverage is `sum(rect.area()) / surface_area`; strictly above `FULL_REPAINT_THRESHOLD` (0.7) is Full, else
+/// Partial (`>`, so exactly at the threshold stays Partial). Inputs go through `collapse_from`, the only
+/// constructor that seals `coverage`; `region()` builds unsealed expected values, which match as coverage is
+/// excluded from `PartialEq`.
 #[test]
 fn damage_filter_threshold_cases() {
     use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     fn region(rects: &[Rect]) -> DamageRegion {
         DamageRegion::from_rects(rects)
     }
-    // Adjacent halves on the 100×100 surface — a perfectly adjacent
-    // pair has `union_excess = bbox − a − b = 0`, below any positive
-    // SAH budget, so each pair collapses into one rect whose area
-    // equals the input sum. The region's `total_area` then lands
-    // exactly at the threshold (or just above) and the strict `>`
-    // decision logic is what's under test; the merge is guaranteed by
-    // the zero excess alone, independent of the budget's exact value.
+    // Adjacent halves: a perfectly adjacent pair has `union_excess = 0`, so each pair collapses into one rect whose
+    // area is the input sum, making the strict `>` the thing under test whatever the SAH budget.
     const PAIR_BELOW: [Rect; 2] = [
-        // Merges to Rect(0,0,70,100); total_area = 7000 / 10000 = 0.70
-        // → stays Partial (`>` is strict).
+        // Merges to Rect(0,0,70,100); total_area = 0.70 → stays Partial.
         Rect::new(0.0, 0.0, 35.0, 100.0),
         Rect::new(35.0, 0.0, 35.0, 100.0),
     ];
     const PAIR_ABOVE: [Rect; 2] = [
-        // Merges to Rect(0,0,72,100); total_area = 7200 / 10000 = 0.72
-        // → escalates Full.
+        // Merges to Rect(0,0,72,100); total_area = 0.72 → escalates Full.
         Rect::new(0.0, 0.0, 36.0, 100.0),
         Rect::new(36.0, 0.0, 36.0, 100.0),
     ];
-    // Expected damage as "which outcome, and — for a partial — which
-    // rects". The whole `Damage` is not the comparison: it carries the
-    // coverage the frame measured, which these rect literals have no way
-    // to state.
+    // Expected: which outcome and, for a partial, which rects (the `Damage` coverage can't be stated by literals).
     let cases: &[(&str, &[Rect], Rect, Option<DamageRegion>)] = &[
         (
             "small_1pct",
@@ -106,10 +88,7 @@ fn damage_filter_threshold_cases() {
             TEST_SURFACE,
             None,
         ),
-        // Zero-area-surface case dropped: `collapse_from` now asserts
-        // `surface_area > EPS` (host filters resize-to-zero before we
-        // ever reach this layer), so the prior `Damage::Full` fallback
-        // became unreachable.
+        // No zero-area-surface case: `collapse_from` asserts `surface_area > EPS`.
     ];
     for (label, rects, surface, want) in cases {
         let collapsed = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
@@ -126,10 +105,7 @@ fn damage_filter_threshold_cases() {
 #[test]
 fn no_damage_means_skip() {
     let d = DamageEngine::default();
-    // No damage rect → `filter` returns `Skip` (no work to do; the
-    // backbuffer already holds the right pixels). Distinct from
-    // `Full` ("everything changed"), which is what coverage above
-    // [`FULL_REPAINT_THRESHOLD`] produces.
+    // No damage rect → `Skip` (the backbuffer already holds the right pixels), distinct from `Full`.
     assert_eq!(
         Damage::new(DamageRegion::collapse_from(
             &d.raw_rects,

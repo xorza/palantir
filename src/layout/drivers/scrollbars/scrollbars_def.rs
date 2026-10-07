@@ -1,6 +1,4 @@
-//! A bar overlay's definition, and the thumb arithmetic both the layout
-//! driver that places the bars and the widget that maps pointer input
-//! onto them read.
+//! A bar overlay's definition, and the thumb arithmetic shared by the layout driver and the widget's pointer mapping.
 
 use crate::layout::drivers::scrollbars::bar_geometry::BarGeometry;
 use crate::primitives::geometry::size::Size;
@@ -13,53 +11,24 @@ use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 use std::hash::{Hash, Hasher};
 
-/// What a scrollbars overlay (the crate-internal `Widget::scrollbars`)
-/// places its bars from.
-///
-/// Everything here is known while recording except the viewport's content
-/// extent, which exists only once measure has run. So the overlay names the
-/// viewport, and its layout reads the extent then. That is what lets a
-/// scroll widget record its bars on its first frame, with no second pass.
-///
-/// Installed with the crate-internal `Widget::scrollbar_def`. A widget
-/// reads the same numbers through [`Self::thumb`] to map a thumb
-/// drag or a track click onto an offset, so the bar the user grabs is the
-/// bar that was drawn.
+/// What a scrollbars overlay places its bars from. The viewport's content extent exists only after measure, so the overlay names the viewport and layout reads the extent then; a widget reads [`Self::thumb`] to map drags and clicks, so the grabbed bar is the drawn bar.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ScrollbarsDef {
-    /// The [`Widget::scroll`](crate::widget::Widget::scroll) viewport whose
-    /// content the bars show. It must be recorded earlier in the same
-    /// frame, on the overlay's layer.
+    /// The [`Widget::scroll`](crate::widget::Widget::scroll) viewport whose content the bars show; recorded earlier in the frame.
     pub(crate) content: WidgetId,
-    /// How far the content is scrolled, in pixels of the zoomed content:
-    /// the translation the viewport's transform carries, negated.
     pub(crate) offset: Vec2,
-    /// The content's scale. The bars show the content at this size.
     pub(crate) zoom: f32,
-    /// The viewport's axes. An axis that does not pan shows no bar.
     pub(crate) axes: ScrollAxes,
-    /// The gutter the bars take out of the overlay's box, per side. Zero
-    /// for bars that paint over the content.
-    ///
-    /// Keep it independent of whether the content overflows: a gutter
-    /// that opens with the bar makes a `Hug` ancestor jump when it does.
+    /// Gutter the bars take out of the overlay's box, per side; keep it independent of overflow, or a `Hug` ancestor jumps.
     pub(crate) reserve: Spacing,
-    /// The viewport's own padding, inside the gutter.
     pub(crate) padding: Spacing,
-    /// A bar's breadth across its axis. The vertical bar runs along the
-    /// overlay's right edge, and the horizontal bar along its bottom edge.
     pub(crate) bar_thickness: f32,
     /// The shortest a thumb gets, however long the content.
     pub(crate) min_thumb: f32,
 }
 
 impl ScrollbarsDef {
-    /// The strip the content occupies in an overlay of size `outer`:
-    /// `outer` less the gutter and the padding, floored at zero.
-    ///
-    /// The layout driver passes this frame's arranged size, to place the
-    /// bars. A widget passes the size it arranged at last frame, to solve
-    /// its offset in.
+    /// The strip the content occupies in an overlay of size `outer`: `outer` less gutter and padding, floored at zero.
     pub(crate) fn viewport(&self, outer: Size) -> Size {
         let (reserve, padding) = (self.reserve.sums(), self.padding.sums());
         Size::new(
@@ -68,12 +37,7 @@ impl ScrollbarsDef {
         )
     }
 
-    /// The bar on `axis` in an overlay of size `outer`, over content that
-    /// measured `content` before zoom — the extent
-    /// [`Ui::scroll_content`](crate::Ui::scroll_content) reports.
-    ///
-    /// `None` when the axis does not pan, when the viewport is empty, or
-    /// when the content fits and no thumb shows.
+    /// The bar on `axis` over content that measured `content` before zoom ([`Ui::scroll_content`](crate::Ui::scroll_content)); `None` when the axis does not pan, the viewport is empty, or the content fits.
     pub(crate) fn thumb(&self, axis: Axis, outer: Size, content: Size) -> Option<BarGeometry> {
         if !self.axes.pans(axis) {
             return None;
@@ -86,8 +50,7 @@ impl ScrollbarsDef {
         )
     }
 
-    /// Visual hash for the authoring rollup. The fit flags stay out: they
-    /// size the viewport, and the bars read only which axes pan.
+    /// Visual hash for the authoring rollup; fit flags stay out (they size the viewport).
     pub(crate) fn hash_visual<H: Hasher>(&self, h: &mut H) {
         self.content.hash(h);
         self.offset.hash_visual(h);
@@ -100,11 +63,7 @@ impl ScrollbarsDef {
     }
 }
 
-/// A [`ScrollbarsDef`] as the tree stores it, with the viewport it names
-/// resolved to the node this pass recorded it as.
-///
-/// Valid for exactly the pass that resolved it: the tree is rebuilt every
-/// pass, and every pass records the def again.
+/// A [`ScrollbarsDef`] as the tree stores it, with the viewport resolved to the node; valid for the pass that resolved it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ResolvedScrollbarsDef {
     pub(crate) def: ScrollbarsDef,

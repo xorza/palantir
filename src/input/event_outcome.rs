@@ -1,44 +1,24 @@
 //! What one handled input event asks of the frame.
 
-/// What one event asks of the frame, as decided by the [`on_input`
-/// arm](crate::input::input_state::InputState::on_input) that handled it. Both answers travel
-/// together because every arm has to give both, and a side-effect
-/// assignment for one of them made it easy to give only the other.
+/// What one event asks of the frame, decided by the [`on_input`
+/// arm](crate::input::input_state::InputState::on_input) that handled it; every arm must give both answers.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct EventOutcome {
-    /// The event could change what is on screen, so the next frame
-    /// cannot stay on the paint-anim-only path. Surfaced to the host as
-    /// `InputDelta::repaint_requested`.
+    /// The event could change what is on screen (surfaced as `InputDelta::repaint_requested`).
     pub(super) repaint: bool,
-    /// The event wrote state that a widget recorded *earlier in the same
-    /// pass* may already have read, so the pass has to run again.
+    /// The event wrote state that a widget recorded *earlier in the same pass* may already have read, so the pass runs again.
     ///
-    /// Set by: a `Click` or `DragStopped` release, a `KeyDown` (it lands
-    /// in the keyboard queue), a drag latch crossing its
-    /// threshold during a move, and any event a `PointerWake::BUTTONS`
-    /// subscriber saw.
-    ///
-    /// Deliberately clear — though each still repaints: a **press**,
-    /// because a capture reaches only its own target and `focused` is
-    /// read live off `InputState`, committed before the frame, so pass A
-    /// already sees it; a **`ReleaseKind::Miss`**, which fires no click
-    /// and only tears down that same single-reader capture; and scroll,
-    /// pinch, `PointerLeft` or modifier changes, whose state reaches
-    /// exactly one routed target that applies it in the pass that
-    /// receives it. An unrouted event leaves this clear because no
-    /// widget or watcher can observe it.
-    ///
-    /// The press and `Miss` exclusions are what let a click-driven UI
-    /// settle once per gesture instead of three times. The cost is
-    /// narrow: an app that reacts to a press-driven focus change by
-    /// writing state a *prefix* widget shows gains a one-frame lag, and
-    /// should handle that edge in [`crate::App::update`] instead.
+    /// Set by a `Click` or `DragStopped` release, a `KeyDown`, a drag latch crossing its threshold, and any event a
+    /// `PointerWake::BUTTONS` subscriber saw. Clear for a press (a capture reaches only its own target and `focused` is
+    /// read live), `ReleaseKind::Miss`, scroll, pinch, `PointerLeft`, modifier changes and unrouted events: they reach
+    /// at most one target that applies them in the pass that receives them. That lets a click-driven UI settle once
+    /// per gesture; an app reacting to a press-driven focus change by writing state a *prefix* widget shows gains a
+    /// one-frame lag and should handle it in [`crate::App::update`].
     pub(super) settles: bool,
 }
 
 impl EventOutcome {
-    /// Repaints, but does not force a second record pass — the common
-    /// case, and the one whose reasoning is on [`Self::settles`].
+    /// Repaints without forcing a second record pass: the common case.
     #[inline]
     pub(super) const fn repaint(repaint: bool) -> Self {
         Self {
@@ -47,8 +27,7 @@ impl EventOutcome {
         }
     }
 
-    /// Repaints and settles together. Every arm that settles also
-    /// repaints, so no arm needs to state the two separately.
+    /// Repaints and settles together; every settling arm also repaints.
     #[inline]
     pub(super) const fn settle(both: bool) -> Self {
         Self {

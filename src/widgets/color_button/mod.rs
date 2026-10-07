@@ -1,5 +1,4 @@
-//! The chip that opens a picker: a swatch-styled trigger, and the popup it
-//! drops.
+//! The chip that opens a colour picker popup.
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
@@ -22,17 +21,11 @@ use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::rc::Rc;
 
-/// A colour chip that opens a [`ColorPicker`] in a popup when clicked.
+/// A colour chip that opens a [`ColorPicker`] popup when clicked.
 ///
-/// The compact form of the picker, for a properties panel or a node's port:
-/// one chip the size of a preview, and the panel only while it is wanted.
-/// The picker is configured as it would be on its own and handed over
-/// whole; the chip shows its colour. Open state lives in the response map
-/// keyed off the trigger, so a caller threads nothing but the picker.
-///
-/// Clicking outside or pressing Esc closes it. There is no revert, because
-/// every gesture inside the panel has already committed — the chip shows what
-/// the colour is, not a proposal.
+/// The picker is configured as usual and handed over whole. Open state lives
+/// in the response map keyed off the trigger. Click outside or Esc closes it;
+/// there is no revert, since every gesture inside already committed.
 ///
 /// ```
 /// # use palantir::{ColorButton, ColorPicker, RgbaF32, Ui};
@@ -49,11 +42,9 @@ pub struct ColorButton<'a> {
 }
 
 impl<'a> ColorButton<'a> {
-    /// A chip that opens `picker`. The picker's id defaults to the chip's
-    /// `id.with("picker")`; an id set on the picker wins.
+    /// A chip that opens `picker`. The picker's id defaults to `id.with("picker")`; one set on the picker wins.
     pub fn new(picker: ColorPicker<'a>) -> Self {
         Self {
-            // A Tab stop that opens on Space and Enter, as a button does.
             widget: Widget::leaf()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -63,19 +54,15 @@ impl<'a> ColorButton<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`, for the
-    /// chip, the popup's chrome and the picker inside it. Takes an `Option`
-    /// as readily as a reference: `.style(overrides.as_ref())`. `None`
-    /// leaves the picker's own style in place.
+    /// Per-instance override of [`crate::Theme`]'s `color_picker` for chip, popup chrome and picker; `None` keeps the picker's own style.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Record the chip, and the popup when it is open.
+    /// Records the button.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        // An `Rc` bump on the theme bundle, so the popup can borrow its
-        // chrome out of it across the `&mut Ui` the chip's record takes.
+        // `Rc` bump so the popup can borrow chrome across the `&mut Ui` the chip's record takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
         let side = domain::length_at_least(slot.chip_size, 1.0);

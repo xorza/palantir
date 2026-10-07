@@ -2,9 +2,7 @@ use crate::animation::animatable::Animatable;
 use crate::primitives::paint::color::*;
 use ron::ser;
 
-/// Every sRGB byte comes back from each wider form unchanged, alpha
-/// included: from `RgbaF32` exactly, and from `RgbaF16` because it holds
-/// every decoded value within half a display step of its byte.
+/// Every sRGB byte survives `RgbaF32` exactly and `RgbaF16` (within half a display step), alpha included.
 #[test]
 fn srgb_bytes_survive_the_trip_through_every_wider_form() {
     for byte in 0u8..=255 {
@@ -22,31 +20,25 @@ fn srgb_bytes_survive_the_trip_through_every_wider_form() {
     }
 }
 
-/// Sanity: const-construction works in const context. If `RgbaF32::srgb`
-/// regresses to non-const, this fails to compile.
+/// Fails to compile if `RgbaF32::srgb` or `hex` stops being const.
 #[test]
 fn rgb_is_const_constructible() {
     const _LITERAL: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
     const _HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
 }
 
-/// What one colour serializes to, and what that text parses back to.
 #[derive(Debug)]
 struct RonRoundTrip {
     text: String,
     parsed: RgbaF32,
 }
 
-/// Roundtrip a RgbaF32 through RON and parse the emitted hex back.
 fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
     let text = ser::to_string(&c).expect("serialize");
     let parsed = ron::from_str(&text).expect("parse");
     RonRoundTrip { text, parsed }
 }
 
-/// Every sRGB byte serializes to its own hex digits and parses back to
-/// the colour it came from: the hex is the byte, and decoding the byte is
-/// the computation that made the colour.
 #[test]
 fn hex_round_trip_is_exact_over_all_bytes() {
     for byte in 0u8..=255 {
@@ -61,12 +53,9 @@ fn hex_round_trip_is_exact_over_all_bytes() {
     }
 }
 
-/// Pin: alpha = 1.0 emits the 6-digit form; any other alpha emits
-/// the 8-digit form. A refactor that always emits 8 digits would
-/// silently change the output format and trip this test.
+/// Alpha 1.0 emits 6 hex digits; any other alpha emits 8.
 #[test]
 fn opaque_emits_six_digits_translucent_emits_eight() {
-    // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc.
     let s = ron_roundtrip(RgbaF32::srgb(0.2, 0.4, 0.8)).text;
     assert!(
         s.contains(r##""#3366cc""##),
@@ -79,7 +68,6 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
     );
 }
 
-/// Edge cases: fully transparent, fully opaque white, opaque black.
 #[test]
 fn extremes_round_trip() {
     for (c, hex) in [
@@ -107,9 +95,6 @@ fn color_parse_accepts_with_and_without_hash() {
         parse_hex("#3266cc80").unwrap(),
         RgbaF32::from_srgba(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
     );
-    // Either digit case, both lengths. The serializer only ever
-    // emits lowercase, so nothing else pins that a hand-written
-    // uppercase theme file still parses.
     assert_eq!(
         parse_hex("#3266CC").unwrap(),
         RgbaF32::from_srgba(SrgbaU8::rgb(0x32, 0x66, 0xcc))
@@ -130,62 +115,43 @@ fn color_parse_rejects_malformed_input() {
     assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
     assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
     assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
-    // Regression: the length arms select on bytes, so these reach a
-    // digit decode rather than a `str` index. `"日本"` is 6 bytes and
-    // `"αβγδ"` is 8, hitting both arms; indexing the `str` split a
-    // char boundary and panicked instead of rejecting the input —
-    // in a deserializer whose whole job is to reject it.
+    // Regression: the length arms select on bytes; slicing the `str` for "日本" (6 bytes) or
+    // "αβγδ" (8) split a char boundary and panicked instead of rejecting.
     assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
     assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
     assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
-    // `u8::from_str_radix` accepts a leading sign, so a parser that
-    // delegates to it reads `"+a+b+c"` as rgb(10, 11, 12).
+    // `u8::from_str_radix` accepts a leading sign, so `"+a+b+c"` would read as rgb(10, 11, 12).
     assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
 }
 
 #[test]
 fn lerp_spans_both_endpoints_and_overshoots() {
-    // Every channel here is an exact binary fraction, so the arithmetic
-    // below is checkable by eye and by `==`.
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
 
-    // The endpoints come back exactly, alpha included.
     assert_eq!(Animatable::lerp(a, b, 0.0), a);
     assert_eq!(Animatable::lerp(a, b, 1.0), b);
 
-    // Hand-computed quarter step: r 1.0→0.75, g 0.0→0.25, b flat at 0.5,
-    // a 0.5→0.375. Alpha travels with the color, unlike `with_alpha`.
     let quarter = Animatable::lerp(a, b, 0.25);
     assert_eq!(
         (quarter.r, quarter.g, quarter.b, quarter.a),
         (0.75, 0.25, 0.5, 0.375)
     );
 
-    // Hand-computed half step: r 1.0→0.5, g 0.0→0.5, b flat at 0.5,
-    // a 0.5→0.25.
     let mid = Animatable::lerp(a, b, 0.5);
     assert_eq!((mid.r, mid.g, mid.b, mid.a), (0.5, 0.5, 0.5, 0.25));
 
-    // `t` is deliberately unclamped, so a caller can overshoot: t = 2
-    // continues past `b` by the same delta again (r 1.0 → -1.0).
+    // `t` is unclamped: t = 2 overshoots `b` by the same delta (r 1.0 → -1.0).
     assert_eq!(Animatable::lerp(a, b, 2.0).r, -1.0);
 }
 
-/// `faded` scales alpha and nothing else.
-///
-/// Hand-computed: half of the f16 `0.8` is exactly half of it.
-/// The colour lanes must come back bit-identical, because a fade is an
-/// opacity change and a widget that fades a red shape does not want a
-/// darker red. `by == 1.0` is the identity the emit path leans on.
+/// `faded` scales alpha only; colour lanes stay bit-identical, and `by == 1.0` is the identity.
 #[test]
 fn faded_scales_only_the_alpha_lane() {
     let f16 = RgbaF16::new(0.25, 0.5, 0.75, 0.8);
     let full = f16.unpack();
     let half = f16.faded(0.5).unpack();
     assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
-    // 0.8 packs to f16 as 1638 steps of 2^-11, and halving an f16 is
-    // exact.
     assert_eq!(full.a, 1638.0 / 2048.0);
     assert_eq!(half.a, 1638.0 / 4096.0, "alpha is half of the packed 0.8");
     assert_eq!(f16.faded(1.0), f16);

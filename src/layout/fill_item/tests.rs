@@ -1,6 +1,5 @@
 use crate::layout::fill_item::FillItem;
 
-/// `(weight, floor, cap)` triples in, allocations out, in input order.
 fn distribute(items: &[(f32, f32, f32)], budget: f32) -> Vec<f32> {
     let mut pool: Vec<FillItem<usize>> = items
         .iter()
@@ -11,9 +10,7 @@ fn distribute(items: &[(f32, f32, f32)], budget: f32) -> Vec<f32> {
     pool.iter().map(|item| item.size).collect()
 }
 
-/// `(label, items, budget, expected)`. Every expected value is exact: the
-/// budget and the surviving weights always divide evenly in the pass that
-/// commits, so no tolerance is needed.
+/// `(label, items, budget, expected)`. Expected values are exact: the committing pass divides evenly.
 type Case = (
     &'static str,
     &'static [(f32, f32, f32)],
@@ -22,7 +19,6 @@ type Case = (
 );
 
 const CASES: &[Case] = &[
-    // No clamp binds: the plain proportional split.
     (
         "unconstrained_even_split",
         &[(1.0, 0.0, f32::INFINITY); 3],
@@ -35,23 +31,20 @@ const CASES: &[Case] = &[
         400.0,
         &[100.0, 300.0],
     ),
-    // 50 each unclamped; item 0 caps at 10 and the 90 it frees is item 1's.
     (
         "single_cap_violator",
         &[(1.0, 0.0, 10.0), (1.0, 0.0, f32::INFINITY)],
         100.0,
         &[10.0, 90.0],
     ),
-    // 50 each unclamped; item 0's floor takes 80 and item 1 keeps 20.
     (
         "single_floor_violator",
         &[(1.0, 80.0, f32::INFINITY), (1.0, 0.0, f32::INFINITY)],
         100.0,
         &[80.0, 20.0],
     ),
-    // 33.33 each unclamped, so item 0 violates by -23.33 and item 1 by
-    // +6.67: the total is negative, only the cap freezes, and the 90 left
-    // splits evenly — which clears item 1's floor without freezing it.
+    // 33.33 each unclamped: violations -23.33 and +6.67 total negative, so only the cap freezes and
+    // the 90 left splits evenly, which clears item 1's floor.
     (
         "cap_outweighs_floor",
         &[
@@ -62,8 +55,6 @@ const CASES: &[Case] = &[
         100.0,
         &[10.0, 45.0, 45.0],
     ),
-    // The same three in the other order, to show the answer is the items'
-    // and not the list's.
     (
         "cap_outweighs_floor_reordered",
         &[
@@ -87,15 +78,13 @@ const CASES: &[Case] = &[
         0.0,
         &[0.0, 0.0],
     ),
-    // No weight to divide by: every item falls onto its own floor.
     (
         "zero_total_weight",
         &[(0.0, 40.0, f32::INFINITY), (0.0, 0.0, f32::INFINITY)],
         100.0,
         &[40.0, 0.0],
     ),
-    // A Hug parent's unbounded budget: the capped item takes its cap, the
-    // uncapped one reports infinity and the solve still terminates.
+    // A Hug parent's unbounded budget: the capped item takes its cap, the uncapped one infinity.
     (
         "infinite_budget",
         &[(1.0, 0.0, 50.0), (1.0, 0.0, f32::INFINITY)],
@@ -111,18 +100,8 @@ fn distribution_matches_the_hand_computed_shares() {
     }
 }
 
-/// The case the two old solvers answered differently, pinned to what the
-/// sign test gives.
-///
-/// Items 0 and 2 have a floor above their own cap, so both pin at the cap.
-/// Unclamped the three want `379 × 2/7 = 108.29`, `108.29` and
-/// `379 × 3/7 = 162.43`, which makes the violations `-80.29`, `+64.71` and
-/// `-84.43`. The total is `-100`, so only the two cap violators freeze —
-/// item 1 is left with all 273 remaining pixels, well over the 173 floor
-/// it would have frozen at had its own violation been read alone.
-///
-/// The budget is spent to the pixel, which is the property the old stack
-/// solver lost here: it pinned item 1 at 173 and left 100 px unallocated.
+/// Items 0 and 2 have floors above their caps, so both pin at the cap; the total violation is `-100`,
+/// so only they freeze and item 1 gets all 273 left (over its 173 floor). The budget is spent to the pixel.
 #[test]
 fn a_freed_cap_clears_a_later_floor() {
     const ITEMS: &[(f32, f32, f32)] = &[
@@ -137,12 +116,7 @@ fn a_freed_cap_clears_a_later_floor() {
     assert_eq!(sizes.iter().sum::<f32>(), BUDGET);
 }
 
-/// The property the sign test exists for: the allocation an item gets
-/// depends on the item, never on where in the list it was pushed.
-///
-/// Both discarded solvers failed this — one swept in list order, the other
-/// `swap_remove`d violators and reordered the pool as it went. The
-/// generator is a plain LCG so a failure reproduces from its seed alone.
+/// An item's allocation depends on the item, not its list position. A plain LCG makes failures reproducible.
 #[test]
 fn allocations_do_not_depend_on_item_order() {
     fn next(state: &mut u64) -> u64 {
@@ -163,7 +137,6 @@ fn allocations_do_not_depend_on_item_order() {
         for _ in 0..count {
             let weight = 1.0 + (next(&mut state) % 4) as f32;
             let floor = (next(&mut state) % 200) as f32;
-            // Half the caps are unbounded, so the mix isn't all-clamped.
             let cap = if next(&mut state).is_multiple_of(2) {
                 f32::INFINITY
             } else {
@@ -183,8 +156,7 @@ fn allocations_do_not_depend_on_item_order() {
         let mut reversed = distribute(&reversed_items, budget);
         reversed.reverse();
         for (index, (a, b)) in forward.iter().zip(&reversed).enumerate() {
-            // The two runs subtract the frozen sizes off the budget in
-            // opposite orders, so they agree to f32 rounding, not to the bit.
+            // The runs subtract frozen sizes in opposite orders, so they agree to f32 rounding.
             assert_eq!(
                 a, b,
                 "item {index} got {a} in list order and {b} reversed\n\
@@ -193,8 +165,6 @@ fn allocations_do_not_depend_on_item_order() {
         }
     }
 
-    // The sweep is only worth anything if it reached the shape the sign
-    // test exists for.
     assert!(
         mixed_sign_cases > 200,
         "sweep produced only {mixed_sign_cases} mixed floor+cap cases; \

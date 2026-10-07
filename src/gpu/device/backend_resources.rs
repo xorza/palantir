@@ -6,17 +6,7 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::text::shaper::TextShaper;
 
-/// The subset of the host's resources the backend connects to, as a view
-/// the host takes for it. A view rather than the resources themselves,
-/// because the backend sits below the recorder in the module layering and
-/// must not name its bundle.
-///
-/// The backend clones what it keeps: it rasterizes through the shaper,
-/// drains the icon registry and the gradient atlas, and publishes into
-/// the timing sample. The image registry flows the other way — the
-/// backend attaches its texture store to the host's registry through this
-/// borrow, before the host mints a recorder, so every later clone carries
-/// the store.
+/// The subset of the host's resources the backend connects to, as a view: the backend sits below the recorder and must not name its bundle. It clones what it keeps and publishes into the timing sample; the image registry flows the other way, taking the backend's texture store through this borrow before the host mints a recorder.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BackendResources<'a> {
     pub(crate) text: &'a TextShaper,

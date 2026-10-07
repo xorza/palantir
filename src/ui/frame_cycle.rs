@@ -1,25 +1,6 @@
-//! One drive of the frame lifecycle over a [`Ui`].
+//! One drive of the frame lifecycle over a [`Ui`]: host machinery, not callable from authoring code.
 //!
-//! Everything here is machinery the host runs; none of it is callable
-//! from authoring code. [`Ui`] keeps the widget-facing API and the
-//! retained state, and hands both to a [`FrameCycle`] for the duration
-//! of one [`Ui::frame`].
-//!
-//! ## Pass order
-//!
-//! `run` classifies the frame ([`FramePlan`]) and then either paints
-//! from the retained tree (`PaintOnly`) or runs `App::update`, one to
-//! three [`FrameCycle::record_pass`]es, and `finalize_frame`. Each
-//! record pass is `pre_record` → user closure → `post_record`, where
-//! `post_record` finalizes hashes, measures, arranges, and cascades.
-//! Damage compute runs last, on whichever cascade the final pass left.
-//!
-//! ## Resets and who re-asserts them
-//!
-//! Per-pass resets live in [`FrameCycle::pre_record`], which documents
-//! the shared rule; the once-per-frame sweep lives in `finalize_frame`.
-//! Which of the two a given piece of state belongs to is decided by one
-//! question — does the user closure re-assert it?
+//! `run` classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameCycle::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last. Per-pass resets live in [`FrameCycle::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
 
 use crate::app::App;
 use crate::cascade::cascade_key::CascadeKey;
@@ -44,16 +25,7 @@ use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 use std::mem;
 
-/// The host-driven half of a frame, borrowing the [`Ui`] it drives and the
-/// [`FrameEngines`] it drives it with.
-///
-/// A separate type rather than more `impl Ui` because the passes reach
-/// across nearly every field on `Ui` — grouping those fields would only
-/// obscure the one consumer that legitimately wants all of them. This
-/// keeps `Ui`'s own file to the authoring surface.
-///
-/// The two borrows are disjoint by construction, which is what lets a pass
-/// hold `&ui.forest` while writing `&mut engines.layout`.
+/// The host-driven half of a frame, borrowing the [`Ui`] and the [`FrameEngines`] separately so a pass can hold `&ui.forest` while writing `&mut engines.layout`.
 #[derive(Debug)]
 pub(super) struct FrameCycle<'a> {
     ui: &'a mut Ui,
@@ -65,10 +37,7 @@ impl<'a> FrameCycle<'a> {
         Self { ui, engines }
     }
 
-    /// Drive one application frame for `win`. Runs [`App::update`] once on a
-    /// fully recorded frame, then replays [`App::record`] for cold-start
-    /// warmup, action input, or `request_relayout`. Paint-only frames skip
-    /// both hooks. `stamp.time` is monotonic host time.
+    /// Drives one application frame for `win`: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip both.
     pub(super) fn run<T: App>(
         mut self,
         input: FrameInput,
@@ -80,13 +49,7 @@ impl<'a> FrameCycle<'a> {
             stamp,
             damage_baseline_valid,
         } = input;
-        // Screened here as well as at each host's own door, and at their
-        // strictness rather than below it: a host is not the only way in
-        // — the `internals` harness stamps a display directly — and every
-        // pointer coordinate is divided by this several passes later,
-        // where nothing names the frame that carried it. The product is
-        // what is checked, because the product is what divides: each half
-        // is screened where it enters, and neither door sees the other.
+        // Screened here too, at the hosts' strictness: the `internals` harness stamps a display directly, and pointer coordinates are divided by the product passes later.
         assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor()),
             "{}, got {}",
@@ -107,35 +70,19 @@ impl<'a> FrameCycle<'a> {
             close_requested: self.ui.close_requested(),
         });
 
-        // `repaint_requested` is not cleared here: `take_frame_plan`
-        // consumed it, so anything set from now on belongs to *this*
-        // frame and is what `FrameReport` ships.
         self.ui.frame_runtime.relayout_requested = false;
         self.ui.display = stamp.display;
 
         let processing = match plan {
             FramePlan::PaintOnly => {
                 tracy::zone!("Ui::frame.paint_only");
-                // Nothing here clears the record payloads: last frame's
-                // live `tree.shapes` still indexes into them (gradients,
-                // polyline points/colours, mesh verts/indices, interned
-                // text spans), and only `record_pass` — which this arm
-                // skips — repopulates them. Clearing would leave dangling
-                // indices the encoder then dereferences.
-                //
-                // PaintOnly skips `record_pass` → skips `post_record`
-                // → skips the input cleanup. Under `OnDelta`, an
-                // unrouted event can still land here with the sticky
-                // arrival flag set even though no queue accepted it.
+                // Record payloads are not cleared: the live `tree.shapes` still index into them. PaintOnly skips `post_record`'s input cleanup, so under `OnDelta` an unrouted event can land here with the sticky arrival flag set.
                 self.ui.input.drain_per_frame_queues();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
                 {
                     tracy::zone!("Ui::update_user");
-                    // `update` reads responses too, and the input that
-                    // arrived since the last pass may have ended its
-                    // quiescence.
                     self.ui.input.snapshot_frame_quiescent();
                     app.update(win, self.ui);
                 }
@@ -156,8 +103,6 @@ impl<'a> FrameCycle<'a> {
                             "action"
                         }
                     );
-                    // Pass B paints, regardless of any further re-record
-                    // request — caps relayout at one retry per frame.
                     self.ui.input.drain_per_frame_queues();
                     let _ = self.record_pass(win, app);
                 }
@@ -173,15 +118,9 @@ impl<'a> FrameCycle<'a> {
 
         self.ui.frame_runtime.note_processing(processing);
 
-        // Damage compute reads `ids.removed` to know which widgets
-        // dropped between frames. On `PaintOnly` no widgets were
-        // recorded so nothing was removed — pass an empty set
-        // instead of stale state from the previous frame.
+        // `ids.removed` feeds damage; PaintOnly recorded nothing, so pass an empty set.
         let surface = self.ui.display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
-        // One read for both consumers: the damage decision and the plan
-        // the host paints with must name the same colour, or a frame
-        // presents under one the baseline never checked.
         let baseline = FrameBaseline {
             clear: self.ui.theme.window_clear,
             font_epoch: self.ui.resources.text().font_epoch(),
@@ -203,12 +142,7 @@ impl<'a> FrameCycle<'a> {
             }
         };
 
-        // Re-queue the next paint-anim boundary regardless of path.
-        // FullRecord rebuilt `paint_anims.entries` during record;
-        // PaintOnly retained last frame's. Either way the fold below
-        // gives the next quantum boundary — without this, PaintOnly
-        // drains the queued ANIM wake without replacing it and the
-        // caret freezes until input forces a FullRecord.
+        // Re-queue the next paint-anim boundary on every path, else PaintOnly drains the ANIM wake and the caret freezes.
         if let Some(min_wake) = self.ui.forest.min_paint_anim_wake(self.ui.now()) {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
@@ -219,12 +153,7 @@ impl<'a> FrameCycle<'a> {
 
         self.ui.frame_runtime.prev_stamp = Some(stamp);
 
-        // The frame boundary for input: events held because this frame
-        // already saw their kind change apply now, against the cascade
-        // this frame left, and become the next frame's input. Whatever
-        // input owes that frame — a replayed event, an eviction's release
-        // edge, events still waiting — asks for it here, since no host
-        // event will.
+        // The input frame boundary: held events apply against this frame's cascade; anything input owes the frame asks for it here, since no host event will.
         if self.ui.input.next_frame(&self.ui.cascade) {
             self.ui.frame_runtime.repaint_requested = true;
         }
@@ -241,14 +170,7 @@ impl<'a> FrameCycle<'a> {
             processing,
             ime_area: self.ui.window_requests.levels.ime,
         };
-        // The first-frame contract, checked on the finished report
-        // because each half carries a share of it. With no prev snapshot
-        // to diff against, every painting widget is "new" and the walk
-        // can only come out `Full` — the walk is still load-bearing, so
-        // the assert pins it rather than replacing it. And a frame that
-        // paints from a retained tree cannot be the one before which
-        // none was retained, which `take_frame_plan` encodes and these
-        // two fields are where it shows.
+        // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
         debug_assert!(
             !first_frame || report.paint() == FramePaint::Full,
             "first frame must repaint in full; got {:?}",
@@ -262,42 +184,15 @@ impl<'a> FrameCycle<'a> {
         report
     }
 
-    /// Cold-start record pass, run once before the first frame's real
-    /// one and discarded. Exists because the cascade is empty until
-    /// something records into it: `on_input` events delivered between
-    /// window-open and frame 1 hit-tested against nothing, and every
-    /// widget would read a `None` response rect (one-frame-stale
-    /// `text_edit`, `scroll`, `radio`, …) with a pointer resting on a
-    /// button not hovering it until frame 2.
+    /// Cold-start record pass, run once before frame 1 and discarded: the cascade is empty until something records, so early events hit-test against nothing.
     ///
-    /// # Contract
+    /// It runs against a **scratch [`InputState`]** so that:
     ///
-    /// The pass runs against a **scratch [`InputState`]**, not the real
-    /// one, and this is the load-bearing part rather than a nicety:
+    /// - nothing consumes the real queues (pass B's `drain_per_frame_queues` would discard a pre-frame click),
+    /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
+    /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::input::policy::FocusPolicy) would read it as a press on nothing).
     ///
-    /// - Nothing consumes the real queues. Pass B's
-    ///   `drain_per_frame_queues` would otherwise discard a click that
-    ///   arrived before frame 1 — offered to a pass that cannot
-    ///   hit-test it, then drained before the pass that could.
-    /// - No watcher fires. `watch_*` readers bypass hit-testing, so
-    ///   against real input they would observe every pre-frame event a
-    ///   second time.
-    /// - No press resolves focus against an empty hit index, which
-    ///   [`FocusPolicy`](crate::input::policy::FocusPolicy) would read
-    ///   as a press on nothing.
-    ///
-    /// The scratch starts with the real focus, and the real input keeps
-    /// what the pass asked of it — `set_focus`, `clear_focus`,
-    /// `release_input_scope` — since an app that asks once, on its first
-    /// record, asks during this pass.
-    ///
-    /// Afterwards the real input is restored and its held `pointer_pos`
-    /// re-routed against the freshly built cascade, so the visible pass
-    /// records against correct hover targets. The pass's
-    /// relayout/repaint requests are withdrawn: it did not happen as far
-    /// as the frame gate is concerned, and leaving them set would stack
-    /// the `double_layout` arm on top of the warmup for three record
-    /// passes on frame 1 instead of two.
+    /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `release_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
     /// [`InputState`]: crate::input::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
@@ -312,21 +207,11 @@ impl<'a> FrameCycle<'a> {
         self.ui.frame_runtime.repaint_requested = false;
     }
 
-    /// One `pre_record` → user record → drain action flag → `post_record`
-    /// cycle. Returns whether the cycle saw action input (which triggers
-    /// a second pass in [`Self::run`]).
+    /// One `pre_record`, user record, drain action flag, `post_record` cycle; returns whether it saw action input (which triggers a second pass).
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         self.pre_record();
-        // Synthetic viewport root for Layer::Main. Without this, the
-        // first user-recorded node becomes the root and the layout
-        // engine forces its rect to the surface — silently overriding
-        // declared `Sizing` / `Sense` on the top-level widget. ZStack +
-        // Fill still paints the full surface, while letting user roots
-        // respect their own sizing.
+        // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
         let viewport = Widget::zstack().size(Sizing::FILL);
-        // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
-        // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
-        // like any other parent-scoped id (see `Widget::resolve`).
         let viewport_id = self.ui.resolve_ident(Ident::Verbatim(WidgetId::VIEWPORT));
         self.ui.open_node(viewport_id, &viewport.node, None);
         {
@@ -342,45 +227,22 @@ impl<'a> FrameCycle<'a> {
         action_flag
     }
 
-    /// Open the pass: clear everything the user closure is about to
-    /// refill. Opening half of [`Self::post_record`].
+    /// Opens the pass: clears everything the user closure is about to refill.
     ///
-    /// **All three resets share one lifetime** — per *pass*, not per
-    /// frame — and one reason to live here: each is re-asserted by the
-    /// closure that runs immediately after, so a `PaintOnly` frame,
-    /// which runs no closure, must keep the previous frame's values
-    /// rather than clear to defaults it has nobody to refill from. A
-    /// watch set, cursor, or tree cleared per *frame* would flicker back
-    /// to its default on the first paint-only frame. Anything that is
-    /// **not** re-asserted by the closure belongs in `finalize_frame`'s
-    /// once-per-frame sweep instead — clock, wake queue, cross-frame
-    /// widget state, animation rows.
-    ///
-    /// A fourth per-pass reset goes here, and nowhere else.
+    /// All three resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. A fourth per-pass reset goes here.
     fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
         self.ui.forest.pre_record();
         self.ui.input.pre_record(&self.ui.cascade);
-        // Re-asserted by whoever still wants the cursor, or IME text, this
-        // pass.
         self.ui.window_requests.levels.cursor = CursorIcon::default();
         self.ui.window_requests.levels.ime = None;
     }
 
-    /// Record-half of a pass: finalize hashes, run measure / arrange,
-    /// then cascade. Cascade runs here (not in [`Self::finalize_frame`])
-    /// so pass B of a `request_relayout` frame reads pass A's arranged
-    /// rects via [`Ui::response_for`] like steady-state frames do.
-    /// Stale cache entries (for widgets recorded last frame but
-    /// absent this pass) are tolerated through `layout.run` — they
-    /// can't match live keys — and reaped once in `finalize_frame`
-    /// against the final pass's id set.
+    /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.
     fn post_record(&mut self) {
         tracy::zone!("Ui::post_record");
         self.ui.forest.post_record();
-        // Reached through `forest`, not through `Ui::record_store` — that
-        // borrows all of `self.ui`, and `layout.run` below writes
-        // `&mut self.ui.layout` while this borrow is live.
+        // Through `forest`, not `Ui::record_store`, which borrows all of `self.ui` while `layout.run` writes `&mut self.ui.layout`.
         let store = &self.ui.forest.record_store;
         let interned_text = store.interned_text();
         self.engines.layout.run(
@@ -405,20 +267,11 @@ impl<'a> FrameCycle<'a> {
         self.ui.cascade_is_last_frame = false;
     }
 
-    /// Paint-half of the frame: diff seen ids against the last painted
-    /// frame, fan the `removed` set out to per-widget caches, run
-    /// input/damage against the final pass's cascade. Sweep runs
-    /// here (once per [`Self::run`]) rather than per [`Self::post_record`]
-    /// so a widget that vanishes in pass A but returns in pass B keeps
-    /// its state across the discard.
+    /// Paint half of the frame: diffs seen ids against the last painted frame, fans `removed` out to per-widget caches, runs input and damage. Once per [`Self::run`], so a widget vanishing in pass A and returning in pass B keeps its state.
     fn finalize_frame(&mut self) {
         tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
         self.ui.cascade_is_last_frame = true;
-        // Every removal sweep probes per removed id, so each costs what
-        // the frame removed. The animation sweep alone walks its rows,
-        // because it also drops slots no call site reached for this
-        // frame.
         self.engines.layout.text.end_frame(removed);
         self.ui.anim.sweep_removed(removed);
         self.ui.state.sweep_removed(removed);

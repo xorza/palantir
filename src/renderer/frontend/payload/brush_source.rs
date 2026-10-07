@@ -7,9 +7,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 
-/// Lowered brush input. `Solid` carries an 8-byte `RgbaF16`;
-/// `Gradient` carries the 16-byte atlas row + axis + kind resolved for
-/// this encode pass.
+/// Lowered brush input: `Solid` (an `RgbaF16`) or `Gradient` (atlas row, axis, kind).
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BrushSource {
     Solid(RgbaF16),
@@ -17,12 +15,7 @@ pub(crate) enum BrushSource {
 }
 
 impl BrushSource {
-    /// Lower to the colour lanes every draw payload carries: a `Solid`
-    /// takes its colour with the `SOLID` kind and the magenta fallback
-    /// row; a `Gradient` takes the atlas row, and its colour lane starts
-    /// as white — the identity of the multiply [`GpuFill::color`] applies
-    /// to a sample. That is what lets [`DrawQuadPayload::faded`] fade a
-    /// gradient fill with no second uniform and no per-alpha atlas row.
+    /// Lower to the colour lanes every draw payload carries. A `Gradient`'s colour lane starts white, the identity of the multiply [`GpuFill::color`] applies, so [`DrawQuadPayload::faded`] fades it with no second uniform.
     ///
     /// [`DrawQuadPayload::faded`]: crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload::faded
     #[inline]
@@ -41,9 +34,7 @@ impl BrushSource {
         }
     }
 
-    /// The gradient geometry a quad reads. Zero for a solid, which the
-    /// shader ignores — but zeroed rather than arbitrary, so a Pod-byte
-    /// cache key over a solid quad is deterministic.
+    /// The gradient geometry a quad reads; zeroed for a solid so Pod-byte cache keys are deterministic.
     #[inline]
     pub(crate) const fn fill_axis(self) -> FillAxis {
         match self {

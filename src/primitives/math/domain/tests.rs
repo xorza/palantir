@@ -4,19 +4,10 @@ use crate::primitives::math::domain::{self, EPS, is_approx_zero, is_invisible, s
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 
-/// **The NaN audit.** Every *paint* no-op predicate — "would this
-/// put down a texel" — must answer `true` for a NaN anywhere in its
-/// inputs, because a NaN that survives the gate goes on to poison a
-/// bbox, a damage rect, or a shader lane, and does it silently.
-///
-/// Deliberately excluded are the predicates that ask a *different*
-/// question: `is_approx_zero`, `Size::is_approx_zero`, `Rect::is_approx_zero`,
-/// `Corners::is_approx_zero`, and `TranslateScale::is_identity` all mean "is
-/// this value ≈ this constant", and they gate **fast paths**, not
-/// paint. Answering `true` there would route a NaN *into* the sharp /
-/// identity shortcut instead of away from it — the opposite of safe.
-/// They are covered by the shape-level gate instead, which drops a
-/// NaN before any of them is ever reached.
+/// **The NaN audit.** Every paint no-op predicate must answer `true` for a NaN,
+/// or it poisons a bbox, damage rect or shader lane. `is_approx_zero` and
+/// `TranslateScale::is_identity` are excluded: they gate fast paths, where
+/// `true` would route a NaN into the shortcut.
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
@@ -32,8 +23,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
 
     const N: f32 = f32::NAN;
     let nan_color = RgbaF32::srgba(0.0, 0.0, 0.0, N);
-    // `Mesh::vertex` refuses a non-finite position, so the NaN vertex goes
-    // in through the crate's own list: the predicate is what this pins.
     let mut nan_mesh = Mesh::new();
     for pos in [Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X] {
         nan_mesh.vertices.push(MeshVertex::new(pos, RgbaF32::WHITE));
@@ -107,10 +96,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             .is_noop(),
         ),
         ("Mesh::is_noop", nan_mesh.is_noop()),
-        // Chrome has no record-level gate to fall back on — it does
-        // not pass through `Shapes::add` — so these four are the
-        // only thing standing between a NaN `Background` and the
-        // shader.
+        // Chrome skips `Shapes::add`, so these are all that guard a NaN `Background`.
         (
             "RgbaF16::is_noop/red",
             RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
@@ -166,9 +152,7 @@ fn approx_zero_handles_boundary_sign_and_nan() {
     }
 }
 
-/// A share of a collapsed divisor is nothing, not a huge number: zero,
-/// sub-`EPS` and negative divisors all answer 0. Above the floor it is the
-/// plain quotient.
+/// A share of a collapsed divisor (zero, sub-`EPS`, negative) is 0.
 #[test]
 fn share_of_answers_zero_for_a_collapsed_divisor() {
     for (label, n, d, want) in [
@@ -182,9 +166,7 @@ fn share_of_answers_zero_for_a_collapsed_divisor() {
     }
 }
 
-/// Two points coincide within `EPS` of Euclidean distance, inclusive.
-/// Measured from the origin so the offsets are exact: `EPS` on one axis
-/// is on the boundary, and `EPS` on both is √2 · `EPS` away.
+/// Two points coincide within `EPS` Euclidean distance, inclusive.
 #[test]
 fn vec2_approx_eq_is_euclidean_and_inclusive() {
     for (label, b, want) in [
@@ -200,10 +182,7 @@ fn vec2_approx_eq_is_euclidean_and_inclusive() {
     }
 }
 
-/// A 20 px band on a 120 px track leaves 100 px of travel, offset by
-/// 10 px at each end: 10 → 0.0, 60 → 0.5, 110 → 1.0. Outside the track
-/// the share runs past 0..1, which is the caller's to pin. A band at
-/// least as wide as its track leaves no travel, so there is no share.
+/// A 20 px band on a 120 px track leaves 100 px of travel offset 10 px: 10 → 0.0, 60 → 0.5, 110 → 1.0.
 #[test]
 fn band_fraction_offsets_by_half_the_band() {
     let cases: &[(f32, f32)] = &[
@@ -220,9 +199,7 @@ fn band_fraction_offsets_by_half_the_band() {
     }
     assert_eq!(domain::band_fraction(15.0, 20.0, 20.0), 0.0);
     assert_eq!(domain::band_fraction(15.0, 10.0, 20.0), 0.0);
-    // Per component on a point: each axis is the scalar answer over its
-    // own extent and band, so a 60 on the 120 track beside a 20 on a 40
-    // track with a 10 band (30 px of travel from 5) reads (0.5, 0.5).
+    // Per component: 60 on 120 beside 20 on 40 with a 10 band reads (0.5, 0.5).
     let point = vec2::band_fraction(
         Vec2::new(60.0, 20.0),
         Vec2::new(120.0, 40.0),
@@ -231,9 +208,7 @@ fn band_fraction_offsets_by_half_the_band() {
     assert_eq!(point, Vec2::splat(0.5), "{point}");
 }
 
-/// Every validating kind at its ends: each value it takes comes back
-/// bit for bit, from the checker as from a `const` context, and each value
-/// it refuses panics with the kind's rule.
+/// Every validating kind at its ends: accepted values come back bit for bit, refused ones panic with the rule.
 #[test]
 fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     type Kind = (&'static str, fn(f32) -> bool, fn(f32) -> f32);
@@ -284,10 +259,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     }
 }
 
-/// The kinds over other types than one `f32`: a colour checks every
-/// channel and lets HDR values through, a count starts at one, a
-/// power of two stays inside its maximum, and the two-axis twins refuse
-/// a value one bad axis spoils.
+/// Kinds over other types: a colour checks every channel and lets HDR through, a count starts at one, a power of two stays under its maximum.
 #[test]
 fn compound_kinds_check_every_part() {
     let hdr = RgbaF32::new(2.0, -1.0, 0.0, 1.0);
@@ -328,8 +300,7 @@ fn compound_kinds_check_every_part() {
     });
 }
 
-/// A range's ends are validated and its order coerced: a reversed range
-/// comes back ascending, and an infinite or NaN end panics.
+/// A range's ends are validated and its order coerced.
 #[test]
 fn range_orders_finite_ends_and_refuses_the_rest() {
     assert_eq!(domain::f64::range(3.0..=1.0), 1.0..=3.0);
@@ -343,11 +314,9 @@ fn range_orders_finite_ends_and_refuses_the_rest() {
     }
 }
 
-/// The coercing kinds are total. A fraction clamps to the end it overshot
-/// and reads every non-finite value as `0`; a turn wraps by whole turns
-/// (`1.25 - 1 = 0.25`, `-0.75 + 1 = 0.25`) and a value a hair below zero,
-/// whose wrap rounds up to `1.0`, lands on `0`; an index clamps to the last
-/// item and is `None` with no items.
+/// The coercing kinds are total: a fraction clamps and reads non-finite as `0`;
+/// a turn wraps (`1.25 - 1 = 0.25`) and a hair below zero lands on `0`; an index
+/// clamps, or is `None` with no items.
 #[test]
 fn coercing_kinds_are_total() {
     for (v, want) in [
@@ -394,13 +363,8 @@ fn coercing_kinds_are_total() {
     }
 }
 
-/// The screen every caller-supplied share passes: in-range values are
-/// untouched, out-of-range ones clamp to the end they overshot, and a
-/// value that names no share at all takes the caller's neutral rather
-/// than an end.
-///
-/// The infinities matter as much as NaN — `f32::clamp` maps them to an
-/// end, which states a share the caller never meant.
+/// The screen for caller-supplied shares: out-of-range clamps to the end
+/// overshot, and a value naming no share (NaN, infinities) takes the caller's neutral.
 #[test]
 fn fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
     let cases: &[(f32, f32, f32)] = &[
@@ -412,8 +376,6 @@ fn fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
         (f32::NAN, 0.5, 0.5),
         (f32::INFINITY, 0.5, 0.5),
         (f32::NEG_INFINITY, 0.5, 0.5),
-        // The neutral is the caller's: the same non-finite input reads
-        // as empty for a progress bar and as centred for a splitter.
         (f32::NAN, 0.0, 0.0),
         (f32::INFINITY, 1.0, 1.0),
     ];
@@ -431,9 +393,7 @@ fn fraction_or_clamps_in_range_and_falls_back_outside_the_finite() {
     }
 }
 
-/// A themed length floors at the widget's minimum and keeps anything
-/// above it; scalar equality is the zero test on the difference, so two
-/// halves of `EPS` either side of zero are exactly `EPS` apart.
+/// A themed length floors at the widget's minimum and keeps anything above it.
 #[test]
 fn length_at_least_floors_and_approx_eq_is_inclusive() {
     assert_eq!(domain::length_at_least(0.5, 1.0), 1.0);

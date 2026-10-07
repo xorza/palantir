@@ -205,11 +205,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
     }
 }
 
-/// Pivot-anchored zoom can leave `offset` outside the natural pan
-/// range `[min(0, slack), max(0, slack)]`. A wheel-pan in that frame
-/// must NOT yank `offset` back into `[0, slack]` (the visible "snap
-/// to top" when the bar reappears). Rubber-band: pan toward the
-/// natural range works, pan further out is blocked.
+/// Pivot zoom can leave `offset` outside the natural range; a wheel-pan must not snap it back.
 #[test]
 fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     let mut h = UiHarness::new(SURFACE);
@@ -286,11 +282,7 @@ fn pivot_zoom_preserves_underflow_pan_range() {
 fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     use crate::input::keyboard::modifiers::Modifiers;
 
-    // The wheel-step refactor split lines vs pixels at the input
-    // layer; the zoom path must combine them so a touchpad gesture
-    // under ctrl still zooms — pre-split it did, and regressing that
-    // breaks touchpad pinch-via-modifier. Two lines' worth of touchpad
-    // pixels is two virtual notches.
+    // Touchpad pixels under ctrl zoom: two lines' worth is two notches.
     let mut h = UiHarness::new(SURFACE);
     let build_zoom = |ui: &mut Ui| {
         Panel::vstack()
@@ -310,8 +302,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     let scroll_id = WidgetId::from_hash("zoomy");
     let before_zoom = h.state::<ScrollState>(scroll_id).zoom;
 
-    // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
-    // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
+    // 1.03^-2 ≈ 0.9426.
     h.move_onto(scroll_id);
     h.set_modifiers(Modifiers::CTRL);
     let line_px = TextStyle::default().line_height_for(16.0);
@@ -328,11 +319,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
 
 #[test]
 fn wheel_zoom_step_is_font_independent() {
-    // One wheel line = one zoom notch, regardless of theme font size.
-    // The line→pan magnitude scales with font; the line→zoom step must
-    // not — pin that so a future refactor that reintroduces a
-    // font-scaled denominator on the zoom side fails loudly.
-    // `ZoomConfig::default().step` is 1.03, and scrolling down zooms out.
+    // One wheel line is one zoom notch regardless of font size.
     let expected = 1.03_f32.powf(-1.0);
     for font_size in [12.0_f32, 16.0, 24.0] {
         use crate::input::keyboard::modifiers::Modifiers;
@@ -361,8 +348,6 @@ fn wheel_zoom_step_is_font_independent() {
 
         let scroll_id = WidgetId::from_hash("fz");
         let zoom = h.state::<ScrollState>(scroll_id).zoom;
-        // A tolerance for `powf`'s rounding only: a font-scaled step would
-        // miss by the font ratio, two orders of magnitude more.
         assert_eq!(
             zoom, expected,
             "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}"
@@ -372,10 +357,7 @@ fn wheel_zoom_step_is_font_independent() {
 
 #[test]
 fn line_wheel_step_scales_with_theme_font_size() {
-    // Pin: a `ScrollLines(0, 1)` event lands one laid-out line of pan —
-    // `font_size * line_height_factor` on the shaper's 1/64-px grid — not
-    // the legacy 40 px constant. 16 × 1.2 = 19.2 is 1228.8 64ths, which
-    // rounds to 1229: 19.203125. 24 × 1.5 = 36 is on the grid.
+    // One line pans `font_size * line_height_factor` on the 1/64-px grid: 16 × 1.2 = 19.203125.
     let cases: &[(&str, f32, f32, f32)] = &[
         ("default_16px_text", 16.0, 1.2, 1229.0 / 64.0),
         ("larger_24px_text", 24.0, 1.5, 36.0),
@@ -399,11 +381,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
     }
 }
 
-/// [`Scroll::zoom_by`] scales through the same clamp a pinch takes.
-///
-/// The default [`ZoomConfig`] range is what stops it, so the case walks
-/// past both ends and asks where it stopped rather than pinning the
-/// range itself.
+/// `Scroll::zoom_by` clamps like a pinch.
 #[test]
 fn zoom_by_scales_and_clamps_into_the_configured_range() {
     let cfg = ZoomConfig::default();
@@ -441,8 +419,6 @@ fn zoom_by_scales_and_clamps_into_the_configured_range() {
     assert_eq!(read_state(&mut h).zoom, min_zoom, "and at the bottom");
 }
 
-/// Two calls on one builder compose into one factor, so a caller may
-/// fold a request in from more than one place.
 #[test]
 fn zoom_by_composes_across_calls() {
     let mut h = UiHarness::new(SURFACE);
@@ -455,8 +431,7 @@ fn zoom_by_composes_across_calls() {
     );
 }
 
-/// A zoom factor is authored, not data, so an impossible one is a caller
-/// error rather than a silently ignored request.
+/// An impossible zoom factor is a caller error.
 #[test]
 fn zoom_by_rejects_a_factor_that_cannot_scale() {
     for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
@@ -464,8 +439,6 @@ fn zoom_by_rejects_a_factor_that_cannot_scale() {
             let _ = Scroll::both().zoom_by(bad);
         });
     }
-    // A single-axis scroll has no zoom: it panics where the zoom is asked
-    // for, in every build, through either setter.
     for scroll in [Scroll::vertical, Scroll::horizontal] {
         panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
             let _ = scroll().zoomable();
@@ -476,14 +449,7 @@ fn zoom_by_rejects_a_factor_that_cannot_scale() {
     }
 }
 
-/// The offset band reaches both ends of zoomed content inside padding.
-///
-/// 200 × 200 viewport, padding 10, content 400 × 400, zoom 2. Each axis
-/// shows `200 - gutter - 2 × 10` px, and the content spans `400 × 2 = 800`.
-/// Panned to either end, the content's own edge sits exactly on the
-/// viewport's — the start on the padding's inner edge at offset 0, the end
-/// on the far edge at offset `800 - shown`. Scaled about the node's corner
-/// instead, the padding grew to 20 and both ends missed by 10.
+/// Offset band reaches both ends of zoomed content inside padding (200×200 viewport, padding 10, content 400×400, zoom 2).
 #[test]
 fn zoomed_padding_keeps_both_content_ends_reachable() {
     let scroll_id = WidgetId::from_hash("scroll");
@@ -523,9 +489,7 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
     }
 }
 
-/// `zoom_config` carries its range to the zoom: one 0.25× pinch lands
-/// at 0.25 under the default 0.1..=10 range, and clamps to the floor of a
-/// 0.5..=2 one.
+/// `zoom_config` carries its range to the zoom.
 #[test]
 fn zoom_config_clamps_to_its_own_range() {
     let id = WidgetId::from_hash("ranged");
@@ -550,9 +514,7 @@ fn zoom_config_clamps_to_its_own_range() {
     }
 }
 
-/// The modifier decides which wheel zooms. One line down with and without
-/// Ctrl, under each setting: `Ctrl` zooms only the Ctrl wheel, `Always`
-/// zooms both, and `PinchOnly` neither. One line is one step, `1.03^-1`.
+/// `Ctrl` zooms only the Ctrl wheel, `Always` both, `PinchOnly` neither.
 #[test]
 fn zoom_modifier_picks_which_wheel_zooms() {
     use crate::input::keyboard::modifiers::Modifiers;
@@ -592,12 +554,7 @@ fn zoom_modifier_picks_which_wheel_zooms() {
     }
 }
 
-/// The pivot is the point a zoom step holds still. A 2× pinch at (50, 50)
-/// over a 200 × 200 viewport at the origin: under `Pointer` content point
-/// (50, 50) stays under the pointer, so it moves to (100, 100) and the
-/// offset becomes 100 − 50 = 50; under `Center` the viewport centre
-/// (100, 100) stays, so it moves to (200, 200) and the offset becomes
-/// 200 − 100 = 100.
+/// A 2× pinch at (50, 50) over 200×200: offset 50 under `Pointer`, 100 under `Center`.
 #[test]
 fn zoom_pivot_picks_the_point_a_step_holds() {
     use crate::widgets::scroll::zoom_config::ZoomPivot;

@@ -4,9 +4,7 @@ use glam::UVec2;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 
-/// Why [`Image::from_srgba8`](crate::Image::from_srgba8) refused its pixels.
-/// Pixels usually come from a decoder or a file, so each flaw is an error
-/// rather than a panic.
+/// Why [`Image::from_srgba8`](crate::Image::from_srgba8) refused its pixels; they come from decoders or files, so each flaw is an error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageDataError {
     /// A dimension is zero.

@@ -1,29 +1,6 @@
-//! Owned, sharable container for the most recent GPU instrumentation
-//! sample. Backend writes; Ui (debug overlay) and benches read; all
-//! parties hold a `Clone` of the same `Rc<RefCell<_>>` handle so the
-//! reader sees the writer's latest publish without a global static.
-//!
-//! Five kinds of data, set independently as feature support permits:
-//!
-//! - **Whole-pass duration** ([`GpuPassStats::last_pass`]). Always
-//!   populated when `TIMESTAMP_QUERY` is on.
-//! - **Per-batch-kind duration** ([`GpuPassStats::last_kind`]).
-//!   Populated when `TIMESTAMP_QUERY_INSIDE_PASSES` is on.
-//! - **Pipeline statistics** ([`GpuPassStats::last_pipeline_stats`]).
-//!   Populated when `PIPELINE_STATISTICS_QUERY` is on.
-//! - **Copy-out duration** ([`GpuPassStats::last_copy_out`]). Populated
-//!   when `TIMESTAMP_QUERY_INSIDE_ENCODERS` is on and the frame copied its
-//!   backbuffer onto the target.
-//! - **Main-pass CPU record time**
-//!   ([`GpuPassStats::last_main_pass_cpu`]). The odd one out: host-side,
-//!   not device-side, so it needs no adapter feature and no opt-in and is
-//!   populated on every submitted frame.
-//!
-//! Two producers, both on the host thread: the backend's
-//! `GpuTimings::after_submit` publishes the four device-side values,
-//! `WgpuBackend::run_main_pass` publishes the CPU one. Many readers (debug
-//! overlay, benches). `RefCell` is sufficient and panics on the
-//! caller-bug case of a concurrent borrow.
+//! Shared handle for the latest GPU instrumentation sample, written by the backend
+//! and read by the overlay and benches through clones of one `Rc<RefCell<_>>`. Each
+//! value is set independently as feature support permits.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -33,31 +10,25 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BatchKind {
-    /// Setup work between the pass beginning and the first drawing
-    /// step (uniform binds, scissor sets, stencil-ref before the first
-    /// mask quad). Useful as a sanity baseline — should be near 0.
+    /// Work before the first drawing step (binds, scissor, stencil-ref).
     Setup = 0,
-    /// `RenderStep::PreClear` — the per-rect clear-color quad emitted
-    /// at the start of each Partial pass.
+    /// Per-rect clear quad of a Partial pass.
     PreClear = 1,
-    /// `RenderStep::MaskStamp` / `MaskClear` — stencil mask quads.
+    /// Stencil mask quads.
     Mask = 2,
-    /// `RenderStep::Quads` — the quad pipeline.
+    /// The quad pipeline.
     Quads = 3,
-    /// `RenderStep::Shadows` — drop and inset shadows, through the quad
-    /// pipeline's shadow variant.
+    /// Drop and inset shadows.
     Shadows = 4,
-    /// `RenderStep::Text` — text batches via the inlined text
-    /// pipeline.
+    /// Text batches.
     Text = 5,
-    /// `PaintTier::Mesh`'s replay — the mesh pipeline.
+    /// Mesh replay.
     Mesh = 6,
-    /// `PaintTier::Image`'s replay — the image pipeline.
+    /// Image replay.
     Image = 7,
-    /// `PaintTier::Curve`'s replay — the curve pipeline.
+    /// Curve replay.
     Curve = 8,
-    /// `PaintTier::Icon`'s replay — the icon pipeline (the glyph shader
-    /// over the icon atlas).
+    /// Icon replay.
     Icon = 9,
 }
 
@@ -65,8 +36,7 @@ impl BatchKind {
     /// How many kinds there are.
     pub const COUNT: usize = 10;
 
-    /// Every kind, in discriminant order — the order a reporter lists
-    /// them in.
+    /// Every kind, in discriminant order.
     pub const ALL: [Self; Self::COUNT] = [
         Self::Setup,
         Self::PreClear,
@@ -84,8 +54,7 @@ impl BatchKind {
         self as u8 as usize
     }
 
-    /// Human-readable label for debug overlays and bench reporters: the
-    /// variant name, lowercased.
+    /// Lowercased variant name, for overlays and reporters.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Setup => "setup",
@@ -102,9 +71,7 @@ impl BatchKind {
     }
 }
 
-// `ALL` lists every discriminant once, in order, so `idx` indexes it and
-// a `[_; COUNT]` table keyed by `idx` has a slot per kind. A new variant
-// fails `label`'s match first, and this second.
+// `ALL` lists every discriminant once, in order, so `idx` indexes it.
 const _: () = {
     let mut i = 0;
     while i < BatchKind::COUNT {
@@ -117,20 +84,19 @@ const _: () = {
     assert!(BatchKind::Icon.idx() + 1 == BatchKind::COUNT);
 };
 
-/// Counters surfaced by [`GpuPassStats::last_pipeline_stats`]. Order
-/// matches `wgpu::PipelineStatisticsTypes`.
+/// Counters surfaced by [`GpuPassStats::last_pipeline_stats`], in
+/// `wgpu::PipelineStatisticsTypes` order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PipelineStats {
-    /// Vertices the vertex stage ran on.
+    /// Vertex stage invocations.
     pub vertex_shader_invocations: u64,
     /// Primitives the clipper was handed.
     pub clipper_invocations: u64,
     /// Primitives the clipper emitted.
     pub clipper_primitives_out: u64,
-    /// Fragments the fragment stage ran on.
+    /// Fragment stage invocations.
     pub fragment_shader_invocations: u64,
-    /// Compute workgroup invocations. Zero for the render passes
-    /// Palantir itself submits.
+    /// Compute workgroup invocations; zero for Palantir's own render passes.
     pub compute_shader_invocations: u64,
 }
 
@@ -143,58 +109,41 @@ struct Inner {
     main_pass_cpu_ns: Option<u64>,
 }
 
-/// Shared GPU-stats handle. Clone is a cheap refcount bump — every
-/// holder sees the latest sample published by `GpuTimings`. Pre-first-
-/// readback (or on adapters that don't advertise `TIMESTAMP_QUERY`)
-/// all readers return `None`.
+/// Shared GPU-stats handle; clones share the latest sample, `None` until the first
+/// readback.
 #[derive(Clone, Debug, Default)]
 pub struct GpuPassStats {
     inner: Rc<RefCell<Inner>>,
 }
 
 impl GpuPassStats {
-    /// Whole-pass duration, or `None` until the first frame's resolve has
-    /// landed (or always `None` on adapters without `TIMESTAMP_QUERY` or
-    /// when collection is disabled).
+    /// Whole-pass duration; `None` until the first resolve or without
+    /// `TIMESTAMP_QUERY`.
     pub fn last_pass(&self) -> Option<Duration> {
         self.inner.borrow().pass_ns.map(Duration::from_nanos)
     }
 
-    /// Per-category duration. `None` when
-    /// `TIMESTAMP_QUERY_INSIDE_PASSES` is unavailable / disabled, or
-    /// when the named category didn't run in the most recent measured
-    /// frame.
+    /// Per-category duration; `None` without `TIMESTAMP_QUERY_INSIDE_PASSES` or if
+    /// the category did not run last frame.
     pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
         self.inner.borrow().kind_ns[kind.idx()].map(Duration::from_nanos)
     }
 
-    /// Pipeline-statistics counters around the main pass. `None` when
-    /// `PIPELINE_STATISTICS_QUERY` is unavailable / disabled.
+    /// Pipeline-statistics counters around the main pass; `None` without
+    /// `PIPELINE_STATISTICS_QUERY`.
     pub fn last_pipeline_stats(&self) -> Option<PipelineStats> {
         self.inner.borrow().stats
     }
 
-    /// The copy of the backbuffer onto the target after the main pass, in
-    /// the most recent frame that painted: a partial repaint on the
-    /// desktop's strategy, or every painted frame on a target that keeps
-    /// nothing. `None` when that frame copied nothing, or when
-    /// `TIMESTAMP_QUERY_INSIDE_ENCODERS` is unavailable / disabled. A frame
-    /// that repaints nothing is not measured, so it leaves the value as it
-    /// was, as it leaves [`Self::last_pass`].
+    /// Backbuffer-to-target copy after the main pass in the last frame that
+    /// painted; `None` if it copied nothing or `TIMESTAMP_QUERY_INSIDE_ENCODERS` is
+    /// unavailable.
     pub fn last_copy_out(&self) -> Option<Duration> {
         self.inner.borrow().copy_out_ns.map(Duration::from_nanos)
     }
 
-    /// Host CPU time the most recent frame spent opening the main render
-    /// pass, recording every draw step into it, and closing it — i.e. the
-    /// wgpu command-recording cost of `WgpuBackend::run_main_pass`,
-    /// including the end-of-pass command replay. Independent of every
-    /// device-side value above: no adapter feature gates it, so it is
-    /// `Some` after the first submitted frame on any GPU.
-    ///
-    /// This is what scales with the *number* of draw steps rather than the
-    /// number of pixels, which makes it the metric for bind/draw-count
-    /// work (batch coalescing, bind-state deduplication).
+    /// Host CPU time the last frame spent recording the main render pass; no
+    /// adapter feature gates it, and it scales with draw-step count, not pixels.
     pub fn last_main_pass_cpu(&self) -> Option<Duration> {
         self.inner
             .borrow()
@@ -214,10 +163,6 @@ impl GpuPassStats {
         self.inner.borrow_mut().kind_ns[kind.idx()] = Some(ns);
     }
 
-    /// Clears every per-kind slot back to `None`. Called before
-    /// publishing a fresh frame's per-kind values so categories that
-    /// didn't run this frame don't keep showing the previous frame's
-    /// number.
     pub(crate) fn clear_kinds(&self) {
         self.inner.borrow_mut().kind_ns = [None; BatchKind::COUNT];
     }
@@ -226,8 +171,6 @@ impl GpuPassStats {
         self.inner.borrow_mut().stats = Some(stats);
     }
 
-    /// The measured frame's copy-out, or `None` when it copied nothing, so
-    /// a frame without a copy does not keep showing an earlier one.
     pub(crate) fn record_copy_out_ns(&self, ns: Option<u64>) {
         self.inner.borrow_mut().copy_out_ns = ns;
     }
@@ -259,9 +202,6 @@ mod tests {
 
     #[test]
     fn record_overrides_previous_value() {
-        // Pin: stores the *latest* sample, not a rolling EMA. The bench
-        // reporters sample per frame and summarize themselves, so a
-        // smoothing publisher here would silently flatten their spread.
         let s = GpuPassStats::default();
         s.record_pass_ns(1_000_000);
         s.record_pass_ns(5_000_000);
@@ -285,19 +225,12 @@ mod tests {
             Some(Duration::from_micros(500))
         );
         assert_eq!(s.last_kind(BatchKind::Mesh), None);
-        // Total isn't auto-populated from per-kind.
         assert_eq!(s.last_pass(), None);
-        // Nor is the CPU record time — it has a separate producer, and a
-        // device with no timestamp support publishes only that one.
         assert_eq!(s.last_main_pass_cpu(), None);
     }
 
     #[test]
     fn clear_kinds_resets_to_none() {
-        // Pin: a category that ran last frame but not this one shows
-        // `None`, not the stale previous-frame value.
-        // The pass total, the CPU time and the pipeline stats are other
-        // producers' values, so clearing the kinds leaves them alone.
         let s = GpuPassStats::default();
         let stats = PipelineStats {
             vertex_shader_invocations: 1,

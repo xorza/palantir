@@ -31,14 +31,7 @@ fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
     &mut widget.node
 }
 
-/// The `default_*` family fills in only where the caller stayed silent —
-/// the trait's half of "explicit wins, the theme fills in the rest". The
-/// plain setters can't express it, which is why a widget wrapping
-/// another (`ContextMenu` over `Popup`) had no way to resolve its theme
-/// without reaching into the wrapped widget.
-///
-/// A `#[track_caller]` auto id must **not** count as set: every widget
-/// has one, so counting it would make `default_id` unreachable.
+/// The `default_*` family fills in only where the caller stayed silent (the trait's half of "explicit wins, the theme fills the rest"). A `#[track_caller]` auto id must not count as set, or `default_id` is unreachable.
 #[test]
 fn default_setters_fill_only_where_the_caller_stayed_silent() {
     let fallback_id = WidgetId::from_hash("fallback");
@@ -57,9 +50,7 @@ fn default_setters_fill_only_where_the_caller_stayed_silent() {
     assert_eq!(filled.node.min_size, Some(Size::new(10.0, 0.0)));
     assert_eq!(filled.node.max_size, Some(Size::new(200.0, 300.0)));
 
-    // Caller spoke first: every default is a no-op — including the
-    // deliberate zero, which is exactly the value a "is it still the
-    // default?" check on the value itself would get wrong.
+    // Caller spoke first: every default is a no-op, including the deliberate zero.
     let kept = Widget::leaf()
         .id(caller_id)
         .padding(caller_padding)
@@ -120,9 +111,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .clip(ClipMode::None);
     widget.node.transform = transform;
 
-    // Read back through the `authored_*` surface rather than the node's
-    // private fields: a widget written outside this crate has only these,
-    // so the assertions and that widget see the same setters land.
+    // Read back through the `authored_*` surface, the only one an outside widget has.
     assert!(matches!(widget.ident, Ident::Verbatim(value) if value == id));
     assert_eq!(widget.authored_size(), Some(size));
     assert_eq!(widget.authored_min_size(), Some(min_size));
@@ -152,10 +141,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored_transform(), transform);
 }
 
-/// The other half of [`builder_setters_cover_the_complete_external_node_surface`]:
-/// every reader answers the untouched default on a widget nothing
-/// configured, so none of them can be returning the value above by
-/// accident.
+/// The other half of [`builder_setters_cover_the_complete_external_node_surface`]: every reader answers the untouched default on an unconfigured widget.
 #[test]
 fn authored_readers_answer_the_defaults_before_anything_is_set() {
     let widget = Widget::hstack();
@@ -234,10 +220,7 @@ fn node_bounds_accept_ordered_ranges_and_equal_axis_boundaries() {
     assert_eq!(unbounded.node.max_size, Some(Size::INF));
 }
 
-/// A minimum above the maximum resolves as CSS resolves it — the minimum
-/// wins, on each axis and in either setter order — and each bound panics
-/// only on a value outside its own kind: a minimum is a length, a maximum
-/// an extent.
+/// A minimum above the maximum resolves as in CSS (minimum wins, per axis, either setter order); each bound panics only outside its own kind (minimum a length, maximum an extent).
 #[test]
 fn node_bounds_coerce_their_order_and_validate_their_kinds() {
     type Case = (&'static str, fn() -> Widget);
@@ -318,20 +301,11 @@ fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
 }
 
 fn id_of<W: Configure>(mut w: W) -> WidgetId {
-    // No parent context in this micro-test — `Ident::raw_id(None)`
-    // yields the bare auto/explicit id without any parent-scoping
-    // mix.
+    // No parent context: `Ident::raw_id(None)` yields the bare id.
     w.configure().widget.ident.raw_id(None)
 }
 
-/// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable
-/// id at the *call site*. Two `.auto_id()` calls on different source lines
-/// must produce distinct `WidgetId`s — that's the cross-frame-stability
-/// contract for builders that opt into auto ids. Dropping the attribute
-/// collapses all calls onto one id (occurrence-counter disambiguation
-/// still works within a frame, but state stability degrades). The case
-/// list covers every public widget constructor so a regression in any
-/// one is caught.
+/// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable id at the call site: two calls on different lines give distinct `WidgetId`s. The cases cover every public widget constructor.
 #[test]
 fn auto_id_propagates_track_caller_through_every_widget() {
     type Case = (&'static str, fn() -> (WidgetId, WidgetId));
@@ -397,8 +371,7 @@ fn auto_id_propagates_track_caller_through_every_widget() {
     }
 }
 
-/// Sanity: `id_salt(...)` overrides `auto_id`, so two calls with the
-/// same explicit key on different lines produce the *same* id.
+/// `id_salt(...)` overrides `auto_id`: the same key on different lines gives the same id.
 #[test]
 fn id_salt_overrides_auto_id() {
     assert_eq!(
@@ -407,17 +380,13 @@ fn id_salt_overrides_auto_id() {
     );
 }
 
-/// `Configure::auto_id()` re-derives the id at *its* call site. A helper
-/// that builds widgets internally collapses every helper-internal
-/// `.auto_id()` to one source location; appending `.auto_id()` at the
-/// caller recovers per-line distinctness.
+/// `Configure::auto_id()` re-derives the id at its call site: helper-internal calls collapse to one location, `.auto_id()` at the caller restores per-line ids.
 #[test]
 fn auto_id_redirects_to_call_site() {
     fn helper() -> Button<'static> {
         Button::new().auto_id()
     }
-    // Both `helper()` invocations resolve `.auto_id()` inside the helper
-    // body — same source line, same id.
+    // Both `helper()` calls resolve inside the helper body: same line, same id.
     assert_eq!(id_of(helper()), id_of(helper()));
     // With `.auto_id()` on different source lines, the ids diverge.
     let a = id_of(helper().auto_id());
@@ -425,10 +394,7 @@ fn auto_id_redirects_to_call_site() {
     assert_distinct("auto_id() at call site", a, b);
 }
 
-/// A themed fallback faces the same check an authored value does, in
-/// every build: padding edges are lengths, margin edges offsets. A NaN
-/// edge that slipped through would reach layout and surface frames later
-/// as a widget that measured to nothing.
+/// A themed fallback faces the same check as an authored value, in every build: padding edges are lengths, margin edges offsets.
 #[test]
 fn spacings_validate_their_kinds_authored_or_themed() {
     type Case = (&'static str, fn() -> Panel);
@@ -456,8 +422,7 @@ fn spacings_validate_their_kinds_authored_or_themed() {
     let _ = Panel::vstack().margin(Spacing::all(-4.0));
 }
 
-/// A canvas position is an offset on each axis, and a grid span a count:
-/// zero names no cell, so it panics rather than being raised to one.
+/// A canvas position is an offset per axis and a grid span a count: zero names no cell and panics.
 #[test]
 fn position_and_grid_span_validate_their_kinds() {
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {

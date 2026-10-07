@@ -1,46 +1,22 @@
-//! The value vocabulary every other layer is written in — geometry,
-//! layout, paint, text and identity, the math they share, and their packed
-//! encodings — plus the shared lane macro the four-f16 packed types are
-//! built from.
-//!
-//! A leaf layer: nothing here reaches up into scene, layout or renderer,
-//! which is what lets all three depend on one definition of a rect, a
-//! colour or an id.
+//! The value vocabulary every other layer is written in (geometry, layout, paint, text, identity, math, packed
+//! encodings) plus the lane macro for four-f16 types. A leaf layer: nothing here reaches up into scene, layout or renderer.
 
-/// The surface a four-lane [`F16x4`](crate::primitives::packed::half_simd::F16x4)
-/// newtype shares with its siblings: lane access, a `Debug` that names
-/// the four lanes, scalar `From`, and the serde forwarders.
-///
-/// [`Corners`](crate::Corners) and [`Spacing`](crate::Spacing) are the
-/// same eight bytes with different names for the lanes, and every item
-/// here was written out twice with only those names differing. What is
-/// *not* here is what actually differs: the constructors each offers,
-/// and which two-value shorthand its wire format expands.
-///
-/// Not every `F16x4` newtype wants this. `RgbaF16` and `FillAxis` are
-/// the same packing with a different surface — no lane names to print,
-/// no wire format — and derive `Debug` like ordinary structs.
+/// The surface a four-lane [`F16x4`](crate::primitives::packed::half_simd::F16x4) newtype shares with its
+/// siblings: lane access, `Debug` naming the lanes, scalar `From`, serde forwarders. For [`Corners`](crate::Corners)
+/// and [`Spacing`](crate::Spacing); `RgbaF16` and `FillAxis` have no lane names or wire format and derive `Debug`.
 macro_rules! f16x4_lanes {
     ($t:ident, [$($lane:ident),+ $(,)?]) => {
         impl $t {
-            /// The zero of every lane.
+            /// All lanes zero.
             pub const ZERO: Self = Self($crate::primitives::packed::half_simd::F16x4::ZERO);
 
-            /// All four lanes unpacked at once — a single `vcvtph2ps`
-            /// on x86-f16c, a scalar walk elsewhere. Use at hot sites
-            /// that read 3+ lanes, to amortize the dispatch over all
-            /// of them.
+            /// All four lanes unpacked at once (a single `vcvtph2ps` on x86-f16c), for hot sites reading 3+ lanes.
             #[inline]
             pub fn as_array(self) -> [f32; 4] {
                 self.0.lanes()
             }
 
-            /// True if any lane is NaN. `const`, so the predicates that
-            /// gate on it can be too; the [`NanCheck`] impl below
-            /// delegates here rather than keeping a second copy. A NaN
-            /// lane poisons every extent derived from it, and it is
-            /// cheaper to refuse one than to find it in a frame that came
-            /// out blank.
+            /// True if any lane is NaN. `const`, and the [`NanCheck`] impl delegates here; a NaN lane poisons every extent derived from it.
             ///
             /// [`NanCheck`]: crate::primitives::math::nan::NanCheck
             #[inline]

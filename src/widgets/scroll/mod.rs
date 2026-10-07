@@ -1,9 +1,8 @@
-//! The scrolling viewport: the widget itself, the retained offset and zoom
-//! it drives ([`state`]), the bar geometry and drag handling
-//! ([`bars`]), and the zoom policy an app configures ([`zoom_config`]).
+//! The scrolling viewport: the widget, its retained offset and zoom ([`state`]),
+//! bar geometry and drag handling ([`bars`]), and zoom policy ([`zoom_config`]).
 //!
-//! Every frame resolves against the *previous* frame's arranged geometry,
-//! which is what [`ScrollGeometry`] names.
+//! Every frame resolves against the previous frame's arranged geometry
+//! ([`ScrollGeometry`]).
 
 pub(crate) mod bars;
 pub(crate) mod state;
@@ -33,34 +32,19 @@ use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::Vec2;
 
-/// What one scroll frame resolves against, all read from *last* frame's
-/// layout before any of this frame's input applies. Taken once at the
-/// top of [`Scroll::show`] so the pan, the zoom, and both bars agree on
-/// the box they are working in.
+/// What one scroll frame resolves against, read from last frame's layout before
+/// any input applies, so pan, zoom and both bars agree on the box.
 #[derive(Copy, Clone, Debug)]
 struct ScrollGeometry {
-    /// The widget's box as arranged last frame.
     outer: Size,
-    /// Content extent the bars are a ratio of, before zoom.
     content: Size,
-    /// The builder's, carried so [`Self::bounds`] can hand the offset
-    /// solver a whole [`ScrollBounds`].
     content_margin: Spacing,
-    /// The bar overlay's definition at the offset and zoom the frame
-    /// started from. Its gutter and the user's padding are what the
-    /// viewport deflates by, here and in the overlay's layout alike, and
-    /// [`Self::bars_at`] moves the offset and zoom as input applies.
+    /// The bar overlay's definition at the frame's starting offset and zoom; its
+    /// gutter and the user's padding deflate the viewport.
     bars: ScrollbarsDef,
 }
 
 impl ScrollGeometry {
-    /// What the offset solver works in, projected rather than stored.
-    ///
-    /// Both halves are already here — `content` is this struct's, and the
-    /// viewport is the one the bars reserved — so holding a
-    /// [`ScrollBounds`] beside them put the same two numbers in the
-    /// struct twice, with nothing keeping the copies equal but the one
-    /// construction site that set them together.
     fn bounds(&self) -> ScrollBounds {
         ScrollBounds {
             content: self.content,
@@ -69,7 +53,6 @@ impl ScrollGeometry {
         }
     }
 
-    /// The bar overlay's definition at `state`'s offset and zoom.
     const fn bars_at(&self, state: &ScrollState) -> ScrollbarsDef {
         ScrollbarsDef {
             offset: state.offset,
@@ -78,41 +61,33 @@ impl ScrollGeometry {
         }
     }
 
-    /// Where the content starts inside the viewport node: past its
-    /// leading padding.
     fn content_inset(&self) -> Vec2 {
         let [left, top, _, _] = self.bars.padding.as_array();
         Vec2::new(left, top)
     }
 
-    /// Where the content starts inside the outer box: past the leading
-    /// gutter as well. The origin a widget-local pivot is measured from.
+    /// Where the content starts inside the outer box (past the gutter): the origin a
+    /// widget-local pivot is measured from.
     fn content_origin(&self) -> Vec2 {
         let [left, top, _, _] = self.bars.reserve.as_array();
         self.content_inset() + Vec2::new(left, top)
     }
 
-    /// The bar on `axis` at `state`'s offset and zoom — the same answer
-    /// the overlay's layout places it by.
     fn thumb(&self, axis: Axis, state: &ScrollState) -> Option<BarGeometry> {
         self.bars_at(state).thumb(axis, self.outer, self.content)
     }
 }
 
-/// This frame's wheel / trackpad / pinch input after routing.
 #[derive(Copy, Clone, Debug)]
 struct ScrollInput {
     pan_delta: Vec2,
     zoom_delta: f32,
-    /// Widget-local point that stays fixed across the zoom step.
-    /// `Some` exactly when a step lands and an anchor could be resolved.
+    /// Widget-local point fixed across the zoom step, when one resolves.
     pivot: Option<Vec2>,
 }
 
-/// The two wrapper `Widget`s a `Scroll` records: an outer `ZStack`
-/// that owns sizing / placement / sense / visibility and an inner
-/// viewport that owns the `Scroll` layout mode, padding, and the panel
-/// knobs (gap / justify / child_align).
+/// The two `Widget`s a `Scroll` records: an outer `ZStack` (sizing, placement,
+/// sense, visibility) and an inner viewport (`Scroll` layout, padding, panel knobs).
 #[derive(Debug)]
 struct ScrollWrappers {
     outer: Widget,
@@ -120,18 +95,8 @@ struct ScrollWrappers {
 }
 
 impl ScrollWrappers {
-    /// Split a user `Scroll` widget into its outer/inner wrappers.
-    ///
-    /// **This routes every authored field that should survive on a
-    /// `Scroll`**: sizing, placement and interaction land on `outer`,
-    /// padding and the panel knobs on `inner`. A field added to the
-    /// authoring surface has to be given a side here.
-    /// `Scroll::show` hands in the `axes` its fit flags settled, and
-    /// patches the remaining inner fields it computes per frame (the
-    /// viewport id, the reservation `margin`, `clip` — read off the user
-    /// widget — and the pan `transform`). Identity is `Scroll::show`'s
-    /// too: the outer wrapper takes the caller's resolved id there, and
-    /// the inner a child of it.
+    /// Split a user `Scroll` into outer/inner wrappers. A new authoring field needs
+    /// a side here. `Scroll::show` patches the per-frame inner fields and the ids.
     fn split(widget: &Widget, axes: ScrollAxes) -> Self {
         let mut outer = Widget::zstack()
             .sense(widget.authored_sense())
@@ -149,8 +114,6 @@ impl ScrollWrappers {
             outer.configure().max_size(max);
         }
 
-        // Inner fills the outer wrapper; the outer carries the user's
-        // `Sizing` and drives the actual size.
         let mut inner = Widget::scroll(axes)
             .size((Sizing::FILL, Sizing::FILL))
             .justify(widget.authored_justify())
@@ -168,50 +131,34 @@ impl ScrollWrappers {
     }
 }
 
-/// Scroll viewport. Three flavors via constructor:
-/// - [`Scroll::vertical`]: pans on Y, lays children out as a `VStack`.
-/// - [`Scroll::horizontal`]: pans on X, lays children out as an
-///   `HStack`.
-/// - [`Scroll::both`]: pans on both axes, lays children out as a
-///   `ZStack` measured with both axes unbounded.
+/// Scroll viewport, built by [`Scroll::vertical`], [`Scroll::horizontal`] or
+/// [`Scroll::both`].
 ///
-/// All three measure the panned axes as `INF` so children report
-/// their full natural extent; the viewport itself takes whatever its
-/// parent gave it. Wheel / touchpad input over the viewport pans
-/// children via a `transform` applied at record time using the
-/// previous frame's clamp. The viewport senses the wheel only on the
-/// axes its content overflows, so the other axis — or both, while the
-/// content fits — reaches the container behind it. A
-/// [`zoomable`](Self::zoomable) one senses both always. The scrollbar's
-/// relationship to the
-/// content area — reserved gutter, overlay, or hidden — is selected
-/// via [`BarMode`].
+/// Panned axes measure as `INF` so children report their natural extent. Wheel
+/// input pans via a record-time `transform` using the previous frame's clamp. The
+/// viewport senses the wheel only on axes its content overflows, so the other
+/// axis reaches the container behind it; a [`zoomable`](Self::zoomable) one senses
+/// both. Bar placement is chosen via [`BarMode`].
 ///
-/// **In a stack, a scroll gives way to its siblings.** A `Hug` scroll
-/// wants its content and can shrink to nothing on its panned axis, so it
-/// takes what the siblings that cannot shrink leave it. A `Fill` scroll
-/// also grows into space no sibling wants — except in a `Hug` stack, which
-/// has none to give it: there a `Fill` scroll is empty.
+/// **In a stack, a scroll gives way to its siblings.** A `Hug` scroll can shrink to
+/// nothing on its panned axis. A `Fill` scroll also grows into space no sibling
+/// wants, except in a `Hug` stack, where it is empty.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Scroll<'a> {
     widget: Widget,
-    /// Which axes pan. The fit flags stay clear here: `wrappers` sets
-    /// them per frame from the caller's `Sizing`.
     axes: ScrollAxes,
     style: Option<&'a ScrollbarTheme>,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
     bar_mode: BarMode,
     content_margin: Spacing,
-    /// [`Scroll::pan_by`]'s accumulated request, in logical pixels.
     pan_request: Vec2,
-    /// [`Scroll::zoom_by`]'s accumulated request.
     zoom_request: ZoomFactor,
 }
 
 impl<'a> Scroll<'a> {
-    /// Scrolls up and down only. The cross axis sizes as usual.
+    /// Scrolls up and down only.
     #[track_caller]
     pub fn vertical() -> Self {
         Self::with_axes(ScrollAxes::VERTICAL)
@@ -223,7 +170,7 @@ impl<'a> Scroll<'a> {
         Self::with_axes(ScrollAxes::HORIZONTAL)
     }
 
-    /// Scrolls on both axes. What [`Self::zoomable`] requires.
+    /// Scrolls on both axes; required by [`Self::zoomable`].
     #[track_caller]
     pub fn both() -> Self {
         Self::with_axes(ScrollAxes::BOTH)
@@ -232,9 +179,6 @@ impl<'a> Scroll<'a> {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         Self {
-            // Scroll requires clipping; default to `Rect` so callers that
-            // don't override get the cheap scissor path. Callers can still
-            // call `Configure::clip_rounded` to upgrade to a stencil mask.
             widget: Widget::scroll(axes).sense(Sense::SCROLL).clip_rect(),
             axes,
             style: None,
@@ -247,19 +191,9 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    /// Pan the viewport by `delta` logical pixels on the frame this is
-    /// shown — the step a wheel of that distance would take, through the
-    /// same clamp and the same rubber band.
-    ///
-    /// For a viewport something other than the pointer drives: a "scroll
-    /// to top" button, a page that plays a gesture back, a timer walking
-    /// a document past the camera. It reads no pointer and no hover, so
-    /// a request lands whether or not the viewport is under the cursor,
-    /// and it composes with a wheel arriving on the same frame, and with
-    /// a second call, rather than replacing either.
-    ///
-    /// Relative, because that is what a builder can state without first
-    /// reading where the viewport already sits.
+    /// Pan the viewport by `delta` logical pixels on the frame this is shown, through
+    /// the wheel's clamp and rubber band. Reads no pointer or hover, and composes with
+    /// a same-frame wheel and further calls.
     ///
     /// # Panics
     ///
@@ -270,23 +204,12 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Multiply the zoom by `factor` on the frame this is shown, through
-    /// the same clamp and the same [`ZoomPivot`] a wheel zoom takes — so
-    /// with the default pivot it zooms about the pointer where there is
-    /// one, and about the viewport's centre where there is not.
-    ///
-    /// A viewport with no [`Self::zoomable`] ignores it, like every
-    /// other zoom input. Two calls compose into one factor.
-    ///
-    /// Takes the bare factor for the call site's sake — a view that
-    /// *keeps* a zoom should keep a [`ZoomFactor`], which is the type
-    /// that cannot lose one.
+    /// Multiply the zoom by `factor` on the frame this is shown, through the wheel's
+    /// clamp and [`ZoomPivot`]. Ignored without [`Self::zoomable`]; calls compose.
     ///
     /// # Panics
     ///
     /// Panics unless `factor` is [positive](crate::widget::domain::positive).
-    /// A zoom cannot invert or annihilate, and a non-finite factor poisons
-    /// every product it enters.
     #[track_caller]
     pub fn zoom_by(mut self, factor: f32) -> Self {
         let factor =
@@ -295,49 +218,31 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `scrollbar`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of [`crate::Theme`]'s `scrollbar`.
     pub fn style(mut self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Set the scrollbar layout mode — reserved gutter, overlay, or no
-    /// bar at all. See [`BarMode`], which documents all three.
-    ///
-    /// [`Self::overlay_bars`] and [`Self::hide_bars`] are this with the two
-    /// values a caller actually types. The third is the default.
+    /// Set the scrollbar layout mode; see [`BarMode`].
     pub const fn bar_mode(mut self, mode: BarMode) -> Self {
         self.bar_mode = mode;
         self
     }
 
-    /// [`BarMode::Overlay`] — the bar paints over content when it
-    /// overflows, and reserves no gutter.
+    /// [`BarMode::Overlay`]: bars paint over content and reserve no gutter.
     pub const fn overlay_bars(self) -> Self {
         self.bar_mode(BarMode::Overlay)
     }
 
-    /// [`BarMode::Hidden`] — no track, no thumb, no cross-axis
-    /// reservation. Pan / wheel / zoom input still work; the viewport just
-    /// paints no indicator. For canvas-style scopes (node graphs, infinite
-    /// boards) where the bars would be noise.
+    /// [`BarMode::Hidden`]: no bars; pan, wheel and zoom still work.
     pub const fn hide_bars(self) -> Self {
         self.bar_mode(BarMode::Hidden)
     }
 
-    /// Extends the offset clamp on each side without touching the
-    /// recorded `content` size — bars still reflect the real
-    /// content, and child layout is unaffected. Think of it as
-    /// invisible overscroll: the user can wheel/drag past the
-    /// content edge by the per-side amount, but a bar thumb wouldn't
-    /// show extra travel and no padding/gutter is reserved. Use for
-    /// canvas-style scopes (node graphs, infinite boards) that want
-    /// pan slack past the children's bounding box. Per-side values
-    /// come from `Spacing` (`left`/`top` open a negative-offset
-    /// band; `right`/`bottom` extend the positive band) — set them
-    /// dynamically per frame from your own content's bounding box if
-    /// you need the slack to track a moving leading edge.
+    /// Extends the offset clamp on each side without changing the recorded `content`
+    /// size: invisible overscroll, no gutter. `left`/`top` open a negative-offset
+    /// band, `right`/`bottom` the positive one.
     ///
     /// # Panics
     ///
@@ -352,9 +257,8 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Let the viewport zoom, pivot-anchored, under a default
-    /// [`ZoomConfig`] — the shorthand for [`Self::zoom_config`]. A switch,
-    /// not a step: [`Self::zoom_by`] is the step.
+    /// Let the viewport zoom under a default [`ZoomConfig`]; shorthand for
+    /// [`Self::zoom_config`].
     ///
     /// # Panics
     ///
@@ -368,10 +272,8 @@ impl<'a> Scroll<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless the scroll pans on both axes (built by
-    /// [`Scroll::both`]): a uniform scale on a single-axis scroll has no
-    /// clean answer, since content that escapes across the axis has no way
-    /// back into the viewport.
+    /// Panics unless the scroll pans on both axes ([`Scroll::both`]): content escaping
+    /// across a single axis has no way back.
     #[track_caller]
     pub fn zoom_config(mut self, config: ZoomConfig) -> Self {
         assert!(
@@ -382,39 +284,20 @@ impl<'a> Scroll<'a> {
         self.add_sense(Sense::PINCH)
     }
 
-    /// Route this frame's wheel / trackpad / pinch input over the
-    /// viewport into a pan delta and a zoom step.
-    ///
-    /// The wheel does one or the other, never both: when the configured
-    /// modifier matches, its notches become a multiplicative zoom factor
-    /// and the pan is suppressed for that frame. The notch count already
-    /// folds classic-wheel lines and touchpad pixels together (via the
-    /// theme's line height), so ctrl held over a touchpad
-    /// pinch-via-scroll zooms at the rate it would have panned. Positive
-    /// `notches.y` is scroll-down, which by convention zooms *out*
-    /// (factor < 1).
-    ///
-    /// `pivot` — the point that stays fixed across the step, in
-    /// widget-local coords — resolves only when a step actually lands.
-    /// It falls back to the viewport centre when the pointer is off the
-    /// widget, and on the first frame where there is no rect yet, so the
-    /// zoom still *feels* anchored before pointer tracking kicks in.
+    /// Route this frame's wheel / trackpad / pinch input into a pan delta and zoom
+    /// step. The wheel pans or zooms, never both: a matching modifier turns notches
+    /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
+    /// `pivot` resolves only when a step lands, falling back to the viewport centre
+    /// when the pointer is off the widget or there is no rect yet.
     fn read_input(&self, ui: &Ui, response: &ResponseState) -> ScrollInput {
-        // Font-derived line step for wheel→pixel conversion. Pulls
-        // `theme.text` (the default font config) rather than scanning
-        // children for a dominant font — that's a future polish; for
-        // now the active theme's text size is a good proxy and stays
-        // consistent with what the user is reading.
+        // Line step for wheel to pixel conversion, from the theme's default text size.
         let line_px = ui.theme().text.font().line_height;
         let scroll = response.scroll;
         let pan_raw = scroll.pan(line_px);
-        // A theme with no line metric behind it contributes no notches,
-        // rather than the enormous ones a floored divisor would report.
+        // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
-        // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
-        // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
-        // zoom.
+        // Ctrl is the zoom modifier on every platform (macOS Cmd is not honored).
         let mods = ui.peek_modifiers();
         let wheel_zooms = self.zoom.as_ref().is_some_and(|cfg| match cfg.modifier {
             ZoomModifier::Ctrl => mods.ctrl,
@@ -425,10 +308,7 @@ impl<'a> Scroll<'a> {
             Some(cfg) => (Vec2::ZERO, ZoomFactor::from_wheel(cfg.step, notches.y)),
             None => (pan_raw, ZoomFactor::ONE),
         };
-        // The authored requests join the pointer's rather than replacing
-        // it: a viewport can be driven and scrolled in one frame, and a
-        // wheel that zooms leaves `pan_delta` at zero for the pan the
-        // caller asked for.
+        // Authored requests join the pointer's; a zooming wheel leaves `pan_delta` zero.
         let pan_delta = pan_delta + self.pan_request;
         let zoom_delta = scroll.zoom.combine(wheel_factor).combine(self.zoom_request);
 
@@ -452,16 +332,10 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    /// This viewport's scrollbar bundle: the per-instance override if
-    /// the caller set one, else the global slot.
     fn bars_theme<'u>(&'u self, ui: &'u Ui) -> &'u ScrollbarTheme {
         self.style.unwrap_or(&ui.theme().scrollbar)
     }
 
-    /// Last frame's measurements, in the shape every later step reads
-    /// them: the outer box, the content extent, and the bar overlay's
-    /// definition as the frame starts, which carries the gutter the bars
-    /// reserve.
     fn measure(
         &self,
         ui: &Ui,
@@ -488,12 +362,9 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    /// Fold one frame of routed input into the retained offset and zoom.
-    ///
-    /// Order is load-bearing: the pivot-anchored zoom step moves the
-    /// offset, so it runs before the pan. The settled clamp then applies
-    /// only to a non-zoomable scroll — a zoomable one keeps the
-    /// out-of-range drift the pivot path composes against.
+    /// Fold one frame of routed input into the retained offset and zoom. Order
+    /// matters: the pivot-anchored zoom moves the offset, so it runs before the pan,
+    /// and the settled clamp applies only to a non-zoomable scroll.
     fn apply_input(&self, state: &mut ScrollState, input: ScrollInput, geom: ScrollGeometry) {
         if let (Some(cfg), Some(pivot)) = (self.zoom.as_ref(), input.pivot) {
             state.apply_zoom(
@@ -516,37 +387,18 @@ impl<'a> Scroll<'a> {
         }
     }
 
-    /// The outer/inner pair actually recorded.
-    ///
-    /// Outer is a bare ZStack holding the inner viewport plus the bar
-    /// overlay. The reservation gutter lives on `inner.margin` — not on
-    /// outer's padding — so the overlay, a sibling of inner under the
-    /// same ZStack, can reach into the gutter strip with absolute
-    /// positions.
-    ///
-    /// [`ScrollWrappers::split`] routes the *static* half: which user field
-    /// lands on which wrapper. Everything decided here is per-frame —
-    /// the fit bits the user's `Sizing` implies, which `split` builds the
-    /// viewport with, then the viewport id, the reservation margin, the
-    /// clip read back off the user node, and the pan/zoom transform.
+    /// The outer/inner pair actually recorded. The gutter lives on `inner.margin`, not
+    /// outer's padding, so the overlay can reach into it. [`ScrollWrappers::split`]
+    /// routes the static half; this adds the per-frame half.
     fn wrappers(
         &self,
         scroll_id: WidgetId,
         geom: ScrollGeometry,
         state: ScrollState,
     ) -> ScrollWrappers {
-        // Inner viewport owns the clip, the pan transform, the user-set
-        // padding (encoder deflates the clip mask by it), and the
-        // `Scroll` layout mode that runs children with INF on panned
-        // axes. ZStack arrange deflates `Sizing::fill` by margin, so
-        // inner's rendered rect = outer.rect minus the reserved strip on
-        // the cross axes.
-        //
-        // Encode the user's per-axis `Sizing` into the viewport's fit
-        // bits: a `Hug` panned axis makes the driver report its content
-        // extent, so the scroll sizes to content like any other `Hug`
-        // widget (bounded by `max_size`/available, scrolling past the
-        // cap); `Fill`/`Fixed` keep the content-independent viewport.
+        // Inner owns the clip, pan transform, padding and `Scroll` layout mode. A `Hug`
+        // panned axis sets a fit bit so the scroll sizes to its content (capped by
+        // `max_size`/available); `Fill`/`Fixed` stay content-independent.
         let user = self.widget.authored_size().unwrap_or_default();
         let axes = self.axes.fit_content(user.w().is_hug(), user.h().is_hug());
         let ScrollWrappers { outer, inner } = ScrollWrappers::split(&self.widget, axes);
@@ -554,36 +406,23 @@ impl<'a> Scroll<'a> {
         inner
             .configure()
             .margin(geom.bars.reserve)
-            // Raw pan/zoom, from the one place a viewport's transform is
-            // derived — `TextEdit`'s text block reads the same method.
             .transform(state.transform(geom.content_inset()));
-        // `with_axes` set `ClipMode::Rect` by default; caller configuration
-        // can replace it with rounded clipping or no clipping. Nothing can
-        // unset it, so the `None` arm never runs.
+        // `with_axes` set `ClipMode::Rect`; nothing unsets it, so `None` never runs.
         if let Some(clip) = self.widget.authored_clip() {
             inner.configure().clip(clip);
         }
         ScrollWrappers { outer, inner }
     }
 
-    /// Record the viewport, its `body`, and the scrollbars.
-    ///
-    /// The [`InnerResponse`]'s `response` belongs to the node the caller
-    /// identified, which wraps both the scrolled surface and the bars.
+    /// Record the viewport, its `body`, and the scrollbars. The response is for the
+    /// caller's node, wrapping both surface and bars.
     pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        // The caller's salt names the *outer wrapper*, but the node it
-        // arrived on describes the viewport — `wrappers` splits it into
-        // both, so neither is the node that came in, and the wrappers
-        // can't be built until the id has unlocked this widget's state.
-        // Identity resolves on the widget that came in; the outer wrapper
-        // takes it below.
+        // The caller's salt names the outer wrapper but the arriving node is the
+        // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         let id = self.widget.resolve(ui);
-        // Input routes by `Sense::SCROLL`, which sits on the outer
-        // ZStack, so wheel events over the bar gutter still pan the
-        // viewport.
+        // Input routes by `Sense::SCROLL` on the outer ZStack, so wheel over the gutter pans.
         let scroll_id = id.with("viewport");
 
-        // Everything read off `ui` immutably, before the state borrow.
         let response = ui.response_for(id);
         let geom = self.measure(ui, id, scroll_id, &response);
         let input = self.read_input(ui, &response);
@@ -597,11 +436,8 @@ impl<'a> Scroll<'a> {
             }
             *state
         });
-        // The wheel senses only the axes the viewport can pan, so the
-        // other one reaches the container behind it. A zoomable viewport
-        // keeps both: its wheel zooms whether the content overflows or not.
-        // So does one with no arranged box yet, whose overflow is not
-        // known: the next frame has the box an event after this one pans.
+        // The wheel senses only pannable axes; a zoomable viewport, or one with no
+        // arranged box yet, keeps both.
         let pan_x = self.axes.pans(Axis::X);
         let pan_y = self.axes.pans(Axis::Y);
         let pans = if self.zoom.is_some() {
@@ -630,12 +466,7 @@ impl<'a> Scroll<'a> {
         });
 
         InnerResponse {
-            // Eager: the probe above already answered for this id, and the
-            // caller almost always reads at least one field (drag delta,
-            // scroll delta, hovered). Nothing the body records can move a
-            // cascade or layout answer — both are frozen for the pass — so
-            // the only field worth re-reading is `focused`, which the body
-            // may have taken.
+            // Eager: the caller usually reads a field, and only `focused` can change in the body.
             response: Response::new(
                 id,
                 ui,
@@ -650,13 +481,9 @@ impl<'a> Scroll<'a> {
 }
 
 impl Scroll<'_> {
-    /// Paint `background` as this widget's background.
-    ///
-    /// Chrome for the inner scroll surface — painted under the children,
-    /// before the scrollbar overlay. Unlike the other containers
-    /// (`Panel`/`Grid`/`Popup`), Scroll does **not** fall back to
-    /// `theme.panel_background` when unset: an unstyled scroll surface
-    /// paints no background. Pass one explicitly to fill it.
+    /// Paint `background` as the inner surface's chrome, under children and bars.
+    /// Unlike `Panel`/`Grid`/`Popup`, unset does not fall back to
+    /// `theme.panel_background`.
     ///
     /// # Panics
     ///
@@ -668,11 +495,8 @@ impl Scroll<'_> {
         self
     }
 
-    /// Paint `background` as this widget's background unless the caller set one —
-    /// the chrome peer of
-    /// [`ThemeDefaults::default_padding`](crate::widget::ThemeDefaults::default_padding),
-    /// for a wrapper that themes a widget it holds after the caller's own
-    /// setters ran. An explicit [`Self::background`] wins in either order.
+    /// Paint `background` unless the caller set one. An explicit [`Self::background`]
+    /// wins in either order.
     ///
     /// # Panics
     ///

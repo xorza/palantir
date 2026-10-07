@@ -1,6 +1,4 @@
-//! The per-frame footprint inventory: one list of the types whose
-//! `size`/`align` a change must not move silently, driving both a printing
-//! run and the test that pins them.
+//! Inventory of the per-frame types whose `size`/`align` must not drift silently.
 
 use crate::animation::anim_row::AnimRow;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
@@ -107,69 +105,28 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
     }
 }
 
-/// Expected `size_of::<Ui>()`, as `cfg(test)` sees it. `FrameRuntime`
-/// carries a probe cell, so a release `Ui` can be smaller — see
-/// [`FRAME_ENGINES_SIZE`], where the same gate is worth ~90 B.
+/// Expected `size_of::<Ui>()` under `cfg(test)`; a release `Ui` can be smaller.
 const UI_SIZE: usize = 9352;
 
-/// Expected `size_of::<FrameEngines>()`, as **`cfg(test)`** sees it —
-/// which is the only way this module compiles.
-///
-/// `LayoutCounters`' `TestOnly` and `BenchOnly` cells are both live
-/// under that gate, and `BenchOnly` reads `any(test, feature =
-/// "bench")`, so the `bench` feature adds no field a test build did not
-/// already carry and one number covers every feature set. Both kinds of
-/// cell are zero-sized in a release build, which leaves a shipped
-/// `FrameEngines` ~90 B smaller. Read this as a drift tripwire, not as
-/// the production footprint.
+/// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
+/// module compiles in. Test-only and bench-only cells are zero-sized in
+/// release, so read this as a drift tripwire, not the shipped footprint.
 const FRAME_ENGINES_SIZE: usize = 2048;
 
-/// Single source of truth for the per-frame hot-struct inventory.
-/// Each entry is `pin::<Type>("name", expected_size, expected_align)`.
-/// Drives two tests from one list:
-///
-/// - [`print_hot_struct_sizes`] (`#[ignore]`) prints the live
-///   `size`/`align` table — run it to read off a new number when a
-///   layout change is intentional.
-/// - [`hot_struct_sizes_are_pinned`] (a real gate) asserts each
-///   `(size, align)` so a *silent* footprint regression — an added
-///   field, a stop-cap bump, an enum variant that re-inlines a boxed
-///   payload — fails `cargo test` instead of diffusing across the
-///   codebase. When the change is intended, update the number next to
-///   the type; that one-line edit is the review signal.
-///
-/// Sizes are for the 64-bit target (the only one). Covers the SoA
-/// per-node columns, per-shape/per-chrome lowered forms, the
-/// encoder↔composer wire payloads, the GPU instance types, and the
-/// one whole-`Ui` entry ([`UI_SIZE`]).
-///
-/// A row's expected size is any `usize` expression, so a type whose
-/// number needs an explanation of its own names a const in the same
-/// column as everything else's number.
+/// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
+/// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
+/// and [`hot_struct_sizes_are_pinned`] (asserts each row). Update the number
+/// when a change is intentional. Sizes are for 64-bit targets.
 const PINS: &[Pin] = &[
-    // One instance per window, not per frame — pinned because every
-    // pass walks `&mut Ui` to reach `forest` / `layout` / `anim` /
-    // `input` / `cascade`, so anything parked inline between them
-    // costs locality on all of them. `Theme` is the measured case:
-    // inline at 8904 B it makes `Ui` 15656 B, and holding it behind
-    // an `Rc` (halving `Ui`) measured -6% on `frame/cached_cpu` and -6% on
-    // `frame/partial_cpu`. That is the regression this number
-    // exists to catch; a new field is fine, a new multi-KB blob is
-    // the thing to argue about.
+    // Pinned for locality: every pass walks `&mut Ui`, so inline blobs between
+    // its fields cost on all of them. `Theme` inline made `Ui` 15656 B; behind
+    // an `Rc` measured -6% on `frame/cached_cpu` and `frame/partial_cpu`.
     pin::<Ui>("ui::Ui", UI_SIZE, 8),
-    // The other per-window instance, holding the retained caches the
-    // passes run on. Pinned for the same locality reason, and split
-    // from `Ui` so a cache growing here cannot be mistaken for the
-    // recorder growing.
+    // Split from `Ui` so cache growth is not mistaken for recorder growth.
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),
     pin::<NodeRecord>("scene::NodeRecord", 64, 8),
     pin::<IdEntry>("scene::IdEntry", 64, 8),
     pin::<LayoutCore>("scene::LayoutCore", 28, 4),
-    // Sense (5 bits), disabled (1), clip (2), focusable (1) and the key
-    // scope (8): 17 bits, one past a `u16`, so 15 spare in the `u32`.
-    // `NodeRecord` absorbs the two bytes in padding it already had;
-    // `Node` grows by 4 to keep 4-byte alignment, and the `attrs` column
-    // of the record arena by 2 a node.
     pin::<NodeFlags>("scene::NodeFlags", 4, 4),
     pin::<LayoutMode>("primitives::LayoutMode", 4, 2),
     pin::<PackedLayoutMeta>("primitives::PackedLayoutMeta", 4, 4),
@@ -185,17 +142,13 @@ const PINS: &[Pin] = &[
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
     pin::<Background>("primitives::Background", 124, 4),
-    // Align 2, not 8, so embedding either inside `Quad` does not raise
-    // `Quad`'s alignment above 4 and add the trailing pad bytes that
-    // break its `Pod` no-padding contract.
+    // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
+    // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
     pin::<Corners>("primitives::Corners", 8, 2),
-    // `LinearGradient` is stored inline on every `Brush::Linear`, so it
-    // sets the floor for `Brush`, `Background.fill`, and every shape
-    // carrying a brush. The stops are 1 (len) + `MAX_STOPS` × 5 (a `u8`
-    // offset and an `SrgbaU8`), align 1; the ramp adds 1 (interpolation) with
-    // no padding; the gradient adds 4 (angle), 1 (spread) and 1 tail pad
-    // to align 4.
+    // Inline in every `Brush::Linear`, so it sets the floor for `Brush`. Stops:
+    // 1 (len) + `MAX_STOPS` * 5; ramp adds 1 (interpolation); gradient adds 4
+    // (angle), 1 (spread) and 1 tail pad to align 4.
     pin::<GradientStops>("brush::GradientStops", 1 + 5 * MAX_STOPS, 1),
     pin::<ColorRamp>("brush::ColorRamp", 1 + 5 * MAX_STOPS + 1, 1),
     pin::<LinearGradient>("brush::LinearGradient", 48, 4),

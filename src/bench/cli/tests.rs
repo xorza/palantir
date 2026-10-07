@@ -8,39 +8,25 @@ fn parse(args: &[&str]) -> Cli {
     Cli::try_parse_from(argv).expect("parse")
 }
 
-/// The argv each cargo invocation actually sends, verified against a
-/// throwaway `harness = false` target.
-///
-/// **`--bench` comes last.** Cargo appends it *after* the caller's
-/// own arguments, so every case below puts it where cargo does —
-/// the ordering an earlier `clap`-based gate got wrong, reading
-/// `-d damage --bench` as having no `--bench` and handing the run to
-/// criterion. Tests that put it first pass either way and prove
-/// nothing.
+/// The argv each cargo invocation sends, checked against a throwaway `harness = false` target. `--bench` comes last, as
+/// cargo appends it after the caller's arguments; tests that put it first prove nothing.
 #[test]
 fn cargos_argv_routes_to_us_and_a_bare_one_delegates() {
     let d = |args: &[&str]| delegates(args.iter().copied());
 
-    // `cargo test --benches` sends nothing at all.
     assert!(d(&[]));
-    // `cargo bench` and `cargo bench -- <args>`.
     assert!(!d(&["--bench"]));
     assert!(!d(&["-d", "damage", "--bench"]));
     assert!(!d(&["cascade/hit_test", "--save-baseline", "x", "--bench"]));
     assert!(!d(&["--arms", "cpu", "--profile-time", "2", "--bench"]));
-    // `cargo bench -- --test` is criterion's own "run them once",
-    // and `--list` is its enumeration mode. Both are its to parse.
+    // `cargo bench -- --test` and `--list` are criterion's own modes; it parses them.
     assert!(d(&["--test", "--bench"]));
     assert!(d(&["--list", "--bench"]));
-    // A positional filter is not a flag and must not delegate.
     assert!(!d(&["test", "--bench"]));
 }
 
-/// `--save-baseline` writes a named sample; the two compare flags
-/// read one back. Saving and comparing in the same run is
-/// contradictory — criterion rules it out and so do we, or a run
-/// would silently overwrite the thing it was asked to measure
-/// against.
+/// `--save-baseline` writes a sample and the compare flags read one back; saving and comparing in one run would
+/// overwrite what is measured against, so it is rejected.
 #[test]
 fn baseline_flags_parse_and_exclude_each_other() {
     assert_eq!(parse(&["-b", "before"]).baseline.as_deref(), Some("before"));
@@ -68,8 +54,7 @@ fn baseline_flags_parse_and_exclude_each_other() {
     }
 }
 
-/// Profile mode disables criterion's analysis, so nothing writes an
-/// `estimates.json` for the frame bench to read back.
+/// Profile mode disables criterion's analysis, so no `estimates.json` is written for the frame bench.
 #[test]
 fn only_a_sampling_run_records_estimates() {
     assert!(parse(&["--bench"]).records());
@@ -77,10 +62,7 @@ fn only_a_sampling_run_records_estimates() {
     assert!(!parse(&["--bench", "--profile-time", "5"]).records());
 }
 
-/// The selection rule, which decides what a run actually measures.
-/// A bare run must reach every ordinary driver and no opt-in one; a
-/// named run must reach exactly what was named, opt-in included —
-/// naming it *is* the opt-in.
+/// A bare run reaches every ordinary driver and no opt-in one; a named run reaches exactly what it named.
 #[test]
 fn bare_run_skips_opt_in_and_named_run_takes_exactly_what_it_named() {
     let named = |cli: &Cli| -> Vec<&'static str> {
@@ -108,8 +90,7 @@ fn bare_run_skips_opt_in_and_named_run_takes_exactly_what_it_named() {
     );
 }
 
-/// `--arms` is the one axis shared with the driver rows; a typo must
-/// not silently widen or narrow a run.
+/// `--arms` is the one axis shared with the driver rows; a typo must not silently widen or narrow a run.
 #[test]
 fn arms_parses_and_defaults_to_both() {
     use crate::bench::Arms;
@@ -119,9 +100,7 @@ fn arms_parses_and_defaults_to_both() {
     assert!(Cli::try_parse_from(["palantir-bench", "--arms", "nope"]).is_err());
 }
 
-/// The fixture knobs were environment variables read deep inside the
-/// frame bench; they are flags now, so the parse is the only place
-/// a malformed one can be caught.
+/// The fixture knobs are flags, so the parse is the only place a malformed one is caught.
 #[test]
 fn fixture_knobs_parse_and_reject_junk() {
     assert_eq!(parse(&[]).fixture().size, None);
@@ -130,8 +109,7 @@ fn fixture_knobs_parse_and_reject_junk() {
     assert_eq!(fx.size, Some(glam::UVec2::new(1920, 1080)));
     assert_eq!(fx.scale, Some(1.5));
     assert_eq!(fx.machine, Some("rig"));
-    // `X` is accepted as the separator; a missing or non-numeric
-    // axis is a clap error, not a panic mid-bench.
+    // `X` is accepted as the separator; a missing or non-numeric axis is a clap error, not a mid-bench panic.
     assert_eq!(
         parse(&["--size", "800X600"]).fixture().size,
         Some(glam::UVec2::new(800, 600)),
@@ -150,9 +128,7 @@ fn fixture_knobs_parse_and_reject_junk() {
     }
 }
 
-/// Cargo passes `--bench` to every `harness = false` target, and a
-/// bare filter is criterion's own positional. Rejecting either would
-/// break `cargo bench` outright.
+/// Cargo passes `--bench` to every `harness = false` target and a bare filter is criterion's positional; rejecting either breaks `cargo bench`.
 #[test]
 fn accepts_cargos_bench_flag_and_a_positional_filter() {
     assert!(parse(&["--bench"]).drivers.is_empty());

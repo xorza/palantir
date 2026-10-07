@@ -1,16 +1,7 @@
-//! GPU side of native parametric strokes — cubic beziers, circular arcs,
-//! polyline segments and the chrome at their joints (see
-//! `CurveInstance::kind`). One `draw_indexed` per scissor
-//! group covers every `CurveInstance` in the group's `GroupBatch` —
-//! an immutable index buffer subdivides each instance into
-//! [`SEGMENTS_PER_INSTANCE`]
-//! chords while reusing 34 cross-section vertices across 96 indices;
-//! the vertex shader offsets the strip perpendicular to the tangent
-//! for stroking + AA.
-//!
-//! Same stencil-variant pattern as [`MeshPipeline`] /
-//! [`ImagePipeline`]: rounded-clip frames use a stencil-test pipeline,
-//! plain frames use the unconditional one.
+//! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, joint chrome; see
+//! `CurveInstance::kind`). One `draw_indexed` per scissor group covers its `GroupBatch`; an immutable index
+//! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords. Same stencil-variant pattern as
+//! [`MeshPipeline`] / [`ImagePipeline`].
 //!
 //! [`MeshPipeline`]: crate::gpu::pipeline::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::gpu::pipeline::image_pipeline::ImagePipeline
@@ -59,17 +50,12 @@ const _: () = {
 pub(crate) struct CurvePipeline {
     instance_buffer: DynamicBuffer<CurveInstance>,
     index_buffer: wgpu::Buffer,
-    /// Curve shader module — format-independent; [`Self::build_variants`]
-    /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl CurvePipeline {
-    /// Format-independent curve resources; the pipelines are built by
-    /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
         let shader = ShaderBody::Curve.module(device);
 
@@ -85,8 +71,7 @@ impl CurvePipeline {
             instance_buffer,
             index_buffer,
             shader,
-            // Gradient at group 0 — viewport rides the shared immediate
-            // region, no bind-group slot needed for it.
+            // Gradient at group 0; the viewport rides the shared immediate region.
             pipeline_layout: PipelineRecipe::pipeline_layout(
                 device,
                 "palantir.curve.pl",
@@ -103,9 +88,6 @@ impl CurvePipeline {
         }
     }
 
-    /// Build the base + stencil-test color pipelines against `format`;
-    /// the layout and the instance buffer are format-independent. Called
-    /// by `FormatPipelines` per format.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
@@ -132,10 +114,7 @@ impl CurvePipeline {
         self.instance_buffer.upload_instances(ctx, instances);
     }
 
-    /// Bind once per pass, before issuing one [`Self::draw`] per
-    /// curve group batch. Viewport rides the shared immediate region;
-    /// `gradient_bg` is the group-0 handle owned by `GpuGradientAtlas`
-    /// (one allocation, used by both the quad and curve pipelines).
+    /// Binds once per pass, before one [`Self::draw`] per curve group batch.
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -149,9 +128,6 @@ impl CurvePipeline {
         pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
     }
 
-    /// Issue one indexed instanced draw covering every instance in the
-    /// span. This is the "one draw call per scissor group" terminus —
-    /// the entire curve group batch lands as a single GPU draw call.
     pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
         if instances.len == 0 {
             return;
@@ -175,11 +151,8 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_arra
     11 => Uint32,
 ];
 
-// Compile-time guard: attribute offsets must match the `CurveInstance`
-// fields they feed. `array_stride == size_of` alone wouldn't catch a
-// same-size field reorder or a format/field size mismatch; `offset_of!`
-// does. Attr 4 (`Float32x2`) spans the adjacent `t0`,`t1` pair — anchored
-// at `t0`, bracketed by the `width` check that follows.
+// Attribute offsets must match the `CurveInstance` fields they feed (`array_stride == size_of` misses
+// a same-size reorder); attr 4 (`Float32x2`) spans the adjacent `t0`,`t1`.
 const _: () = {
     use std::mem::offset_of;
     assert!(CURVE_INSTANCE_ATTRS[0].offset == offset_of!(CurveInstance, p0) as u64);

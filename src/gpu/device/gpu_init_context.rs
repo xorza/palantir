@@ -2,27 +2,15 @@
 
 use crate::text::shaper::TextShaper;
 
-/// Handed to [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init). Carries what's needed to build
-/// format-dependent pipelines, and the window's own text shaper.
+/// Handed once to [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init).
 #[derive(Debug)]
 pub struct GpuInitContext<'a> {
     /// The device to create pipelines and resources against.
     pub device: &'a wgpu::Device,
-    /// The off-screen color target's format (sRGB `Rgba8UnormSrgb`). Match
-    /// it on your render pipeline's color target.
+    /// The off-screen color target's format (`Rgba8UnormSrgb`); match it in your pipeline.
     pub target_format: wgpu::TextureFormat,
-    /// The shaper the rest of the window draws its text with.
+    /// The window's text shaper, so a view's own text agrees with the UI around it.
     ///
-    /// A view drawing text of its own — a label pinned to a point in a scene, a
-    /// dimension on a drawing — asks this for glyph placements and bitmaps
-    /// through [`TextShaper::glyphs`], and packs them into an atlas and a
-    /// pipeline of its own. Palantir renders text for the widgets it owns and
-    /// cannot reach inside a `GpuView`, so the alternative to sharing this is a
-    /// second font stack in the same process: another scan of the platform's
-    /// fonts, and a view whose labels silently disagree with the UI around them.
-    ///
-    /// Handed over at init because it is a handle worth keeping — clone it and
-    /// hold it. Taking a lease is per-batch work and belongs in
-    /// [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint), where the raster scale is also known.
+    /// Clone and keep it; take a lease per batch in [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint).
     pub text: &'a TextShaper,
 }

@@ -4,16 +4,12 @@ use crate::common::id_counter::IdCounter;
 
 /// Identity of one record pass's text arena.
 ///
-/// Drawn from a process-wide counter, so it separates passes *and*
-/// windows with one comparison — a handle from another window can no
-/// more match than one from another frame, and neither needs a second
-/// field to say so.
+/// From a process-wide counter, so one comparison separates passes and windows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct TextEpoch(u64);
 
 impl TextEpoch {
-    /// The next unused epoch. Taken once per record-pass reset, so the
-    /// counter is nowhere near a hot path.
+    /// The next unused epoch; taken once per record-pass reset.
     pub(crate) fn reserve() -> Self {
         static NEXT: IdCounter = IdCounter::new();
         Self(NEXT.reserve())

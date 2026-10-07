@@ -1,5 +1,4 @@
-//! The radial gradient's axis: colour runs outward from a centre, with a
-//! radius per axis so an ellipse is expressible.
+//! The radial gradient's axis: colour runs outward from a centre, with a radius per axis for ellipses.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -11,12 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
 
-/// Geometry of a radial gradient: colour runs outward from `center`
-/// along the elliptical radius `radius`. Both are object-space 0..1
-/// coordinates (origin top-left, (1,1) bottom-right of the brush owner).
-/// The shader projects each fragment to
-/// `t = length((local01 - center) / radius)`, applies `Spread`, and
-/// samples the LUT.
+/// Geometry of a radial gradient: colour runs outward from `center` along the elliptical `radius`, both in object-space 0..1 (origin top-left). The shader projects to `t = length((local01 - center) / radius)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.
@@ -34,12 +28,10 @@ pub type RadialGradient = Gradient<RadialGeometry>;
 pub type RadialGradientBuilder = GradientBuilder<RadialGeometry>;
 
 impl Geometry for RadialGeometry {
-    /// Radial fills are usually soft glows, where perceptual smoothness
-    /// matters most.
+    /// Radial fills are usually soft glows, where perceptual smoothness matters most.
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
-    /// The shader reads these as `(cx, cy, rx, ry)` on the radial
-    /// branch.
+    /// The shader reads these as `(cx, cy, rx, ry)` on the radial branch.
     fn axis_lanes(&self) -> [f32; 4] {
         [self.center.x, self.center.y, self.radius.x, self.radius.y]
     }
@@ -65,10 +57,7 @@ impl RadialGradient {
         Self::from_stops(RadialGeometry { center, radius }, stops)
     }
 
-    /// 2-stop centred shorthand — `center = (0.5, 0.5)`,
-    /// `radius = (0.5, 0.5)` (covers the bounding circle inscribed in
-    /// the unit square). `c0` at offset 0 (centre), `c1` at offset 1
-    /// (edge).
+    /// 2-stop centred shorthand: `center = (0.5, 0.5)`, `radius = (0.5, 0.5)` (the inscribed circle); `c0` at the centre, `c1` at the edge.
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

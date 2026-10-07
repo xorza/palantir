@@ -32,7 +32,7 @@ fn frame_paints_a_single_rounded_rect() {
             })
             .inner
     });
-    // Chrome lives in `Tree::chrome_table`, not in the shape stream.
+    // Chrome lives in `Tree::chrome_table`, not the shape stream.
     assert!(
         h.ui.tree(Layer::Main)
             .shapes_of(frame_node)

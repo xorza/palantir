@@ -1,5 +1,4 @@
-//! Chained, allocation-free authoring of a gradient — stops pushed inline
-//! into the value they end up in.
+//! Chained, allocation-free gradient authoring.
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::{GradientStopsBuilder, Stop};
@@ -8,15 +7,7 @@ use crate::primitives::paint::brush::gradient::{
 };
 use crate::primitives::paint::color::RgbaF32;
 
-/// Chainable, allocation-free authoring builder for [`Gradient`].
-///
-/// Add two through eight stops. A ninth [`Self::stop`] panics immediately;
-/// [`Self::build`] and implicit conversions panic if fewer than two were
-/// added.
-///
-/// Its setters are bare (`spread`, `interpolation`), as a builder's are;
-/// the finished [`Gradient`] spells the same settings `with_spread` and
-/// `with_interpolation`, as a value does.
+/// Chainable, allocation-free builder for [`Gradient`]: two through eight stops (a ninth [`Self::stop`] panics, as do [`Self::build`] and conversions with fewer than two). Setters are bare; the finished [`Gradient`] spells them `with_*`.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct GradientBuilder<G> {
@@ -43,15 +34,13 @@ impl<G: GradientGeometry> GradientBuilder<G> {
         self
     }
 
-    /// Override how the gradient repeats outside the 0..1
-    /// parametric range. Builder-style.
+    /// How the gradient repeats outside 0..1.
     pub const fn spread(mut self, spread: Spread) -> Self {
         self.spread = spread;
         self
     }
 
-    /// Override the colour space interpolation runs in.
-    /// Builder-style.
+    /// The colour space interpolation runs in.
     pub const fn interpolation(mut self, interpolation: Interpolation) -> Self {
         self.interpolation = interpolation;
         self

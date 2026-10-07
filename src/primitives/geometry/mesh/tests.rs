@@ -34,11 +34,7 @@ fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
     });
 }
 
-/// An index past the last vertex is refused before either push, so a
-/// rejected triangle leaves no partial run behind.
-///
-/// Debug-only: this is per item of a caller's build loop, and a mesh of
-/// ten thousand triangles pays it ten thousand times.
+/// An index past the last vertex is refused before either push, leaving no partial run. Debug-only: it runs per item of a build loop.
 #[cfg(debug_assertions)]
 #[test]
 fn triangle_validates_each_index_before_mutating() {
@@ -103,16 +99,11 @@ fn triangle_indices_offset_in_append() {
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
-    // The second triangle rebases to 3..=5, so the largest index is 5.
     assert_eq!(a.max_index, 5);
     assert!(!a.is_noop());
 }
 
-/// An index past the last vertex is what `triangle`'s debug assert
-/// catches. A release build skips that assert and pushes it, so the
-/// state is built here by hand: the screen then drops the mesh rather
-/// than drawing another mesh's vertices. The in-range control row is the
-/// same mesh with the last index at 2.
+/// An out-of-range index trips `triangle`'s debug assert; release pushes it, so the state is built by hand and the screen must drop the mesh. The control row has the last index at 2.
 #[test]
 fn an_index_past_the_last_vertex_is_a_noop() {
     for (last, noop) in [(2, false), (3, true)] {
@@ -185,7 +176,6 @@ fn filled_triangle_precaches_bbox() {
         Vec2::new(0.0, 7.0),
         RgbaF32::default(),
     );
-    // No `bbox()` call yet — must already be cached.
     let cached = m
         .cached_bbox
         .get()
@@ -232,12 +222,7 @@ fn bbox_spans_vertex_extent() {
     assert_eq!(b.size.h, 5.0);
 }
 
-/// Which caches each mutation drops, from a mesh with both primed. A
-/// vertex, an append and a clear move vertices, so both go. A triangle
-/// only adds indices: the hash goes and the bbox stays. Appending an
-/// empty mesh changes nothing and keeps both. Every recomputed value is
-/// the fresh one — the hash differs exactly when its cache dropped. A
-/// clone carries both caches with it.
+/// Which caches each mutation drops, from a mesh with both primed: vertex, append and clear drop both; a triangle drops only the hash; appending an empty mesh and cloning keep both.
 #[test]
 fn mutations_drop_exactly_the_caches_they_stale() {
     type Mutate = fn(&mut Mesh, &Mesh);

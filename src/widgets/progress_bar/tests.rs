@@ -7,9 +7,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::progress_bar::ProgressBar;
 use glam::UVec2;
 
-/// Explicit `.size(...)` wins over the widget's `Fill × theme.thickness`
-/// default, and an untouched bar still gets that default (400-wide FILL
-/// column → 400 × theme thickness 6).
+/// Explicit `.size(...)` wins over the `Fill × theme.thickness` default, which an untouched bar still gets (400-wide FILL column → 400 × 6).
 #[test]
 fn explicit_size_overrides_fill_default() {
     let trio = SizeTrio::of((Sizing::fixed(80.0), Sizing::fixed(10.0)), |ui, size| {
@@ -29,11 +27,7 @@ fn explicit_size_overrides_fill_default() {
     );
 }
 
-/// Both endpoints collapse one segment to a zero-extent `Fixed` rather
-/// than a zero-weight `Fill`, and a fraction that names no share reads as
-/// empty instead of reaching `Sizing::fill`'s finite assert —
-/// `ProgressBar::new(done / total)` with `total == 0` is the case app
-/// code writes without thinking.
+/// Both endpoints collapse one segment to a zero-extent `Fixed` rather than a zero-weight `Fill`, and a fraction naming no share reads as empty instead of tripping `Sizing::fill`'s finite assert (`ProgressBar::new(done / total)` with `total == 0`).
 #[test]
 fn endpoint_segments_collapse_without_invalid_fill_weights() {
     for (fraction, expected) in [

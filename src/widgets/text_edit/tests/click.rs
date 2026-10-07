@@ -18,12 +18,7 @@ fn typing_inserts_text_when_focused() {
     assert_eq!(buf, "hi");
 }
 
-/// A field types what the press *produced*, not the key it names.
-///
-/// One press can resolve to two characters — a Windows dead-key
-/// sequence the platform could not compose reports `^e` — and a layout
-/// can put a character on a key whose name says nothing about it. The
-/// key stays what a chord matches on, and the text is what lands.
+/// A field types what the press produced, not the key it names.
 #[test]
 fn a_field_types_the_text_a_press_produced() {
     let mut h = UiHarness::with_text(SMALL);
@@ -34,8 +29,6 @@ fn a_field_types_the_text_a_press_produced() {
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
 
-    // A dead-key fallback: two characters from one press, and the key
-    // that carried them names only the first.
     h.on_input(InputEvent::KeyDown {
         key: Key::Char('^'),
         repeat: false,
@@ -45,7 +38,6 @@ fn a_field_types_the_text_a_press_produced() {
     h.frame(editor_only(&mut buf));
     assert_eq!(buf, "^e", "both characters land, from the one press");
 
-    // A composed character on a key the vocabulary has no name for.
     h.on_input(InputEvent::KeyDown {
         key: Key::Other,
         repeat: false,
@@ -56,9 +48,7 @@ fn a_field_types_the_text_a_press_produced() {
     assert_eq!(buf, "^eé", "an unnamed key still types what it produced");
 }
 
-/// A command chord types nothing, whatever text the platform reports
-/// under it — macOS gives Cmd+A the text `"a"`, and a field that took it
-/// would type an `a` on every select-all.
+/// A command chord types nothing, though macOS reports Cmd+A as text `"a"`.
 #[test]
 fn a_command_chord_types_nothing_it_reports() {
     let mut h = UiHarness::with_text(SMALL);
@@ -132,8 +122,7 @@ fn escape_blurs_focus() {
 
 #[test]
 fn caret_clamps_after_external_buffer_shrink() {
-    // WindowDriver can mutate buffer between frames; if new len < cached caret,
-    // `show()` must clamp at the top of the next frame instead of OOB.
+    // The buffer can shrink between frames; `show()` must clamp a stale caret.
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::from("hello");
 
@@ -166,8 +155,6 @@ fn typed_text_inserts_at_caret_when_focused() {
 
 #[test]
 fn pointer_state_respects_pointer_left() {
-    // Sanity: leaving the surface clears the click hit-test path so a
-    // subsequent KeyDown to a focused TextEdit still works.
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
@@ -182,7 +169,6 @@ fn pointer_state_respects_pointer_left() {
 
 #[test]
 fn pressed_button_does_not_route_to_textedit_under_default_policy() {
-    // Default ClearOnMiss: clicking a non-focusable Button drops focus.
     let mut h = UiHarness::with_text(WIDE);
     let mut buf = String::new();
 
@@ -221,7 +207,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
 
 #[test]
 fn pressed_button_pointer_jitter_does_not_steal_caret() {
-    // Regression: pointer movement while NOT pressed shouldn't reset caret.
+    // Pointer movement while not pressed must not reset the caret.
     let mut h = UiHarness::with_text(WIDE);
     let mut buf = String::from("ab");
 
@@ -239,8 +225,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
 
 #[test]
 fn click_lands_caret_at_pressed_position() {
-    // Mono fallback: 8 px per char @ 16 px font. With theme's default
-    // 8 px left padding, x=32 → caret=3.
+    // Mono fallback: 8 px per char plus the default 8 px left padding, so x=32 is caret 3.
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
@@ -257,8 +242,6 @@ fn click_lands_caret_at_pressed_position() {
 
 #[test]
 fn click_uses_overridden_padding() {
-    // `.padding(...)` shifts both rendering and click hit-test
-    // consistently. Override 24 px left → x=32 hits offset 1.
     let pad = Some(Spacing::xy(24.0, 6.0));
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
@@ -285,23 +268,15 @@ fn drag_select_continues_past_editor_bounds() {
         });
     }
 
-    // Regression: while the button is held, dragging the pointer outside
-    // the editor's rect must keep extending the selection (caret rides the
-    // clamped hit) and must NOT drop the drag anchor. Before the fix the
-    // drag-select gated on `pressed` (hover-gated), which flipped false the
-    // instant the pointer left the rect — freezing selection, clearing the
-    // anchor, and (on re-entry) re-latching as a fresh press that wiped the
-    // selection. Now it gates on the capture-based, rect-independent `held`.
-    // Mono fallback (8 px/char) for predictable hit math.
+    // While held, dragging outside the rect keeps extending the selection and
+    // the anchor; it gates on capture-based `held`, not hover-gated `pressed`.
     let ed_id = WidgetId::from_hash("drag-ed");
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world"); // 11 bytes
 
-    // Record once so the editor's rect is known to the next frame's hit-test.
     h.frame(|ui| body(ui, &mut buf));
 
-    // Press inside: caret lands mid-text and the anchor latches there.
     h.press_in(ed_id, Vec2::new(22.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     let anchor = h.state::<TextEditState>(ed_id).edit.caret;
@@ -318,8 +293,6 @@ fn drag_select_continues_past_editor_bounds() {
         );
     }
 
-    // Drag far RIGHT, way past the editor's right edge. Selection extends
-    // to end-of-text; the anchor is preserved.
     h.drag_to(Vec2::new(4000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
@@ -341,8 +314,6 @@ fn drag_select_continues_past_editor_bounds() {
         );
     }
 
-    // Drag far LEFT, past the left edge. Caret clamps to 0; the anchor is
-    // still latched so the selection just flips direction.
     h.drag_to(Vec2::new(-2000.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     {
@@ -355,8 +326,6 @@ fn drag_select_continues_past_editor_bounds() {
         );
     }
 
-    // Pointer leaves the surface entirely mid-drag: no position this frame,
-    // but the gesture is still live — anchor and selection must persist.
     h.pointer_left();
     h.frame(|ui| body(ui, &mut buf));
     {
@@ -373,7 +342,6 @@ fn drag_select_continues_past_editor_bounds() {
         );
     }
 
-    // Release ends the gesture: the anchor drops, the selection persists.
     h.release();
     h.frame(|ui| body(ui, &mut buf));
     {
@@ -428,9 +396,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 
 #[test]
 fn select_all_on_focus_gates_on_the_flag() {
-    // Focus handed over programmatically (no pointer press) — the DragValue
-    // click-to-edit handoff. With the flag the buffer is selected so the first
-    // keystroke replaces it; without it, focus leaves the selection untouched.
+    // Programmatic focus (DragValue click-to-edit): the flag selects the buffer.
     let mut h = UiHarness::with_text(WIDE);
     let mut on = String::from("1.985");
     let mut off = String::from("42.0");
@@ -481,9 +447,7 @@ fn select_all_on_focus_gates_on_the_flag() {
 fn caret_click_is_scale_invariant_under_zoom() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
 
-    // Clicking the same fraction of the field must land the caret on the same
-    // glyph whether the canvas is zoomed or not: the click arrives in surface
-    // (post-transform) space and must be de-scaled before hit-testing glyphs.
+    // The same field fraction must hit the same glyph at any zoom; the click arrives post-transform.
     fn caret_at_scale(scale: f32) -> usize {
         let mut h = UiHarness::with_text(WIDE);
         let mut buf = String::from("abcdefghij");
@@ -501,8 +465,6 @@ fn caret_click_is_scale_invariant_under_zoom() {
                 });
         };
         h.frame(|ui| render(ui, &mut buf));
-        // 40% into the 200 × 40 field, mid-height — the same logical point
-        // at any zoom, so the resulting caret byte must match.
         h.press_in(id, Vec2::new(80.0, 20.0));
         h.frame(|ui| render(ui, &mut buf));
         h.state::<TextEditState>(id).edit.caret
@@ -525,9 +487,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
     );
 }
 
-/// Focus and hover each answer "within" by the same ancestry walk, and
-/// apart: the pointer leaving the subtree ends the hover and keeps the
-/// focus.
+/// Focus and hover each answer "within" by the same ancestry walk; the pointer leaving ends hover but keeps focus.
 #[test]
 fn focus_and_hover_within_follow_their_targets_ancestry() {
     let mut h = UiHarness::with_text(SMALL);
@@ -558,19 +518,14 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
 
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(editor));
-    // The focused editor is within itself and its ancestor, not
-    // within a sibling or an id that was never recorded.
     assert!(h.is_focus_within(editor), "self-inclusive");
     assert!(h.is_focus_within(holder));
     assert!(!h.is_focus_within(bystander));
     assert!(!h.is_focus_within(WidgetId::from_hash("unrecorded")));
-    // The click left the pointer on the editor, its hover target.
     assert!(h.ui.is_hover_within(editor), "self-inclusive");
     assert!(h.ui.is_hover_within(holder));
     assert!(!h.ui.is_hover_within(bystander));
 
-    // The bystander sits at x 100..140 beside the 100 px editor, and
-    // senses nothing, so the pointer over it hovers no widget.
     h.move_to(Vec2::new(120.0, 20.0));
     h.frame(&mut record);
     assert!(!h.ui.is_hover_within(holder), "the pointer left the holder");
@@ -581,9 +536,7 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
     assert!(h.is_focus_within(holder), "focus stays where it was");
 }
 
-/// A tap — press and release fed together, as a touchpad's tap-to-click
-/// does — places the caret. The press lands a frame before its release
-/// (`InputQueue`), and the press frame is where the field reads the hit.
+/// A tap (press and release fed together) places the caret; the press lands a frame before its release.
 #[test]
 fn a_tap_places_the_caret() {
     let mut h = UiHarness::new(NARROW);
@@ -595,8 +548,7 @@ fn a_tap_places_the_caret() {
     h.frame(editor_at(&mut buf, None));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 5);
 
-    // Mono metric, 8 px per char from the inner left edge: the tap at
-    // x = inner.min + 14 is 1.75 glyphs in, nearest boundary 2 → caret 2.
+    // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
     let rect = h.arranged(ed_id);
     let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
     let mid = rect.size.h * 0.5;
@@ -604,8 +556,7 @@ fn a_tap_places_the_caret() {
     h.frame(editor_at(&mut buf, None));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
 
-    // Shift held, a tap at x = inner.min + 30 — 3.75 glyphs, boundary 4 —
-    // extends from the caret at 2 instead of moving it: selection 2..4.
+    // Shift held, a tap at inner.min + 30 extends from 2: selection 2..4.
     h.set_modifiers(Modifiers::SHIFT);
     h.click_in(ed_id, Vec2::new(inner_left + 30.0, mid));
     h.frame(editor_at(&mut buf, None));

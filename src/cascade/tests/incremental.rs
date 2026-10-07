@@ -236,7 +236,6 @@ fn incremental_scroll_matches_full() {
     let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(build);
 
-    // A scroll moves the thumb and the content, never the structure.
     assert_eq!(
         h.engines.cascade.counters.full_rebuilds(),
         rebuilds,
@@ -245,16 +244,9 @@ fn incremental_scroll_matches_full() {
     assert_cascades_match_full(&h.ui, "scroll");
 }
 
-/// Pin: a widget that adds a shape without moving goes straight to the
-/// full rebuild instead of attempting an incremental walk first.
-///
-/// `cascade_static` deliberately excludes chrome and direct shapes, so
-/// paint-only edits can stay on the incremental path — but the
-/// incremental walk repairs a node's paint rows *in place* and can only
-/// bail once a row count changes, which it discovers mid-tree, after
-/// having duplicated part of the work the rebuild then redoes. Both
-/// paths end in the same cascade, so only the counter can tell them
-/// apart.
+/// A widget that adds a shape without moving goes straight to the full
+/// rebuild: the incremental walk only discovers a changed row count mid-tree,
+/// after duplicating work. Only the counter tells the paths apart.
 #[test]
 fn adding_a_shape_skips_the_doomed_incremental_walk() {
     fn build(ui: &mut Ui, extra_shape: bool) {
@@ -264,8 +256,6 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0)).fill(RgbaF32::WHITE));
                 if extra_shape {
-                    // Same layout, same rects, one more paint row — the
-                    // caret / focus-ring / hover-highlight shape.
                     ui.add_shape(
                         Shape::rect(Rect::new(20.0, 0.0, 10.0, 10.0)).fill(RgbaF32::WHITE),
                     );
@@ -284,8 +274,6 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
         "a row-count change must be caught by `can_update`, not discovered mid-walk",
     );
 
-    // And the cascade it produced is still right: the host now owns two
-    // shape rows where it owned one.
     let rows = h.ui.cascade().layers[Layer::Main]
         .paint_arena
         .node_spans
@@ -299,20 +287,9 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
     );
 }
 
-/// Pin: every cascade input moves the key, and each takes the path its
-/// kind calls for.
-///
-/// One `CascadeKey` decides two reuses: an equal key skips the run and
-/// keeps last frame's `Cascade` verbatim, and a key equal in structure
-/// refreshes geometry and paint in place over the retained structural
-/// tables. Both fail silently: the skip by serving a stale cascade, the
-/// refresh by keeping `entries` / `hits` / `scopes` / `tab_stops` / `by_id`
-/// that no longer describe the frame.
-///
-/// So for each input, assert it moves the key, takes the path named, and
-/// ends in the cascade a cold rebuild makes. The control case at the end
-/// is what stops this passing vacuously — an unchanged frame must move
-/// nothing.
+/// Every cascade input moves the key and takes the path its kind calls for. An
+/// equal key keeps last frame's `Cascade`; a key equal in structure refreshes in
+/// place. Both fail silently. The control case keeps this from passing vacuously.
 #[test]
 fn every_cascade_input_moves_the_key_and_takes_its_path() {
     #[derive(Clone, Copy, Debug)]
@@ -355,8 +332,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         /// Only geometry or paint changed: rows are rewritten in place.
         Refresh,
     }
-    /// `(label, the path it must take, apply the mutation to a harness
-    /// already showing the base scene)`.
+    /// `(label, the path it must take, mutation applied to the base scene)`.
     type Mutation = (&'static str, Path, fn(&mut UiHarness));
     const RESIZED: Scene = Scene {
         size: 120.0,
@@ -375,28 +351,22 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         ..BASE
     };
     let mutations: &[Mutation] = &[
-        // Authoring that moves rects: the rows move, the tables hold.
         ("resized child", Path::Refresh, |h| {
             h.frame(|ui| scene(ui, RESIZED));
         }),
-        // An ancestor transform moves no rect, only what inherits it.
         ("root transform", Path::Refresh, |h| {
             h.frame(|ui| scene(ui, TRANSFORMED));
         }),
-        // Surface: reaches the key through the arranged rects.
         ("surface resize", Path::Refresh, |h| {
             h.resize(UVec2::new(260, 200));
             h.frame(|ui| scene(ui, BASE));
         }),
-        // A disabled widget leaves the Tab order and the focusable hits.
         ("disabled", Path::Rebuild, |h| {
             h.frame(|ui| scene(ui, DISABLED));
         }),
-        // The Tab order key lives on the stop row.
         ("tab index", Path::Rebuild, |h| {
             h.frame(|ui| scene(ui, TAB_INDEXED));
         }),
-        // A face loaded between frames: moves no rect and no authoring.
         ("font load", Path::Rebuild, |h| {
             h.ui.load_font(INTER).expect("the bundled Inter loads");
             h.frame(|ui| scene(ui, BASE));
@@ -435,8 +405,6 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         assert_cascades_match_full(&h.ui, label);
     }
 
-    // Control: an identical frame must move neither gate, or the
-    // assertions above would hold for any frame at all.
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, BASE));
     let base_key = h.ui.cascade().key;
@@ -455,18 +423,12 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
     );
 }
 
-/// Pin: a refresh recomputes exactly the nodes whose inputs moved.
-///
-/// Two sibling canvases of three blocks each under a fixed root, which
-/// sits under the main layer's synthetic viewport root:
-///
-/// - Transforming `a` moves no rect, so the walk skips clean subtrees.
-///   It recomputes the viewport, the root and `a` (their rollups
-///   changed) and the three blocks under `a` (their inherited transform
-///   changed): 6. All of `b` is skipped.
-/// - Growing `a0` moves a rect, so the walk visits every node, but
-///   recomputes only the viewport, the root and `a` (rollups) and `a0`
-///   (rect): 4. `a1`, `a2` and all of `b` keep their rows.
+/// A refresh recomputes exactly the nodes whose inputs moved. Two sibling
+/// canvases of three blocks under a fixed root:
+/// - Transforming `a` moves no rect: viewport, root, `a` and its 3 blocks
+///   recompute (6); `b` is skipped.
+/// - Growing `a0` moves a rect: all are visited but only viewport, root, `a`
+///   and `a0` recompute (4).
 #[test]
 fn refresh_recomputes_only_what_moved() {
     use crate::widgets::block::Block;
@@ -547,10 +509,6 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     );
     assert_eq!(ui.cascade().key, full.key, "{label}: key");
 
-    // Whole-row compares: `entries` / `hits` are AoS and `PartialEq`,
-    // so this covers every field and keeps covering any field added
-    // later — the previous column-by-column form silently skipped new
-    // ones.
     assert_eq!(ui.cascade().entries, full.entries, "{label}");
     assert_eq!(ui.cascade().hits, full.hits, "{label}");
 

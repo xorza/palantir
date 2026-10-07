@@ -10,21 +10,9 @@ use crate::widgets::radio::RadioButton;
 use crate::widgets::switch::Switch;
 use glam::{UVec2, Vec2};
 
-/// All three toggles resolve their box through `WidgetTheme::plan`,
-/// so [`crate::ToggleTheme`]'s `padding` / `margin` reach the row and
-/// an explicit builder value still wins — the same contract `Button`
-/// and `TextEdit` hold to.
+/// All three toggles resolve their box through `WidgetTheme::plan`: `ToggleTheme` `padding`/`margin` reach the row and an explicit builder value wins.
 ///
-/// One test over all three because they are now one code path: a
-/// regression that reached only `Switch` would mean `Switch` had
-/// stopped sharing it.
-///
-/// Each toggle gets its **own** spacing, so this also pins which slot
-/// each one reads. `toggle_row` is shared but the slots are not —
-/// restyling `checkbox` must leave `radio` and `switch` alone — and the
-/// three name their slot exactly once, at their own `style` use.
-/// Writing one value to all three slots could not tell them apart, so a
-/// toggle reading its neighbour's slot passed.
+/// Each toggle gets its own spacing, pinning which slot each reads (one value in all three could not tell a mix-up).
 #[test]
 fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
     #[track_caller]
@@ -38,9 +26,7 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         assert_eq!(inherited.margin, margin, "{label}: theme margin");
     }
 
-    // Asymmetric, and different from each other, so neither a
-    // padding/margin swap nor an axis swap can read as a pass — and
-    // distinct per toggle, so nor can a slot mix-up.
+    // Asymmetric and distinct per toggle, so no padding/margin, axis or slot swap passes.
     let spacing = |n: f32| (Spacing::xy(n, n + 2.0), Spacing::xy(n + 4.0, n + 6.0));
     let (cb_padding, cb_margin) = spacing(7.0);
     let (rb_padding, rb_margin) = spacing(23.0);
@@ -122,10 +108,7 @@ enum Toggle {
     Switch,
 }
 
-/// Record one `kind` bound to `value`, at the origin, and report
-/// `(clicked, changed)` — what its response says this frame. Every toggle
-/// reports `changed` exactly when the bound value moved, and commits it at
-/// once.
+/// Record one `kind` bound to `value` at the origin; report `(clicked, changed)`.
 fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) -> [bool; 2] {
     let id = WidgetId::from_hash("toggle");
     let before = *value;
@@ -152,11 +135,7 @@ fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) ->
     [clicked, changed]
 }
 
-/// Two clicks on each toggle, enabled and disabled. A checkbox and a
-/// switch flip on every click, so `clicked()` is their change edge: true
-/// exactly on the frames the value moved. A radio latches, so its second
-/// click is `clicked()` without `changed`. A disabled toggle takes the
-/// click on the same spot and moves nothing.
+/// Two clicks per toggle, enabled and disabled. Checkbox and switch flip every click; radio latches, so its second click is `clicked()` without `changed`. A disabled toggle moves nothing.
 #[test]
 fn toggles_answer_clicks_and_ignore_them_disabled() {
     let at = Vec2::new(8.0, 8.0);
@@ -197,9 +176,7 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
     }
 }
 
-/// Space activates a focused toggle as a click does: a checkbox and a
-/// switch flip, a radio selects, and each reports a committed change. An
-/// unfocused toggle ignores the key.
+/// Space activates a focused toggle like a click and commits; an unfocused one ignores it.
 #[test]
 fn space_activates_a_focused_toggle() {
     use crate::input::keyboard::key::Key;

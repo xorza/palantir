@@ -1,6 +1,4 @@
-//! Axis enum + axis-symmetric helpers used by stack drivers and the
-//! intrinsic query. Lifted out of `stack` so non-stack code (intrinsics,
-//! cache keys) can refer to it.
+//! Axis enum and axis-symmetric helpers for stack drivers, intrinsics and cache keys.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -8,8 +6,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use glam::Vec2;
 
-/// Which axis a layout distributes children along (or which axis a query
-/// targets). `X` = horizontal, `Y` = vertical.
+/// Which axis a layout distributes children along, or a query targets. `X` horizontal, `Y` vertical.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 #[repr(u8)]
 pub enum Axis {
@@ -25,9 +22,7 @@ const _: () = assert!(
 );
 
 impl Axis {
-    /// The bit a packed field spends on the axis. Its inverse is
-    /// [`Self::from_bit`]; the encoding is written down here alone, so a
-    /// packed field cannot spell it a second way.
+    /// The bit a packed field spends on the axis; inverse [`Self::from_bit`]. The encoding lives here alone.
     #[inline]
     pub(super) const fn bit(self) -> u16 {
         self as u16
@@ -90,19 +85,14 @@ impl Axis {
             Axis::Y => Size::new(cross, main),
         }
     }
-    /// Build a `Spacing` whose main-axis sides carry `main` and whose
-    /// cross-axis sides carry `cross` — the inverse of [`Self::spacing`],
-    /// and the shape an axis-generic inset wants (a `Splitter`'s grab bar
-    /// overhangs its seam along the split axis only).
+    /// A `Spacing` with `main` on main-axis sides and `cross` on cross-axis sides; inverse of [`Self::spacing`] (a `Splitter`'s grab bar overhangs along the split axis only).
     pub(crate) fn compose_spacing(self, main: f32, cross: f32) -> Spacing {
         match self {
             Axis::X => Spacing::new(main, cross, main, cross),
             Axis::Y => Spacing::new(cross, main, cross, main),
         }
     }
-    /// Order a main/cross pair the way the grid APIs take them:
-    /// `[rows, cols]`. `Axis::X` distributes along columns, so its main
-    /// list *is* the column list; `Axis::Y` distributes along rows.
+    /// Order a main/cross pair as grid APIs take them, `[rows, cols]`; `Axis::X` distributes along columns, so its main list is the column list.
     pub(crate) const fn rows_cols<T>(self, main: T, cross: T) -> [T; 2] {
         match self {
             Axis::X => [cross, main],
@@ -137,8 +127,7 @@ pub(crate) mod internals {
     use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 
     impl Axis {
-        /// Build a `SizeSpec` from main- and cross-axis sizings — the
-        /// [`Axis::compose_size`] of a sizing.
+        /// Build a `SizeSpec` from main- and cross-axis sizings; the [`Axis::compose_size`] of a sizing.
         pub(crate) const fn compose_sizing(self, main: Sizing, cross: Sizing) -> SizeSpec {
             match self {
                 Axis::X => SizeSpec::new(main, cross),

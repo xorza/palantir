@@ -1,26 +1,17 @@
-//! Whether a node paints, and whether it still takes space when it does
-//! not.
+//! Whether a node paints, and whether it still takes space.
 
 /// WPF-style three-state visibility.
 ///
-/// - `Visible` — laid out, painted, hit-tested.
-/// - `Hidden` — laid out (occupies space), but neither painted nor hit-tested.
-/// - `Collapsed` — treated as if absent: zero size, skipped by stack/grid
-///   parents (no gap contribution, no fill weight), not painted, not hit-tested.
-///
-/// Cascade is implicit: encoder/input early-return at a non-`Visible` node, so
-/// descendants are never visited regardless of their own `Visibility`.
+/// Encoder and input early-return at a non-`Visible` node, so descendants are never visited whatever their own `Visibility`.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Visibility {
     /// Laid out, painted, hit-tested. The default.
     #[default]
     Visible = 0,
-    /// Laid out, so it still occupies space — but neither painted nor
-    /// hit-tested.
+    /// Laid out, so it occupies space, but neither painted nor hit-tested.
     Hidden = 1,
-    /// Treated as absent: zero size, and skipped by stack and grid
-    /// parents.
+    /// Treated as absent: zero size, skipped by stack and grid parents (no gap, no fill weight).
     Collapsed = 2,
 }
 

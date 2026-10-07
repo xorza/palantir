@@ -1,5 +1,5 @@
-//! The authored animation spec: which motion model a value travels
-//! under, and the parameters that model was authored with.
+//! The authored animation spec: which motion model a value travels under, and
+//! its parameters.
 
 use crate::animation::duration::{DURATION_ERROR, MAX_DURATION, duration_is_valid};
 use crate::animation::easing::Easing;
@@ -9,15 +9,11 @@ use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
 
-/// How a value moves toward its target. Animation itself is opt-in
-/// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
-/// the field on a theme) when you want snap-to-target behavior.
-/// `AnimationSpec` only describes what motion looks like *when there is
-/// motion*; "no animation" lives in `Option<AnimationSpec>`, not as a
-/// variant here.
+/// How a value moves toward its target. Animation is opt-in: pass `None` to
+/// [`crate::Ui::animate`] (or omit the theme field) to snap. `AnimationSpec`
+/// only describes motion *when there is some*.
 ///
-/// Wire format is internally tagged on `kind` (snake_case), so theme
-/// files read cleanly:
+/// Wire format is internally tagged on `kind` (snake_case):
 ///
 /// ```toml
 /// [theme.button.defaults.animation]
@@ -35,14 +31,9 @@ pub struct AnimationSpec {
     pub(super) motion: AnimMotion,
 }
 
-/// The motion model a spec was authored under, plus its
-/// parameters. Kept private to the module: the public surface is
-/// [`AnimationSpec`]'s constructors, and every reader is an animation-row
-/// step that matches on it.
-///
-/// Also the wire shape — every field here is authored, so
-/// [`AnimationSpec`]'s hand-written impls delegate to this one and spend
-/// themselves on validation alone.
+/// The motion model and parameters a spec was authored under. Module-private;
+/// also the wire shape, so [`AnimationSpec`]'s hand-written impls only add
+/// validation.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum AnimMotion {
@@ -65,13 +56,9 @@ impl AnimationSpec {
             ease: Easing::OutCubic,
         },
     };
-    /// No motion: the value lands on its target in one frame.
-    ///
-    /// The named form of the "do not animate" case, so a call site says
-    /// which it means instead of leaving a bare `None` to be read. It is
-    /// what [`Ui::animate`](crate::Ui::animate) does for `None` too — a
-    /// zero-second duration is [`Self::is_instant`], and both short-circuit
-    /// on that.
+    /// No motion: the value lands on its target in one frame. The named form of
+    /// "do not animate"; `None` in [`Ui::animate`](crate::Ui::animate) does the same,
+    /// and both short-circuit on [`Self::is_instant`].
     pub const SNAP: Self = Self::duration_from_validated(0.0, Easing::Linear);
     /// Near-critically-damped spring tuned as a general-purpose default.
     pub const SPRING: Self = Self {
@@ -81,8 +68,8 @@ impl AnimationSpec {
         },
     };
 
-    /// Construct a duration animation that runs for `length`. A length
-    /// under `1e-4` seconds canonicalizes to an instant snap.
+    /// Construct a duration animation of `length`; under `1e-4` seconds it
+    /// canonicalizes to an instant snap.
     ///
     /// # Panics
     ///
@@ -104,15 +91,13 @@ impl AnimationSpec {
         }
     }
 
-    /// Construct a damped spring whose convergence rate stays within the
-    /// supported UI-animation domain.
+    /// Construct a damped spring whose convergence stays within the supported
+    /// UI-animation domain.
     ///
-    /// The step is a closed-form transition, so stiffness costs nothing
-    /// and carries no stability bound. What is still checked is that the
-    /// spring *arrives*, decaying at 1/s or faster, and that a 60 Hz
-    /// display can show it: an underdamped spring must swing slower than
-    /// 30 Hz, `√(stiffness − damping²/4) < 60π` rad/s. A faster swing lands
-    /// each frame on an arbitrary phase.
+    /// The step is closed-form, so stiffness carries no stability bound. Checked:
+    /// the spring *arrives* (decay of 1/s or faster) and a 60 Hz display can show
+    /// it (underdamped swing under 30 Hz, `sqrt(stiffness - damping^2/4) < 60*pi`
+    /// rad/s).
     ///
     /// # Panics
     ///
@@ -130,9 +115,8 @@ impl AnimationSpec {
         }
     }
 
-    /// True when this spec collapses to a single-frame snap — a
-    /// `Duration` canonicalized to zero seconds. Springs are never instant by
-    /// construction. `Ui::animate` short-circuits on this and on `None`.
+    /// True when this spec is a single-frame snap (a `Duration` canonicalized to
+    /// zero); springs never are. `Ui::animate` short-circuits on this and `None`.
     #[inline(always)]
     pub const fn is_instant(self) -> bool {
         match self.motion {
@@ -151,11 +135,9 @@ impl Serialize for AnimationSpec {
     }
 }
 
-/// Validating, so a hand-written impl rather than `#[serde(transparent)]`:
-/// a theme file is untrusted input, and the bounds [`AnimationSpec::duration`]
-/// and [`AnimationSpec::spring`] assert on have to hold for a spec that arrived
-/// over the wire too. Bad data is an `Err` here rather than the panic those
-/// two raise.
+/// Hand-written (not `#[serde(transparent)]`) because a theme file is untrusted:
+/// the bounds [`AnimationSpec::duration`] and [`AnimationSpec::spring`] assert
+/// must hold over the wire too, as an `Err` instead of a panic.
 impl<'de> Deserialize<'de> for AnimationSpec {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

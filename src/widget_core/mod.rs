@@ -1,7 +1,4 @@
-//! The widget framework every widget in [`crate::widgets`] is built on: the
-//! [`Widget`](widget::Widget) node, the [`Configure`](configure::Configure)
-//! setters, the responses a widget hands back, the overlay scope, and the
-//! per-state look a themed widget paints with.
+//! The framework every widget in [`crate::widgets`] is built on: the [`Widget`](widget::Widget) node, [`Configure`](configure::Configure) setters, responses, the overlay scope, and the per-state look.
 
 pub(crate) mod configure;
 pub(crate) mod overlay_response;

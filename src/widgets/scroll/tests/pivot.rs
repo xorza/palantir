@@ -12,10 +12,7 @@ use crate::widgets::scroll::state::ScrollState;
 use crate::widgets::scroll::tests::support::{SURFACE, fixed_block};
 use glam::Vec2;
 
-/// The content point under the pointer holds still. Measured from the
-/// content's origin, past `padding`, the pointer sits at `pointer - padding`;
-/// held there through a 1.5× step from offset 0, the offset becomes
-/// `(pointer - padding) × 1.5 - (pointer - padding)`, half of it.
+/// The content point under the pointer holds still. Measured from the content origin past `padding`, the pointer sits at `pointer - padding`; held there through a 1.5× step from offset 0, the offset becomes `(pointer - padding) × 1.5 - (pointer - padding)`, half of it.
 #[test]
 fn pointer_zoom_pivot_is_scale_invariant() {
     let id = WidgetId::from_hash("scaled-scroll");

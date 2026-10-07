@@ -1,12 +1,6 @@
-//! Drop shadows from both directions. The first two sections push
-//! `Shape::Shadow` directly and paint the card on top — exercising the
-//! per-corner SDF, the σ → 0 sharp fallback, and multi-shadow stacking
-//! by record order. The third pairs each shape-pushed shadow with the
-//! same shadow on widget chrome (`Background { shadow }`), which routes
-//! through the encoder's chrome branch and paints *before* the rect fill,
-//! so it composes correctly under a semi-transparent fill.
-//!
-//! Every tile is on the bright surface: black-on-dark shadows don't read.
+//! Drop shadows pushed as `Shape::Shadow` and as widget chrome
+//! (`Background { shadow }`), side by side. Tiles sit on a bright surface;
+//! black-on-dark shadows don't read.
 
 use crate::support::{CELL_PADDING, api, demo_cell_light, note, section, tiles};
 use palantir::widget::{ShadowShape, Shape};
@@ -89,10 +83,7 @@ fn card_fill(ui: &mut Ui) {
     ui.add_shape(Shape::rect(CARD).fill(CARD_INK).corners(card_corners()));
 }
 
-/// The shadows this page paints more than once, each written once. The
-/// shape route and the chrome route have to paint the *same* shadow or
-/// the comparison the page makes says nothing, so neither route spells
-/// the parameters itself.
+/// Shadows painted more than once, so the shape and chrome routes use identical parameters.
 const fn soft_shadow() -> Shadow {
     Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.20),
@@ -140,8 +131,7 @@ fn tight(ui: &mut Ui) {
     card_fill(ui);
 }
 
-/// σ = 0 — sharp drop. Should match the rounded-rect SDF exactly,
-/// shifted by `offset`. Pins the degenerate-blur code path visually.
+/// σ = 0 sharp drop; should match the rounded-rect SDF shifted by `offset`.
 fn sharp(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 1.0),
@@ -165,8 +155,7 @@ fn inset(ui: &mut Ui) {
     ui.add_shape(shadow_shape(inset_shadow()));
 }
 
-/// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
-/// order, the deepest first; the composer batches them onto one draw.
+/// Multi-shadow stack, pushed deepest first; the composer batches them into one draw.
 fn stacked(ui: &mut Ui) {
     for (dy, blur, alpha) in [(18.0, 24.0, 0.18), (8.0, 10.0, 0.22), (1.0, 2.0, 0.30)] {
         ui.add_shape(shadow_shape(Shadow::drop(
@@ -178,12 +167,7 @@ fn stacked(ui: &mut Ui) {
     card_fill(ui);
 }
 
-/// The card painted via `Background` (fill + radius + shadow) instead of
-/// shape pushes — the encoder emits a drop shadow before the chrome rect
-/// and an inset one after it.
-/// Placed on [`CARD`] exactly, so it sits where its shape twin does: the
-/// shapes are in the cell's own coordinates, and the canvas starts inside
-/// the cell's padding.
+/// The card via `Background`: drop shadow emitted before the chrome rect, inset after. Placed on [`CARD`] exactly, so it lines up with its shape twin.
 fn chrome_card(ui: &mut Ui, bg: Background) {
     Panel::canvas()
         .size((Sizing::FILL, Sizing::FILL))
@@ -200,9 +184,7 @@ fn chrome(shadow: Shadow) -> Background {
     Background::rounded(CARD_INK, card_corners()).with_shadow(shadow)
 }
 
-/// Semi-transparent chrome fill: the drop shadow is clipped inside the
-/// box that casts it, as CSS clips an outer `box-shadow`, so the halo
-/// shows around the card and not through it.
+/// Semi-transparent fill: the drop shadow is clipped inside the casting box (as CSS does), so the halo shows around, not through.
 fn chrome_translucent() -> Background {
     Background::rounded(CARD_INK.with_alpha(0.4), card_corners()).with_shadow(Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),

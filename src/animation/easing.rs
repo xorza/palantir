@@ -1,6 +1,4 @@
-//! Closed-form easing curves for duration-based animation. Input `t`
-//! is normalized 0..1 progress; output is the eased value (also 0..1
-//! for "out" curves; may overshoot for `OutBack`).
+//! Closed-form easing curves: input `t` is 0..1 progress, output the eased value (overshoots for `OutBack`).
 
 use crate::primitives::math::domain;
 
@@ -8,26 +6,20 @@ use crate::primitives::math::domain;
 #[serde(rename_all = "snake_case")]
 /// The easing curve a duration-based tween follows.
 pub enum Easing {
-    /// No easing — constant rate.
+    /// Constant rate.
     Linear,
-    /// Fast start, decelerating to a stop. The default feel for UI
-    /// transitions.
+    /// Fast start, decelerating to a stop; the default UI feel.
     OutCubic,
-    /// Accelerate out of rest, decelerate into it. Symmetric; reads well
-    /// for a value moving between two resting states.
+    /// Accelerate out of rest, decelerate into it.
     InOutCubic,
-    /// Like [`Self::OutCubic`] but with a sharper initial burst and a
-    /// longer settle.
+    /// Like [`Self::OutCubic`] with a sharper burst and longer settle.
     OutQuart,
-    /// Overshoots past the target and settles back. **Leaves 0..1**, so
-    /// only use it on values that tolerate exceeding their endpoints.
+    /// Overshoots the target and settles back; leaves 0..1.
     OutBack,
 }
 
 impl Easing {
-    /// Ease normalized progress `t`, read as a *fraction*: clamped to
-    /// `0..=1`, and `0` when it is not finite. The output is in `0..=1` too,
-    /// except for [`Self::OutBack`], which overshoots.
+    /// Ease progress `t`, a *fraction*: clamped to `0..=1`, `0` if not finite. The output is in `0..=1` except for [`Self::OutBack`].
     pub const fn apply(self, t: f32) -> f32 {
         let t = domain::fraction(t);
         match self {

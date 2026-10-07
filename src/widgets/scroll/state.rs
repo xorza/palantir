@@ -1,6 +1,5 @@
-//! Widget-owned scroll interaction state. Layout measurements enter
-//! each input step as ephemeral [`ScrollBounds`] rather than becoming
-//! another retained widget-state copy.
+//! Widget-owned scroll interaction state. Layout measurements enter each
+//! input step as ephemeral [`ScrollBounds`], not retained state.
 
 use crate::input::sense::Sense;
 use crate::layout::drivers::scrollbars::bar_geometry::BarGeometry;
@@ -11,14 +10,11 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain;
 use glam::Vec2;
 
-/// Where a viewport is scrolled to, and the interaction state that moves
-/// it there.
+/// Where a viewport is scrolled to, and the interaction state that moves it.
 ///
-/// **Every viewport in the crate stores its offset here** — the `Scroll`
-/// widget and `TextEdit`'s own text viewport alike. The two drive it
-/// differently (a wheel and bars versus a wheel and the caret), but the
-/// offset, the band [`Self::clamp_to_natural`] holds it in, and the
-/// transform that carries the content are one implementation.
+/// Every viewport stores its offset here, `Scroll` and `TextEdit`'s text
+/// viewport alike: the offset, the band [`Self::clamp_to_natural`] holds it
+/// in, and the content transform are one implementation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
@@ -27,15 +23,13 @@ pub(crate) struct ScrollState {
     drag_anchor: Option<DragAnchor>,
 }
 
-/// Where a live thumb drag started, so cumulative drag deltas compose
-/// against a stable snapshot rather than the moving offset. Named for
-/// the same reason [`ThumbTravel`] and [`TrackPage`] are.
+/// Where a live thumb drag started, so cumulative drag deltas compose against
+/// a stable snapshot rather than the moving offset.
 #[derive(Clone, Copy, Debug)]
 struct DragAnchor {
-    /// The one axis this drag drives — that is all a thumb can move.
+    /// The one axis this drag drives.
     axis: Axis,
-    /// The origin, in the bar's own domain (`[0, max_off]`) rather than
-    /// the offset's — that is all a thumb can express.
+    /// The origin in the bar's domain (`[0, max_off]`), not the offset's.
     start: f32,
 }
 
@@ -49,8 +43,8 @@ impl Default for ScrollState {
     }
 }
 
-/// The box an offset is solved in: how much content there is, how much of
-/// it fits, and how far past either edge the offset may still roam.
+/// The box an offset is solved in: content, viewport, and how far past either
+/// edge the offset may roam.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollBounds {
     pub(crate) content: Size,
@@ -66,14 +60,11 @@ struct OffsetBounds {
 
 /// The offset range a scrollbar can express: `[0, max_off]`.
 ///
-/// Deliberately narrower than the wheel's range. `content_margin` opens
-/// a band below zero, and [`Scroll::content_margin`](crate::Scroll::content_margin)
-/// documents that a thumb does not show that extra travel — so the bar
-/// and the wheel legitimately disagree about the offset's lower bound.
-/// What is *not* legitimate is each interaction path re-deriving the
-/// bar's half by hand: the thumb drag and the track page each spelling
-/// the `0.0` end and the `max_off` end for itself is how a drag anchored
-/// in the wheel's domain and clamped in the bar's goes unnoticed.
+/// Narrower than the wheel's range: `content_margin` opens a band below zero
+/// that a thumb does not show
+/// ([`Scroll::content_margin`](crate::Scroll::content_margin)). Each
+/// interaction path naming the ends itself is how a drag anchored in the
+/// wheel's domain and clamped in the bar's goes unnoticed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct BarDomain {
     max_off: f32,
@@ -93,27 +84,19 @@ impl BarDomain {
     }
 }
 
-/// What a thumb drag needs from its bar's resolved geometry. Named for
-/// the same reason [`TrackPage`] is: the two are siblings applied one
-/// after the other, and an anonymous `(f32, f32)` here reads as nothing
-/// at all by the time it is destructured.
+/// What a thumb drag needs from its bar's resolved geometry.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ThumbTravel {
-    /// Content pixels bought per pixel of thumb travel.
+    /// Content pixels per pixel of thumb travel.
     pub(super) factor: f32,
-    /// The range the thumb can express — carried rather than a bare
-    /// `max_off`, so the drag clamps through one definition instead of
-    /// naming `0.0` itself.
+    /// The range the thumb can express, so the drag clamps through one definition.
     pub(super) domain: BarDomain,
 }
 
 impl ThumbTravel {
-    /// The drag mapping for the bar `thumb`.
-    ///
-    /// The denominator is the travel of the geometry that placed the
-    /// thumb, not the bar's raw track: the two disagree by the track's
-    /// floor, and a drag scaled by the wrong one moves the content at a
-    /// rate the thumb does not follow.
+    /// The drag mapping for the bar `thumb`. The denominator is the travel of
+    /// the geometry that placed the thumb, not the raw track, which differs
+    /// by the track's floor.
     pub(super) const fn of(thumb: BarGeometry) -> Self {
         Self {
             factor: domain::share_of(thumb.max_offset, thumb.travel),
@@ -132,8 +115,8 @@ pub(super) struct TrackPage {
 }
 
 impl TrackPage {
-    /// A click at `click_main` along the track of the bar `thumb`. A page
-    /// is one track length, since the track spans the viewport.
+    /// A click at `click_main` along the track of the bar `thumb`; a page is
+    /// one track length.
     pub(super) const fn at(thumb: BarGeometry, click_main: f32) -> Self {
         Self {
             click_main,
@@ -146,32 +129,21 @@ impl TrackPage {
 }
 
 impl ScrollState {
-    /// How far the content reaches past the viewport at this zoom, per
-    /// axis, before any policy about content that fits.
-    ///
-    /// Both bands below start here and then differ on exactly one point:
-    /// whether an axis whose content fits is floored at zero. Spelled
-    /// apart, they can differ on the zoom factor and the viewport too.
+    /// How far the content reaches past the viewport at this zoom, per axis,
+    /// before any fits-in-viewport policy. Both bands start here.
     #[inline]
     fn raw_overflow(&self, bounds: ScrollBounds) -> Vec2 {
         let content = bounds.content.scaled_by(self.zoom);
         Vec2::new(content.w - bounds.viewport.w, content.h - bounds.viewport.h)
     }
 
-    /// The offset range the wheel and the settle clamp work in:
-    /// the overflow, **floored at zero first**, then widened by
-    /// `content_margin` on each side.
+    /// The offset range the wheel and settle clamp work in: the overflow,
+    /// floored at zero first, then widened by `content_margin` each side.
     ///
-    /// The flooring is the whole point. Taking
-    /// `trailing.max(leading)` off the raw endpoints instead let the
-    /// trailing end fall *below* the leading one once content fit
-    /// inside the viewport — the band collapsed to the single value
-    /// `-left * zoom`, so a scroll with a leading margin shoved content
-    /// that fitted sideways by exactly that margin and pinned it there.
-    /// `content_margin` is documented as invisible overscroll that
-    /// leaves child layout alone, so the margin may only ever *widen*
-    /// this range, never move its resting point: flooring first keeps
-    /// `lo <= 0 <= hi`, and content that fits stays at 0.
+    /// Flooring first keeps `lo <= 0 <= hi`, so the margin only widens the
+    /// range. Taking `trailing.max(leading)` off the raw endpoints let the
+    /// band collapse to `-left * zoom` once content fit, shoving it sideways
+    /// by the margin.
     fn natural_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
         let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
         let overflow = self.raw_overflow(bounds).max(Vec2::ZERO);
@@ -181,17 +153,11 @@ impl ScrollState {
         }
     }
 
-    /// The wider band a *zoomable* scroll pans in, off the **raw**
-    /// endpoints rather than [`Self::natural_bounds`]' floored ones.
-    ///
-    /// Pivot zoom may legitimately leave undersized content between the
-    /// two, so the trailing end is deliberately not floored at zero here
-    /// and the pair is taken as `min`/`max` — for content that fits, the
-    /// raw trailing end sits *below* the leading one and the band is the
-    /// inverted interval between them. That inversion is exactly what
-    /// `natural_bounds` must not inherit, which is why the two do their
-    /// own flooring — the raw endpoints they start from are one
-    /// derivation, [`Self::raw_overflow`].
+    /// The wider band a zoomable scroll pans in, off the raw endpoints rather
+    /// than [`Self::natural_bounds`]' floored ones. Pivot zoom may leave
+    /// undersized content between the two, so the trailing end is not floored
+    /// and the pair is taken as `min`/`max`: for content that fits, the band
+    /// is the inverted interval, which `natural_bounds` must not inherit.
     fn zoom_rubber_band_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
         let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
         let leading = Vec2::new(-cml, -cmt) * self.zoom;
@@ -203,8 +169,7 @@ impl ScrollState {
     }
 
     /// Scale by `zoom_delta`, clamped, holding the content point under
-    /// `pivot` still. `pivot` is measured from the content's origin, the
-    /// point [`Self::transform`] scales about.
+    /// `pivot` (measured from the content origin) still.
     pub(super) fn apply_zoom(
         &mut self,
         min_zoom: f32,
@@ -225,11 +190,9 @@ impl ScrollState {
     }
 
     /// The wheel axes a viewport panning `pan_x` / `pan_y` can move along
-    /// inside `bounds`: those where the content overflows the viewport at
-    /// this zoom, or a content margin widens the range past the rest.
-    ///
-    /// What the viewport senses, so the wheel on an axis it cannot pan
-    /// reaches the container behind it instead.
+    /// inside `bounds`: where content overflows at this zoom, or a content
+    /// margin widens the range. An axis it cannot pan lets the wheel reach the
+    /// container behind.
     pub(crate) fn wheel_sense(&self, bounds: ScrollBounds, pan_x: bool, pan_y: bool) -> Sense {
         let range = self.natural_bounds(bounds);
         let mut sense = Sense::NONE;
@@ -269,19 +232,11 @@ impl ScrollState {
         self.offset.y = self.offset.y.clamp(bounds.lo.y, bounds.hi.y);
     }
 
-    /// The transform a viewport applies to carry its content: the offset,
-    /// negated — scrolling right shifts content left — at the current
-    /// zoom, scaled about `content_origin`.
-    ///
-    /// Cascade anchors the scale at the node's own `layout_rect.min`
-    /// (`TranslateScale::anchored_at`), but the content starts inside the
-    /// node's padding, at `content_origin` from there. Scaled about the
-    /// node's corner, that padding grows with the zoom: offset 0 left a
-    /// gap of `padding * (zoom - 1)` before the content, and the band's
-    /// far end stopped the same distance short of the content's end.
-    /// Scaling about the content's own origin keeps offset 0 at the
-    /// content's start at every zoom, which is what the offset band and
-    /// the bars assume.
+    /// The transform a viewport applies to its content: the offset negated, at
+    /// the current zoom, scaled about `content_origin`. Cascade anchors scale
+    /// at the node's `layout_rect.min`, but content starts inside the padding;
+    /// scaling about the node's corner would grow that padding with zoom.
+    /// Scaling about the content origin keeps offset 0 at the content's start.
     pub(crate) fn transform(&self, content_origin: Vec2) -> TranslateScale {
         TranslateScale::new(content_origin * (1.0 - self.zoom) - self.offset, self.zoom)
     }
@@ -294,12 +249,9 @@ impl ScrollState {
         travel: Option<ThumbTravel>,
     ) {
         if drag_started {
-            // Projected into the bar domain at snapshot time. The thumb
-            // can only express `[0, max_off]`, so anchoring at a raw
-            // offset — which may sit below zero inside a
-            // `content_margin` leading band — spent the first
-            // `-offset / factor` px of the gesture climbing back to 0
-            // with the thumb not moving at all.
+            // Projected into the bar domain: the thumb expresses only
+            // `[0, max_off]`, so a raw offset below zero (in a `content_margin`
+            // band) would spend the gesture's start climbing back to 0.
             let start = axis.main_v(self.offset);
             self.drag_anchor = Some(DragAnchor {
                 axis,
@@ -314,12 +266,9 @@ impl ScrollState {
             return;
         };
         let Some(travel) = travel else {
-            // The bar lost its geometry mid-drag — content started
-            // fitting, or the track collapsed. `drag_delta` stays
-            // cumulative from the press, so a resumed anchor would apply
-            // the whole accumulated travel at once if geometry came
-            // back under the same capture. Drop it; the next press
-            // re-anchors.
+            // The bar lost its geometry mid-drag. `drag_delta` is cumulative
+            // from the press, so a resumed anchor would apply all the travel
+            // at once; drop it and re-anchor on the next press.
             self.drag_anchor = None;
             return;
         };
@@ -336,8 +285,7 @@ impl ScrollState {
             return;
         };
         let current = axis.main_v(self.offset);
-        // Both directions clamp through the same domain: a page is a
-        // bar interaction, so it lands where the thumb can follow it.
+        // Both directions clamp through the bar domain so the thumb can follow.
         let next = if page.click_main < page.thumb_offset {
             page.domain.clamp(current - page.page_step)
         } else if page.click_main > page.thumb_offset + page.thumb_size {

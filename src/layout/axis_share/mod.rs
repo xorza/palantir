@@ -1,23 +1,9 @@
-//! One axis shared among siblings: the Fill items' floors are set aside,
-//! the Hug items share what is left ([`HugItem::share`]), and the Fill
-//! items divide the rest ([`FillItem::distribute`]).
-//!
-//! The order is CSS Grid's: a `1fr` track's base is its min-content
-//! before auto tracks grow, so a Fill item is never squeezed below its
-//! floor by a Hug sibling. Every container that shares an axis between
-//! its children solves it here — the grid's tracks, the stack's children
-//! — so a child's `Sizing` reads the same in each.
+//! One axis shared among siblings: Fill floors are set aside, Hug items share the rest ([`HugItem::share`]), Fill items divide what remains ([`FillItem::distribute`]). CSS Grid's order, so a Hug sibling never squeezes Fill below its floor; grid tracks and stack children both solve here.
 
 use crate::layout::fill_item::FillItem;
 use crate::layout::hug_item::HugItem;
 
-/// Share `budget` — the axis less its gaps and fixed extents — between
-/// `hugs` and `fills`, writing each one's `size`.
-///
-/// Returns the least finite budget from which the Hug shares hold, as
-/// [`HugItem::share`] states it, moved out by the Fill floors set aside
-/// before them. Fill shares read every budget; a caller whose answer
-/// depends on them answers for that.
+/// Share `budget` (the axis less gaps and fixed extents) between `hugs` and `fills`, writing each `size`; returns the least finite budget from which the Hug shares hold ([`HugItem::share`]), moved out by the Fill floors.
 pub(super) fn solve<K>(hugs: &mut [HugItem<K>], fills: &mut [FillItem<K>], budget: f32) -> f32 {
     let fill_floors: f32 = fills.iter().map(FillItem::floor).sum();
     let shares_from = HugItem::share(hugs, (budget - fill_floors).max(0.0));

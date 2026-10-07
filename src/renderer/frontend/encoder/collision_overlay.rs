@@ -1,15 +1,4 @@
-//! The explicit-`WidgetId` collision overlay.
-//!
-//! A development-only module: a duplicate explicit id is a caller bug,
-//! not a rendering property to inspect the way the `DebugOverlayConfig`
-//! overlays are. The developer wants the outline while building; a
-//! shipped app wants neither it over its UI nor the branch that tests
-//! for it. `Forest::report_explicit_collision`'s `tracing::error!` is
-//! what survives into release, and it carries the diagnosis anyway.
-//!
-//! Gated at the `mod` declaration rather than per item, so the imports
-//! this needs — and the magenta stroke — leave the release build with
-//! it instead of becoming dead weight behind `#[cfg]`s.
+//! The explicit-`WidgetId` collision overlay. Development-only: a duplicate id is a caller bug, and `Forest::report_explicit_collision`'s `tracing::error!` survives into release. Gated at the `mod` declaration so its imports leave the release build too.
 
 use crate::cascade::Cascade;
 use crate::layout::Layout;
@@ -22,25 +11,10 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::scene::forest::Forest;
 
-/// Magenta — distinct from the opt-in red damage-rect overlay. Painted
-/// unclipped at the end of `encode`, after every layer's regular paint.
+/// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
 const STROKE: Stroke = Stroke::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 
-/// Final pass: emit a magenta outline for each explicit-id collision
-/// recorded this frame. Painted after the regular per-layer walk so
-/// it sits on top of everything; emitted with no scissor push and no
-/// transform, so each outline is the node's screen rect — its layout
-/// rect through every ancestor transform, unclipped — and ignores any
-/// clip context the colliding widgets sit under (scroll viewports,
-/// clipped popups). Both `NodeId`s are precomputed at recording time
-/// (`SeenIds.curr` hashmap lookup) — no tree scan.
-///
-/// Development-only. A duplicate explicit `WidgetId` is a caller bug,
-/// not a rendering property to inspect the way the `DebugOverlayConfig`
-/// overlays are — the developer wants the outline while building, and a
-/// shipped app wants neither it over its UI nor the branch. The
-/// `tracing::error!` in `Forest::report_explicit_collision` is what
-/// survives into release, and it carries the diagnosis anyway.
+/// Final pass: a magenta outline per explicit-id collision recorded this frame, over everything. Emitted with no scissor or transform, so each outline is the node's unclipped screen rect. `NodeId`s are precomputed at recording time (`SeenIds.curr`).
 pub(super) fn emit(forest: &Forest, layout: &Layout, cascade: &Cascade, out: &mut impl PaintSink) {
     for record in &forest.collisions {
         for ep in [record.first, record.second] {

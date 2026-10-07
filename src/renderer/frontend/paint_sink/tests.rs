@@ -1,5 +1,4 @@
-//! The paint sink's no-op gate: what it drops, what it passes, and the
-//! faded payload it judges.
+//! The paint sink's no-op gate: what it drops and passes.
 
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
@@ -70,7 +69,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
             alpha: 1.0,
             expected_noop: false,
         },
-        // The fade: faded to nothing, and to below the paint threshold.
+        // Faded to nothing, and below the paint threshold.
         Case {
             points_len: 2,
             width: 1.0,
@@ -96,19 +95,9 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
     }
 }
 
-/// The `GpuView` gate. A collapsed view emits *nothing*: no image
-/// draw and no callback, so the composer schedules no off-screen
-/// target for a widget that can't paint. A live one records the
-/// payload and its callback as a single call — the composite and the
-/// target it needs can't come apart.
+/// A collapsed `GpuView` emits nothing: no image draw, no callback, so no off-screen target is scheduled. A live one records payload and callback as one call.
 ///
-/// The null-handle rows are what say the two callers of that arm are
-/// told apart by the `paint` argument alone. `TextureId(0)` means
-/// "no texture to sample" for a registered image and is dropped; for
-/// a `GpuView` it means nothing, because the target is
-/// framework-painted this frame rather than registered. Production
-/// never mints `TextureId(0)` for a view, but the branch decides on
-/// `paint.is_some()` and nothing else would notice if it stopped.
+/// The null-handle rows pin that the two callers of that arm differ by `paint` alone: `TextureId(0)` means "no texture" for an image (dropped) but nothing for a `GpuView`.
 #[test]
 fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
     let paint = GpuPaintRef::noop();
@@ -129,8 +118,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             false,
         ),
         ("live", live, TextureId(7), true, true),
-        // The two halves of the null-handle arm, which is the whole
-        // reason the gate needs to know about the callback at all.
+        // The two halves of the null-handle arm.
         ("null_handle_image", live, TextureId(0), false, false),
         ("null_handle_view", live, TextureId(0), true, true),
     ];
@@ -182,14 +170,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
     }
 }
 
-/// The gate sees the *faded* payload, which is the whole reason `alpha`
-/// is a parameter and not something the caller folds in.
-///
-/// A draw animated to nothing is dropped by the no-op gate that was
-/// already there — no second gate, and no way for an emit to skip it. A
-/// half fade reaches the sink with a halved tint and its colour lanes
-/// untouched: `1.0` alpha over white becomes `0.5`, and white stays
-/// white.
+/// The gate sees the faded payload. A draw faded to nothing is dropped by the existing no-op gate; a half fade halves the tint alpha and leaves colour lanes untouched.
 #[test]
 fn the_gate_sees_the_faded_payload() {
     let draw = || ImageDraw {
@@ -217,13 +198,11 @@ fn the_gate_sees_the_faded_payload() {
     let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
-    // Half of an opaque white tint's alpha, colour untouched — values f16
-    // holds exactly.
+    // Half an opaque white tint's alpha, colour untouched; exact in f16.
     let tint = payload.tint.unpack();
     assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
-    // A polyline gates the same way: its fade rides the payload's own
-    // alpha lane, since its colours live in the record store.
+    // A polyline gates alike: its fade rides the payload's alpha lane, its colours being in the record store.
     let line = DrawPolylinePayload {
         points_len: 2,
         width: 1.0,

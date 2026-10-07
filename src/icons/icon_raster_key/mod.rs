@@ -1,67 +1,36 @@
-//! The atlas cache key for one rasterized icon, and the size quantization
-//! that bounds how many distinct rasters a continuous zoom can create.
+//! The atlas cache key for one rasterized icon, and the size quantization that bounds distinct rasters under continuous zoom.
 
 use crate::icons::icon_set::IconRef;
 use crate::primitives::math::num::F32Px;
 use glam::{U16Vec2, Vec2};
 
-/// Physical sizes at or below this rasterize at exactly the pixel box asked
-/// for. This is where a pixel of size error would show, and where rasters are
-/// cheap enough that the churn a zoom gesture creates is affordable — 13-72 µs
-/// per icon measured across gradient, mask, and clip-path artwork.
+/// Physical sizes at or below this rasterize at exactly the pixel box asked for: size error shows here, and rasters are cheap.
 const EXACT_MAX_PX: u32 = 64;
 
-/// Above [`EXACT_MAX_PX`], sizes round to a multiple of this.
-///
-/// Raster cost climbs with area, so past the exact band a continuous zoom is
-/// paying for a fresh raster of every visible icon on every frame that crosses
-/// a pixel. Rounding to 4 px cuts that rate by 4x for at most 3% of size error
-/// at 64 px and less above — invisible at a size where one pixel is under 2%
-/// of the icon.
+/// Above [`EXACT_MAX_PX`], sizes round to a multiple of this, so a continuous zoom does not pay a fresh raster per icon per pixel crossed (at most 3% size error at 64 px).
 const COARSE_STEP_PX: u32 = 4;
 
-/// Hard ceiling on either axis of a raster.
-///
-/// A canvas zoomed far enough would otherwise ask for a 4096 px icon — 64 MB
-/// of atlas for one draw. Past the cap the largest cached raster is reused and
-/// magnifies, which is the one place icons are not pixel-exact and the one
-/// place nobody is looking. Divisible by [`COARSE_STEP_PX`], so the clamp
-/// lands on a rung rather than beside one.
+/// Hard ceiling on either axis of a raster (4096 px would cost 64 MB of atlas); past it the largest cached raster is magnified. Divisible by [`COARSE_STEP_PX`], so the clamp lands on a rung.
 const MAX_RASTER_PX: u32 = 512;
 
-/// What one cached icon raster is keyed by: which icon, at what physical pixel
-/// size. Ten bytes, against the 24 of cosmic's glyph `CacheKey` — an icon
-/// needs no subpixel bins, because unlike a glyph it snaps to whole pixels.
+/// What one cached icon raster is keyed by: icon and physical pixel size. Ten bytes against cosmic's 24, since an icon snaps to whole pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct IconRasterKey {
     pub(crate) icon: IconRef,
-    /// Private, and [`Self::for_box`] is the only way to set it, because
-    /// both axes are guaranteed at least 1 — see [`snap_px`] and the
-    /// clamp beside it. The icon backend rests on that: an icon always
-    /// packs a rectangle, so a slot of its own that owns none is a broken
-    /// contract rather than a raster to skip.
+    /// Private: [`Self::for_box`] is the only setter, so both axes are at least 1, which the icon backend relies on to always pack a rectangle.
     size: U16Vec2,
 }
 
 impl IconRasterKey {
-    /// The physical pixel box this raster is cached at. Never zero on
-    /// either axis.
     pub(crate) const fn size(self) -> U16Vec2 {
         self.size
     }
 
-    /// Whether this raster is exactly the box it was sized from, rounded to
-    /// whole pixels — the band where an icon is drawn texel for texel.
     pub(crate) fn is_exact(self) -> bool {
         u32::from(self.size.max_element()) <= EXACT_MAX_PX
     }
 
-    /// The key for drawing `icon` into a physical-pixel box of `box_px`.
-    ///
-    /// Snaps through the two-part ladder above, preserving the box's aspect
-    /// ratio: the longer axis picks the rung and the shorter one follows it,
-    /// so an icon never stretches by a pixel just because its two axes landed
-    /// on different rungs.
+    /// The key for drawing `icon` into a physical-pixel box of `box_px`: the longer axis picks the rung and the shorter follows, preserving aspect.
     #[expect(
         clippy::cast_sign_loss,
         reason = "the box is asserted positive and finite above, and its long axis is held at 1 or more"
@@ -73,8 +42,7 @@ impl IconRasterKey {
         );
         let long = box_px.x.max(box_px.y).max(1.0);
         let target = snap_px(long.fast_round() as u32);
-        // Scale from the *unrounded* long axis, so the short one tracks the
-        // true aspect rather than the rounding of its sibling.
+        // Scale from the unrounded long axis, so the short one tracks the true aspect.
         let k = target as f32 / long;
         let short = (box_px.x.min(box_px.y) * k)
             .fast_round()
@@ -88,8 +56,7 @@ impl IconRasterKey {
     }
 }
 
-/// One axis through the ladder. Never returns zero — a raster of no pixels has
-/// no slot to cache and no quad to draw.
+/// One axis through the ladder; never zero.
 const fn snap_px(px: u32) -> u32 {
     if px <= EXACT_MAX_PX {
         if px == 0 { 1 } else { px }
@@ -110,8 +77,7 @@ pub(crate) mod internals {
     use glam::U16Vec2;
 
     impl IconRasterKey {
-        /// A key at an exact pixel box, for the rasterizer tests that
-        /// drive sizes the ladder would not land on.
+        /// A key at an exact pixel box, for tests that drive sizes the ladder would not land on.
         pub(crate) fn for_test(icon: IconRef, size: U16Vec2) -> Self {
             Self { icon, size }
         }

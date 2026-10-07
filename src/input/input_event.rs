@@ -8,20 +8,13 @@ use crate::input::pointer::PointerButton;
 use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
-/// Palantir-native input event. Independent of any windowing toolkit.
-/// All coordinates are in **logical pixels** (DIPs). Backends are responsible
-/// for any physical→logical conversion before dispatching.
-///
-/// Every scalar a variant carries is screened at ingress — a non-finite
-/// coordinate or delta, and a zoom factor that is not strictly positive,
-/// are discarded before anything reads them — so a host may forward
-/// whatever its platform reported without filtering first.
-///
-/// The two IME variants borrow their text from the host, so an event
-/// lives as long as the string it was translated from; it stays `Copy`.
+/// Palantir-native input event, independent of any windowing toolkit. Coordinates
+/// are **logical pixels**. Scalars are screened at ingress (non-finite values and
+/// non-positive zoom are discarded), so a host may forward whatever its platform
+/// reported. The IME variants borrow the host's text; the event stays `Copy`.
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent<'a> {
-    /// Pointer position in logical pixels, relative to the surface origin.
+    /// Pointer position, relative to the surface origin.
     PointerMoved(Vec2),
     /// Pointer left the surface; clears `hovered`.
     PointerLeft,
@@ -29,70 +22,45 @@ pub enum InputEvent<'a> {
     PointerPressed(PointerButton),
     /// A button came back up.
     PointerReleased(PointerButton),
-    /// Pixel-precise scroll delta — touchpad / precision wheel /
-    /// `MouseScrollDelta::PixelDelta`. Logical pixels. Positive `y`
-    /// means the user wants content to scroll *down* (a scroll widget
-    /// should add to its vertical offset). Multiple events in one frame
-    /// accumulate on the scroll target active when each event arrived.
+    /// Pixel-precise scroll delta (touchpad, `MouseScrollDelta::PixelDelta`);
+    /// positive `y` scrolls content *down*.
     ScrollPixels(Vec2),
-    /// Notched scroll delta — classic wheel /
-    /// `MouseScrollDelta::LineDelta`. Carries the raw line count
-    /// (sign-flipped to match `ScrollPixels`); the consuming widget
-    /// multiplies by its own font-derived line step at record time
-    /// rather than this layer baking in a constant. Multiple events
-    /// in one frame accumulate on their event-time scroll targets.
+    /// Notched scroll delta (`MouseScrollDelta::LineDelta`): the raw line count,
+    /// sign-flipped to match `ScrollPixels`; the consuming widget applies its line
+    /// step.
     ScrollLines(Vec2),
-    /// Multiplicative zoom factor from a touch / touchpad pinch gesture.
-    /// `1.0` is identity; `1.05` zooms in 5%, `0.95` zooms out 5%.
-    /// Multiple events in one frame multiply into their event-time
-    /// pinch targets' zoom totals. Wheel-based zoom is *not*
-    /// translated into `Zoom` — the active scroll widget decides at
-    /// record time whether wheel ticks count as pan or zoom.
+    /// Multiplicative zoom factor from a pinch gesture: `1.0` is identity, `1.05`
+    /// zooms in 5%. Wheel zoom is not translated into `Zoom`.
     Zoom(f32),
-    /// Logical key was pressed. `repeat` reflects OS-level key repeat
-    /// (held keys re-emit). Modifier state isn't carried on the event;
-    /// consumers read the latest [`Modifiers`] from `InputState`. We
-    /// don't carry releases — no consumer needs them yet.
+    /// Logical key pressed; `repeat` reflects OS key repeat. Modifiers (read
+    /// [`Modifiers`] from `InputState`) and releases are not carried.
     KeyDown {
-        /// The logical key, after the keyboard layout has been applied.
+        /// The logical key, after the keyboard layout is applied.
         key: Key,
-        /// The press came from OS-level key repeat rather than a fresh
-        /// press.
+        /// The press came from OS key repeat.
         repeat: bool,
-        /// Layout-independent physical key — see
+        /// Layout-independent physical key; see
         /// [`KeyPress::physical`](crate::KeyPress::physical).
         physical: Key,
-        /// The text this press produced, which a host reads from its
-        /// platform beside the key — see [`KeyText`]. A field types
-        /// this and nothing else, so a host that leaves it empty is a
-        /// host nothing can be typed into.
+        /// The text this press produced (see [`KeyText`]); empty means nothing can
+        /// be typed.
         text: KeyText,
     },
-    /// Modifier-key set changed. The carried snapshot is the new state
-    /// (not a delta). Consumers track the latest snapshot to disambiguate
-    /// e.g. ctrl+'a' (shortcut) from 'a' (text).
+    /// Modifier set changed; the snapshot is the new state, not a delta.
     ModifiersChanged(Modifiers),
-    /// An input method's uncommitted text changed. An empty `text` ends
-    /// the composition. Hosts forward it only while a widget asks for IME
-    /// text — see [`Ui::request_ime`](crate::Ui::request_ime).
+    /// An input method's uncommitted text changed; empty `text` ends the
+    /// composition. Forwarded only while a widget asks, see
+    /// [`Ui::request_ime`](crate::Ui::request_ime).
     ImePreedit(ImePreedit<'a>),
-    /// An input method committed `text`: it is typed, in place among the
-    /// key presses, as if each character had its own key.
+    /// An input method committed `text`, typed in place among the key presses.
     ImeCommit(&'a str),
-    /// The surface lost keyboard focus to another window.
-    ///
-    /// **Everything held is no longer held.** A platform stops reporting
-    /// to an unfocused surface, so a button released or a modifier
-    /// dropped while another window has focus is never seen: without this
-    /// the state machine keeps a press latched and a Ctrl held until the
-    /// next event happens to say otherwise, and the first click back into
-    /// the window completes a gesture the user abandoned minutes ago.
-    /// Hosts forward it on their own focus-lost notification.
+    /// The surface lost keyboard focus. **Everything held is no longer held:** an
+    /// unfocused surface reports nothing, so a released button or dropped modifier
+    /// is never seen and would stay latched.
     SurfaceFocusLost,
 }
 
 impl<'a> InputEvent<'a> {
-    /// The text an IME event borrows, or `None` for every other event.
     pub(crate) const fn text(&self) -> Option<&'a str> {
         match *self {
             Self::ImePreedit(ImePreedit { text, .. }) | Self::ImeCommit(text) => Some(text),
@@ -100,9 +68,6 @@ impl<'a> InputEvent<'a> {
         }
     }
 
-    /// This event borrowing `text` in place of its own — how the trickle
-    /// queue holds an IME event past the host's string, and gives it
-    /// back. Every other event is itself.
     pub(crate) const fn with_text(self, text: &str) -> InputEvent<'_> {
         match self {
             Self::ImePreedit(ImePreedit { cursor, .. }) => {
@@ -132,24 +97,13 @@ impl<'a> InputEvent<'a> {
         }
     }
 
-    /// Whether this event's payload is one the pipeline can act on.
-    ///
-    /// **The screen on host input**, applied once by
-    /// [`InputState::on_input`](crate::input::input_state::InputState) before
-    /// any arm reads the event. Every scalar a variant carries lands in
-    /// retained state — a pointer position becomes a hit-test coordinate, a
-    /// scroll delta a viewport offset, a zoom factor a running product — and a
-    /// non-finite one does not merely produce a wrong frame, it poisons that
-    /// state: NaN compares false against every rect it is later tested
-    /// against, and an offset holding one fails
-    /// [`TranslateScale::new`](crate::TranslateScale)'s finite-translation
-    /// contract several passes downstream, where nothing is left to name the
-    /// event that caused it.
-    ///
-    /// One screen rather than one per arm: the arms differ in what they do
-    /// with a value, not in whether they can hold a NaN. Zoom asks the
-    /// stricter of the two questions — a factor composes by multiplication,
-    /// so it must be strictly positive as well as finite.
+    /// Whether this event's payload is one the pipeline can act on. **The screen on
+    /// host input**, applied once by
+    /// [`InputState::on_input`](crate::input::input_state::InputState): a
+    /// non-finite scalar would poison retained state (NaN fails every hit-test; an
+    /// offset holding one trips [`TranslateScale::new`](crate::TranslateScale)'s
+    /// finite check later). Zoom composes by multiplication, so it must be strictly
+    /// positive too.
     pub(crate) fn is_valid(&self) -> bool {
         match self {
             Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
@@ -161,8 +115,6 @@ impl<'a> InputEvent<'a> {
             | Self::ModifiersChanged(_)
             | Self::SurfaceFocusLost
             | Self::ImeCommit(_) => true,
-            // A cursor past the text is the platform's mistake, and one a
-            // widget would slice on.
             Self::ImePreedit(ImePreedit { text, cursor }) => {
                 cursor.is_none_or(|span| text.get(span.range()).is_some())
             }
@@ -177,10 +129,9 @@ pub(crate) mod internals {
     use crate::input::keyboard::key_text::KeyText;
 
     impl InputEvent<'_> {
-        /// A first press of `key`, typing what the key types on a plain
-        /// layout. `physical` is [`Key::Other`]: only a non-ASCII `Char`
-        /// under a command modifier consults it (`Shortcut::matches`), so
-        /// it is inert for every other key.
+        /// A first press of `key`, typing what it types on a plain layout;
+        /// `physical` is [`Key::Other`], read only for a non-ASCII `Char` under a
+        /// command modifier.
         pub(crate) fn key_down(key: Key) -> Self {
             Self::KeyDown {
                 key,
@@ -203,11 +154,8 @@ mod tests {
     use crate::input::pointer::PointerButton;
     use glam::Vec2;
 
-    /// Every variant carrying a scalar is screened, and every variant that
-    /// carries none passes. The payload-free arms are listed out rather than
-    /// sampled: the point of one gate is that adding a variant has to be
-    /// answered here, and a sampled test would let a new float-carrying one
-    /// through unnoticed.
+    /// Every scalar-carrying variant is screened and the rest pass; payload-free
+    /// arms are listed so a new variant has to be answered here.
     #[test]
     fn ingress_screens_every_scalar_payload_and_admits_the_rest() {
         let bad = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY];
@@ -223,7 +171,6 @@ mod tests {
             }
             assert!(!InputEvent::Zoom(value).is_valid(), "zoom {value}");
         }
-        // Zoom is the stricter question: finite is not enough.
         for factor in [0.0, -0.0, -1.0] {
             assert!(!InputEvent::Zoom(factor).is_valid(), "zoom {factor}");
         }
@@ -245,15 +192,12 @@ mod tests {
             },
             InputEvent::ModifiersChanged(Modifiers::default()),
             InputEvent::SurfaceFocusLost,
-            // A cursor on the boundaries of "かな": bytes 3..6 is "な".
             InputEvent::ImePreedit(ImePreedit {
                 text: "かな",
                 cursor: Some(Span::new(3, 3)),
             }),
             InputEvent::ImeCommit("かな"),
         ];
-        // A preedit cursor past its text, or inside a character, is
-        // refused: a widget would slice the text on it.
         for cursor in [Span::new(3, 4), Span::new(1, 2)] {
             let event = InputEvent::ImePreedit(ImePreedit {
                 text: "かな",
@@ -261,9 +205,8 @@ mod tests {
             });
             assert!(!event.is_valid(), "{event:?}");
         }
-        // An exhaustive match with no `_` arm: a new variant does not
-        // compile until it has an index here, and the count below fails
-        // until it has a case above.
+        // No `_` arm: a new variant fails to compile until indexed, and the count
+        // fails until it has a case.
         let mut covered = [false; 12];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");

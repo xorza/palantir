@@ -1,40 +1,22 @@
-//! Okhsv — the picker's default axes, and the sRGB gamut solve behind them.
+//! Okhsv: the picker's default axes and the sRGB gamut solve behind them.
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab;
 use std::f32::consts::TAU;
 
-/// Hue, saturation and value in Björn Ottosson's Okhsv space.
+/// Hue, saturation and value in Björn Ottosson's Okhsv space
+/// (<https://bottosson.github.io/posts/colorpicker/>), in linear light.
 ///
-/// Every axis is `0..1`, and `h` wraps at `1`. `s = 1` is the sRGB gamut edge
-/// and `v = 1` its brightest slice, so **every triple in the unit cube names a
-/// colour inside the gamut** and no clipping step is needed.
-///
-/// Okhsv replaces [`Hsv`](crate::Hsv) axis for axis and fixes what HSV gets
-/// wrong. HSV's hue distorts — deep blue drifts to purple as saturation moves
-/// — and its `v` reads as a different brightness on every hue. Okhsv is built
-/// on Oklab, so hue stays put while the other two axes move, and one `v`
-/// reads as one brightness right around the circle.
-///
-/// The conversion is Ottosson's reference
-/// (<https://bottosson.github.io/posts/colorpicker/>) over the crate's own
-/// Oklab matrices. It works entirely in linear light, with no sRGB transfer
-/// on the way.
+/// Every axis is `0..1` and `h` wraps. `s = 1` is the sRGB gamut edge and `v = 1`
+/// its brightest slice, so **every triple in the unit cube is in gamut**. Unlike
+/// [`Hsv`](crate::Hsv), hue stays put as the other axes move.
 ///
 /// # The blue sliver
 ///
-/// One small part of sRGB is unreachable: a wedge around pure blue. The gamut
-/// is not star-shaped in Oklab there — sweeping chroma out along blue's hue,
-/// red dips below zero, comes back, and only then does green leave. Okhsv's
-/// gamut edge is the *first* crossing, so it stops short and `#0000ff` sits
-/// just outside the cube. `Okhsv { s: 1.0, v: 1.0 }` at blue's hue is
-/// `#0037ff`.
-///
-/// Every Okhsv picker has this, and it is a property of the space rather than
-/// of this port. A picker answers it by leaving the other routes to a colour
-/// open — the hex field, the channel values, and [`Hsv`](crate::Hsv) — and by
-/// never rewriting a colour the user did not aim at.
+/// A wedge around pure blue is unreachable: Okhsv's gamut edge is the *first*
+/// crossing, so `#0000ff` sits just outside the cube (`s = 1, v = 1` at blue's hue
+/// is `#0037ff`). Keep hex, channels and [`Hsv`](crate::Hsv) available in a picker.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Okhsv {
     /// Hue around the Oklab circle, `0..1`. Wraps.
@@ -45,59 +27,42 @@ pub struct Okhsv {
     pub v: f32,
 }
 
-/// Chroma below which a colour has no hue of its own and the caller's
-/// fallback answers instead.
-///
-/// `f32` rounding in the two Oklab matrices leaves an exact grey with a
-/// chroma of up to about `3e-7`, and the smallest chroma of a colour one
-/// byte away from a grey is about `1e-3`. This sits between the two, more
-/// than thirty times from each.
+/// Chroma below which a colour has no hue and the caller's fallback answers: `f32`
+/// rounding leaves an exact grey up to ~`3e-7`, one byte from grey is at least
+/// ~`1e-3`.
 const GREY_CHROMA: f32 = 1e-5;
 
-/// The saturation the gamut triangle is anchored at in Ottosson's fit. Not a
-/// tunable: the inverse below undoes exactly this constant.
+/// The saturation the gamut triangle is anchored at in Ottosson's fit; the inverse
+/// undoes this constant.
 const ANCHOR_S: f32 = 0.5;
 
-/// The toe's shape, from the reference. `TOE_K3` is what makes `toe(1) == 1`.
+/// The toe's shape, from the reference; `TOE_K3` makes `toe(1) == 1`.
 const TOE_K1: f32 = 0.206;
 const TOE_K2: f32 = 0.03;
 const TOE_K3: f32 = (1.0 + TOE_K1) / (1.0 + TOE_K2);
 
-/// Halley steps taken to land the cusp. See [`max_saturation`] for the
-/// measurement that picked three.
+/// Halley steps to land the cusp; see [`max_saturation`].
 const HALLEY_STEPS: usize = 3;
 
 impl Okhsv {
-    /// Construct from the three axes. Out-of-range values are the caller's
-    /// until [`Self::to_color`], which reads the hue as a *turn* and the
-    /// rest as *fractions*: it wraps the hue, clamps the rest, and reads a
-    /// non-finite axis as `0`.
+    /// Construct from the three axes. [`Self::to_color`] wraps the hue, clamps the
+    /// rest and reads a non-finite axis as `0`.
     pub const fn new(h: f32, s: f32, v: f32) -> Self {
         Self { h, s, v }
     }
 
-    /// The opaque colour these axes name.
-    ///
-    /// Alpha is not an Okhsv axis, so the result is opaque and a caller that
-    /// carries one applies it with [`RgbaF32::with_alpha`].
+    /// The opaque colour these axes name; apply alpha with [`RgbaF32::with_alpha`].
     pub fn to_color(self) -> RgbaF32 {
         Self::slice(self.h).color(self.s, self.v)
     }
 
-    /// This hue's gamut geometry, solved once so a run of samples sharing a
-    /// hue pays for it once.
-    ///
-    /// What a colour field is built from: every texel of one field shares the
-    /// hue, and the cusp solve is the expensive half of the conversion.
     pub(crate) fn slice(hue: f32) -> OkhsvSlice {
         let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
         OkhsvSlice::from_direction(cos, sin)
     }
 
-    /// The axes naming `color`, ignoring its alpha.
-    ///
-    /// `fallback_hue` answers grey, which has no hue to recover — without it
-    /// a picker would lose the hue every time the value reached zero.
+    /// The axes naming `color`, ignoring alpha; `fallback_hue` answers grey, which
+    /// has no hue.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
         let lab = oklab::from_linear(color.r, color.g, color.b);
         let lightness = lab[0];
@@ -112,8 +77,6 @@ impl Okhsv {
         let slice = OkhsvSlice::from_direction(lab[1] / chroma, lab[2] / chroma);
         let CuspSlopes { t, .. } = slice.slopes;
 
-        // Undo `to_color` in the order it applied: triangle, then curved top,
-        // then toe.
         let at_top = t / (chroma + lightness * t);
         let l_v = at_top * lightness;
         let c_v = at_top * chroma;
@@ -127,11 +90,6 @@ impl Okhsv {
     }
 }
 
-/// One hue's gamut geometry, hoisted out of a sampling loop.
-///
-/// Holds what [`Okhsv::to_color`] would otherwise re-solve per call: the hue's
-/// direction in Oklab and the two edges of its gamut triangle. Take one from
-/// [`Okhsv::slice`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OkhsvSlice {
     cos: f32,
@@ -141,8 +99,6 @@ pub(crate) struct OkhsvSlice {
 }
 
 impl OkhsvSlice {
-    /// The slice whose Oklab direction is the unit vector `(cos, sin)`. Both
-    /// conversion directions come through here, so they solve one cusp.
     fn from_direction(cos: f32, sin: f32) -> Self {
         let slopes = Cusp::find(cos, sin).slopes();
         Self {
@@ -153,28 +109,23 @@ impl OkhsvSlice {
         }
     }
 
-    /// The scale that bends the triangle's top, at the `v = 1` point
-    /// `(l_v, c_v)`, back onto the real gamut. Shared by the two directions,
-    /// which is what keeps them exact inverses of one another.
+    /// Scale bending the triangle's top at the `v = 1` point `(l_v, c_v)` onto the
+    /// real gamut; shared so the two directions stay exact inverses.
     fn top_scale(self, l_v: f32, c_v: f32) -> f32 {
         let l_vt = toe_inv(l_v);
         let c_vt = c_v * l_vt / l_v;
         peak_scale([l_vt, self.cos * c_vt, self.sin * c_vt])
     }
 
-    /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
+    /// The opaque colour at `s` and `v` on this hue; both clamp to `0..1`.
     pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
         let sat = domain::fraction(s);
         let val = domain::fraction(v);
 
-        // The gamut slice as a perfect triangle first: `l_v` / `c_v` are the
-        // lightness and chroma at `v = 1`.
         let denom = ANCHOR_S + self.slopes.t - self.slopes.t * self.k * sat;
         let l_v = 1.0 - sat * ANCHOR_S / denom;
         let c_v = sat * self.slopes.t * ANCHOR_S / denom;
 
-        // Then the two compensations that bend the triangle back onto the
-        // real gamut: the toe on lightness, and the curved top.
         let lightness = val * l_v;
         let chroma = val * c_v;
         let toed = toe_inv(lightness);
@@ -190,9 +141,8 @@ impl OkhsvSlice {
             chroma * scale * self.cos,
             chroma * scale * self.sin,
         ]);
-        // The edge of the gamut lands a hair outside it: the reference port
-        // returns -1/255 on the red corner. Clamping here is what lets the
-        // whole unit cube be called in-gamut.
+        // The gamut edge lands a hair outside (the reference gives -1/255 on red);
+        // clamping makes the whole cube in-gamut.
         RgbaF32::new(
             rgb[0].clamp(0.0, 1.0),
             rgb[1].clamp(0.0, 1.0),
@@ -202,8 +152,6 @@ impl OkhsvSlice {
     }
 }
 
-/// The most chromatic point of one hue slice: where the slice's edge turns
-/// the corner of the sRGB cube.
 #[derive(Clone, Copy, Debug)]
 struct Cusp {
     l: f32,
@@ -211,16 +159,12 @@ struct Cusp {
 }
 
 impl Cusp {
-    /// The cusp of the hue whose Oklab direction is `(cos, sin)`, which must
-    /// be a unit vector.
     fn find(cos: f32, sin: f32) -> Self {
         let s = max_saturation(cos, sin);
         let l = peak_scale([1.0, s * cos, s * sin]);
         Self { l, c: l * s }
     }
 
-    /// The cusp as the two slopes the gamut triangle is drawn from: `s` up
-    /// from black, `t` down from white.
     fn slopes(self) -> CuspSlopes {
         CuspSlopes {
             s: self.c / self.l,
@@ -229,23 +173,18 @@ impl Cusp {
     }
 }
 
-/// A cusp expressed as the gamut triangle's two edges.
 #[derive(Clone, Copy, Debug)]
 struct CuspSlopes {
     s: f32,
     t: f32,
 }
 
-/// Greatest `C/L` this hue direction reaches inside sRGB.
-///
-/// A polynomial fit per cube face, then Halley steps — the reference's recipe,
-/// run to convergence rather than once. Measured worst chroma error against a
-/// converged solve, over 3600 hues: one step `3.2e-3`, two steps `2.3e-5`,
-/// three steps `1.1e-11`. Three is therefore exact in `f32`, and it costs
-/// forty flops on a conversion that only runs when the hue moves.
+/// Greatest `C/L` this hue direction reaches inside sRGB: a polynomial fit per cube
+/// face, then Halley steps. Worst chroma error over 3600 hues: one step `3.2e-3`,
+/// two `2.3e-5`, three `1.1e-11`, so three is exact in `f32`.
 fn max_saturation(a: f32, b: f32) -> f32 {
-    // Which channel goes negative first decides both the fit and the row of
-    // the Oklab matrix the Halley step differentiates.
+    // The first channel to go negative picks the fit and the matrix row the Halley
+    // step differentiates.
     let (k, w) = if -1.881_703_3 * a - 0.809_364_9 * b > 1.0 {
         (
             [
@@ -308,9 +247,8 @@ fn max_saturation(a: f32, b: f32) -> f32 {
     s
 }
 
-/// The cube-root scale that brings `lab`'s brightest linear channel to
-/// exactly one: what pins a slice's cusp, and its curved top, onto the real
-/// gamut.
+/// Cube-root scale bringing `lab`'s brightest linear channel to one, pinning the
+/// cusp and curved top onto the gamut.
 fn peak_scale(lab: [f32; 3]) -> f32 {
     let rgb = oklab::to_linear(lab);
     let peak = rgb[0].max(rgb[1]).max(rgb[2]);
@@ -318,9 +256,6 @@ fn peak_scale(lab: [f32; 3]) -> f32 {
     (1.0 / peak).cbrt()
 }
 
-/// Oklab lightness → Okhsv's perceptual lightness. The reference's toe: it
-/// pulls the darks apart so a value step is one step to the eye down there
-/// too.
 fn toe(x: f32) -> f32 {
     f32::midpoint(
         TOE_K3 * x - TOE_K1,
@@ -328,7 +263,6 @@ fn toe(x: f32) -> f32 {
     )
 }
 
-/// Inverse of [`toe`], in closed form.
 fn toe_inv(x: f32) -> f32 {
     (x * x + TOE_K1 * x) / (TOE_K3 * (x + TOE_K2))
 }

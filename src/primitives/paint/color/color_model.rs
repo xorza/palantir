@@ -4,22 +4,13 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::hsv::Hsv;
 use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
 
-/// The colour model a picker's field and hue bar work in.
-///
-/// Two, not more. [`Okhsv`] is the default because its axes are
-/// perceptual: the hue holds still while the other two move, and one value
-/// reads as one brightness around the whole circle.
-/// [`Hsv`] is kept because a number matched against another tool
-/// has to land where that tool says.
-///
-/// Serialized so a host can persist which one the user last picked in.
+/// The colour model a picker's field and hue bar work in. [`Okhsv`] is the default for its perceptual axes; [`Hsv`] matches numbers from other tools. Serialized so a host can persist the pick.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum ColorModel {
-    /// Perceptual HSV over Oklab. The default, and the one whose
-    /// saturation reads evenly across hues.
+    /// Perceptual HSV over Oklab (default).
     #[default]
     Okhsv,
     /// Classic sRGB-space HSV.
@@ -27,7 +18,7 @@ pub enum ColorModel {
 }
 
 impl ColorModel {
-    /// Both models, in the order a picker offers them.
+    /// Both models, in picker order.
     pub const ALL: [Self; 2] = [Self::Okhsv, Self::Hsv];
 
     /// What the model switch calls this one.
@@ -38,9 +29,7 @@ impl ColorModel {
         }
     }
 
-    /// This model's slice at `hue`, with whatever the model solves per hue
-    /// solved once. What to build a texture of one hue from — see
-    /// [`HueSlice`].
+    /// This model's slice at `hue`, with the per-hue solve done once; see [`HueSlice`].
     pub fn slice(self, hue: f32) -> HueSlice {
         match self {
             Self::Okhsv => HueSlice(HueSliceKind::Okhsv(Okhsv::slice(hue))),
@@ -49,12 +38,7 @@ impl ColorModel {
     }
 }
 
-/// One hue of one model, ready to answer a run of samples.
-///
-/// What a colour field's texture is filled from. Every texel of a field
-/// shares the hue, and for [`ColorModel::Okhsv`] the per-hue gamut solve is
-/// the expensive half of a conversion — so it happens once here rather than
-/// four thousand times in the loop. Take one from [`ColorModel::slice`].
+/// One hue of one model, ready to answer a run of samples. Every texel of a field shares the hue, and the Okhsv per-hue gamut solve is costly, so it happens once here. Take one from [`ColorModel::slice`].
 #[derive(Clone, Copy, Debug)]
 pub struct HueSlice(HueSliceKind);
 

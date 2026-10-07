@@ -1,19 +1,9 @@
-//! What the paint-snapshot storage does under churn: blocks recycle in
-//! place, live spans never move, and no frame pays for another frame's
-//! shape churn.
+//! Paint-snapshot storage under churn: blocks recycle in place, live spans
+//! never move, and no frame pays for another's shape churn.
 //!
-//! These are the properties that replaced compaction. The old arena
-//! appended every count change to the tail and reseated every live span
-//! once orphans passed 75% — correct, but the reseat landed whole on one
-//! frame in N, which is exactly the lumpy cost this crate rejects
-//! elsewhere. What that bought is now free, and these tests are what say
-//! so.
-//!
-//! Row counts throughout are `1 + shapes`: a canvas contributes its
-//! chrome at row 0 and then one row per shape. [`Paint::GRANULE`] is
-//! one, so a block is exactly its span's length and a row count is its
-//! own size class — which is what makes every arena length below a
-//! sum of row counts rather than of rounded-up capacities.
+//! Row counts are `1 + shapes` (chrome at row 0, then one row per shape).
+//! [`Paint::GRANULE`] is one, so a block is exactly its span's length and each
+//! row count is its own size class.
 //!
 //! [`Paint::GRANULE`]: crate::common::block_arena::BlockSlot::GRANULE
 
@@ -31,8 +21,7 @@ use crate::shape::Shape;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 
-/// A canvas holding `shapes` rects, all inside its own box so nothing is
-/// culled off-surface.
+/// A canvas holding `shapes` rects, all inside its box so none is culled.
 fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
     Panel::hstack()
         .id(WidgetId::from_hash(id))
@@ -65,13 +54,9 @@ fn span_of(h: &UiHarness, id: &'static str) -> Span {
     h.engines.damage.prev[&WidgetId::from_hash(id)].paint_span
 }
 
-/// The headline: a node whose paint-row count changes every frame
-/// reaches a steady state where the storage stops growing outright.
-///
-/// This is the workload compaction existed for. Each toggle releases the
-/// old block and takes the other count's, so once both classes have been
-/// seen the same two blocks trade back and forth forever — no tail
-/// growth, and therefore nothing to reclaim.
+/// A node whose paint-row count changes every frame reaches a steady state
+/// where storage stops growing: once both size classes were seen, the same two
+/// blocks trade back and forth.
 #[test]
 fn a_toggling_shape_count_trades_two_blocks_forever() {
     const FRAMES: u32 = 200;
@@ -79,15 +64,13 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |shapes: u32| move |ui: &mut Ui| canvas(ui, "canvas", shapes);
 
-    // 3 shapes is 4 rows, behind the root panel's own single
-    // child-marker row.
+    // 3 shapes is 4 rows, behind the root panel's child-marker row.
     frame(&mut h, build(3));
     let three = span_of(&h, "canvas");
     assert_eq!((three.start, three.len), (1, 4));
     assert_eq!(arena_len(&h), 5, "one row plus four, and no slack");
 
-    // 4 shapes is 5 rows — a different length is a different class, so a
-    // second block, and the 4-row one is parked.
+    // 4 shapes is 5 rows, a different class, so a second block; the 4-row one is parked.
     frame(&mut h, build(4));
     let four = span_of(&h, "canvas");
     assert_eq!((four.start, four.len), (5, 5));
@@ -119,15 +102,9 @@ fn a_toggling_shape_count_trades_two_blocks_forever() {
     );
 }
 
-/// Blocks here are exactly their span's length: the arena holds the
-/// live row count and not one slot more.
-///
-/// That is [`Paint`]'s granule of one, and it is a measured choice
-/// rather than a tidiness one — the diff reads these spans back every
-/// frame, so the slack a coarser granule leaves between them costs cache
-/// density. Rounding to four inflated this arena by 20-30% and cost
-/// 2.9% and 6.8% of `damage/workload/shape_churn_partial` and
-/// `shape_churn_full`.
+/// Blocks are exactly their span's length: the arena holds the live row count
+/// and no slack. The granule of one is measured: coarser slack costs cache
+/// density in the diff's per-frame span reads.
 ///
 /// [`Paint`]: crate::cascade::paint::Paint
 #[test]
@@ -139,8 +116,8 @@ fn a_span_occupies_exactly_its_row_count() {
         canvas(ui, "c", 11);
     });
 
-    // The root panel marks its three children, then one block per
-    // canvas of exactly `1 + shapes` rows.
+    // The root panel marks its three children, then one block per canvas of
+    // `1 + shapes` rows.
     let root = 3;
     let canvases: u32 = [2u32, 7, 11].iter().map(|s| 1 + s).sum();
     assert_eq!(
@@ -158,14 +135,9 @@ fn a_span_occupies_exactly_its_row_count() {
     );
 }
 
-/// A live span is stable for the snapshot's whole life, whatever a
-/// neighbour does. Compaction moved spans (rewriting each owner's
-/// `paint_span` as it went), so a node that never changed still had its
-/// storage copied and its index rewritten; now it is untouched.
-///
-/// The stability is not cosmetic — it is what lets reclamation happen at
-/// the point a widget leaves, with no pass that has to walk the map and
-/// no ordering constraint between the two.
+/// A live span is stable for the snapshot's whole life, whatever a neighbour
+/// does. That is what lets reclamation happen when a widget leaves, with no
+/// walking pass or ordering constraint.
 #[test]
 fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -182,9 +154,7 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
     let quiet_rows: Vec<_> = h.engines.damage.paints.slots[quiet_span.range()].to_vec();
     assert_eq!(quiet_span.len, 4, "chrome plus three shapes");
 
-    // Walk the churner across four size classes, several times over —
-    // enough tail growth to have tripped the old 75%-orphan trigger
-    // repeatedly.
+    // Walk the churner across four size classes several times.
     for round in 0..40 {
         frame(&mut h, build(4 + round % 16));
         assert_eq!(
@@ -200,15 +170,12 @@ fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
     );
 }
 
-/// A widget leaving hands its block back, and the next arrival of the
-/// same size class takes it — so a list swapping one row for another
-/// settles at one spare block rather than one per swap.
+/// A leaving widget hands its block back and the next arrival of the same
+/// class takes it, so a list swapping rows settles at one spare block.
 ///
-/// That it takes one swap to settle rather than none is worth stating:
-/// departures are reclaimed in the removed-widget tail at the *end* of
-/// the diff, after the walk has already served this frame's arrivals. So
-/// the high-water mark is the live set plus one frame's departures, and
-/// never more.
+/// It takes one swap to settle because departures are reclaimed at the end of
+/// the diff, after this frame's arrivals. The high-water mark is the live set
+/// plus one frame's departures.
 #[test]
 fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -216,8 +183,8 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
 
     frame(&mut h, build("first"));
     let one_widget = arena_len(&h);
-    // The first swap overlaps: "second" is stored before "first" is
-    // reclaimed, so this is the frame that buys the spare block.
+    // The first swap overlaps: "second" is stored before "first" is reclaimed,
+    // buying the spare block.
     frame(&mut h, build("second"));
     let settled = arena_len(&h);
     assert_eq!(
@@ -226,7 +193,6 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
         "the overlap costs one block of the departing widget's 6 rows",
     );
 
-    // Every later swap runs inside it.
     for round in 0..20 {
         let (arriving, departing) = if round % 2 == 0 {
             ("first", "second")
@@ -249,26 +215,21 @@ fn swapping_one_widget_for_another_settles_at_a_single_spare_block() {
     }
 }
 
-/// A forced-full frame drops the snapshot map wholesale, so the arena
-/// drops its free lists with its storage.
-///
-/// Keeping them would leave every class head pointing into a buffer that
-/// no longer holds blocks, and the next store would hand out an index
-/// into somebody else's rows.
+/// A forced-full frame drops the snapshot map wholesale, so the arena drops
+/// its free lists too; stale class heads would hand out indices into
+/// someone else's rows.
 #[test]
 fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |shapes: u32| move |ui: &mut Ui| canvas(ui, "canvas", shapes);
 
-    // Straddle the class boundary so a block is genuinely parked when
-    // the reset lands.
+    // Straddle the class boundary so a block is parked when the reset lands.
     frame(&mut h, build(3));
     frame(&mut h, build(4));
     assert_eq!(free_classes(&h), 1, "the fixture must leave a block parked");
 
-    // A frame whose prior output was never presented forces a full
-    // repaint, which invalidates the whole snapshot map — and it swaps
-    // in a different tree, so nothing here could be reached by re-keying.
+    // A frame whose prior output was never presented forces a full repaint,
+    // invalidating the whole snapshot map and swapping in a different tree.
     h.frame_without_baseline(|ui| one_frame(ui, RED));
     assert_eq!(free_classes(&h), 0, "the free lists went with the storage");
     assert_eq!(
@@ -278,8 +239,7 @@ fn a_forced_full_frame_resets_the_arena_without_stale_free_heads() {
          nothing else is allocated",
     );
 
-    // And the rebuilt snapshot addresses its own rows, not a stale
-    // block's.
+    // The rebuilt snapshot addresses its own rows.
     let span = span_of(&h, "a");
     assert_eq!(span.len, 1, "the 50x50 frame contributes its chrome row");
     assert_eq!(

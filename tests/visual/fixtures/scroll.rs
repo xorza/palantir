@@ -1,6 +1,4 @@
-//! Scroll fixtures: pin the scrollbar visuals (reservation layout,
-//! bar positioning, corner avoidance) and the encoder-cache replay
-//! correctness that bit us with the `exit_idx` panic.
+//! Scroll fixtures: scrollbar visuals and encoder-cache replay correctness.
 
 use glam::UVec2;
 use palantir::{
@@ -15,9 +13,7 @@ use crate::harness::Harness;
 const CARD: RgbaF32 = RgbaF32::srgb(0.16, 0.20, 0.28);
 const ROW: RgbaF32 = RgbaF32::srgb(0.42, 0.55, 0.78);
 
-/// Override the default near-black thumb to a light translucent fill
-/// so it shows up against the dark fixture background. Mirrors what
-/// the showcase binary (`src/bin/showcase/main.rs`) does.
+/// Light translucent thumb so it shows on the dark fixture background.
 fn light_thumb_theme(ui: &mut palantir::Ui) {
     ui.theme_mut().scrollbar = ScrollbarTheme {
         thumb: RgbaF32::srgba(1.0, 1.0, 1.0, 0.55),
@@ -27,10 +23,7 @@ fn light_thumb_theme(ui: &mut palantir::Ui) {
     };
 }
 
-/// Tall content in a fixed-height vertical scroll. Two-frame settle:
-/// frame 1 records with empty state (no overflow detected, no bar);
-/// frame 2 reads the populated state and reserves padding + emits the
-/// bar. The golden captures frame 2.
+/// Tall content in a fixed-height vertical scroll; the golden captures frame 2, once the bar exists.
 #[test]
 fn scroll_vertical_overflow_matches_golden() {
     fn scene(ui: &mut palantir::Ui) {
@@ -66,8 +59,7 @@ fn scroll_vertical_overflow_matches_golden() {
     assert_matches_golden(GoldenName::ScrollVerticalOverflow, &img);
 }
 
-/// Wide content in a fixed-width horizontal scroll. Bar lands at the
-/// bottom edge after two-frame settle.
+/// Wide content in a fixed-width horizontal scroll; the bar lands at the bottom edge after settle.
 #[test]
 fn scroll_horizontal_overflow_matches_golden() {
     fn scene(ui: &mut palantir::Ui) {
@@ -103,9 +95,7 @@ fn scroll_horizontal_overflow_matches_golden() {
     assert_matches_golden(GoldenName::ScrollHorizontalOverflow, &img);
 }
 
-/// Both-axis scroll over a content larger than the viewport on both
-/// axes. Pins: V bar at right edge, H bar at bottom edge, empty
-/// corner where they would have met.
+/// Both-axis scroll: V bar right, H bar bottom, empty corner where they meet.
 #[test]
 fn scroll_xy_overflow_matches_golden() {
     fn scene(ui: &mut palantir::Ui) {
@@ -138,9 +128,7 @@ fn scroll_xy_overflow_matches_golden() {
     assert_matches_golden(GoldenName::ScrollXyOverflow, &img);
 }
 
-/// Content fits inside the viewport — no overflow, no bar, no
-/// reservation. Even after two settle frames the bar must stay
-/// collapsed.
+/// Content that fits has no overflow, bar or reservation; the bar stays collapsed after settling.
 #[test]
 fn scroll_no_bar_when_content_fits_matches_golden() {
     fn scene(ui: &mut palantir::Ui) {
@@ -173,10 +161,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
     assert_matches_golden(GoldenName::ScrollNoBarWhenFits, &img);
 }
 
-/// Scroll with user-set padding. The bar must land in the reserved
-/// strip flush with the OUTER right edge — NOT inside the user's
-/// padding band. Catches the regression where bar position used the
-/// inner viewport (= would land inside user padding) instead of outer.
+/// With user padding the bar sits flush with the OUTER right edge, not inside the padding band.
 #[test]
 fn scroll_with_user_padding_matches_golden() {
     fn scene(ui: &mut palantir::Ui) {
@@ -213,16 +198,7 @@ fn scroll_with_user_padding_matches_golden() {
     assert_matches_golden(GoldenName::ScrollWithUserPadding, &img);
 }
 
-/// Warm-cache parity: render the same scene three times. Frame 1 has
-/// cold caches + empty `ScrollState` (no bar). Frame 2 has populated
-/// state (bar appears) but cold encoder cache for the bar shapes.
-/// Frame 3 reads bar shapes through the warm encoder cache.
-///
-/// The encoder cache `exit_idx` bug we just fixed manifested as a
-/// composer panic on frame 3 of nested clipped scrolls — but the
-/// general latent risk is that warm-cache replay diverges in pixels
-/// from cold-cache encode. Pin frame 3 byte-identical to frame 2.
-/// No golden — pure intra-test invariant.
+/// Warm-cache parity: a cold encode and a full repaint with warm caches must yield identical pixels.
 #[test]
 fn scroll_warm_cache_repaint_matches_the_cold_encode() {
     fn scene(ui: &mut palantir::Ui) {
@@ -267,11 +243,7 @@ fn scroll_warm_cache_repaint_matches_the_cold_encode() {
     }
 
     let mut h = Harness::new();
-    // The cold frame encodes everything fresh; the invalidated one repaints
-    // the whole target again with every cache warm. Same scene,
-    // deterministic encode → identical pixels, so a cache that corrupts
-    // replay diverges here. Both paint modes are pinned: an unchanged scene
-    // would otherwise skip and compare two copies of one backbuffer.
+    // Both frames are pinned to `FramePaint::Full`: an unchanged scene would skip and compare a backbuffer to itself.
     let cold = h.size(UVec2::new(280, 200)).frame(scene);
     assert_eq!(cold.paint, FramePaint::Full);
     h.host.invalidate_target_contents();

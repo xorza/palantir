@@ -13,11 +13,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
 use glam::{UVec2, Vec2};
 
-/// One frame driven by a commit-deferring caller: the draft re-seeds
-/// from `canonical` every record pass and is adopted only on
-/// `committed`. One snapshot per record pass, since a one-frame edge only
-/// shows in pass A and an undo pusher applies once per pass — so a commit
-/// has to fire in exactly one of them.
+/// One frame for a commit-deferring caller: the draft re-seeds from `canonical` and is adopted only on `committed`.
 fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
     h.frame_passes(|ui| {
         let mut draft = *canonical;
@@ -32,22 +28,14 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passe
     })
 }
 
-/// The release frame re-writes the value, so a caller that re-seeds its
-/// draft from a canonical copy every frame and adopts it only on
-/// `committed` still observes the gesture's result. A release is neither
-/// `pressed()` nor `is_live()`, so without naming it the deferred
-/// caller would read its own seed back on the one frame it acts on.
-///
-/// Geometry: 118 wide, knob 18, so travel is 100 px starting at x = 9 —
-/// x = 59 is fraction 0.5 and x = 89 is 0.8, straight through to the
-/// value on an unstepped 0..=1 range.
+/// The release frame re-writes the value, so a deferred caller sees the result.
+/// Geometry: 118 wide, knob 18, travel 100 px from x = 9; x = 59 is 0.5, x = 89 is 0.8.
 #[test]
 fn release_rewrites_the_value_once_for_a_deferred_caller() {
     let id = WidgetId::from_hash("slider-deferred-commit");
     let mut h = UiHarness::new(UVec2::new(118, 18));
     let mut canonical = 0.0_f64;
 
-    // Settle a layout frame so the cascade exists for pointer routing.
     deferred_frame(&mut h, id, &mut canonical);
 
     h.press_at(Vec2::new(59.0, 9.0));
@@ -81,20 +69,13 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
     assert_eq!(canonical, 0.8);
 }
 
-/// A press and release on the track is a whole edit: it writes a value,
-/// and it latches no drag, so a commit read off `drag.stopped()` never
-/// fires for it. Every release ends a gesture, and every gesture owes one
-/// commit.
-///
-/// Same geometry as the drag test above — 118 wide, knob 18, travel 100
-/// from x = 9 — so x = 59 is 0.5 of an unstepped `0..=1` range.
+/// A press and release on the track is a whole edit: it writes a value, latches no drag, and commits once.
 #[test]
 fn a_click_on_the_track_commits_the_value_it_wrote() {
     let id = WidgetId::from_hash("slider-click-commit");
     let mut h = UiHarness::new(UVec2::new(118, 18));
     let mut canonical = 0.0_f64;
 
-    // Settle a layout frame so the cascade exists for pointer routing.
     deferred_frame(&mut h, id, &mut canonical);
 
     h.press_at(Vec2::new(59.0, 9.0));
@@ -126,10 +107,7 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
     assert_eq!(canonical, 0.5);
 }
 
-/// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
-/// default, and an untouched slider still gets that default
-/// (400-wide FILL column → 400 × knob_size 18). Hugged, the slider is
-/// the knob alone.
+/// Explicit `.size(...)` wins over the `Fill × knob_size` default; hugged, it is the knob alone.
 #[test]
 fn explicit_size_overrides_fill_default() {
     let mut v = 0.5_f64;
@@ -150,10 +128,7 @@ fn explicit_size_overrides_fill_default() {
     );
 }
 
-/// Each endpoint collapses one track segment to a zero-extent `Fixed`, and an
-/// unseeded value lays out as the low end rather than reaching
-/// `Sizing::fill`'s finite assert — the value is app state the widget
-/// borrows and cannot assert on.
+/// An endpoint collapses one track segment to zero extent, and a NaN value lays out as the low end.
 #[test]
 fn endpoint_rails_collapse_without_invalid_fill_weights() {
     for (value, expected) in [
@@ -189,19 +164,12 @@ fn value_to_fraction_maps_and_clamps() {
         (-10.0, 0.0, 100.0, 0.0), // below clamps
         (15.0, 10.0, 20.0, 0.5),  // offset range
         (5.0, 3.0, 3.0, 0.0),     // degenerate
-        // The share is dimensionless, so the units it is taken in cannot
-        // decide it: a range under the pixel tolerance and one past
-        // `f32`'s reach both put their midpoint in the middle.
         (5e-6, 0.0, 1e-5, 0.5),
         (5e99, 0.0, 1e100, 0.5),
         (2.5e-7, 0.0, 1e-5, 0.025),
-        // A share past `f32`'s reach is still a share, and it clamps to
-        // the end it is past rather than to the low end.
         (1e300, 0.0, 1.0, 1.0),
         (-1e300, 0.0, 1.0, 0.0),
         (1.0, 0.0, 1e-300, 1.0),
-        // A reversed range descends from left to right, and its midpoint
-        // is still the middle of the track.
         (50.0, 100.0, 0.0, 0.5),
         (100.0, 100.0, 0.0, 0.0),
         (0.0, 100.0, 0.0, 1.0),
@@ -210,9 +178,6 @@ fn value_to_fraction_maps_and_clamps() {
         let got = value_to_fraction(v, min, max);
         assert_eq!(got, want, "v2f({v},{min},{max})={got} want {want}");
     }
-    // A NaN anywhere in the triple names no share, and the low end is
-    // what this widget reads that as — the same answer `press_fraction`
-    // gives a track with no travel.
     for (v, min, max) in [
         (f64::NAN, 0.0, 100.0),
         (50.0, f64::NAN, 100.0),
@@ -228,19 +193,15 @@ fn value_to_fraction_maps_and_clamps() {
 
 #[test]
 fn fraction_to_value_inverts_value_to_fraction() {
-    // Round-trip over an offset range.
     for &v in &[10.0_f64, 12.5, 15.0, 17.5, 20.0] {
         let f = value_to_fraction(v, 10.0, 20.0);
         let back = fraction_to_value(f, 10.0, 20.0);
         assert_eq!(back, v, "roundtrip {v} -> {f} -> {back}");
     }
     assert_eq!(fraction_to_value(0.25, 10.0, 20.0), 12.5);
-    // A reversed range round-trips through the same inverse: 75 sits a
-    // quarter of the way from 100 down to 0.
     let f = value_to_fraction(75.0, 100.0, 0.0);
     assert_eq!(f, 0.25, "reversed fraction {f}");
     assert_eq!(fraction_to_value(f, 100.0, 0.0), 75.0);
-    // Out-of-range fraction clamps before mapping.
     assert_eq!(fraction_to_value(1.5, 0.0, 100.0), 100.0);
 }
 
@@ -282,14 +243,11 @@ fn snap_to_step_rounds_to_grid() {
     assert_eq!(snap_to_step(57.0, 0.0, Some(10.0)), 60.0);
     assert_eq!(snap_to_step(12.0, 0.0, Some(5.0)), 10.0);
     assert_eq!(snap_to_step(13.0, 0.0, Some(5.0)), 15.0);
-    // Off-anchor grid: steps of 0.5 from min=1.0.
     assert_eq!(snap_to_step(2.2, 1.0, Some(0.5)), 2.0);
-    // A slider with no step passes the value through.
     assert_eq!(snap_to_step(53.0, 0.0, None), 53.0);
 }
 
-/// `None` is the only "off": the builder refuses a step that would be a
-/// second spelling of it.
+/// `None` is the only "off"; a step that cannot snap is refused.
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
@@ -300,9 +258,7 @@ fn step_rejects_a_value_that_cannot_snap() {
     }
 }
 
-/// A slider maps its track onto its range, so an infinite end is refused
-/// where the slider is built: a click would otherwise store `+inf`, or
-/// `NaN` over `-inf..=inf`.
+/// An infinite or NaN end is refused at build: a click would store `+inf` or `NaN`.
 #[test]
 fn new_rejects_an_infinite_range() {
     for (lo, hi) in [
@@ -317,13 +273,7 @@ fn new_rejects_an_infinite_range() {
     }
 }
 
-/// The binding is `DragNum`, so the track drives an integer as readily
-/// as a float, and every landing is whole.
-///
-/// Same geometry as the deferred-commit test: 118 wide, knob 18, so the
-/// 100 px travel starts at x = 9. On a `0..=10` range x = 89 is 0.8 of
-/// it — value 8 exactly — and x = 34 is 0.25, whose 2.5 rounds away from
-/// zero.
+/// A `DragNum` integer target lands on whole values: on `0..=10`, x = 34 is 2.5, rounding away from zero to 3.
 #[test]
 fn an_integer_target_lands_on_whole_values() {
     let id = WidgetId::from_hash("slider-int");
@@ -348,18 +298,15 @@ fn an_integer_target_lands_on_whole_values() {
     assert_eq!(value, 3);
 }
 
-/// A focused slider walks by key: an arrow steps a hundredth of the range
-/// toward `max` (right, up) or `min` (left, down), Shift ten of those, a
-/// page key a tenth of the range, Home and End to the ends. A step snaps
-/// the walk to it, a reversed range walks the same way along the track
-/// (right is toward `max`, here down), and every key is a whole edit.
-/// Unfocused or disabled, keys move nothing.
+/// A focused slider walks by key: arrows a hundredth of the range, Shift ten
+/// of those, page keys a tenth, Home/End to the ends. A step snaps; every key
+/// is a whole edit; unfocused or disabled, keys move nothing.
 #[test]
 fn a_focused_slider_walks_by_key() {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
 
-    /// Held modifiers, the key, the range, the step, and where 5.0 lands.
+    /// Modifiers, key, range, step, and where 5.0 lands.
     type Case = (Modifiers, Key, (f64, f64), Option<f64>, f64);
     let id = WidgetId::from_hash("slider-keys");
     let cases: [Case; 11] = [

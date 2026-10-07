@@ -1,19 +1,4 @@
-//! Per-group overlap tracking for the replay tiers above text — every
-//! [`PaintTier`].
-//!
-//! A query that finds nothing does not flush, so nothing clears a tier's
-//! list between queries: a canvas of 2000 short wires with 500 labels in
-//! the gaps between them keeps every wire for every label, and a flat
-//! scan there costs each label the whole wire list. So a tier scans its
-//! list only while it holds at most [`LINEAR_RECTS`]; past that, a query
-//! indexes the rects no earlier query indexed into a [`RectGrid`] and
-//! tests only the ones in its tiles.
-//!
-//! The index is built by queries, not pushes, because most tiers are
-//! never queried at length: a run of curves only pushes, and indexing
-//! each push would pay the tile walk for a query that never comes. Each
-//! rect is indexed at most once a group, so a frame's indexing is
-//! bounded by its rect count.
+//! Per-group overlap tracking for the replay tiers above text (every [`PaintTier`]). A query that finds nothing does not flush, so lists are never cleared between queries; a tier scans linearly up to [`LINEAR_RECTS`], then a query indexes the not-yet-indexed rects into a [`RectGrid`] and tests only its tiles. Indexed by queries, not pushes, since most tiers are never queried at length.
 //!
 //! [`RectGrid`]: crate::renderer::frontend::composer::rect_grid::RectGrid
 
@@ -27,13 +12,7 @@ const LINEAR_RECTS: usize = 32;
 
 #[derive(Debug, Default)]
 pub(super) struct HigherKindRects {
-    /// One slot per [`PaintTier`], indexed by `PaintTier::idx`.
-    ///
-    /// An array rather than four named fields, because every operation
-    /// below is a fold over the tiers in `Ord` order — and with named
-    /// fields `conflicts` had to spell that order out as a triangular
-    /// matrix of six hand-written disjunctions, which is one more copy
-    /// of the replay order to keep in step with the backend's.
+    /// One slot per [`PaintTier`], indexed by `PaintTier::idx`; an array because every operation folds over the tiers in `Ord` order.
     tiers: [TierRects; PaintTier::COUNT],
     union: URect,
 }
@@ -83,8 +62,7 @@ impl TierRects {
 }
 
 impl HigherKindRects {
-    /// Size every tier's grid to `viewport` and drop what they hold.
-    /// Called at compose start.
+    /// Size every tier's grid to `viewport` and drop what they hold; called at compose start.
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
         for tier in &mut self.tiers {
             tier.grid.start_frame(viewport);
@@ -99,15 +77,7 @@ impl HigherKindRects {
         self.union = self.union.union(rect);
     }
 
-    /// Whether painting `incoming` over `rect` would land under
-    /// something already recorded — the group-flush test.
-    ///
-    /// A draw conflicts with the tiers that paint *after* it, which is
-    /// exactly the tiers that sort above it: the backend replays in
-    /// `PaintTier::ALL` order, so "recorded and higher" means "already
-    /// on top". Reading that off `Ord` rather than restating it as a
-    /// matrix is what keeps this end and the schedule's drain order from
-    /// drifting.
+    /// Whether painting `incoming` over `rect` would land under something already recorded (the group-flush test): a draw conflicts with the tiers that sort above it, since the backend replays in `PaintTier::ALL` order.
     pub(super) fn conflicts(&mut self, incoming: PaintTier, rect: URect) -> bool {
         PaintTier::ALL
             .iter()
@@ -168,12 +138,7 @@ mod tests {
         }
     }
 
-    /// A query tests only the rects in its own tiles. 2000 wires, 4 px
-    /// square on a 16 px lattice, fill 800 × 640 px: every whole 64 px
-    /// tile holds a 4 × 4 block of them, 8 in its row and 8 chained. 500
-    /// labels sit in the gaps, each inside one whole tile, so each tests
-    /// that tile's 16 wires, finds nothing, and does not flush: 8000
-    /// tests, where a scan of every wire costs `500 × 2000 = 10⁶`.
+    /// A query tests only the rects in its own tiles. 2000 wires, 4 px square on a 16 px lattice in 800 × 640: a 64 px tile holds 16, so 500 labels in the gaps cost 8000 tests, not `500 × 2000 = 10⁶`.
     #[test]
     fn labels_between_wires_test_only_their_tile() {
         let mut rects = HigherKindRects::default();

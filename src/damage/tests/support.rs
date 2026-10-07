@@ -21,27 +21,20 @@ pub(super) const DISPLAY: Display = Display {
     refresh_millihertz: None,
 };
 
-/// Run one frame of `f` and return its damage, or `None` when the frame
-/// skips. The frame is told its previous output is valid, as a host
-/// tells it after a present, so the damage is incremental against it.
+/// Run one frame of `f` and return its damage, or `None` when it skips; the previous output is told valid, so damage is incremental.
 pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame(f).plan.map(|plan| plan.damage)
 }
 
-/// [`frame`] told its previous output is lost, as after a failed
-/// present: the damage starts over from nothing.
+/// [`frame`] with the previous output lost, as after a failed present.
 pub(super) fn frame_without_baseline(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame_without_baseline(f).plan.map(|plan| plan.damage)
 }
 
-/// The two fills [`one_frame`] flips between to drive a minimal authoring
-/// change.
 pub(super) const BLUE: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
 
 pub(super) const RED: RgbaF32 = RgbaF32::srgb(0.9, 0.4, 0.8);
 
-/// The standard "root with one 50×50 frame" tree most damage tests use,
-/// its frame filled with `color`.
 pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
     Panel::hstack()
         .id(WidgetId::from_hash("root"))
@@ -54,7 +47,4 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
         });
 }
 
-/// A surface for the region-arithmetic tests that build rects by hand
-/// rather than through a frame, and so do not draw on [`DISPLAY`]. A
-/// frame test clamps to `DISPLAY.logical_rect()` instead.
 pub(super) const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);

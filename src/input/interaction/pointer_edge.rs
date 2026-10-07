@@ -1,34 +1,20 @@
-//! The edges a pointer produces — what became true this frame, as against
-//! the levels a response reports.
+//! The edges a pointer produces: what became true this frame, as opposed to levels.
 
 /// What happened, as an *edge*: something that became true this frame.
 ///
-/// **A second walk, not a projection of [`ButtonPhase`].** A widget's
-/// own phase is one value per frame, so a batch that presses, releases
-/// and presses again collapses to the live press there; here the release
-/// still reports its completed click. The two agree on what a click and
-/// a drag-stop *are* — both read one `ReleaseKind::click` — and differ
-/// only in how many edges one frame may carry.
+/// **A second walk, not a projection of [`ButtonPhase`].** A widget's phase is one value per frame, so press-release-press collapses to the live press there; here the release still reports its click. Both read one `ReleaseKind::click`.
 ///
 /// [`ButtonPhase`]: crate::ButtonPhase
 ///
-/// **Edges only, deliberately.** A drag's travel is a level — true for as long
-/// as the gesture lasts, and wanted as a number rather than as news — and a
-/// level is what polling is good at. So this says *that* a drag started and on
-/// what, and the caller reads the delta off that one widget's response for as
-/// long as it cares. Reporting the delta here as well would be a second answer
-/// to a question `Response` already answers, free to disagree with it about the
-/// widget's transform.
+/// **Edges only.** A drag's travel is a level, read off that widget's `Response`; reporting a delta here would duplicate it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PointerEdge {
-    /// The button went down on this widget. `count` is its place in the
-    /// multi-press run — 1 for a single press, 2 for the second of a double.
+    /// The button went down on this widget; `count` is the place in the multi-press run.
     Pressed {
         /// Place in the multi-press run — 1 for a single press.
         count: u8,
     },
-    /// Released back on it with no drag latched. `count` as above, so a
-    /// double-click arrives as a `Clicked { count: 2 }`.
+    /// Released on it with no drag latched; a double-click is `Clicked { count: 2 }`.
     Clicked {
         /// Place in the multi-press run — 2 for a double-click.
         count: u8,

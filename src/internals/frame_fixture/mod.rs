@@ -1,39 +1,21 @@
-//! Shared workload for the frame and allocation benches, and the showcase's
-//! `frame bench` page: a synthetic but *designed* app screen — a dark
-//! telemetry console — rather than a pile of widgets. It exercises every public
-//! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapHStack/WrapVStack
-//! and Scroll on **both** axes), every non-animated public widget, every
-//! authoring shape family (Rect / Triangle / Curve / Polyline / Mesh /
-//! Shadow / Text), every `Brush` variant (Solid / Linear / Radial / Conic)
-//! at both chrome and shape level, chrome drop shadows, grid cell spans,
-//! `disabled` / `hidden` cascade flattening, and the popup/tooltip layers.
+//! Shared workload for the frame and allocation benches and the showcase's
+//! `frame bench` page: a designed telemetry-console screen exercising every
+//! public layout driver, non-animated widget, shape family and `Brush`
+//! variant, chrome shadows, grid spans, `disabled` / `hidden` flattening and
+//! the popup/tooltip layers.
 //!
-//! **The widget half of that claim is enforced, not asserted.** `COVERED`
-//! and `EXCLUDED` in this module's `tests.rs` are the list, every exclusion
-//! carries its reason, and the two together are checked against `lib.rs`'s
-//! public exports — so a widget added to the crate fails the suite until
-//! someone decides which side it belongs on. The lists are deliberately
-//! not restated here as prose: a widget can silently drop out of a
-//! sentence, which is exactly what the check exists to prevent.
+//! Widget coverage is enforced: `COVERED` and `EXCLUDED` in `tests.rs`, with a
+//! reason per exclusion, are checked against `lib.rs`'s public exports.
 //!
-//! **Nothing animated belongs in here.** `Spinner` — and any `PaintAnimation` —
-//! wakes the host every frame by design, so `frame/cached_*` could never
-//! settle to no damage and `frame/partial_*` would grow past the single
-//! footer-counter rect both arms exist to measure. That, and the three other
-//! standing exclusions, are recorded with their reasons in `EXCLUDED`.
+//! **Nothing animated belongs here.** `Spinner` and any `PaintAnimation` wake
+//! the host every frame, so `frame/cached_*` could never settle and
+//! `frame/partial_*` would exceed the single footer-counter rect.
 //!
-//! It sits in `crate::internals` rather than beside any one driver because
-//! no driver owns it: the frame benches (`crate::ui::bench`), the allocation
-//! gates in `tests/alloc/gates/` and the cascade bench
-//! (`crate::cascade::bench`) all record this same tree, and its
-//! node structure is what makes their numbers comparable release to
-//! release. Treat the structure as frozen — retheming is free, but adding
-//! or removing nodes retargets every recorded series at once.
-//!
-//! That freeze is also why the showcase hosts it as a page rather than
-//! sharing the showcase's own scaffolding: the page is a *viewer* for this
-//! tree, and a restyle of the surrounding tour must not reach in and change
-//! what the benches measure.
+//! It lives in `crate::internals` because the frame benches, the allocation
+//! gates and the cascade bench all record this tree. Treat its node
+//! structure as frozen: adding or removing nodes retargets every recorded
+//! series. The showcase hosts it as a viewer page so restyling the tour
+//! can't change what the benches measure.
 
 mod chrome;
 pub mod dock_fixture;
@@ -54,31 +36,23 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use glam::Vec2;
 
-/// Content multiplier the bench arms record at. The showcase page uses a
-/// far smaller one — this is sized for the bench's tall offscreen target,
-/// not for a window.
+/// Content multiplier the bench arms record at (the showcase page uses a far
+/// smaller one).
 pub const BENCH_SCALE: usize = 32;
 
-/// Device pixel ratio every bench arm renders at.
+/// Device pixel ratio of the bench surface.
 pub const BENCH_DPR: f32 = 2.0;
 
-/// One 1440p display, which is what the reported numbers are meant to
-/// stand for. `BENCH_SCALE = 32` content (36-row prop grid, 96-chip
-/// wrap, specimen sheet, 64-cell filmstrip, activity scroll, notes) is
-/// far taller than this, so everything past the fold is clipped away and
-/// culled: the CPU arms still record, measure and arrange the whole
-/// tree, while paint and the GPU arms see only the visible part. Raise
-/// it with `--size` to measure the whole fixture painting at once.
+/// One 1440p display. `BENCH_SCALE` content is far taller, so the CPU arms
+/// record, measure and arrange everything while paint and the GPU arms see
+/// only the visible part.
 pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
 
-/// Persistent state for widgets that mutate user data (TextEdit needs
-/// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
+/// Persistent state for widgets that mutate user data.
 ///
-/// `tick` drives the footer-status counter and is the **only** field
-/// the partial-damage arm mutates between iterations. The footer Text
-/// node is sized `Fixed(120.0)` so the changing digits don't shift
-/// sibling layout — the damage rect collapses to that single node's
-/// arranged box.
+/// `tick` drives the footer counter and is the only field the partial-damage
+/// arm mutates. The footer Text is `Fixed(120.0)`, so the damage rect is that
+/// single node's box.
 #[derive(Debug)]
 pub struct FrameFixture {
     name: String,
@@ -86,19 +60,11 @@ pub struct FrameFixture {
     enabled: bool,
     role: u8,
     pub(crate) tick: u32,
-    /// Post-arrange translate applied to the main content panel. Used
-    /// by the `frame/scrolling_cpu` bench arm to model continuous
-    /// position change WITHOUT changing layout — the cascade walks the
-    /// full subtree but layout/measure cache hits trivially. Tests
-    /// whether a cascade delta-cache (cached output translated by
-    /// `parent_transform`) would meaningfully reduce cascade cost.
+    /// Translate applied to the body panel after arrange, for the
+    /// `frame/scrolling_cpu` arm: moves position without changing layout.
     pub(crate) scroll_offset: Vec2,
-    /// Backing values for the settings grid (Slider / DragValue /
-    /// ComboBox / Switch). Held constant across bench iterations —
-    /// only `tick` mutates — so they never perturb the steady-state
-    /// damage `Skip` / `Partial` invariants the arms assert; they widen
-    /// widget coverage only. Seeded to mid-range values so the visual
-    /// harness shows them in a representative, non-empty state.
+    /// Backing values for the settings grid, constant across bench iterations so
+    /// they never disturb the damage `Skip` / `Partial` invariants.
     volume: f64,
     mix: f64,
     zoom: f64,
@@ -156,22 +122,16 @@ impl FrameFixture {
                     .show(ui, |ui| {
                         chrome::sidebar(ui, sidebar_items);
 
-                        // Page scroll, not a bare VStack: the card column is taller
-                        // than a normal window, and an overflowing column paints
-                        // over the status bar — which occludes the footer counter
-                        // and collapses the `frame/partial_*` arms to no damage.
-                        // Clipping the overflow here keeps the counter visible at
-                        // every viewport size. Every child must therefore be Hug or
-                        // Fixed: a scroll passes ∞ on its main axis, so a `Fill`
-                        // child would resolve against nothing.
+                        // A page scroll, not a bare VStack: an overflowing column paints over the
+                        // status bar, occluding the footer counter and collapsing `frame/partial_*`
+                        // to no damage. Children must be Hug or Fixed, since a scroll passes infinity
+                        // on its main axis.
                         Scroll::vertical()
                             .id_salt("page-scroll")
                             .gap(10.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                // Ordered diverse-first: the visually varied cards lead so
-                                // they fill the showcase page's viewport, while the bulky
-                                // repetitive lists (properties, tags) trail.
+                                // Diverse cards first so they fill the showcase viewport; bulky lists trail.
                                 stat_strip::show(ui);
                                 forms::request_card(self, ui);
                                 forms::settings_card(self, ui);

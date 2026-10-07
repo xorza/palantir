@@ -1,8 +1,4 @@
-//! The shape specimen sheet — one captioned canvas per authoring shape
-//! family. This is where the fixture's *shape-level* coverage lives: the
-//! rest of the tree paints through widget chrome, so without these cells
-//! `Shape::triangle` / `curve` / `polyline` / `mesh` / `shadow` and the
-//! shape-level `Brush` variants would never be recorded at all.
+//! The shape specimen sheet: one captioned canvas per authoring shape family. The fixture's shape-level coverage lives here; the rest paints through widget chrome, so `Shape::triangle` / `curve` / `polyline` / `mesh` / `shadow` and shape-level `Brush` variants would otherwise never be recorded.
 
 use std::f32::consts::PI;
 
@@ -25,9 +21,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 
-/// Specimen sheet: one captioned canvas per shape family, tiled through a
-/// `WrapHStack` so the sheet reflows to whatever width the column has
-/// instead of clumping in a corner.
+/// One captioned canvas per shape family, tiled through a `WrapHStack` so the sheet reflows to the column width.
 pub(super) fn sheet(ui: &mut Ui) {
     tokens::card(ui, "specimens", "SHAPES", Sizing::HUG, |ui| {
         Panel::wrap_hstack()
@@ -45,8 +39,7 @@ pub(super) fn sheet(ui: &mut Ui) {
     });
 }
 
-/// One 168x96 specimen cell: caption over a recessed canvas. Shapes the
-/// body adds are canvas-local, so every cell shares one coordinate box.
+/// One 168x96 cell: caption over a recessed canvas. Shapes are canvas-local, so every cell shares one coordinate box.
 fn cell(ui: &mut Ui, id: &'static str, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt(("spec", id))
@@ -144,8 +137,7 @@ fn add_polyline(ui: &mut Ui) {
         glam::Vec2::new(126.0, 62.0),
         glam::Vec2::new(154.0, 38.0),
     ];
-    // The shared swatch set in order, plus one green it doesn't carry —
-    // six points need six distinguishable inks.
+    // The shared swatch set in order plus one green it lacks: six points need six distinct inks.
     let cols = [
         demo_swatches::RED,
         demo_swatches::ORANGE,
@@ -192,8 +184,7 @@ fn add_solids(ui: &mut Ui) {
     gradient_mesh(ui);
 }
 
-/// A `Shape::shadow` under the rect that casts it — the shape-level peer
-/// of the chrome shadow on [`tokens::card_bg`].
+/// A `Shape::shadow` under the rect casting it, the shape-level peer of the chrome shadow on [`tokens::card_bg`].
 fn add_shadow(ui: &mut Ui) {
     let plate = Rect::new(34.0, 20.0, 100.0, 52.0);
     ui.add_shape(
@@ -213,10 +204,7 @@ fn add_shadow(ui: &mut Ui) {
     );
 }
 
-/// The gradient triangle, built once into a singleton and lent to
-/// `add_shape` from there. Rebuilding it per frame would allocate, which
-/// the allocation suite (`tests/alloc`) forbids; the singleton is what
-/// makes the build a warmup cost instead.
+/// The gradient triangle, built once into a singleton and lent to `add_shape`; rebuilding per frame would allocate, which `tests/alloc` forbids.
 fn gradient_mesh(ui: &mut Ui) {
     ui.with_singleton::<GradientMesh, _>(|ui, GradientMesh(m)| {
         let m = m.get_or_insert_with(|| {
@@ -231,7 +219,6 @@ fn gradient_mesh(ui: &mut Ui) {
     });
 }
 
-/// The fixture's one gradient triangle, `None` until its first use builds
-/// it.
+/// The fixture's one gradient triangle, `None` until first use builds it.
 #[derive(Debug, Default)]
 struct GradientMesh(Option<Mesh>);

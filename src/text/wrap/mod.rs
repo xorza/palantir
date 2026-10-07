@@ -1,10 +1,5 @@
-//! Wrap policy: [`TextWrap`], the sizes each policy derives from an
-//! unbounded root measurement, and the break rule those sizes are
-//! measured against.
-//!
-//! Nothing here shapes or caches. Every layout consequence of a policy is a
-//! pure function of a measurement layout already holds, or of the text
-//! itself.
+//! Wrap policy: [`TextWrap`], the sizes each policy derives from an unbounded
+//! root measurement, and the break rule those sizes are measured against.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
@@ -13,21 +8,12 @@ use crate::text::extent::TextExtent;
 use crate::text::key::WrapBound;
 use crate::text::root::TextRoot;
 
-/// Byte offsets in `text` that open a new unbreakable segment: the
-/// UAX #14 break opportunities, minus the terminal one at `text.len()`,
-/// which ends the text rather than opening a segment.
+/// Byte offsets in `text` that open a new unbreakable segment: the UAX #14
+/// break opportunities minus the terminal one at `text.len()`.
 ///
-/// **The one statement of where a line may break.** Both metrics measure
-/// the wrap floor behind [`TextRoot::intrinsic_min`] over segments
-/// delimited by these — the cosmic side by walking glyphs, the mono
-/// metric by counting bytes — so neither can claim a segment the shaper
-/// would happily break. It is also the source cosmic-text splits its own
-/// shape words on (`cosmic-text/src/shape.rs`).
-///
-/// Whitespace is not trimmed here: UAX #14 places the opportunity
-/// *after* a space, so a space ends its segment and hangs. What each
-/// measurer drops off the end of a segment belongs to how it measures
-/// ink, not to where the breaks are.
+/// The one statement of where a line may break: both metrics measure the wrap
+/// floor behind [`TextRoot::intrinsic_min`] over these segments. Whitespace is
+/// not trimmed; the opportunity falls after a space, so it ends its segment.
 pub(super) fn break_offsets(text: &str) -> impl Iterator<Item = u32> + '_ {
     unicode_linebreak::linebreaks(text)
         .map(|(offset, _)| offset)
@@ -38,11 +24,9 @@ pub(super) fn break_offsets(text: &str) -> impl Iterator<Item = u32> + '_ {
 /// Whether a shape pays for the segment scan behind
 /// [`TextRoot::intrinsic_min`].
 ///
-/// Deliberately *not* part of
-/// [`TextShapeRequest`](crate::text::request::TextShapeRequest):
-/// it selects which fields of the result get filled in, not which buffer
-/// answers. Two shapes differing only in this must share one cache entry,
-/// which is why the floor is memoized onto the entry instead of keyed.
+/// Not part of [`TextShapeRequest`](crate::text::request::TextShapeRequest):
+/// two shapes differing only in this share one cache entry, with the floor
+/// memoized onto it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WrapFloor {
     /// Skip the scan; the floor stays `None`.
@@ -51,10 +35,8 @@ pub(crate) enum WrapFloor {
     Scan,
 }
 
-/// How a width-bounded text run handles overflow. Maps from the public
-/// [`TextWrap`] via [`TextWrap::line_fit`] (`SingleLine`/`Scroll` stay on
-/// the unbounded path); folded into the shape cache key by
-/// [`TextSystem::measure`](crate::text::system::TextSystem::measure).
+/// How a width-bounded text run handles overflow. Derived from [`TextWrap`]
+/// by [`TextWrap::line_fit`]; part of the shape cache key.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LineFit {
@@ -68,30 +50,15 @@ pub(crate) enum LineFit {
 
 impl LineFit {
     /// Whether resolving this fit at `target_width_px` reproduces the
-    /// unbounded root, letting the caller skip the second shape and the
-    /// bounded cache entry it would mint.
+    /// unbounded root, so the caller can skip the second shape.
     ///
-    /// Two callers, one question. `TextSystem::measure` asks it to skip
-    /// the bounded resolve outright, so a key that reaches
-    /// `CosmicMeasure::shape_truncated` has already answered `false`
-    /// there — and the restore path replays such a key, at a quantized
-    /// width that round-trips exactly. `shape_truncated` asks anyway,
-    /// because the cut it would otherwise run is not a no-op on a run
-    /// that fits: it reserves the ellipsis and drops a cluster the fit
-    /// test would have kept. They must agree, so they share this.
+    /// Shared by `TextSystem::measure` and `CosmicMeasure::shape_truncated`
+    /// because the latter's cut is not a no-op on a run that fits: it reserves
+    /// the ellipsis and may drop a cluster. Never true for [`Self::Wrap`],
+    /// whose buffers bake in per-line halign offsets.
     ///
-    /// A fitting single-line truncation shapes glyphs identical to the
-    /// root — truncated shaping is halign-independent and single-line by
-    /// construction. Never true for [`Self::Wrap`]: cosmic bakes per-line
-    /// halign offsets into wrapped buffers. `size.w` is ceil'd and the
-    /// canonical width is integral, so this comparison matches the
-    /// truncating path's cut decision exactly.
-    ///
-    /// `width_px` arrives **canonical**: `commit` quantizes once and
-    /// hands the same number here and to `WrapBound::new`, and
-    /// `shape_truncated`'s comes back off a key that was minted from one.
-    /// Quantizing again here is how the fit test and the key it decides
-    /// about could come to be asking about different widths.
+    /// `width_px` must be canonical (quantized once by `commit`); quantizing
+    /// again could split the fit test from the key it decides about.
     pub(super) const fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
         matches!(self, LineFit::Clip | LineFit::Ellipsis)
             && unbounded.single_line
@@ -123,9 +90,7 @@ pub enum TextWrap {
 }
 
 /// Every layout consequence of a wrap policy is a pure function of the
-/// unbounded root measurement (and, for `TextWrap::content_size`, the
-/// resolved one) — no cache or shaping access. `TextSystem::measure`
-/// returns measurements; these methods derive the sizes layout consumes.
+/// unbounded root measurement (and, for `content_size`, the resolved one).
 impl TextWrap {
     /// Width-bounded shaping mode, or `None` for the policies that always
     /// keep the unbounded shape (`SingleLine`, `Scroll`).
@@ -138,13 +103,10 @@ impl TextWrap {
         }
     }
 
-    /// Whether this policy reads [`TextRoot::intrinsic_min`], and so
-    /// whether shaping has to pay for the segment scan that produces it.
-    ///
-    /// Only [`Self::WrapWithOverflow`] does. The scan is a UAX #14 pass
-    /// over the run plus a binary search per glyph — 8x the cost of the
-    /// rest of the measurement on a short label and 25x on a paragraph —
-    /// so the other five policies opt out and the floor stays `None`.
+    /// Whether this policy reads [`TextRoot::intrinsic_min`], so shaping must
+    /// pay for the segment scan. Only [`Self::WrapWithOverflow`] does; the
+    /// scan costs 8x the rest of the measurement on a short label, 25x on a
+    /// paragraph.
     pub(super) const fn floor_scan(self) -> WrapFloor {
         match self {
             TextWrap::WrapWithOverflow => WrapFloor::Scan,
@@ -156,14 +118,12 @@ impl TextWrap {
         }
     }
 
-    /// Min-content demand, from the `unbounded` root measurement
-    /// (`TextSystem::measure` with no available width) — not a bounded
-    /// resolve, whose height already reflects wrapping.
+    /// Min-content demand from the `unbounded` root measurement, not a bounded
+    /// resolve whose height already reflects wrapping.
     pub(crate) const fn min_content(self, unbounded: &TextRoot) -> Size {
         match self {
             TextWrap::SingleLine => unbounded.extent.size,
-            // Scroll owns clipping and panning; truncating and wrapping
-            // runs can shrink to nothing.
+            // Scroll owns clipping; truncating and wrapping runs can shrink to nothing.
             TextWrap::Scroll | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Wrap => {
                 Size::new(0.0, unbounded.extent.size.h)
             }
@@ -176,7 +136,6 @@ impl TextWrap {
     /// Max-content demand, from the `unbounded` root measurement.
     pub(crate) const fn max_content(self, unbounded: &TextRoot) -> Size {
         match self {
-            // Scroll's full run creates no width demand.
             TextWrap::Scroll => Size::new(0.0, unbounded.extent.size.h),
             TextWrap::SingleLine
             | TextWrap::Truncate
@@ -186,12 +145,9 @@ impl TextWrap {
         }
     }
 
-    /// Width a width-bounded shape actually targets under this policy,
-    /// given the committed `available_width_px`. Only
-    /// [`Self::WrapWithOverflow`] departs from the committed width: it
-    /// floors at the widest unbreakable segment so those segments
-    /// overflow rather than break — the same floor
-    /// [`Self::min_content`] demands.
+    /// Width a width-bounded shape targets under `available_width_px`. Only
+    /// [`Self::WrapWithOverflow`] departs from it, flooring at the widest
+    /// unbreakable segment ([`Self::min_content`]'s floor).
     pub(super) const fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
             TextWrap::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
@@ -205,19 +161,13 @@ impl TextWrap {
 
     /// What a run bound to `available_width_px` actually shapes at.
     ///
-    /// **The one implementation of the binding sequence.** Both shaping
-    /// entry points — the public probe through `TextShaper::layout` and
-    /// layout's own `TextSystem::measure` — have to run the same three
-    /// steps in the same order, or a caret answers against a buffer
-    /// wrapped at a width the paint never used. Written twice, they were
-    /// kept in step by hand, and had already drifted.
+    /// The one implementation of the binding sequence, shared by the public
+    /// `TextShaper::layout` probe and layout's `TextSystem::measure`, so a
+    /// caret never answers against a buffer wrapped at a different width.
     ///
-    /// `root` is called only for the policies whose decision reads it:
-    /// `WrapWithOverflow` raises a too-narrow width to the wrap floor
-    /// (and is exactly the policy that asks for the floor scan), and a
-    /// truncating fit asks whether the text already fits. A plain `Wrap`
-    /// consults neither, so it binds without paying for a root shape —
-    /// which is why this takes a thunk rather than a `&TextRoot`.
+    /// `root` is a thunk because only `WrapWithOverflow` (floor) and truncating
+    /// fits (already-fits test) read it; plain `Wrap` binds without a root
+    /// shape.
     pub(super) fn commit(
         self,
         available_width_px: f32,
@@ -225,9 +175,8 @@ impl TextWrap {
         fit: LineFit,
         root: impl FnOnce() -> TextRoot,
     ) -> WrapCommit {
-        // Canonicalized once, at the top: the fit test compares against
-        // it and `WrapBound::new` keys on it, and a width quantized twice
-        // is a width the two halves could disagree about.
+        // Canonicalized once: the fit test compares against it and
+        // `WrapBound::new` keys on it.
         let available = available_width_px.canonical_px();
         let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
             let root = root();
@@ -236,8 +185,7 @@ impl TextWrap {
                     extent: root.extent,
                 };
             }
-            // Not canonical again: the wrap floor is a measured extent,
-            // so `WrapBound::new` still quantizes what comes back.
+            // The wrap floor is a measured extent, so `WrapBound::new` still quantizes it.
             self.target_width(available, &root)
         } else {
             available
@@ -261,9 +209,8 @@ impl TextWrap {
 /// What [`TextWrap::commit`] decided a width-bounded run shapes at.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum WrapCommit {
-    /// The root's own unbounded shape stands — a truncating fit whose
-    /// text already fits. Binding would mint a second buffer nobody asks
-    /// for, so the size travels out with the decision.
+    /// The root's own unbounded shape stands (a truncating fit whose text
+    /// already fits); the size travels out with the decision.
     Unbounded { extent: TextExtent },
     /// Resolve at this bound.
     Bound(WrapBound),

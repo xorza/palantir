@@ -71,8 +71,7 @@ fn due_deadlines_resolve_to_immediate_and_future_ones_stand() {
     assert_eq!(FramePresent::Idle.resolve(now), FramePresent::Idle);
 }
 
-/// The IME caret goes to the platform in physical px: every component
-/// times the scale — 10, 20, 2 and 16 at 1.5 give 15, 30, 3 and 24.
+/// The IME caret goes to the platform in physical px: every component times the scale (10, 20, 2, 16 at 1.5 → 15, 30, 3, 24).
 #[test]
 fn the_ime_caret_scales_to_physical_px() {
     use crate::host::winit::window::physical_rect;

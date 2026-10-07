@@ -4,8 +4,6 @@ use std::collections;
 use std::hash::Hasher;
 use std::panic;
 
-/// Both calls resolve to the *same* caller location, letting the test
-/// below rebuild the exact hash `auto` must produce.
 #[track_caller]
 fn id_and_loc() -> (WidgetId, &'static panic::Location<'static>) {
     (WidgetId::auto(), panic::Location::caller())
@@ -14,51 +12,29 @@ fn id_and_loc() -> (WidgetId, &'static panic::Location<'static>) {
 #[test]
 fn auto_hashes_location_via_fx() {
     let (id, l) = id_and_loc();
-    // Deliberately the *raw* `FxHasher`, not the crate wrapper the
-    // production path now uses: rebuilding the expected value with
-    // the same type under test would assert nothing. This is the
-    // cross-check that the wrapper still hashes like plain FxHash.
+    // The raw `FxHasher`, not the crate wrapper: rebuilding with the type under test asserts nothing.
     let mut hasher = FxHasher::default();
     hasher.write(l.file().as_bytes());
     hasher.write_u32(l.line());
     hasher.write_u32(l.column());
-    // `finalize` is applied through the function under test rather
-    // than re-spelled, so this stays a cross-check of the *hashing*
-    // half. `finalize_avalanches_sequential_ids` covers the other.
+    // `finalize` goes through the function under test, so this cross-checks only the hashing half.
     assert_eq!(id, WidgetId::finalize(hasher.finish()));
-    // The deferred form widgets keep gives the same id from the same site.
     assert_eq!(WidgetId::from_location(l), id);
 
-    // Same call site (loop) → identical ids; a different call line →
-    // a different id.
     let repeated: Vec<WidgetId> = (0..2).map(|_| id_and_loc().0).collect();
     assert_eq!(repeated[0], repeated[1]);
     assert_ne!(repeated[0], id);
 }
 
-/// The property [`WidgetId::finalize`] exists for: ids derived from
-/// *sequential* inputs — every list row, tree node and repeated
-/// widget — must land across the low bits, because those bits are
-/// the bucket index of every `WidgetIdMap` in the crate.
-///
-/// Asserted statistically rather than against fixed values, so it
-/// survives a deliberate change of mix while still failing on one
-/// that reintroduces the stride. Throwing `n` ids into `n` buckets,
-/// the count of *distinct* buckets is the classic occupancy result,
-/// `n(1 - 1/e)` ≈ 2589 of 4096. The pre-finalizer values ranged
-/// 1192–2143, so a floor of 2400 sits clear of every one of them and
-/// well under the ~2590 a good mix produces.
-///
-/// All four derivation shapes are covered because they failed by
-/// different amounts, and the worst was not the obvious one:
-/// `from_hash(i).with("label")` — a per-row widget naming an
-/// internal part — was the 1192.
+/// Ids from sequential inputs must spread across the low bits, each
+/// `WidgetIdMap`'s bucket index. Asserted statistically: `n` ids into `n`
+/// buckets occupy about `n(1 - 1/e)` ≈ 2589 of 4096, while the pre-finalizer
+/// mixes scored 1192-2143, so 2400 separates them. All four derivation shapes
+/// are covered; `from_hash(i).with("label")` was the worst.
 #[test]
 fn finalize_avalanches_sequential_ids() {
     const N: usize = 4096;
     const MASK: u64 = N as u64 - 1;
-    // Uniform expectation is ~2589; the un-finalized mixes scored
-    // 1192–2143.
     const FLOOR: usize = 2400;
 
     let parent = WidgetId::from_hash("row-parent");
@@ -89,23 +65,12 @@ fn finalize_avalanches_sequential_ids() {
     }
 }
 
-/// `finalize` must be a bijection: it is applied to an already-unique
-/// hash, so anything that folded two inputs together would manufacture
-/// `WidgetId` collisions out of nothing — and a collision here is two
-/// widgets silently sharing state, focus and layout rows.
-///
-/// Checked two ways, because neither alone is convincing. Exhaustive
-/// injectivity is impossible over `u64`, so: a large sweep of the
-/// sequential inputs the ids actually come from must produce no
-/// duplicate, and the mix must be invertible by construction — every
-/// step is an xor-shift or an odd multiply, so the inverse exists and
-/// round-trips.
+/// `finalize` must be a bijection, or two inputs fold into one `WidgetId`.
+/// Checked by a large sweep with no duplicate, and by inverting the mix
+/// (xor-shifts and odd multiplies) to round-trip.
 #[test]
 fn finalize_is_a_bijection_that_avoids_zero() {
-    // Invert splitmix64's finalizer: odd multiplies invert via their
-    // modular inverse, `x ^= x >> s` by re-folding the shift until it
-    // converges (`64 / s + 1` rounds suffice, since each round
-    // recovers another `s` bits).
+    // Inverts splitmix64's finalizer: odd multiplies by modular inverse, `x ^= x >> s` by re-folding.
     fn unxorshift(y: u64, shift: u32) -> u64 {
         let mut x = y;
         for _ in 0..=(64 / shift) {
@@ -118,9 +83,6 @@ fn finalize_is_a_bijection_that_avoids_zero() {
     assert_eq!(0xbf58_476d_1ce4_e5b9u64.wrapping_mul(INV_A), 1);
     assert_eq!(0x94d0_49bb_1331_11ebu64.wrapping_mul(INV_B), 1);
 
-    // Deduplicated first: the three shapes overlap (at `i == 0` all
-    // three are zero), and a fixture feeding one input twice would
-    // report its own duplicate as a collision.
     let raws: collections::HashSet<u64> = (0..200_000u64)
         .flat_map(|i| [i, i << 32, i.wrapping_mul(0x9e37_79b9_7f4a_7c15)])
         .collect();
@@ -129,10 +91,7 @@ fn finalize_is_a_bijection_that_avoids_zero() {
         let id = WidgetId::finalize(raw);
         assert_ne!(id.0, 0, "finalize must never produce the zero value");
         if raw != 0 {
-            // Round-trip proves this input was not folded onto
-            // another. `raw == 0` is the one value the zero-guard
-            // deliberately displaces, so it has no preimage to
-            // recover.
+            // The round-trip proves no folding; `raw == 0` is displaced by the zero-guard and has no preimage.
             let mut x = unxorshift(id.0, 31);
             x = x.wrapping_mul(INV_B);
             x = unxorshift(x, 27);
@@ -146,15 +105,7 @@ fn finalize_is_a_bijection_that_avoids_zero() {
         raws.len(),
         "finalize folded two distinct ids together",
     );
-    // Zero is displaced to 1 rather than passed through, and `1`
-    // specifically because `u64::MAX` is taken by
-    // [`WidgetId::VIEWPORT`].
-    //
-    // This displacement is the *only* place injectivity is given up:
-    // `1` now has two preimages, `0` and whatever the mix maps to
-    // `1`. That is a 1-in-2^64 collision between one specific hash
-    // and the empty one — the same class as any other hash collision
-    // the crate already accepts, and identical to what the
-    // pre-finalizer code did.
+    // Zero is displaced to 1 since `u64::MAX` is `WidgetId::VIEWPORT`: the only
+    // place injectivity is given up, a 1-in-2^64 collision.
     assert_eq!(WidgetId::finalize(0), WidgetId(1));
 }

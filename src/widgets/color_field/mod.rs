@@ -1,5 +1,4 @@
-//! The saturation/value area: the two-axis part of a colour picker, and the
-//! texture it paints itself with.
+//! The saturation/value area of a colour picker, and the texture it paints itself with.
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -26,18 +25,7 @@ use crate::widgets::color_surface::ColorSurface;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::Vec2;
 
-/// The two-axis area of a colour picker: saturation left to right, value
-/// bottom to top, at whatever hue the bound coordinates carry.
-///
-/// Exact per texel. The field builds a CPU texture and refreshes it in place
-/// whenever the hue or the model moves, at a resolution
-/// [`texel_size`](Self::texel_size) below the display's, which the sampler
-/// then smooths back out. A gradient stack cannot draw this — it interpolates
-/// in linear light, which is neither model's geometry — and a vertex-coloured
-/// mesh pays eight *linear* bits, which crushes the darks.
-///
-/// Sized from [`ColorPickerTheme`], and returns the same
-/// [`ValueResponse`] every other value-writing widget does.
+/// The two-axis area of a colour picker: saturation left to right, value bottom to top, at the bound hue. Exact per texel: a CPU texture refreshed in place when hue or model moves, since a gradient stack interpolates in linear light and a vertex-coloured mesh crushes the darks. Returns [`ValueResponse`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorField<'a> {
@@ -72,8 +60,7 @@ const UP: AxisKeys = AxisKeys {
 };
 
 impl<'a> ColorField<'a> {
-    /// A field driving `coords`. The hue it paints and the axes it writes are
-    /// both that value's.
+    /// A field driving `coords`.
     #[track_caller]
     pub fn new(coords: &'a mut ColorCoords) -> Self {
         Self {
@@ -86,13 +73,7 @@ impl<'a> ColorField<'a> {
         }
     }
 
-    /// The edge of one texture texel, in physical pixels: how far below the
-    /// display's resolution the texture is built, as a power of two.
-    /// Default 4.
-    ///
-    /// Worst error against the exact colour, in 8-bit sRGB units, over a
-    /// 208 × 160 field at display scale 1.5 and twelve hues — measured by
-    /// `tests::texel_size_four_tracks_the_exact_colour`:
+    /// The edge of one texture texel in physical pixels, as a power of two. Default 4. Worst error against the exact colour in 8-bit sRGB units (`tests::texel_size_four_tracks_the_exact_colour`):
     ///
     /// | texel size | Okhsv | HSV | texels to convert |
     /// |---|---|---|---|
@@ -102,10 +83,7 @@ impl<'a> ColorField<'a> {
     /// | 8 | 16 | 6 | 1 170 |
     /// | 16 | 25 | 14 | 293 |
     ///
-    /// The error is not spread over the field. It sits at `s = 1, v = 1`,
-    /// the corner where the gamut edge turns, and falls away from it. Four
-    /// costs a sixteenth of the conversions for an error nobody reads a
-    /// picker precisely enough to see; a caller that disagrees passes 2.
+    /// Four costs a sixteenth of the conversions for an error nobody reads off a picker.
     ///
     /// # Panics
     ///
@@ -116,8 +94,7 @@ impl<'a> ColorField<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Per-instance override of `color_picker`.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self

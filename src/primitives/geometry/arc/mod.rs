@@ -1,23 +1,12 @@
-//! Circular-arc utilities for the native GPU stroke pipeline. Arcs
-//! render exactly on the GPU (see `gpu::curve_pipeline`);
-//! what lives here is the CPU-side bbox that sizes the lowered record.
+//! Circular-arc bbox for the native GPU stroke pipeline (see `gpu::curve_pipeline`).
 
 use crate::primitives::geometry::rect::Rect;
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
-/// Tight axis-aligned bbox of the arc's centerline trace (no stroke
-/// inflation). Angles follow the screen convention (0 = +x, y-down ⇒
-/// increasing = clockwise); the sweep direction (`a0` vs `a1` order)
-/// doesn't affect the bounds.
+/// Tight bbox of the arc's centerline (no stroke inflation). Angles are screen-convention (0 = +x, increasing = clockwise); sweep order doesn't matter.
 ///
-/// Extremes are the two endpoints plus one **exact** `center ± radius`
-/// snap per quarter-axis the sweep crosses: `angle = k·π/2` points at
-/// +x / +y / −x / −y for `k ≡ 0..3 (mod 4)`, so a crossing pins that
-/// axis's bound directly — no trig in the loop, and only the first
-/// four crossings matter (a full ±2π sweep covers every axis). Not
-/// `const`: the endpoints need real trig, and `sin_cos` isn't
-/// const-stable.
+/// Extremes are the endpoints plus an exact `center ± radius` per quarter-axis crossed. Not `const`: `sin_cos` isn't const-stable.
 pub(crate) fn bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> Rect {
     let p_at = |a: f32| {
         let (s, c) = a.sin_cos();
@@ -25,10 +14,7 @@ pub(crate) fn bbox(center: Vec2, radius: f32, a0: f32, a1: f32) -> Rect {
     };
     let e0 = p_at(a0);
     let e1 = p_at(a1);
-    // The AABB NaN contract, in its fixed-input form: a NaN centre,
-    // radius, or angle propagates into `e0`/`e1` through `p_at`, so one
-    // screen of the two endpoints covers every input, and `min`/`max`
-    // below stay the plain laundering form.
+    // A NaN centre, radius or angle reaches `e0`/`e1` through `p_at`.
     if e0.is_nan() || e1.is_nan() {
         return Rect::NAN;
     }

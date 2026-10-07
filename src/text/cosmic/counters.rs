@@ -1,24 +1,4 @@
-//! Observability for the shaped-buffer cache. Built on
-//! [`TestOnly`](crate::common::counters::TestOnly), whose module doc
-//! explains the gated-cell pattern and why the two gates exist.
-//!
-//! ## What this exists to separate
-//!
-//! Every entry point into [`CosmicMeasure`] returns a measurement
-//! whether it reshaped or answered from cache, so from outside the two
-//! are indistinguishable — and reshaping is the entire cost the cache
-//! exists to avoid. [`TextShaper::measure_calls`] counts *dispatches* a
-//! layer up and explicitly does not answer this; its own doc says
-//! "cosmic may still hit its shaped-buffer cache, so the counter tracks
-//! dispatches, not reshapes".
-//!
-//! Retention needs the same treatment. A buffer's lifetime turns on
-//! three events — inserted, looked up, superseded — and which of them
-//! fired is what separates a resize drag from a scroll, not how many
-//! buffers happen to be resident afterwards.
-//!
-//! The accumulate default applies: the shaper outlives any one frame and
-//! is shared across windows, so there is no pass to scope a reset to.
+//! Observability for the shaped-buffer cache, built on [`TestOnly`](crate::common::counters::TestOnly). [`CosmicMeasure`] entry points return a measurement whether they reshaped or hit the cache, and [`TextShaper::measure_calls`] counts dispatches, not reshapes; these counters separate them, and the inserted / looked-up / superseded events that tell a resize drag from a scroll. They accumulate, since the shaper outlives any frame and is shared across windows.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextShaper::measure_calls`]: crate::text::shaper::TextShaper
@@ -28,37 +8,22 @@ use crate::common::counters::counter_snapshot;
 counter_snapshot! {
     cells TestOnly, reads cfg(test);
 
-    /// What the shaped-buffer cache did.
-    ///
-    /// The counters are reached through directly rather than through
-    /// per-field forwarders: [`TestOnly`] already owns the gate, so
-    /// `probe.hits.bump()` is the whole call site and a wrapper would only
-    /// restate the field name.
+    /// What the shaped-buffer cache did; counters are reached directly, as [`TestOnly`] owns the gate.
     ///
     /// [`TestOnly`]: crate::common::counters::TestOnly
     pub(crate) struct CacheCounters;
 
-    /// One reading of a [`CacheCounters`]'s tallies. Subtract two to get
-    /// what a span of frames did — the counters accumulate for the life of
-    /// the shaper, which outlives any one frame and is shared across
-    /// windows. Copied out rather than borrowed so a test can hold a
-    /// "before" reading across calls that need the shaper again.
+    /// One reading of a [`CacheCounters`]'s tallies; subtract two to get what a span of frames did. Copied out so a test can hold a "before" across calls.
     pub(crate) struct CacheCounts;
 
-    /// Runs actually pushed through cosmic — `set_text` plus
-    /// `shape_until_scroll`. The cost every other counter here exists to
-    /// explain.
+    /// Runs actually pushed through cosmic (`set_text` plus `shape_until_scroll`), the cost the other counters explain.
     shapes: u32,
-    /// Lookups answered from the cache, layout-side and render-side
-    /// alike.
+    /// Lookups answered from the cache, layout-side and render-side.
     hits: u32,
-    /// Entries demoted to the probation window because the reuse slot
-    /// that owned them moved on to a different key.
+    /// Entries demoted to the probation window because their reuse slot moved to a different key.
     supersedes: u32,
     /// Buffers dropped by the end-of-frame sweep.
     expiries: u32,
-    /// Times the "…" advance had to be reshaped because no slot held
-    /// that face. Separate from `shapes`, which counts runs that landed
-    /// in the cache — the ellipsis probe shapes without inserting.
+    /// Times the "…" advance was reshaped because no slot held that face; separate from `shapes`, since the probe shapes without inserting.
     ellipsis_misses: u32,
 }

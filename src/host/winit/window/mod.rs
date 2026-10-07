@@ -27,44 +27,27 @@ use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_placement::WindowPlacement;
 use std::mem;
 
-/// What only the windowing system can answer, held until an event that
-/// can change it.
-///
-/// Each field is a round trip on X11 — `outer_position` an
-/// `XTranslateCoordinates`, `is_maximized` a `get_property` — and
-/// `current_monitor` additionally clones a handle that owns a `String`,
-/// a heap allocation. Asking per frame paid all three for a reader that
-/// asks only when an app calls
-/// [`Ui::window_geometry`](crate::Ui::window_geometry), and for the
-/// refresh rate the driver paces by.
-///
-/// Named apart from the [`WindowFrameState`] it half fills: that is what
-/// the host *tells* the `Ui` each frame, this is what the host had to
-/// *ask* for. [`Window::invalidate_system_facts`] names the events that
-/// clear it.
+/// What only the windowing system can answer, held until an event that can change
+/// it. Each field is an X11 round trip and `current_monitor` allocates, which
+/// per-frame asking paid for readers that ask only on
+/// [`Ui::window_geometry`](crate::Ui::window_geometry) and the refresh rate.
+/// [`Window::invalidate_system_facts`] names the events that clear it.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SystemFacts {
     placement: WindowPlacement,
     refresh_millihertz: Option<u32>,
 }
 
-/// Where the pointer is, and the scale the recorder was last told it in.
-///
-/// The pair is one fact, not two: a physical position means nothing
-/// without the divisor that turned it into the logical one the recorder
-/// is holding, and comparing that divisor against the current scale is
-/// the whole of how a stale pointer is noticed.
+/// Where the pointer is, and the scale the recorder was last told it in: one fact,
+/// since staleness is noticed by comparing that scale with the current one.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PointerAnchor {
     physical: Vec2,
-    /// The effective scale [`Window::effective_scale`] reported when this
-    /// position was last delivered.
+    /// The effective scale reported when this position was last delivered.
     scale: f32,
 }
 
 impl PointerAnchor {
-    /// The anchor `trace` leaves behind, given the one `held` now and the
-    /// `scale` the event was translated at.
     const fn after(held: Option<Self>, trace: PointerTrace, scale: f32) -> Option<Self> {
         match trace {
             PointerTrace::Unchanged => held,
@@ -73,9 +56,8 @@ impl PointerAnchor {
         }
     }
 
-    /// Adopt `scale` and return the logical position to re-tell the
-    /// recorder — or `None` when the scale has not moved and what the
-    /// recorder holds is still true.
+    /// Adopt `scale` and return the logical position to re-tell the recorder, or `None`
+    /// when the scale has not moved.
     fn restate_at(&mut self, scale: f32) -> Option<Vec2> {
         if self.scale == scale {
             return None;
@@ -85,80 +67,51 @@ impl PointerAnchor {
     }
 }
 
-/// First delay after a `Validation` acquire — about one frame at 60 Hz,
-/// so a single spurious failure costs a dropped frame and nothing more.
+/// First delay after a `Validation` acquire: about one frame at 60 Hz.
 const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
 
-/// Ceiling for [`Window::acquire_retry`]. A surface that stays invalid
-/// settles at two wake-ups a second.
+/// Ceiling for [`Window::acquire_retry`]: two wake-ups a second.
 const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
 
-/// Everything one native window owns: its handle, swapchain state, target-
-/// agnostic render driver, input/display facts, and event-loop schedule.
+/// Everything one native window owns.
 #[derive(Debug)]
 pub(super) struct Window {
     pub(super) window: Arc<WinitWindow>,
     pub(super) surface: WindowSurface,
     pub(super) driver: WindowDriver,
-    /// The device pixel ratio winit reports for this window. The factor
-    /// the UI is actually drawn and clicked at is
-    /// [`Self::effective_scale`], which folds the app's own scale in.
+    /// The device pixel ratio winit reports; the drawn scale is [`Self::effective_scale`].
     pub(super) system_scale: f32,
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
     cursor: CursorIcon,
-    /// The IME caret area in force, in physical px, or `None` while IME is
-    /// off — what the last frame's level was applied as, so a frame applies
-    /// only a change. Physical, so a scale change re-places the candidate
-    /// list even when the logical caret stands still.
+    /// The IME caret area in force, in physical px, or `None` while IME is off. Physical
+    /// so a scale change re-places the candidate list.
     ime_area: Option<Rect>,
-    /// Time at which the window became hidden. The render core remains
-    /// untouched while hidden, then its clock skips the elapsed gap on resume.
+    /// When the window became hidden; its clock skips the gap on resume.
     occluded_at: Option<Instant>,
-    /// The platform reported the window occluded. One of the two reasons
-    /// it is hidden; [`Self::minimized`] is the other.
+    /// The platform reported the window occluded; [`Self::minimized`] is the other
+    /// hidden reason.
     occluded: bool,
-    /// The window was resized to zero — how Windows reports a minimize,
-    /// where winit sends no `Occluded`.
+    /// Resized to zero: how Windows reports a minimize (no `Occluded`).
     minimized: bool,
-    /// The modifiers winit last reported. A key event carries none of its
-    /// own, and translating one reads them.
     pub(super) modifiers: ModifiersState,
-    /// Origin of the input clock. Input is stamped from it rather than
-    /// from the frame clock, which `Clock::skip` rewinds over a hidden
-    /// span: two presses either side of the span must stay that far
-    /// apart, or they read as a double-click.
+    /// Origin of the input clock. Not the frame clock, which `Clock::skip` rewinds over
+    /// a hidden span: two presses either side would read as a double-click.
     input_epoch: Instant,
-    /// A resize can change whether the window is maximized and nothing
-    /// else the cached facts hold — position changes arrive as `Moved`.
-    /// So a resize marks that one fact stale rather than dropping all of
-    /// them, and an interactive resize does not re-ask the windowing
-    /// system for the position and monitor every frame.
+    /// A resize can change only whether the window is maximized (moves arrive as
+    /// `Moved`), so only that fact is marked stale.
     maximized_stale: bool,
-    /// The surface size a suboptimal acquire last reconfigured for. A
-    /// suboptimal frame is still presented; the swapchain is rebuilt once
-    /// per size, because a suboptimal state that a resize event is about
-    /// to resolve would otherwise rebuild it every frame.
+    /// The surface size a suboptimal acquire last reconfigured for: the swapchain
+    /// rebuilds once per size, not every frame while a resize is pending.
     suboptimal_handled: Option<UVec2>,
-    /// This window's Tracy frame set. Zero-sized without the profiler.
     frame_set: FrameSet,
-    /// See [`SystemFacts`]. `None` until the next frame asks.
     system_facts: Option<SystemFacts>,
-    /// See [`PointerAnchor`]. `None` while the pointer is outside this
-    /// window, where there is nothing to keep fresh.
     pointer: Option<PointerAnchor>,
-    /// How long the next frame waits before retrying an acquire that
-    /// failed validation — `None` while acquires are healthy.
-    ///
-    /// Every other acquire failure is transient: a timeout, an outdated
-    /// swapchain, an occlusion. Repainting at once is the answer to
-    /// those and the loop settles within a frame or two. A validation
-    /// failure is the surface reporting that the call itself was wrong,
-    /// and the next tick makes the same call — so without a delay the
-    /// host builds a full CPU draw list per loop iteration for output
-    /// nothing can accept. The delay doubles to [`ACQUIRE_RETRY_MAX`],
-    /// which still picks a surface up within half a second of it
-    /// becoming valid again.
+    /// How long the next frame waits before retrying an acquire that failed validation;
+    /// `None` while healthy. Other failures are transient and an immediate repaint
+    /// settles them, but a validation failure repeats, so without a delay the host
+    /// builds a full CPU draw list per loop iteration for nothing. Doubles to
+    /// [`ACQUIRE_RETRY_MAX`].
     acquire_retry: Option<Duration>,
 }
 
@@ -169,10 +122,8 @@ impl Window {
         mut driver: WindowDriver,
     ) -> Self {
         let system_scale = display::sanitize_system_scale(window.scale_factor());
-        // Seed the recorder's pacing level from the swapchain that was
-        // actually opened, so `Ui::vsync` is truthful before any frame runs
-        // and a control writing its own value back doesn't reconfigure an
-        // explicitly-configured present mode out from under the host.
+        // Seed the recorder's pacing level from the opened swapchain, so `Ui::vsync` is
+        // truthful before any frame.
         driver.ui.seed_vsync(surface.vsync());
         Self {
             window,
@@ -198,20 +149,15 @@ impl Window {
     }
 
     pub(super) fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
-        // Stamped here, where the event actually arrived: the frame clock
-        // it would otherwise carry stands still between frames, and an
-        // event-driven host can idle for seconds between two of them.
+        // Stamped where the event arrived: the frame clock stands still between frames.
         let now = self.input_epoch.elapsed();
         self.driver.ui.on_input(event, now)
     }
 
-    /// The scale an event's position is divided by: the one the current
-    /// cascade was laid out at, which is what the event is hit-tested
-    /// against. A user-scale write takes effect at the next frame, so the
-    /// live scale would land a click queued before that frame on the
-    /// wrong widget; `resync_pointer` restates the pointer when the frame
-    /// moves the scale. Before the first frame there is no layout yet,
-    /// and the live scale is the one it will use.
+    /// The scale an event's position is divided by: the one the current cascade was
+    /// laid out at, which the event is hit-tested against. The live scale would
+    /// misplace a click queued before a user-scale write lands; `resync_pointer`
+    /// restates the pointer when it moves.
     pub(super) fn translation_scale(&self) -> f32 {
         self.driver
             .ui
@@ -219,26 +165,13 @@ impl Window {
             .unwrap_or_else(|| self.effective_scale())
     }
 
-    /// Retain what an event said about the pointer, against the scale it
-    /// was translated at.
     pub(super) const fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
         self.pointer = PointerAnchor::after(self.pointer, trace, scale);
     }
 
-    /// Re-tell the recorder where the pointer is when the effective scale
-    /// has moved since it was last told.
-    ///
-    /// **The pointer is the one input that outlives its own event.** Every
-    /// other one is consumed by the frame it arrived for, but a position
-    /// stays true until the pointer moves again — which is what makes it
-    /// the only one a scale change can leave stale. Nothing else re-sends
-    /// it, so a monitor move or a [`Ui::set_user_scale`](crate::Ui::set_user_scale)
-    /// write would otherwise hover and hit-test the new layout against a
-    /// point from the old one, until the user happened to move the mouse.
-    ///
-    /// A no-op unless the scale actually moved, so the frame path pays one
-    /// comparison. The injected event raises the input signal, and the
-    /// frame this runs before is the one that acts on it.
+    /// Re-tell the recorder where the pointer is when the effective scale has moved.
+    /// The pointer is the one input that outlives its event, so a scale change would
+    /// otherwise hit-test the new layout against an old point until the mouse moves.
     fn resync_pointer(&mut self) {
         let scale = self.effective_scale();
         if let Some(anchor) = &mut self.pointer
@@ -251,17 +184,15 @@ impl Window {
         }
     }
 
-    /// Physical pixels per logical pixel *as the app sees them* — the
-    /// platform's factor times the app's, which the next frame lays out
-    /// at. Read live, because the user scale is written from inside a
-    /// frame; events between frames divide by
-    /// [`Self::translation_scale`] instead.
+    /// Physical pixels per logical pixel as the app sees them (platform times app),
+    /// read live since the user scale is written inside a frame. Events between frames
+    /// use [`Self::translation_scale`].
     pub(super) fn effective_scale(&self) -> f32 {
         self.driver.ui.user_scale().applied_to(self.system_scale)
     }
 
-    /// This frame's [`SystemFacts`], asking the windowing system only
-    /// when an event has invalidated them.
+    /// This frame's [`SystemFacts`], asking the windowing system only after an event
+    /// invalidated them.
     fn system_facts(&mut self) -> SystemFacts {
         if let Some(facts) = &mut self.system_facts {
             if mem::take(&mut self.maximized_stale) {
@@ -288,29 +219,23 @@ impl Window {
         facts
     }
 
-    /// Drop the cached [`SystemFacts`].
-    ///
-    /// Called for every event that can move the window, resize it, or put
-    /// it on another monitor — the three things the cached answers depend
-    /// on. A superset is safe here and a missed event is not, so an event
-    /// that merely *might* have changed one clears all three.
+    /// Drop the cached [`SystemFacts`]. Called for every event that can move the window,
+    /// resize it or change its monitor; a missed event is unsafe, a superset is not.
     pub(super) const fn invalidate_system_facts(&mut self) {
         self.system_facts = None;
     }
 
-    /// A resize happened: the one cached fact it can change is stale.
     pub(super) const fn note_resized(&mut self) {
         self.maximized_stale = true;
     }
 
-    /// The platform reported the window occluded or visible again.
     pub(super) fn set_occluded(&mut self, occluded: bool) {
         self.occluded = occluded;
         self.update_hidden();
     }
 
-    /// The window was resized to zero (minimized, on Windows) or back.
-    /// Returns whether that changed anything.
+    /// The window was resized to zero (minimized on Windows) or back. Returns whether
+    /// that changed anything.
     pub(super) fn set_minimized(&mut self, minimized: bool) -> bool {
         let changed = self.minimized != minimized;
         self.minimized = minimized;
@@ -330,10 +255,8 @@ impl Window {
         }
     }
 
-    /// Run one application/UI frame, acquire and update the swapchain texture
-    /// when needed, present it, then drain window-host output into `commands`
-    /// and apply the cursor the frame asked for. Stores the resulting schedule
-    /// on [`Self::next`].
+    /// Run one application/UI frame, acquire the swapchain texture, present it, then
+    /// drain window-host output into `commands`. Stores the schedule on [`Self::next`].
     pub(super) fn frame<T: App>(
         &mut self,
         gpu: &Gpu,
@@ -344,53 +267,37 @@ impl Window {
         tracy::zone!("Window::frame");
 
         let facts = self.system_facts();
-        // Also where the previous frame's veto is asserted spent — see
-        // `Ui::set_window_facts`. `finish` below sits outside the occlusion
-        // branch, so every winit frame reaches the drain that clears it,
-        // including a skipped one.
+        // Also where the previous frame's veto is asserted spent (`Ui::set_window_facts`).
+        // `finish` is outside the occlusion branch, so every frame reaches the drain.
         self.driver.ui.set_window_facts(WindowFrameState {
             close_requested: self.close_requested,
             placement: facts.placement,
         });
 
-        // An occluded window skips its frame, except the one carrying a
-        // close request: `finish` below closes unless the app vetoed,
-        // and the only place a veto can happen is inside `App::update` /
-        // `App::record`. Skipping here would settle the close against a veto
-        // flag no application code was ever offered — a minimized document
-        // window would close straight past its "save changes?" prompt. The
-        // request is one-shot, so this costs at most one frame per close.
+        // An occluded window skips its frame except the one carrying a close request:
+        // only `App::update` / `App::record` can veto, and skipping would close a
+        // minimized document past its "save changes?" prompt. One-shot.
         if self.occluded_at.is_some() && !self.close_requested {
             self.next = FramePresent::Idle;
         } else {
-            // The close-request frame is the one that runs while
-            // occluded, and `set_occluded(false)` skips the whole hidden
-            // span on the premise that none did. Restarting the span here
-            // is what keeps that premise true: otherwise a vetoed close
-            // lets the un-occlude move the origin past the stamp this
-            // frame already recorded, and the next `Clock::now` comes
-            // back *earlier* than it. `advance_clock` saturates the `dt`
-            // but still assigns `time`, so repaint deadlines and
-            // multi-press timing would then be compared against a clock
-            // that went backwards.
+            // The close-request frame runs while occluded, and `set_occluded(false)` skips the
+            // hidden span assuming none did. Restart the span here, or a vetoed close lets the
+            // un-occlude move the origin past this frame's stamp and `Clock::now` goes
+            // backwards (`advance_clock` still assigns `time`), skewing repaint deadlines and
+            // multi-press timing.
             if self.occluded_at.is_some() {
                 self.occluded_at = Some(Instant::now());
             }
-            // Before the display is minted, so a frame that lays out at a
-            // new scale hit-tests against a pointer in the same space.
+            // Before the display is minted, so a frame at a new scale hit-tests in the same space.
             self.resync_pointer();
             let physical = self.surface.size();
             let display =
                 self.driver
                     .display(physical, self.system_scale, facts.refresh_millihertz);
 
-            // A size, format, or present-mode change invalidates the driver's
-            // retained target state *and* needs the swapchain reconfigured before
-            // the next acquire. Identical repeats cost nothing (Wayland resends configures
-            // on focus / output changes), which matters because
-            // `surface.configure` waits for GPU idle and reallocates the
-            // swapchain — wgpu #7447 measures 100ms+ stalls when called per
-            // repeated event.
+            // A size, format or present-mode change invalidates retained target state and
+            // needs a reconfigure. Identical repeats (Wayland resends configures) must cost
+            // nothing: `surface.configure` waits for GPU idle (wgpu #7447: 100ms+ stalls).
             if self.driver.note_target(TargetKey {
                 physical,
                 format: self.surface.format(),
@@ -404,26 +311,13 @@ impl Window {
         }
 
         self.finish(commands);
-        // This window's own frame set, not the main one: `Window::frame`
-        // runs once per window per host-loop iteration, so marking the
-        // main set here made Tracy's FPS readout tick N times per
-        // iteration and report per-window slices as whole frames.
-        // `WinitRuntime::draw` owns the main set.
-        //
-        // Past every exit, so an occluded frame closes its own Tracy
-        // frame instead of being folded into the next painted one — the
-        // difference between a minimized window reading as idle and it
-        // reading as one multi-second frame.
+        // This window's own frame set; marking the main one (`WinitRuntime::draw` owns it)
+        // made Tracy report slices as whole frames. Marked past every exit so an occluded
+        // frame closes its own frame.
         self.frame_set.mark();
     }
 
-    /// Rebuild the swapchain and tell the driver that what it retained
-    /// went with it.
-    ///
-    /// One step, because the images are new: the damage baseline and the
-    /// last-frame pixels both describe contents that no longer exist. Two
-    /// acquire arms reach here, and an arm that reconfigured without the
-    /// second half was correct only by accident — see
+    /// Rebuild the swapchain and tell the driver what it retained went with it; see
     /// [`WindowDriver::invalidate_target_contents`].
     fn reconfigure(&mut self, gpu: &Gpu) {
         self.surface.configure(gpu);
@@ -433,7 +327,6 @@ impl Window {
     fn present(&mut self, gpu: &Gpu, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
         let repaint = if report.plan.is_none() {
-            // Nothing tried to acquire, so nothing can still be failing.
             self.acquire_retry = None;
             report.repaint_requested
         } else {
@@ -445,10 +338,7 @@ impl Window {
                     frame.present(gpu);
                     report.repaint_requested
                 }
-                // Still presentable, which wgpu documents: present it, then
-                // rebuild the swapchain to match the surface — once per
-                // size, so a suboptimal state that persists until a
-                // pending resize lands does not rebuild every frame.
+                // Still presentable: present it, then rebuild once per size.
                 Acquired::Suboptimal(frame) => {
                     core.submit(&mut self.driver, frame.target(), mode);
                     self.window.pre_present_notify();
@@ -481,8 +371,7 @@ impl Window {
             }
         };
 
-        // Ahead of `repaint`, which every failing acquire asks for: the
-        // point of the delay is to pace exactly that request.
+        // Ahead of `repaint`, which every failing acquire asks for: the delay paces it.
         if let Some(delay) = self.acquire_retry
             && let Some(at) = self.driver.clock.deadline(self.driver.clock.now() + delay)
         {
@@ -500,10 +389,9 @@ impl Window {
         }
     }
 
-    /// Settle everything the frame produced for the host: drain the recorder's
-    /// window commands (which converts an un-vetoed close request into this
-    /// window's own close command), push the requested cursor to the OS, apply
-    /// a requested vsync change, and consume the one-shot close request.
+    /// Settle what the frame produced: drain the recorder's window commands (an
+    /// un-vetoed close request becomes this window's close command), push the cursor,
+    /// apply a vsync change, and consume the one-shot close request.
     fn finish(&mut self, commands: &mut WindowCommands) {
         let output = self.driver.drain_window_output(commands);
         if output.cursor != self.cursor {
@@ -515,8 +403,8 @@ impl Window {
         self.close_requested = false;
     }
 
-    /// Turn the platform's input method on with its candidate list beside
-    /// `caret` (logical px), or off for `None` — only on a change.
+    /// Turn the platform's input method on beside `caret` (logical px), or off for
+    /// `None`; only on a change.
     fn set_ime_area(&mut self, caret: Option<Rect>) {
         let physical = caret.map(|rect| physical_rect(rect, self.effective_scale()));
         if physical == self.ime_area {
@@ -537,21 +425,10 @@ impl Window {
         self.ime_area = physical;
     }
 
-    /// Point the swapchain config at `vsync`, if it isn't already paced that
-    /// way.
-    ///
-    /// The reconfigure itself is left to the next frame's [`TargetKey`] check
-    /// rather than done here. Recreating a swapchain invalidates the retained
-    /// target state — the images are new, so the damage baseline and the
-    /// last-frame pixels describe nothing — and doing it here would apply the
-    /// new mode while `target` still named the old configuration, so the next
-    /// key check would see no change and skip the reconfigure this asked for.
-    /// (`WindowDriver::invalidate_target_contents` is what any configure owes
-    /// the retained state, wherever it happens.)
-    ///
-    /// Hence the forced repaint: an idle window schedules no next frame, so
-    /// without it the change would sit in the swapchain config until something
-    /// else happened to wake the window.
+    /// Point the swapchain config at `vsync`, if not already paced that way. The
+    /// reconfigure is left to the next frame's [`TargetKey`] check: doing it here would
+    /// leave `target` naming the old configuration so the check would skip it. The
+    /// forced repaint is because an idle window schedules no next frame.
     fn set_vsync(&mut self, vsync: Vsync) {
         if self.surface.set_vsync(vsync) {
             self.next = FramePresent::Immediate;
@@ -559,7 +436,6 @@ impl Window {
     }
 }
 
-/// Scheduling hint returned by a native-window frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum FramePresent {
     Immediate,
@@ -568,9 +444,7 @@ pub(super) enum FramePresent {
 }
 
 impl FramePresent {
-    /// Collapse a deadline that has already come due into `Immediate`. A
-    /// `WaitUntil` in the past fires instantly and spins the loop, so a window
-    /// whose deadline passed may as well request its redraw now.
+    /// Collapse a deadline already due into `Immediate`; a past `WaitUntil` spins the loop.
     pub(super) fn resolve(self, now: Instant) -> Self {
         match self {
             Self::At(t) if t <= now => Self::Immediate,
@@ -579,8 +453,7 @@ impl FramePresent {
     }
 }
 
-/// `rect` in logical px as physical px at `scale` — the space a window's
-/// platform calls take.
+/// `rect` in logical px as physical px at `scale`.
 fn physical_rect(rect: Rect, scale: f32) -> Rect {
     Rect {
         min: rect.min * scale,

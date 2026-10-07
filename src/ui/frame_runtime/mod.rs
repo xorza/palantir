@@ -1,7 +1,5 @@
 //! Retained clock and scheduling state for the `Ui` frame lifecycle, and the
-//! plan the frame's entry decision produces.
-//!
-//! The frame *output* (what a frame produced) lives in
+//! plan the frame's entry decision produces. A frame's output lives in
 //! [`frame_report`](crate::ui::frame_report).
 
 pub(crate) mod wake;
@@ -17,20 +15,16 @@ use crate::ui::frame_stamp::FrameStamp;
 use std::mem;
 use std::time::Duration;
 
-/// What `Ui::frame` should do this frame, decided at entry
-/// from fired wake reasons + input state + prior-frame validity.
-/// `PaintOnly` and `FullRecord` are mutually exclusive by construction
-/// — `paint_only ⇒ !force_full` is encoded in the variant shape
-/// instead of relying on two independent bools.
+/// What `Ui::frame` does this frame, decided at entry from fired wake reasons,
+/// input state and prior-frame validity. The variants make `paint_only ⇒
+/// !force_full` unrepresentable to break.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum FramePlan {
-    /// Skip pre_record / record / finalize / layout / cascade and
-    /// reuse the retained tree + cascade from the prior frame. Only
-    /// fired by the anim-only fast path.
+    /// Skip pre_record, record, finalize, layout and cascade; reuse the prior
+    /// frame's tree and cascade. Fired only by the anim-only fast path.
     PaintOnly,
-    /// Run record + (optional) double-layout + finalize. `force_full`
-    /// is true when the prior frame's damage snapshot must be
-    /// discarded (surface change, missed submit, first frame).
+    /// Run record, optional double-layout and finalize. `force_full` discards
+    /// the prior damage snapshot (surface change, missed submit, first frame).
     FullRecord { force_full: bool },
 }
 
@@ -44,86 +38,60 @@ pub(super) struct FrameClassifyInput {
 }
 
 /// Retained clock and scheduling state owned by [`Ui`](crate::Ui).
-/// Grouping these fields keeps the frame lifecycle's reset and carry-over
-/// invariants separate from the retained widget engines on `Ui`.
 #[derive(Debug, Default)]
 pub(crate) struct FrameRuntime {
-    /// Effective per-frame dt fed into the animation integrators
-    /// (`AnimMapTyped::tick` / `spring::step`). Real wall-clock dt is
-    /// accumulated into [`Self::dt_accum`] and only spent here once it
-    /// crosses [`crate::common::time::ANIM_SUBSTEP_DT`] — frames that
-    /// do not spend see `dt = 0.0` and skip animation advancement.
-    /// Without this, an unthrottled repaint loop can produce deltas
-    /// below the f32 ULP at pixel-scale positions and stall a spring
-    /// short of its settle threshold indefinitely.
+    /// Effective per-frame dt fed to the animation integrators. Wall-clock dt
+    /// accumulates in [`Self::dt_accum`] and is spent here only once it crosses
+    /// [`crate::common::time::ANIM_SUBSTEP_DT`]; other frames see `0.0`.
+    /// Otherwise an unthrottled loop produces deltas below the f32 ULP at
+    /// pixel-scale positions and stalls a spring short of settling.
     pub(super) dt: f32,
-    /// Unspent wall-clock dt waiting to cross the fixed-step threshold.
-    /// See [`Self::dt`].
+    /// Unspent wall-clock dt waiting to cross the threshold; see [`Self::dt`].
     pub(super) dt_accum: f32,
-    /// Bumped once per [`crate::Ui::frame`], before either record pass,
-    /// so a settling pass cannot double-advance animation. Counts every
-    /// frame that reaches the screen, `PaintOnly` ones included —
-    /// [`Self::frame_id`] is the peer that counts only the frames
-    /// authoring code ran on.
+    /// Bumped once per [`crate::Ui::frame`], before either record pass, so a
+    /// settling pass cannot double-advance animation. Counts `PaintOnly`
+    /// frames too, unlike [`Self::frame_id`].
     pub(super) render_frame_id: u64,
-    /// WindowDriver-supplied monotonic timestamp for this frame.
+    /// Host-supplied monotonic timestamp for this frame.
     pub(super) time: Duration,
-    /// Time + display from the previous frame, or `None` before the
-    /// first frame. Drives surface-change classification and the
-    /// paint-animation damage gate.
+    /// Time and display from the previous frame, `None` before the first;
+    /// drives surface-change classification and the paint-animation damage gate.
     pub(super) prev_stamp: Option<FrameStamp>,
-    /// EMA of `1/raw_dt` across frames; zero before a second timestamp
-    /// exists. Uses unclamped wall time so stalls remain visible.
+    /// EMA of `1/raw_dt`; zero before a second timestamp. Uses unclamped wall
+    /// time so stalls stay visible.
     pub(super) fps_ema: f32,
-    /// Full-record frames so far — the frame identity authoring code
-    /// sees, published as [`crate::Ui::frame_id`], since a `PaintOnly`
-    /// frame runs none of it.
-    ///
-    /// Bumped in [`Self::note_processing`] rather than beside
-    /// [`Self::render_frame_id`], so read from inside a record pass it
-    /// counts the record frames *before* this one. Two consecutive
-    /// record frames therefore observe consecutive values, and both
-    /// passes of one frame observe the same one — which is what makes it
-    /// usable as an identity and not merely a tally.
+    /// Full-record frames so far, published as [`crate::Ui::frame_id`].
+    /// Bumped in [`Self::note_processing`], so inside a record pass it counts
+    /// the record frames before this one: consecutive frames see consecutive
+    /// values and both passes of one frame see the same one.
     pub(super) frame_id: u64,
-    /// How many of [`Self::frame_id`]'s frames needed a settling second
-    /// record pass. Cumulative rather than an EMA because the question it
-    /// answers is "did this gesture stop double-recording" — you read the
-    /// *delta* across an interaction, which a decaying average smears.
-    /// `PaintOnly` frames can't settle, so they are excluded from both
-    /// halves of that ratio rather than drifting it toward zero while the
-    /// UI merely idles. Displayed by the opt-in frame-stats overlay.
+    /// How many of [`Self::frame_id`]'s frames needed a settling second pass.
+    /// Cumulative so a caller reads the delta across a gesture. `PaintOnly`
+    /// frames are excluded from both halves of the ratio. Shown by the
+    /// frame-stats overlay.
     pub(crate) settle_frames: u32,
     /// Set when an unsettled animation or widget requests another frame.
     pub(super) repaint_requested: bool,
-    /// The shared text clock's reading when this window last framed, or
-    /// `None` before its first frame. Read and written only through
-    /// [`Self::tick_text_clock`].
+    /// The shared text clock's reading when this window last framed; only
+    /// touched by [`Self::tick_text_clock`].
     text_frame: Option<u64>,
-    /// Pending absolute wake deadlines, sorted ascending and coalesced.
-    /// Entries retain merged [`WakeReasons`] so coincident real and
-    /// paint-animation wakes still force a full record pass.
+    /// Pending absolute wake deadlines, sorted ascending and coalesced, with
+    /// merged [`WakeReasons`] so coincident wakes still force a full record.
     pub(crate) repaint_wakes: Vec<Wake>,
-    /// Whether the current frame requires one settling record pass. The
-    /// lifecycle consumes at most one such request per frame.
+    /// Whether the current frame needs one settling record pass; at most one
+    /// per frame.
     pub(super) relayout_requested: bool,
 }
 
 impl FrameRuntime {
-    /// Advance the shared text clock when this window frames again on
-    /// the reading it last framed at.
+    /// Advance the shared text clock when this window frames again on the
+    /// reading it last framed at.
     ///
-    /// **A window frames at most once per host frame**, so framing again
-    /// on the same reading proves a host frame has passed. That makes the
-    /// clock count host frames with no host saying where one ends: N
-    /// windows painting together tick it once per round rather than N
-    /// times, and one window's glyphs stay unevictable while a sibling
-    /// paints in the same round. No host makes the tick, so no host can
-    /// forget it — and a forgotten tick would not merely delay eviction:
-    /// see [`TextShaper::tick_frame`] for the stall it causes.
-    ///
-    /// Every frame reaches here, `PaintOnly` ones included, so neither
-    /// plan can skip the tick and no frame can pay it twice.
+    /// A window frames at most once per host frame, so framing again on the
+    /// same reading proves a host frame passed. N windows painting together
+    /// tick once per round, and no host can forget the tick (see
+    /// [`TextShaper::tick_frame`] for the stall that causes). Every frame
+    /// reaches here, `PaintOnly` included, so none skips it or pays it twice.
     pub(super) fn tick_text_clock(&mut self, text: &TextShaper) {
         if self.text_frame == Some(text.frame()) {
             text.tick_frame();
@@ -131,10 +99,9 @@ impl FrameRuntime {
         self.text_frame = Some(text.frame());
     }
 
-    /// Fold this frame's outcome into [`Self::frame_id`] and the settle
-    /// tally. Called once per [`crate::Ui::frame`], after the pass count is
-    /// known — so the overlay, which records *during* a pass, always reads
-    /// both through the previous frame.
+    /// Fold this frame's outcome into [`Self::frame_id`] and the settle tally.
+    /// Called once per [`crate::Ui::frame`] after the pass count is known, so
+    /// the overlay always reads both through the previous frame.
     pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
@@ -161,14 +128,9 @@ impl FrameRuntime {
         self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
-            // The same limit on a different quantity: `raw_dt` bounds
-            // what one frame observed, and this bounds what it spends —
-            // that plus a carry of up to one accumulator step.
-            // `spring::step` takes `MAX_ANIM_DT` as its contract, so a
-            // sum past it is a debug panic.
-            //
-            // The excess is dropped rather than carried: the clamp above
-            // already drops stall time, and a carry would let the stall
+            // Bounds what one frame spends (this plus a carry of up to one
+            // accumulator step); `spring::step` takes `MAX_ANIM_DT` as its
+            // contract. The excess is dropped, not carried, so a stall cannot
             // bleed into later frames as catch-up motion.
             spent.min(MAX_ANIM_DT)
         } else {
@@ -178,22 +140,15 @@ impl FrameRuntime {
         self.render_frame_id += 1;
     }
 
-    /// No frame has been stamped yet, so there is no previous display to
-    /// compare against and no retained pixels to keep.
-    ///
-    /// Named rather than spelled `prev_stamp.is_none()` at each of the two
-    /// sites that ask — the plan classifier below, and `FrameCycle::run`,
-    /// which gates its warmup pass and its damage assertion on the same
-    /// fact.
+    /// No frame has been stamped yet: no previous display to compare and no
+    /// retained pixels. Shared by the plan classifier and `FrameCycle::run`.
     pub(crate) const fn is_first_frame(&self) -> bool {
         self.prev_stamp.is_none()
     }
 
-    /// Decide what this frame does, **consuming** the wakes that fired by
-    /// now — the drain is the point, not a side effect, since a wake must
-    /// drive exactly one frame. Named `take_` for that reason: a reader is
-    /// entitled to assume a `classify_*` is pure, and this is the frame's
-    /// single entry decision.
+    /// Decide what this frame does, consuming the wakes that fired by now (a
+    /// wake drives exactly one frame). Named `take_` because a reader may
+    /// assume `classify_*` is pure.
     pub(super) fn take_frame_plan(&mut self, input: FrameClassifyInput) -> FramePlan {
         let fired_count = self
             .repaint_wakes
@@ -217,16 +172,12 @@ impl FrameRuntime {
             );
         }
 
-        // The policy names a cut on `InputSignal`'s ordered scale; the
-        // gate is the comparison.
+        // The policy names a cut on `InputSignal`'s ordered scale; the gate is
+        // the comparison.
         let input_forces_record = input.input_signal >= input.input_policy.record_threshold();
-        // Consumed, like the wakes above and for the same reason: a
-        // request drives exactly one frame. Taking it here rather than
-        // clearing it in `FrameCycle::run` a few lines later is what
-        // keeps the field to one meaning — before this call it is
-        // "someone has asked for a frame", after it is "this frame asked
-        // for another". Clearing it separately left both meanings live
-        // on one field, told apart only by statement order.
+        // Consumed like the wakes: a request drives exactly one frame. Taking it
+        // here keeps the field to one meaning (before: someone asked; after:
+        // this frame asked for another).
         let repaint_requested = mem::take(&mut self.repaint_requested);
         let paint_only = !force_full
             && !repaint_requested

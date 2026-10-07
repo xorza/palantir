@@ -18,12 +18,9 @@ struct State {
     page: usize,
     picked: usize,
     overflowing: usize,
-    /// Chips the strip demo has closed, so a close reads as a real
-    /// removal rather than a flash.
+    /// Chips the strip demo has closed, so a close reads as a real removal.
     open: Vec<u64>,
-    /// The frame's chips. Their labels are interned per frame, so the
-    /// items are rebuilt every frame — into this, which keeps its
-    /// capacity, rather than into a fresh `Vec`.
+    /// The frame's chips, rebuilt every frame since labels are interned per frame, into this buffer to keep its capacity.
     items: Vec<TabItem>,
 }
 

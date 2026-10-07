@@ -1,5 +1,4 @@
-//! A line's cross extent: the max it takes, the floors it keeps, and the
-//! caps on both.
+//! A line's cross extent: its max, floors and caps.
 
 use crate::Ui;
 use crate::internals::harness::UiHarness;
@@ -15,9 +14,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// A zero-main, 30-cross child measures to 0×30 or 30×0. Adding a 20-main
-/// child
-/// produces 0 + 5 + 20 = 25 main and max(30, 10) = 30 cross.
+/// Zero-main 30-cross child plus a 20-main child: 0 + 5 + 20 = 25 main, max(30, 10) = 30 cross.
 #[test]
 fn zero_main_child_still_occupies_the_line_on_both_axes() {
     #[derive(Clone, Copy, Debug)]
@@ -96,8 +93,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
     }
 }
 
-/// Pin: line height = max child cross within the line; subsequent
-/// lines start at the previous line's bottom + `line_gap`.
+/// Line height is the max child cross; later lines start at the previous bottom + `line_gap`.
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -110,7 +106,6 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             .show(ui, |ui| {
                 cell(ui, "tall", 100.0, 60.0);
                 cell(ui, "short", 100.0, 20.0);
-                // overflow → new line
                 cell(ui, "next-line", 100.0, 30.0);
             });
     });
@@ -119,12 +114,10 @@ fn wrap_hstack_line_height_is_max_child_cross() {
     let next = h.arranged(WidgetId::from_hash("next-line"));
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
-    // Line 0 height = 60; line_gap = 0 → next at y=60.
     assert_eq!(next.min.y, 60.0);
 }
 
-/// Pin: cross-axis `Sizing::fill` stretches to the row's tallest-child
-/// height (CSS `align-items: stretch` default). Mirrors Stack cross.
+/// Cross-axis `Sizing::fill` stretches to the tallest child, as in Stack.
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -134,10 +127,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             .size((Sizing::fixed(300.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
-                // Tall child sets the row height = 60.
                 cell(ui, "tall", 100.0, 60.0);
-                // Fill-on-cross child should stretch to 60 (not stay at its
-                // intrinsic).
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))

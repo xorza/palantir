@@ -14,20 +14,16 @@ use crate::widgets::popup::Popup;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;
 
-/// Pin: when a subtree's `(paint_rect, node_hash, subtree_hash,
-/// cascade_input)` all match the prev-frame snapshot at its painting
-/// root, the damage diff jumps to `subtree_end` instead of walking every
-/// descendant. The fast path's correctness is already covered by every
-/// "unchanged → no damage" test in this file; this pin specifically
-/// guards that the jump *fires* — without it the path silently degrades
-/// to a per-node walk that still produces correct damage.
+/// When a subtree's `(paint_rect, node_hash, subtree_hash, cascade_input)` all match the prev-frame
+/// snapshot at its painting root, the damage diff jumps to `subtree_end` instead of walking every
+/// descendant. Correctness is covered by every "unchanged → no damage" test; this guards that the
+/// jump *fires*, else the path silently degrades to a per-node walk with correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    // Frame with a painting parent (background) wrapping painting
-    // children — both root and children land in `prev` with matching
-    // snapshots on the second frame, so the root's Occupied-equal arm
-    // is reached with a span > 1 and the skip counter increments.
+    // A painting parent wrapping painting children: root and children land in `prev` with matching
+    // snapshots on the second frame, so the root's Occupied-equal arm sees a span > 1 and the skip
+    // counter increments.
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -66,11 +62,9 @@ fn stable_painting_subtree_triggers_skip_jump() {
     assert!(h.engines.damage.counters.dirty().is_empty());
 }
 
-/// Pin: a widget that loses its background between frames flips from
-/// painting to non-painting. The diff must (a) contribute its prev
-/// rect to damage so the prior pixels get cleared, (b) drop the entry
-/// from `prev` so the next frame sees it as truly absent, and (c)
-/// contribute no curr rect.
+/// A widget that loses its background flips from painting to non-painting. The diff must (a) add its
+/// prev rect to damage so the prior pixels clear, (b) drop the entry from `prev` so the next frame
+/// sees it as absent, and (c) add no curr rect.
 #[test]
 fn paints_to_non_paints_transition_evicts_and_clears() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -112,11 +106,9 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     );
 }
 
-/// Regression: a popup's full-surface invisible click-eater leaf must
-/// not contribute to damage on add or remove. Otherwise opening or
-/// dismissing a popup blows past the full-repaint coverage threshold.
-/// Sole signal here is that filter stays `Partial` — no full-surface
-/// rect lands in `region`.
+/// A popup's full-surface invisible click-eater leaf must not contribute to damage on add or remove,
+/// or opening or dismissing a popup would blow past the full-repaint coverage threshold. The signal
+/// is that the filter stays `Partial`: no full-surface rect lands in `region`.
 #[test]
 fn popup_eater_does_not_force_full_repaint() {
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -135,9 +127,8 @@ fn popup_eater_does_not_force_full_repaint() {
             });
     });
 
-    // Frame 2: popup gone. Body + eater both removed. Without the
-    // paints-gate, the eater's full-surface prev rect would dominate
-    // the region.
+    // Frame 2: popup gone, body and eater both removed. Without the paints-gate the eater's
+    // full-surface prev rect would dominate the region.
     let out = frame(&mut h, |ui| {
         Block::new()
             .id(WidgetId::from_hash("placeholder"))
@@ -157,10 +148,8 @@ fn popup_eater_does_not_force_full_repaint() {
     );
 }
 
-/// Regression: a click on empty background has no route, so it must not set
-/// `frame_had_action`, run a discarded pre-pass, and force the next paint
-/// to
-/// `Full` through the dropped-frame recovery path.
+/// A click on empty background has no route, so it must not set `frame_had_action`, run a discarded
+/// pre-pass, and force the next paint to `Full` through the dropped-frame recovery path.
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
     let mut h = UiHarness::new(DISPLAY.physical);

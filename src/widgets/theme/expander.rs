@@ -13,66 +13,39 @@ use crate::widgets::theme::text_style::TextStyleOverrides;
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
-/// Visuals for [`crate::Expander`].
-///
-/// The header is a button in everything but name — the whole row is one
-/// hit target — so it carries the same four-state look pack, and its
-/// triangle takes the picked look's text colour rather than a slot of
-/// its own.
+/// Visuals for [`crate::Expander`]; the header takes button-style four-state looks.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ExpanderTheme {
-    /// Four-state look for the header row.
+    /// Header look.
     pub looks: StatefulLook,
-    /// Bounding box of the disclosure triangle in logical px, corners
-    /// included.
-    ///
-    /// **Square, unless the angles below leave it unturned.** A quarter
-    /// turn swaps the triangle's extents, so an oblong box clips it on
-    /// one axis.
+    /// Triangle bounding box, corners included; keep it square unless the angles leave it unturned.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub arrow_size: Vec2,
-    /// Corner radius of the triangle, in logical px. The tip and both base
-    /// corners take it, and `0.0` is a sharp triangle. At most half the
-    /// smaller side of [`Self::arrow_size`], which the vertices sit inside
-    /// by this much.
+    /// Triangle corner radius; `0.0` is sharp; at most half the smaller side of [`Self::arrow_size`].
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub arrow_radius: f32,
-    /// Angle the arrow wears while the body is closed, in radians. The
-    /// default quarter turn anticlockwise points it at the label, which
-    /// is the disclosure triangle every file tree draws.
+    /// Arrow angle in radians while closed (default: points at the label).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_closed_angle: f32,
-    /// Angle the arrow wears while the body is open. The default leaves
-    /// it upright, pointing down at what it revealed.
-    ///
-    /// Set the pair to `0.0` and `-PI` for the other convention — down
-    /// when closed, up when open — which reads better for a column of
-    /// sibling sections than for one disclosure.
+    /// Arrow angle while open (default: upright). `0.0` and `-PI` give down-closed, up-open.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_open_angle: f32,
-    /// Gutter between the arrow and the label.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    /// Gap between arrow and label.
     pub gap: f32,
-    /// How far the body is inset from the header's leading edge.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    /// Indent of the body.
     pub indent: f32,
-    /// Inset between the body's edges and its content.
-    ///
-    /// Named apart from [`SlotDefaults::padding`], which this bundle
-    /// flattens: that one is the box default the header takes, and two
-    /// fields of one name collide on the wire.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    /// Padding of the body.
     pub body_padding: Spacing,
-    /// Spacing and transition spec — see [`SlotDefaults`]. `animation` is
-    /// `None` by default, so a reveal snaps until an application asks
-    /// for the motion.
+    /// `animation` is `None` by default, so a reveal snaps.
     #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 
 impl ExpanderTheme {
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
+    /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
             looks,
@@ -88,8 +61,6 @@ impl ExpanderTheme {
         looks.for_each_text(f);
     }
 
-    /// The angle the arrow wears at `openness`, `0.0` closed through
-    /// `1.0` open.
     pub(crate) fn arrow_angle(&self, openness: f32) -> f32 {
         let t = openness.clamp(0.0, 1.0);
         self.arrow_closed_angle + (self.arrow_open_angle - self.arrow_closed_angle) * t

@@ -1,5 +1,4 @@
-//! The push button: a labelled, themed leaf that reports what each pointer
-//! button did to it.
+//! The push button: a labelled, themed leaf reporting pointer-button clicks.
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
@@ -39,13 +38,11 @@ pub struct Button<'a> {
 }
 
 impl<'a> Button<'a> {
-    /// An unlabelled button. Add text with [`Self::label`].
     #[track_caller]
+    /// A button.
     pub fn new() -> Self {
         Self {
-            // A Tab stop, and a focused button takes Space and Enter —
-            // which classify as `KeyClass::Text`, so it claims that class,
-            // as a focused toggle does.
+            // Tab stop; a focused button takes Space and Enter (`KeyClass::Text`), so it claims that class.
             widget: Widget::leaf()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -57,53 +54,36 @@ impl<'a> Button<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `button`. Takes an
-    /// `Option` as readily as a reference: `.style(overrides.as_ref())`.
+    /// Theme slot.
     pub fn style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// The text this widget draws. Empty (the default) draws none —
-    /// no text child is recorded at all.
-    ///
-    /// Drawn inside the button and centered by default;
-    /// [`Self::text_align`] moves it.
+    /// Label text.
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Set how the label handles a width narrower than its natural line.
-    /// Default [`TextWrap::Truncate`] (hard-cut to one line, no marker); pass
-    /// [`TextWrap::Ellipsis`] to mark the cut with `…`, [`TextWrap::WrapWithOverflow`] to
-    /// reflow onto multiple lines, or [`TextWrap::SingleLine`] to let it run
-    /// past the chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
-    /// button commits its natural width, so the label always fits.
+    /// Label wrap policy for a width narrower than its line (default [`TextWrap::Truncate`]); a `Hug` button never narrows.
     pub const fn text_wrap(mut self, wrap: TextWrap) -> Self {
         self.label_wrap = wrap;
         self
     }
 
-    /// Position of the label glyphs inside the button's arranged rect.
-    /// Distinct from [`Configure::align`], which positions the *button*
-    /// inside its parent's slot. Default: [`Align::CENTER`].
+    /// Label position inside the button's rect (unlike [`Configure::align`], which places the button).
     pub const fn text_align(mut self, a: Align) -> Self {
         self.label_align = a;
         self
     }
 
-    /// Record the button. Read the click off the [`Response`].
-    ///
-    /// Space and Enter on a focused button click it: the response reports
-    /// a single left click, as WAI-ARIA's button pattern asks, so a caller
-    /// reads keyboard and pointer alike through `clicked()`.
+    /// Space and Enter on a focused button report one left click (WAI-ARIA), so `clicked()` covers keyboard.
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         if !response.disabled && ui.is_focus_within(id) {
-            // Both sampled: `key_pressed` also keeps each chord subscribed
-            // for the wake gate.
+            // `key_pressed` also keeps each chord subscribed for the wake gate, so sample both.
             let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
             let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
             if space || enter {
@@ -130,8 +110,6 @@ impl<'a> Button<'a> {
                 );
             }
         });
-        // Eager: theme picking already paid for `response_for`, so
-        // hand the cached response to the caller.
         Response::new(id, ui, response)
     }
 }

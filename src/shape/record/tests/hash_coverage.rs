@@ -16,23 +16,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
-/// **The hash-schedule sweep.** For every field of every record,
-/// change it and assert the hash moves — or, for the fields
-/// deliberately left out, assert it does *not*.
-///
-/// This is the half the compiler cannot do. Naming every field in
-/// `compute_record_hash` (no `..`) makes a *new* field a build
-/// error, but nothing stops an existing one being bound and then
-/// never written to the hasher. A field missing from the hash means
-/// two records that differ share one, which damage diff reads as
-/// "unchanged" — the repaint is skipped and the stale pixels stay.
-///
-/// The exclusions are asserted just as hard, because each is
-/// load-bearing rather than an oversight: `bbox` is derived from
-/// geometry already hashed, spans are frame-local arena offsets that
-/// must *not* perturb a cross-frame comparison, and
-/// `Polyline`/`Mesh` fold their bulk inputs into `content_hash` at
-/// lowering.
+/// Every field of every record moves the hash, or is listed as deliberately excluded and must not. The compiler catches only new fields, not one bound and never hashed. Exclusions: `bbox` is derived, spans are frame-local, `Polyline`/`Mesh` fold bulk inputs into `content_hash`.
 #[test]
 fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     #[track_caller]
@@ -131,8 +115,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             stroke2,
         ),
     );
-    // A gradient's content hash rides in its brush, so it moves the
-    // record's hash, and its frame-local id does not.
+    // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
     let grad = |id, hash| ShapeBrush::Gradient {
         id: GradientId(id),
         hash,
@@ -299,8 +282,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             8,
         ),
     );
-    // Everything else is folded into `content_hash` at lowering, so
-    // the record copies must not be hashed a second time.
+    // Folded into `content_hash` at lowering; must not be hashed twice.
     excluded(
         "Polyline.width",
         &base,
@@ -404,8 +386,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         span: Span::new(0, 1),
         hash,
     };
-    // The face is one argument now, so a case that varies a metric says
-    // so with a struct update instead of restating the other three.
+    // A struct update varies one metric without restating the rest.
     let face = GlyphFont {
         size: 12.0,
         line_height: 14.0,
@@ -755,9 +736,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ImageDownsample::Single,
         ),
     );
-    // Both tap modes, because they share the field's bit range in the hash
-    // byte: folding them onto one value would let a mean-sampled image reuse a
-    // peak-sampled one's painted pixels.
+    // Both tap modes share the field's bit range in the hash byte; folding them would let one reuse the other's pixels.
     moves(
         "Image.downsample=Mean",
         &base,
@@ -857,9 +836,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &base,
         &curve(LineCap::Round, cubic, stroke, Rect::ZERO, none),
     );
-    // A ramp's content hash rides in the record, so it moves the hash,
-    // and its frame-local id does not. Cap and ramp share a byte, so the
-    // cap must still move the hash under a ramp.
+    // A ramp's content hash moves the hash, its frame-local id does not. Cap and ramp share a byte, so the cap must still move it.
     let ramped = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, interned(0, 1));
     moves("Curve.ramp present", &base, &ramped);
     moves(

@@ -13,22 +13,17 @@ fn retarget_mid_flight_starts_new_segment_from_current() {
     let id = wid("a");
     let spec = linear_100ms();
     let _ = map.step(id, SLOT, 0.0, spec, 0.016);
-    // From rest: the change's frame spends none of its 16 ms.
     let r = map.step(id, SLOT, 1.0, spec, 0.016);
     assert_eq!(r.current, 0.0);
     let mid = map.step(id, SLOT, 1.0, spec, 0.05).current;
-    // 50 ms of a 100 ms linear segment: progress 0.5, so lerp(0.0, 1.0, 0.5).
     assert_eq!(mid, 0.5);
 
-    // In flight: the retarget restarts the segment at 0.5 and spends its
-    // 50 ms at once, half of a linear 100 ms segment: lerp(0.5, 2.0, 0.5).
+    // In flight: the retarget restarts at 0.5 and spends 50 ms at once: lerp(0.5, 2.0, 0.5).
     let r = map.step(id, SLOT, 2.0, spec, 0.05);
     assert_eq!(r.current, 1.25);
 }
 
-/// A target that moves every frame — an animation following a drag —
-/// keeps moving on every frame: only the first change, from rest, spends
-/// nothing.
+/// A target that moves every frame keeps moving; only the first change, from rest, spends nothing.
 #[test]
 fn a_target_that_moves_every_frame_moves_every_frame() {
     let mut map = AnimMapTyped::<f32>::default();
@@ -82,9 +77,7 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let duration_result = map.step(id, SLOT, 1.0, duration, 0.4);
     assert_eq!(duration_result.current, 0.4);
 
-    // The spring takes over at rest from the duration's 0.4, 0.6 short of
-    // the target: the default spring (k = 170, h = 13, ω = 1) is then at
-    // `1 − 0.6·e^(-13t)(cos t + 13 sin t)` after t = 0.016.
+    // The spring takes over at rest 0.6 short of the target: `1 − 0.6·e^(-13t)(cos t + 13 sin t)` at t = 0.016 (k = 170, h = 13, ω = 1).
     let spring_result = map.step(id, SLOT, 1.0, AnimationSpec::SPRING, 0.016);
     let t = f64::from(0.016_f32);
     let from_point_four = 1.0 - 0.6 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());

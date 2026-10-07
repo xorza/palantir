@@ -1,5 +1,4 @@
-//! Reaching a widget by id: the rect that answers, and the occlusion that
-//! refuses.
+//! Reaching a widget by id: the rect that answers and the occlusion that refuses.
 
 use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
 use crate::internals::harness::*;
@@ -48,18 +47,14 @@ fn center_of_matches_the_arranged_rect() {
     assert_eq!(harness.center_of(target()), rect.center());
     assert_eq!(harness.hit_at(harness.center_of(target())), Some(target()));
 
-    // Addressing the widget instead of its coordinates lands the same
-    // click as the hand-computed `INSIDE`.
+    // Addressing the widget lands the same click as the hand-computed `INSIDE`.
     harness.click_on(target());
     assert!(harness.response_in(target(), button).left.clicked());
 }
 
 #[test]
 fn addressing_a_widget_refuses_to_click_through_something_on_top() {
-    // The whole reason the `_on` helpers check rather than just aiming:
-    // a covered widget's center belongs to whatever is over it, so an
-    // unchecked `click_on` would report success while the event went
-    // somewhere else entirely.
+    // The `_on` helpers check rather than aim: a covered widget's center belongs to whatever is over it, so an unchecked `click_on` would report success while the event went elsewhere.
     let under = WidgetId::from_hash("under");
     let over = WidgetId::from_hash("over");
     let stacked = |ui: &mut Ui| {
@@ -80,8 +75,7 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
     let mut harness = UiHarness::new(SURFACE);
     harness.prime(2, stacked);
 
-    // Both occupy the same rect, so their centers coincide — geometry
-    // alone cannot tell them apart.
+    // Same rect, so centers coincide; geometry alone can't tell them apart.
     assert_eq!(harness.center_of(under), harness.center_of(over));
 
     harness.click_on(over);
@@ -90,7 +84,7 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
         "the topmost widget is reachable by id",
     );
 
-    // A covered widget must refuse, not silently click the cover.
+    // A covered widget must refuse, not click the cover.
     panic_probe::assert_panics_with("does not receive the pointer at", || {
         let mut harness = UiHarness::new(SURFACE);
         harness.prime(2, stacked);
@@ -100,10 +94,7 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
 
 #[test]
 fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
-    // The two accessors agree until an ancestor transforms or clips, and
-    // disagree only there — so a test that reaches for the wrong one
-    // passes everywhere except the scroll and canvas cases. Pinning both
-    // sides here is what keeps that from being discovered the hard way.
+    // The two accessors agree until an ancestor transforms or clips; pinning both sides keeps a wrong pick from passing everywhere but scroll and canvas.
     use crate::primitives::geometry::translate_scale::TranslateScale;
 
     let inner = WidgetId::from_hash("scaled-inner");
@@ -136,8 +127,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
         "rect carries the ancestor's 2x scale",
     );
 
-    // And it is exactly the layout pass output — the same value a test
-    // gets by carrying a `NodeId` and indexing by hand.
+    // It is exactly the layout pass output, as carrying a `NodeId` and indexing gives.
     let node = harness.node_for_widget_id(inner);
     assert_eq!(
         arranged,
@@ -145,8 +135,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
         "layout_rect == the arrange output for that widget's node",
     );
 
-    // Untransformed, the distinction vanishes — which is why picking the
-    // wrong one is invisible in most of the suite.
+    // Untransformed, the distinction vanishes, hiding a wrong pick in most of the suite.
     let mut plain = UiHarness::new(SURFACE);
     plain.prime(2, button);
     assert_eq!(plain.layout_rect(target()), plain.rect(target()));

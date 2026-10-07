@@ -1,15 +1,8 @@
-//! Tracy instrumentation: scoped zones, per-window frame sets, and the
-//! `profile-with-tracy` gating that keeps both out of every other build.
-//!
-//! The only place in the crate that names `tracy_client`, so the
-//! `#[cfg]`s live here instead of at every call site.
+//! Tracy instrumentation (zones and per-window frame sets) gated on `profile-with-tracy`; the only place that
+//! names `tracy_client`.
 
-/// Open a zone covering the rest of the enclosing block.
-///
-/// `zone!()` takes its name from the enclosing function; `zone!("name")`
-/// names it explicitly. A trailing `value =` or `text =` payload rides
-/// along in Tracy's zone panel; only a profiling build evaluates it, so
-/// a count that costs a `format!` still costs nothing here.
+/// Opens a zone for the rest of the enclosing block, named after the function or by `zone!("name")`; a
+/// `value =`/`text =` payload is evaluated only in a profiling build.
 macro_rules! zone {
     () => {
         #[cfg(feature = "profile-with-tracy")]
@@ -39,12 +32,8 @@ macro_rules! zone {
 
 pub(crate) use zone;
 
-/// Names for the per-window frame sets.
-///
-/// A fixed table because [`tracy_client::FrameName`] must be `'static`
-/// and `frame_name!` takes a literal. Windows past the table share the
-/// last entry, which says so rather than silently continuing
-/// `window 7`'s history.
+/// Names for the per-window frame sets: a fixed table, as `FrameName` must be `'static`; windows past it share
+/// the last entry.
 #[cfg(all(feature = "profile-with-tracy", feature = "winit"))]
 const NAMES: &[tracy_client::FrameName] = &[
     tracy_client::frame_name!("window 0"),
@@ -58,28 +47,18 @@ const NAMES: &[tracy_client::FrameName] = &[
     tracy_client::frame_name!("window 8+"),
 ];
 
-/// One window's Tracy frame set.
-///
-/// A set per window is the point: windows paint on independent
-/// schedules — different monitors, different refresh rates, one idle
-/// while another animates — so no single frame spans them, and marking
-/// them into one set reports per-window slices as whole frames.
-///
-/// Zero-sized without the profiler, so a normal build carries no
-/// per-window profiling state at all.
+/// One window's Tracy frame set: windows paint on independent schedules, so one shared set would report
+/// per-window slices as whole frames. Zero-sized without the profiler.
 #[cfg(feature = "winit")]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameSet {
-    /// Index into [`NAMES`], clamped when claimed.
     #[cfg(feature = "profile-with-tracy")]
     index: usize,
 }
 
 #[cfg(feature = "winit")]
 impl FrameSet {
-    /// Claim the next set, in window creation order. Never reused, so a
-    /// closed window's frame history stays its own instead of a later
-    /// window continuing it.
+    /// Claims the next set in window creation order; never reused, so a closed window's history stays its own.
     #[cfg_attr(
         not(feature = "profile-with-tracy"),
         expect(
@@ -100,7 +79,6 @@ impl FrameSet {
         }
     }
 
-    /// End one frame in this window's set.
     #[cfg_attr(
         not(feature = "profile-with-tracy"),
         expect(
@@ -116,12 +94,8 @@ impl FrameSet {
     }
 }
 
-/// End one frame in Tracy's *main* set — the one behind the FPS readout.
-///
-/// That set is a single global timeline, so it means something only
-/// while one window owns the cadence — the caller decides when that
-/// holds. The winit host marks it in `WinitRuntime::draw`, where the
-/// live window count is already known.
+/// Ends one frame in Tracy's *main* set (the FPS readout), a global timeline meaningful only while one window
+/// owns the cadence; the winit host marks it in `WinitRuntime::draw`.
 #[cfg(feature = "winit")]
 #[cfg_attr(
     not(feature = "profile-with-tracy"),

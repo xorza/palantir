@@ -1,12 +1,9 @@
-//! The per-axis twins of the [`domain`](super) rules a two-axis widget
-//! needs, each the scalar rule applied to `x` and `y` on their own.
+//! Per-axis twins of the [`domain`](super) rules for two-axis widgets: the scalar rule on `x` and `y` each.
 
 use crate::primitives::math::domain;
 use glam::Vec2;
 
-/// True if `a` and `b` are within [`EPS`](domain::EPS) of each other, by
-/// Euclidean distance. Use when two points should be treated as coincident
-/// (degenerate stroke endpoints, zero-length segments).
+/// True if `a` and `b` are within [`EPS`](domain::EPS) by Euclidean distance; for coincident points (degenerate stroke endpoints, zero-length segments).
 #[inline]
 pub const fn approx_eq(a: Vec2, b: Vec2) -> bool {
     let dx = a.x - b.x;

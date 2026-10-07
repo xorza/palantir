@@ -1,10 +1,4 @@
-//! The offscreen host every audit that needs a device draws through:
-//! the gates in `gates/on_gpu.rs`, which ask what the driver costs.
-//!
-//! Written once because every caller has to agree on the target's format,
-//! usage and clear colour. Those decide how much submission work a frame
-//! owes, and a caller that differed would be measuring against a floor
-//! nobody else's number shares.
+//! The offscreen host every device-needing audit draws through, so all callers share the target's format, usage and clear colour.
 
 #![expect(
     clippy::disallowed_types,
@@ -26,10 +20,7 @@ pub(crate) struct OffscreenTarget {
 }
 
 impl OffscreenTarget {
-    /// The public offscreen path always copies from its backbuffer, so
-    /// what every caller pins excludes the direct-present path. The clock
-    /// stands still, so no frame's work depends on how fast the last one
-    /// ran.
+    /// The public offscreen path always copies from its backbuffer, so callers exclude the direct-present path. The clock stands still.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
         let mut host = OffscreenHost::builder(gpu.handles())
             .clock(FixedClock::new(Duration::ZERO))
@@ -39,10 +30,7 @@ impl OffscreenTarget {
         Self { host, texture }
     }
 
-    /// One frame, drained before it returns.
-    ///
-    /// Draining here is what puts GPU execution inside the frame that
-    /// submitted it instead of the next one's window.
+    /// One frame, drained before it returns so GPU execution lands in the frame that submitted it.
     pub(crate) fn frame(
         &mut self,
         gpu: &HeadlessTestGpuLease,

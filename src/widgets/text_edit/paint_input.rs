@@ -20,14 +20,10 @@ use glam::Vec2;
 #[derive(Debug)]
 pub(super) struct PaintInput<'a> {
     pub(super) chrome: Background,
-    /// Identity of the node the text block is recorded on — a child of the
-    /// field, so the layout engine is what places it. Derived from the
-    /// field's own id, so it is as stable across frames as the field is.
+    /// Identity of the text block's node, a child of the field so the layout engine places it; derived from the field's id, so stable across frames.
     pub(super) block_id: WidgetId,
     pub(super) text: &'a str,
-    /// `Some(width)` while an input method composes: the wash rects then
-    /// cover the composition, and paint as underlines `width` thick in the
-    /// text colour rather than as a selection.
+    /// `Some(width)` while an input method composes: the wash rects cover the composition and paint as underlines `width` thick in the text colour.
     pub(super) preedit_underline: Option<f32>,
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,
@@ -40,18 +36,13 @@ pub(super) struct PaintInput<'a> {
 }
 
 impl PaintInput<'_> {
-    /// Applies the measured minimums to `widget`, then records it. The
-    /// widget arrives here rather than in `PaintInput` so there is one
-    /// copy of it, not two to keep in step.
+    /// Applies the measured minimums to `widget`, then records it; the widget arrives here to keep one copy.
     pub(super) fn record(self, ui: &mut Ui, mut widget: Widget) {
         let layout = self.geometry.layout;
         let ctx = layout.ctx;
         if !ctx.multiline {
             let mut min_size = widget.authored_min_size().unwrap_or(Size::ZERO);
-            // The block's own height rather than the theme's leading, because a
-            // panned axis contributes no max-content — so this floor is what the
-            // field's height *is*, and a floor a thousandth under what the shaper
-            // measured is a field a thousandth shorter than the chip it replaces.
+            // The block's own height, not the theme's leading: a panned axis contributes no max-content, so this floor is the field's height and must match the shaper.
             let padding = ctx.padding.sums();
             min_size.h = min_size.h.max(self.block_size(layout).h + padding.h);
             if widget.authored_size().unwrap_or_default().w().is_hug() {
@@ -98,10 +89,7 @@ impl PaintInput<'_> {
                 }
 
                 if let Some(caret) = self.caret {
-                    // Block-local, and unclamped: a clamp here would hold the caret
-                    // inside the *widget's* box, which is the one thing here that is
-                    // still a frame stale. The block carries the caret with it, and
-                    // the field's own clip is what keeps it from painting outside.
+                    // Block-local and unclamped: a clamp would hold the caret inside the widget's box, which is still a frame stale; the block carries the caret and the field's clip keeps it inside.
                     let rect = Rect::new(
                         caret.pos.x,
                         caret.pos.y_top,
@@ -118,39 +106,20 @@ impl PaintInput<'_> {
         });
     }
 
-    /// The box the block occupies, for the one display measure this pass
-    /// has. The floors and the caret's room are
-    /// [`TextLayout::block_size`]'s, so the node the engine places and the
-    /// minimums the field reports cannot disagree about its extent.
+    /// The box the block occupies for this pass's one display measure; floors and caret room are [`TextLayout::block_size`]'s, so the node and the field's minimums agree.
     fn block_size(&self, layout: TextLayout) -> Size {
         layout.block_size(self.geometry.display_size)
     }
 
     /// The node the run, the wash and the caret are recorded against.
     ///
-    /// **Where it sits inside the inner rect is the layout engine's**, and that is
-    /// the whole point: an offset inside a rect is an alignment, and an alignment
-    /// wants the rect — which record time does not have, arrange not having run. A
-    /// child that `arrange` places resolves it against *this* frame's rect, so a
-    /// field aligns the same on the frame it appears as on every frame after.
+    /// **Where it sits inside the inner rect is the layout engine's**: an alignment needs the rect, which record time lacks, so a child that `arrange` places resolves it against this frame's rect and the field aligns the same on its first frame.
     ///
-    /// Pinned to what the probe measured, because that is what has to be aligned
-    /// and a field's text is shaped to scroll — left to hug, the block would take
-    /// the *minimum* a scrolling run reports, which is nothing. Nothing holds it to
-    /// the field's width: the field is a scrolling viewport, so a panned axis
-    /// reports no min-content and a block wider than its field makes the field
-    /// scroll rather than refuse to shrink.
+    /// Pinned to what the probe measured, since left to hug the block would take the minimum a scrolling run reports (nothing). Not held to the field's width: a panned axis reports no min-content, so a wider block scrolls the field.
     ///
-    /// The caret's room is added rather than deflated out of the rect the block is
-    /// aligned in. Same arithmetic, better placed: the caret at the end of a line
-    /// falls *inside* the block it belongs to instead of just past it. Single-line
-    /// only, matching [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve) — a wrapped block reserves nothing,
-    /// because its caret has a next line to fall to.
+    /// The caret's room is added, not deflated out of the aligned rect, so an end-of-line caret falls inside its block. Single-line only, as [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve).
     ///
-    /// The scroll rides as a transform rather than being folded into every shape's
-    /// coordinates, so the three shapes stay in one frame of reference and a
-    /// scrolled field is the same picture slid sideways — through the same
-    /// [`ScrollState::transform`] a `Scroll` viewport carries its children with.
+    /// The scroll rides as a transform ([`ScrollState::transform`], as a `Scroll` viewport does), keeping the three shapes in one frame of reference.
     fn block(&self, layout: TextLayout) -> Widget {
         let size = self.block_size(layout);
         Widget::leaf()
