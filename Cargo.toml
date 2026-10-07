@@ -41,7 +41,7 @@ arboard = { version = "3.6", default-features = false, optional = true }
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"
 fixedbitset = "0.5"
-glam = { version = "0.33", default-features = false, features = ["std", "i16", "i32", "u16", "u32", "bytemuck", "serde"] }
+glam = { version = "0.34", default-features = false, features = ["std", "i16", "i32", "u16", "u32", "bytemuck", "serde"] }
 etagere = "0.3"
 resvg = { version = "0.48", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
