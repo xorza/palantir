@@ -375,6 +375,39 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
 }
 
+/// A repaint bakes the texels its pixels read past a corner's region, where
+/// the bilinear filter still reaches the table. An inset shadow 200 px
+/// square, radius 7.25 and σ = 16, its hole moved 100 to the right to x 100
+/// to 300: the top-left arc is centred at `(107.25, 7.25)`, `reach = 64.5`,
+/// and the region runs out to `q = 72.5`, x = 35.5. The table has
+/// `floor((7.25 + 129) · 0.625) + 2 = 87` texels, read up to `t = 86`, which
+/// is `q = 86 / 0.625 − 64.5 = 73.1`, x = 34.15. The two left corners show
+/// `136.25 · 71.75` px each, 234.6k nodes to shade against 181.7k to bake:
+/// the key pays. A repaint of x 0 to 35 misses the region, yet its pixel
+/// centred at 34.5 reads `t = (72.75 + 64.5) · 0.625 = 85.78`, texels 85
+/// and 86. So it bakes x from `floor((72.25 + 64.5) · 0.625) − 1 = 84` to
+/// the side, and y from 0 to `floor((7.25 + 64.5) · 0.625) + 3 = 47`.
+#[test]
+fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
+    let mut quad = shadow(FillKind::SHADOW_INSET, 200.0, 200.0, 7.25, 16.0);
+    quad.fill_axis = FillAxis::from_lanes(100.0, 0.0, 16.0, 0.0);
+    let mut plan = plan(&[quad]);
+    let code = CutoutPlan::code([0, 0], 87);
+    assert_eq!(plan.corners(), [CornerTables([code; 4])]);
+    let band = RepaintScissors::partial(&[URect::new(0, 0, 35, 72)]);
+    assert_eq!(plan.build(&[quad], &band, WIDE), Census::Current);
+    assert_eq!(
+        plan.tables(),
+        [BakeTable {
+            table: code,
+            r: 7.25,
+            sigma: 16.0,
+            lo: [84, 0],
+            hi: [87, 47],
+        }],
+    );
+}
+
 /// A partial repaint is stale when a key gains or loses its table under a
 /// shadow it does not redraw whole, and only then. 13 shadows shade the
 /// `(8, 2)` key; a 14th repainted beside them makes it pay, and the 13 left
