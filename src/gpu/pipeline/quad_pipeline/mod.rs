@@ -22,7 +22,7 @@ use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use glam::{UVec2, Vec2};
 use std::slice;
@@ -118,16 +118,17 @@ impl QuadPipeline {
     }
 
     /// Upload the partial-repaint pre-clear quad: full-viewport rect
-    /// filled with `color` (alpha forced to 1), no stroke, no
-    /// rounding. Drawn inside the damage scissor before regular
-    /// groups so AA fringes blend over the clear color, not over
-    /// last frame's pixels. Alpha is forced because a translucent
-    /// pre-clear would blend against last frame's pixels and defeat
-    /// the fringe-fix.
-    pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF32) {
+    /// filled with the opaque `color`, no stroke, no rounding. Drawn
+    /// inside the damage scissor before regular groups so AA fringes
+    /// blend over the clear color, not over last frame's pixels.
+    pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF16) {
+        debug_assert!(
+            color.is_opaque(),
+            "a translucent pre-clear blends over last frame"
+        );
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
-            fill: RgbaF32 { a: 1.0, ..color }.into(),
+            fill: color,
             // Solid, sharp, stroke-less, integer-origin (`viewport` is
             // the ceil'd physical size): qualifies for the fragment
             // fast path.
