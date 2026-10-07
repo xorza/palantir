@@ -759,3 +759,91 @@ mod display_tests {
         );
     }
 }
+
+/// A partial frame whose shadow cutout plan is stale repaints in full.
+mod cutout_census_tests {
+    use std::cell::Cell;
+
+    use glam::UVec2;
+
+    use crate::damage::Damage;
+    use crate::host::window_driver::{PresentPath, PresentStrategy, WindowDriver};
+    use crate::internals::record_app::RecordApp;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::shape::Shape;
+    use crate::ui::resources::UiResources;
+    use crate::widgets::block::Block;
+    use crate::widgets::panel::Panel;
+    use crate::{Configure, Display, Sizing, WindowToken};
+
+    /// Cards whose shadows share the `(8, 4)` key: 3 shade it and 4 pay for
+    /// its table (see the damage oracle's `shadows`). A frame that repaints
+    /// only a tick stays partial at either count. The frame that adds the
+    /// fourth card repaints only that card, and leaves the first three
+    /// showing the shaded form of a key that now reads a table: it repaints
+    /// in full.
+    #[test]
+    fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true)
+            .strategy(PresentStrategy::BackbufferCopy)
+            .bake_cutouts(true)
+            .build();
+        let display = Display::from_physical(UVec2::new(600, 200), 1.0);
+        let cards = Cell::new(3);
+        let tick = Cell::new(false);
+        let mut app = RecordApp::new(|ui| {
+            Panel::canvas()
+                .id_salt("cards")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for card in 0..cards.get() {
+                        ui.add_shape(
+                            Shape::shadow(Shadow {
+                                color: RgbaF32::BLACK,
+                                blur: 4.0,
+                                ..Shadow::NONE
+                            })
+                            .at(Rect::new(10.0 + 70.0 * card as f32, 40.0, 40.0, 30.0))
+                            .corners(8.0),
+                        );
+                    }
+                    let fill = if tick.get() {
+                        RgbaF32::WHITE
+                    } else {
+                        RgbaF32::BLACK
+                    };
+                    Block::new()
+                        .id_salt("tick")
+                        .position((500.0, 150.0))
+                        .size(10.0)
+                        .background(Background::fill(fill))
+                        .show(ui);
+                });
+        });
+        let mut damage = |cards_now: usize, tick_now: bool| {
+            cards.set(cards_now);
+            tick.set(tick_now);
+            let frame = driver.cpu_frame(&mut frontend, display, &mut app);
+            driver.output_valid = true;
+            match frame.mode {
+                PresentPath::ViaBackbuffer(plan) => plan.damage,
+                mode => panic!("a painting frame through the backbuffer, not {mode:?}"),
+            }
+        };
+        assert!(matches!(damage(3, false), Damage::Full), "the first frame");
+        assert!(damage(3, true).is_partial(), "a tick under 3 cards");
+        assert!(matches!(damage(4, true), Damage::Full), "the fourth card");
+        assert!(damage(4, false).is_partial(), "a tick under 4 cards");
+        assert!(
+            matches!(damage(3, false), Damage::Full),
+            "the fourth card gone"
+        );
+    }
+}

@@ -10,7 +10,7 @@ mod cutout_tables;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::ShadowEntry;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
@@ -19,12 +19,11 @@ use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::stencil::Stencil;
-use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 use std::slice;
 
 /// Every quad pipeline one swapchain format needs.
@@ -333,17 +332,16 @@ impl QuadPipeline {
         }
     }
 
-    /// Upload the frame's quads, and bake the cutout tables the shadows a
-    /// repaint inside `scissors` of a `viewport` in physical pixels read.
-    pub(crate) fn upload(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        quads: &[Quad],
-        scissors: &RepaintScissors,
-        viewport: UVec2,
-    ) {
+    /// Upload the frame's quads, and bake the cutout tables `cutouts`
+    /// planned for them.
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad], cutouts: &CutoutPlan) {
         self.instance_buffer.upload_instances(ctx, quads);
-        self.cutouts.prepare(ctx, quads, scissors, viewport);
+        self.cutouts.prepare(ctx, cutouts);
+    }
+
+    /// Whether this device bakes cutout tables. See [`CutoutPlan::new`].
+    pub(crate) const fn bakes_cutouts(&self) -> bool {
+        self.cutouts.bakes()
     }
 
     /// Bind pipeline + gradient bind group + instance buffer once per
@@ -499,11 +497,6 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 
     impl QuadPipeline {
-        /// See `CutoutTables::disable_baking`.
-        pub(crate) const fn disable_cutout_tables(&mut self) {
-            self.cutouts.disable_baking();
-        }
-
         /// Draw every shadow as one cell of the full form, the reference
         /// the grid is compared with. Takes effect in the variants built
         /// from now on.

@@ -2,6 +2,7 @@
 //! writes into.
 
 use crate::diagnostics::DebugOverlayConfig;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
@@ -31,6 +32,8 @@ pub(crate) struct Submission<'a> {
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
+    /// The window's cutout plan for `buffer`'s quads.
+    pub(crate) cutouts: &'a CutoutPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,
 }
 

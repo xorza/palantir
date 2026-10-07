@@ -1,6 +1,7 @@
 //! `WindowDriver` — the target-agnostic state one host target owns around the
 //! shared renderer: its [`Ui`] recorder, stable render-stream identity, the
-//! persistent [`Backbuffer`] (the target's last-frame pixels), and the
+//! persistent [`Backbuffer`] (the target's last-frame pixels), the shadow
+//! cutout plan whose census describes the frames it painted, and the
 //! per-target frame clock.
 //!
 //! What every window shares splits two ways: CPU encode/compose scratch lives
@@ -24,9 +25,11 @@ use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutPlan};
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::surface::viewport::build_repaint_scissors;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::renderer::frontend::Frontend;
@@ -99,6 +102,9 @@ pub(super) struct WindowDriver {
     /// The target the last [`Self::note_target`] saw. `None` until the first
     /// frame; a mismatch is what invalidates the retained target state.
     target: Option<TargetKey>,
+    /// This window's shadow cutout plan. Its census describes this window's
+    /// frames, so it is not the shared backend's.
+    cutouts: CutoutPlan,
 }
 
 /// Identity of the surface or texture a window renders into: everything a
@@ -282,6 +288,7 @@ pub(super) struct WindowDriverBuilder<'a> {
     strategy: PresentStrategy,
     clock: Box<dyn Clock>,
     pixel_snap: bool,
+    bake_cutouts: bool,
 }
 
 impl WindowDriverBuilder<'_> {
@@ -297,6 +304,14 @@ impl WindowDriverBuilder<'_> {
     /// signature.
     pub(super) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
         self.clock = clock;
+        self
+    }
+
+    /// Whether the window bakes shadow cutout tables: the backend's
+    /// [`WgpuBackend::bakes_cutouts`]. Off until set, which shades every
+    /// corner and is right on any device.
+    pub(super) const fn bake_cutouts(mut self, bake: bool) -> Self {
+        self.bake_cutouts = bake;
         self
     }
 
@@ -319,6 +334,7 @@ impl WindowDriverBuilder<'_> {
             clock: self.clock,
             pixel_snap: self.pixel_snap,
             target: None,
+            cutouts: CutoutPlan::new(self.bake_cutouts),
         }
     }
 }
@@ -365,6 +381,7 @@ impl WindowDriver {
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap,
+            bake_cutouts: false,
         }
     }
 
@@ -455,7 +472,7 @@ impl WindowDriver {
     }
 
     fn finish_cpu_frame(&mut self, frontend: &mut Frontend, report: FrameReport) -> CpuFrame {
-        let mode = present_path(report.plan, self.strategy, self.backbuffer_fresh);
+        let mut mode = present_path(report.plan, self.strategy, self.backbuffer_fresh);
         if !matches!(mode, PresentPath::SkipNoop) {
             self.output_valid = false;
         }
@@ -464,8 +481,24 @@ impl WindowDriver {
         // Skip frames build nothing.
         if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
             frontend.build(self.ui.frame_scene(), plan);
+            if self.plan_cutouts(&frontend.buffer, plan) == Census::Stale {
+                // The pixels this partial frame keeps show a cutout form
+                // the frame no longer picks.
+                let full = plan.to_full();
+                mode = present_path(Some(full), self.strategy, self.backbuffer_fresh);
+                frontend.build(self.ui.frame_scene(), full);
+                let census = self.plan_cutouts(&frontend.buffer, full);
+                debug_assert_eq!(census, Census::Current, "a full repaint keeps no pixel");
+            }
         }
         CpuFrame { report, mode }
+    }
+
+    /// Plan the shadow cutouts of `buffer`, the draw list built for `plan`.
+    fn plan_cutouts(&mut self, buffer: &RenderBuffer, plan: RenderPlan) -> Census {
+        let scissors = build_repaint_scissors(plan.damage, buffer);
+        self.cutouts
+            .build(&buffer.quads, &scissors, buffer.display.physical)
     }
 
     /// [`Ui::drain_window_output`] bound to *this* driver's token — the
@@ -625,6 +658,7 @@ impl WindowDriver {
                     store,
                     buffer,
                     plan,
+                    cutouts: &self.cutouts,
                     debug_overlay,
                 });
                 self.output_valid = true;
@@ -633,13 +667,21 @@ impl WindowDriver {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
     use crate::host::window_driver::WindowDriver;
 
     impl WindowDriver {
+        /// Shade every shadow corner's cutout from now on instead of baking
+        /// tables: the reference the visual suite compares the tables with.
+        pub(crate) fn disable_cutout_tables(&mut self) {
+            self.cutouts = CutoutPlan::new(false);
+        }
+
         /// Whether the target holds this driver's last output. Read by
         /// the offscreen host's tests, which run the GPU half that sets it.
+        #[cfg(test)]
         pub(crate) const fn output_valid(&self) -> bool {
             self.output_valid
         }
