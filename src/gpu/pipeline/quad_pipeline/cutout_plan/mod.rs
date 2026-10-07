@@ -18,6 +18,12 @@
 //! viewport, so it still counts the pixels a clip or the source's own
 //! interior spares: it can tip a marginal key toward a table, never away.
 //!
+//! **Only the texels a repainted pixel reads.** A texel's value hangs on
+//! its `(r, σ)` and its place in the table alone, so a frame bakes, of each
+//! table, the span its repainted pixels read ([`BakeTable`]): a partial
+//! repaint over a sliver of a large shadow bakes the sliver's texels, and
+//! what it draws is what a full bake would draw.
+//!
 //! **One answer for a partial and a full repaint.** A table and the shaded
 //! cutout round apart by an 8-bit level, so a pixel's form must not depend
 //! on how much of the frame repaints. The plan decides from the whole
@@ -56,14 +62,17 @@ use glam::{UVec2, Vec2};
 use std::cmp::Reverse;
 use std::mem;
 
-/// One table to bake: where it goes ([`CutoutPlan::code`]) and its
-/// `(r, σ)`. The instance layout of `fs_cutout_bake`.
+/// One table to bake: where it goes ([`CutoutPlan::code`]), its `(r, σ)`,
+/// and the texels of it to bake, from `lo` up to `hi` on each axis. The
+/// instance layout of `vs_cutout_bake`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub(crate) struct BakeTable {
     pub(crate) table: u32,
     pub(crate) r: f32,
     pub(crate) sigma: f32,
+    pub(crate) lo: [u16; 2],
+    pub(crate) hi: [u16; 2],
 }
 
 /// A quad's four corner tables, `(tl, tr, br, bl)`, each a
@@ -94,11 +103,41 @@ pub(crate) enum ShadowEntry {
 }
 
 /// One shadow corner as the plan sees it: the radius its cutout is cut
-/// with, and the screen region where the cutout is not zero.
+/// with, the screen region where the cutout is not zero, and the centre of
+/// its arc with the signs that reflect a pixel into the table's quadrant,
+/// as `corner_points` does.
 #[derive(Clone, Copy, Debug)]
 struct CutoutCorner {
     r: f32,
     region: Rect,
+    centre: Vec2,
+    sign: Vec2,
+}
+
+/// The texels of one table a frame's repainted pixels read, from `lo` up to
+/// `hi` on each axis.
+#[derive(Clone, Copy, Debug)]
+struct TexelSpan {
+    lo: UVec2,
+    hi: UVec2,
+}
+
+impl TexelSpan {
+    const EMPTY: Self = Self {
+        lo: UVec2::MAX,
+        hi: UVec2::ZERO,
+    };
+
+    const fn is_empty(self) -> bool {
+        self.lo.x >= self.hi.x || self.lo.y >= self.hi.y
+    }
+
+    fn union(self, other: Self) -> Self {
+        Self {
+            lo: self.lo.min(other.lo),
+            hi: self.hi.max(other.hi),
+        }
+    }
 }
 
 impl CutoutCorner {
@@ -113,6 +152,29 @@ impl CutoutCorner {
             return 0.0;
         }
         self.region.intersect(shaded).map_or(0.0, visible)
+    }
+
+    /// The texels of this corner's `side`-texel table at `σ` that the pixels
+    /// centred in `seen` read: `cutout_lookup` takes a pixel at `p` to
+    /// `t = (sign · (p − centre) + reach) · TEXELS_PER_SIGMA / σ`, and reads
+    /// the texel below `t` and the one past it on each axis. One texel more
+    /// on each side covers a last-bit difference from the GPU's arithmetic.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a side is at most `MAX_SIDE`, exact in f32"
+    )]
+    fn texels(&self, seen: Rect, sigma: f32, side: u32) -> TexelSpan {
+        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+        let scale = CutoutPlan::TEXELS_PER_SIGMA / sigma;
+        let a = (seen.min - self.centre) * self.sign;
+        let b = (seen.max() - self.centre) * self.sign;
+        let side = Vec2::splat(side as f32);
+        let lo = ((a.min(b) + reach) * scale).floor() - 1.0;
+        let hi = ((a.max(b) + reach) * scale).floor() + 3.0;
+        TexelSpan {
+            lo: lo.clamp(Vec2::ZERO, side).as_uvec2(),
+            hi: hi.clamp(Vec2::ZERO, side).as_uvec2(),
+        }
     }
 }
 
@@ -189,9 +251,12 @@ pub(crate) struct CutoutPlan {
     codes: Vec<u32>,
     /// Positions in `keys`, tallest table first, for the packer.
     order: Vec<u32>,
-    /// Per entry of `keys`, whether a corner this frame repaints reads its
-    /// table, so that it is baked.
-    baked: Vec<bool>,
+    /// Per entry of `keys`, the texels of its table this frame's repainted
+    /// pixels read, which it bakes.
+    spans: Vec<TexelSpan>,
+    /// The rects this frame repaints: the viewport, or the damage's
+    /// scissors.
+    repaint: Vec<Rect>,
     /// The keys with a table, sorted: this frame's, and the last planned
     /// frame's.
     tabled: Vec<CutoutKey>,
@@ -240,7 +305,8 @@ impl CutoutPlan {
             keys: Vec::new(),
             codes: Vec::new(),
             order: Vec::new(),
-            baked: Vec::new(),
+            spans: Vec::new(),
+            repaint: Vec::new(),
             tabled: Vec::new(),
             last_tabled: Vec::new(),
             tables: Vec::new(),
@@ -274,16 +340,6 @@ impl CutoutPlan {
         let partial = match repaint {
             RepaintScissors::Full => None,
             RepaintScissors::Partial(rects) => Some(rects),
-        };
-        // Scissors that overlap count the overlap twice, which can only
-        // bake a table no pixel reads.
-        let repainted_area = |region: Rect| match partial {
-            None => shown(region),
-            Some(rects) => rects
-                .iter()
-                .filter_map(|rect| region.intersect(Rect::from(rect)))
-                .map(area)
-                .sum(),
         };
         // A shadow the repaint reaches is in the draw list, so it comes from
         // there rather than from the census. Only one it covers is redrawn
@@ -334,8 +390,13 @@ impl CutoutPlan {
         if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
             return Census::Current;
         }
-        self.baked.clear();
-        self.baked.resize(self.keys.len(), false);
+        self.repaint.clear();
+        match partial {
+            None => self.repaint.push(viewport),
+            Some(rects) => self.repaint.extend(rects.iter().map(Rect::from)),
+        }
+        self.spans.clear();
+        self.spans.resize(self.keys.len(), TexelSpan::EMPTY);
         self.corners.reserve_exact(quads.len());
         self.entries.reserve_exact(quads.len());
         for quad in quads {
@@ -355,10 +416,15 @@ impl CutoutPlan {
                 match self.keys.binary_search_by_key(&key, |used| used.key) {
                     Ok(at) if self.codes[at] != Self::NONE => {
                         *code = self.codes[at];
-                        // A table only the pixels this frame keeps would
-                        // read is never read.
-                        if corner.drawn_area(shaded, repainted_area) > 0.0 {
-                            self.baked[at] = true;
+                        let Some(seen) = corner.region.intersect(shaded) else {
+                            continue;
+                        };
+                        let side = Self::side(key);
+                        for &rect in &self.repaint {
+                            if let Some(seen) = seen.intersect(rect) {
+                                let texels = corner.texels(seen, sigma, side);
+                                self.spans[at] = self.spans[at].union(texels);
+                            }
                         }
                     }
                     _ => tabled &= corner.drawn_area(shaded, shown) <= 0.0,
@@ -373,12 +439,14 @@ impl CutoutPlan {
                 ShadowEntry::Tables
             });
         }
-        for (at, used) in self.keys.iter().enumerate() {
-            if self.baked[at] {
+        for (used, (&table, span)) in self.keys.iter().zip(self.codes.iter().zip(&self.spans)) {
+            if !span.is_empty() {
                 self.tables.push(BakeTable {
-                    table: self.codes[at],
+                    table,
                     r: used.key.r(),
                     sigma: used.key.sigma(),
+                    lo: span.lo.to_array().map(texel),
+                    hi: span.hi.to_array().map(texel),
                 });
             }
         }
@@ -550,6 +618,8 @@ impl CutoutPlan {
             let near = edge - inward * reach;
             (near.min(far), near.max(far))
         };
+        // The arc's centre sits `r` inward from the box corner, and a pixel
+        // reflects into the table's quadrant against the inward direction.
         let corner = |at: usize, x_edge: f32, x_in: f32, y_edge: f32, y_in: f32| {
             let r = radii[at];
             let (x0, x1) = span(x_edge, r, x_in);
@@ -557,6 +627,8 @@ impl CutoutPlan {
             CutoutCorner {
                 r,
                 region: Rect::from_min_max(Vec2::new(x0, y0), Vec2::new(x1, y1)),
+                centre: Vec2::new(x_edge + x_in * r, y_edge + y_in * r),
+                sign: Vec2::new(-x_in, -y_in),
             }
         };
         Some([
@@ -573,12 +645,22 @@ impl CutoutPlan {
 const _: () = {
     assert!(CutoutPlan::CELLS <= 1 << 6);
     assert!(CutoutPlan::MAX_SIDE < 1 << 20);
+    assert!(CutoutPlan::MAX_SIDE <= u16::MAX as u32);
     assert!(CutoutPlan::code([63, 63], CutoutPlan::MAX_SIDE) != CutoutPlan::NONE);
 };
 
 /// A rect's area.
 const fn area(rect: Rect) -> f32 {
     rect.size.w * rect.size.h
+}
+
+/// A texel index within a table, which `MAX_SIDE` keeps inside `u16`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a table's side is at most `MAX_SIDE`"
+)]
+const fn texel(at: u32) -> u16 {
+    at as u16
 }
 
 /// `spread_radius` in `shader.wgsl`: CSS's rule for a radius moved by a

@@ -1126,6 +1126,9 @@ struct BakeIn {
     @location(0) table: u32,
     @location(1) r:     f32,
     @location(2) sigma: f32,
+    // The texels of the table to bake, from `lo` up to `hi`.
+    @location(3) lo:    vec2<u32>,
+    @location(4) hi:    vec2<u32>,
 };
 
 struct BakeOut {
@@ -1135,10 +1138,11 @@ struct BakeOut {
     @location(2) @interpolate(flat) sigma: f32,
 };
 
-// The table's square of the atlas, one fragment per texel.
+// The texels of the table the frame bakes, from `lo` up to `hi` of its
+// square of the atlas, one fragment per texel.
 @vertex
 fn vs_cutout_bake(@builtin(vertex_index) vi: u32, bake: BakeIn) -> BakeOut {
-    let texel = vec2<f32>(cutout_origin(bake.table)) + CORNERS[vi] * f32(cutout_side(bake.table));
+    let texel = vec2<f32>(cutout_origin(bake.table) + select(bake.lo, bake.hi, CORNERS[vi] > vec2<f32>(0.5)));
     var out: BakeOut;
     out.clip = vec4<f32>(texel.x / CUTOUT_ATLAS_SIZE * 2.0 - 1.0, 1.0 - texel.y / CUTOUT_ATLAS_SIZE * 2.0, 0.0, 1.0);
     out.table = bake.table;
