@@ -337,7 +337,7 @@ impl CutoutPlan {
             return Census::Current;
         }
         let viewport = Rect::from_min_max(Vec2::ZERO, viewport.as_vec2());
-        let shown = |region: Rect| region.intersect(viewport).map_or(0.0, area);
+        let shown = |region: Rect| region.intersect(viewport).map_or(0.0, Rect::area);
         let partial = match repaint {
             RepaintScissors::Full => None,
             RepaintScissors::Partial(rects) => Some(rects),
@@ -652,11 +652,6 @@ const _: () = {
     assert!(CutoutPlan::MAX_SIDE <= u16::MAX as u32);
     assert!(CutoutPlan::code([63, 63], CutoutPlan::MAX_SIDE) != CutoutPlan::NONE);
 };
-
-/// A rect's area.
-const fn area(rect: Rect) -> f32 {
-    rect.size.w * rect.size.h
-}
 
 /// A texel index within a table, which `MAX_SIDE` keeps inside `u16`.
 #[expect(
