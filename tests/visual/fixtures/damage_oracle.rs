@@ -13,8 +13,8 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RgbaF32, Sizing,
-    Stroke, Text,
+    Background, Block, Brush, Configure, Image, ImageFit, ImageHandle, Layer, Panel,
+    RadialGradient, Rect, RgbaF32, Shadow, Sizing, Stroke, Text,
 };
 
 use crate::goldens::assert_same;
@@ -33,6 +33,8 @@ struct Knobs {
     nudge: f32,
     extra: bool,
     hidden: bool,
+    /// Small cards whose shadows share one cutout key (`shadows`).
+    cards: usize,
 }
 
 impl Knobs {
@@ -45,13 +47,25 @@ impl Knobs {
         nudge: 10.0,
         extra: false,
         hidden: false,
+        cards: 4,
     };
 }
 
 fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
+    // Translucent and varying in both axes, so every damaged pixel blends a
+    // value of its own over the clear: a partial repaint over its pre-clear,
+    // a full one over its `LoadOp::Clear`.
+    let veil = RadialGradient::two_stop(
+        RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
+        RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
+    );
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
+        .background(Background {
+            fill: Brush::Radial(veil),
+            ..Default::default()
+        })
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
@@ -141,6 +155,53 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
                     .show(ui);
             });
     }
+    shadows(ui, k);
+}
+
+/// Shadows above the scene, each in a node of its own, so a partial frame
+/// culls the ones its damage misses and plans them from the census. A large
+/// one, σ = 16 and rounded 26, whose corners pay for their table alone. And
+/// `cards` small ones along the top, σ = 4 and rounded 8, under the swatch
+/// and the popups that other scripts damage: their 40×30 sources show about
+/// 40.5² px of each corner's region, so a card's four corners cost 78.7k
+/// nodes to shade against 259.6k to bake the `(8, 4)` table, which 4 cards
+/// pay for and 3 do not. A frame that repaints one card reads the table
+/// only through the census of the others, and one that removes or adds a
+/// card leaves the rest unrepainted under a key that has just lost or
+/// gained its table.
+fn shadows(ui: &mut palantir::Ui, k: Knobs) {
+    let shadow = |blur| Shadow {
+        color: RgbaF32::srgba(0.1, 0.0, 0.2, 0.7),
+        offset: Vec2::ZERO,
+        blur,
+        spread: 0.0,
+        inset: false,
+    };
+    let cast = |ui: &mut palantir::Ui, id: usize, at: Rect, blur: f32, radius: f32| {
+        Panel::canvas()
+            .id_salt(("shadow", id))
+            .position(at.min)
+            .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::shadow(shadow(blur))
+                        .at(Rect::new(0.0, 0.0, at.size.w, at.size.h))
+                        .corners(radius),
+                );
+            });
+    };
+    ui.layer(Layer::Modal).fixed_at(Vec2::ZERO).show(|ui| {
+        Panel::canvas()
+            .id_salt("shadows")
+            .size((Sizing::fixed(320.0), Sizing::fixed(240.0)))
+            .show(ui, |ui| {
+                cast(ui, 0, Rect::new(40.0, 60.0, 240.0, 150.0), 16.0, 26.0);
+                for card in 0..k.cards {
+                    let at = Rect::new(10.0 + 70.0 * card as f32, 16.0, 40.0, 30.0);
+                    cast(ui, 1 + card, at, 4.0, 8.0);
+                }
+            });
+    });
 }
 
 /// A 60 px checker, so an image drawn past its node is visible.
@@ -238,6 +299,25 @@ fn shape_becomes_animated() {
         &[
             Knobs {
                 spin: true,
+                ..Knobs::BASE
+            },
+            Knobs::BASE,
+        ],
+    );
+}
+
+#[test]
+fn a_shadow_key_stops_and_starts_paying() {
+    run(
+        "damage_oracle_a_shadow_key_stops_and_starts_paying",
+        &[
+            Knobs {
+                cards: 3,
+                ..Knobs::BASE
+            },
+            Knobs {
+                cards: 3,
+                nudge: 90.0,
                 ..Knobs::BASE
             },
             Knobs::BASE,

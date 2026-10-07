@@ -2,10 +2,12 @@
 //! writes into.
 
 use crate::diagnostics::DebugOverlayConfig;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
@@ -30,16 +32,23 @@ pub(crate) struct Submission<'a> {
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
+    /// The window's cutout plan for `buffer`'s quads.
+    pub(crate) cutouts: &'a CutoutPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,
 }
 
 impl Submission<'_> {
-    /// Effective clear colour: the buffer's override where it set one,
-    /// else the plan's. The frame's bottom paint layer, so both the
-    /// `Full` pass's `LoadOp::Clear` and the `Partial` pre-clear quad
-    /// read it.
-    pub(crate) fn clear(&self) -> RgbaF32 {
-        self.buffer.clear_override.unwrap_or(self.plan.clear)
+    /// Effective clear colour, opaque: the buffer's override where it set
+    /// one, else the plan's. The frame's bottom paint layer, so both the
+    /// `Full` pass's `LoadOp::Clear` and the `Partial` pre-clear quad read
+    /// it. In the `f16` lanes the quad carries, so the two start from one
+    /// value and a partial repaint blends over the base a full one does.
+    pub(crate) fn clear(&self) -> RgbaF16 {
+        let clear = self
+            .buffer
+            .clear_override
+            .map_or(self.plan.clear, RgbaF16::unpack);
+        RgbaF16::from(RgbaF32 { a: 1.0, ..clear })
     }
 
     /// The debug dim flag, and only on a frame it can apply to — a full

@@ -1,4 +1,1 @@
 # Open issues
-
-- A partial repaint and a full repaint of the same frame can draw a shadow differently: `CutoutPlan` picks tables, and so the shaded cutout or `fs_shadow_tables`, from the drawn area, which the damage changes. The two forms round apart by one 8-bit level, against the damage oracle's bit-for-bit contract (`tests/visual/fixtures/damage_oracle.rs`), whose scenes hold no shadow.
-- A partial repaint pre-fills each scissor with the clear colour through a quad, whose colour is `RgbaF16`, where a full repaint clears with the `f32` value (`LoadOp::Clear`). Under a clear colour that `f16` does not hold exactly, translucent paint over the background rounds apart by one 8-bit level between the two (a shadow over `srgb(0.1, 0.1, 0.13)`: 92 channels), against the damage oracle's bit-for-bit contract. The oracle's scripts do not show it.

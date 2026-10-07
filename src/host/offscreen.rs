@@ -355,8 +355,8 @@ pub(crate) mod internals {
     impl OffscreenHost {
         /// Shade every shadow corner's cutout from now on instead of baking
         /// tables: the reference the visual suite compares the tables with.
-        pub const fn disable_cutout_tables(&mut self) {
-            self.core.backend.disable_cutout_tables();
+        pub fn disable_cutout_tables(&mut self) {
+            self.driver.disable_cutout_tables();
         }
 
         /// Draw every shadow as one cell of the full form instead of its
