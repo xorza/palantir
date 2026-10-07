@@ -87,8 +87,11 @@ fn radius_rules_follow_the_shader() {
 /// share the key `(8, 16)`. `reach = 64.5`, and the side is
 /// `floor((8 + 129) · 10 / 16) + 2 = 87` texels, at cell `(0, 0)`. An
 /// inset shadow with the same key reuses the table, and so does a second
-/// drop shadow, so the frame bakes one. Every shadow reads its corners from
-/// it, so each draws through the wide tables entry, σ = 16 being past
+/// drop shadow, so the frame bakes one, whole: the first shadow's top-left
+/// corner reads `(72 − p + 64.5) · 10 / 16` from 0 at the box's corner to
+/// 85.3 at the far end of its region, and the texel past that and one for
+/// rounding reach the side. Every shadow reads its corners from the table,
+/// so each draws through the wide tables entry, σ = 16 being past
 /// [`CutoutPlan::SERIES_MIN_SIGMA`], and the quad between them, which is no
 /// shadow, through the general one.
 #[test]
@@ -107,6 +110,8 @@ fn equal_corners_share_one_table() {
             table: code,
             r: 8.0,
             sigma: 16.0,
+            lo: [0, 0],
+            hi: [87, 87],
         }],
     );
     assert_eq!(
@@ -332,8 +337,12 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
 /// the 4 px square at the first shadow's corner draws only that shadow, and
 /// would shade a sliver that pays for nothing on its own; the census still
 /// holds the other 13, so it reads the table the full repaint does, and
-/// bakes it, since a repainted pixel reads it. A repaint far from every
-/// shadow draws none and bakes nothing.
+/// bakes it, since a repainted pixel reads it. Only what the sliver reads:
+/// the first shadow's top-left arc is centred at 16 on each axis, so the
+/// sliver reads the table at `(16 − p + 8.5) · 5` from 102.5 to 122.5,
+/// texels 101 to 124 with the one past and one each side for rounding,
+/// where the whole frame reads it from 0 to 124 of 127. A repaint far from
+/// every shadow draws none and bakes nothing.
 #[test]
 fn a_partial_repaint_plans_what_a_full_one_does() {
     let viewport = UVec2::new(2000, 200);
@@ -341,12 +350,21 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     let mut plan = plan_in(&quads, viewport);
     let code = plan.tables()[0].table;
     assert_eq!(plan.corners()[0], CornerTables([code; 4]));
+    assert_eq!(
+        (plan.tables()[0].lo, plan.tables()[0].hi),
+        ([0, 0], [125, 125])
+    );
     let sliver = RepaintScissors::partial(&[URect::new(0, 0, 4, 4)]);
     let census = plan.build(&quads[..1], &sliver, viewport);
     assert_eq!(census, Census::Current);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
     assert_eq!(plan.entries(), [ShadowEntry::Tables]);
     assert_eq!(plan.tables().len(), 1, "the sliver reads the table");
+    assert_eq!(
+        (plan.tables()[0].lo, plan.tables()[0].hi),
+        ([101, 101], [125, 125]),
+        "the sliver's texels",
+    );
     let elsewhere = RepaintScissors::partial(&[URect::new(1900, 150, 4, 4)]);
     let census = plan.build(&[], &elsewhere, viewport);
     assert_eq!(census, Census::Current);

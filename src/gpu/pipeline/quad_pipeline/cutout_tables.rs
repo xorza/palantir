@@ -152,10 +152,10 @@ impl CutoutTables {
                 view: &self.atlas,
                 depth_slice: None,
                 resolve_target: None,
-                // Every texel a table reads is baked this frame; the rest
-                // is never read. So the pass keeps nothing: a load would
-                // read the whole atlas into tile memory, which on a tiler
-                // costs as much as a frame's shading.
+                // Every texel a repainted pixel reads is baked this frame;
+                // the rest is never read. So the pass keeps nothing: a load
+                // would read the whole atlas into tile memory, which on a
+                // tiler costs as much as a frame's shading.
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
@@ -183,10 +183,12 @@ impl CutoutTables {
     }
 }
 
-const BAKE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
+const BAKE_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Uint32,
     1 => Float32,
     2 => Float32,
+    3 => Uint16x2,
+    4 => Uint16x2,
 ];
 
 const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![9 => Uint32x4];
@@ -198,4 +200,6 @@ const _: () = {
     assert!(BAKE_ATTRS[0].offset == offset_of!(BakeTable, table) as u64);
     assert!(BAKE_ATTRS[1].offset == offset_of!(BakeTable, r) as u64);
     assert!(BAKE_ATTRS[2].offset == offset_of!(BakeTable, sigma) as u64);
+    assert!(BAKE_ATTRS[3].offset == offset_of!(BakeTable, lo) as u64);
+    assert!(BAKE_ATTRS[4].offset == offset_of!(BakeTable, hi) as u64);
 };
