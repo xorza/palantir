@@ -18,65 +18,7 @@ use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Panel, Sizing, Tra
 use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
 use crate::harness::Harness;
 
-/// Clears the target to opaque red via the app's own render pass.
-#[derive(Debug)]
-struct RedClear;
-
-impl GpuPaint for RedClear {
-    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
-        let _pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("visual.gpu_view.red_clear"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: ctx.target,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 1.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-    }
-}
-
-/// A full-surface `GpuView` clearing to red lands red on screen. Pure red survives the sRGB round trip exactly, so no golden.
-#[test]
-fn gpu_view_clear_red_reaches_screen() {
-    let mut h = Harness::new();
-    let size = UVec2::new(64, 64);
-    let paint = Rc::new(RefCell::new(RedClear));
-    let p = Rc::clone(&paint);
-    let img = h
-        .size(size)
-        .frame(|ui| {
-            // Default sizing fills the surface.
-            GpuView::new(&p).show(ui);
-        })
-        .image;
-
-    // Interior samples, skipping the 1px edge's AA.
-    for y in [16u32, 32, 48] {
-        for x in [16u32, 32, 48] {
-            assert_px(
-                img.get_pixel(x, y).0,
-                [255, 0, 0, 255],
-                SRGB_ROUND_TRIP,
-                format_args!("pixel ({x},{y}) is the GpuView's red"),
-            );
-        }
-    }
-}
-
-/// A `GpuPaint` with a real pipeline, vertex buffer, depth attachment and draw (as the `cube` showcase), guarding wgpu validation the clear-only fixture can't reach.
+/// A `GpuPaint` with a real pipeline, depth attachment and draw (as the `cube` showcase), so wgpu validation sees what an app's paint does.
 #[derive(Debug)]
 struct DepthTriangle {
     pipeline: Option<wgpu::RenderPipeline>,
@@ -86,6 +28,21 @@ struct DepthTriangle {
     last_size: UVec2,
     last_display_scale: f32,
     last_raster_scale: f32,
+}
+
+impl DepthTriangle {
+    /// Draws over a viewport of `logical_square` logical px when set, else the whole target.
+    const fn new(logical_square: Option<f32>) -> Self {
+        Self {
+            pipeline: None,
+            depth: None,
+            depth_size: UVec2::ZERO,
+            logical_square,
+            last_size: UVec2::ZERO,
+            last_display_scale: 0.0,
+            last_raster_scale: 0.0,
+        }
+    }
 }
 
 const TRI_SHADER: &str = r"
@@ -211,25 +168,15 @@ impl GpuPaint for DepthTriangle {
     }
 }
 
-/// The draw path through a GpuView plus the √2 capacity ladder's UV crop. A 64×64 view gets a 67×67 texture, so 3px of BLUE slack the renderer never touches; the composite must sample `used/capacity` and read green throughout.
+/// A full-surface `GpuView` reaches the screen, and the √2 capacity ladder's UV crop holds. A 64×64 view gets a 67×67 texture, so 3px of BLUE slack the renderer never touches; the composite must sample `used/capacity` and read green throughout.
 #[test]
 fn gpu_view_pipeline_depth_and_capacity_crop() {
-    let mut h = Harness::new();
-    let size = UVec2::new(64, 64);
-    let paint = Rc::new(RefCell::new(DepthTriangle {
-        pipeline: None,
-        depth: None,
-        depth_size: UVec2::ZERO,
-        logical_square: None,
-        last_size: UVec2::ZERO,
-        last_display_scale: 0.0,
-        last_raster_scale: 0.0,
-    }));
-    let p = Rc::clone(&paint);
-    let img = h
-        .size(size)
+    let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
+    let img = Harness::new()
+        .size(UVec2::new(64, 64))
         .frame(|ui| {
-            GpuView::new(&p).show(ui);
+            // Default sizing fills the surface.
+            GpuView::new(&paint).show(ui);
         })
         .image;
     // (63,63) discriminates: a full [0,1] UV would sample blue slack at texel ≈66.
@@ -245,20 +192,9 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
 
 #[test]
 fn gpu_view_callback_receives_composed_raster_scale() {
-    let mut h = Harness::new();
-    let size = UVec2::new(96, 96);
-    let paint = Rc::new(RefCell::new(DepthTriangle {
-        pipeline: None,
-        depth: None,
-        depth_size: UVec2::ZERO,
-        logical_square: Some(16.0),
-        last_size: UVec2::ZERO,
-        last_display_scale: 0.0,
-        last_raster_scale: 0.0,
-    }));
-    let p = Rc::clone(&paint);
-    let img = h
-        .size(size)
+    let paint = Rc::new(RefCell::new(DepthTriangle::new(Some(16.0))));
+    let img = Harness::new()
+        .size(UVec2::new(96, 96))
         .scale(2.0)
         .frame(|ui| {
             Panel::zstack()
@@ -266,7 +202,7 @@ fn gpu_view_callback_receives_composed_raster_scale() {
                 .size((Sizing::fixed(32.0), Sizing::fixed(32.0)))
                 .transform(TranslateScale::from_scale(1.5))
                 .show(ui, |ui| {
-                    GpuView::new(&p).show(ui);
+                    GpuView::new(&paint).show(ui);
                 });
         })
         .image;

@@ -5,168 +5,80 @@ use std::fs;
 
 use crate::goldens;
 
-/// One golden the suite draws; an unused variant (removed fixture) fails the lint gate, and one missing from [`GoldenName::ALL`] orphans its file ([`every_golden_file_belongs_to_a_fixture`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GoldenName {
-    AddShapeRoundedRectLinearGradient,
-    ArcShapes,
-    ButtonHello,
-    ColorFieldAndBars,
-    ColorPickerPanel,
-    ComboBoxClosed,
-    CurveCaps,
-    DashboardHidpi,
-    DockSplitPanes,
-    DragValue,
-    FocusRing,
-    ExpanderOpenAndClosed,
-    FrameFilledWithBorder,
-    FrameFixture,
-    FrameLinearGradient,
-    GridMixedTracks,
-    GridTwoHugColsLabelNotClipped,
-    InterleavedShapesPaintOrder,
-    LineDiagonalAa,
-    ModalDialog,
-    OverflowingGradientAtlas,
-    PolylineBevelJoin,
-    PolylineGradient,
-    PolylineRoundCaps,
-    PolylineRoundJoin,
-    PolylineTranslucentJoins,
-    ProgressBarHalf,
-    RadialAndConicGradient,
-    RoundedClipPartiallyOffscreen,
-    ScrollHorizontalOverflow,
-    ScrollNoBarWhenFits,
-    ScrollVerticalOverflow,
-    ScrollWithUserPadding,
-    ScrollXyOverflow,
-    ShowcaseGradientsPage,
-    SliderThirtyPercent,
-    Spinner,
-    SurfaceRoundedClipsFullFillChild,
-    TabStrip,
-    TabbedView,
-    TextParagraph,
-    TextRowListBatched,
-    ToggleSwitchStates,
-    Triangle,
-    VstackFillWeights,
-    WindowedRectMasksCorners,
-    ZstackCenteredButton,
+/// Declares [`GoldenName`] from one `Variant => "file_stem"` list, so the variants, [`GoldenName::ALL`] and [`GoldenName::name`] cannot drift apart.
+macro_rules! golden_names {
+    ($($variant:ident => $file:literal,)*) => {
+        /// One golden the suite draws. A golden file no variant names is an orphan ([`every_golden_file_belongs_to_a_fixture`]); a variant whose fixture is gone still claims its file, so remove it with the fixture.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub(crate) enum GoldenName {
+            $($variant,)*
+        }
+
+        impl GoldenName {
+            /// Every golden.
+            pub(crate) const ALL: &[Self] = &[$(Self::$variant,)*];
+
+            /// The golden's file stem under `golden/`.
+            pub(crate) const fn name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $file,)*
+                }
+            }
+        }
+    };
 }
 
-impl GoldenName {
-    /// Every golden, in name order.
-    pub(crate) const ALL: [Self; 47] = [
-        Self::AddShapeRoundedRectLinearGradient,
-        Self::ArcShapes,
-        Self::ButtonHello,
-        Self::ColorFieldAndBars,
-        Self::ColorPickerPanel,
-        Self::ComboBoxClosed,
-        Self::CurveCaps,
-        Self::DashboardHidpi,
-        Self::DockSplitPanes,
-        Self::DragValue,
-        Self::FocusRing,
-        Self::ExpanderOpenAndClosed,
-        Self::FrameFilledWithBorder,
-        Self::FrameFixture,
-        Self::FrameLinearGradient,
-        Self::GridMixedTracks,
-        Self::GridTwoHugColsLabelNotClipped,
-        Self::InterleavedShapesPaintOrder,
-        Self::LineDiagonalAa,
-        Self::ModalDialog,
-        Self::OverflowingGradientAtlas,
-        Self::PolylineBevelJoin,
-        Self::PolylineGradient,
-        Self::PolylineRoundCaps,
-        Self::PolylineRoundJoin,
-        Self::PolylineTranslucentJoins,
-        Self::ProgressBarHalf,
-        Self::RadialAndConicGradient,
-        Self::RoundedClipPartiallyOffscreen,
-        Self::ScrollHorizontalOverflow,
-        Self::ScrollNoBarWhenFits,
-        Self::ScrollVerticalOverflow,
-        Self::ScrollWithUserPadding,
-        Self::ScrollXyOverflow,
-        Self::ShowcaseGradientsPage,
-        Self::SliderThirtyPercent,
-        Self::Spinner,
-        Self::SurfaceRoundedClipsFullFillChild,
-        Self::TabStrip,
-        Self::TabbedView,
-        Self::TextParagraph,
-        Self::TextRowListBatched,
-        Self::ToggleSwitchStates,
-        Self::Triangle,
-        Self::VstackFillWeights,
-        Self::WindowedRectMasksCorners,
-        Self::ZstackCenteredButton,
-    ];
-
-    /// The golden's file stem under `golden/`.
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
-            Self::ArcShapes => "arc_shapes",
-            Self::ButtonHello => "button_hello",
-            Self::ColorFieldAndBars => "color_field_and_bars",
-            Self::ColorPickerPanel => "color_picker_panel",
-            Self::ComboBoxClosed => "combo_box_closed",
-            Self::CurveCaps => "curve_caps",
-            Self::DashboardHidpi => "dashboard_hidpi",
-            Self::DockSplitPanes => "dock_split_panes",
-            Self::DragValue => "drag_value",
-            Self::FocusRing => "focus_ring",
-            Self::ExpanderOpenAndClosed => "expander_open_and_closed",
-            Self::FrameFilledWithBorder => "frame_filled_with_border",
-            Self::FrameFixture => "frame_fixture",
-            Self::FrameLinearGradient => "frame_linear_gradient",
-            Self::GridMixedTracks => "grid_mixed_tracks",
-            Self::GridTwoHugColsLabelNotClipped => "grid_two_hug_cols_label_not_clipped",
-            Self::InterleavedShapesPaintOrder => "interleaved_shapes_paint_order",
-            Self::LineDiagonalAa => "line_diagonal_aa",
-            Self::ModalDialog => "modal_dialog",
-            Self::OverflowingGradientAtlas => "overflowing_gradient_atlas",
-            Self::PolylineBevelJoin => "polyline_bevel_join",
-            Self::PolylineGradient => "polyline_gradient",
-            Self::PolylineRoundCaps => "polyline_round_caps",
-            Self::PolylineRoundJoin => "polyline_round_join",
-            Self::PolylineTranslucentJoins => "polyline_translucent_joins",
-            Self::ProgressBarHalf => "progress_bar_half",
-            Self::RadialAndConicGradient => "radial_and_conic_gradient",
-            Self::RoundedClipPartiallyOffscreen => "rounded_clip_partially_offscreen",
-            Self::ScrollHorizontalOverflow => "scroll_horizontal_overflow",
-            Self::ScrollNoBarWhenFits => "scroll_no_bar_when_fits",
-            Self::ScrollVerticalOverflow => "scroll_vertical_overflow",
-            Self::ScrollWithUserPadding => "scroll_with_user_padding",
-            Self::ScrollXyOverflow => "scroll_xy_overflow",
-            Self::ShowcaseGradientsPage => "showcase_gradients_page",
-            Self::SliderThirtyPercent => "slider_thirty_percent",
-            Self::Spinner => "spinner",
-            Self::SurfaceRoundedClipsFullFillChild => "surface_rounded_clips_full_fill_child",
-            Self::TabStrip => "tab_strip",
-            Self::TabbedView => "tabbed_view",
-            Self::TextParagraph => "text_paragraph",
-            Self::TextRowListBatched => "text_row_list_batched",
-            Self::ToggleSwitchStates => "toggle_switch_states",
-            Self::Triangle => "triangle",
-            Self::VstackFillWeights => "vstack_fill_weights",
-            Self::WindowedRectMasksCorners => "windowed_rect_masks_corners",
-            Self::ZstackCenteredButton => "zstack_centered_button",
-        }
-    }
+golden_names! {
+    AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
+    ArcShapes => "arc_shapes",
+    ButtonHello => "button_hello",
+    ColorFieldAndBars => "color_field_and_bars",
+    ColorPickerPanel => "color_picker_panel",
+    ComboBoxClosed => "combo_box_closed",
+    CurveCaps => "curve_caps",
+    DashboardHidpi => "dashboard_hidpi",
+    DockSplitPanes => "dock_split_panes",
+    DragValue => "drag_value",
+    ExpanderOpenAndClosed => "expander_open_and_closed",
+    FocusRing => "focus_ring",
+    FrameFilledWithBorder => "frame_filled_with_border",
+    FrameFixture => "frame_fixture",
+    GridMixedTracks => "grid_mixed_tracks",
+    GridTwoHugColsLabelNotClipped => "grid_two_hug_cols_label_not_clipped",
+    InterleavedShapesPaintOrder => "interleaved_shapes_paint_order",
+    LineDiagonalAa => "line_diagonal_aa",
+    ModalDialog => "modal_dialog",
+    PolylineBevelJoin => "polyline_bevel_join",
+    PolylineGradient => "polyline_gradient",
+    PolylineRoundCaps => "polyline_round_caps",
+    PolylineRoundJoin => "polyline_round_join",
+    PolylineTranslucentJoins => "polyline_translucent_joins",
+    ProgressBarHalf => "progress_bar_half",
+    RoundedClipPartiallyOffscreen => "rounded_clip_partially_offscreen",
+    ScrollHorizontalOverflow => "scroll_horizontal_overflow",
+    ScrollNoBarWhenFits => "scroll_no_bar_when_fits",
+    ScrollVerticalOverflow => "scroll_vertical_overflow",
+    ScrollWithUserPadding => "scroll_with_user_padding",
+    ScrollXyOverflow => "scroll_xy_overflow",
+    ShowcaseGradientsPage => "showcase_gradients_page",
+    SliderThirtyPercent => "slider_thirty_percent",
+    Spinner => "spinner",
+    SurfaceRoundedClipsFullFillChild => "surface_rounded_clips_full_fill_child",
+    TabStrip => "tab_strip",
+    TabbedView => "tabbed_view",
+    TextParagraph => "text_paragraph",
+    TextRowListBatched => "text_row_list_batched",
+    ToggleSwitchStates => "toggle_switch_states",
+    Triangle => "triangle",
+    VstackFillWeights => "vstack_fill_weights",
+    WindowedRectMasksCorners => "windowed_rect_masks_corners",
+    ZstackCenteredButton => "zstack_centered_button",
 }
 
 /// No golden file lies in the directory without a fixture that draws it. Under `UPDATE_GOLDEN`, orphans are deleted.
 #[test]
 fn every_golden_file_belongs_to_a_fixture() {
-    let orphans = goldens::goldens().orphans(GoldenName::ALL.map(GoldenName::name));
+    let orphans = goldens::goldens().orphans(GoldenName::ALL.iter().map(|golden| golden.name()));
     if env::var_os("UPDATE_GOLDEN").is_some_and(|value| !value.is_empty()) {
         for orphan in &orphans {
             fs::remove_file(orphan).expect("delete an orphaned golden");

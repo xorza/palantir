@@ -1,8 +1,11 @@
+//! Occlusion pruning at fractional coordinates: an opaque quad over another must paint what the pair paints when no pruning can apply.
+
 use glam::UVec2;
 use palantir::golden::image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
 
+use crate::fixtures::canvas;
 use crate::goldens::assert_same;
 use crate::harness::Harness;
 
@@ -15,27 +18,23 @@ fn add_layer(ui: &mut Ui, color: RgbaF32) {
 }
 
 fn render_fractional_layers(split_groups: bool) -> RgbaImage {
-    let mut harness = Harness::new_with_pixel_snap(false);
-    harness
+    Harness::new_with_pixel_snap(false)
         .size(VIEWPORT)
         .clear(CLEAR)
         .frame(|ui| {
             assert!(!ui.display().pixel_snap);
-            Panel::canvas()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    add_layer(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
-                    if split_groups {
-                        Panel::canvas()
-                            .auto_id()
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .clip_rect()
-                            .show(ui, |ui| add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0)));
-                    } else {
-                        add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0));
-                    }
-                });
+            canvas(ui, |ui| {
+                add_layer(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
+                if split_groups {
+                    Panel::canvas()
+                        .auto_id()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .clip_rect()
+                        .show(ui, |ui| add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0)));
+                } else {
+                    add_layer(ui, RgbaF32::srgb(0.0, 0.0, 1.0));
+                }
+            });
         })
         .image
 }

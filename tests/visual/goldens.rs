@@ -11,11 +11,14 @@
 
 use std::path::{Path, PathBuf};
 
+use glam::UVec2;
+
 use crate::golden_name::GoldenName;
-use palantir::Rect;
+use crate::harness::Harness;
 use palantir::golden::Goldens;
 use palantir::golden::image::{RgbaImage, imageops};
 use palantir::internals::headless_test_gpu;
+use palantir::{Rect, Ui};
 use std::fs;
 use std::thread;
 
@@ -32,8 +35,31 @@ pub(crate) fn goldens() -> Goldens {
     Goldens::new(ROOT).with_adapter(headless_test_gpu().adapter.clone())
 }
 
+#[track_caller]
 pub(crate) fn assert_matches_golden(golden: GoldenName, actual: &RgbaImage) {
     goldens().assert_matches(golden.name(), actual);
+}
+
+/// One frame of `scene` at `size` on a fresh [`Harness`] matches `golden`.
+#[track_caller]
+pub(crate) fn assert_scene_matches_golden(
+    golden: GoldenName,
+    size: UVec2,
+    scene: impl FnMut(&mut Ui),
+) {
+    assert_settled_scene_matches_golden(golden, size, 0, scene);
+}
+
+/// [`assert_scene_matches_golden`] on the frame after `settle` discarded ones, for state that builds over frames.
+#[track_caller]
+pub(crate) fn assert_settled_scene_matches_golden(
+    golden: GoldenName,
+    size: UVec2,
+    settle: u32,
+    scene: impl FnMut(&mut Ui),
+) {
+    let img = Harness::new().size(size).settled_frame(settle, scene).image;
+    assert_matches_golden(golden, &img);
 }
 
 /// `actual` and `expected` agree in every pixel; `name` is a file name, not a sentence.

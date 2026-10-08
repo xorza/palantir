@@ -4,47 +4,69 @@ use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
-    Background, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke,
+    Background, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
 };
 use std::f64::consts::SQRT_2;
 
+use crate::fixtures::canvas;
 use crate::goldens::{assert_same, assert_same_in, crop};
 use crate::harness::Harness;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
 
+/// The shadow colour the probes' arithmetic assumes: over white it leaves
+/// `1 − 0.85·coverage` linear ([`under_ink`]).
+const INK: RgbaF32 = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
+
+/// One frame over `clear`, with `scene` on a full-surface canvas.
+fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
+    Harness::new()
+        .size(VIEWPORT)
+        .clear(clear)
+        .frame(|ui| canvas(ui, &mut scene))
+        .image
+}
+
+/// An [`INK`] shadow of `source` over white.
 fn render_shadow(
     source: Rect,
-    corners: f32,
+    corners: impl Into<Corners>,
     offset: Vec2,
     blur: f32,
     spread: f32,
     inset: bool,
 ) -> RgbaImage {
-    let mut harness = Harness::new();
-    harness
-        .size(VIEWPORT)
-        .clear(CLEAR)
-        .frame(|ui| {
-            Panel::canvas()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::shadow(Shadow {
-                            color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
-                            offset,
-                            blur,
-                            spread,
-                            inset,
-                        })
-                        .at(source)
-                        .corners(corners),
-                    );
-                });
-        })
-        .image
+    let shadow = Shadow {
+        color: INK,
+        offset,
+        blur,
+        spread,
+        inset,
+    };
+    let corners = corners.into();
+    render(CLEAR, |ui| {
+        ui.add_shape(Shape::shadow(shadow).at(source).corners(corners));
+    })
+}
+
+/// The sRGB byte of grey `lin` in linear light.
+fn grey(lin: f64) -> u8 {
+    let lin = lin as f32;
+    RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
+}
+
+/// The sRGB byte of white under [`INK`] at `coverage`.
+fn under_ink(coverage: f64) -> u8 {
+    grey(1.0 - 0.85 * coverage)
+}
+
+/// Each channel's distance between `a` and `b`.
+fn channel_deltas<'a>(a: &'a RgbaImage, b: &'a RgbaImage) -> impl Iterator<Item = u8> + 'a {
+    a.as_raw()
+        .iter()
+        .zip(b.as_raw())
+        .map(|(&x, &y)| x.abs_diff(y))
 }
 
 /// `image` with every pixel in each of `holes` set to the clear colour, so
@@ -66,22 +88,12 @@ fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
     let source = Rect::new(64.0, 60.0, 72.0, 54.0);
 
     for offset in [Vec2::new(17.0, 13.0), Vec2::new(-19.0, -11.0)] {
-        let shifted = render_shadow(source, 11.0, offset, 6.0, 4.0, false);
-        let reference = render_shadow(
-            Rect {
-                min: source.min + offset,
-                size: source.size,
-            },
-            11.0,
-            Vec2::ZERO,
-            6.0,
-            4.0,
-            false,
-        );
         let moved = Rect {
             min: source.min + offset,
             size: source.size,
         };
+        let shifted = render_shadow(source, 11.0, offset, 6.0, 4.0, false);
+        let reference = render_shadow(moved, 11.0, Vec2::ZERO, 6.0, 4.0, false);
         let holes = [source, moved];
         let name = format!("shadow_offset_{}_{}", offset.x, offset.y);
         assert_same(
@@ -186,29 +198,14 @@ fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
     let sharp = render_shadow(circle, 0.0, Vec2::ZERO, 0.0, 6.0, false);
     assert!(dark(&sharp, 84, 64), "the sharp shadow's corner pixel");
 
-    let mut harness = Harness::new();
-    let overlapping = harness
-        .size(VIEWPORT)
-        .clear(CLEAR)
-        .frame(|ui| {
-            Panel::canvas()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::shadow(Shadow {
-                            color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
-                            offset: Vec2::ZERO,
-                            blur: 0.0,
-                            spread: 6.0,
-                            inset: false,
-                        })
-                        .at(Rect::new(80.0, 70.0, 60.0, 40.0))
-                        .corners(Corners::new(60.0, 0.0, 0.0, 0.0)),
-                    );
-                });
-        })
-        .image;
+    let overlapping = render_shadow(
+        Rect::new(80.0, 70.0, 60.0, 40.0),
+        Corners::new(60.0, 0.0, 0.0, 0.0),
+        Vec2::ZERO,
+        0.0,
+        6.0,
+        false,
+    );
     assert!(
         dark(&overlapping, 88, 78),
         "44.5 px from the fitted arc's centre"
@@ -235,41 +232,30 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         spread: 0.0,
         inset: true,
     };
-    let render = |on_chrome: bool| {
-        let mut harness = Harness::new();
-        harness
-            .size(VIEWPORT)
-            .clear(CLEAR)
-            .frame(|ui| {
-                Panel::canvas()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Panel::zstack()
-                            .id_salt("chrome")
-                            .position((40.0, 40.0))
-                            .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
-                            .background(Background {
-                                fill: RgbaF32::srgb(0.9, 0.9, 0.9).into(),
-                                border: Stroke::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0),
-                                corners: 16.0.into(),
-                                shadow: if on_chrome { shadow } else { Shadow::NONE },
-                            })
-                            .show(ui, |ui| {
-                                if !on_chrome {
-                                    ui.add_shape(
-                                        Shape::shadow(shadow)
-                                            .at(Rect::new(4.0, 4.0, 132.0, 92.0))
-                                            .corners(12.0),
-                                    );
-                                }
-                            });
-                    });
-            })
-            .image
+    let boxed = |on_chrome: bool| {
+        render(CLEAR, |ui| {
+            Panel::zstack()
+                .id_salt("chrome")
+                .position((40.0, 40.0))
+                .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
+                .background(
+                    Background::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
+                        .with_border(Stroke::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0))
+                        .with_shadow(if on_chrome { shadow } else { Shadow::NONE }),
+                )
+                .show(ui, |ui| {
+                    if !on_chrome {
+                        ui.add_shape(
+                            Shape::shadow(shadow)
+                                .at(Rect::new(4.0, 4.0, 132.0, 92.0))
+                                .corners(12.0),
+                        );
+                    }
+                });
+        })
     };
-    let chrome = render(true);
-    assert_same("shadow_inset_chrome", &chrome, &render(false));
+    let chrome = boxed(true);
+    assert_same("shadow_inset_chrome", &chrome, &boxed(false));
     let red = |x: u32, y: u32| chrome.get_pixel(x, y).0[0];
     assert!(red(110, 90) >= 228, "the middle is the bare fill");
     assert!(red(44, 90) < 215, "the padding edge is in shadow");
@@ -285,43 +271,28 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
     let radius = 12.0;
     let fill = RgbaF32::srgba(0.2, 0.4, 0.9, 0.4);
     let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.6), Vec2::new(0.0, 6.0), 8.0);
-    let render = |shadow: Shadow, chrome: bool| {
-        let mut harness = Harness::new();
-        harness
-            .size(VIEWPORT)
-            .clear(CLEAR)
-            .frame(|ui| {
-                Panel::canvas()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        if chrome {
-                            Panel::zstack()
-                                .id_salt("box")
-                                .position(source.min)
-                                .size((Sizing::fixed(source.size.w), Sizing::fixed(source.size.h)))
-                                .background(Background {
-                                    fill: fill.into(),
-                                    border: Stroke::NONE,
-                                    corners: radius.into(),
-                                    shadow,
-                                })
-                                .show(ui, |_| {});
-                        } else {
-                            ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
-                            ui.add_shape(Shape::rect(source).fill(fill).corners(radius));
-                        }
-                    });
-            })
-            .image
+    let cast = |shadow: Shadow, chrome: bool| {
+        render(CLEAR, |ui| {
+            if chrome {
+                Panel::zstack()
+                    .id_salt("box")
+                    .position(source.min)
+                    .size((Sizing::fixed(source.size.w), Sizing::fixed(source.size.h)))
+                    .background(Background::rounded(fill, Corners::all(radius)).with_shadow(shadow))
+                    .show(ui, |_| {});
+            } else {
+                ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
+                ui.add_shape(Shape::rect(source).fill(fill).corners(radius));
+            }
+        })
     };
     let bands = [
         Rect::new(41.0, 52.0, 138.0, 76.0),
         Rect::new(52.0, 41.0, 116.0, 98.0),
     ];
     for (label, chrome) in [("chrome", true), ("shape", false)] {
-        let shadowed = render(shadow, chrome);
-        let bare = render(Shadow::NONE, chrome);
+        let shadowed = cast(shadow, chrome);
+        let bare = cast(Shadow::NONE, chrome);
         for (i, band) in bands.into_iter().enumerate() {
             let name = format!("shadow_clip_{label}_{i}");
             assert_same_in(&name, &shadowed, &bare, band);
@@ -401,13 +372,9 @@ fn reference_coverage(p: Vec2, rect: Rect, radius: f32, sigma: f64) -> f64 {
 /// - in an inset shadow whose hole spread 25 closes, shadow throughout.
 #[test]
 fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
-    let encode = |coverage: f64| {
-        let lin = (1.0 - 0.85 * coverage) as f32;
-        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
-    };
     let probe = |img: &RgbaImage, x: u32, y: u32, want: f64, what: &str| {
         let got = img.get_pixel(x, y).0[0];
-        let want = encode(want);
+        let want = under_ink(want);
         assert!(
             got.abs_diff(want) <= 2,
             "{what} at ({x}, {y}): got {got}, want {want}"
@@ -460,37 +427,14 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 #[test]
 fn an_inset_shadow_shares_its_source_edge_ramp() {
     let source = Rect::new(40.5, 40.25, 100.0, 80.0);
-    let color = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
-    let render = |shadow: bool| {
-        let mut harness = Harness::new();
-        harness
-            .size(VIEWPORT)
-            .clear(CLEAR)
-            .frame(|ui| {
-                Panel::canvas()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        if shadow {
-                            ui.add_shape(
-                                Shape::shadow(Shadow {
-                                    color,
-                                    offset: Vec2::ZERO,
-                                    blur: 3.0,
-                                    spread: 60.0,
-                                    inset: true,
-                                })
-                                .at(source)
-                                .corners(14.0),
-                            );
-                        } else {
-                            ui.add_shape(Shape::rect(source).fill(color).corners(14.0));
-                        }
-                    });
-            })
-            .image
-    };
-    assert_same("shadow_inset_edge", &render(true), &render(false));
+    let filled = render(CLEAR, |ui| {
+        ui.add_shape(Shape::rect(source).fill(INK).corners(14.0));
+    });
+    assert_same(
+        "shadow_inset_edge",
+        &render_shadow(source, 14.0, Vec2::ZERO, 3.0, 60.0, true),
+        &filled,
+    );
 }
 
 /// A drop shadow's quad holds every pixel its coverage reaches.
@@ -512,13 +456,9 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         0.0,
         false,
     );
-    let encode = |coverage: f64| {
-        let lin = (1.0 - 0.85 * coverage) as f32;
-        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
-    };
     for (x, coverage) in [(39, 0.0), (40, 0.25), (41, 1.0), (100, 0.75), (101, 0.0)] {
         let got = img.get_pixel(x, 90).0[0];
-        let want = encode(coverage);
+        let want = under_ink(coverage);
         assert!(
             got.abs_diff(want) <= 1,
             "sharp shadow at ({x}, 90) is covered {coverage}: got {got}, want {want}",
@@ -526,39 +466,17 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     }
 
     let source = Rect::new(60.0, 40.0, 100.0, 100.0);
-    let mut harness = Harness::new();
-    let img = harness
-        .size(VIEWPORT)
-        .clear(RgbaF32::BLACK)
-        .frame(|ui| {
-            Panel::canvas()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::shadow(Shadow {
-                            color: RgbaF32::WHITE,
-                            offset: Vec2::ZERO,
-                            blur: 8.0,
-                            spread: 0.0,
-                            inset: false,
-                        })
-                        .at(source),
-                    );
-                });
-        })
-        .image;
-    let encode = |coverage: f64| {
-        let lin = coverage as f32;
-        RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
-    };
+    let img = render(RgbaF32::BLACK, |ui| {
+        let glow = Shadow::drop(RgbaF32::WHITE, Vec2::ZERO, 8.0);
+        ui.add_shape(Shape::shadow(glow).at(source));
+    });
     assert!(
-        encode(reference_coverage(Vec2::new(184.5, 90.5), source, 0.0, 8.0)) >= 3,
+        grey(reference_coverage(Vec2::new(184.5, 90.5), source, 0.0, 8.0)) >= 3,
         "the tail past 3σ shows",
     );
     for x in 176..196 {
         let got = img.get_pixel(x, 90).0[0];
-        let want = encode(reference_coverage(
+        let want = grey(reference_coverage(
             Vec2::new(x as f32 + 0.5, 90.5),
             source,
             0.0,
@@ -578,57 +496,54 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
 /// corners' regions start at `905 − 12 − 64.5 = 828.5`, past x = 800) and 4
 /// (inset; left corners' end at `−193 + 4 + 64.5 = −124.5`). Those get no
 /// table, so `fs_shadow_tables` draws them with two corners it cuts nothing at.
-fn cutout_grid(ui: &mut palantir::Ui) {
+fn cutout_grid(ui: &mut Ui) {
     const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
     const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
     const CELL: f32 = 200.0;
-    Panel::canvas()
-        .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for (row, inset) in [false, true].into_iter().enumerate() {
-                for (y, blur) in BLURS.into_iter().enumerate() {
-                    for (x, radius) in RADII.into_iter().enumerate() {
-                        let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
-                        ui.add_shape(
-                            Shape::shadow(Shadow {
-                                color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
-                                offset: Vec2::new(3.0, 5.0),
-                                blur,
-                                spread: if inset { 4.0 } else { 2.0 },
-                                inset,
-                            })
-                            .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
-                            .corners(radius),
-                        );
-                    }
+    canvas(ui, |ui| {
+        for (row, inset) in [false, true].into_iter().enumerate() {
+            for (y, blur) in BLURS.into_iter().enumerate() {
+                for (x, radius) in RADII.into_iter().enumerate() {
+                    let at = Vec2::new(x as f32, (row * BLURS.len() + y) as f32) * CELL;
+                    ui.add_shape(
+                        Shape::shadow(Shadow {
+                            color: INK,
+                            offset: Vec2::new(3.0, 5.0),
+                            blur,
+                            spread: if inset { 4.0 } else { 2.0 },
+                            inset,
+                        })
+                        .at(Rect::new(at.x + 70.0, at.y + 70.0, 60.0, 60.0))
+                        .corners(radius),
+                    );
                 }
             }
-            for (inset, source, corners) in [
-                (
-                    false,
-                    Rect::new(600.0, 1680.0, 300.0, 60.0),
-                    Corners::new(24.0, 10.0, 10.0, 24.0),
-                ),
-                (
-                    true,
-                    Rect::new(-200.0, 1640.0, 300.0, 160.0),
-                    Corners::new(8.0, 30.0, 30.0, 8.0),
-                ),
-            ] {
-                ui.add_shape(
-                    Shape::shadow(Shadow {
-                        color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.85),
-                        offset: Vec2::new(3.0, 5.0),
-                        blur: 16.0,
-                        spread: if inset { 4.0 } else { 2.0 },
-                        inset,
-                    })
-                    .at(source)
-                    .corners(corners),
-                );
-            }
-        });
+        }
+        for (inset, source, corners) in [
+            (
+                false,
+                Rect::new(600.0, 1680.0, 300.0, 60.0),
+                Corners::new(24.0, 10.0, 10.0, 24.0),
+            ),
+            (
+                true,
+                Rect::new(-200.0, 1640.0, 300.0, 160.0),
+                Corners::new(8.0, 30.0, 30.0, 8.0),
+            ),
+        ] {
+            ui.add_shape(
+                Shape::shadow(Shadow {
+                    color: INK,
+                    offset: Vec2::new(3.0, 5.0),
+                    blur: 16.0,
+                    spread: if inset { 4.0 } else { 2.0 },
+                    inset,
+                })
+                .at(source)
+                .corners(corners),
+            );
+        }
+    });
 }
 
 /// Baked cutout tables match the shaded cutout to one 8-bit level per
@@ -643,12 +558,7 @@ fn baked_cutout_tables_match_the_shaded_cutout() {
     shaded.host.disable_cutout_tables();
     let [baked, shaded] = [&mut baked, &mut shaded]
         .map(|harness| harness.size(size).clear(CLEAR).frame(cutout_grid).image);
-    let deltas = baked
-        .as_raw()
-        .iter()
-        .zip(shaded.as_raw())
-        .map(|(&a, &b)| a.abs_diff(b));
-    let (most, differing) = deltas.fold((0, 0), |(most, differing), d| {
+    let (most, differing) = channel_deltas(&baked, &shaded).fold((0, 0), |(most, differing), d| {
         (most.max(d), differing + usize::from(d != 0))
     });
     assert!(most <= 1, "a channel moved {most} levels");
@@ -765,46 +675,43 @@ fn grid_case_shape(case: GridCase, at: Rect) -> ShadowShape {
 
 /// The sweep, then two shadows seen through clips: a scissor across one's
 /// edge cells, a rounded (stencil) clip over another.
-fn grid_sweep(ui: &mut palantir::Ui) {
+fn grid_sweep(ui: &mut Ui) {
     let cases = grid_cases();
-    Panel::canvas()
-        .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for (i, &case) in cases.iter().enumerate() {
-                ui.add_shape(grid_case_shape(case, grid_case_rect(i, case)));
-            }
-            let clipped = GridCase {
-                inset: false,
-                blur: 18.0,
-                corners: 30.0,
-                size: Vec2::new(200.0, 120.0),
-                offset: Vec2::new(6.0, 10.0),
-                spread: 2.0,
-            };
-            let row = cases.len().div_ceil(GRID_COLUMNS) as f32 * GRID_CELL;
-            for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
-                Panel::canvas()
-                    .id_salt(("clip", rounded))
-                    .position((x + 40.0, row + 40.0))
-                    .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
-                    .background(Background {
-                        corners: Corners::all(if rounded { 40.0 } else { 0.0 }),
-                        ..Default::default()
-                    })
-                    .clip(if rounded {
-                        ClipMode::Rounded
-                    } else {
-                        ClipMode::Rect
-                    })
-                    .show(ui, |ui| {
-                        ui.add_shape(grid_case_shape(
-                            clipped,
-                            Rect::new(60.0, 50.0, clipped.size.x, clipped.size.y),
-                        ));
-                    });
-            }
-        });
+    canvas(ui, |ui| {
+        for (i, &case) in cases.iter().enumerate() {
+            ui.add_shape(grid_case_shape(case, grid_case_rect(i, case)));
+        }
+        let clipped = GridCase {
+            inset: false,
+            blur: 18.0,
+            corners: 30.0,
+            size: Vec2::new(200.0, 120.0),
+            offset: Vec2::new(6.0, 10.0),
+            spread: 2.0,
+        };
+        let row = cases.len().div_ceil(GRID_COLUMNS) as f32 * GRID_CELL;
+        for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
+            Panel::canvas()
+                .id_salt(("clip", rounded))
+                .position((x + 40.0, row + 40.0))
+                .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
+                .background(Background::rounded(
+                    RgbaF32::TRANSPARENT,
+                    Corners::all(if rounded { 40.0 } else { 0.0 }),
+                ))
+                .clip(if rounded {
+                    ClipMode::Rounded
+                } else {
+                    ClipMode::Rect
+                })
+                .show(ui, |ui| {
+                    ui.add_shape(grid_case_shape(
+                        clipped,
+                        Rect::new(60.0, 50.0, clipped.size.x, clipped.size.y),
+                    ));
+                });
+        }
+    });
 }
 
 /// A shadow drawn as its grid of cells equals the one-cell full form to one
@@ -824,13 +731,7 @@ fn a_shadow_grid_matches_the_full_form() {
     full.host.disable_shadow_grid();
     let [grid, full] = [&mut grid, &mut full]
         .map(|harness| harness.size(size).clear(CLEAR).frame(grid_sweep).image);
-    let most = grid
-        .as_raw()
-        .iter()
-        .zip(full.as_raw())
-        .map(|(&a, &b)| a.abs_diff(b))
-        .max()
-        .unwrap();
+    let most = channel_deltas(&grid, &full).max().unwrap();
     assert!(most <= 1, "a channel moved {most} levels");
     for (i, case) in cases.iter().enumerate().filter(|(_, case)| !case.inset) {
         let source = grid_case_rect(i, *case);

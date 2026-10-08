@@ -57,10 +57,10 @@ fn a_larger_user_scale_paints_a_larger_block() {
         *empty.get_pixel(SURFACE.x - 1, SURFACE.y - 1)
     };
 
-    let plain = h.size(SURFACE).frame(block).image;
+    let plain = h.frame(block).image;
     assert_eq!(painted_extent(&plain, background), UVec2::new(40, 24));
 
     h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
-    let doubled = h.size(SURFACE).frame(block).image;
+    let doubled = h.frame(block).image;
     assert_eq!(painted_extent(&doubled, background), UVec2::new(80, 48));
 }

@@ -14,9 +14,10 @@
 //! change lowers it; one that must rise is the regression to catch.
 
 use crate::harness::Audit;
-use palantir::{Configure, Panel, Sizing, Text, TextWrap};
+use palantir::{Configure, Panel, Sizing, Text, TextWrap, Ui};
 use std::fmt::Write as _;
 use std::hint;
+use std::ops::Range;
 
 /// Labels per churning fixture.
 const ROWS: u32 = 8;
@@ -32,52 +33,45 @@ const DRAG_BLOCKS_PER_FRAME_MAX: u64 = 20;
 /// nothing asks for again (`shaped_buffer_cache::PROBATION_KEEP_FRAMES`).
 #[test]
 fn width_drag_stays_flat() {
-    let mut step = 0u32;
     // One shaped buffer per run, all inside cosmic.
-    Audit::new()
-        .text()
-        .budget(DRAG_BLOCKS_PER_FRAME_MAX)
-        .run(move |ui| {
-            // A whole pixel per frame, as a drag commits after quantizing.
-            let width = 240.0 + (step % 64) as f32;
-            step += 1;
-            Panel::vstack()
-                .id_salt("drag-root")
-                .size((Sizing::fixed(width), Sizing::FILL))
-                .show(ui, |ui| {
-                    for row in 0..ROWS {
-                        Text::new("a label long enough to need wrapping at this width")
-                            .id_salt(row)
-                            .text_wrap(TextWrap::Wrap)
-                            .show(ui);
-                    }
-                });
-        });
+    width_drag(
+        TextWrap::Wrap,
+        "a label long enough to need wrapping at this width",
+        240.0,
+    );
 }
 
 /// The same drag against a truncating policy: `measure_truncated` re-cuts
 /// against the cached unbounded probe and reshapes only the prefix.
 #[test]
 fn ellipsis_width_drag_stays_flat() {
-    let mut step = 0u32;
     // Cheaper than the wrapping drag typically, dearer at its worst:
     // `shape_truncated` retires clusters while the prefix overruns, so a
     // back-off frame reshapes several times.
+    width_drag(
+        TextWrap::Ellipsis,
+        "a label far too long for the column it sits in",
+        180.0,
+    );
+}
+
+/// [`ROWS`] copies of `label` in a column whose width steps a whole pixel per
+/// frame from `from`, as a drag commits after quantizing.
+#[track_caller]
+fn width_drag(wrap: TextWrap, label: &'static str, from: f32) {
+    let mut step = 0u32;
     Audit::new()
         .text()
         .budget(DRAG_BLOCKS_PER_FRAME_MAX)
         .run(move |ui| {
-            let width = 180.0 + (step % 64) as f32;
+            let width = from + (step % 64) as f32;
             step += 1;
             Panel::vstack()
-                .id_salt("ellipsis-root")
+                .id_salt("drag-root")
                 .size((Sizing::fixed(width), Sizing::FILL))
                 .show(ui, |ui| {
                     for row in 0..ROWS {
-                        Text::new("a label far too long for the column it sits in")
-                            .id_salt(row)
-                            .text_wrap(TextWrap::Ellipsis)
-                            .show(ui);
+                        Text::new(label).id_salt(row).text_wrap(wrap).show(ui);
                     }
                 });
         });
@@ -91,17 +85,7 @@ fn scrolling_row_window_alloc_free() {
     let mut first = 0u32;
     Audit::new().run(move |ui| {
         first += 1;
-        Panel::vstack()
-            .id_salt("scroll-root")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for row in first..first + ROWS {
-                    Panel::hstack()
-                        .id_salt(row)
-                        .size((Sizing::FILL, Sizing::fixed(20.0)))
-                        .show(ui, |_ui| {});
-                }
-            });
+        rows(ui, Sizing::FILL, first..first + ROWS, 20.0);
     });
 }
 
@@ -119,18 +103,22 @@ fn widget_add_remove_stays_flat() {
         .budget(4)
         .run(move |ui| {
             step += 1;
-            let count = 1 + step % ROWS;
-            Panel::vstack()
-                .id_salt("add-remove-root")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    for row in 0..count {
-                        Panel::hstack()
-                            .id_salt(row)
-                            .size((Sizing::FILL, Sizing::fixed(20.0)))
-                            .show(ui, |_ui| {});
-                    }
-                });
+            rows(ui, Sizing::FILL, 0..1 + step % ROWS, 20.0);
+        });
+}
+
+/// Empty rows `height` tall, one per id, in a column `width` wide.
+fn rows(ui: &mut Ui, width: Sizing, ids: Range<u32>, height: f32) {
+    Panel::vstack()
+        .id_salt("rows")
+        .size((width, Sizing::FILL))
+        .show(ui, |ui| {
+            for row in ids {
+                Panel::hstack()
+                    .id_salt(row)
+                    .size((Sizing::FILL, Sizing::fixed(height)))
+                    .show(ui, |_ui| {});
+            }
         });
 }
 
@@ -186,17 +174,8 @@ fn a_widget_count_spike_leaves_full_rebuilds_alloc_free() {
     let mut step = 0u32;
     Audit::new().warmup(16).run(move |ui| {
         step += 1;
-        let rows = if step == 1 { 256 } else { ROWS };
-        Panel::vstack()
-            .id_salt("spike-root")
-            .size((Sizing::fixed(200.0 + (step % 32) as f32), Sizing::FILL))
-            .show(ui, |ui| {
-                for row in 0..rows {
-                    Panel::hstack()
-                        .id_salt(row)
-                        .size((Sizing::FILL, Sizing::fixed(4.0)))
-                        .show(ui, |_ui| {});
-                }
-            });
+        let count = if step == 1 { 256 } else { ROWS };
+        let width = Sizing::fixed(200.0 + (step % 32) as f32);
+        rows(ui, width, 0..count, 4.0);
     });
 }

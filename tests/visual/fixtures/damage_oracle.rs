@@ -7,8 +7,8 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Background, Block, Brush, Configure, Image, ImageFit, ImageHandle, Layer, Panel,
-    RadialGradient, Rect, RgbaF32, Shadow, Sizing, Stroke, Text,
+    Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
+    RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
 };
 
 use crate::goldens::assert_same;
@@ -45,7 +45,7 @@ impl Knobs {
     };
 }
 
-fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
+fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     // Translucent and varying in both axes, so every damaged pixel blends a value of its own over the clear.
     let veil = RadialGradient::two_stop(
         RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
@@ -54,10 +54,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
-        .background(Background {
-            fill: Brush::Radial(veil),
-            ..Default::default()
-        })
+        .background(Background::fill(veil))
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
@@ -151,7 +148,7 @@ fn scene(ui: &mut palantir::Ui, k: Knobs, picture: &ImageHandle) {
 }
 
 /// Shadows above the scene, each in its own node, so a partial frame culls those its damage misses and plans them from the census: one large (σ = 16, radius 26) whose corners pay for their table alone, and `cards` small ones (σ = 4, radius 8) whose `(8, 4)` table 4 cards pay for and 3 do not (78.7k nodes to shade vs 259.6k to bake per card). A frame repainting one card reads the table through the others' census; adding or removing a card leaves the rest unrepainted under a key that just gained or lost its table.
-fn shadows(ui: &mut palantir::Ui, k: Knobs) {
+fn shadows(ui: &mut Ui, k: Knobs) {
     let shadow = |blur| Shadow {
         color: RgbaF32::srgba(0.1, 0.0, 0.2, 0.7),
         offset: Vec2::ZERO,
@@ -159,7 +156,7 @@ fn shadows(ui: &mut palantir::Ui, k: Knobs) {
         spread: 0.0,
         inset: false,
     };
-    let cast = |ui: &mut palantir::Ui, id: usize, at: Rect, blur: f32, radius: f32| {
+    let cast = |ui: &mut Ui, id: usize, at: Rect, blur: f32, radius: f32| {
         Panel::canvas()
             .id_salt(("shadow", id))
             .position(at.min)
@@ -191,7 +188,7 @@ fn picture(h: &mut Harness) -> ImageHandle {
     let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|x, y| {
         let on = (x / 10 + y / 10) % 2 == 0;
-        palantir::SrgbaU8::new(if on { 230 } else { 40 }, 120, 60, 255)
+        SrgbaU8::new(if on { 230 } else { 40 }, 120, 60, 255)
     });
     h.host.ui().load_image(&image).expect("a 60 px image loads")
 }
@@ -200,17 +197,13 @@ fn picture(h: &mut Harness) -> ImageHandle {
 fn run(name: &str, script: &[Knobs]) {
     let mut partial = Harness::new();
     let mut full = Harness::new();
+    partial.size(SURFACE);
+    full.size(SURFACE);
     let (partial_picture, full_picture) = (picture(&mut partial), picture(&mut full));
     for (frame, k) in [Knobs::BASE, Knobs::BASE].iter().chain(script).enumerate() {
-        let repainted = partial
-            .size(SURFACE)
-            .frame(|ui| scene(ui, *k, &partial_picture))
-            .image;
+        let repainted = partial.frame(|ui| scene(ui, *k, &partial_picture)).image;
         full.host.invalidate_target_contents();
-        let painted = full
-            .size(SURFACE)
-            .frame(|ui| scene(ui, *k, &full_picture))
-            .image;
+        let painted = full.frame(|ui| scene(ui, *k, &full_picture)).image;
         // Frame `n` is script entry `n - 2`, after two base frames.
         assert_same(&format!("{name}_frame_{frame}"), &repainted, &painted);
     }
