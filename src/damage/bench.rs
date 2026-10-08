@@ -1,4 +1,4 @@
-//! DamageEngine CPU-side regression bench: drives `Ui::frame` over a ~1056-node grid through the four `Damage` paths, plus microbenches of the three `DamageRegion::add` branches. Measures `FrameCycle::post_record` only, not GPU work; text measurement uses the mono fallback.
+//! DamageEngine CPU-side regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches. Text measurement uses the mono fallback.
 
 #![expect(
     clippy::print_stderr,
@@ -23,11 +23,13 @@ use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
+/// The row chrome of the painted-rows arm.
+const ROW_BG: RgbaF32 = RgbaF32::srgb(0.1, 0.1, 0.12);
 const COLS: usize = 32;
 const ROWS: usize = 32;
 
-/// 32x32 grid of small frames in a vstack (a dashboard workload); cells in `hot` get `hot_color`. Id salts keep identity stable so damage diffs against the right `prev`.
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
+/// 32x32 grid of small frames in a vstack (a dashboard workload), cell `i` filled `fill(i)`. Id salts keep identity stable so damage diffs against the right `prev`. With `row_bg`, every row paints, so on a stable frame the subtree-skip fires at each row.
+fn build_grid(ui: &mut Ui, row_bg: Option<RgbaF32>, fill: impl Fn(usize) -> RgbaF32) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -35,66 +37,35 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             for r in 0..ROWS {
-                Panel::hstack()
+                let mut row = Panel::hstack()
                     .id_salt(("row", r))
                     .gap(2.0)
-                    .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .show(ui, |ui| {
-                        for c in 0..COLS {
-                            let i = r * COLS + c;
-                            let fill = if hot.contains(&i) {
-                                hot_color
-                            } else {
-                                RgbaF32::srgb(0.2, 0.2, 0.25)
-                            };
-                            Block::new()
-                                .id_salt(("cell", r, c))
-                                .size((Sizing::fixed(30.0), Sizing::FILL))
-                                .background(Background::fill(fill))
-                                .show(ui);
-                        }
-                    });
+                    .size((Sizing::FILL, Sizing::fixed(20.0)));
+                if let Some(bg) = row_bg {
+                    row = row.background(Background::fill(bg));
+                }
+                row.show(ui, |ui| {
+                    for c in 0..COLS {
+                        Block::new()
+                            .id_salt(("cell", r, c))
+                            .size((Sizing::fixed(30.0), Sizing::FILL))
+                            .background(Background::fill(fill(r * COLS + c)))
+                            .show(ui);
+                    }
+                });
             }
         });
 }
 
-/// `build_grid` with a chrome fill on every row Panel: rows are painting parents, so on a stable frame the subtree-skip fires at each row.
-fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: RgbaF32) {
-    let row_bg = RgbaF32::srgb(0.1, 0.1, 0.12);
-    Panel::vstack()
-        .id_salt("root")
-        .gap(2.0)
-        .padding(4.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for r in 0..ROWS {
-                Panel::hstack()
-                    .id_salt(("row", r))
-                    .gap(2.0)
-                    .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .background(Background::fill(row_bg))
-                    .show(ui, |ui| {
-                        for c in 0..COLS {
-                            let i = r * COLS + c;
-                            let fill = if hot.contains(&i) {
-                                hot_color
-                            } else {
-                                RgbaF32::srgb(0.2, 0.2, 0.25)
-                            };
-                            Block::new()
-                                .id_salt(("cell", r, c))
-                                .size((Sizing::fixed(30.0), Sizing::FILL))
-                                .background(Background::fill(fill))
-                                .show(ui);
-                        }
-                    });
-            }
-        });
-}
-
-/// Acks the frame: `FrameCycle::record_pass` auto-rewinds damage if the previous `FrameOutput` wasn't `Submitted`; `Partial`/`Full` need this explicit, idempotent ack.
-fn run_and_ack(h: &mut UiHarness, mut record: impl FnMut(&mut Ui)) {
-    let _ = h.frame(&mut record);
+/// [`build_grid`] with the cells in `hot` filled `hot_color` and the rest a fixed grey.
+fn build_hot(ui: &mut Ui, row_bg: Option<RgbaF32>, hot: &[usize], hot_color: RgbaF32) {
+    build_grid(ui, row_bg, |i| {
+        if hot.contains(&i) {
+            hot_color
+        } else {
+            RgbaF32::srgb(0.2, 0.2, 0.25)
+        }
+    });
 }
 
 fn damage_kind(h: &UiHarness) -> &'static str {
@@ -112,8 +83,8 @@ fn warm_and_assert(
     frame2: impl Fn(&mut Ui),
     expect_kind: &str,
 ) {
-    run_and_ack(h, &frame1);
-    run_and_ack(h, &frame2);
+    let _ = h.frame(&frame1);
+    let _ = h.frame(&frame2);
     let kind = damage_kind(h);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
@@ -131,7 +102,7 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     let mut settled_at = h.engines.damage.paints.slots.len();
     let mut flat = 0;
     while flat < FLAT_FRAMES && frame - from_frame < MAX_FRAMES {
-        run_and_ack(h, build(frame));
+        let _ = h.frame(build(frame));
         frame += 1;
         let now = h.engines.damage.paints.slots.len();
         flat = if now == settled_at { flat + 1 } else { 0 };
@@ -167,13 +138,13 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
-            |ui| build_grid(ui, &[], cold),
-            |ui| build_grid(ui, &[], cold),
+            |ui| build_hot(ui, None, &[], cold),
+            |ui| build_hot(ui, None, &[], cold),
             "skip",
         );
         group.bench_function("skip", |b| {
             b.iter(|| {
-                run_and_ack(&mut h, |ui| build_grid(ui, &[], cold));
+                let _ = h.frame(|ui| build_hot(ui, None, &[], cold));
                 black_box(&h);
             });
         });
@@ -184,8 +155,8 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
-            |ui| build_painted_rows(ui, &[], cold),
-            |ui| build_painted_rows(ui, &[], cold),
+            |ui| build_hot(ui, Some(ROW_BG), &[], cold),
+            |ui| build_hot(ui, Some(ROW_BG), &[], cold),
             "skip",
         );
         assert!(
@@ -194,7 +165,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         );
         group.bench_function("skip_painted_rows", |b| {
             b.iter(|| {
-                run_and_ack(&mut h, |ui| build_painted_rows(ui, &[], cold));
+                let _ = h.frame(|ui| build_hot(ui, Some(ROW_BG), &[], cold));
                 black_box(&h);
             });
         });
@@ -205,8 +176,8 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let cell = [42usize];
         warm_and_assert(
             &mut h,
-            |ui| build_grid(ui, &cell, cold),
-            |ui| build_grid(ui, &cell, hot),
+            |ui| build_hot(ui, None, &cell, cold),
+            |ui| build_hot(ui, None, &cell, hot),
             "partial",
         );
         let mut toggle = false;
@@ -214,7 +185,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut h, |ui| build_grid(ui, &cell, color));
+                let _ = h.frame(|ui| build_hot(ui, None, &cell, color));
                 black_box(&h);
             });
         });
@@ -226,8 +197,8 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut h,
-            |ui| build_grid(ui, &cells, cold),
-            |ui| build_grid(ui, &cells, hot),
+            |ui| build_hot(ui, None, &cells, cold),
+            |ui| build_hot(ui, None, &cells, hot),
             "partial",
         );
         assert!(h.damage_region().iter_rects().count() >= 1);
@@ -236,7 +207,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             b.iter(|| {
                 toggle = !toggle;
                 let color = if toggle { hot } else { cold };
-                run_and_ack(&mut h, |ui| build_grid(ui, &cells, color));
+                let _ = h.frame(|ui| build_hot(ui, None, &cells, color));
                 black_box(&h);
             });
         });
@@ -246,48 +217,20 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
-                Panel::vstack()
-                    .id_salt("root")
-                    .gap(2.0)
-                    .padding(4.0)
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        for r in 0..ROWS {
-                            Panel::hstack()
-                                .id_salt(("row", r))
-                                .gap(2.0)
-                                .size((Sizing::FILL, Sizing::fixed(20.0)))
-                                .show(ui, |ui| {
-                                    for c in 0..COLS {
-                                        let i = r * COLS + c;
-                                        let phase = (i as u32 + frame_n) as f32 * 0.013;
-                                        Block::new()
-                                            .id_salt(("cell", r, c))
-                                            .size((Sizing::fixed(30.0), Sizing::FILL))
-                                            .background(Background {
-                                                fill: RgbaF32::srgb(
-                                                    0.4 + (phase.sin() * 0.4),
-                                                    0.4 + (phase.cos() * 0.4),
-                                                    0.6,
-                                                )
-                                                .into(),
-                                                ..Default::default()
-                                            })
-                                            .show(ui);
-                                    }
-                                });
-                        }
-                    });
+                build_grid(ui, None, |i| {
+                    let phase = (i as u32 + frame_n) as f32 * 0.013;
+                    RgbaF32::srgb(0.4 + phase.sin() * 0.4, 0.4 + phase.cos() * 0.4, 0.6)
+                });
             }
         };
-        run_and_ack(&mut h, varying(0));
-        run_and_ack(&mut h, varying(1));
+        let _ = h.frame(varying(0));
+        let _ = h.frame(varying(1));
         assert_eq!(damage_kind(&h), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, varying(frame_n));
+                let _ = h.frame(varying(frame_n));
                 black_box(&h);
             });
         });
@@ -370,7 +313,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         group.bench_function("shape_churn_partial", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, build(frame_n));
+                let _ = h.frame(build(frame_n));
                 black_box(&h);
             });
         });
@@ -416,7 +359,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         group.bench_function("shape_churn_full", |b| {
             b.iter(|| {
                 frame_n = frame_n.wrapping_add(1);
-                run_and_ack(&mut h, build(frame_n));
+                let _ = h.frame(build(frame_n));
                 black_box(&h);
             });
         });
@@ -470,8 +413,8 @@ fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
     group.finish();
 }
 
-/// Sibling counts for the paint-order arms, spaced to show whether a quadratic pair walk dominates (~16x from 128 to 512).
-const ORDER_FANOUT: [usize; 4] = [64, 128, 256, 512];
+/// Sibling counts for the paint-order arms: a quadratic pair walk reads ~16x from one to the other.
+const ORDER_FANOUT: [usize; 2] = [128, 512];
 
 /// `count` overlapping sibling frames under one parent, painted in `order`.
 ///
@@ -516,7 +459,7 @@ fn bench_paint_order_inversion(c: &mut Criterion, run: Run<'_>) {
             b.iter(|| {
                 flipped = !flipped;
                 let order = if flipped { &raised } else { &flat };
-                run_and_ack(&mut h, |ui| build_ordered_siblings(ui, order));
+                let _ = h.frame(|ui| build_ordered_siblings(ui, order));
                 black_box(h.collapsed_damage());
             });
         });

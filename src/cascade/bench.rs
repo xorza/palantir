@@ -1,3 +1,7 @@
+//! The cascade's two costs: a run over the frame fixture (incremental after a
+//! paint-only or transform change, and a forced full rebuild), and the hit
+//! test input runs per event against a disjoint grid of interactive rows.
+
 use crate::bench::Run;
 use crate::cascade::Cascade;
 use crate::cascade::cascade_key::CascadeKey;
@@ -13,7 +17,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use criterion::{BenchmarkId, Criterion};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
-use std::time::Duration;
 
 const ENTRY_COUNT: usize = 8192;
 /// Tile pitch for the hit fixture's disjoint rects, and how many fit a row. `TILE` leaves a 2 px gutter.
@@ -38,15 +41,9 @@ struct Density {
     percent: usize,
 }
 
-const DENSITIES: [Density; 4] = [
-    Density {
-        label: "0_percent",
-        percent: 0,
-    },
-    Density {
-        label: "1_percent",
-        percent: 1,
-    },
+/// Interactive shares of the [`ENTRY_COUNT`] rows: a busy UI, and every row.
+/// None interactive scans nothing, so it is not an arm.
+const DENSITIES: [Density; 2] = [
     Density {
         label: "10_percent",
         percent: 10,
@@ -185,9 +182,6 @@ fn record_fixture(mut state: FrameFixture) -> UiHarness {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "run");
-    group.sample_size(50);
-    group.warm_up_time(Duration::from_secs(2));
-    group.measurement_time(Duration::from_secs(4));
 
     for (label, mutation) in [
         ("paint_only", RunMutation::PaintOnly),
@@ -211,9 +205,6 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.finish();
 
     let mut group = run.subgroup(c, "hit_test");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
 
     for density in DENSITIES {
         let cascade = fixture(density);

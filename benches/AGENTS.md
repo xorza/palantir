@@ -17,44 +17,49 @@ cargo bench -p palantir --features bench --bench criterion -- -d frame --arms cp
   its setup. A positional is criterion's regex over benchmark ids, which
   filters only after the setup. `--arms cpu|gpu|both` picks a half of the
   pipeline. `--help` lists the rest.
-- `frame` is opt-in. Its full matrix takes ~110 s (`--arms cpu`, ~50 s) and
-  appends a row to `benches/results/<machine>.txt`, so it needs `--note`.
+- `frame` is opt-in. Its ten arms take over 15 s each (a 3 s warm-up and a
+  12 s window), half of them under `--arms cpu`, and it appends a row to
+  `benches/results/<machine>.txt`, so it needs `--note`.
 - The binary reads no environment variable. Every knob is a flag.
-- Cut `--sample-size` and `--measurement-time` while you iterate. Report
-  only numbers from a full run.
+- A driver's window lives in its `config` row in `src/bench/driver.rs`: 50
+  samples over 5 s after a 1 s warm-up, unless the row says otherwise. A
+  group never sets one, since a group's setting outranks the flags; clippy
+  enforces it. Cut `--sample-size` and `--measurement-time` while you
+  iterate, and report only numbers from a full run.
 
-**The GPU arms present the way the desktop does.** `bench_host` builds its
-`OffscreenHost` with `retained_target(true)`, which is the winit host's
-`DirectAdaptive`. A desktop can never rely on what a swapchain image held,
-and `DirectAdaptive` never reads it: a skip frame presents nothing, a full
-frame renders straight into the target, and a partial frame paints into
-palantir's own backbuffer and copies all of it out. The default
-`BackbufferCopy` is the screenshot path. It also copies out on skip and
-full frames, which costs 1.3 ms on a 1440p `cached_gpu` frame, so rows in
-`benches/results` from before 2026-10-06 do not compare with later ones.
+**The frame bench measures what the desktop pays.**
 
-**The frame bench writes no timestamp inside a pass.** Its device is
-`Timing::PassOnly`, so the `write_stats` dump times the whole pass and
-gives no per-kind split, and the timed arms collect no GPU stats. Before
-2026-10-06 the timed arms wrote a timestamp at each batch-kind change
-inside the main pass. On a tiler such as the Pi 5's V3D, each one splits
-the pass, and a 1440p `scrolling_gpu` frame took 149 ms against 45 ms
-without them. Earlier `*_gpu` rows do not compare with later ones. The
-`image_pipeline` and `curve_pipeline` per-kind times have the same
-problem on a tiler.
+- **The GPU arms present as the desktop does.** `bench_host` builds its
+  `OffscreenHost` with `retained_target(true)`, the winit host's
+  `DirectAdaptive`. A desktop can never rely on what a swapchain image held,
+  and `DirectAdaptive` never reads it: a skip frame presents nothing, a full
+  frame renders straight into the target, and a partial frame paints into
+  palantir's own backbuffer and copies all of it out. The default
+  `BackbufferCopy` is the screenshot path, which also copies out on skip and
+  full frames: 1.3 ms on a 1440p `cached_gpu` frame.
+- **No timestamp inside a pass.** Its device is `Timing::PassOnly`, so the
+  `write_stats` dump times the whole pass with no per-kind split, and the
+  timed arms collect no GPU stats. On a tiler such as the Pi 5's V3D each
+  in-pass timestamp splits the pass: a 1440p `scrolling_gpu` frame took
+  149 ms with them against 45 ms without. The `image_pipeline` and
+  `curve_pipeline` per-kind times still write them, with the same cost on a
+  tiler.
+- **`cached_cpu` paints nothing, as `cached_gpu` does.** A still frame plans
+  no paint, and the CPU harness encodes and composes only what a frame
+  planned.
 
-**`cached_cpu` paints nothing, as `cached_gpu` does.** A still frame plans
-no paint, and the CPU harness encodes and composes only what a frame
-planned. Before 2026-10-06 it repainted the whole scene on such a frame,
-about 13 µs on the 6800U, so earlier `cached_cpu` rows do not compare with
-later ones.
+Rows in `benches/results` from before 2026-10-06 do not compare with later
+ones: the GPU arms then took the copy path, the timed arms wrote in-pass
+timestamps, and `cached_cpu` repainted the whole scene (about 13 µs on the
+6800U).
 
 ## Measuring
 
 - **Pin the run, never the build.** `taskset` in front of `cargo` pins the
   compiler too.
 - **One core, sibling idle.** Pin to one core and keep its SMT sibling idle.
-  On this machine CPU 2 shares a core with CPU 3.
+  `lscpu -e` lists each CPU's core; on the rig these notes come from, CPU 2
+  shares a core with CPU 3.
 - **`setarch -R`.** It fixes the address layout, so stack and heap alignment
   do not change between processes.
 - **Governor and EPP at `performance`** (`sudo /usr/local/sbin/cpu-bench-pin.sh`

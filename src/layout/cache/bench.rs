@@ -1,7 +1,7 @@
-//! Cache-effectiveness A/B benchmark for the **measure cache**, over a light
-//! list (`measure/*`, mono text), a stencil-clipped shaped-text variant
-//! (`heavy/*`), deep (`deep/*`) and broad (`broad/*`) trees, a virtualized list,
-//! and a Hug-column grid (`grid/intrinsic`). Arms:
+//! Cache-effectiveness A/B benchmark for the **measure cache**, over a list of
+//! stencil-clipped groups with shaped text (`list/*`), deep (`deep/*`) and
+//! broad (`broad/*`) mono trees, a virtualized list (`virtual_scroll/*`), and a
+//! Hug-column grid of shaped text (`grid/*`). Arms:
 //!
 //! - `cached`: warm-up primes the cache; each iteration forgets the last run
 //!   first, or the engine would keep its output and restore nothing.
@@ -13,8 +13,6 @@
 //!   overflowing surface, so siblings hit across offers.
 //!
 //! `cached / forced_miss` is what the cache buys on a comparable workload.
-//!
-//! Run with `cargo bench --features bench --bench criterion -- caches`.
 
 #![expect(
     clippy::print_stderr,
@@ -22,6 +20,7 @@
 )]
 
 use crate::bench::Run;
+use crate::bench::summary::Summary;
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::layout::counters::PhaseTimings;
@@ -30,7 +29,6 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -43,12 +41,10 @@ use crate::widgets::theme::text_style::TextStyle;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::hint::black_box;
+use std::time::Duration;
 
-const GROUPS: usize = 100;
-const ROWS_PER_GROUP: usize = 10;
-
-const HEAVY_GROUPS: usize = 50;
-const HEAVY_ROWS_PER_GROUP: usize = 8;
+const LIST_GROUPS: usize = 50;
+const LIST_ROWS_PER_GROUP: usize = 8;
 
 const GRID_ROWS: usize = 128;
 
@@ -56,23 +52,6 @@ const GRID_ROWS: usize = 128;
 /// frame rather than averaged into criterion's wall-clock estimate.
 const PHASE_WARMUP_FRAMES: usize = 8;
 const PHASE_EVIDENCE_FRAMES: usize = 64;
-
-/// Sorted-sample summary of one phase. Min is the signal: the upper half
-/// measures machine interference.
-#[derive(Clone, Copy, Debug)]
-struct PhaseSummary {
-    min_us: f64,
-    median_us: f64,
-}
-
-fn summarize(samples: &mut [u64]) -> PhaseSummary {
-    assert!(!samples.is_empty());
-    samples.sort_unstable();
-    PhaseSummary {
-        min_us: samples[0] as f64 / 1_000.0,
-        median_us: samples[samples.len() / 2] as f64 / 1_000.0,
-    }
-}
 
 /// Report how one arm splits across measure and arrange.
 ///
@@ -91,108 +70,40 @@ fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
     let mut capture = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
     for _ in 0..PHASE_EVIDENCE_FRAMES {
         let t = step();
-        measure.push(t.measure_ns);
-        arrange.push(t.arrange_ns);
-        capture.push(t.capture_ns);
+        measure.push(Duration::from_nanos(t.measure_ns));
+        arrange.push(Duration::from_nanos(t.arrange_ns));
+        capture.push(Duration::from_nanos(t.capture_ns));
     }
-    let cap = summarize(&mut capture);
-    let m = summarize(&mut measure);
-    let a = summarize(&mut arrange);
-    let ratio = if m.min_us > 0.0 {
-        format!("{:.1}x", a.min_us / m.min_us)
-    } else {
+    let [m, a, cap] = [&mut measure, &mut arrange, &mut capture]
+        .map(|samples| Summary::of(samples).expect("PHASE_EVIDENCE_FRAMES is not zero"));
+    let ratio = if m.min.is_zero() {
         "n/a".to_owned()
+    } else {
+        format!("{:.1}x", a.min.as_secs_f64() / m.min.as_secs_f64())
     };
+    let total = (m.min + a.min + cap.min).as_secs_f64().max(1e-12);
     eprintln!(
-        "[caches] {label} measure_min_us={:.2} measure_median_us={:.2} \
-         arrange_min_us={:.2} arrange_median_us={:.2} arrange_over_measure={ratio} \
-         capture_min_us={:.2} capture_median_us={:.2} capture_share={:.0}%",
-        m.min_us,
-        m.median_us,
-        a.min_us,
-        a.median_us,
-        cap.min_us,
-        cap.median_us,
-        100.0 * cap.min_us / (m.min_us + a.min_us + cap.min_us).max(1e-9),
+        "[measure_cache] {label} measure {m} arrange {a} arrange_over_measure={ratio} \
+         capture {cap} capture_share={:.0}%",
+        100.0 * cap.min.as_secs_f64() / total,
     );
 }
 
-fn build(ui: &mut Ui) {
-    Panel::vstack()
-        .id_salt("nested-root")
-        .gap(4.0)
-        .padding(8.0)
-        .size((Sizing::FILL, Sizing::HUG))
-        .show(ui, |ui| {
-            for g in 0..GROUPS {
-                Panel::vstack()
-                    .id_salt(("group", g))
-                    .gap(2.0)
-                    .padding(4.0)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Text::new("Group header")
-                            .id_salt(("g-hdr", g))
-                            .style(&TextStyle::default().with_font_size(14.0))
-                            .show(ui);
-                        for r in 0..ROWS_PER_GROUP {
-                            Panel::hstack()
-                                .id_salt(("row", g, r))
-                                .gap(6.0)
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .show(ui, |ui| {
-                                    Block::new()
-                                        .id_salt(("avatar", g, r))
-                                        .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                                        .show(ui);
-                                    Text::new("row name")
-                                        .id_salt(("name", g, r))
-                                        .style(&TextStyle::default().with_font_size(12.0))
-                                        .show(ui);
-                                    Text::new("meta info")
-                                        .id_salt(("meta", g, r))
-                                        .style(&TextStyle::default().with_font_size(11.0))
-                                        .show(ui);
-                                });
-                        }
-                        Block::new()
-                            .id_salt(("g-ftr", g))
-                            .size((Sizing::FILL, Sizing::fixed(2.0)))
-                            .show(ui);
-                    });
-            }
-        });
-}
-
-/// Heavier baseline: rounded-stencil clips on every group and row, real
-/// cosmic-text shaping, an extra zstack per row, and group strokes, so
+/// A list as an app draws one: rounded-stencil clips on every group and row,
+/// real cosmic-text shaping, an extra zstack per row, and group strokes, so
 /// measure is shaping-bound rather than mono-fallback.
-fn build_heavy(ui: &mut Ui) {
-    let group_bg = Background {
-        fill: RgbaF32::hex(0x1a1a1a).into(),
-        border: Stroke::new(RgbaF32::hex(0x4d5663), 1.5),
-        corners: Corners::all(12.0),
-        shadow: Shadow::NONE,
-    };
-    let row_bg = Background {
-        fill: RgbaF32::hex(0x252525).into(),
-        border: Stroke::NONE,
-        corners: Corners::all(6.0),
-        shadow: Shadow::NONE,
-    };
-    let avatar_bg = Background {
-        fill: RgbaF32::hex(0x3a4a5c).into(),
-        border: Stroke::NONE,
-        corners: Corners::all(10.0),
-        shadow: Shadow::NONE,
-    };
+fn build_list(ui: &mut Ui) {
+    let group_bg = Background::rounded(RgbaF32::hex(0x1a1a1a), Corners::all(12.0))
+        .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5));
+    let row_bg = Background::rounded(RgbaF32::hex(0x252525), Corners::all(6.0));
+    let avatar_bg = Background::rounded(RgbaF32::hex(0x3a4a5c), Corners::all(10.0));
     Panel::vstack()
         .id_salt("heavy-root")
         .gap(6.0)
         .padding(12.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
-            for g in 0..HEAVY_GROUPS {
+            for g in 0..LIST_GROUPS {
                 Panel::vstack()
                     .id_salt(("h-group", g))
                     .gap(4.0)
@@ -205,7 +116,7 @@ fn build_heavy(ui: &mut Ui) {
                             .id_salt(("h-g-hdr", g))
                             .style(&TextStyle::default().with_font_size(15.0))
                             .show(ui);
-                        for r in 0..HEAVY_ROWS_PER_GROUP {
+                        for r in 0..LIST_ROWS_PER_GROUP {
                             Panel::hstack()
                                 .id_salt(("h-row", g, r))
                                 .gap(8.0)
@@ -238,6 +149,18 @@ fn build_heavy(ui: &mut Ui) {
                     });
             }
         });
+}
+
+const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
+
+/// The surface every arm renders at, with mono-fallback text.
+fn mono() -> UiHarness {
+    UiHarness::new(SURFACE).scale(2.0)
+}
+
+/// [`mono`] with real cosmic shaping.
+fn shaped() -> UiHarness {
+    UiHarness::with_text(SURFACE).scale(2.0)
 }
 
 fn build_grid_intrinsics(ui: &mut Ui) {
@@ -311,7 +234,7 @@ fn bench_cache_workload(
 ) {
     bench_cache_pair(group, name, make_ui, build);
 
-    let resize_widths = [1280, 1248, 1216, 1184].map(|width| glam::UVec2::new(width, 800));
+    let resize_widths = [1280, 1248, 1216, 1184].map(|width| glam::UVec2::new(width, SURFACE.y));
     {
         let mut h = make_ui();
         let mut frame = 0usize;
@@ -388,12 +311,10 @@ fn build_scroll_window(ui: &mut Ui, first: usize) {
 /// every frame (one hash insert per descriptor). The arms differ only in
 /// whether the window moves; rebuild counts are reported for both.
 fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
-    let make = || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0);
-
     for (name, stride) in [("static", 0usize), ("scrolling", 1)] {
         const FRAMES: usize = 64;
 
-        let mut h = make();
+        let mut h = mono();
         let mut first = 0usize;
         for _ in 0..8 {
             let _ = h.frame(|ui| build_scroll_window(ui, first));
@@ -405,7 +326,7 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
             first += stride;
         }
         eprintln!(
-            "[caches] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
+            "[measure_cache] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
              ({SCROLL_ROWS} rows)",
             h.engines.layout.cache.snapshot_rebuilds.count() - before,
         );
@@ -423,50 +344,23 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.group(c);
 
-    bench_cache_pair(
-        &mut group,
-        "measure",
-        || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
-        build,
-    );
-    bench_cache_pair(
-        &mut group,
-        "heavy/measure",
-        || UiHarness::with_text(glam::UVec2::new(1280, 800)).scale(2.0),
-        build_heavy,
-    );
-
-    bench_cache_workload(
-        &mut group,
-        "deep/measure",
-        || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
-        build_deep,
-    );
-    bench_cache_workload(
-        &mut group,
-        "broad/measure",
-        || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
-        build_broad,
-    );
+    bench_cache_pair(&mut group, "list", shaped, build_list);
+    bench_cache_workload(&mut group, "deep", mono, build_deep);
+    bench_cache_workload(&mut group, "broad", mono, build_broad);
     bench_broad_localized(
         &mut group,
-        "broad/measure/localized",
-        || UiHarness::new(glam::UVec2::new(1280, 800)),
+        "broad/localized",
+        || UiHarness::new(SURFACE),
         BroadChange::FillWeight,
     );
     bench_broad_localized(
         &mut group,
-        "broad/measure/localized_height",
-        || UiHarness::new(glam::UVec2::new(1280, 800)).scale(2.0),
+        "broad/localized_height",
+        mono,
         BroadChange::LeafHeight,
     );
     bench_virtual_scroll(&mut group);
-    bench_cache_workload(
-        &mut group,
-        "grid/intrinsic",
-        || UiHarness::with_text(glam::UVec2::new(1280, 800)).scale(2.0),
-        build_grid_intrinsics,
-    );
+    bench_cache_workload(&mut group, "grid", shaped, build_grid_intrinsics);
 
     group.finish();
 }

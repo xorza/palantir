@@ -18,6 +18,7 @@
 )]
 
 use crate::bench::Run;
+use crate::bench::summary::Summary;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::gpu::frame::schedule::internals::Walk;
 use crate::host::offscreen::{OffscreenHost, internals as offscreen_support};
@@ -185,8 +186,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(gpu: &BenchGpu, workload: Workload) -> Self {
-        let mut host = gpu.offscreen_builder().build();
-        host.ui().theme_mut().panel_background = None;
+        let mut host = gpu.plain_host(false);
         let handles = (0..workload.textures())
             .map(|seed| {
                 host.ui()
@@ -245,31 +245,11 @@ impl Fixture {
         }
     }
 
-    fn record_ms(&self) -> f32 {
-        self.record_time().as_secs_f32() * 1e3
-    }
-
     fn record_time(&self) -> Duration {
         self.host
             .gpu_pass_stats()
             .last_main_pass_cpu()
             .expect("run_main_pass publishes its CPU time on every submitted frame")
-    }
-}
-
-/// Sorted-sample summary. The minimum is the keep-or-revert signal; the upper half is interference.
-#[derive(Clone, Copy, Debug)]
-struct Summary {
-    min: f32,
-    median: f32,
-}
-
-fn summarize(values: &mut [f32]) -> Summary {
-    assert!(!values.is_empty());
-    values.sort_unstable_by(f32::total_cmp);
-    Summary {
-        min: values[0],
-        median: values[values.len() / 2],
     }
 }
 
@@ -281,15 +261,13 @@ fn report_evidence(fixture: &mut Fixture) -> Counts {
     let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
     for _ in 0..EVIDENCE_FRAMES {
         fixture.frame();
-        samples.push(fixture.record_ms());
+        samples.push(fixture.record_time());
     }
-    let summary = summarize(&mut samples);
+    let summary = Summary::of(&mut samples).expect("EVIDENCE_FRAMES is not zero");
     eprintln!(
-        "[record_pass] {} items={ITEMS} record_min_ms={:.4} record_median_ms={:.4} \
-         steps={} groups={} scissors={} quads={} images={} image_batches={} text_batches={}",
+        "[record_pass] {} items={ITEMS} record {summary} steps={} groups={} scissors={} \
+         quads={} images={} image_batches={} text_batches={}",
         fixture.workload.label(),
-        summary.min,
-        summary.median,
         counts.steps,
         counts.groups,
         counts.scissors,
@@ -301,18 +279,21 @@ fn report_evidence(fixture: &mut Fixture) -> Counts {
     counts
 }
 
+/// `iter_custom` reports only the recording window, but each sample costs a
+/// whole frame to harvest, so the default window would spend minutes per arm.
+/// This one buys thousands of iterations per sample in seconds.
+pub(crate) fn config() -> Criterion {
+    Criterion::default()
+        .sample_size(20)
+        .warm_up_time(Duration::from_millis(5))
+        .measurement_time(Duration::from_millis(50))
+}
+
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let gpu = gpu();
-    eprintln!(
-        "[record_pass] adapter={} backend={:?}",
-        gpu.info.name, gpu.info.backend,
-    );
+    eprintln!("[record_pass] {}", gpu.summary());
 
     let mut group = run.group(c);
-    // `iter_custom` reports only the recording window, but each sample costs a whole frame to harvest, so default budgets would spend minutes per arm. These buy thousands of iterations per sample in seconds.
-    group.sample_size(20);
-    group.warm_up_time(Duration::from_millis(5));
-    group.measurement_time(Duration::from_millis(50));
     for workload in Workload::ALL {
         let mut fixture = Fixture::new(gpu, workload);
         let counts = report_evidence(&mut fixture);

@@ -15,6 +15,7 @@
 )]
 
 use crate::bench::Run;
+use crate::bench::summary::Summary;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
@@ -29,7 +30,6 @@ use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
-use std::time::Duration;
 
 const PHYSICAL: UVec2 = UVec2::new(1024, 1024);
 const TEXEL: u32 = 256;
@@ -52,6 +52,14 @@ enum Workload {
 }
 
 impl Workload {
+    const ALL: [Self; 5] = [
+        Self::Bilinear,
+        Self::Nearest,
+        Self::MinifiedSingle,
+        Self::MinifiedMean,
+        Self::MinifiedPeak,
+    ];
+
     const fn label(self) -> &'static str {
         match self {
             Self::Bilinear => "bilinear",
@@ -88,12 +96,6 @@ impl Workload {
 
 fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Instrumented)
-}
-
-fn host(gpu: &BenchGpu) -> OffscreenHost {
-    let mut host = gpu.offscreen_builder().collect_gpu_stats(true).build();
-    host.ui().theme_mut().panel_background = None;
-    host
 }
 
 fn texels(edge: u32) -> Vec<u8> {
@@ -167,7 +169,7 @@ struct Fixture {
 impl Fixture {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
-            host: host(gpu),
+            host: gpu.plain_host(true),
             target: gpu.target("palantir.image_pipeline_bench.target", PHYSICAL),
             handle: None,
             phase: false,
@@ -189,35 +191,16 @@ impl Fixture {
     }
 }
 
-/// Sorted-sample summary. The minimum is the keep-or-revert signal: the upper half measures
-/// interference on a shared-power integrated GPU.
-#[derive(Clone, Copy, Debug)]
-struct Summary {
-    min: f32,
-    median: f32,
-}
-
-fn summarize(values: &mut [f32]) -> Option<Summary> {
-    if values.is_empty() {
-        return None;
-    }
-    values.sort_unstable_by(f32::total_cmp);
-    Some(Summary {
-        min: values[0],
-        median: values[values.len() / 2],
-    })
-}
-
 fn report_evidence(gpu: &BenchGpu, workload: Workload) {
     let mut fixture = Fixture::new(gpu);
-    let mut image_ms = Vec::with_capacity(EVIDENCE_FRAMES);
-    for frame in 0..EVIDENCE_FRAMES + WARMUP_FRAMES {
+    let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
+    for frame in 0..WARMUP_FRAMES + EVIDENCE_FRAMES {
         fixture.render(gpu, workload);
         gpu.poll();
         if frame >= WARMUP_FRAMES
-            && let Some(ms) = fixture.host.gpu_pass_stats().last_kind(BatchKind::Image)
+            && let Some(time) = fixture.host.gpu_pass_stats().last_kind(BatchKind::Image)
         {
-            image_ms.push(ms.as_secs_f32() * 1e3);
+            samples.push(time);
         }
     }
     let stats = fixture.host.gpu_pass_stats().last_pipeline_stats();
@@ -225,45 +208,21 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
         || "n/a".to_owned(),
         |pipeline| pipeline.fragment_shader_invocations.to_string(),
     );
-    let summary = summarize(&mut image_ms);
     eprintln!(
-        "[image_pipeline] {} layers={LAYERS} fragments={fragments} \
-         image_min_ms={} image_median_ms={} pipeline={stats:?}",
+        "[image_pipeline] {} layers={LAYERS} fragments={fragments} image {} pipeline={stats:?}",
         workload.label(),
-        summary.map_or_else(|| "n/a".to_owned(), |s| format!("{:.4}", s.min)),
-        summary.map_or_else(|| "n/a".to_owned(), |s| format!("{:.4}", s.median)),
+        Summary::of(&mut samples).map_or_else(|| "n/a".to_owned(), |s| s.to_string()),
     );
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let gpu = gpu();
-    eprintln!(
-        "[image_pipeline] adapter={} backend={:?} timestamp={} inside_pass={} pipeline_stats={}",
-        gpu.info.name,
-        gpu.info.backend,
-        gpu.timing_features
-            .contains(wgpu::Features::TIMESTAMP_QUERY),
-        gpu.timing_features
-            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-        gpu.timing_features
-            .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-    );
+    eprintln!("[image_pipeline] {}", gpu.summary());
 
     let mut group = run.subgroup(c, "frame_wall");
-    group.measurement_time(Duration::from_secs(5));
-    group.sample_size(20);
-    for workload in [
-        Workload::Bilinear,
-        Workload::Nearest,
-        Workload::MinifiedSingle,
-        Workload::MinifiedMean,
-        Workload::MinifiedPeak,
-    ] {
+    for workload in Workload::ALL {
         report_evidence(gpu, workload);
         let mut fixture = Fixture::new(gpu);
-        for _ in 0..4 {
-            fixture.render(gpu, workload);
-        }
         group.throughput(Throughput::Elements(FRAGMENTS));
         group.bench_function(workload.label(), |bencher| {
             bencher.iter(|| {

@@ -3,6 +3,10 @@
     reason = "the bench fixture's sizes are positive constants"
 )]
 
+//! The composer's replay of recorded paint into draw groups and batches, at a
+//! typical and a heavy draw count: curves alone, then the higher-kind tiers
+//! (meshes, images, text) where overlap decides whether a batch closes.
+
 use crate::bench::Run;
 use crate::common::span::Span;
 use crate::display::Display;
@@ -31,6 +35,10 @@ use std::hint::black_box;
 use std::num::NonZeroU32;
 use std::time::Duration;
 use strum::{IntoStaticStr, VariantArray};
+
+/// A typical frame's draw count and a heavy one; per-draw cost is flat, so two
+/// points show the slope.
+const DRAW_COUNTS: [usize; 2] = [256, 4096];
 
 #[derive(Debug)]
 struct ComposeBench {
@@ -262,10 +270,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "curves");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
-    for curve_count in [64, 256, 1024, 4096] {
+    for curve_count in DRAW_COUNTS {
         let mut fixture = ComposeBench::curves(curve_count);
         assert_eq!(fixture.compose(), curve_count);
         group.throughput(Throughput::Elements(curve_count as u64));
@@ -278,12 +283,9 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     group.finish();
 
     let mut group = run.subgroup(c, "higher_kind_overlap");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
     for &case in HigherKindCase::VARIANTS {
         let label: &'static str = case.into();
-        for draw_count in [64, 256, 1024, 4096] {
+        for draw_count in DRAW_COUNTS {
             let mut fixture = case.fixture(draw_count);
             assert_eq!(fixture.compose(), draw_count);
             assert_eq!(fixture.out.groups.len(), case.expected_groups(draw_count));

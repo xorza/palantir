@@ -1,6 +1,5 @@
 //! Overlap-index benchmarks for the composer's rect grid: is the tiled index the right structure and are its two constants at their optima (inside a whole frame it moves only 1–3%).
 //!
-//!
 //! Two workloads at opposite ends:
 //!
 //! - `realistic`: ~70–200 label-sized rects, two quad probes each, a third surviving the union pre-reject; decides `TILE_SIZE` and `TILE_CAP`.
@@ -17,7 +16,6 @@ use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP, TILE_SI
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
-use std::time::Duration;
 
 /// The pathology the overflow chains exist for and no real frame reaches: a row of tiles each over [`TILE_CAP`], plus wide rects spanning all of them, reachable only through the chains.
 #[derive(Debug)]
@@ -137,10 +135,7 @@ impl RealisticFixture {
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     // Label-sized text rects and quad-sized probes in the proportions the instrumented arms showed.
     let mut group = run.subgroup(c, "realistic");
-    group.sample_size(50);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
-    for labels in [64u32, 200, 600] {
+    for labels in [64u32, 200] {
         let mut fixture = RealisticFixture::new(labels);
         let hits = fixture.round();
         assert!(hits > 0, "fixture must produce hits to be meaningful");
@@ -153,9 +148,6 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 
     // Overflow length is the secondary metric; per-round wall time decides.
     let mut group = run.subgroup(c, "saturated");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
     for (tiles, wide) in [(8u32, 16u32), (16, 32)] {
         let mut fixture = SaturatedFixture::new(tiles, wide);
         fixture.round();
@@ -164,11 +156,9 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             fixture.grid.overflow.len(),
         );
         group.throughput(Throughput::Elements(u64::from(tiles * wide)));
-        group.bench_with_input(
-            BenchmarkId::new(format!("{tiles}x{wide}"), tiles),
-            &tiles,
-            |b, _| b.iter(|| black_box(fixture.round())),
-        );
+        group.bench_function(format!("{tiles}x{wide}"), |b| {
+            b.iter(|| black_box(fixture.round()));
+        });
     }
     group.finish();
 }
