@@ -125,6 +125,7 @@ debug = "full"
 split-debuginfo = "off"
 
 [profile.bench]
+inherits = "release"
 debug = "line-tables-only"
 strip = "none"
 
