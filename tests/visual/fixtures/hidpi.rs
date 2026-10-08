@@ -2,8 +2,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Shadow, Sizing,
-    Stroke, Text, TextStyle, Track,
+    Background, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke,
+    Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -34,12 +34,10 @@ fn dashboard_matches_golden() {
                         .max_size((f32::INFINITY, 40.0))
                         .padding((10.0, 14.0, 10.0, 14.0))
                         .gap(8.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.18, 0.22, 0.32).into(),
-                            border: Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0),
-                            corners: Corners::all(6.0),
-                            shadow: Shadow::NONE,
-                        })
+                        .background(
+                            Background::rounded(RgbaF32::srgb(0.18, 0.22, 0.32), Corners::all(6.0))
+                                .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
+                        )
                         .show(ui, |ui| {
                             Text::new("Palantir")
                                 .id_salt("brand")
@@ -62,26 +60,24 @@ fn dashboard_matches_golden() {
                         .grid_cell((1, 0))
                         .padding(8.0)
                         .gap(4.0)
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.14, 0.17, 0.24).into(),
-                            corners: Corners::all(6.0),
-                            ..Default::default()
-                        })
+                        .background(Background::rounded(
+                            RgbaF32::srgb(0.14, 0.17, 0.24),
+                            Corners::all(6.0),
+                        ))
                         .show(ui, |ui| {
                             for i in 0..5 {
                                 Block::new()
                                     .id_salt(("nav-bg", i))
                                     .size((Sizing::FILL, Sizing::fixed(28.0)))
                                     .padding((6.0, 8.0, 6.0, 8.0))
-                                    .background(Background {
-                                        fill: if i == 1 {
-                                            RgbaF32::srgb(0.22, 0.30, 0.46).into()
+                                    .background(Background::rounded(
+                                        if i == 1 {
+                                            RgbaF32::srgb(0.22, 0.30, 0.46)
                                         } else {
-                                            RgbaF32::TRANSPARENT.into()
+                                            RgbaF32::TRANSPARENT
                                         },
-                                        corners: Corners::all(4.0),
-                                        ..Default::default()
-                                    })
+                                        Corners::all(4.0),
+                                    ))
                                     .show(ui);
                             }
                         });
@@ -108,15 +104,11 @@ fn dashboard_matches_golden() {
                                     .grid_cell((row, col))
                                     .padding(12.0)
                                     .gap(6.0)
-                                    .background(Background {
-                                        fill: (*c).into(),
-                                        border: Stroke::new(
-                                            RgbaF32::srgba(1.0, 1.0, 1.0, 0.18),
-                                            1.0,
+                                    .background(
+                                        Background::rounded(*c, Corners::all(8.0)).with_border(
+                                            Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                         ),
-                                        corners: Corners::all(8.0),
-                                        shadow: Shadow::NONE,
-                                    })
+                                    )
                                     .show(ui, |ui| {
                                         Text::new("Card")
                                             .id_salt(("card-title", i))
@@ -145,11 +137,10 @@ fn dashboard_matches_golden() {
                         .grid_cell(GridCell::at(2, 0).with_span(1, 2))
                         .max_size((f32::INFINITY, 24.0))
                         .padding((4.0, 10.0, 4.0, 10.0))
-                        .background(Background {
-                            fill: RgbaF32::srgb(0.10, 0.12, 0.18).into(),
-                            corners: Corners::all(4.0),
-                            ..Default::default()
-                        })
+                        .background(Background::rounded(
+                            RgbaF32::srgb(0.10, 0.12, 0.18),
+                            Corners::all(4.0),
+                        ))
                         .show(ui, |ui| {
                             Text::new("ready · 4 cards · scale 2.0")
                                 .id_salt("status")

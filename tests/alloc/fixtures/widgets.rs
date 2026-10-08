@@ -5,35 +5,14 @@ use std::time::Duration;
 
 use palantir::{
     Anchor, AnimationSpec, Background, Block, Button, Checkbox, ColorCoords, ColorField,
-    ColorPicker, ColorStrip, Configure, ContextMenu, Easing, Expander, ExpanderTheme, Grid,
-    MenuItem, Modal, Panel, Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut,
-    Sizing, Slider, SlotDefaults, Spinner, Splitter, Switch, Text, TextEdit, Tooltip, Track, Ui,
-    Vec2, WidgetId,
+    ColorPicker, Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel,
+    Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
+    SlotDefaults, Spinner, Switch, Text, TextEdit, Tooltip, Ui, Vec2, WidgetId,
 };
 
 #[test]
 fn empty_frame_alloc_free() {
     Audit::new().run(|_ui| {});
-}
-
-#[test]
-fn button_only_alloc_free() {
-    Audit::new().run(|ui| {
-        Button::new()
-            .auto_id()
-            .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui);
-    });
-}
-
-/// A settled colour field re-paints from its texture without allocating.
-#[test]
-fn color_field_alloc_free() {
-    let mut coords = ColorCoords::default();
-    Audit::new().run(|ui| {
-        ColorField::new(&mut coords).auto_id().show(ui);
-    });
 }
 
 /// A hue drag rewrites the field's texture every frame into the handle's buffer; the scene never settles, so the warmup is fixed.
@@ -46,15 +25,7 @@ fn color_field_hue_drag_alloc_free() {
     });
 }
 
-#[test]
-fn color_strip_alloc_free() {
-    let mut coords = ColorCoords::default();
-    Audit::new().run(|ui| {
-        ColorStrip::for_hue(&mut coords).auto_id().show(ui);
-    });
-}
-
-/// The whole panel, swatch row and hex field included.
+/// The whole panel: field, both strips, swatch row and hex field.
 #[test]
 fn color_picker_alloc_free() {
     let mut color = RgbaF32::hex(0x4cd3ff);
@@ -83,57 +54,20 @@ fn nested_vstack_64_alloc_free() {
     });
 }
 
-#[test]
-fn grid_8x8_alloc_free() {
-    Audit::new().run(|ui| {
-        Grid::new()
-            .auto_id()
-            .cols([Track::FILL; 8])
-            .rows([Track::FILL; 8])
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for r in 0..8u16 {
-                    for c in 0..8u16 {
-                        Block::new()
-                            .id_salt((r, c))
-                            .background(Background {
-                                fill: RgbaF32::WHITE.into(),
-                                ..Default::default()
-                            })
-                            .grid_cell((r, c))
-                            .show(ui);
-                    }
-                }
-            });
-    });
-}
-
-/// A settled section, open and closed; a shut section must not keep asking for frames.
+/// A settled section, open, closed, and closed with its body kept: a shut section must not keep asking for frames, and a kept body records every frame, which would show a per-frame `Vec`.
 #[test]
 fn expander_alloc_free() {
-    for open in [false, true] {
+    for (open, keep_body) in [(false, false), (true, false), (false, true)] {
         Audit::new().run(move |ui| {
             Expander::new("section")
                 .auto_id()
                 .start_open(open)
+                .keep_body(keep_body)
                 .show(ui, |ui| {
                     Text::new("body").auto_id().show(ui);
                 });
         });
     }
-}
-
-/// A body kept across a collapse records every frame, which would show a per-frame `Vec`.
-#[test]
-fn expander_keep_body_alloc_free() {
-    Audit::new().run(|ui| {
-        Expander::new("section")
-            .auto_id()
-            .keep_body(true)
-            .show(ui, |ui| {
-                Text::new("body").auto_id().show(ui);
-            });
-    });
 }
 
 /// Mid-tween, the one path that reads a remembered height and clips the body.
@@ -187,17 +121,6 @@ fn expander_mid_reveal_alloc_free() {
 }
 
 #[test]
-fn splitter_alloc_free() {
-    let mut ratio = 0.5;
-    Audit::new().run(move |ui| {
-        Splitter::row(&mut ratio)
-            .id_salt("splitter")
-            .min_pane(80.0)
-            .show(ui, |_, _| {});
-    });
-}
-
-#[test]
 fn damage_animated_rect_alloc_free() {
     let mut tick: u32 = 0;
     Audit::new().run(move |ui| {
@@ -206,20 +129,10 @@ fn damage_animated_rect_alloc_free() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Block::new()
                 .auto_id()
-                .background(Background {
-                    fill: RgbaF32::WHITE.into(),
-                    ..Default::default()
-                })
+                .background(Background::fill(RgbaF32::WHITE))
                 .size((Sizing::fixed(w), Sizing::fixed(40.0)))
                 .show(ui);
         });
-    });
-}
-
-#[test]
-fn static_text_label_alloc_free() {
-    Audit::new().run(|ui| {
-        Text::new("hello world").auto_id().show(ui);
     });
 }
 
@@ -284,36 +197,22 @@ fn state_map_counter_alloc_free() {
     });
 }
 
-/// Scroll with overflow: pins `PostArrangeRegistry` bucket reuse and in-place `ScrollHook::run`.
+/// Content that overflows pins `PostArrangeRegistry` bucket reuse and the in-place `ScrollHook::run`; content that fits pins the hook's `overflow == new_overflow` early exit.
 #[test]
-fn scroll_overflow_alloc_free() {
-    Audit::new().run(|ui| {
-        Scroll::vertical()
-            .id_salt("scroll")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("tall")
-                    .size((Sizing::fixed(180.0), Sizing::fixed(800.0)))
-                    .show(ui);
-            });
-    });
-}
-
-/// Scroll with content fitting the viewport: pins the hook's `overflow == new_overflow` early exit.
-#[test]
-fn scroll_fits_alloc_free() {
-    Audit::new().run(|ui| {
-        Scroll::vertical()
-            .id_salt("scroll")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Block::new()
-                    .id_salt("short")
-                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                    .show(ui);
-            });
-    });
+fn scroll_alloc_free() {
+    for height in [800.0, 40.0] {
+        Audit::new().run(move |ui| {
+            Scroll::vertical()
+                .id_salt("scroll")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id_salt("content")
+                        .size((Sizing::fixed(180.0), Sizing::fixed(height)))
+                        .show(ui);
+                });
+        });
+    }
 }
 
 /// The value and toggle widgets the frame fixture's tree lacks. The spinner

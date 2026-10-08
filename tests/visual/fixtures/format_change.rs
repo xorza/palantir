@@ -11,17 +11,16 @@
 use glam::UVec2;
 use palantir::widget::Shape;
 use palantir::{
-    Background, Block, Button, Configure, Corners, Image, Panel, RgbaF32, Sizing, Stroke,
-    TargetFormat,
+    Background, Block, Button, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing,
+    Stroke, TargetFormat, Ui,
 };
-use std::cell::RefCell;
 use wgpu::TextureFormat;
 
 use crate::goldens::assert_same;
 use crate::harness::Harness;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labelled button.
-fn scene(ui: &mut palantir::Ui) {
+fn scene(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .padding(16.0)
@@ -30,12 +29,10 @@ fn scene(ui: &mut palantir::Ui) {
             Block::new()
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(Background {
-                    fill: RgbaF32::srgb(0.20, 0.30, 0.55).into(),
-                    border: Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0),
-                    corners: Corners::all(12.0),
-                    ..Default::default()
-                })
+                .background(
+                    Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
+                        .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                )
                 .show(ui);
             Button::new()
                 .id_salt("btn")
@@ -45,61 +42,27 @@ fn scene(ui: &mut palantir::Ui) {
         });
 }
 
-/// Renders at the original sRGB format, then another with the backend
-/// recreated; after BGRA reordering the renders must match.
+/// The same scene through `Rgba8UnormSrgb`, then `Bgra8UnormSrgb` with the
+/// backend's pipelines rebuilt, then `Rgba8UnormSrgb` again from the cached set:
+/// after BGRA reordering every render matches the first.
 #[test]
-fn recreate_backend_on_format_change_renders_identically() {
-    let size = UVec2::new(200, 120);
+fn format_changes_render_identically() {
     let mut h = Harness::new();
-
-    let before = h
-        .size(size)
-        .format(TextureFormat::Rgba8UnormSrgb)
-        .frame(scene)
-        .image;
+    h.size(UVec2::new(200, 120));
+    let before = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
 
     // Guard against a vacuous comparison: the card's centre must differ from the clear colour.
-    let bg = before.get_pixel(2, 2);
-    let center = before.get_pixel(size.x / 2, size.y / 2);
     assert_ne!(
-        bg.0, center.0,
+        before.get_pixel(2, 2).0,
+        before.get_pixel(100, 60).0,
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
     // `Harness::frame` swizzles the BGRA readback to RGBA.
-    let after = h
-        .size(size)
-        .format(TextureFormat::Bgra8UnormSrgb)
-        .frame(scene)
-        .image;
-
-    assert_same("format_change_scene", &after, &before);
-}
-
-/// Flipping formats away and back reuses the cached per-format pipeline sets.
-#[test]
-fn repeated_format_changes_keep_rendering() {
-    let size = UVec2::new(160, 100);
-    let mut h = Harness::new();
-
-    let baseline = h
-        .size(size)
-        .format(TextureFormat::Rgba8UnormSrgb)
-        .frame(scene)
-        .image;
-
-    let _ = h
-        .size(size)
-        .format(TextureFormat::Bgra8UnormSrgb)
-        .frame(scene)
-        .image;
-    let restored = h
-        .size(size)
-        .format(TextureFormat::Rgba8UnormSrgb)
-        .frame(scene)
-        .image;
-
-    assert_same("format_change_round_trip", &restored, &baseline);
+    let swapped = h.format(TextureFormat::Bgra8UnormSrgb).frame(scene).image;
+    assert_same("format_change_scene", &swapped, &before);
+    let restored = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
+    assert_same("format_change_round_trip", &restored, &before);
 }
 
 /// A 64×64 four-quadrant image; distinct channels expose BGRA-vs-RGBA mishandling.
@@ -121,25 +84,13 @@ fn test_image() -> Image {
     Image::from_srgba8(UVec2::new(N, N), px).unwrap()
 }
 
-thread_local! {
-    static TEST_IMAGE: RefCell<Option<palantir::ImageHandle>> =
-        const { RefCell::new(None) };
-}
-
-fn image_scene(ui: &mut palantir::Ui) {
-    let handle = TEST_IMAGE.with_borrow_mut(|slot| {
-        slot.get_or_insert_with(|| {
-            ui.load_image(&test_image())
-                .expect("fixture image fits every supported GPU")
-        })
-        .clone()
-    });
+fn image_scene(ui: &mut Ui, image: &ImageHandle) {
     Panel::zstack()
         .auto_id()
         .padding(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            ui.add_shape(Shape::image(handle));
+            ui.add_shape(Shape::image(image.clone()));
         });
 }
 
@@ -147,13 +98,18 @@ fn image_scene(ui: &mut palantir::Ui) {
 /// texture (`Rgba8UnormSrgb`): no drop or re-upload, identical pixels.
 #[test]
 fn images_survive_format_change_without_reupload() {
-    let size = UVec2::new(128, 128);
     let mut h = Harness::new();
+    let image = h
+        .host
+        .ui()
+        .load_image(&test_image())
+        .expect("fixture image fits every supported GPU");
+    let scene = |ui: &mut Ui| image_scene(ui, &image);
 
     let before = h
-        .size(size)
+        .size(UVec2::new(128, 128))
         .format(TextureFormat::Rgba8UnormSrgb)
-        .frame(image_scene)
+        .frame(scene)
         .image;
     assert_eq!(
         h.host.gpu_image_cache_len(),
@@ -162,11 +118,7 @@ fn images_survive_format_change_without_reupload() {
     );
 
     // The format-independent texture survives: cache count unchanged.
-    let after = h
-        .size(size)
-        .format(TextureFormat::Bgra8UnormSrgb)
-        .frame(image_scene)
-        .image;
+    let after = h.format(TextureFormat::Bgra8UnormSrgb).frame(scene).image;
     assert_eq!(
         h.host.gpu_image_cache_len(),
         1,

@@ -7,8 +7,7 @@ use palantir::{
 };
 
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_matches_golden;
-use crate::harness::Harness;
+use crate::goldens::assert_settled_scene_matches_golden;
 
 /// A strip alone: a selected accent-capped chip, an inked badge, close buttons.
 #[test]
@@ -32,9 +31,7 @@ fn tab_strip_matches_golden() {
             });
     }
 
-    let mut h = Harness::new();
-    let img = h.size(UVec2::new(360, 76)).settled_frame(2, scene).image;
-    assert_matches_golden(GoldenName::TabStrip, &img);
+    assert_settled_scene_matches_golden(GoldenName::TabStrip, UVec2::new(360, 76), 2, scene);
 }
 
 /// A tabbed view: the selected chip's bottom edge dissolves into the page below.
@@ -61,9 +58,7 @@ fn tabbed_view_matches_golden() {
         });
     }
 
-    let mut h = Harness::new();
-    let img = h.size(UVec2::new(360, 140)).settled_frame(2, scene).image;
-    assert_matches_golden(GoldenName::TabbedView, &img);
+    assert_settled_scene_matches_golden(GoldenName::TabbedView, UVec2::new(360, 140), 2, scene);
 }
 
 /// Three panes: divider chrome, a strip per pane, and the dimmed cap on the two unfocused panes.
@@ -75,7 +70,5 @@ fn dock_split_panes_matches_golden() {
         });
     }
 
-    let mut h = Harness::new();
-    let img = h.size(UVec2::new(520, 220)).settled_frame(2, scene).image;
-    assert_matches_golden(GoldenName::DockSplitPanes, &img);
+    assert_settled_scene_matches_golden(GoldenName::DockSplitPanes, UVec2::new(520, 220), 2, scene);
 }

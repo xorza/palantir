@@ -23,7 +23,7 @@ mod text;
 mod user_scale;
 mod widgets;
 
-use palantir::RgbaF32;
+use palantir::{Configure, Panel, RgbaF32, Sizing, Ui};
 
 use crate::harness::FIXTURE_PALETTE;
 use std::fmt;
@@ -47,4 +47,12 @@ pub(crate) fn assert_px(got: [u8; 4], want: [u8; 4], tol: u8, what: impl fmt::Di
         worst <= tol,
         "{what}: got {got:?}, want {want:?} — a channel is {worst} steps off, {tol} allowed",
     );
+}
+
+/// A canvas filling the surface, for content placed in absolute coordinates.
+pub(crate) fn canvas(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+    Panel::canvas()
+        .id_salt("canvas")
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, body);
 }

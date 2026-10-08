@@ -15,8 +15,8 @@ use palantir::Stroke;
 use palantir::internals::harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Configure, FramePaint, Grid, IconId, IconSet, IconTable, Panel, RgbaF32, Sizing, Track,
-    TranslateScale, Ui,
+    Background, Block, Configure, FramePaint, Grid, IconId, IconSet, IconTable, Panel, RgbaF32,
+    Sizing, Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
 
@@ -59,8 +59,7 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
 }
 
 /// 16x16 grid of `Block`s: 256 quads re-encoded every frame, stressing
-/// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse harder than
-/// `grid_8x8` (64 quads).
+/// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse.
 #[test]
 fn many_rects_compose_alloc_free() {
     frontend_audit(|ui| {
@@ -74,10 +73,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Block::new()
                             .id_salt((r, c))
-                            .background(palantir::Background {
-                                fill: RgbaF32::WHITE.into(),
-                                ..Default::default()
-                            })
+                            .background(Background::fill(RgbaF32::WHITE))
                             .grid_cell((r, c))
                             .show(ui);
                     }
