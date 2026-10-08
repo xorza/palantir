@@ -36,6 +36,7 @@
 
 mod cli;
 mod driver;
+pub(crate) mod summary;
 
 use crate::bench::cli::Cli;
 use crate::bench::driver::DRIVERS;

@@ -42,7 +42,6 @@ use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
-use std::time::Duration;
 
 const VIEWPORT: u32 = 1024;
 
@@ -141,9 +140,6 @@ impl Workload {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "walk");
-    group.sample_size(50);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(2));
     for workload in Workload::ALL {
         for groups in [64, 512] {
             let buffer = workload.fixture(groups);

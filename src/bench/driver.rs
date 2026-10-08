@@ -5,6 +5,7 @@ use crate::{
     animation, cascade, damage, gpu, input, layout, primitives, renderer, scene, text, ui, widgets,
 };
 use criterion::Criterion;
+use std::time::Duration;
 
 /// One criterion driver. The runner matches [`name`](Self::name) before
 /// calling [`run`](Self::run), so an unselected driver never executes its setup.
@@ -15,10 +16,13 @@ pub(super) struct Driver {
     pub(super) name: &'static str,
     /// What this driver measures; intersected with the run's request.
     pub(super) arms: Arms,
-    /// Kept out of the default set: the frame matrix takes ~90 s and appends a
-    /// row to `benches/results/<machine>.txt` that needs a written note.
+    /// Kept out of the default set: the frame matrix runs ten arms of over 15 s
+    /// each and appends a row to `benches/results/<machine>.txt` that needs a
+    /// written note.
     pub(super) opt_in: bool,
-    /// The criterion configuration; the frame bench widens its window, as its GPU arms bounce ±15-25%.
+    /// The criterion configuration, which the command line's timing flags then
+    /// override. Timing lives here alone: a group's own setting would outrank
+    /// those flags.
     pub(super) config: fn() -> Criterion,
     /// Runs the benchmarks against what the runner resolved.
     pub(super) run: fn(&mut Criterion, Run<'_>),
@@ -28,7 +32,6 @@ pub(super) struct Driver {
 /// with no row here is invisible.
 pub(super) const DRIVERS: &[Driver] = &[
     driver("animation", animation::bench::bench),
-    driver("caches", layout::cache::bench::bench),
     driver("cascade", cascade::bench::bench),
     driver("color_field", widgets::color_field::bench::bench),
     driver("composer", renderer::frontend::composer::bench::bench),
@@ -37,7 +40,7 @@ pub(super) const DRIVERS: &[Driver] = &[
         gpu::pipeline::curve_pipeline::bench::bench,
     ),
     driver("damage", damage::bench::bench),
-    // The one row with both arms, so `run` takes `Arms`; `opt_in` as the matrix takes ~90 s.
+    // The one row with both arms, so `run` takes `Arms`.
     Driver {
         name: "frame",
         arms: Arms::Both,
@@ -45,7 +48,7 @@ pub(super) const DRIVERS: &[Driver] = &[
         config: ui::bench::config,
         run: ui::bench::bench,
     },
-    driver("gradient", renderer::frontend::bench::bench),
+    driver("frontend", renderer::frontend::bench::bench),
     driver("gradient_atlas", renderer::gradient_atlas::bench::bench),
     driver("half_simd", primitives::packed::half_simd::bench::bench),
     gpu_driver(
@@ -53,8 +56,12 @@ pub(super) const DRIVERS: &[Driver] = &[
         gpu::pipeline::image_pipeline::bench::bench,
     ),
     driver("input", input::bench::bench),
+    driver("measure_cache", layout::cache::bench::bench),
     driver("paint_anims", scene::tree::paint_anims::bench::bench),
-    gpu_driver("record_pass", gpu::bench::bench),
+    Driver {
+        config: gpu::bench::config,
+        ..gpu_driver("record_pass", gpu::bench::bench)
+    },
     driver(
         "rect_grid",
         renderer::frontend::composer::rect_grid::bench::bench,
@@ -70,9 +77,18 @@ const fn driver(name: &'static str, run: fn(&mut Criterion, Run<'_>)) -> Driver 
         name,
         arms: Arms::Cpu,
         opt_in: false,
-        config: Criterion::default,
+        config,
         run,
     }
+}
+
+/// Every driver's window unless its row says otherwise: 50 samples over 5 s
+/// after a 1 s warm-up, against criterion's 100 over 5 s after 3 s.
+fn config() -> Criterion {
+    Criterion::default()
+        .sample_size(50)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(30))
 }
 
 const fn gpu_driver(name: &'static str, run: fn(&mut Criterion, Run<'_>)) -> Driver {

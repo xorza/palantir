@@ -7,7 +7,8 @@ layout with flex-shrink sizing**, **wgpu rendering**.
 
 - **Break things freely, once asked.** Big-bang renames and migrations are
   welcome — no deprecation shims, compat aliases, feature flags, or migration
-  helpers. Who decides is **Public API**, below.
+  helpers. A change to the public API still waits for a go-ahead (**Public
+  API**, below).
 - **Per-frame allocation is a regression.** Steady state is heap-alloc-free
   after warmup; push onto retained scratch with capacity reuse, never rebuild
   a map per frame.
@@ -15,12 +16,27 @@ layout with flex-shrink sizing**, **wgpu rendering**.
   right, surprising behavior gets a pinning test. When in doubt, favor
   call-site readability.
 - **Micro-optimize freely** — struct packing, const fns, scratch reuse, cache
-  layout — even without a workload demanding it.
+  layout — even without a workload demanding it. A *structural* change is the
+  opposite: with no motivating workload it is "too early", so shelve it with a
+  note.
 - **Ship in measurable slices.** One feature with tests and a showcase section
-  beats a half-finished cluster. A structurally complex change with no
-  motivating workload is "too early": shelve it with a note.
+  beats a half-finished cluster.
 - **Docs are starting positions**, this file included. When one contradicts
   user intent or current code, flag the conflict and ask rather than defer.
+
+## Architecture
+
+Each frame rebuilds the tree and runs **record → layout (measure, arrange) →
+cascade → damage → encode + compose → paint**. Colour is linear-RGB f32 on
+the CPU side; sRGB encoding happens on the GPU at swapchain write.
+
+Each step has one top-level module: `scene` holds what record writes,
+`layout` measures and arranges it, `cascade` derives the tables input and
+paint read, `damage` decides what repaints, `renderer` encodes and
+composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
+result type in `mod.rs` and their engine in `engine.rs`.
+`primitives` is the value vocabulary below all of them, `widget_core` the
+framework the bundled `widgets` are written on.
 
 ## Public API
 
@@ -40,13 +56,12 @@ macro. When it needs more, make that public first, with the docs a stranger
 needs. The test: someone could reimplement the widget outside the crate, line
 for line.
 
-The design rules every exported item follows are in **Public API design**,
-below. An item that breaks one is a bug. `python3 scripts/api_surface.py`
-renders every exported declaration into `.notes/API_SURFACE.md`, over every
-public feature; regenerate it with any change to the surface, and audit
-against it.
-
 ## Public API design
+
+Every exported item follows these rules; one that breaks a rule is a bug.
+`python3 scripts/api_surface.py` renders every exported declaration into
+`.notes/API_SURFACE.md`, over every public feature; regenerate it with any
+change to the surface, and audit against it.
 
 ### Kinds of type
 
@@ -62,8 +77,7 @@ against it.
 - **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
   `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Background`, `Brush` and the
   gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
-  Arithmetic may pass through values no widget takes, so the check runs where
-  the value enters (**Input validation**).
+  It is checked where it enters (**Input validation**, rule 3).
 - **Checked value** — a consumer relies on an invariant, so the fields are
   private behind a checked constructor, and getters read them: `Sizing`,
   `Track`, `GridCell`, `TranslateScale`, `Stop`, `DockSplit`, `ZoomConfig`. A
@@ -177,14 +191,13 @@ against it.
   once at the boundary (`Mesh` vertices); a `&'static str` for a name
   (`AnimationSlot`); and a source enum (`FontSource`, `DragNum`, `PathBuf`).
 - **Required input goes in the constructor**: the bound value (`&'a mut T`),
-  the options, required text. Optional input goes through setters. An
-  optional binding takes `&'a mut T` in a setter named for what it binds
-  (`Expander::open`).
-- **Text.** Required text goes in the constructor (`Text::new(text)`,
-  `MenuItem::new(label)`, `Tooltip::on(&snapshot, text)`); optional text goes
-  through `.label(..)`. Every text argument a widget reads during the frame
-  takes `impl Into<TextInput<'a>>`. `TabItem` holds an `InternedStr`, because
-  it is `Copy` data in a slice.
+  the options, required text (`Text::new(text)`, `MenuItem::new(label)`,
+  `Tooltip::on(&snapshot, text)`). Optional input goes through setters:
+  optional text through `.label(..)`, an optional binding as `&'a mut T` in a
+  setter named for what it binds (`Expander::open`).
+- **Text.** Every text argument a widget reads during the frame takes
+  `impl Into<TextInput<'a>>`. `TabItem` holds an `InternedStr`, because it is
+  `Copy` data in a slice.
 - **Many results.** A call that can run every frame and yields many items
   writes into the caller's `&mut Vec<T>`, or returns a borrowing slice or
   iterator, never a fresh `Vec`. A cold query may return a `Vec`
@@ -273,23 +286,6 @@ argument; each coercing kind is one total `const fn`. Every numeric
 parameter's doc names its kind ("`px`: a *length*"), and every setter that can
 panic says so under `# Panics`. The table is in the `domain` module doc.
 
-## Architecture
-
-Five passes per frame over a tree rebuilt every frame: **record → measure →
-arrange → cascade → encode + compose + paint**. Colour is linear-RGB f32 on
-the CPU side; sRGB encoding happens on the GPU at swapchain write.
-
-Each pass has one top-level module: `scene` holds what record writes,
-`layout` measures and arranges it, `cascade` derives the tables input and
-paint read, `damage` decides what repaints, `renderer` encodes and
-composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
-result type in `mod.rs` and their engine in `engine.rs`.
-`primitives` is the value vocabulary below all of them, `widget_core` the
-framework the bundled `widgets` are written on.
-
-Read `benches/AGENTS.md` before measuring or reaching for `perf`: it holds the
-A/B protocol and the traps that cost a wasted capture each.
-
 ## Verification
 
 ```
@@ -325,10 +321,14 @@ that reason until `UPDATE_GOLDEN=1` adopts it. A failure leaves `actual.png`,
 
 A change a user can see ends with a look at `cargo run --example showcase`.
 
+Read `benches/AGENTS.md` before measuring or reaching for `perf`: it holds the
+A/B protocol and the traps that cost a wasted capture each.
+
 ## Non-shipping code
 
 Code that does not ship has four homes, apart from a file's own
-`#[cfg(test)] mod tests` and the helpers only that module uses.
+`#[cfg(test)] mod tests` and the helpers only that module uses. Three
+exceptions close the section.
 
 - **`internals` at the end of a file** — a reach-in: test or bench code
   that needs that file's private items. One per file, the last item before
@@ -351,7 +351,7 @@ Visibility says who reaches in: `pub` when code outside the crate calls it
 (`tests/visual`, `tests/alloc`, the showcase, `benches/`), `pub(crate)` when
 only the crate's own tests and benches do.
 
-Two subsystems stay outside `src/internals/`. `gpu::test_gpu` and
+Three subsystems stay outside `src/internals/`. `gpu::test_gpu` and
 `gpu::bench_gpu` hold wgpu types, which `clippy.toml` keeps inside
 `crate::gpu`, so `crate::internals` re-exports the test GPU. `text::mono` is
 a measurement backend beside `cosmic`, gated `any(test, feature =

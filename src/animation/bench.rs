@@ -1,3 +1,6 @@
+//! One frame of [`ROWS`] widgets retargeting their animated look: the per-widget
+//! tick every animating theme slot pays, under each kind of motion.
+
 use crate::animation::anim_map_typed::AnimMapTyped;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
@@ -8,7 +11,8 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::text_style::TextStyle;
-use criterion::{Criterion, Throughput};
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion, Throughput};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -22,6 +26,13 @@ enum Motion {
 }
 
 impl Motion {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Duration => "duration",
+            Self::Spring => "spring",
+        }
+    }
+
     const fn spec(self) -> AnimationSpec {
         match self {
             Self::Duration => AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
@@ -37,7 +48,7 @@ fn look(background: RgbaF32, text: RgbaF32) -> AnimatedLook {
     }
 }
 
-fn bench_motion(c: &mut Criterion, run: Run<'_>, sub: &str, motion: Motion) {
+fn bench_motion(group: &mut BenchmarkGroup<'_, WallTime>, motion: Motion) {
     let ids: Vec<_> = (0..ROWS)
         .map(|index| WidgetId::from_hash(index as u64))
         .collect();
@@ -51,12 +62,7 @@ fn bench_motion(c: &mut Criterion, run: Run<'_>, sub: &str, motion: Motion) {
 
     let mut render_frame_id = 1u64;
     let mut use_second = true;
-    let mut group = run.subgroup(c, sub);
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(2));
-    group.measurement_time(Duration::from_secs(5));
-    group.throughput(Throughput::Elements(ROWS as u64));
-    group.bench_function("animated_look", |b| {
+    group.bench_function(motion.label(), |b| {
         b.iter(|| {
             render_frame_id += 1;
             let target = if use_second { &second } else { &first };
@@ -66,10 +72,13 @@ fn bench_motion(c: &mut Criterion, run: Run<'_>, sub: &str, motion: Motion) {
             }
         });
     });
-    group.finish();
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    bench_motion(c, run, "duration", Motion::Duration);
-    bench_motion(c, run, "spring", Motion::Spring);
+    let mut group = run.group(c);
+    group.throughput(Throughput::Elements(ROWS as u64));
+    for motion in [Motion::Duration, Motion::Spring] {
+        bench_motion(&mut group, motion);
+    }
+    group.finish();
 }

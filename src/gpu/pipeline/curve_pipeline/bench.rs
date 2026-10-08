@@ -1,6 +1,6 @@
 //! GPU curve-pipeline benchmark: `cubic_strips` (one short cubic per cell, one instance) and `join_chrome` (a three-point polyline per cell, two segments and one join).
 //!
-//! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU; the keep-or-revert signal is the median curve timestamp printed before each case.
+//! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU. The keep-or-revert signal is the minimum curve-batch timestamp, printed with the median before each case.
 
 #![expect(
     clippy::print_stderr,
@@ -8,6 +8,7 @@
 )]
 
 use crate::bench::Run;
+use crate::bench::summary::Summary;
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
@@ -21,14 +22,15 @@ use crate::widgets::panel::Panel;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
-use std::time::Duration;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
 const GRID: u32 = 64;
 const CELL: f32 = 16.0;
 const CUBIC_INSTANCES: u64 = (GRID * GRID) as u64;
 const JOIN_INSTANCES: u64 = (GRID * GRID * 3) as u64;
-const EVIDENCE_FRAMES: usize = 64;
+/// Frames before sampling; an integrated GPU needs a long ramp for clocks to settle.
+const WARMUP_FRAMES: usize = 128;
+const EVIDENCE_FRAMES: usize = 256;
 
 #[derive(Clone, Copy, Debug)]
 enum Workload {
@@ -54,12 +56,6 @@ impl Workload {
 
 fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Instrumented)
-}
-
-fn host(gpu: &BenchGpu) -> OffscreenHost {
-    let mut host = gpu.offscreen_builder().collect_gpu_stats(true).build();
-    host.ui().theme_mut().panel_background = None;
-    host
 }
 
 fn record(ui: &mut Ui, workload: Workload, phase: bool) {
@@ -118,26 +114,18 @@ fn render(
     gpu.wait();
 }
 
-fn median(values: &mut [f32]) -> Option<f32> {
-    if values.is_empty() {
-        return None;
-    }
-    values.sort_unstable_by(f32::total_cmp);
-    Some(values[values.len() / 2])
-}
-
 fn report_evidence(gpu: &BenchGpu, workload: Workload) {
     let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
-    let mut host = host(gpu);
+    let mut host = gpu.plain_host(true);
     let mut phase = false;
-    let mut curve_ms = Vec::with_capacity(EVIDENCE_FRAMES);
-    for frame in 0..EVIDENCE_FRAMES + 4 {
+    let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
+    for frame in 0..WARMUP_FRAMES + EVIDENCE_FRAMES {
         render(gpu, &mut host, &target, workload, &mut phase);
         gpu.poll();
-        if frame >= 4
-            && let Some(ms) = host.gpu_pass_stats().last_kind(BatchKind::Curve)
+        if frame >= WARMUP_FRAMES
+            && let Some(time) = host.gpu_pass_stats().last_kind(BatchKind::Curve)
         {
-            curve_ms.push(ms.as_secs_f32() * 1e3);
+            samples.push(time);
         }
     }
     let stats = host.gpu_pass_stats().last_pipeline_stats();
@@ -145,39 +133,24 @@ fn report_evidence(gpu: &BenchGpu, workload: Workload) {
         .map(|pipeline| pipeline.vertex_shader_invocations / workload.instances())
         .map_or_else(|| "n/a".to_owned(), |count| count.to_string());
     eprintln!(
-        "[curve_pipeline] {} instances={} vs_per_instance={vs_per_instance} \
-         curve_median_ms={} pipeline={stats:?}",
+        "[curve_pipeline] {} instances={} vs_per_instance={vs_per_instance} curve {} \
+         pipeline={stats:?}",
         workload.label(),
         workload.instances(),
-        median(&mut curve_ms).map_or_else(|| "n/a".to_owned(), |ms| format!("{ms:.4}")),
+        Summary::of(&mut samples).map_or_else(|| "n/a".to_owned(), |s| s.to_string()),
     );
 }
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let gpu = gpu();
-    eprintln!(
-        "[curve_pipeline] adapter={} backend={:?} timestamp={} inside_pass={} pipeline_stats={}",
-        gpu.info.name,
-        gpu.info.backend,
-        gpu.timing_features
-            .contains(wgpu::Features::TIMESTAMP_QUERY),
-        gpu.timing_features
-            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-        gpu.timing_features
-            .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-    );
+    eprintln!("[curve_pipeline] {}", gpu.summary());
 
     let mut group = run.subgroup(c, "frame_wall");
-    group.measurement_time(Duration::from_secs(5));
-    group.sample_size(20);
     for workload in [Workload::CubicStrips, Workload::JoinChrome] {
         report_evidence(gpu, workload);
         let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
-        let mut host = host(gpu);
+        let mut host = gpu.plain_host(true);
         let mut phase = false;
-        for _ in 0..4 {
-            render(gpu, &mut host, &target, workload, &mut phase);
-        }
         group.throughput(Throughput::Elements(workload.instances()));
         group.bench_function(workload.label(), |bencher| {
             bencher.iter(|| {

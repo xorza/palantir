@@ -56,15 +56,14 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::fs::OpenOptions;
-use std::hint::black_box;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::slice;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-// Clear colour on `theme.window_clear`; also what the CPU `cached` arm's full
-// repaint clears to.
+/// The window clear both halves render over.
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 // Proportioned against `BENCH_SURFACE` and rescaled by `--size`; multiples of 16
 // keep a resized surface tile-aligned.
@@ -102,7 +101,7 @@ fn gpu() -> &'static BenchGpu {
 
     let gpu = BenchGpu::shared(Timing::PassOnly);
     ANNOUNCED.get_or_init(|| {
-        eprintln!("[frame_bench] timing features: {}", gpu.timing_summary());
+        eprintln!("[frame] {}", gpu.summary());
     });
     gpu
 }
@@ -111,20 +110,13 @@ fn gpu() -> &'static BenchGpu {
 /// runs). The default would measure the screenshot path, which copies the
 /// backbuffer out on skip and full frames.
 fn bench_host(g: &BenchGpu, collect_gpu_stats: bool) -> OffscreenHost {
-    g.offscreen_builder()
+    let mut host = g
+        .offscreen_builder()
         .collect_gpu_stats(collect_gpu_stats)
         .retained_target(true)
-        .build()
-}
-
-fn gpu_frame(
-    host: &mut OffscreenHost,
-    target: &BenchTarget,
-    system_scale: f32,
-    record: impl FnMut(&mut Ui),
-) {
-    let mut app = RecordApp::new(record);
-    host.frame(target.as_target(), system_scale, &mut app);
+        .build();
+    host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+    host
 }
 
 /// Deviceless CPU-pipeline harness: a bare `Ui` plus a standalone `Frontend`,
@@ -148,243 +140,191 @@ impl CpuHarness {
     }
 
     /// Drive one full CPU frame and ack the present, so `cached` settles into `Skip`.
-    fn frame(&mut self, record: impl FnMut(&mut Ui)) {
+    fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FramePaint {
         self.frontend.harness.at(self.start.elapsed());
-        self.frontend.frame(record);
+        self.frontend.frame(record).paint()
     }
 }
 
-fn run_cpu_arm<F>(
+/// What changes between two frames of one arm. One list for both halves, so a
+/// CPU arm and its GPU twin always measure the same frames.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Arm {
+    Alternating,
+    Cached,
+    Partial,
+    Resizing,
+    Scrolling,
+}
+
+impl Arm {
+    /// Sorted by label, the order criterion and the results file list them.
+    const ALL: [Self; 5] = [
+        Self::Alternating,
+        Self::Cached,
+        Self::Partial,
+        Self::Resizing,
+        Self::Scrolling,
+    ];
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Alternating => "alternating",
+            Self::Cached => "cached",
+            Self::Partial => "partial",
+            Self::Resizing => "resizing",
+            Self::Scrolling => "scrolling",
+        }
+    }
+
+    /// The paint a settled frame `n` plans, cycling by `n`: pinned before the arm
+    /// is measured, since a regression to another plan still prints a number.
+    const fn paints(self) -> &'static [FramePaint] {
+        match self {
+            Self::Alternating => &[FramePaint::Full, FramePaint::Partial],
+            Self::Cached => &[FramePaint::Skip],
+            Self::Partial => &[FramePaint::Partial],
+            Self::Resizing | Self::Scrolling => &[FramePaint::Full],
+        }
+    }
+
+    /// The surfaces the arm renders at, frame `n` at `[n % len]`.
+    fn sizes(self, surface: &Surface) -> &[glam::UVec2] {
+        match self {
+            Self::Resizing => &surface.pool,
+            Self::Alternating | Self::Cached | Self::Partial | Self::Scrolling => {
+                slice::from_ref(&surface.size)
+            }
+        }
+    }
+
+    /// Set the fixture to frame `n`'s state.
+    fn advance(self, state: &mut FrameFixture, n: u32) {
+        match self {
+            Self::Cached | Self::Resizing => {}
+            Self::Partial => state.tick = state.tick.wrapping_add(1),
+            Self::Scrolling => scroll(state),
+            // A scroll step on even frames (full repaint), a counter tick on odd ones (small rect).
+            Self::Alternating if n.is_multiple_of(2) => scroll(state),
+            Self::Alternating => state.tick = state.tick.wrapping_add(1),
+        }
+    }
+}
+
+/// Shift the fixture's transform, so only the cascade walk sees change.
+fn scroll(state: &mut FrameFixture) {
+    state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+    state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+}
+
+/// Frames each arm runs before its paint is pinned: even, so the alternating arm
+/// starts its check on a scroll step.
+const SETTLE_FRAMES: u32 = 4;
+
+/// Run `frame` through [`SETTLE_FRAMES`], pin one cycle of [`Arm::paints`],
+/// then measure it as `<arm>_<half>`.
+fn measure_arm(
     group: &mut BenchmarkGroup<'_, WallTime>,
-    leaf: &str,
-    surface: &Surface,
-    mut iter: F,
-) where
-    F: FnMut(&mut CpuHarness, &mut FrameFixture),
-{
-    let mut h = CpuHarness::new(surface);
+    arm: Arm,
+    half: &str,
+    mut frame: impl FnMut(&mut FrameFixture, u32) -> FramePaint,
+) {
     let mut state = FrameFixture::default();
-    for _ in 0..4 {
-        iter(&mut h, &mut state);
+    let mut n = 0u32;
+    let mut step = || {
+        arm.advance(&mut state, n);
+        let paint = frame(&mut state, n);
+        n = n.wrapping_add(1);
+        paint
+    };
+    for _ in 0..SETTLE_FRAMES {
+        step();
     }
-    group.bench_function(leaf, |b| {
-        b.iter(|| iter(&mut h, &mut state));
+    for &want in arm.paints() {
+        assert_eq!(
+            step(),
+            want,
+            "the {}_{half} arm's frames plan another paint",
+            arm.label()
+        );
+    }
+    group.bench_function(format!("{}_{half}", arm.label()), |b| {
+        b.iter(&mut step);
     });
 }
 
-fn cpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    assert_cached_invariant(surface);
-    run_cpu_arm(group, "cached_cpu", surface, |h, state| {
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    });
-}
-
-fn cpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    assert_partial_invariant(surface);
-    run_cpu_arm(group, "partial_cpu", surface, |h, state| {
-        state.tick = state.tick.wrapping_add(1);
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    });
-}
-
-fn cpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    run_cpu_arm(group, "scrolling_cpu", surface, |h, state| {
-        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    });
-}
-
-/// One step of the alternating arms: a scroll step on even frames (full repaint),
-/// a counter tick on odd ones (small rect).
-fn alternate(state: &mut FrameFixture, frame: &mut u32) {
-    if frame.is_multiple_of(2) {
-        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-    } else {
-        state.tick = state.tick.wrapping_add(1);
+fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
+    if !run.arms.includes_cpu() {
+        return;
     }
-    *frame = frame.wrapping_add(1);
-}
-
-fn cpu_alternating(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    assert_alternating_invariant(surface);
-    let mut frame = 0;
-    run_cpu_arm(group, "alternating_cpu", surface, move |h, state| {
-        alternate(state, &mut frame);
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    });
-}
-
-fn cpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let mut idx = 0usize;
-    let pool = surface.pool.clone();
-    run_cpu_arm(group, "resizing_cpu", surface, move |h, state| {
-        let size = pool[idx % pool.len()];
-        idx = idx.wrapping_add(1);
-        h.frontend.harness.resize(size);
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    });
-}
-
-/// Pin the Skip invariant: a steady frame of the still fixture must plan no paint.
-fn assert_cached_invariant(surface: &Surface) {
-    let mut h = CpuHarness::new(surface);
-    let mut state = FrameFixture::default();
-    for _ in 0..2 {
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
+    let mut group = run.group(c);
+    for arm in Arm::ALL {
+        let mut h = CpuHarness::new(surface);
+        let sizes = arm.sizes(surface);
+        measure_arm(&mut group, arm, "cpu", |state, n| {
+            if arm == Arm::Resizing {
+                h.frontend.harness.resize(sizes[n as usize % sizes.len()]);
+            }
+            h.frame(|ui| state.render(BENCH_SCALE, ui))
+        });
     }
-    let report = h
-        .frontend
-        .harness
-        .at(h.start.elapsed())
-        .frame(|ui| state.render(BENCH_SCALE, ui));
-    assert_eq!(
-        report.paint(),
-        FramePaint::Skip,
-        "a still fixture's steady frame must plan no paint",
-    );
+    group.finish();
 }
 
-/// Pin the Partial invariant: a regression to `Full` would still print a number.
-fn assert_partial_invariant(surface: &Surface) {
-    let mut h = CpuHarness::new(surface);
-    let mut state = FrameFixture::default();
-    for _ in 0..2 {
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-        state.tick = state.tick.wrapping_add(1);
+fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
+    if !run.arms.includes_gpu() {
+        return;
     }
-    let report = h
-        .frontend
-        .harness
-        .at(h.start.elapsed())
-        .frame(|ui| state.render(BENCH_SCALE, ui));
-    assert_eq!(
-        report.paint(),
-        FramePaint::Partial,
-        "fixture's footer-status counter must produce a small damage rect",
-    );
-}
-
-/// Pin the alternation: scroll repaints in full, the tick after it partially.
-fn assert_alternating_invariant(surface: &Surface) {
-    let mut h = CpuHarness::new(surface);
-    let mut state = FrameFixture::default();
-    let mut frame = 0;
-    for _ in 0..4 {
-        alternate(&mut state, &mut frame);
-        h.frame(|ui| state.render(BENCH_SCALE, ui));
-    }
-    for want in [FramePaint::Full, FramePaint::Partial] {
-        alternate(&mut state, &mut frame);
-        let report = h
-            .frontend
-            .harness
-            .at(h.start.elapsed())
-            .frame(|ui| state.render(BENCH_SCALE, ui));
-        assert_eq!(report.paint(), want, "the alternating arms' frame {frame}");
-    }
-}
-
-fn run_gpu_arm<F>(group: &mut BenchmarkGroup<'_, WallTime>, leaf: &str, mut iter: F)
-where
-    F: FnMut(&mut OffscreenHost, &mut FrameFixture),
-{
     let g = gpu();
-    let mut host = bench_host(g, false);
-    host.ui().theme_mut().window_clear = WINDOW_CLEAR;
-    let mut state = FrameFixture::default();
-    for _ in 0..4 {
-        iter(&mut host, &mut state);
+    report_write_stats(surface);
+    let mut group = run.group(c);
+    for arm in Arm::ALL {
+        let targets = targets(arm, surface, "palantir.frame_bench");
+        let mut host = bench_host(g, false);
+        measure_arm(&mut group, arm, "gpu", |state, n| {
+            let target = &targets[n as usize % targets.len()];
+            let paint = gpu_frame(&mut host, target, surface.scale, state);
+            g.wait();
+            paint
+        });
     }
-    group.bench_function(leaf, |b| {
-        b.iter(|| iter(&mut host, &mut state));
-    });
-    g.wait();
+    group.finish();
 }
 
-fn gpu_cached(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target("palantir.frame_bench.cached", surface.size);
-    let scale = surface.scale;
-    run_gpu_arm(group, "cached_gpu", |host, state| {
-        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
-        gpu().wait();
-        black_box(&target);
-    });
-}
-
-fn gpu_partial(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target("palantir.frame_bench.partial", surface.size);
-    let scale = surface.scale;
-    run_gpu_arm(group, "partial_gpu", |host, state| {
-        state.tick = state.tick.wrapping_add(1);
-        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
-        gpu().wait();
-        black_box(&target);
-    });
-}
-
-fn gpu_scrolling(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target("palantir.frame_bench.scrolling", surface.size);
-    let scale = surface.scale;
-    run_gpu_arm(group, "scrolling_gpu", |host, state| {
-        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
-        gpu().wait();
-        black_box(&target);
-    });
-}
-
-fn gpu_alternating(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let target = gpu().target("palantir.frame_bench.alternating", surface.size);
-    let scale = surface.scale;
-    let mut frame = 0;
-    run_gpu_arm(group, "alternating_gpu", move |host, state| {
-        alternate(state, &mut frame);
-        gpu_frame(host, &target, scale, |ui| state.render(BENCH_SCALE, ui));
-        gpu().wait();
-        black_box(&target);
-    });
-}
-
-fn gpu_resizing(group: &mut BenchmarkGroup<'_, WallTime>, surface: &Surface) {
-    let targets: Vec<BenchTarget> = surface
-        .pool
+/// One target per surface the arm renders at.
+fn targets(arm: Arm, surface: &Surface, label: &str) -> Vec<BenchTarget> {
+    arm.sizes(surface)
         .iter()
         .enumerate()
-        .map(|(i, s)| gpu().target(&format!("palantir.frame_bench.resize.{i}"), *s))
-        .collect();
-    let mut idx = 0usize;
-    let scale = surface.scale;
-    run_gpu_arm(group, "resizing_gpu", move |host, state| {
-        let t = &targets[idx % targets.len()];
-        idx = idx.wrapping_add(1);
-        gpu_frame(host, t, scale, |ui| state.render(BENCH_SCALE, ui));
-        gpu().wait();
-        black_box(t);
-    });
+        .map(|(i, size)| gpu().target(&format!("{label}.{}.{i}", arm.label()), *size))
+        .collect()
+}
+
+fn gpu_frame(
+    host: &mut OffscreenHost,
+    target: &BenchTarget,
+    system_scale: f32,
+    state: &mut FrameFixture,
+) -> FramePaint {
+    let mut app = RecordApp::new(|ui| state.render(BENCH_SCALE, ui));
+    host.frame(target.as_target(), system_scale, &mut app)
+        .paint()
 }
 
 /// Per-frame `queue.write_*` counts and GPU main-pass time per arm, frames 0..=5.
 /// The pass readout lags a frame, so frame 0's column is omitted.
 fn report_write_stats(surface: &Surface) {
-    fn run(
-        label: &str,
-        scale: f32,
-        targets: &[BenchTarget],
-        mut mutate: impl FnMut(&mut FrameFixture, usize),
-    ) {
-        let g = gpu();
+    let g = gpu();
+    for arm in Arm::ALL {
+        let targets = targets(arm, surface, "write_stats");
         let mut host = bench_host(g, true);
-        host.ui().theme_mut().window_clear = WINDOW_CLEAR;
         let mut state = FrameFixture::default();
-        eprintln!("[write_stats] {label}:");
+        eprintln!("[write_stats] {}:", arm.label());
         for frame in 0..6 {
-            mutate(&mut state, frame);
+            arm.advance(&mut state, frame);
             let _ = WriteStats::take();
-            let target = &targets[frame % targets.len()];
-            gpu_frame(&mut host, target, scale, |ui| state.render(BENCH_SCALE, ui));
+            let target = &targets[frame as usize % targets.len()];
+            gpu_frame(&mut host, target, surface.scale, &mut state);
             g.wait();
             let s = WriteStats::take();
             // The pass-time readout lags one frame (`map_async` fires off the next poll); one
@@ -414,75 +354,22 @@ fn report_write_stats(surface: &Surface) {
             }
         }
     }
-
-    let g = gpu();
-    let scale = surface.scale;
-    let cached = [g.target("write_stats.cached", surface.size)];
-    run("cached", scale, &cached, |_, _| {});
-
-    let partial = [g.target("write_stats.partial", surface.size)];
-    run("partial", scale, &partial, |state, _| {
-        state.tick = state.tick.wrapping_add(1);
-    });
-
-    let pool: Vec<BenchTarget> = surface
-        .pool
-        .iter()
-        .enumerate()
-        .map(|(i, s)| g.target(&format!("write_stats.resize.{i}"), *s))
-        .collect();
-    run("resizing", scale, &pool, |_, _| {});
-
-    let scrolling = [g.target("write_stats.scrolling", surface.size)];
-    run("scrolling", scale, &scrolling, |state, _| {
-        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
-    });
 }
 
-const CATEGORIES: [&str; 5] = ["alternating", "cached", "partial", "resizing", "scrolling"];
-
-/// Arm ids criterion runs for a mode, interleaved cpu/gpu per category, built
-/// from the namespace the benches register under.
+/// Arm ids criterion runs for a mode, interleaved cpu/gpu per arm, built from
+/// the namespace the benches register under.
 fn arm_names(run: Run<'_>) -> Vec<String> {
     let group = run.group_name();
-    let mut v = Vec::with_capacity(CATEGORIES.len() * 2);
-    for category in CATEGORIES {
+    let mut v = Vec::with_capacity(Arm::ALL.len() * 2);
+    for arm in Arm::ALL {
         if run.arms.includes_cpu() {
-            v.push(format!("{group}/{category}_cpu"));
+            v.push(format!("{group}/{}_cpu", arm.label()));
         }
         if run.arms.includes_gpu() {
-            v.push(format!("{group}/{category}_gpu"));
+            v.push(format!("{group}/{}_gpu", arm.label()));
         }
     }
     v
-}
-
-fn bench_cpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
-    if !run.arms.includes_cpu() {
-        return;
-    }
-    let mut group = run.group(c);
-    cpu_alternating(&mut group, surface);
-    cpu_cached(&mut group, surface);
-    cpu_partial(&mut group, surface);
-    cpu_resizing(&mut group, surface);
-    cpu_scrolling(&mut group, surface);
-    group.finish();
-}
-
-fn bench_gpu(c: &mut Criterion, run: Run<'_>, surface: &Surface) {
-    if !run.arms.includes_gpu() {
-        return;
-    }
-    report_write_stats(surface);
-    let mut group = run.group(c);
-    gpu_alternating(&mut group, surface);
-    gpu_cached(&mut group, surface);
-    gpu_partial(&mut group, surface);
-    gpu_resizing(&mut group, surface);
-    gpu_scrolling(&mut group, surface);
-    group.finish();
 }
 
 /// Results finalizer: runs last, only when the run records. Prepends each arm's

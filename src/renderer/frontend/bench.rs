@@ -1,4 +1,4 @@
-//! Record-to-compose comparison for repeated solid and gradient chrome.
+//! Record to compose over [`ROWS`] blocks of repeated chrome: what a gradient fill costs the frontend over a solid one.
 
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
@@ -12,7 +12,7 @@ use crate::widgets::block::Block;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const ROWS: usize = 1_024;
 const PHYSICAL: UVec2 = UVec2::new(128, 128);
@@ -42,20 +42,17 @@ impl FillCase {
                 RgbaF32::hex(0x4c5cdb),
             )),
         };
-        Background {
-            fill,
-            ..Background::default()
-        }
+        Background::fill(fill)
     }
 }
 
 #[derive(Debug)]
-struct GradientBench {
+struct ChromeBench {
     frontend: FrontendHarness,
     start: Instant,
 }
 
-impl GradientBench {
+impl ChromeBench {
     fn new() -> Self {
         Self {
             frontend: FrontendHarness::new(UiHarness::new(PHYSICAL)),
@@ -84,13 +81,10 @@ impl GradientBench {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "repeated_chrome");
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(3));
     group.throughput(Throughput::Elements(ROWS as u64));
 
     for fill_case in FillCase::ALL {
-        let mut fixture = GradientBench::new();
+        let mut fixture = ChromeBench::new();
         for _ in 0..4 {
             black_box(fixture.frame(fill_case));
         }

@@ -1,3 +1,7 @@
+//! A settled `TextEdit` frame with real shaping: a single-line field, and a
+//! multiline one whose whole text is selected, so the selection geometry is
+//! rebuilt every frame.
+
 use crate::bench::Run;
 use crate::internals::harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;

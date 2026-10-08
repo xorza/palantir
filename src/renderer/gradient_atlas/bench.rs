@@ -17,8 +17,6 @@
 //! Both assert against
 //! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
-//!
-//! Run with `cargo bench --features bench --bench criterion -- gradient_atlas`.
 
 #![expect(
     clippy::print_stderr,
@@ -34,7 +32,6 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
-use std::time::Duration;
 
 /// Capacities compared: the initial size and three doublings up.
 const CAPACITIES: [u32; 2] = [256, 2048];
@@ -79,9 +76,6 @@ fn filled(capacity: u32) -> CpuGradientAtlas {
 
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut group = run.subgroup(c, "register");
-    group.sample_size(50);
-    group.warm_up_time(Duration::from_millis(200));
-    group.measurement_time(Duration::from_secs(2));
     group.throughput(Throughput::Elements(1));
 
     for capacity in CAPACITIES {

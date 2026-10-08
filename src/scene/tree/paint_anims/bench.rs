@@ -1,3 +1,7 @@
+//! The paint-animation cursor's walk over a frame's shapes when only the last
+//! one animates: the scan every shape pays to learn it is still, at a count
+//! far past a real frame's so a per-shape regression shows.
+
 use crate::bench::Run;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
@@ -29,9 +33,6 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     assert_eq!(anims.entries[0].shape_idx, SHAPE_COUNT - 1);
 
     let mut group = run.group(c);
-    group.sample_size(30);
-    group.warm_up_time(Duration::from_secs(1));
-    group.measurement_time(Duration::from_secs(3));
     group.throughput(Throughput::Elements(u64::from(SHAPE_COUNT)));
     group.bench_function("sequential_last_shape", |b| {
         b.iter(|| {

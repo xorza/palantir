@@ -17,7 +17,8 @@ const fn size_at(divisor: u32) -> UVec2 {
 pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     let mut g = run.group(c);
     for model in ColorModel::ALL {
-        for divisor in [1u32, 2, 4] {
+        // The default divisor, and a texel per pixel as the worst a caller can set.
+        for divisor in [1u32, 4] {
             let mut image = Image::blank(size_at(divisor));
             let name = format!("fill/{}/divisor_{divisor}", model.label().to_lowercase());
             g.bench_function(&name, |b| {

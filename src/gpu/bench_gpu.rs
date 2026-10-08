@@ -96,10 +96,25 @@ impl BenchGpu {
         OffscreenHost::builder(self.gpu.clone())
     }
 
-    /// The instrumentation granted; a missing bit silently empties a column.
-    pub(crate) fn timing_summary(&self) -> String {
+    /// A host whose panels paint no theme background, so the driver's own
+    /// draws are all a frame holds.
+    pub(crate) fn plain_host(&self, collect_gpu_stats: bool) -> OffscreenHost {
+        let mut host = self
+            .offscreen_builder()
+            .collect_gpu_stats(collect_gpu_stats)
+            .build();
+        host.ui().theme_mut().panel_background = None;
+        host
+    }
+
+    /// The adapter and the instrumentation granted, for a driver's first line;
+    /// a missing bit silently empties a column.
+    pub(crate) fn summary(&self) -> String {
         format!(
-            "TIMESTAMP_QUERY={} INSIDE_PASSES={} INSIDE_ENCODERS={} PIPELINE_STATS={}",
+            "adapter={} backend={:?} TIMESTAMP_QUERY={} INSIDE_PASSES={} INSIDE_ENCODERS={} \
+             PIPELINE_STATS={}",
+            self.info.name,
+            self.info.backend,
             self.timing_features
                 .contains(wgpu::Features::TIMESTAMP_QUERY),
             self.timing_features
