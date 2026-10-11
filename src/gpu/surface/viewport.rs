@@ -163,6 +163,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "probes a debug_assert!, which release compiles out"
+    )]
     #[should_panic(expected = "Partial plan produced no damage scissors")]
     fn partial_repaint_rejects_scissors_clamped_outside_viewport() {
         build_repaint_scissors(
