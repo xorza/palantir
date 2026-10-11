@@ -81,6 +81,10 @@ fn audit_panics_with_diagnostic_message() {
 }
 
 #[test]
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "reads source locations, which the release profile strips"
+)]
 fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     // Provoke a real palantir frame stack so the filter has `src/...` and `tests/alloc/...` candidates. The output must include `src/...` frames, exclude every `tests/alloc/` path (this module is harness machinery), and drop the `alloc::` crate prefix.
     //
