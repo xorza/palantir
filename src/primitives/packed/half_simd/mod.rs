@@ -152,12 +152,10 @@ fn f16x4_to_f32x4_scalar(bits: [u16; 4]) -> [f32; 4] {
 pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
-        // SAFETY: the static `f16c` cfg guarantees `_mm_cvtph_ps`.
         unsafe { f16x4_to_f32x4_f16c(bits) }
     }
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // SAFETY: the runtime detection guarantees `_mm_cvtph_ps`.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_to_f32x4_f16c(bits) };
         }
@@ -178,12 +176,10 @@ pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
 pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
-        // SAFETY: see `f16x4_to_f32x4`.
         unsafe { f16x4_from_f32x4_f16c(src) }
     }
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // SAFETY: see the runtime branch in `f16x4_to_f32x4`.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_from_f32x4_f16c(src) };
         }
@@ -203,15 +199,14 @@ pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
 pub(crate) fn f16x4_scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
-        // SAFETY: see `f16x4_to_f32x4`.
         unsafe { f16x4_scaled_f16c(bits, k) }
     }
     #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
     {
-        // SAFETY: see the runtime branch in `f16x4_to_f32x4`. One detect covers both conversions, so the fallback goes straight to the scalar pair.
         if std::arch::is_x86_feature_detected!("f16c") {
             return unsafe { f16x4_scaled_f16c(bits, k) };
         }
+        // One detect covers both conversions, so the fallback goes straight to the scalar pair.
         f16x4_from_f32x4_scalar(f16x4_to_f32x4_scalar(bits).map(|v| v * k))
     }
     #[cfg(not(target_arch = "x86_64"))]
@@ -228,7 +223,6 @@ unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
         _MM_FROUND_TO_NEAREST_INT, _mm_cvtph_ps, _mm_cvtps_ph, _mm_loadl_epi64, _mm_mul_ps,
         _mm_set1_ps, _mm_storel_epi64,
     };
-    // SAFETY: same accesses as the `_f16c` converters.
     unsafe {
         let lanes = _mm_cvtph_ps(_mm_loadl_epi64(bits.as_ptr().cast()));
         let packed = _mm_cvtps_ph::<_MM_FROUND_TO_NEAREST_INT>(_mm_mul_ps(lanes, _mm_set1_ps(k)));
@@ -243,7 +237,6 @@ unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
 #[target_feature(enable = "f16c")]
 unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
     use std::arch::x86_64::{_mm_cvtph_ps, _mm_loadl_epi64};
-    // SAFETY: 8 B load; `#[target_feature]` enforces F16C.
     unsafe {
         let v = _mm_loadl_epi64(bits.as_ptr().cast());
         let f = _mm_cvtph_ps(v);
@@ -258,7 +251,6 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
     use std::arch::x86_64::{
         _MM_FROUND_TO_NEAREST_INT, _mm_cvtps_ph, _mm_loadu_ps, _mm_storel_epi64,
     };
-    // SAFETY: 16 B load, 8 B store; matching array layouts.
     unsafe {
         let v = _mm_loadu_ps(src.as_ptr());
         let h = _mm_cvtps_ph::<{ _MM_FROUND_TO_NEAREST_INT }>(v);

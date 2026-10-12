@@ -20,9 +20,6 @@ pub(crate) struct ExtrasIdx {
     pub(crate) chrome: Option<Index16>,
 }
 
-// SAFETY: `repr(C)` over three `Option<Index16>`, each two bytes of a
-// `NonZeroU16` with `None` at zero, whose sizes sum to the struct's, so
-// every byte is initialized and none is padding.
 unsafe impl bytemuck::NoUninit for ExtrasIdx {}
 
 const _: () = assert!(size_of::<ExtrasIdx>() == 3 * size_of::<u16>());

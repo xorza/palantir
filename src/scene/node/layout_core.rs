@@ -19,7 +19,6 @@ pub(crate) struct LayoutCore {
     pub(crate) meta: PackedLayoutMeta,
 }
 
-// SAFETY: `repr(C)` over four plain-integer fields (`SizeSpec`'s two `u32`, two `Spacing`s of `u16` lanes, `PackedLayoutMeta`'s `u32`) whose sizes sum to the struct's: no padding.
 unsafe impl bytemuck::NoUninit for LayoutCore {}
 
 const _: () = assert!(
