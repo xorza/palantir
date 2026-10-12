@@ -7,7 +7,7 @@
 //! typical and a heavy draw count: curves alone, then the higher-kind tiers
 //! (meshes, images, text) where overlap decides whether a batch closes.
 
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::internals::paint_capture::PaintCapture;
@@ -29,7 +29,7 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::num::NonZeroU32;
@@ -268,33 +268,32 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     );
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "curves");
+/// `atomic/composer/cpu/curves/<count>` and
+/// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>`: one replay of recorded paint into
+/// draw groups and batches, the groups and batches checked first. Per draw.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "composer", Scale::Sample);
     for curve_count in DRAW_COUNTS {
-        let mut fixture = ComposeBench::curves(curve_count);
-        assert_eq!(fixture.compose(), curve_count);
         group.throughput(Throughput::Elements(curve_count as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(curve_count),
-            &curve_count,
-            |b, _| b.iter(|| black_box(fixture.compose())),
-        );
+        group.bench_function(Backend::Cpu.case(&format!("curves/{curve_count}")), |b| {
+            let mut fixture = ComposeBench::curves(curve_count);
+            assert_eq!(fixture.compose(), curve_count);
+            b.iter(|| black_box(fixture.compose()));
+        });
     }
-    group.finish();
-
-    let mut group = run.subgroup(c, "higher_kind_overlap");
     for &case in HigherKindCase::VARIANTS {
         let label: &'static str = case.into();
         for draw_count in DRAW_COUNTS {
-            let mut fixture = case.fixture(draw_count);
-            assert_eq!(fixture.compose(), draw_count);
-            assert_eq!(fixture.out.groups.len(), case.expected_groups(draw_count));
-            assert_eq!(
-                fixture.out.text_batches.len(),
-                case.expected_text_batches(draw_count),
-            );
             group.throughput(Throughput::Elements(draw_count as u64));
-            group.bench_with_input(BenchmarkId::new(label, draw_count), &draw_count, |b, _| {
+            let id = Backend::Cpu.case(&format!("higher_kind_overlap/{label}/{draw_count}"));
+            group.bench_function(id, |b| {
+                let mut fixture = case.fixture(draw_count);
+                assert_eq!(fixture.compose(), draw_count);
+                assert_eq!(fixture.out.groups.len(), case.expected_groups(draw_count));
+                assert_eq!(
+                    fixture.out.text_batches.len(),
+                    case.expected_text_batches(draw_count),
+                );
                 b.iter(|| black_box(fixture.compose()));
             });
         }

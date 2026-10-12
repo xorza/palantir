@@ -1,14 +1,8 @@
 //! GPU curve-pipeline benchmark: `cubic_strips` (one short cubic per cell, one instance) and `join_chrome` (a three-point polyline per cell, two segments and one join).
 //!
-//! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU. The keep-or-revert signal is the minimum curve-batch timestamp, printed with the median before each case.
+//! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU. Criterion records the curve batch's GPU timestamp, not the frame's wall time.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
-use crate::bench::summary::Summary;
+use crate::bench::fixture::{Backends, Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
@@ -21,16 +15,12 @@ use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
-use std::hint::black_box;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
 const GRID: u32 = 64;
 const CELL: f32 = 16.0;
 const CUBIC_INSTANCES: u64 = (GRID * GRID) as u64;
 const JOIN_INSTANCES: u64 = (GRID * GRID * 3) as u64;
-/// Frames before sampling; an integrated GPU needs a long ramp for clocks to settle.
-const WARMUP_FRAMES: usize = 128;
-const EVIDENCE_FRAMES: usize = 256;
 
 #[derive(Clone, Copy, Debug)]
 enum Workload {
@@ -114,48 +104,40 @@ fn render(
     gpu.wait();
 }
 
-fn report_evidence(gpu: &BenchGpu, workload: Workload) {
-    let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
-    let mut host = gpu.plain_host(true);
-    let mut phase = false;
-    let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
-    for frame in 0..WARMUP_FRAMES + EVIDENCE_FRAMES {
-        render(gpu, &mut host, &target, workload, &mut phase);
-        gpu.poll();
-        if frame >= WARMUP_FRAMES
-            && let Some(time) = host.gpu_pass_stats().last_kind(BatchKind::Curve)
-        {
-            samples.push(time);
-        }
-    }
-    let stats = host.gpu_pass_stats().last_pipeline_stats();
-    let vs_per_instance = stats
-        .map(|pipeline| pipeline.vertex_shader_invocations / workload.instances())
-        .map_or_else(|| "n/a".to_owned(), |count| count.to_string());
-    eprintln!(
-        "[curve_pipeline] {} instances={} vs_per_instance={vs_per_instance} curve {} \
-         pipeline={stats:?}",
-        workload.label(),
-        workload.instances(),
-        Summary::of(&mut samples).map_or_else(|| "n/a".to_owned(), |s| s.to_string()),
-    );
-}
-
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let gpu = gpu();
-    eprintln!("[curve_pipeline] {}", gpu.summary());
-
-    let mut group = run.subgroup(c, "frame_wall");
+/// `atomic/curve_pipeline/gpu/<workload>`: the curve batch of one frame on the device, from its
+/// timestamps. Per curve instance.
+pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "curve_pipeline", Scale::Sample);
     for workload in [Workload::CubicStrips, Workload::JoinChrome] {
-        report_evidence(gpu, workload);
-        let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
-        let mut host = gpu.plain_host(true);
-        let mut phase = false;
         group.throughput(Throughput::Elements(workload.instances()));
-        group.bench_function(workload.label(), |bencher| {
-            bencher.iter(|| {
+        group.bench_function(backend.case(workload.label()), |bencher| {
+            let gpu = gpu();
+            let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
+            let mut host = gpu.plain_host(true);
+            let mut phase = false;
+            // The timestamp readback lags a frame, so a few frames run before the first reads.
+            let timed = (0..8).any(|_| {
                 render(gpu, &mut host, &target, workload, &mut phase);
-                black_box(host.gpu_pass_stats());
+                gpu.poll();
+                host.gpu_pass_stats().last_kind(BatchKind::Curve).is_some()
+            });
+            assert!(
+                timed,
+                "no curve batch timestamp: the adapter needs in-pass timestamps"
+            );
+            bencher.iter_custom(|iters| {
+                (0..iters)
+                    .map(|_| {
+                        render(gpu, &mut host, &target, workload, &mut phase);
+                        gpu.poll();
+                        host.gpu_pass_stats()
+                            .last_kind(BatchKind::Curve)
+                            .expect("a curve batch timestamp every frame once one arrived")
+                    })
+                    .sum()
             });
         });
     }

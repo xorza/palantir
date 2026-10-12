@@ -2,7 +2,7 @@
 //! one animates: the scan every shape pays to learn it is still, at a count
 //! far past a real frame's so a per-shape regression shows.
 
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::scene::tree::paint_anims::{PaintAnimEntry, PaintAnims, curves};
@@ -28,13 +28,14 @@ fn last_shape_registry() -> PaintAnims {
     anims
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let anims = last_shape_registry();
-    assert_eq!(anims.entries[0].shape_idx, SHAPE_COUNT - 1);
-
-    let mut group = run.group(c);
+/// `atomic/paint_anims/cpu/sequential_last_shape`: the cursor sampled at every shape when
+/// only the last animates. Per shape.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "paint_anims", Scale::Sample);
     group.throughput(Throughput::Elements(u64::from(SHAPE_COUNT)));
-    group.bench_function("sequential_last_shape", |b| {
+    group.bench_function(Backend::Cpu.case("sequential_last_shape"), |b| {
+        let anims = last_shape_registry();
+        assert_eq!(anims.entries[0].shape_idx, SHAPE_COUNT - 1);
         b.iter(|| {
             let mut cursor = anims.cursor();
             for shape_idx in 0..SHAPE_COUNT {

@@ -5,15 +5,10 @@
 //! - `realistic`: ~70–200 label-sized rects, two quad probes each, a third surviving the union pre-reject; decides `TILE_SIZE` and `TILE_CAP`.
 //! - `saturated`: tiles filled past `TILE_CAP` plus wide rects spanning all of them, so every query walks a chain.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP, TILE_SIZE};
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
 
@@ -132,33 +127,36 @@ impl RealisticFixture {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+/// `atomic/rect_grid/cpu/realistic/<labels>` and `atomic/rect_grid/cpu/saturated/<tiles>x<wide>`:
+/// one compose-shaped round of registers and overlap queries. Per rect.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "rect_grid", Scale::Sample);
     // Label-sized text rects and quad-sized probes in the proportions the instrumented arms showed.
-    let mut group = run.subgroup(c, "realistic");
     for labels in [64u32, 200] {
-        let mut fixture = RealisticFixture::new(labels);
-        let hits = fixture.round();
-        assert!(hits > 0, "fixture must produce hits to be meaningful");
         group.throughput(Throughput::Elements(u64::from(labels)));
-        group.bench_with_input(BenchmarkId::from_parameter(labels), &labels, |b, _| {
+        group.bench_function(Backend::Cpu.case(&format!("realistic/{labels}")), |b| {
+            let mut fixture = RealisticFixture::new(labels);
+            assert!(
+                fixture.round() > 0,
+                "fixture must produce hits to be meaningful"
+            );
             b.iter(|| black_box(fixture.round()));
         });
     }
-    group.finish();
-
-    // Overflow length is the secondary metric; per-round wall time decides.
-    let mut group = run.subgroup(c, "saturated");
     for (tiles, wide) in [(8u32, 16u32), (16, 32)] {
-        let mut fixture = SaturatedFixture::new(tiles, wide);
-        fixture.round();
-        eprintln!(
-            "[rect_grid] tiles={tiles} wide={wide} overflow={}",
-            fixture.grid.overflow.len(),
-        );
         group.throughput(Throughput::Elements(u64::from(tiles * wide)));
-        group.bench_function(format!("{tiles}x{wide}"), |b| {
-            b.iter(|| black_box(fixture.round()));
-        });
+        group.bench_function(
+            Backend::Cpu.case(&format!("saturated/{tiles}x{wide}")),
+            |b| {
+                let mut fixture = SaturatedFixture::new(tiles, wide);
+                fixture.round();
+                assert!(
+                    !fixture.grid.overflow.is_empty(),
+                    "a saturated fixture walks the overflow chains"
+                );
+                b.iter(|| black_box(fixture.round()));
+            },
+        );
     }
     group.finish();
 }

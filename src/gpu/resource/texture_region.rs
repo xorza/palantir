@@ -23,10 +23,8 @@ pub(super) struct TextureRegion<'a> {
 }
 
 impl TextureRegion<'_> {
-    /// Counted [`wgpu::Queue::write_texture`] into this region; `data` is row-major at [`Self::bytes_per_row`].
+    /// [`wgpu::Queue::write_texture`] into this region; `data` is row-major at [`Self::bytes_per_row`].
     pub(super) fn write(self, queue: &wgpu::Queue, data: &[u8]) {
-        #[cfg(feature = "internals")]
-        counters::note(data.len() as u64);
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: self.texture,
@@ -50,35 +48,5 @@ impl TextureRegion<'_> {
                 depth_or_array_layers: 1,
             },
         );
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod counters {
-    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
-
-    static TEXTURE_CALLS: AtomicU64 = AtomicU64::new(0);
-    static TEXTURE_BYTES: AtomicU64 = AtomicU64::new(0);
-
-    pub(super) fn note(bytes: u64) {
-        TEXTURE_CALLS.fetch_add(1, Relaxed);
-        TEXTURE_BYTES.fetch_add(bytes, Relaxed);
-    }
-
-    /// One frame's [`super::TextureRegion::write`] traffic; `pub(crate)` for the frame bench.
-    #[derive(Default, Debug, Clone, Copy)]
-    pub(crate) struct WriteStats {
-        pub(crate) texture_calls: u64,
-        pub(crate) texture_bytes: u64,
-    }
-
-    impl WriteStats {
-        /// Snapshots the counters and resets them to zero.
-        pub(crate) fn take() -> Self {
-            Self {
-                texture_calls: TEXTURE_CALLS.swap(0, Relaxed),
-                texture_bytes: TEXTURE_BYTES.swap(0, Relaxed),
-            }
-        }
     }
 }

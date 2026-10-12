@@ -69,8 +69,6 @@ unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 
 criterion = { version = "0.8", optional = true }
-clap = { version = "4", optional = true, features = ["derive"] }
-gethostname = { version = "1.1", optional = true }
 tracy-client = { version = "0.19", optional = true }
 
 # The self dependency turns `internals` on for every example and test, which
@@ -86,7 +84,7 @@ ron = "0.12"
 
 [features]
 default = ["winit"]
-internals = ["dep:criterion", "dep:clap", "dep:gethostname"]
+internals = ["dep:criterion"]
 golden = ["dep:image"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
@@ -149,8 +147,11 @@ name = "showcase"
 path = "examples/showcase/main.rs"
 required-features = ["winit"]
 
+[lib]
+bench = false
+
 [[bench]]
-name = "criterion"
+name = "palantir"
 harness = false
 required-features = ["internals"]
 

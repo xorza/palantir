@@ -6,7 +6,7 @@
 //! - `input/scroll_stream`: `ScrollPixels` against a scroll target.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::internals::harness::UiHarness;
@@ -118,64 +118,58 @@ fn pointer_at(i: u32) -> Vec2 {
     Vec2::new(x, y)
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.group(c);
-    {
+/// `atomic/input/cpu/<stream>`: one event, or one burst between redraws, dispatched into a
+/// warmed dense UI with no frame between.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "input", Scale::Sample);
+    group.bench_function(Backend::Cpu.case("pointer_move_stream"), |b| {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        group.bench_function("pointer_move_stream", |b| {
-            b.iter(|| {
-                let delta = ui.on_input(InputEvent::PointerMoved(pointer_at(i)));
-                i = i.wrapping_add(1);
-                black_box(delta);
-            });
+        b.iter(|| {
+            let delta = ui.on_input(InputEvent::PointerMoved(pointer_at(i)));
+            i = i.wrapping_add(1);
+            black_box(delta);
         });
-    }
+    });
 
-    {
+    group.bench_function(Backend::Cpu.case("click_stream"), |b| {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        group.bench_function("click_stream", |b| {
-            b.iter(|| {
-                // Move first so the press hits a fresh cell, or the focus hit-test is memoized into the warm path.
-                ui.press_at(pointer_at(i));
-                let d = ui.release();
-                i = i.wrapping_add(1);
-                black_box(d);
-            });
+        b.iter(|| {
+            // Move first so the press hits a fresh cell, or the focus hit-test is memoized into the warm path.
+            ui.press_at(pointer_at(i));
+            let d = ui.release();
+            i = i.wrapping_add(1);
+            black_box(d);
         });
-    }
+    });
 
-    {
+    group.bench_function(Backend::Cpu.case("scroll_stream"), |b| {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        group.bench_function("scroll_stream", |b| {
-            b.iter(|| {
-                let t = i as f32 * 0.05;
-                let d = ui.scroll_pixels(Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0));
-                i = i.wrapping_add(1);
-                black_box(d);
-            });
+        b.iter(|| {
+            let t = i as f32 * 0.05;
+            let d = ui.scroll_pixels(Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0));
+            i = i.wrapping_add(1);
+            black_box(d);
         });
-    }
+    });
 
-    {
+    group.bench_function(Backend::Cpu.case("mixed_stream"), |b| {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
-        group.bench_function("mixed_stream", |b| {
-            b.iter(|| {
-                // A realistic burst between redraws: several moves, a scroll, an occasional click.
-                ui.move_to(pointer_at(i));
-                ui.move_to(pointer_at(i.wrapping_add(1)));
-                ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
-                if i.is_multiple_of(16) {
-                    ui.press();
-                    ui.release();
-                }
-                i = i.wrapping_add(3);
-                black_box(&ui);
-            });
+        b.iter(|| {
+            // A realistic burst between redraws: several moves, a scroll, an occasional click.
+            ui.move_to(pointer_at(i));
+            ui.move_to(pointer_at(i.wrapping_add(1)));
+            ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
+            if i.is_multiple_of(16) {
+                ui.press();
+                ui.release();
+            }
+            i = i.wrapping_add(3);
+            black_box(&ui);
         });
-    }
+    });
     group.finish();
 }

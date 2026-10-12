@@ -4,14 +4,12 @@
 //! - `zoom_smooth`: five resident scale rungs, stepped in turn; every run hits the encoded cache.
 //! - `cache_churn`: [`CHURN_SCALE_CYCLE`] rungs in permuted order, past the retention window, so each revisit misses.
 //! - `mixed_stable_churn`: half the runs stay at one hot scale while the rest cycle the cold rungs, to see whether atlas pressure rebuilds unrelated stable runs.
-//! - `*_cpu`: `prepare` alone, for the CPU cost a GPU submit would drown.
+//! - `stable_keys`: one row per run, every run a hit.
+//!
+//! Each runs as a whole `frame`, and some as `prepare` alone, for the CPU cost a GPU submit would
+//! drown.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Backends, Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -31,7 +29,7 @@ use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, TEXT_SCALE_STEP};
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::mem;
@@ -42,7 +40,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
 const WARM_SCALE_CYCLE: u32 = 5;
 
-/// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::eager_growth_bytes`, where it recycles rectangles (`RasterAtlas::evict_one`); eviction begins between rung 250 and 500. The only arm coverage of that regime; `report_atlas_pressure` prints which side an arm landed on.
+/// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::eager_growth_bytes`, where it recycles rectangles (`RasterAtlas::evict_one`); eviction begins between rung 250 and 500. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
 const CHURN_SCALE_CYCLE: u32 = 512;
 const CHURN_INDEX_STRIDE: u32 = 37;
 
@@ -255,116 +253,121 @@ impl Fixture {
         self.backend.tick_frame();
     }
 
-    /// Reports what the glyph atlas paid to stay packed over `frames` primed frames. Printed before the measured section so it doesn't depend on criterion's iteration count or `--list`.
-    fn report_atlas_pressure(&self, label: &str, frames: u32) {
-        let atlas = &self.backend.pass.atlas;
-        let counts = atlas.counters.counts();
-        let per_frame = counts.evict_scans as f64 / f64::from(frames.max(1));
-        eprintln!(
-            "[text_atlas] {label}: live_glyphs={} evictions={} grows={} \
-             scanned={} ({per_frame:.0}/frame over {frames} frames) oversized={}",
-            atlas.cache.len(),
-            counts.evictions,
-            counts.grows,
-            counts.evict_scans,
-            counts.oversized,
-        );
-        // An entry past the ceiling is refused every frame, so a fixture producing one measures a permanently degraded atlas.
+    /// Checks the atlas this fixture primed is recycling rectangles, the regime the churn arms
+    /// exist for, and refused no glyph: an entry past the ceiling is refused every frame, so a
+    /// fixture producing one measures a permanently degraded atlas.
+    fn assert_evicting(&self, label: &str) {
+        let counts = self.backend.pass.atlas.counters.counts();
         assert_eq!(
             counts.oversized, 0,
-            "[text_atlas] {label}: a glyph exceeded the atlas ceiling — \
-             this arm no longer measures what it claims to",
+            "{label}: a glyph exceeded the atlas ceiling"
+        );
+        assert!(
+            counts.evictions > 0,
+            "{label}: the primed atlas never evicted"
         );
     }
 }
+
+/// What a case runs of a frame at a scale: the whole frame, or `prepare` alone.
+type Stage = fn(&mut Fixture, f32);
 
 fn gpu() -> &'static BenchGpu {
     BenchGpu::shared(Timing::Bare)
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.group(c);
+/// `atomic/text_atlas/gpu/<workload>/<frame|prepare>`: the text backend driven directly, a
+/// whole frame (prepare, flush, draw and submit) or `prepare` alone for the CPU cost a submit
+/// would drown. Both need the device.
+pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+    bench_encoded_cache(c);
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "text_atlas", Scale::Frame);
+    let case = |name: &str| backend.case(name);
 
-    let mut steady = Fixture::new(node_rows);
-    for _ in 0..2 {
-        steady.frame(BASE_SCALE);
-    }
-    group.bench_function("steady_warm", |b| b.iter(|| steady.frame(BASE_SCALE)));
-    group.bench_function("steady_warm_cpu", |b| b.iter(|| steady.prepare(BASE_SCALE)));
-    drop(steady);
+    group.bench_function(case("steady_warm/frame"), |b| {
+        let mut steady = Fixture::new(node_rows);
+        for _ in 0..2 {
+            steady.frame(BASE_SCALE);
+        }
+        b.iter(|| steady.frame(BASE_SCALE));
+    });
+    group.bench_function(case("steady_warm/prepare"), |b| {
+        let mut steady = Fixture::new(node_rows);
+        for _ in 0..2 {
+            steady.frame(BASE_SCALE);
+        }
+        b.iter(|| steady.prepare(BASE_SCALE));
+    });
 
-    let mut zoom = Fixture::new(node_rows);
-    for step in 0..WARM_SCALE_CYCLE {
-        zoom.frame(rung(step, TEXT_SCALE_STEP));
-    }
-    let mut i = 0u32;
-    group.bench_function("zoom_smooth", |b| {
+    group.bench_function(case("zoom_smooth/frame"), |b| {
+        let mut zoom = Fixture::new(node_rows);
+        for step in 0..WARM_SCALE_CYCLE {
+            zoom.frame(rung(step, TEXT_SCALE_STEP));
+        }
+        let mut i = 0u32;
         b.iter(|| {
             zoom.frame(rung(i % WARM_SCALE_CYCLE, TEXT_SCALE_STEP));
             i = i.wrapping_add(1);
         });
     });
-    drop(zoom);
 
-    let mut churn = Fixture::new(node_rows);
-    for step in 0..CHURN_SCALE_CYCLE {
-        churn.frame(rung(step, TEXT_SCALE_STEP));
+    // `cache_churn/prepare` is the counter-workload to `stable_keys/prepare`: every frame lands
+    // on a new scale, so every run misses and inserts a row.
+    let stages: [(&str, Stage); 2] = [("frame", Fixture::frame), ("prepare", Fixture::prepare)];
+    for (stage, run_stage) in stages {
+        group.bench_function(case(&format!("cache_churn/{stage}")), |b| {
+            let mut churn = Fixture::new(node_rows);
+            for step in 0..CHURN_SCALE_CYCLE {
+                churn.frame(rung(step, TEXT_SCALE_STEP));
+            }
+            churn.assert_evicting("cache_churn");
+            let mut i = 0u32;
+            b.iter(|| {
+                run_stage(&mut churn, churn_rung(i));
+                i = i.wrapping_add(1);
+            });
+        });
     }
-    churn.report_atlas_pressure("cache_churn", CHURN_SCALE_CYCLE);
-    let mut i = 0u32;
-    group.bench_function("cache_churn", |b| {
-        b.iter(|| {
-            churn.frame(churn_rung(i));
-            i = i.wrapping_add(1);
-        });
-    });
-    // Counter-workload to `stable_keys_cpu`: every frame lands on a new scale, so every run misses and inserts a row. CPU-only because `cache_churn` (~1 ms, GPU-bound) can't resolve the maintenance tradeoff.
-    group.bench_function("churn_cpu", |b| {
-        b.iter(|| {
-            churn.prepare(churn_rung(i));
-            i = i.wrapping_add(1);
-        });
-    });
-    drop(churn);
 
-    let mut mixed = Fixture::new(node_rows);
-    let runs = mem::take(&mut mixed.runs);
-    let (stable, churning) = runs.split_at(runs.len() / 2);
-    let batches = |scale| {
-        [
-            Batch {
-                runs: stable,
-                scale: BASE_SCALE,
-            },
-            Batch {
-                runs: churning,
-                scale,
-            },
-        ]
-    };
-    for step in 0..CHURN_SCALE_CYCLE {
-        mixed.frame_batches(&batches(rung(step, TEXT_SCALE_STEP)));
-    }
-    let mut i = 0u32;
-    group.bench_function("mixed_stable_churn", |b| {
+    group.bench_function(case("mixed_stable_churn/frame"), |b| {
+        let mut mixed = Fixture::new(node_rows);
+        let runs = mem::take(&mut mixed.runs);
+        let (stable, churning) = runs.split_at(runs.len() / 2);
+        let batches = |scale| {
+            [
+                Batch {
+                    runs: stable,
+                    scale: BASE_SCALE,
+                },
+                Batch {
+                    runs: churning,
+                    scale,
+                },
+            ]
+        };
+        for step in 0..CHURN_SCALE_CYCLE {
+            mixed.frame_batches(&batches(rung(step, TEXT_SCALE_STEP)));
+        }
+        let mut i = 0u32;
         b.iter(|| {
             mixed.frame_batches(&batches(churn_rung(i)));
             i = i.wrapping_add(1);
         });
     });
-    drop(mixed);
 
-    // Large stable key set: every run hits its own row, nothing expires or re-encodes. CPU-only, since a whole-map scan is microseconds against a GPU submit.
-    let mut distinct = Fixture::new(distinct_runs);
-    for _ in 0..2 {
-        distinct.frame(BASE_SCALE);
-    }
-    group.bench_function("stable_keys_cpu", |b| {
+    // Large stable key set: every run hits its own row, nothing expires or re-encodes. `prepare`
+    // alone, since a whole-map scan is microseconds against a GPU submit.
+    group.bench_function(case("stable_keys/prepare"), |b| {
+        let mut distinct = Fixture::new(distinct_runs);
+        for _ in 0..2 {
+            distinct.frame(BASE_SCALE);
+        }
         b.iter(|| distinct.prepare(BASE_SCALE));
     });
     group.finish();
-
-    bench_encoded_cache(c, run);
 }
 
 /// The encoded cache's per-frame maintenance in two steady states, CPU-only (the `text_atlas` arms can't resolve it under drift).
@@ -373,13 +376,15 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
 /// - **`churn`**: a zoom or width drag re-keys every run; the only arm running `settle`'s allocate-and-copy.
 ///
 /// **Neither guards uniformity:** the replaced compaction was amortised free (one frame in 122 paying 122x), so the defect lived in the tail. `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates` guards the shape; these guard the constant.
-fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "encoded_cache");
+///
+/// `atomic/encoded_cache/cpu/steady/<rows>` and `atomic/encoded_cache/cpu/churn/<runs>x<glyphs>`.
+fn bench_encoded_cache(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "encoded_cache", Scale::Sample);
 
     for rows in [128u32, 512] {
-        let mut fixture = SweepBench::new(rows, 12);
-        assert_eq!(fixture.sweep_steady(), rows as usize);
-        group.bench_with_input(BenchmarkId::new("steady", rows), &rows, |b, _| {
+        group.bench_function(Backend::Cpu.case(&format!("steady/{rows}")), |b| {
+            let mut fixture = SweepBench::new(rows, 12);
+            assert_eq!(fixture.sweep_steady(), rows as usize);
             b.iter(|| black_box(fixture.sweep_steady()));
         });
     }
@@ -388,23 +393,22 @@ fn bench_encoded_cache(c: &mut Criterion, run: Run<'_>) {
     //
     // Warmed past the retention window (against `RENDERED_RUN_KEEP_FRAMES`, the documented ceiling), since the arena is still growing before saturation.
     for (runs, glyphs) in [(8u32, 12u32), (200, 40)] {
-        let mut fixture = ChurnBench::new(runs, glyphs);
-        for _ in 0..RENDERED_RUN_KEEP_FRAMES * 2 {
-            fixture.churn_frame();
-        }
-        let saturated = fixture.arena_len();
         group.throughput(Throughput::Elements(u64::from(runs * glyphs)));
-        group.bench_with_input(
-            BenchmarkId::new("churn", format!("{runs}x{glyphs}")),
-            &runs,
-            |b, _| b.iter(|| black_box(fixture.churn_frame())),
-        );
-        // A saturated gesture recycles, so the arena must not have grown; a regression invalidates the number.
-        assert_eq!(
-            fixture.arena_len(),
-            saturated,
-            "{runs}x{glyphs}: the measured frames grew the arena",
-        );
+        group.bench_function(Backend::Cpu.case(&format!("churn/{runs}x{glyphs}")), |b| {
+            let mut fixture = ChurnBench::new(runs, glyphs);
+            for _ in 0..RENDERED_RUN_KEEP_FRAMES * 2 {
+                fixture.churn_frame();
+            }
+            let saturated = fixture.arena_len();
+            b.iter(|| black_box(fixture.churn_frame()));
+            // A saturated gesture recycles, so the arena must not have grown; a regression
+            // invalidates the number.
+            assert_eq!(
+                fixture.arena_len(),
+                saturated,
+                "{runs}x{glyphs}: the measured frames grew the arena",
+            );
+        });
     }
 
     group.finish();

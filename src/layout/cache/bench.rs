@@ -14,16 +14,9 @@
 //!
 //! `cached / forced_miss` is what the cache buys on a comparable workload.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
-use crate::bench::summary::Summary;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::internals::harness::UiHarness;
 use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
-use crate::layout::counters::PhaseTimings;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -41,53 +34,11 @@ use crate::widgets::theme::text_style::TextStyle;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
 use std::hint::black_box;
-use std::time::Duration;
 
 const LIST_GROUPS: usize = 50;
 const LIST_ROWS_PER_GROUP: usize = 8;
 
 const GRID_ROWS: usize = 128;
-
-/// Frames each arm runs for its measure/arrange split report, sampled per
-/// frame rather than averaged into criterion's wall-clock estimate.
-const PHASE_WARMUP_FRAMES: usize = 8;
-const PHASE_EVIDENCE_FRAMES: usize = 64;
-
-/// Report how one arm splits across measure and arrange.
-///
-/// Criterion times a whole frame, hiding that the measure cache can
-/// short-circuit a whole subtree while arrange walks every node.
-/// `arrange_over_measure` is the headline: on a `cached` arm, the factor by
-/// which the uncached half dominates.
-///
-/// `step` runs one iteration and returns that frame's engine timings.
-fn report_phases(label: &str, mut step: impl FnMut() -> PhaseTimings) {
-    for _ in 0..PHASE_WARMUP_FRAMES {
-        step();
-    }
-    let mut measure = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
-    let mut arrange = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
-    let mut capture = Vec::with_capacity(PHASE_EVIDENCE_FRAMES);
-    for _ in 0..PHASE_EVIDENCE_FRAMES {
-        let t = step();
-        measure.push(Duration::from_nanos(t.measure_ns));
-        arrange.push(Duration::from_nanos(t.arrange_ns));
-        capture.push(Duration::from_nanos(t.capture_ns));
-    }
-    let [m, a, cap] = [&mut measure, &mut arrange, &mut capture]
-        .map(|samples| Summary::of(samples).expect("PHASE_EVIDENCE_FRAMES is not zero"));
-    let ratio = if m.min.is_zero() {
-        "n/a".to_owned()
-    } else {
-        format!("{:.1}x", a.min.as_secs_f64() / m.min.as_secs_f64())
-    };
-    let total = (m.min + a.min + cap.min).as_secs_f64().max(1e-12);
-    eprintln!(
-        "[measure_cache] {label} measure {m} arrange {a} arrange_over_measure={ratio} \
-         capture {cap} capture_share={:.0}%",
-        100.0 * cap.min.as_secs_f64() / total,
-    );
-}
 
 /// A list as an app draws one: rounded-stencil clips on every group and row,
 /// real cosmic-text shaping, an extra zstack per row, and group strokes, so
@@ -191,15 +142,7 @@ fn bench_cache_pair(
     make_ui: fn() -> UiHarness,
     build: fn(&mut Ui),
 ) {
-    {
-        let mut h = make_ui();
-        report_phases(&format!("{name}/cached"), || {
-            h.engines.layout.forget_last_run();
-            let _ = h.frame(build);
-            h.engines.layout.scratch.counters.phase_timings()
-        });
-    }
-    group.bench_function(format!("{name}/cached"), |b| {
+    group.bench_function(Backend::Cpu.case(&format!("{name}/cached")), |b| {
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
@@ -208,15 +151,7 @@ fn bench_cache_pair(
         });
     });
 
-    {
-        let mut h = make_ui();
-        report_phases(&format!("{name}/forced_miss"), || {
-            h.engines.layout.cache.forget_all();
-            let _ = h.frame(build);
-            h.engines.layout.scratch.counters.phase_timings()
-        });
-    }
-    group.bench_function(format!("{name}/forced_miss"), |b| {
+    group.bench_function(Backend::Cpu.case(&format!("{name}/forced_miss")), |b| {
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
@@ -235,16 +170,7 @@ fn bench_cache_workload(
     bench_cache_pair(group, name, make_ui, build);
 
     let resize_widths = [1280, 1248, 1216, 1184].map(|width| glam::UVec2::new(width, SURFACE.y));
-    {
-        let mut h = make_ui();
-        let mut frame = 0usize;
-        report_phases(&format!("{name}/resizing"), || {
-            frame = (frame + 1) % resize_widths.len();
-            let _ = h.resize(resize_widths[frame]).frame(build);
-            h.engines.layout.scratch.counters.phase_timings()
-        });
-    }
-    group.bench_function(format!("{name}/resizing"), |b| {
+    group.bench_function(Backend::Cpu.case(&format!("{name}/resizing")), |b| {
         let mut h = make_ui();
         let _ = h.resize(resize_widths[0]).frame(build);
         let mut frame = 0usize;
@@ -262,16 +188,7 @@ fn bench_broad_localized(
     change: BroadChange,
 ) {
     let toggled = |changed: bool| changed.then_some(change);
-    {
-        let mut h = harness();
-        let mut changed = false;
-        report_phases(name, || {
-            changed = !changed;
-            let _ = h.frame(|ui| build_broad_variant(ui, toggled(changed)));
-            h.engines.layout.scratch.counters.phase_timings()
-        });
-    }
-    group.bench_function(name, |b| {
+    group.bench_function(Backend::Cpu.case(name), |b| {
         let mut h = harness();
         let _ = h.frame(|ui| build_broad_variant(ui, None));
         let mut changed = false;
@@ -308,30 +225,30 @@ fn build_scroll_window(ui: &mut Ui, first: usize) {
 ///
 /// `MeasureSnapshot::refresh_snapshots` reuses its `WidgetId` map only while
 /// the descriptor id sequence is unchanged, so a scrolling window rebuilds it
-/// every frame (one hash insert per descriptor). The arms differ only in
-/// whether the window moves; rebuild counts are reported for both.
+/// every frame (one hash insert per descriptor) and a still one never does. The
+/// arms differ only in whether the window moves, which the warm-up checks.
 fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     for (name, stride) in [("static", 0usize), ("scrolling", 1)] {
-        const FRAMES: usize = 64;
+        group.bench_function(Backend::Cpu.case(&format!("virtual_scroll/{name}")), |b| {
+            const FRAMES: u32 = 64;
 
-        let mut h = mono();
-        let mut first = 0usize;
-        for _ in 0..8 {
-            let _ = h.frame(|ui| build_scroll_window(ui, first));
-            first += stride;
-        }
-        let before = h.engines.layout.cache.snapshot_rebuilds.count();
-        for _ in 0..FRAMES {
-            let _ = h.frame(|ui| build_scroll_window(ui, first));
-            first += stride;
-        }
-        eprintln!(
-            "[measure_cache] virtual_scroll/{name}: {} snapshot rebuilds over {FRAMES} frames \
-             ({SCROLL_ROWS} rows)",
-            h.engines.layout.cache.snapshot_rebuilds.count() - before,
-        );
-
-        group.bench_function(format!("virtual_scroll/{name}"), |b| {
+            let mut h = mono();
+            let mut first = 0usize;
+            for _ in 0..8 {
+                let _ = h.frame(|ui| build_scroll_window(ui, first));
+                first += stride;
+            }
+            let before = h.engines.layout.cache.snapshot_rebuilds.count();
+            for _ in 0..FRAMES {
+                let _ = h.frame(|ui| build_scroll_window(ui, first));
+                first += stride;
+            }
+            let rebuilds = h.engines.layout.cache.snapshot_rebuilds.count() - before;
+            let expected = if stride == 0 { 0 } else { FRAMES };
+            assert_eq!(
+                rebuilds, expected,
+                "virtual_scroll/{name} snapshot rebuilds"
+            );
             b.iter(|| {
                 let r = h.frame(|ui| build_scroll_window(ui, first));
                 first += stride;
@@ -341,8 +258,11 @@ fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.group(c);
+/// `integration/measure_cache/cpu/<workload>/<arm>`: record and layout frames over each
+/// workload, the cache primed, cleared, or offered rotating widths, and the broad tree with one
+/// leaf toggled.
+pub(crate) fn integration(c: &mut Criterion) {
+    let mut group = Kind::Integration.group(c, "measure_cache", Scale::Sample);
 
     bench_cache_pair(&mut group, "list", shaped, build_list);
     bench_cache_workload(&mut group, "deep", mono, build_deep);

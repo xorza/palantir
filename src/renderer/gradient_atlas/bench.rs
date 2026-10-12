@@ -18,19 +18,14 @@
 //! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::gradient_atlas::CpuGradientAtlas;
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
 /// Capacities compared: the initial size and three doublings up.
@@ -74,75 +69,74 @@ fn filled(capacity: u32) -> CpuGradientAtlas {
     atlas
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "register");
+/// `atomic/gradient_atlas/cpu/register/<hit|miss>/<capacity>`: one registration against a
+/// resident working set, and one never-seen gradient that evicts and bakes. Per registration.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "gradient_atlas", Scale::Sample);
     group.throughput(Throughput::Elements(1));
-
     for capacity in CAPACITIES {
-        // Steady state: the most recent `WORKING_SET` rows are resident at any capacity.
-        let mut atlas = filled(capacity);
-        let resident: Vec<ColorRamp> = (capacity - WORKING_SET..capacity)
-            .map(gradient_for)
-            .collect();
-        let before = atlas.counters.counts().bakes;
-        for ramp in &resident {
-            black_box(atlas.register(ramp));
-        }
-        assert_eq!(
-            atlas.counters.counts().bakes,
-            before,
-            "hit/{capacity} fixture re-baked: the working set is not resident",
+        group.bench_function(
+            Backend::Cpu.case(&format!("register/hit/{capacity}")),
+            |b| {
+                // Steady state: the most recent `WORKING_SET` rows are resident at any capacity.
+                let mut atlas = filled(capacity);
+                let resident: Vec<ColorRamp> = (capacity - WORKING_SET..capacity)
+                    .map(gradient_for)
+                    .collect();
+                let before = atlas.counters.counts().bakes;
+                for ramp in &resident {
+                    black_box(atlas.register(ramp));
+                }
+                assert_eq!(
+                    atlas.counters.counts().bakes,
+                    before,
+                    "hit/{capacity} fixture re-baked: the working set is not resident",
+                );
+                let mut i = 0usize;
+                b.iter(|| {
+                    let ramp = &resident[i % resident.len()];
+                    i = i.wrapping_add(1);
+                    black_box(atlas.register(ramp))
+                });
+            },
         );
 
-        let mut i = 0usize;
-        group.bench_with_input(BenchmarkId::new("hit", capacity), &capacity, |b, _| {
-            b.iter(|| {
-                let ramp = &resident[i % resident.len()];
-                i = i.wrapping_add(1);
-                black_box(atlas.register(ramp))
-            });
-        });
-
-        // Churn: a never-registered gradient every iteration, so a miss is
-        // independent of table size.
-        let mut atlas = filled(capacity);
-        let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
-        for k in 0..16 {
-            atlas.flush();
-            black_box(atlas.register(&gradient_for(CHURN_BASE + k)));
-        }
-        assert_eq!(
-            atlas.counters.counts().hits,
-            hits,
-            "miss/{capacity} fixture hit the index: the churn seeds overlap the fill",
-        );
-        assert_eq!(
-            atlas.counters.counts().bakes - bakes,
-            16,
-            "miss/{capacity} fixture must bake exactly once per registration",
-        );
-
-        let growths = atlas.counters.counts().growths;
-        let mut seed = CHURN_BASE + 16;
-        group.bench_with_input(BenchmarkId::new("miss", capacity), &capacity, |b, _| {
-            b.iter(|| {
-                // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and
-                // the atlas grows instead of churning.
-                atlas.flush();
-                seed = seed.wrapping_add(1);
-                black_box(atlas.register(&gradient_for(seed)))
-            });
-        });
-        assert_eq!(
-            atlas.counters.counts().growths,
-            growths,
-            "miss/{capacity} grew the atlas: it measured a ratchet, not churn",
-        );
-        eprintln!(
-            "[gradient_atlas] capacity={capacity} rows={} evictions={} fallbacks={}",
-            atlas.capacity(),
-            atlas.counters.counts().evictions,
-            atlas.counters.counts().fallbacks,
+        group.bench_function(
+            Backend::Cpu.case(&format!("register/miss/{capacity}")),
+            |b| {
+                // Churn: a never-registered gradient every iteration, so a miss is independent of
+                // table size.
+                let mut atlas = filled(capacity);
+                let (hits, bakes) = (atlas.counters.counts().hits, atlas.counters.counts().bakes);
+                for k in 0..16 {
+                    atlas.flush();
+                    black_box(atlas.register(&gradient_for(CHURN_BASE + k)));
+                }
+                assert_eq!(
+                    atlas.counters.counts().hits,
+                    hits,
+                    "miss/{capacity} fixture hit the index: the churn seeds overlap the fill",
+                );
+                assert_eq!(
+                    atlas.counters.counts().bakes - bakes,
+                    16,
+                    "miss/{capacity} fixture must bake exactly once per registration",
+                );
+                let growths = atlas.counters.counts().growths;
+                let mut seed = CHURN_BASE + 16;
+                b.iter(|| {
+                    // `flush` ends the epoch; otherwise claimed rows stay eviction-exempt and the
+                    // atlas grows instead of churning.
+                    atlas.flush();
+                    seed = seed.wrapping_add(1);
+                    black_box(atlas.register(&gradient_for(seed)))
+                });
+                assert_eq!(
+                    atlas.counters.counts().growths,
+                    growths,
+                    "miss/{capacity} grew the atlas: it measured a ratchet, not churn",
+                );
+            },
         );
     }
     group.finish();

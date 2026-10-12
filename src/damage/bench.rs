@@ -1,11 +1,6 @@
 //! DamageEngine CPU-side regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches. Text measurement uses the mono fallback.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
 use crate::internals::harness::UiHarness;
@@ -19,7 +14,8 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
-use criterion::{BenchmarkId, Criterion};
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use std::hint::black_box;
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
@@ -115,7 +111,6 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     );
     ArenaSettle {
         entries: settled_at,
-        classes: h.engines.damage.paints.classes_with_free_blocks(),
         next_frame: frame,
     }
 }
@@ -123,18 +118,15 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
 #[derive(Clone, Copy, Debug)]
 struct ArenaSettle {
     entries: usize,
-    /// Size classes parked with a free block; a count tracking the frame number means drifting lengths.
-    classes: usize,
     next_frame: u32,
 }
 
-fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
+fn bench_workloads(group: &mut BenchmarkGroup<'_, WallTime>) {
     let cold = RgbaF32::srgb(0.2, 0.4, 0.8);
     let hot = RgbaF32::srgb(0.9, 0.4, 0.2);
-    let mut group = run.subgroup(c, "workload");
 
     // Skip path: nothing dirty; non-painting rows, so the diff walks every painting leaf.
-    {
+    group.bench_function(Backend::Cpu.case("skip"), |b| {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
@@ -142,16 +134,14 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             |ui| build_hot(ui, None, &[], cold),
             "skip",
         );
-        group.bench_function("skip", |b| {
-            b.iter(|| {
-                let _ = h.frame(|ui| build_hot(ui, None, &[], cold));
-                black_box(&h);
-            });
+        b.iter(|| {
+            let _ = h.frame(|ui| build_hot(ui, None, &[], cold));
+            black_box(&h);
         });
-    }
+    });
 
     // Skip path with painting rows: the subtree-skip fires at every row; compare against `skip` to isolate its win.
-    {
+    group.bench_function(Backend::Cpu.case("skip_painted_rows"), |b| {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         warm_and_assert(
             &mut h,
@@ -163,15 +153,13 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             h.engines.damage.counters.subtree_skips() > 0,
             "no subtree skips at all — fixture is broken",
         );
-        group.bench_function("skip_painted_rows", |b| {
-            b.iter(|| {
-                let _ = h.frame(|ui| build_hot(ui, Some(ROW_BG), &[], cold));
-                black_box(&h);
-            });
+        b.iter(|| {
+            let _ = h.frame(|ui| build_hot(ui, Some(ROW_BG), &[], cold));
+            black_box(&h);
         });
-    }
+    });
 
-    {
+    group.bench_function(Backend::Cpu.case("single_button_change"), |b| {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cell = [42usize];
         warm_and_assert(
@@ -181,18 +169,16 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             "partial",
         );
         let mut toggle = false;
-        group.bench_function("single_button_change", |b| {
-            b.iter(|| {
-                toggle = !toggle;
-                let color = if toggle { hot } else { cold };
-                let _ = h.frame(|ui| build_hot(ui, None, &cell, color));
-                black_box(&h);
-            });
+        b.iter(|| {
+            toggle = !toggle;
+            let color = if toggle { hot } else { cold };
+            let _ = h.frame(|ui| build_hot(ui, None, &cell, color));
+            black_box(&h);
         });
-    }
+    });
 
     // Partial multi-rect: two distant cells flip; the LVGL merge rule rejects (huge bbox waste), driving the multi-pass path.
-    {
+    group.bench_function(Backend::Cpu.case("two_corner_change"), |b| {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
@@ -203,17 +189,15 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         );
         assert!(h.damage_region().iter_rects().count() >= 1);
         let mut toggle = false;
-        group.bench_function("two_corner_change", |b| {
-            b.iter(|| {
-                toggle = !toggle;
-                let color = if toggle { hot } else { cold };
-                let _ = h.frame(|ui| build_hot(ui, None, &cells, color));
-                black_box(&h);
-            });
+        b.iter(|| {
+            toggle = !toggle;
+            let color = if toggle { hot } else { cold };
+            let _ = h.frame(|ui| build_hot(ui, None, &cells, color));
+            black_box(&h);
         });
-    }
+    });
 
-    {
+    group.bench_function(Backend::Cpu.case("full_repaint"), |b| {
         let mut h = UiHarness::new(SURFACE).scale(2.0);
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
@@ -227,14 +211,12 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
         let _ = h.frame(varying(1));
         assert_eq!(damage_kind(&h), "full");
         let mut frame_n = 2u32;
-        group.bench_function("full_repaint", |b| {
-            b.iter(|| {
-                frame_n = frame_n.wrapping_add(1);
-                let _ = h.frame(varying(frame_n));
-                black_box(&h);
-            });
+        b.iter(|| {
+            frame_n = frame_n.wrapping_add(1);
+            let _ = h.frame(varying(frame_n));
+            black_box(&h);
         });
-    }
+    });
 
     // Shape-count churn benches exercise the per-shape diff's grow/shrink/orphan path: `shape_churn_partial` mutates one canvas per frame (like a graph canvas where ~1 connection changes), `shape_churn_full` all of them. The arena settling is asserted during warmup so all-Skip degeneration doesn't pass.
 
@@ -277,7 +259,7 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
     };
 
     // Case A: 256 canvases in a 16x16 grid, one mutates per frame (rotating), flipping between 7 and 8 shapes: the common grow/shrink-by-one pattern.
-    {
+    group.bench_function(Backend::Cpu.case("shape_churn_partial"), |b| {
         const CANVASES: usize = 256;
         const STABLE_COUNT: u32 = 8;
 
@@ -304,18 +286,11 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             settled.entries,
             CANVASES * (STABLE_COUNT as usize - 1),
         );
-        eprintln!(
-            "[shape_churn_partial] warmup: {} frames, arena settled at {} entries \
-             across {} recycling size classes",
-            settled.next_frame, settled.entries, settled.classes,
-        );
         let mut frame_n = settled.next_frame;
-        group.bench_function("shape_churn_partial", |b| {
-            b.iter(|| {
-                frame_n = frame_n.wrapping_add(1);
-                let _ = h.frame(build(frame_n));
-                black_box(&h);
-            });
+        b.iter(|| {
+            frame_n = frame_n.wrapping_add(1);
+            let _ = h.frame(build(frame_n));
+            black_box(&h);
         });
         // The regression guard: thousands of churn frames must not add one entry.
         assert_eq!(
@@ -324,10 +299,10 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             "[shape_churn_partial] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
         );
-    }
+    });
 
     // Case B: full churn, measuring the per-shape diff merge cost (Pass 1); damage likely escalates to `Full`, which is fine.
-    {
+    group.bench_function(Backend::Cpu.case("shape_churn_full"), |b| {
         const CANVASES: usize = 256;
         const BASE_SHAPES: u32 = 4;
         const VARY_SHAPES: u32 = 4;
@@ -350,18 +325,11 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             settled.entries,
             CANVASES * BASE_SHAPES as usize,
         );
-        eprintln!(
-            "[shape_churn_full] warmup: {} frames, arena settled at {} entries \
-             across {} recycling size classes",
-            settled.next_frame, settled.entries, settled.classes,
-        );
         let mut frame_n = settled.next_frame;
-        group.bench_function("shape_churn_full", |b| {
-            b.iter(|| {
-                frame_n = frame_n.wrapping_add(1);
-                let _ = h.frame(build(frame_n));
-                black_box(&h);
-            });
+        b.iter(|| {
+            frame_n = frame_n.wrapping_add(1);
+            let _ = h.frame(build(frame_n));
+            black_box(&h);
         });
         assert_eq!(
             h.engines.damage.paints.slots.len(),
@@ -369,13 +337,13 @@ fn bench_workloads(c: &mut Criterion, run: Run<'_>) {
             "[shape_churn_full] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
         );
-    }
-
-    group.finish();
+    });
 }
 
-fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "region/add");
+/// `atomic/damage/cpu/region_add/<branch>/<n>_in_<m>_out`: a region built from rects, once
+/// for each branch of `DamageRegion::add`.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "damage", Scale::Sample);
 
     // One scenario per `DamageRegion::add` branch: **append** (8 disjoint rects, exactly under the cap), **min_growth** (16 disjoint, min-growth from the 9th; the cliff vs `append` is the cap-overflow cost), **cascade** (8 overlapping rects collapsing to 1).
     let cases: &[(&str, Vec<Rect>)] = &[
@@ -401,13 +369,10 @@ fn bench_region_add(c: &mut Criterion, run: Run<'_>) {
 
     for (label, rects) in cases {
         let retained = DamageRegion::from_rects(rects).iter_rects().count();
-        group.bench_with_input(
-            BenchmarkId::new(*label, format!("{}_in_{}_out", rects.len(), retained)),
-            rects,
-            |b, rects| {
-                b.iter(|| black_box(DamageRegion::from_rects(rects).iter_rects().count()));
-            },
-        );
+        let case = format!("region_add/{label}/{}_in_{retained}_out", rects.len());
+        group.bench_function(Backend::Cpu.case(&case), |b| {
+            b.iter(|| black_box(DamageRegion::from_rects(rects).iter_rects().count()));
+        });
     }
 
     group.finish();
@@ -437,25 +402,22 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
 /// Raises one child to the front, as clicking a node on a graph canvas does.
 ///
 /// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair once `has_order_inversion` fires, while raising one child inverts only `n`; these arms show whether that is visible, and from what fanout. Each iteration alternates orders so every frame trips the inversion.
-fn bench_paint_order_inversion(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "paint_order");
-
+fn bench_paint_order_inversion(group: &mut BenchmarkGroup<'_, WallTime>) {
     for count in ORDER_FANOUT {
-        let flat: Vec<usize> = (0..count).collect();
-        let mut raised = flat.clone();
-        let last = raised.pop().expect("fanout is non-empty");
-        raised.insert(0, last);
+        group.bench_function(Backend::Cpu.case(&format!("paint_order/{count}")), |b| {
+            let flat: Vec<usize> = (0..count).collect();
+            let mut raised = flat.clone();
+            let last = raised.pop().expect("fanout is non-empty");
+            raised.insert(0, last);
 
-        let mut h = UiHarness::new(SURFACE);
-        warm_and_assert(
-            &mut h,
-            |ui| build_ordered_siblings(ui, &flat),
-            |ui| build_ordered_siblings(ui, &raised),
-            "partial",
-        );
-
-        let mut flipped = false;
-        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, _| {
+            let mut h = UiHarness::new(SURFACE);
+            warm_and_assert(
+                &mut h,
+                |ui| build_ordered_siblings(ui, &flat),
+                |ui| build_ordered_siblings(ui, &raised),
+                "partial",
+            );
+            let mut flipped = false;
             b.iter(|| {
                 flipped = !flipped;
                 let order = if flipped { &raised } else { &flat };
@@ -464,11 +426,14 @@ fn bench_paint_order_inversion(c: &mut Criterion, run: Run<'_>) {
             });
         });
     }
-    group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    bench_workloads(c, run);
-    bench_paint_order_inversion(c, run);
-    bench_region_add(c, run);
+/// `integration/damage/cpu/<workload>` and `integration/damage/cpu/paint_order/<count>`: whole
+/// CPU frames, record through damage, on each `Damage` path, under shape churn, and with one
+/// raised sibling inverting paint order.
+pub(crate) fn integration(c: &mut Criterion) {
+    let mut group = Kind::Integration.group(c, "damage", Scale::Sample);
+    bench_workloads(&mut group);
+    bench_paint_order_inversion(&mut group);
+    group.finish();
 }

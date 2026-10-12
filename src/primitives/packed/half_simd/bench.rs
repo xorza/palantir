@@ -13,9 +13,9 @@
 //! per-iteration `black_box` costs more than the conversion; both made the arms
 //! read identical.
 
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::primitives::packed::half_simd::{F16x4, f16x4_from_f32x4, f16x4_scaled, f16x4_to_f32x4};
-use criterion::Criterion;
+use criterion::{Criterion, Throughput};
 use half::f16;
 use std::hint::black_box;
 
@@ -63,13 +63,17 @@ const fn scalar_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     ]
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
+/// `atomic/half_simd/cpu/<conversion>/<path>`: [`BATCH`] lane quads through the crate's SIMD
+/// path and `half`'s scalar one. The inputs are a few kilobytes of arithmetic, so they are built
+/// at once. Per quad.
+pub(crate) fn atomic(c: &mut Criterion) {
     let src = inputs();
     let bits = packed();
 
-    let mut g = run.group(c);
+    let mut g = Kind::Atomic.group(c, "half_simd", Scale::Sample);
+    g.throughput(Throughput::Elements(BATCH as u64));
 
-    g.bench_function("from_f32x4/runtime_simd", |b| {
+    g.bench_function(Backend::Cpu.case("from_f32x4/runtime_simd"), |b| {
         b.iter(|| {
             let mut acc = [0u16; 4];
             for v in black_box(&src) {
@@ -78,7 +82,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             acc
         });
     });
-    g.bench_function("from_f32x4/runtime_scalar", |b| {
+    g.bench_function(Backend::Cpu.case("from_f32x4/runtime_scalar"), |b| {
         b.iter(|| {
             let mut acc = [0u16; 4];
             for v in black_box(&src) {
@@ -88,7 +92,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
         });
     });
 
-    g.bench_function("to_f32x4/runtime_simd", |b| {
+    g.bench_function(Backend::Cpu.case("to_f32x4/runtime_simd"), |b| {
         b.iter(|| {
             let mut acc = [0.0f32; 4];
             for v in black_box(&bits) {
@@ -97,7 +101,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             acc
         });
     });
-    g.bench_function("to_f32x4/runtime_scalar", |b| {
+    g.bench_function(Backend::Cpu.case("to_f32x4/runtime_scalar"), |b| {
         b.iter(|| {
             let mut acc = [0.0f32; 4];
             for v in black_box(&bits) {
@@ -108,7 +112,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
     });
 
     // The fused decode-multiply-encode against the two-step form; keeps `F16x4::scaled`'s quoted ratio honest.
-    g.bench_function("scaled/fused", |b| {
+    g.bench_function(Backend::Cpu.case("scaled/fused"), |b| {
         b.iter(|| {
             let mut acc = [0u16; 4];
             for v in black_box(&bits) {
@@ -117,7 +121,7 @@ pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
             acc
         });
     });
-    g.bench_function("scaled/composed", |b| {
+    g.bench_function(Backend::Cpu.case("scaled/composed"), |b| {
         b.iter(|| {
             let mut acc = F16x4::ZERO;
             for v in black_box(&bits) {

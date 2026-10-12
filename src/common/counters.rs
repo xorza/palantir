@@ -7,7 +7,7 @@
 //!
 //! `TestOnly` unless a benchmark reads the counter; a counter module documents what it measures, not which gate it picked.
 //!
-//! **A probe accumulates for the life of its owner and readers subtract two readings**, which survives a pass that may not run. A reading meaningless outside one pass (a `Vec` log, a phase timing) clears at the top of it via **`begin_pass`**, as the layout and damage probes do.
+//! **A probe accumulates for the life of its owner and readers subtract two readings**, which survives a pass that may not run. A reading meaningless outside one pass (a `Vec` log) clears at the top of it via **`begin_pass`**, as the layout and damage probes do.
 //!
 //! [`counter_snapshot!`] generates the cells, snapshot and subtraction from one field list, so a new counter can't miss one of them.
 //!

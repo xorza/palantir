@@ -122,7 +122,7 @@ counter_snapshot! {
     allocs: u32,
 }
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
     use super::*;
 
