@@ -228,7 +228,7 @@ class Root:
             ["cargo", "metadata", "--no-deps", "--format-version", "1"],
             cwd=path,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
         )
         if out.returncode != 0:
             raise Failure(f"cargo metadata in {path}:\n{out.stderr.strip()}")
@@ -250,7 +250,7 @@ class Root:
             ["git", "config", "--file", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$"],
             cwd=self.dir,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
         )
         return [self.dir / line.split(" ", 1)[1] for line in out.stdout.splitlines() if " " in line]
 
@@ -259,7 +259,7 @@ class Root:
             ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
             cwd=self.dir,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
         )
         if out.returncode != 0:
             raise Failure(f"git status in {self.dir}:\n{out.stderr.strip()}")
@@ -486,12 +486,12 @@ def run(unit: Unit, log: Path, session: Session) -> Outcome:
         cwd=unit.package.root.dir,
         env=unit.env(),
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         errors="replace",
     )
     seconds = time.monotonic() - started
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text(f"$ {shlex.join(argv)}\n\n{proc.stdout}\n{proc.stderr}")
+    log.write_text(f"$ {shlex.join(argv)}\n\n{proc.stdout}\n{proc.stderr}", encoding="utf-8")
     outcome = Outcome(proc.returncode == 0, seconds, log=log)
     read_output(unit, proc.stdout, proc.stderr, outcome)
     return outcome
@@ -785,6 +785,9 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    # Cargo and rustc speak UTF-8; a Windows pipe would take the ANSI code page.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     argv = sys.argv[1:]
     extra: list[str] = []
     if "--" in argv:
