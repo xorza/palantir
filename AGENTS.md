@@ -288,6 +288,8 @@ cargo test --lib --test alloc --features golden,gpu-debug-markers
   (Mesa lavapipe, `mesa-vulkan-drivers`), as CI installs.
 - **The second clippy lints the build that ships**: every other target turns
   `internals` on through the self dev-dependency.
+- **A change to bench code** adds `cargo benches -- --test`, which runs each
+  case once; `benches/AGENTS.md` says how to run and measure.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
   binary opens the Tracy socket. The test run names `alloc`, as `--tests`
   with `golden` would pull in `visual`.

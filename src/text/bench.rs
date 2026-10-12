@@ -1,9 +1,4 @@
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
@@ -101,16 +96,15 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// `TextSystem::end_frame` retains every row, which the layer-less arms lack,
 /// so it is the layer's alone; the clock tick ages the shaped-buffer cache in
 /// both designs, so it is charged to both.
-fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
+fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
     const WRAP_W: f32 = 150.0;
 
     fn request_for(text: &str) -> TextShapeRequest<'_> {
         UI_FACE.unbounded_request(text)
     }
 
-    let mut group = run.subgroup(c, "reuse_layer");
     group.throughput(Throughput::Elements(REUSE_LAYER_LABELS as u64));
-    bench_shared_content(&mut group);
+    bench_shared_content(group);
 
     let labels: Vec<String> = (0..REUSE_LAYER_LABELS)
         .map(|i| format!("Reuse layer probe label number {i}"))
@@ -122,7 +116,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
         })
         .collect();
 
-    group.bench_function("single_line_hit", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/single_line_hit"), |b| {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
@@ -148,7 +142,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
         });
     });
 
-    group.bench_function("single_line_dispatch", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/single_line_dispatch"), |b| {
         let shaper = TextShaper::new();
         for text in &labels {
             shaper.root(request_for(text), WrapFloor::Skip);
@@ -161,7 +155,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
         });
     });
 
-    group.bench_function("wrap_hit", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/wrap_hit"), |b| {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
@@ -187,7 +181,7 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
         });
     });
 
-    group.bench_function("wrap_dispatch", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/wrap_dispatch"), |b| {
         let shaper = TextShaper::new();
         for text in &labels {
             let request = request_for(text);
@@ -207,7 +201,6 @@ fn bench_reuse_layer(c: &mut Criterion, run: Run<'_>) {
             shaper.tick_frame();
         });
     });
-    group.finish();
 }
 
 /// The two workloads that separate a per-widget reuse address from a
@@ -234,7 +227,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
         })
         .collect();
 
-    group.bench_function("shared_content", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/shared_content"), |b| {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for slot in &slots {
@@ -254,7 +247,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
         });
     });
 
-    group.bench_function("contended_width", |b| {
+    group.bench_function(Backend::Cpu.case("reuse_layer/contended_width"), |b| {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         let widths = [WRAP_W, WRAP_W - 40.0];
@@ -298,42 +291,37 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// The residency assertion is the standing guard: with supersession working
 /// the drag holds a handful of buffers; without it every rendered frame is
 /// promoted to the 120-frame window and residency tracks the drag's length.
-fn bench_resize_drag(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.group(c);
-    let slot = TextRunSlot {
-        widget_id: WidgetId::from_hash("text-shape-resize-drag"),
-        ordinal: 0,
-    };
-    let shaper = TextShaper::new();
-    let mut text = TextSystem::new(shaper.clone());
+fn bench_resize_drag(group: &mut BenchmarkGroup<'_, WallTime>) {
+    group.throughput(Throughput::Elements(1));
+    group.bench_function(Backend::Cpu.case("resize_drag_frame"), |b| {
+        let slot = TextRunSlot {
+            widget_id: WidgetId::from_hash("text-shape-resize-drag"),
+            ordinal: 0,
+        };
+        let shaper = TextShaper::new();
+        let mut text = TextSystem::new(shaper.clone());
 
-    // Prime a fixed-length drag and judge residency on that, not on
-    // criterion's iteration count (which is zero under `--list`).
-    for step in 0..DRAG_PRIME_FRAMES {
-        black_box(drag_frame(&mut text, &shaper, slot, step));
-    }
-    let resident = shaper.cosmic_cache_len();
-    eprintln!(
-        "[text_shape] resize_drag_frame resident_buffers={resident} \
-         after {DRAG_PRIME_FRAMES} frames",
-    );
-    assert!(
-        resident <= DRAG_RESIDENCY_LIMIT,
-        "a {DRAG_PRIME_FRAMES}-frame drag settled at {resident} shaped \
-         buffers, over the {DRAG_RESIDENCY_LIMIT} the probation window \
-         allows — supersession is not reaching the bounded keys it mints, \
-         so retention is tracking the protected window",
-    );
+        // Prime a fixed-length drag and judge residency on that, not on criterion's
+        // iteration count.
+        for step in 0..DRAG_PRIME_FRAMES {
+            black_box(drag_frame(&mut text, &shaper, slot, step));
+        }
+        let resident = shaper.cosmic_cache_len();
+        assert!(
+            resident <= DRAG_RESIDENCY_LIMIT,
+            "a {DRAG_PRIME_FRAMES}-frame drag settled at {resident} shaped \
+             buffers, over the {DRAG_RESIDENCY_LIMIT} the probation window \
+             allows — supersession is not reaching the bounded keys it mints, \
+             so retention is tracking the protected window",
+        );
 
-    let mut step = DRAG_PRIME_FRAMES;
-    group.bench_function("resize_drag_frame", |b| {
+        let mut step = DRAG_PRIME_FRAMES;
         b.iter(|| {
             let measured = drag_frame(&mut text, &shaper, slot, step);
             step = step.wrapping_add(1);
             black_box(measured.extent.size)
         });
     });
-    group.finish();
 }
 
 /// One drag frame end to end: layout commits a fresh width, the encoder
@@ -367,18 +355,18 @@ fn drag_frame(
 /// The label is long enough that the cut keeps a short prefix: the whole
 /// string is shaped once into the cached unbounded probe and only the prefix
 /// is reshaped per width.
-fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
+fn bench_ellipsis_churn(group: &mut BenchmarkGroup<'_, WallTime>) {
     const HEADING_PX: f32 = 20.0;
-    let shaper = TextShaper::new();
-    let mut group = run.subgroup(c, "ellipsis_width_churn");
+    group.throughput(Throughput::Elements(1));
 
-    let mut text = TextSystem::new(shaper.clone());
-    let slot = TextRunSlot {
-        widget_id: WidgetId::from_hash("text-shape-ellipsis-churn"),
-        ordinal: 0,
-    };
-    let mut step = 0u32;
-    group.bench_function("one_face", |b| {
+    group.bench_function(Backend::Cpu.case("ellipsis_width_churn/one_face"), |b| {
+        let shaper = TextShaper::new();
+        let mut text = TextSystem::new(shaper.clone());
+        let slot = TextRunSlot {
+            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn"),
+            ordinal: 0,
+        };
+        let mut step = 0u32;
         b.iter(|| {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
@@ -389,19 +377,20 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
         });
     });
 
-    let mut text = TextSystem::new(shaper.clone());
-    let slots = [
-        TextRunSlot {
-            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-body"),
-            ordinal: 0,
-        },
-        TextRunSlot {
-            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-head"),
-            ordinal: 0,
-        },
-    ];
-    let mut step = 0u32;
-    group.bench_function("two_faces", |b| {
+    group.bench_function(Backend::Cpu.case("ellipsis_width_churn/two_faces"), |b| {
+        let shaper = TextShaper::new();
+        let mut text = TextSystem::new(shaper.clone());
+        let slots = [
+            TextRunSlot {
+                widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-body"),
+                ordinal: 0,
+            },
+            TextRunSlot {
+                widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-head"),
+                ordinal: 0,
+            },
+        ];
+        let mut step = 0u32;
         b.iter(|| {
             let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
             step = step.wrapping_add(1);
@@ -426,11 +415,14 @@ fn bench_ellipsis_churn(c: &mut Criterion, run: Run<'_>) {
             black_box((body.extent.size, head.extent.size))
         });
     });
-    group.finish();
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    bench_reuse_layer(c, run);
-    bench_resize_drag(c, run);
-    bench_ellipsis_churn(c, run);
+/// `atomic/text_shape/cpu/<case>`: the reuse-slot layer against raw shaper dispatches, one
+/// resize-drag frame, and the truncation miss path. Per label, or per frame.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "text_shape", Scale::Sample);
+    bench_reuse_layer(&mut group);
+    bench_resize_drag(&mut group);
+    bench_ellipsis_churn(&mut group);
+    group.finish();
 }

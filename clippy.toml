@@ -129,12 +129,11 @@ disallowed-types = [
     { path = "wgpu::VertexStepMode", reason = "wgpu belongs to crate::gpu" },
 ]
 
-# A bench driver's window lives in its `config` row in `src/bench/driver.rs`.
-# A group's own setting outranks the runner's `--sample-size`,
-# `--measurement-time` and `--warm-up-time`, so those flags would silently
-# stop reaching that driver.
+# A group's sampling is set through `Scale` (`src/bench/fixture.rs`), the one
+# policy every case shares; `Scale::apply` alone calls these.
 disallowed-methods = [
-    { path = "criterion::BenchmarkGroup::sample_size", reason = "set the window in the driver's config row" },
-    { path = "criterion::BenchmarkGroup::warm_up_time", reason = "set the window in the driver's config row" },
-    { path = "criterion::BenchmarkGroup::measurement_time", reason = "set the window in the driver's config row" },
+    { path = "criterion::BenchmarkGroup::sample_size", reason = "set a group's sampling through `Scale`" },
+    { path = "criterion::BenchmarkGroup::warm_up_time", reason = "set a group's sampling through `Scale`" },
+    { path = "criterion::BenchmarkGroup::measurement_time", reason = "set a group's sampling through `Scale`" },
+    { path = "criterion::BenchmarkGroup::sampling_mode", reason = "set a group's sampling through `Scale`" },
 ]

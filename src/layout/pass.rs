@@ -11,7 +11,6 @@ use crate::common::span::Span;
 use crate::layout::axis_placement::Placed;
 use crate::layout::axis_slot::AxisSlot;
 use crate::layout::cache::{Arranged, MeasureCache};
-use crate::layout::counters::PhaseSpan;
 use crate::layout::drivers::grid::grid_context::GridContext;
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
@@ -202,18 +201,6 @@ impl LayoutPass<'_> {
     #[inline]
     pub(super) fn rect(&self, node: NodeId) -> Rect {
         self.out.rect[node.idx()]
-    }
-
-    /// Fold a closed measure span into this run's probe; the spans open around the
-    /// root walk, so they close through the pass.
-    #[inline]
-    pub(super) fn note_measure(&mut self, span: PhaseSpan) {
-        self.engine.scratch.counters.add_measure(span);
-    }
-
-    #[inline]
-    pub(super) fn note_arrange(&mut self, span: PhaseSpan) {
-        self.engine.scratch.counters.add_arrange(span);
     }
 
     /// Outer intrinsic on `axis` under content-sizing `req`; forwards to

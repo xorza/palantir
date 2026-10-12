@@ -5,7 +5,6 @@ use crate::common::tracy;
 use crate::layout::Layout;
 use crate::layout::axis_placement::{AxisPlacement, Placed};
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
-use crate::layout::counters::PhaseSpan;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
@@ -264,14 +263,11 @@ impl LayoutEngine {
                 let root = slot.first_node;
                 let available = slot.available(layer, surface);
                 // Two of the five passes that a Tracy capture couldn't tell
-                // apart; zones follow `PhaseSpan`'s boundaries. Per root, so
-                // the zone budget stays flat.
-                let measure_span = PhaseSpan::start();
+                // apart. Per root, so the zone budget stays flat.
                 let measured = {
                     tracy::zone!("Layout::measure");
                     pass.measure(root, available)
                 };
-                pass.note_measure(measure_span);
                 let root_layout = tree.records.layout()[root.idx()];
                 let size = AxisPlacement::arrange_size(
                     &root_layout,
@@ -284,19 +280,16 @@ impl LayoutEngine {
                     min: slot.origin(layer, size, surface),
                     size,
                 };
-                let arrange_span = PhaseSpan::start();
                 {
                     tracy::zone!("Layout::arrange");
                     pass.arrange(root, arranged);
                 }
-                pass.note_arrange(arrange_span);
                 self.last_roots.push(RootRun {
                     layer,
                     available,
                     slot: arranged,
                 });
             }
-            let capture_span = PhaseSpan::start();
             if self.scratch.cache_rebuild {
                 self.cache.capture_tree(
                     tree,
@@ -315,7 +308,6 @@ impl LayoutEngine {
                     },
                 );
             }
-            self.scratch.counters.add_capture(capture_span);
             // Container text is paint-only and its wrap width exists only after
             // arrange, so it gets its own pass over the identified owners.
             let layouts = tree.records.layout();
@@ -330,11 +322,9 @@ impl LayoutEngine {
             }
             out[layer].hash_rects();
         }
-        let finish_span = PhaseSpan::start();
         if self.scratch.cache_rebuild {
             self.cache.end_frame();
         }
-        self.scratch.counters.add_capture(finish_span);
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"

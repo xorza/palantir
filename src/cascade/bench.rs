@@ -2,7 +2,7 @@
 //! paint-only or transform change, and a forced full rebuild), and the hit
 //! test input runs per event against a disjoint grid of interactive rows.
 
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::cascade::Cascade;
 use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::engine::CascadeEngine;
@@ -14,7 +14,7 @@ use crate::internals::harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use criterion::{BenchmarkId, Criterion};
+use criterion::Criterion;
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
 
@@ -180,50 +180,54 @@ fn record_fixture(mut state: FrameFixture) -> UiHarness {
     h
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "run");
-
+/// `integration/cascade/cpu/<mutation>`: the cascade run over the frame fixture, incremental
+/// after a paint-only or a transform change, and a forced full rebuild.
+pub(crate) fn integration(c: &mut Criterion) {
+    let mut group = Kind::Integration.group(c, "cascade", Scale::Sample);
     for (label, mutation) in [
         ("paint_only", RunMutation::PaintOnly),
         ("transform", RunMutation::Transform),
     ] {
-        let mut fixture = CascadeRunFixture::new(mutation);
-        group.bench_function(label, |b| {
+        group.bench_function(Backend::Cpu.case(label), |b| {
+            let mut fixture = CascadeRunFixture::new(mutation);
             b.iter(|| {
                 fixture.run_next();
                 black_box(&fixture.cascade);
             });
         });
     }
-    let mut run_fixture = CascadeRunFixture::new(RunMutation::Transform);
-    group.bench_function("full_rebuild", |b| {
+    group.bench_function(Backend::Cpu.case("full_rebuild"), |b| {
+        let mut fixture = CascadeRunFixture::new(RunMutation::Transform);
         b.iter(|| {
-            run_fixture.run_next_full();
-            black_box(&run_fixture.cascade);
+            fixture.run_next_full();
+            black_box(&fixture.cascade);
         });
     });
     group.finish();
+}
 
-    let mut group = run.subgroup(c, "hit_test");
-
+/// `atomic/hit_test/cpu/<test>/<query>/<density>`: one hit test against [`ENTRY_COUNT`] rows, a
+/// share of them interactive in a disjoint grid. `topmost` exits on the first row and stays flat;
+/// `miss` traverses every row and scales: the gap is the scan a spatial index would remove.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "hit_test", Scale::Sample);
     for density in DENSITIES {
-        let cascade = fixture(density);
         let interactive = ENTRY_COUNT * density.percent / 100;
-        // `topmost` exits on the first row and stays flat; `miss` traverses every row and scales. The gap is the scan cost a spatial index would remove.
         for (query_label, query) in [
             ("topmost", topmost_query(interactive)),
             ("miss", QUERY_MISS),
         ] {
-            let id =
-                |name: &str| BenchmarkId::new(name, format!("{}/{}", query_label, density.label));
-            group.bench_function(id("targets"), |b| {
+            let case =
+                |test: &str| Backend::Cpu.case(&format!("{test}/{query_label}/{}", density.label));
+            group.bench_function(case("targets"), |b| {
+                let cascade = fixture(density);
                 b.iter(|| black_box(cascade.hit_test_targets(black_box(query))));
             });
-            group.bench_function(id("click_focus"), |b| {
+            group.bench_function(case("click_focus"), |b| {
+                let cascade = fixture(density);
                 b.iter(|| black_box(cascade.hit_test_press(black_box(query))));
             });
         }
     }
-
     group.finish();
 }

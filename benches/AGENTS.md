@@ -1,53 +1,45 @@
 # Benches
 
-One target, `criterion`, holds every driver: separate targets under the
-fat-LTO `[profile.bench]` linked in parallel and risked OOM. The drivers sit
-in `bench.rs` files beside the code they measure; `src/bench/mod.rs` says why.
+One target, `palantir`, runs every case through `bench::run`; each driver
+sits in a `bench.rs` beside the code it measures, and `src/bench/mod.rs`
+states the rules: the kinds, the ids, one number for each case, and the
+`Scale` sampling policy (`clippy.toml` keeps a group from setting its own).
 
 ## Running
 
 ```sh
-cargo bench -p palantir --bench criterion -- --list-drivers
-cargo bench -p palantir --bench criterion -- -d cascade 'hit_test$'
-cargo bench -p palantir --bench criterion -- -d frame --arms cpu --note 'after belt rework'
+cargo benches -- --list
+cargo benches -- '^atomic/hit_test/'
+cargo benches -- '/cpu/'                    # every case that opens no device
+cargo benches -- --exact integration/frame/gpu/cached
+cargo benches -- '^integration/frame/' --quick
+cargo benches -- --test                     # each case once
 ```
 
-- `-d` selects drivers by exact name; an unselected driver never runs its
-  setup. A positional is criterion's regex over benchmark ids, which filters
-  only after the setup. `--arms cpu|gpu|both` picks a half of the pipeline.
-  `--help` lists the rest. The binary reads no environment variable.
-- `frame` is opt-in: its ten arms take over 15 s each (3 s warm-up, 12 s
-  window), and it appends a row to `benches/results/<machine>.txt`, so it
-  needs `--note`.
-- A driver's window is its `config` row in `src/bench/driver.rs`: 50 samples
-  over 5 s after a 1 s warm-up, unless the row says otherwise. A group never
-  sets one, as a group's setting outranks the flags; clippy enforces it. Cut
-  `--sample-size` and `--measurement-time` while you iterate, and report only
-  a full run's numbers.
+- An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a
+  regex over it. A case builds its inputs in its own closure, so a filtered
+  run pays for nothing it does not time, and `'/cpu/'` opens no device.
+- A host without a GPU adapter runs no `gpu` case and says so once.
+- `--quick` while you iterate; report only a full run's numbers.
 
-**The frame bench measures what the desktop pays.**
+**The frame cases measure what the desktop pays.**
 
-- **The GPU arms present as the desktop does.** `bench_host` builds its
+- **The GPU frames present as the desktop does.** `bench_host` builds its
   `OffscreenHost` with `retained_target(true)`, the winit host's
   `DirectAdaptive`: a skip frame presents nothing, a full frame renders
   straight into the target, and a partial frame paints into palantir's
   backbuffer and copies all of it out. The default `BackbufferCopy` is the
   screenshot path, which also copies on skip and full frames: 1.3 ms on a
-  1440p `cached_gpu` frame.
-- **No timestamp inside a pass.** The device is `Timing::PassOnly`, so the
-  `write_stats` dump times whole passes, and the timed arms collect no GPU
-  stats. On a tiler such as the Pi 5's V3D each in-pass timestamp splits the
-  pass: a 1440p `scrolling_gpu` frame took 149 ms with them against 45 ms
-  without. The `image_pipeline` and `curve_pipeline` per-kind times still
-  write them, at the same cost on a tiler.
-- **`cached_cpu` paints nothing, as `cached_gpu` does**: a still frame plans
+  1440p `cached` frame.
+- **No timestamp inside a pass.** The frame device is `Timing::PassOnly`, and
+  the timed frames collect no GPU stats. On a tiler such as the Pi 5's V3D
+  each in-pass timestamp splits the pass: a 1440p `scrolling` frame took
+  149 ms with them against 45 ms without. The `image_pipeline` and
+  `curve_pipeline` cases time their batch with them, at the same cost on a
+  tiler.
+- **`cpu/cached` paints nothing, as `gpu/cached` does**: a still frame plans
   no paint, and the CPU harness encodes and composes only what a frame
   planned.
-
-Rows in `benches/results` from before 2026-10-06 do not compare with later
-ones: the GPU arms then took the copy path, the timed arms wrote in-pass
-timestamps, and `cached_cpu` repainted the whole scene (about 13 µs on the
-6800U).
 
 ## Measuring
 
@@ -72,17 +64,17 @@ keeps baselines in `./target/criterion`.
 
 ```sh
 bench_bin() {
-    cargo bench -p palantir --bench criterion --no-run 2>&1 |
+    cargo bench -p palantir --bench palantir --no-run 2>&1 |
         sed -n 's/.*Executable .*(\(.*\))$/\1/p'
 }
 cp "$(bench_bin)" tmp/criterion-a
 # ... make the change ...
 cp "$(bench_bin)" tmp/criterion-b
 RUN=(taskset -c 2 setarch -R)
-"${RUN[@]}" tmp/criterion-a --bench -d cascade --save-baseline a
-"${RUN[@]}" tmp/criterion-b --bench -d cascade --baseline a   # B against A
-"${RUN[@]}" tmp/criterion-b --bench -d cascade --save-baseline b
-"${RUN[@]}" tmp/criterion-a --bench -d cascade --baseline b   # A against B
+"${RUN[@]}" tmp/criterion-a --bench cascade/ --save-baseline a
+"${RUN[@]}" tmp/criterion-b --bench cascade/ --baseline a   # B against A
+"${RUN[@]}" tmp/criterion-b --bench cascade/ --save-baseline b
+"${RUN[@]}" tmp/criterion-a --bench cascade/ --baseline b   # A against B
 ```
 
 **Bisecting through `git archive`.** An extracted file's mtime is its

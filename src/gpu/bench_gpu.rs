@@ -5,11 +5,13 @@
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::surface::render_target::{self, RenderTarget};
 use crate::gpu::test_gpu::HeadlessTestGpuLease;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
 use glam::UVec2;
+use pollster::FutureExt;
 use std::sync::OnceLock;
 
 /// The render target format every bench uses, sRGB like the swapchain.
@@ -17,7 +19,7 @@ pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8
 
 /// Whether the device has the timestamp and pipeline-statistics features `GpuTimings` reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Timing {
+pub enum Timing {
     /// Requests whichever timestamp and pipeline-statistics features the adapter has.
     Instrumented,
     /// [`Self::Instrumented`] without in-pass timestamps: a tiler splits the pass at each (the Pi 5's V3D reloads the target).
@@ -28,13 +30,19 @@ pub(crate) enum Timing {
 
 /// A headless device and the adapter facts drivers report.
 #[derive(Debug)]
-pub(crate) struct BenchGpu {
+pub struct BenchGpu {
     pub(crate) gpu: Gpu,
     pub(crate) info: wgpu::AdapterInfo,
     /// What was granted: empty under [`Timing::Bare`], else a subset of what the flavour asks for.
     pub(crate) timing_features: wgpu::Features,
 }
 
+/// The device of `timing`, its adapter and instrumentation said once on stderr: a missing
+/// feature silently empties a timing.
+#[expect(
+    clippy::print_stderr,
+    reason = "a bench reports the device it measures on, which criterion does not"
+)]
 fn build(timing: Timing) -> BenchGpu {
     let timing_features = match timing {
         Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
@@ -46,15 +54,28 @@ fn build(timing: Timing) -> BenchGpu {
         .expect("lease headless bench gpu");
     let timing_features = gpu.gpu.device.features() & timing_features;
     let info = gpu.adapter.get_info();
-    BenchGpu {
+    let gpu = BenchGpu {
         gpu: gpu.gpu,
         info,
         timing_features,
-    }
+    };
+    eprintln!("palantir benches: {timing:?} device, {}", gpu.summary());
+    gpu
 }
 
 impl BenchGpu {
-    pub(crate) fn shared(timing: Timing) -> &'static BenchGpu {
+    /// Whether the host has a GPU adapter, found by listing them without opening a device.
+    pub fn adapter_exists() -> bool {
+        GpuRequest::instance().is_ok_and(|instance| {
+            !instance
+                .enumerate_adapters(wgpu::Backends::all())
+                .block_on()
+                .is_empty()
+        })
+    }
+
+    /// The process's device of `timing`, opened by the first caller.
+    pub fn shared(timing: Timing) -> &'static BenchGpu {
         static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
         static PASS_ONLY: OnceLock<BenchGpu> = OnceLock::new();
         static BARE: OnceLock<BenchGpu> = OnceLock::new();
@@ -65,7 +86,8 @@ impl BenchGpu {
         }
     }
 
-    pub(crate) fn target(&self, label: &str, size: UVec2) -> BenchTarget {
+    /// A `size` render target named `label`, in the swapchain's format.
+    pub fn target(&self, label: &str, size: UVec2) -> BenchTarget {
         BenchTarget(render_target::internals::texture(
             &self.gpu.device,
             label,
@@ -81,7 +103,7 @@ impl BenchGpu {
     }
 
     /// Blocks until all submissions drain, keeping GPU work inside the measured window.
-    pub(crate) fn wait(&self) {
+    pub fn wait(&self) {
         self.gpu
             .device
             .poll(wgpu::PollType::Wait {
@@ -92,7 +114,7 @@ impl BenchGpu {
     }
 
     /// An offscreen host builder on this device.
-    pub(crate) fn offscreen_builder(&self) -> OffscreenHostBuilder {
+    pub fn offscreen_builder(&self) -> OffscreenHostBuilder {
         OffscreenHost::builder(self.gpu.clone())
     }
 
@@ -107,9 +129,8 @@ impl BenchGpu {
         host
     }
 
-    /// The adapter and the instrumentation granted, for a driver's first line;
-    /// a missing bit silently empties a column.
-    pub(crate) fn summary(&self) -> String {
+    /// The adapter and the instrumentation granted.
+    fn summary(&self) -> String {
         format!(
             "adapter={} backend={:?} TIMESTAMP_QUERY={} INSIDE_PASSES={} INSIDE_ENCODERS={} \
              PIPELINE_STATS={}",
@@ -129,10 +150,11 @@ impl BenchGpu {
 
 /// A texture a bench driver renders into.
 #[derive(Debug)]
-pub(crate) struct BenchTarget(wgpu::Texture);
+pub struct BenchTarget(wgpu::Texture);
 
 impl BenchTarget {
-    pub(crate) fn as_target(&self) -> RenderTarget<'_> {
+    /// The target a host renders into.
+    pub fn as_target(&self) -> RenderTarget<'_> {
         RenderTarget::new(&self.0)
     }
 

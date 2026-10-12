@@ -20,12 +20,7 @@
 //! would only dilute the per-group signal. Step and scissor counts print once per workload as the
 //! secondary metric; wall time is the decision metric.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
+use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::schedule::internals::Walk;
@@ -39,7 +34,7 @@ use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
 
@@ -85,6 +80,17 @@ impl Workload {
                 URect::new(0, (group as u32 * 8) % (VIEWPORT - 8), VIEWPORT, 8)
             }
             Self::SharedScissor | Self::RoundedChain => URect::new(0, 0, VIEWPORT, 8),
+        }
+    }
+
+    /// The scissor requests a walk over `groups` groups emits: one per group where every group
+    /// has its own rect, one in all where they share it, and three per group where a wider
+    /// text batch sits between a group's quads and its image, each a genuine transition.
+    const fn scissors(self, groups: usize) -> usize {
+        match self {
+            Self::DistinctScissors | Self::QuadsThenImage => groups,
+            Self::SharedScissor | Self::RoundedChain => 1,
+            Self::TextThenImage => 3 * groups,
         }
     }
 
@@ -138,28 +144,21 @@ impl Workload {
     }
 }
 
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let mut group = run.subgroup(c, "walk");
+/// `atomic/schedule/cpu/walk/<workload>/<groups>`: one render buffer turned into its step
+/// stream, the scissor requests checked first. Per group.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "schedule", Scale::Sample);
     for workload in Workload::ALL {
         for groups in [64, 512] {
-            let buffer = workload.fixture(groups);
-            let walk = Walk::new(&buffer);
-            let counts = walk.run(&buffer, None, workload.use_stencil());
-            eprintln!(
-                "[schedule] {}/{groups} steps={} scissors={} stencil_refs={}",
-                workload.label(),
-                counts.steps,
-                counts.scissors,
-                counts.stencil_refs,
-            );
             group.throughput(Throughput::Elements(groups as u64));
-            group.bench_with_input(
-                BenchmarkId::new(workload.label(), groups),
-                &groups,
-                |b, _| {
-                    b.iter(|| black_box(walk.run(&buffer, None, workload.use_stencil())));
-                },
-            );
+            let case = format!("walk/{}/{groups}", workload.label());
+            group.bench_function(Backend::Cpu.case(&case), |b| {
+                let buffer = workload.fixture(groups);
+                let walk = Walk::new(&buffer);
+                let counts = walk.run(&buffer, None, workload.use_stencil());
+                assert_eq!(counts.scissors, workload.scissors(groups), "{case}");
+                b.iter(|| black_box(walk.run(&buffer, None, workload.use_stencil())));
+            });
         }
     }
     group.finish();

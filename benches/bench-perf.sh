@@ -3,13 +3,13 @@
 # microarch metrics, callgraph, precise IP, memory data source — into
 # tmp/palantir-perf*. benches/profiling.md says how to read them.
 #
-#   benches/bench-perf.sh                          # the frame driver
-#   DRIVER='damage cascade' benches/bench-perf.sh  # exact driver names
-#   DRIVER= benches/bench-perf.sh                  # every default driver
-#   SKIP='micro mem' benches/bench-perf.sh         # of micro, precise, mem
-#   benches/bench-perf.sh 'workload$'              # further args go to the bench
+#   benches/bench-perf.sh                               # the CPU frame cases
+#   FILTER='^integration/damage/' benches/bench-perf.sh # criterion's regex over case ids
+#   FILTER='/cpu/' benches/bench-perf.sh                # every case that opens no device
+#   SKIP='micro mem' benches/bench-perf.sh              # of micro, precise, mem
+#   benches/bench-perf.sh --exact                       # further args go to the bench
 #
-# Env: DRIVER (frame), ARMS (cpu), PROFILE_TIME (5 s per benchmark),
+# Env: FILTER (^integration/frame/cpu/), PROFILE_TIME (5 s per case),
 # FEATURES (beside `internals`, which a bench build has), PIN_CPU (2), CALLGRAPH (dwarf, or lbr on
 # Intel), SKIP.
 
@@ -18,20 +18,16 @@ cd "$(dirname "$0")/.."
 mkdir -p tmp
 OUT=tmp/palantir-perf
 
-# `-`, not `:-`: an empty DRIVER means every default driver.
-DRIVERS="${DRIVER-frame}"
+FILTER="${FILTER:-^integration/frame/cpu/}"
 PIN_CPU="${PIN_CPU:-2}"
 FEATURES="${FEATURES:-}"
 skipped() { [[ " ${SKIP:-} " == *" $1 "* ]]; }
 note() { echo "    NOTE: $*" >&2; }
 failed() { echo "    ($1 failed)"; }
 
-# `--bench` makes the runner parse argv itself. A fixed window keeps
-# sample counts comparable between captures, and a profiled run records
-# no results row, so the frame driver needs no `--note`.
-BENCH_ARGS=(--bench --arms "${ARMS:-cpu}" --profile-time "${PROFILE_TIME:-5}")
-for d in $DRIVERS; do BENCH_ARGS+=(--driver "$d"); done
-BENCH_ARGS+=("$@")
+# A fixed window keeps sample counts comparable between captures. A `cpu`
+# case opens no device, so the capture holds no driver threads.
+BENCH_ARGS=(--bench --profile-time "${PROFILE_TIME:-5}" "$FILTER" "$@")
 
 for tool in perf taskset setarch; do
     command -v "$tool" >/dev/null || { echo "error: $tool not installed" >&2; exit 1; }
@@ -80,16 +76,16 @@ done
 echo "==> Building (features: internals${FEATURES:+,$FEATURES})"
 if ! LOG=$(CARGO_PROFILE_BENCH_DEBUG=line-tables-only CARGO_PROFILE_BENCH_STRIP=none \
     CARGO_PROFILE_BENCH_SPLIT_DEBUGINFO=off \
-    cargo bench --bench criterion ${FEATURES:+--features "$FEATURES"} --no-run 2>&1); then
+    cargo bench --bench palantir ${FEATURES:+--features "$FEATURES"} --no-run 2>&1); then
     echo "$LOG" >&2
     exit 1
 fi
 # Cargo names the binary on a fresh build too, relative to the workspace
 # root.
 BIN=$(dirname "$(cargo locate-project --workspace --message-format plain)")/$(
-    echo "$LOG" | sed -n 's/.*Executable .*(\(.*criterion-[0-9a-f]*\))$/\1/p' | tail -1)
-[ -f "$BIN" ] || { echo "error: cargo named no criterion binary" >&2; exit 1; }
-echo "    $BIN on cpu$PIN_CPU, perf on $PERF_CPUS, drivers: ${DRIVERS:-<default>}"
+    echo "$LOG" | sed -n 's/.*Executable .*(\(.*palantir-[0-9a-f]*\))$/\1/p' | tail -1)
+[ -f "$BIN" ] || { echo "error: cargo named no bench binary" >&2; exit 1; }
+echo "    $BIN on cpu$PIN_CPU, perf on $PERF_CPUS, cases: $FILTER"
 
 rm -f "$OUT"*
 

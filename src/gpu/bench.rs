@@ -12,15 +12,8 @@
 //!
 //! Whole-frame wall time is never reported: it moves the opposite way across the `groups` pair.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
-use crate::bench::summary::Summary;
+use crate::bench::fixture::{Backends, Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::gpu::frame::schedule::internals::Walk;
 use crate::host::offscreen::{OffscreenHost, internals as offscreen_support};
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
@@ -28,7 +21,6 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -52,7 +44,6 @@ const TEXEL: u32 = 8;
 const LABEL: &str = "Palantir record pass";
 /// Frames rendered before sampling, enough to settle the glyph atlas, image bind-group cache and buffer growth.
 const WARMUP_FRAMES: usize = 64;
-const EVIDENCE_FRAMES: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workload {
@@ -88,6 +79,22 @@ impl Workload {
     /// Whether each cell clips. Only the per-item arms do: a clip gives each its own scissor (a `DrawGroup`) and cuts `LABEL` in X (strict run, split batch). The image pair is unclipped so it differs only in `TextureId` repeats.
     const fn clipped(self) -> bool {
         matches!(self, Self::GroupPerItem | Self::TextPerGroup)
+    }
+
+    /// The draw groups and text batches the arm's frame composes: a clipped cell is a group and
+    /// splits its text batch, an unclipped frame folds into one group, and no text means no
+    /// batch.
+    const fn expected(self) -> Counts {
+        let (groups, text_batches) = match self {
+            Self::GroupPerItem => (ITEMS, 0),
+            Self::TextPerGroup => (ITEMS, ITEMS),
+            Self::SingleGroup | Self::ImagesDistinct | Self::ImagesShared => (1, 0),
+            Self::TextSingleBatch => (1, 1),
+        };
+        Counts {
+            groups,
+            text_batches,
+        }
     }
 
     /// Textures the image arms register: `ImagesDistinct` one per item, `ImagesShared` one for all. Zero for the other arms.
@@ -163,15 +170,10 @@ fn record(ui: &mut Ui, handles: &[ImageHandle], workload: Workload, phase: bool)
         });
 }
 
-/// Draw-list shape behind one arm's timing. `steps` is the exact number of `RenderStep`s the measured pass dispatched.
-#[derive(Clone, Copy, Debug, Default)]
+/// The draw-list shape behind one arm's timing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct Counts {
     groups: usize,
-    steps: usize,
-    scissors: usize,
-    quads: usize,
-    images: usize,
-    image_batches: usize,
     text_batches: usize,
 }
 
@@ -229,18 +231,11 @@ impl Fixture {
         gpu().wait();
     }
 
-    /// Replay the schedule over the composed frame to count the steps dispatched, outside the measured window, on the same `damage = None` full walk.
-    fn counts(&self) -> Counts {
+    /// The composed frame's draw-list shape.
+    const fn counts(&self) -> Counts {
         let buffer = offscreen_support::last_render_buffer(&self.host);
-        let walk = Walk::new(buffer);
-        let counts = walk.run(buffer, None, false);
         Counts {
             groups: buffer.groups.len(),
-            steps: counts.steps,
-            scissors: counts.scissors,
-            quads: buffer.quads.len(),
-            images: buffer.images.len(),
-            image_batches: buffer.batches(PaintTier::Image).len(),
             text_batches: buffer.text_batches.len(),
         }
     }
@@ -253,53 +248,27 @@ impl Fixture {
     }
 }
 
-fn report_evidence(fixture: &mut Fixture) -> Counts {
-    for _ in 0..WARMUP_FRAMES {
-        fixture.frame();
-    }
-    let counts = fixture.counts();
-    let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
-    for _ in 0..EVIDENCE_FRAMES {
-        fixture.frame();
-        samples.push(fixture.record_time());
-    }
-    let summary = Summary::of(&mut samples).expect("EVIDENCE_FRAMES is not zero");
-    eprintln!(
-        "[record_pass] {} items={ITEMS} record {summary} steps={} groups={} scissors={} \
-         quads={} images={} image_batches={} text_batches={}",
-        fixture.workload.label(),
-        counts.steps,
-        counts.groups,
-        counts.scissors,
-        counts.quads,
-        counts.images,
-        counts.image_batches,
-        counts.text_batches,
-    );
-    counts
-}
-
-/// `iter_custom` reports only the recording window, but each sample costs a
-/// whole frame to harvest, so the default window would spend minutes per arm.
-/// This one buys thousands of iterations per sample in seconds.
-pub(crate) fn config() -> Criterion {
-    Criterion::default()
-        .sample_size(20)
-        .warm_up_time(Duration::from_millis(5))
-        .measurement_time(Duration::from_millis(50))
-}
-
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let gpu = gpu();
-    eprintln!("[record_pass] {}", gpu.summary());
-
-    let mut group = run.group(c);
+/// `atomic/record_pass/gpu/<workload>`: one frame's `RenderStep` stream translated into wgpu
+/// commands, timed by the pass's own CPU clock, not the frame's wall time. The draw-list shape
+/// is checked first. Per item.
+pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "record_pass", Scale::Sample);
+    group.throughput(Throughput::Elements(ITEMS as u64));
     for workload in Workload::ALL {
-        let mut fixture = Fixture::new(gpu, workload);
-        let counts = report_evidence(&mut fixture);
-        group.throughput(Throughput::Elements(counts.steps as u64));
-        group.bench_function(workload.label(), |bencher| {
-            // Whole-frame wall time is not reported; see the module doc.
+        group.bench_function(backend.case(workload.label()), |bencher| {
+            let mut fixture = Fixture::new(gpu(), workload);
+            for _ in 0..WARMUP_FRAMES {
+                fixture.frame();
+            }
+            assert_eq!(
+                fixture.counts(),
+                workload.expected(),
+                "{}",
+                workload.label()
+            );
             bencher.iter_custom(|iters| {
                 let mut total = Duration::ZERO;
                 for _ in 0..iters {

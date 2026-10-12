@@ -6,16 +6,10 @@
 //! - `minified_single` / `minified_mean` / `minified_peak`: a source 5× larger so the tap loop
 //!   engages; `single` is the taps-off control.
 //!
-//! Fragment-bound by design, so shader cost moves. The keep-or-revert signal is the minimum
-//! image-batch timestamp, printed with the median before each case.
+//! Fragment-bound by design, so shader cost moves. Criterion records the image batch's GPU
+//! timestamp, not the frame's wall time.
 
-#![expect(
-    clippy::print_stderr,
-    reason = "a bench reports what criterion does not measure to the terminal"
-)]
-
-use crate::bench::Run;
-use crate::bench::summary::Summary;
+use crate::bench::fixture::{Backends, Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
@@ -29,7 +23,6 @@ use crate::widgets::panel::Panel;
 use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
-use std::hint::black_box;
 
 const PHYSICAL: UVec2 = UVec2::new(1024, 1024);
 const TEXEL: u32 = 256;
@@ -38,9 +31,6 @@ const TEXEL: u32 = 256;
 const MINIFY_TEXEL: u32 = PHYSICAL.x * 5;
 const LAYERS: u32 = 24;
 const FRAGMENTS: u64 = (LAYERS * PHYSICAL.x * PHYSICAL.y) as u64;
-/// Frames before sampling; an integrated GPU needs a long ramp for clocks to settle.
-const WARMUP_FRAMES: usize = 128;
-const EVIDENCE_FRAMES: usize = 256;
 
 #[derive(Clone, Copy, Debug)]
 enum Workload {
@@ -191,43 +181,44 @@ impl Fixture {
     }
 }
 
-fn report_evidence(gpu: &BenchGpu, workload: Workload) {
-    let mut fixture = Fixture::new(gpu);
-    let mut samples = Vec::with_capacity(EVIDENCE_FRAMES);
-    for frame in 0..WARMUP_FRAMES + EVIDENCE_FRAMES {
-        fixture.render(gpu, workload);
-        gpu.poll();
-        if frame >= WARMUP_FRAMES
-            && let Some(time) = fixture.host.gpu_pass_stats().last_kind(BatchKind::Image)
-        {
-            samples.push(time);
-        }
-    }
-    let stats = fixture.host.gpu_pass_stats().last_pipeline_stats();
-    let fragments = stats.map_or_else(
-        || "n/a".to_owned(),
-        |pipeline| pipeline.fragment_shader_invocations.to_string(),
-    );
-    eprintln!(
-        "[image_pipeline] {} layers={LAYERS} fragments={fragments} image {} pipeline={stats:?}",
-        workload.label(),
-        Summary::of(&mut samples).map_or_else(|| "n/a".to_owned(), |s| s.to_string()),
-    );
-}
-
-pub(crate) fn bench(c: &mut Criterion, run: Run<'_>) {
-    let gpu = gpu();
-    eprintln!("[image_pipeline] {}", gpu.summary());
-
-    let mut group = run.subgroup(c, "frame_wall");
+/// `atomic/image_pipeline/gpu/<workload>`: the image batch of one frame on the device, from its
+/// timestamps. Per fragment.
+pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "image_pipeline", Scale::Frame);
+    group.throughput(Throughput::Elements(FRAGMENTS));
     for workload in Workload::ALL {
-        report_evidence(gpu, workload);
-        let mut fixture = Fixture::new(gpu);
-        group.throughput(Throughput::Elements(FRAGMENTS));
-        group.bench_function(workload.label(), |bencher| {
-            bencher.iter(|| {
+        group.bench_function(backend.case(workload.label()), |bencher| {
+            let gpu = gpu();
+            let mut fixture = Fixture::new(gpu);
+            // The timestamp readback lags a frame, so a few frames run before the first reads.
+            let timed = (0..8).any(|_| {
                 fixture.render(gpu, workload);
-                black_box(fixture.host.gpu_pass_stats());
+                gpu.poll();
+                fixture
+                    .host
+                    .gpu_pass_stats()
+                    .last_kind(BatchKind::Image)
+                    .is_some()
+            });
+            assert!(
+                timed,
+                "no image batch timestamp: the adapter needs in-pass timestamps"
+            );
+            bencher.iter_custom(|iters| {
+                (0..iters)
+                    .map(|_| {
+                        fixture.render(gpu, workload);
+                        gpu.poll();
+                        fixture
+                            .host
+                            .gpu_pass_stats()
+                            .last_kind(BatchKind::Image)
+                            .expect("an image batch timestamp every frame once one arrived")
+                    })
+                    .sum()
             });
         });
     }
