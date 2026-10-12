@@ -34,6 +34,7 @@
 //! gating. `Shape::Polyline::is_noop` catches those conditions at tier 2 and
 //! nothing between the tiers can invalidate them, so a degenerate polyline
 //! here is a broken contract. The gate still drops the payload's own no-ops.
+//!
 //! [`Encoder`]: crate::renderer::frontend::encoder::Encoder
 
 use crate::primitives::geometry::translate_scale::TranslateScale;

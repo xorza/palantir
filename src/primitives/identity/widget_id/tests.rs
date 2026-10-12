@@ -87,6 +87,7 @@ fn finalize_is_a_bijection_that_avoids_zero() {
         .flat_map(|i| [i, i << 32, i.wrapping_mul(0x9e37_79b9_7f4a_7c15)])
         .collect();
     let mut images = collections::HashSet::with_capacity(raws.len());
+    #[expect(clippy::iter_over_hash_type, reason = "each id is checked alone")]
     for &raw in &raws {
         let id = WidgetId::finalize(raw);
         assert_ne!(id.0, 0, "finalize must never produce the zero value");

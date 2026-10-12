@@ -29,49 +29,49 @@ impl Axis {
     }
 
     #[inline]
-    pub(super) fn from_bit(bit: u16) -> Axis {
+    pub(super) fn from_bit(bit: u16) -> Self {
         match bit {
-            0 => Axis::X,
-            1 => Axis::Y,
+            0 => Self::X,
+            1 => Self::Y,
             _ => unreachable!("packed axis bit {bit} is invalid"),
         }
     }
 
     /// The axis this one is not.
-    pub(crate) const fn other(self) -> Axis {
+    pub(crate) const fn other(self) -> Self {
         match self {
-            Axis::X => Axis::Y,
-            Axis::Y => Axis::X,
+            Self::X => Self::Y,
+            Self::Y => Self::X,
         }
     }
     pub(crate) const fn main(self, s: Size) -> f32 {
         match self {
-            Axis::X => s.w,
-            Axis::Y => s.h,
+            Self::X => s.w,
+            Self::Y => s.h,
         }
     }
     pub(crate) const fn cross(self, s: Size) -> f32 {
         match self {
-            Axis::X => s.h,
-            Axis::Y => s.w,
+            Self::X => s.h,
+            Self::Y => s.w,
         }
     }
     pub(crate) const fn main_v(self, v: Vec2) -> f32 {
         match self {
-            Axis::X => v.x,
-            Axis::Y => v.y,
+            Self::X => v.x,
+            Self::Y => v.y,
         }
     }
     pub(crate) const fn cross_v(self, v: Vec2) -> f32 {
         match self {
-            Axis::X => v.y,
-            Axis::Y => v.x,
+            Self::X => v.y,
+            Self::Y => v.x,
         }
     }
     pub(crate) const fn main_sizing(self, s: SizeSpec) -> Sizing {
         match self {
-            Axis::X => s.w(),
-            Axis::Y => s.h(),
+            Self::X => s.w(),
+            Self::Y => s.h(),
         }
     }
     /// Total spacing along this axis (left+right for X, top+bottom for Y).
@@ -81,29 +81,29 @@ impl Axis {
     /// Build a `Size` from main- and cross-axis lengths.
     pub(crate) const fn compose_size(self, main: f32, cross: f32) -> Size {
         match self {
-            Axis::X => Size::new(main, cross),
-            Axis::Y => Size::new(cross, main),
+            Self::X => Size::new(main, cross),
+            Self::Y => Size::new(cross, main),
         }
     }
     /// A `Spacing` with `main` on main-axis sides and `cross` on cross-axis sides; inverse of [`Self::spacing`] (a `Splitter`'s grab bar overhangs along the split axis only).
     pub(crate) fn compose_spacing(self, main: f32, cross: f32) -> Spacing {
         match self {
-            Axis::X => Spacing::new(main, cross, main, cross),
-            Axis::Y => Spacing::new(cross, main, cross, main),
+            Self::X => Spacing::new(main, cross, main, cross),
+            Self::Y => Spacing::new(cross, main, cross, main),
         }
     }
     /// Order a main/cross pair as grid APIs take them, `[rows, cols]`; `Axis::X` distributes along columns, so its main list is the column list.
     pub(crate) const fn rows_cols<T>(self, main: T, cross: T) -> [T; 2] {
         match self {
-            Axis::X => [cross, main],
-            Axis::Y => [main, cross],
+            Self::X => [cross, main],
+            Self::Y => [main, cross],
         }
     }
     /// Build a `Vec2` from main- and cross-axis positions.
     pub(crate) const fn compose_point(self, main: f32, cross: f32) -> Vec2 {
         match self {
-            Axis::X => Vec2::new(main, cross),
-            Axis::Y => Vec2::new(cross, main),
+            Self::X => Vec2::new(main, cross),
+            Self::Y => Vec2::new(cross, main),
         }
     }
     /// Build a `Rect` from main- and cross-axis positions and lengths.
@@ -115,8 +115,8 @@ impl Axis {
         cross: f32,
     ) -> Rect {
         match self {
-            Axis::X => Rect::new(main_pos, cross_pos, main, cross),
-            Axis::Y => Rect::new(cross_pos, main_pos, cross, main),
+            Self::X => Rect::new(main_pos, cross_pos, main, cross),
+            Self::Y => Rect::new(cross_pos, main_pos, cross, main),
         }
     }
 }
@@ -130,8 +130,8 @@ pub(crate) mod internals {
         /// Build a `SizeSpec` from main- and cross-axis sizings; the [`Axis::compose_size`] of a sizing.
         pub(crate) const fn compose_sizing(self, main: Sizing, cross: Sizing) -> SizeSpec {
             match self {
-                Axis::X => SizeSpec::new(main, cross),
-                Axis::Y => SizeSpec::new(cross, main),
+                Self::X => SizeSpec::new(main, cross),
+                Self::Y => SizeSpec::new(cross, main),
             }
         }
     }

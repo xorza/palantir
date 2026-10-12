@@ -1,4 +1,4 @@
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;

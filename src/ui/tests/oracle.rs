@@ -1,8 +1,8 @@
-//! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::harness::oracle::Oracle)); one test per mutation.
+//! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::ui_harness::oracle::Oracle)); one test per mutation.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
-use crate::internals::harness::oracle::Oracle;
+use crate::internals::ui_harness::UiHarness;
+use crate::internals::ui_harness::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;

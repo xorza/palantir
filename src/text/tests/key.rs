@@ -5,42 +5,44 @@ use crate::primitives::text::recorded_text::RecordedText;
 
 #[test]
 fn cache_key_discriminates_every_shaping_axis() {
+    type Field = fn(TextShapeKey) -> u32;
     // Shaped buffers are cached by key, so any input that changes glyph positions must change the key.
     let mut c = CosmicMeasure::default();
     let base = c.measure("hi", shape(16.0)).buffer_key();
 
-    for (label, variant, field, base_field) in [
+    let cases: [(&str, _, Field, _); 5] = [
         (
             "font size",
             shape(20.0),
-            (|k: TextShapeKey| k.font_size().to_bits()) as fn(TextShapeKey) -> u32,
+            |k: TextShapeKey| k.font_size().to_bits(),
             base.font_size().to_bits(),
         ),
         (
             "line height",
             shape(16.0).leading(24.0),
-            (|k: TextShapeKey| k.line_height().to_bits()) as fn(TextShapeKey) -> u32,
+            |k: TextShapeKey| k.line_height().to_bits(),
             base.line_height().to_bits(),
         ),
         (
             "family",
             shape(16.0).family(FontFamily::MONO),
-            (|k: TextShapeKey| u32::from(k.family().raw())) as fn(TextShapeKey) -> u32,
+            |k: TextShapeKey| u32::from(k.family().raw()),
             u32::from(base.family().raw()),
         ),
         (
             "weight",
             shape(16.0).weight(FontWeight::BOLD),
-            (|k: TextShapeKey| u32::from(k.weight().get())) as fn(TextShapeKey) -> u32,
+            |k: TextShapeKey| u32::from(k.weight().get()),
             u32::from(base.weight().get()),
         ),
         (
             "slant",
             shape(16.0).slant(FontSlant::Italic),
-            (|k: TextShapeKey| k.slant() as u32) as fn(TextShapeKey) -> u32,
+            |k: TextShapeKey| k.slant() as u32,
             base.slant() as u32,
         ),
-    ] {
+    ];
+    for (label, variant, field, base_field) in cases {
         let key = c.measure("hi", variant).buffer_key();
         assert_ne!(base, key, "{label} must enter the cache key");
         assert_ne!(

@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::tests::forged_focus;
 use crate::input::sense::Sense;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

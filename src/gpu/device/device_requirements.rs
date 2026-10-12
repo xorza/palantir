@@ -139,8 +139,7 @@ mod tests {
         let optional = Features::TIMESTAMP_QUERY | Features::PIPELINE_STATISTICS_QUERY;
 
         // Only the optional features the adapter has come along.
-        let requirements =
-            DeviceRequirements::against(available, &ceiling.clone(), optional).unwrap();
+        let requirements = DeviceRequirements::against(available, &ceiling, optional).unwrap();
         assert_eq!(
             requirements.features,
             Features::IMMEDIATES | Features::TIMESTAMP_QUERY
@@ -148,7 +147,7 @@ mod tests {
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
         let missing =
-            DeviceRequirements::against(Features::empty(), &ceiling.clone(), optional).unwrap_err();
+            DeviceRequirements::against(Features::empty(), &ceiling, optional).unwrap_err();
         let UnmetRequirements::Features { missing } = &missing else {
             panic!("{missing:?}");
         };
@@ -193,8 +192,7 @@ mod tests {
         );
 
         let requirements =
-            DeviceRequirements::against(Features::IMMEDIATES, &ceiling.clone(), Features::empty())
-                .unwrap();
+            DeviceRequirements::against(Features::IMMEDIATES, &ceiling, Features::empty()).unwrap();
 
         assert!(requirements.limits.check_limits(&ceiling));
         assert_eq!(requirements.limits.max_inter_stage_shader_variables, 15);

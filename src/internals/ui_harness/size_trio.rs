@@ -1,7 +1,7 @@
 //! The arranged sizes a widget's "explicit size beats the default" test reads.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;

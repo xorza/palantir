@@ -177,6 +177,10 @@ impl EncodedCache {
     /// keys carry cosmic's `font_id`, which fontdb never reuses.
     pub(super) fn clear(&mut self) {
         let arena = &mut self.arena;
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "each span returns to the arena alone, so the order changes nothing"
+        )]
         for (_, entry) in self.map.drain() {
             arena.release(entry.span);
         }

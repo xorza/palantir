@@ -1,7 +1,7 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
@@ -26,7 +26,7 @@ fn scroll_layout_records_viewport_and_content_after_arrange() {
     assert_eq!(scroll_viewport(&h.ui, id).h, 200.0);
     assert_eq!(scroll_content(&h.ui, id).h, 800.0);
     assert_eq!(
-        read_state(&mut h).offset,
+        read_state(&h).offset,
         Vec2::ZERO,
         "no wheel input → offset stays at 0"
     );
@@ -301,7 +301,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
 
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
-    assert_eq!(read_state(&mut h).offset.y, 50.0, "offset advanced");
+    assert_eq!(read_state(&h).offset.y, 50.0, "offset advanced");
     assert!(
         h.engines.cascade.counters.ran(),
         "scroll offset change must re-run the cascade (it moves the arranged rects)",

@@ -148,13 +148,6 @@ fn the_fields_still_lie_in_scissor_order() {
     assert_eq!(size_of::<URect>(), 16);
     assert_eq!(
         bytemuck::bytes_of(&r),
-        &1u32
-            .to_ne_bytes()
-            .iter()
-            .chain(2u32.to_ne_bytes().iter())
-            .chain(3u32.to_ne_bytes().iter())
-            .chain(4u32.to_ne_bytes().iter())
-            .copied()
-            .collect::<Vec<u8>>()[..]
+        bytemuck::cast_slice::<u32, u8>(&[1, 2, 3, 4])
     );
 }

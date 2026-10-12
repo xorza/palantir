@@ -228,7 +228,7 @@ pub mod widget {
     pub use crate::text::probe::TextProbe;
     pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
     pub use crate::text::run::TextRun;
-    pub use crate::widget_core::configure::ConfigureWidget;
+    pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::widget::Widget;
     pub use crate::widget_core::widget_look::look_plan::LookPlan;

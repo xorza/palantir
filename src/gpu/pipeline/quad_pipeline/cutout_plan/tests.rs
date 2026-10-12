@@ -447,7 +447,7 @@ fn the_plan_does_not_hang_on_quad_order() {
         .map(|r| shadow(FillKind::SHADOW_DROP, 400.0, 300.0, r, 16.0))
         .collect();
     let forward = plan(&quads);
-    let mut reversed: Vec<Quad> = quads.clone();
+    let mut reversed: Vec<Quad> = quads;
     reversed.reverse();
     let backward = plan(&reversed);
     assert_eq!(forward.tables().len(), 3);

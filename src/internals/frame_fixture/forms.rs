@@ -155,7 +155,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
     });
 }
 
-pub(super) fn properties_card(state: &mut FrameFixture, ui: &mut Ui, rows: usize) {
+pub(super) fn properties_card(state: &FrameFixture, ui: &mut Ui, rows: usize) {
     tokens::card(ui, "props", "PROPERTIES", Sizing::HUG, |ui| {
         Grid::new()
             .id_salt("props-grid")

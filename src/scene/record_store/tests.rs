@@ -30,7 +30,7 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     };
     let colliding = RecordedGradient {
         axis: FillAxis::from_lanes(0.0, 1.0, 0.0, 1.0),
-        ..first.clone()
+        ..first
     };
     let mut gradients = RecordedGradients::default();
     let first_id = gradients.intern(7, first.clone());

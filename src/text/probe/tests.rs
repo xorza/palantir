@@ -1,4 +1,4 @@
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::text::font_family::FontFamily;

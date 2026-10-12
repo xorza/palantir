@@ -15,8 +15,8 @@ use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
@@ -333,7 +333,7 @@ impl<'a> DragValue<'a> {
         let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
         let sizes = self.widget.authored_size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
-        let width = held_w.unwrap_or(sizes.w());
+        let width = held_w.unwrap_or_else(|| sizes.w());
         let (mut buffer, original) =
             match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
                 DragValueState::Editing { buffer, original } => (buffer, original),
@@ -381,7 +381,7 @@ impl<'a> DragValue<'a> {
 
 impl Configure for DragValue<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

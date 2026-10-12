@@ -147,7 +147,7 @@ pub(crate) fn text_paint_bbox_local(
 impl ShapeRecord {
     /// Feeds what layout reads from this record into `h`, answering whether there was anything. Only text is read by layout (text, face, wrap, alignment); colour and origin are paint, so a recoloured label still hits the measure cache.
     pub(crate) fn hash_layout_inputs(&self, h: &mut impl hash::Hasher) -> bool {
-        let ShapeRecord::Text {
+        let Self::Text {
             text,
             font,
             wrap,
@@ -177,30 +177,30 @@ impl ShapeRecord {
 impl NanCheck for ShapeRecord {
     fn has_nan(&self) -> bool {
         match self {
-            ShapeRecord::Quad(shape) => shape.has_nan(),
-            ShapeRecord::Polyline { width, bbox, .. } => width.is_nan() || bbox.has_nan(),
-            ShapeRecord::Text {
+            Self::Quad(shape) => shape.has_nan(),
+            Self::Polyline { width, bbox, .. } => width.is_nan() || bbox.has_nan(),
+            Self::Text {
                 local_origin,
                 color,
                 font,
                 ..
             } => local_origin.has_nan() || color.has_nan() || font.has_nan(),
-            ShapeRecord::Mesh {
+            Self::Mesh {
                 local_rect,
                 tint,
                 bbox,
                 ..
             } => local_rect.has_nan() || tint.has_nan() || bbox.has_nan(),
-            ShapeRecord::Image {
+            Self::Image {
                 local_rect,
                 tint,
                 fit,
                 ..
             } => local_rect.has_nan() || tint.has_nan() || fit.has_nan(),
-            ShapeRecord::Icon {
+            Self::Icon {
                 local_rect, tint, ..
             } => local_rect.has_nan() || tint.has_nan(),
-            ShapeRecord::Curve { stroke, bbox, .. } => stroke.has_nan() || bbox.has_nan(),
+            Self::Curve { stroke, bbox, .. } => stroke.has_nan() || bbox.has_nan(),
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Pin: `Sizing::fill` is a WPF Stretch: content size at measure, fills its slot at arrange.
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

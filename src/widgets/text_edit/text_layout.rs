@@ -86,7 +86,7 @@ impl TextLayout {
             input.multiline,
             text_align.halign(),
         );
-        TextLayout {
+        Self {
             ctx,
             text_align,
             caret_room,

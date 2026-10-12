@@ -431,7 +431,7 @@ impl WindowDriver {
             // A direct repaint leaves the mirror stale; one through the backbuffer matches
             // the target.
             PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
-                let backbuffer = if mode.renders_via_backbuffer() {
+                let backbuffer = mode.renders_via_backbuffer().then(|| {
                     let ensured = Backbuffer::ensure(
                         &mut self.backbuffer,
                         backend.device(),
@@ -446,10 +446,8 @@ impl WindowDriver {
                         "backbuffer (re)created under a Partial plan whose draw \
                          list was culled for Partial"
                     );
-                    Some(ensured.backbuffer)
-                } else {
-                    None
-                };
+                    ensured.backbuffer
+                });
                 self.backbuffer_fresh = backbuffer.is_some();
                 let store = self.ui.record_store();
                 backend.submit(Submission {

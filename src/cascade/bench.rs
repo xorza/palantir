@@ -10,7 +10,7 @@ use crate::cascade::entry::{EntryRow, HitRow};
 use crate::display::Display;
 use crate::input::sense::Sense;
 use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;

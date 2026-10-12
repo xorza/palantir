@@ -142,7 +142,7 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
         });
 }
 
-pub(super) fn status_bar(state: &mut FrameFixture, ui: &mut Ui) {
+pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
     const TOAST_W: f32 = 220.0;
 
     let bar = Panel::zstack()

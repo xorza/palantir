@@ -5,7 +5,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;

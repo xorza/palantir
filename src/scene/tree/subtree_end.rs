@@ -46,7 +46,7 @@ impl SubtreeEnd {
 
     /// Folds a just-closed child into this (parent) end: the larger pre-order end, grid flags unioned.
     #[inline]
-    pub(crate) const fn merge_child(&mut self, child: SubtreeEnd) {
+    pub(crate) const fn merge_child(&mut self, child: Self) {
         let (own, theirs) = (self.0 & SUBTREE_END_MASK, child.0 & SUBTREE_END_MASK);
         let end = if own > theirs { own } else { theirs };
         self.0 = end | ((self.0 | child.0) & SUBTREE_GRID_FLAG);

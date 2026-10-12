@@ -21,19 +21,19 @@ const OPENABLE: [Tab; 3] = [Tab::Layers, Tab::History, Tab::Console];
 impl Tab {
     const fn label(self) -> &'static str {
         match self {
-            Tab::Canvas => "canvas",
-            Tab::Layers => "layers",
-            Tab::History => "history",
-            Tab::Console => "console",
+            Self::Canvas => "canvas",
+            Self::Layers => "layers",
+            Self::History => "history",
+            Self::Console => "console",
         }
     }
 
     const fn blurb(self) -> &'static str {
         match self {
-            Tab::Canvas => "The pinned tab. It refuses to close, so the tree is never empty.",
-            Tab::Layers => "Drag this chip onto another pane's edge to split it.",
-            Tab::History => "Drop a chip into a strip to join that pane instead.",
-            Tab::Console => "Right-click a chip for the split menu.",
+            Self::Canvas => "The pinned tab. It refuses to close, so the tree is never empty.",
+            Self::Layers => "Drag this chip onto another pane's edge to split it.",
+            Self::History => "Drop a chip into a strip to join that pane instead.",
+            Self::Console => "Right-click a chip for the split menu.",
         }
     }
 }
@@ -106,13 +106,13 @@ impl DockTabs for Panes {
     }
 
     fn tab_menu(&mut self, ui: &mut Ui, menu: DockTabMenu<'_, Tab>) {
-        let mut side = None;
-        if MenuItem::new("Split right").show(ui, menu.close).clicked() {
-            side = Some(SplitSide::Right);
-        }
-        if MenuItem::new("Split down").show(ui, menu.close).clicked() {
-            side = Some(SplitSide::Bottom);
-        }
+        let right = MenuItem::new("Split right").show(ui, menu.close).clicked();
+        let down = MenuItem::new("Split down").show(ui, menu.close).clicked();
+        let side = if down {
+            Some(SplitSide::Bottom)
+        } else {
+            right.then_some(SplitSide::Right)
+        };
         if let Some(side) = side {
             menu.operations.push(DockOperation::MoveTab {
                 tab: menu.tab,

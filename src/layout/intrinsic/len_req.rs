@@ -22,8 +22,8 @@ impl LenReq {
             Axis::Y => 1,
         };
         let r = match self {
-            LenReq::MinContent => 0,
-            LenReq::MaxContent => 1,
+            Self::MinContent => 0,
+            Self::MaxContent => 1,
         };
         a * 2 + r
     }

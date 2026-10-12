@@ -128,6 +128,10 @@ impl DamageEngine {
         extend_predamaged(&mut self.raw_rects, forest, cascade, prev_time, now);
 
         // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps.
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "a fixed hasher, so the eviction rects repeat from run to run"
+        )]
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
                 self.raw_rects

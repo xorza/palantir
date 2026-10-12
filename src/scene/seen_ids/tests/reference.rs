@@ -142,6 +142,10 @@ impl Reference {
                 removed.insert(id);
             }
         }
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "the ids go into a set, so the order changes nothing"
+        )]
         for &id in &self.discarded {
             if self.curr.endpoint(id).is_none() {
                 removed.insert(id);

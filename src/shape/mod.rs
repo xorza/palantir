@@ -57,6 +57,7 @@ mod sealed {
 
     #[expect(
         private_interfaces,
+        unnameable_types,
         reason = "nothing outside the crate can name the sealed trait, so the crate-private types in its signature cannot leak"
     )]
     pub trait LowerShape: fmt::Debug {

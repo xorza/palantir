@@ -3,8 +3,8 @@
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use std::rc::Rc;
@@ -58,7 +58,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         background.validate();
@@ -70,7 +70,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         background.validate();
@@ -99,7 +99,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
 
 impl<Rows, Cols> Configure for Grid<Rows, Cols> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

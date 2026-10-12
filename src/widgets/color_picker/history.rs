@@ -9,7 +9,7 @@ use tinyvec::ArrayVec;
 /// taken out and put back every frame, so a default that built the presets would pay sixteen conversions a frame.
 #[derive(Debug, Default)]
 pub(crate) struct History {
-    colors: ArrayVec<[RgbaF32; History::CAP]>,
+    colors: ArrayVec<[RgbaF32; Self::CAP]>,
 }
 
 impl History {

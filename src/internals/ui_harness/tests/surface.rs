@@ -1,7 +1,7 @@
 //! Moving the surface between frames, and the physical/logical split.
 
-use crate::internals::harness::tests::support::{SURFACE, button};
-use crate::internals::harness::*;
+use crate::internals::ui_harness::tests::support::{SURFACE, button};
+use crate::internals::ui_harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::ui::frame_report::FramePaint;
 

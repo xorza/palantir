@@ -193,10 +193,10 @@ struct PaintKey {
 }
 
 impl PaintKey {
-    fn of(p: &Paint) -> PaintKey {
+    fn of(p: &Paint) -> Self {
         // `f + 0.0` folds -0.0 onto +0.0 and leaves every other bit pattern, NaN included, unchanged.
         let n = |f: f32| (f + 0.0).to_bits();
-        PaintKey {
+        Self {
             hash: p.hash.0,
             screen_bits: [
                 n(p.screen.min.x),

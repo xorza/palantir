@@ -102,7 +102,7 @@ impl Scopes {
         }
     }
 
-    pub(super) fn adopt_closing(&mut self, other: &Scopes) {
+    pub(super) fn adopt_closing(&mut self, other: &Self) {
         for &owner in &other.closing {
             self.close(owner);
         }

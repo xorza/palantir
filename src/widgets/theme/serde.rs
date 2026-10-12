@@ -19,6 +19,7 @@ pub(super) mod duration_seconds {
         D: ::serde::Deserializer<'de>,
     {
         let secs = <f32 as ::serde::Deserialize>::deserialize(deserializer)?;
-        Duration::try_from_secs_f32(secs).map_err(|_| D::Error::custom(ERROR))
+        Duration::try_from_secs_f32(secs)
+            .map_err(|error| D::Error::custom(format!("{ERROR}: {error}")))
     }
 }

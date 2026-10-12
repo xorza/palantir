@@ -91,7 +91,7 @@ impl TextRig {
             let interned_text = self.store.interned_text();
             for (index, rows) in batches.iter().enumerate() {
                 self.backend
-                    .prepare_batch(&mut ctx, scale, index, rows, &interned_text);
+                    .prepare_batch(&ctx, scale, index, rows, &interned_text);
             }
             self.backend.pass.flush(&mut ctx);
         }

@@ -78,6 +78,10 @@ impl<T> Store<T> {
 impl<T: 'static> TypedStore for Store<T> {
     /// `swap_remove` the row, then patch the swapped neighbour's index off `owners`.
     fn sweep_removed(&mut self, removed: &WidgetIdSet) {
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "a fixed hasher, so the rows end in the same slots from run to run"
+        )]
         for id in removed {
             let Some(idx) = self.map.remove(id) else {
                 continue;

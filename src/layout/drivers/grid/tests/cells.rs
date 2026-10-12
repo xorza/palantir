@@ -1,6 +1,6 @@
 //! Placing a child in its resolved cell, and the depth stack bracketing the walk.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;

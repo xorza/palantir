@@ -1,7 +1,7 @@
 //! The rollup: what a subtree hash covers, and where its span ends.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;

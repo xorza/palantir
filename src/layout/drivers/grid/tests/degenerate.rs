@@ -1,6 +1,6 @@
 //! Zero extents, empty dimensions, and a track list long enough to test the inline cap.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;

@@ -8,8 +8,8 @@ use crate::primitives::text::text_input::TextInput;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
 use crate::widget_core::response::ResponseSnapshot;
@@ -35,7 +35,7 @@ struct TooltipGlobal {
 }
 
 /// Hover-driven text bubble attached to a trigger widget, recorded into
-/// [`Layer::Tooltip`](crate::scene::layer::Layer::Tooltip) after the pointer rests
+/// [`Layer::Tooltip`] after the pointer rests
 /// for the theme's delay; the theme's warmup keeps later tooltips instant.
 ///
 /// ```
@@ -200,7 +200,7 @@ impl Tooltip<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background)
+    /// Panics unless `background` holds the kinds [`Background`]
     /// lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
@@ -214,7 +214,7 @@ impl Tooltip<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background)
+    /// Panics unless `background` holds the kinds [`Background`]
     /// lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
@@ -228,7 +228,7 @@ impl Tooltip<'_> {
 
 impl Configure for Tooltip<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

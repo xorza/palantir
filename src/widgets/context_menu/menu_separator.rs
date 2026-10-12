@@ -1,8 +1,8 @@
 //! The rule a context menu draws between groups of rows.
 
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widgets::separator::Separator;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -50,7 +50,7 @@ impl<'a> MenuSeparator<'a> {
 
 impl Configure for MenuSeparator<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.separator.configure()
     }
 }

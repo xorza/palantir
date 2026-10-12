@@ -57,12 +57,12 @@ enum Edge {
 impl Edge {
     const fn name(self) -> &'static str {
         match self {
-            Edge::FocusGained => "focus_gained",
-            Edge::Changed => "changed",
-            Edge::Submitted => "submitted",
-            Edge::Canceled => "canceled",
-            Edge::Committed => "committed",
-            Edge::FocusLost => "focus_lost",
+            Self::FocusGained => "focus_gained",
+            Self::Changed => "changed",
+            Self::Submitted => "submitted",
+            Self::Canceled => "canceled",
+            Self::Committed => "committed",
+            Self::FocusLost => "focus_lost",
         }
     }
 }
@@ -70,7 +70,7 @@ impl Edge {
 /// The last [`EventLog::LEN`] edges in a fixed ring.
 #[derive(Debug, Default)]
 struct EventLog {
-    entries: [Option<(u32, Edge)>; EventLog::LEN],
+    entries: [Option<(u32, Edge)>; Self::LEN],
     /// Next edge's sequence number; its slot is `next % LEN`.
     next: u32,
 }

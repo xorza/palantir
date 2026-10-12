@@ -1,7 +1,7 @@
 //! A line's cross extent: its max, floors and caps.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;

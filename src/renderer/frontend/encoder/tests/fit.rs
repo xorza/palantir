@@ -1,7 +1,7 @@
 //! How an image or icon resolves its destination rect and UVs.
 
 use crate::damage::region::DamageRegion;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

@@ -10,7 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;

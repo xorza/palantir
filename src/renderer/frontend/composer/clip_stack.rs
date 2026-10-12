@@ -40,7 +40,7 @@ impl ClipStack {
     }
 
     pub(super) fn chain(&self) -> Span {
-        self.top().map_or(Span::default(), |frame| frame.chain)
+        self.top().map_or_else(Span::default, |frame| frame.chain)
     }
 
     /// The clip that will be in force once the top is popped.

@@ -58,14 +58,14 @@ impl QuadShape {
     #[inline]
     pub(crate) fn bbox_local(&self, owner_size: Size) -> Rect {
         match self {
-            QuadShape::Rect { local_rect, .. } => local_rect.unwrap_or(Rect {
+            Self::Rect { local_rect, .. } => local_rect.unwrap_or(Rect {
                 min: Vec2::ZERO,
                 size: owner_size,
             }),
-            QuadShape::Shadow {
+            Self::Shadow {
                 local_rect, shadow, ..
             } => shadow.paint_rect_local(*local_rect, owner_size),
-            QuadShape::Triangle { bbox, .. } => *bbox,
+            Self::Triangle { bbox, .. } => *bbox,
         }
     }
 }

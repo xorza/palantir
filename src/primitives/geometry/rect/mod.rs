@@ -333,7 +333,7 @@ impl Rect {
 impl NanCheck for Rect {
     #[inline]
     fn has_nan(&self) -> bool {
-        Rect::has_nan(*self)
+        Self::has_nan(*self)
     }
 }
 

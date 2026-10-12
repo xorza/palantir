@@ -11,6 +11,11 @@
 //! re-enters this allocator inside single-threaded `dbghelp`, and two panicking
 //! threads deadlock the `alloc` binary.
 
+#![expect(
+    clippy::disallowed_types,
+    reason = "a global allocator has no owner to carry its counters"
+)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
 

@@ -11,7 +11,7 @@ use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::shortcut::Shortcut;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
@@ -371,11 +371,7 @@ fn focus_policy_routing() {
         assert_eq!(h.hit_at(miss), None, "{label}: the press misses everything");
         h.press_at(miss);
         h.release();
-        let expected = if *expect_focus {
-            Some(editable_id)
-        } else {
-            None
-        };
+        let expected = (*expect_focus).then_some(editable_id);
         assert_eq!(h.focus(), expected, "{label}: after outside press");
     }
     assert_eq!(

@@ -2,7 +2,7 @@
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -150,7 +150,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let look2 = WidgetLook {
         background: Background {
             fill: RgbaF32::hex(0xff0000).into(),
-            ..bg.clone()
+            ..bg
         },
         text: TextStyleOverrides::NONE,
     };
@@ -175,7 +175,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         ..fallback
     };
     let look3 = WidgetLook {
-        background: bg.clone(),
+        background: bg,
         text: TextStyleOverrides::NONE
             .with_font_size(own_size)
             .with_color(own_color),

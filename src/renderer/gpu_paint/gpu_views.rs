@@ -63,6 +63,10 @@ impl GpuViews {
 
     /// Drops the rows of widgets the frame stopped recording.
     pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "each row is dropped alone, so the order changes nothing"
+        )]
         for id in removed {
             self.entries.remove(id);
         }
@@ -94,7 +98,7 @@ mod tests {
         views.record(id, first.clone(), true, 1);
         let target = views.view(id).texture_id;
 
-        let epoch = views.record(id, first.clone(), false, 2);
+        let epoch = views.record(id, first, false, 2);
         assert_eq!(
             views.view(id).texture_id,
             target,

@@ -3,8 +3,8 @@
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
@@ -85,7 +85,7 @@ impl Panel {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         background.validate();
@@ -98,7 +98,7 @@ impl Panel {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         background.validate();
@@ -111,7 +111,7 @@ impl Panel {
 
 impl Configure for Panel {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

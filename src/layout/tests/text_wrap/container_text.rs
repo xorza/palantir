@@ -2,8 +2,8 @@
 //! cached alongside its children.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;

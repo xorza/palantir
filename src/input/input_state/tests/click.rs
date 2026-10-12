@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::input::capture::DOUBLE_CLICK_WINDOW;
 use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::input::sense::Sense;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

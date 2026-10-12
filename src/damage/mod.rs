@@ -74,18 +74,18 @@ pub(crate) enum Damage {
 impl Damage {
     /// Classify a collapsed damage set into the frame's paint decision, or
     /// `None` when nothing paints. Pure dispatch on the measured coverage
-    /// ([`DamageRegion::collapse_from`] checks the degenerate surface).
+    /// ([`region::DamageRegion::collapse_from`] checks the degenerate surface).
     /// Absence rather than a variant keeps a no-op out of
     /// [`RenderPlan`](crate::renderer::render_plan::RenderPlan).
     ///
-    pub(crate) fn new(damage: CollapsedDamage) -> Option<Damage> {
+    pub(crate) fn new(damage: CollapsedDamage) -> Option<Self> {
         if damage.region.is_empty() {
             return None;
         }
         if damage.coverage > FULL_REPAINT_THRESHOLD {
-            return Some(Damage::Full);
+            return Some(Self::Full);
         }
-        Some(Damage::Partial(damage))
+        Some(Self::Partial(damage))
     }
 
     /// Whether the frame paints inside damage rects rather than over the whole
@@ -117,7 +117,7 @@ pub(crate) mod internals {
         /// so cases compare rects, or match the variant for an outcome.
         pub(crate) fn expect_partial(damage: Option<Self>) -> DamageRegion {
             match damage {
-                Some(Damage::Partial(damage)) => damage.region,
+                Some(Self::Partial(damage)) => damage.region,
                 other => panic!("expected partial damage, got {other:?}"),
             }
         }

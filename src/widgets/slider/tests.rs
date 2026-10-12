@@ -1,8 +1,8 @@
 use crate::Ui;
-use crate::internals::harness::UiHarness;
-use crate::internals::harness::passes::Passes;
-use crate::internals::harness::size_trio::SizeTrio;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::UiHarness;
+use crate::internals::ui_harness::passes::Passes;
+use crate::internals::ui_harness::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;

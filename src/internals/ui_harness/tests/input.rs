@@ -1,8 +1,8 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
-use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
-use crate::internals::harness::*;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::*;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;

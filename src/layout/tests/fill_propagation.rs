@@ -5,7 +5,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support;
 use crate::layout::tests::support::two_hug_cols_with_wrap;
 use crate::primitives::geometry::size::Size;

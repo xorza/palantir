@@ -279,7 +279,7 @@ impl str::FromStr for RgbaF32 {
 fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
     let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
     let parse_byte = |index: usize| -> Result<u8, &'static str> {
-        Ok(hex_nibble(body[index])? << 4 | hex_nibble(body[index + 1])?)
+        Ok((hex_nibble(body[index])? << 4) | hex_nibble(body[index + 1])?)
     };
     match body.len() {
         6 => Ok(RgbaF32::from_srgba(SrgbaU8::rgb(
@@ -310,7 +310,7 @@ const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
 impl NanCheck for RgbaF32 {
     #[inline]
     fn has_nan(&self) -> bool {
-        RgbaF32::has_nan(*self)
+        Self::has_nan(*self)
     }
 }
 

@@ -52,7 +52,7 @@
 //!     the last; [`UiHarness::step`] steps one at a time.
 //!
 //! Tiers: `impl UiHarness` (`pub`) leaves the crate through
-//! `palantir::internals::harness`; `impl UiHarness` (`pub(crate)`) is construction;
+//! `palantir::internals::ui_harness`; `impl UiHarness` (`pub(crate)`) is construction;
 //! `mod unit` (`#[cfg(test)]`) is for in-tree suites only, so a bench build does
 //! not see it as unused.
 
@@ -68,8 +68,8 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::internals::harness::passes::Passes;
 use crate::internals::record_app::RecordApp;
+use crate::internals::ui_harness::passes::Passes;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -665,7 +665,7 @@ impl UiHarness {
 
 pub(crate) mod internals {
     use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
-    use crate::internals::harness::UiHarness;
+    use crate::internals::ui_harness::UiHarness;
 
     impl UiHarness {
         /// Collapse this frame's raw damage rects as `DamageEngine::finish_region` does.
@@ -688,9 +688,9 @@ mod unit {
     use crate::animation::animatable::Animatable;
     use crate::damage::Damage;
     use crate::damage::region::DamageRegion;
-    use crate::internals::harness::UiHarness;
     use crate::internals::paint_capture::PaintCapture;
     use crate::internals::record_app::RecordApp;
+    use crate::internals::ui_harness::UiHarness;
     use crate::layout::intrinsic::len_req::LenReq;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::widget_id::WidgetId;

@@ -83,7 +83,7 @@ impl Shadow {
         self.color.is_noop() || self.has_nan()
     }
 
-    /// True if any scalar is NaN; shared with the [`NanCheck`](crate::primitives::math::nan::NanCheck) impl.
+    /// True if any scalar is NaN; shared with the [`NanCheck`] impl.
     #[inline]
     pub(crate) const fn has_nan(&self) -> bool {
         self.color.has_nan()
@@ -96,6 +96,6 @@ impl Shadow {
 impl NanCheck for Shadow {
     #[inline]
     fn has_nan(&self) -> bool {
-        Shadow::has_nan(self)
+        Self::has_nan(self)
     }
 }

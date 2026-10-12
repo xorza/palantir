@@ -155,7 +155,7 @@ impl URect {
 impl From<URect> for Rect {
     #[inline]
     fn from(r: URect) -> Self {
-        Rect::new(
+        Self::new(
             r.min.x as f32,
             r.min.y as f32,
             r.size.x as f32,

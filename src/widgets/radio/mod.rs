@@ -6,8 +6,8 @@ use crate::primitives::math::domain;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
@@ -66,13 +66,12 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let dot_inset = domain::length_at_least(slot.indicator_inset, 0.0);
 
         let mut selected = *self.current == self.value;
-        let mut changed = false;
         // Radios latch: re-clicking the selected option is a no-op. A fresh click flips `selected` now, since
         // `value` moves into `current`, or the pip paints unselected until the next repaint.
-        if activated && !selected {
+        let changed = activated && !selected;
+        if changed {
             *self.current = self.value;
             selected = true;
-            changed = true;
         }
 
         let chrome = ToggleChrome {
@@ -99,7 +98,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 
 impl<T: PartialEq> Configure for RadioButton<'_, T> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

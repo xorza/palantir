@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};

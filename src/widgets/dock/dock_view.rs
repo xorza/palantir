@@ -11,8 +11,8 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::ContextMenu;
@@ -250,8 +250,8 @@ impl<T: DockTab> DockView<'_, T> {
     }
 
     fn drag(state: &DockState<T>, ui: &Ui) -> Option<T> {
-        ui.state::<TabDrag<T>>(Self::dock_id(state))
-            .and_then(|d| d.tab)
+        let d = ui.state::<TabDrag<T>>(Self::dock_id(state))?;
+        d.tab
     }
 
     fn set_drag(state: &DockState<T>, ui: &mut Ui, tab: Option<T>) {
@@ -309,7 +309,7 @@ impl<T: DockTab> DockView<'_, T> {
 
 impl<T> Configure for DockView<'_, T> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

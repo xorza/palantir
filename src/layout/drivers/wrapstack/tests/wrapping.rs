@@ -1,6 +1,6 @@
 //! Where the break falls on each axis, and what an oversize child does to its line.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;

@@ -173,7 +173,7 @@ impl Mesh {
     /// # Panics
     ///
     /// Panics if the combined vertex indices cannot be represented by `u32`.
-    pub fn append(&mut self, other: &Mesh) {
+    pub fn append(&mut self, other: &Self) {
         if other.vertices.is_empty() {
             return;
         }

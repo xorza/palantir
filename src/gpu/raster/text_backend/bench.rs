@@ -192,13 +192,8 @@ impl Fixture {
             let mut ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
             for (index, batch) in batches.iter().enumerate() {
-                self.backend.prepare_batch(
-                    &mut ctx,
-                    batch.scale,
-                    index,
-                    batch.runs,
-                    &interned_text,
-                );
+                self.backend
+                    .prepare_batch(&ctx, batch.scale, index, batch.runs, &interned_text);
             }
             self.backend.flush(&mut ctx);
         }
@@ -243,10 +238,10 @@ impl Fixture {
                 label: Some("palantir.text_atlas.prepare"),
             });
         {
-            let mut ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
+            let ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
             self.backend
-                .prepare_batch(&mut ctx, scale, 0, &self.runs, &interned_text);
+                .prepare_batch(&ctx, scale, 0, &self.runs, &interned_text);
         }
         self.belt.finish();
         self.belt.recall();

@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use glam::UVec2;

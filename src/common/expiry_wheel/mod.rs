@@ -174,6 +174,10 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
             due.append(&mut self.buckets[(f & self.mask) as usize]);
         }
 
+        #[expect(
+            clippy::iter_with_drain,
+            reason = "the buffer goes back to `self.scratch` for the next drain"
+        )]
         for ticket in due.drain(..) {
             if let Some(next) = settle(ticket.key, ticket.seq) {
                 self.file(ticket, next);

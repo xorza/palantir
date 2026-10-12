@@ -1,8 +1,8 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
-use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
-use crate::internals::harness::*;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::tests::support::{INSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::*;
 use std::cell;
 
 #[test]

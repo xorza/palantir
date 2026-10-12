@@ -1,7 +1,7 @@
 use crate::layout::intrinsic::*;
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;

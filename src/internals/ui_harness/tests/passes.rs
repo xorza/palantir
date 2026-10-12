@@ -1,7 +1,7 @@
 //! Which record pass a read observes, warm against cold.
 
-use crate::internals::harness::tests::support::{INSIDE, SURFACE, button, target};
-use crate::internals::harness::*;
+use crate::internals::ui_harness::tests::support::{INSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::*;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
 use std::mem;
 

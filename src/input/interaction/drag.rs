@@ -43,26 +43,26 @@ impl Drag {
     #[inline]
     pub const fn delta(self) -> Option<Vec2> {
         match self {
-            Drag::Started { delta } | Drag::Active { delta } => Some(delta),
-            Drag::None | Drag::Stopped => None,
+            Self::Started { delta } | Self::Active { delta } => Some(delta),
+            Self::None | Self::Stopped => None,
         }
     }
 
     /// A drag is live (`Started` / `Active`).
     #[inline]
     pub const fn is_live(self) -> bool {
-        matches!(self, Drag::Started { .. } | Drag::Active { .. })
+        matches!(self, Self::Started { .. } | Self::Active { .. })
     }
 
     /// One-frame edge: the latch frame.
     #[inline]
     pub const fn started(self) -> bool {
-        matches!(self, Drag::Started { .. })
+        matches!(self, Self::Started { .. })
     }
 
     /// One-frame edge: the release frame of a latched drag.
     #[inline]
     pub const fn stopped(self) -> bool {
-        matches!(self, Drag::Stopped)
+        matches!(self, Self::Stopped)
     }
 }

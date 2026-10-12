@@ -90,23 +90,22 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         quote! { #(#mag_sq_terms)+* }
     };
 
-    let settle_distance_squared_body = match &settle_eps {
-        Some(eps) => quote! {
+    let settle_distance_squared_body = if let Some(eps) = &settle_eps {
+        quote! {
             let eps: f32 = #eps;
             ::palantir::widget::Animatable::magnitude_squared(self) / (eps * eps)
-        },
-        None => {
-            let terms: Vec<TokenStream2> = anim
-                .iter()
-                .map(|(f, _)| {
-                    quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
-                })
-                .collect();
-            if terms.is_empty() {
-                quote! { 0.0_f32 }
-            } else {
-                quote! { #(#terms)+* }
-            }
+        }
+    } else {
+        let terms: Vec<TokenStream2> = anim
+            .iter()
+            .map(|(f, _)| {
+                quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
+            })
+            .collect();
+        if terms.is_empty() {
+            quote! { 0.0_f32 }
+        } else {
+            quote! { #(#terms)+* }
         }
     };
 

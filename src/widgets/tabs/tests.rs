@@ -4,7 +4,7 @@ use glam::{UVec2, Vec2};
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -508,8 +508,9 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     assert_eq!((page, drawn), (7, Some(2)));
 
     let mut drawn = None;
+    let no_tabs: [&str; 0] = [];
     h.frame(|ui| {
-        TabbedView::new(&mut page, &[] as &[&str])
+        TabbedView::new(&mut page, &no_tabs)
             .id(view)
             .show(ui, |_, index| drawn = Some(index));
     });

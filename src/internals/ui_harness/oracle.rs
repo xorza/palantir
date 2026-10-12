@@ -5,7 +5,7 @@ use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::engine::CascadeEngine;
 use crate::cascade::internals::OwnedPaint;
 use crate::damage::Damage;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::layer_layout::LayerLayout;

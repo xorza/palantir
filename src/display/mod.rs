@@ -153,7 +153,7 @@ impl Display {
     /// `refresh_millihertz` is excluded. The scales are compared as
     /// themselves, as the product cannot tell a 2× monitor from a 1× one at
     /// 200%.
-    pub fn raster_eq(&self, other: &Display) -> bool {
+    pub fn raster_eq(&self, other: &Self) -> bool {
         self.physical == other.physical
             && self.system_scale == other.system_scale
             && self.user_scale == other.user_scale

@@ -4,7 +4,7 @@ use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::text::font_scope::FontScope;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::Wake;

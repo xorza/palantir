@@ -4,7 +4,7 @@ use crate::Ui;
 use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;

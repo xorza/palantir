@@ -47,7 +47,7 @@ pub enum PaintRepeat {
 }
 
 /// When an animation runs, and how finely.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PaintTiming {
     /// Absolute time the first pass begins, in the frame clock's epoch.
     pub started_at: Duration,
@@ -125,7 +125,7 @@ impl PaintAnimation {
             PaintSteps::Continuous => h.write_u32(0),
             PaintSteps::Steps(n) => h.write_u32(n.get()),
         }
-        h.write_usize(self.curve as usize);
+        hash::Hash::hash(&self.curve, h);
     }
 
     fn new(channel: PaintChannel) -> Self {

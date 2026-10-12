@@ -14,7 +14,7 @@ use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyleOverrides;
 
-/// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`](crate::widget::ThemeSlot::look). `padding`/`margin` apply when the builder set none.
+/// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     /// The four per-state looks; `flatten` keeps theme files flat (`[button.normal]`).

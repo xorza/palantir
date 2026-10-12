@@ -85,7 +85,7 @@ impl SurfaceManager {
         .open(&instance)?;
 
         let max_texture_dim = gpu.max_texture_dim();
-        let surfaces = SurfaceManager {
+        let surfaces = Self {
             instance,
             adapter,
             gpu,

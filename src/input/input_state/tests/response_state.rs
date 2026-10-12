@@ -12,7 +12,7 @@ use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;

@@ -3,8 +3,8 @@ use crate::Ui;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;

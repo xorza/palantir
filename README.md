@@ -162,7 +162,7 @@ palantir = { version = "*", features = ["internals"] }
 
 ```rust
 use palantir::prelude::*;
-use palantir::internals::harness::UiHarness;
+use palantir::internals::ui_harness::UiHarness;
 
 let inc = WidgetId::from_hash("inc");
 let mut clicks = 0_u32;

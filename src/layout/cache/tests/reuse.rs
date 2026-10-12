@@ -3,7 +3,7 @@
 
 use crate::Ui;
 use crate::common::span::Span;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;

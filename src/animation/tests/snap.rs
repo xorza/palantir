@@ -5,7 +5,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{
     AnimUi, SLOT, closed_form_settle_step, setup_anim_ui, spring_velocity, wid,
 };
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;

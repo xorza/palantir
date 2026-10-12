@@ -32,18 +32,18 @@ impl Ident {
     #[inline]
     pub(crate) fn raw_id(self, parent: Option<WidgetId>) -> WidgetId {
         match self {
-            Ident::Verbatim(id) => id,
-            Ident::Resolved(resolved) => {
+            Self::Verbatim(id) => id,
+            Self::Resolved(resolved) => {
                 unreachable!("resolved id {:?} fed back to the forest", resolved.id())
             }
-            Ident::Auto(site) => WidgetId::from_location(site).scoped(parent),
-            Ident::Hash(id) => id.scoped(parent),
+            Self::Auto(site) => WidgetId::from_location(site).scoped(parent),
+            Self::Hash(id) => id.scoped(parent),
         }
     }
 
     /// `true` for every identity but [`Ident::Auto`]; `SeenIds::resolve` flags explicit collisions as caller bugs.
     #[inline]
     pub(crate) const fn is_explicit(self) -> bool {
-        !matches!(self, Ident::Auto(_))
+        !matches!(self, Self::Auto(_))
     }
 }

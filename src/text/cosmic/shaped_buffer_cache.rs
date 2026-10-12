@@ -216,6 +216,10 @@ impl ShapedBufferCache {
     /// tests use it for a guaranteed-cold cache.
     pub(super) fn drop_all(&mut self) {
         let recycle_pool = &mut self.recycle_pool;
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "each buffer returns to the pool alone, so the order changes nothing"
+        )]
         for (_, entry) in self.entries.drain() {
             recycle_into(recycle_pool, entry.buffer);
         }

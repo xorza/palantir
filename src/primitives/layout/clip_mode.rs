@@ -30,6 +30,6 @@ pub enum ClipMode {
 impl ClipMode {
     /// Whether this mode clips at all.
     pub const fn is_clip(self) -> bool {
-        !matches!(self, ClipMode::None)
+        !matches!(self, Self::None)
     }
 }

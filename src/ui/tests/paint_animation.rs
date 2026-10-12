@@ -1,8 +1,8 @@
 //! A paint animation from the record call to the encoded draw.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;

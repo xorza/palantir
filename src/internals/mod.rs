@@ -8,13 +8,13 @@
 
 pub mod demo_swatches;
 pub mod frame_fixture;
-pub mod harness;
 #[cfg(test)]
 mod hot_struct_sizes;
 pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;
 pub mod record_app;
+pub mod ui_harness;
 
 use crate::text;
 

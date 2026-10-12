@@ -1,7 +1,7 @@
 //! The scroll panel a test drives, and what its offsets are read back through.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -56,7 +56,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
     });
 }
 
-pub(super) fn read_state(h: &mut UiHarness) -> ScrollState {
+pub(super) fn read_state(h: &UiHarness) -> ScrollState {
     h.ui.state::<ScrollState>(WidgetId::from_hash("scroll"))
         .copied()
         .unwrap_or_default()

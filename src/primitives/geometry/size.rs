@@ -163,7 +163,7 @@ impl<'de> ::serde::Deserialize<'de> for Size {
         }
 
         let raw = RawSize::deserialize(deserializer)?;
-        let size = Size::new(
+        let size = Self::new(
             raw.w.unwrap_or(f32::INFINITY),
             raw.h.unwrap_or(f32::INFINITY),
         );
@@ -181,7 +181,7 @@ impl<'de> ::serde::Deserialize<'de> for Size {
 impl NanCheck for Size {
     #[inline]
     fn has_nan(&self) -> bool {
-        Size::has_nan(*self)
+        Self::has_nan(*self)
     }
 }
 

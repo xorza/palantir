@@ -1,5 +1,10 @@
 //! Assert that a closure panics for the stated reason (`catch_unwind(..).is_err()` accepts any panic).
 
+#![expect(
+    clippy::disallowed_types,
+    reason = "the panic hook is process-wide and takes no user data to carry the flag"
+)]
+
 use std::any::Any;
 use std::cell::Cell;
 use std::panic::{self, AssertUnwindSafe};

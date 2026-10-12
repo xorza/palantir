@@ -2,7 +2,7 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;

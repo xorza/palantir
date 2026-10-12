@@ -4,7 +4,7 @@
 //! a width range: no frame panics and every toolbar button stays in its toolbar.
 use crate::primitives::identity::widget_id::WidgetId;
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
