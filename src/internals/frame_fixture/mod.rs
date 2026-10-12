@@ -61,7 +61,7 @@ pub struct FrameFixture {
     role: u8,
     pub(crate) tick: u32,
     /// Translate applied to the body panel after arrange, for the
-    /// `frame/scrolling_cpu` arm: moves position without changing layout.
+    /// `integration/frame/cpu/scrolling` arm: moves position without changing layout.
     pub(crate) scroll_offset: Vec2,
     /// Backing values for the settings grid, constant across bench iterations so
     /// they never disturb the damage `Skip` / `Partial` invariants.

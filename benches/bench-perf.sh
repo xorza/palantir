@@ -67,16 +67,10 @@ for sib in $SIBLINGS; do
     [ "$sib" != "$PIN_CPU" ] && note "keep cpu$sib idle — it shares a core with cpu$PIN_CPU"
 done
 
-# The environment repeats palantir's `[profile.bench]` debug settings, with
-# the same values: cargo ignores that profile inside an enclosing workspace,
-# and the environment keeps the symbols and line tables perf reads there.
-# Standalone the profile cargo resolves is unchanged, so `cargo bench` and
-# this script build one binary and neither rebuilds after the other. Keep
-# the values in step with `Cargo.toml`.
+# The `bench` profile keeps the line tables and symbols perf reads, so this
+# builds the binary `cargo bench` builds and neither rebuilds after the other.
 echo "==> Building (features: internals${FEATURES:+,$FEATURES})"
-if ! LOG=$(CARGO_PROFILE_BENCH_DEBUG=line-tables-only CARGO_PROFILE_BENCH_STRIP=none \
-    CARGO_PROFILE_BENCH_SPLIT_DEBUGINFO=off \
-    cargo bench --bench palantir ${FEATURES:+--features "$FEATURES"} --no-run 2>&1); then
+if ! LOG=$(cargo bench --bench palantir ${FEATURES:+--features "$FEATURES"} --no-run 2>&1); then
     echo "$LOG" >&2
     exit 1
 fi
