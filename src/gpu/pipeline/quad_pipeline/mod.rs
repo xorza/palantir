@@ -395,7 +395,7 @@ const _: () = {
     assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
 };
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 

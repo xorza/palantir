@@ -1,7 +1,7 @@
 //! The recorder: [`Ui`], the handle a widget or host authors a frame through,
 //! and the retained state that frame reads and writes.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod frame_cycle;
 pub(crate) mod frame_engines;
@@ -172,9 +172,12 @@ impl Ui {
     /// The active theme. `.clone()` is a refcount bump, so a style can outlive the
     /// `show(ui)` reborrow:
     ///
-    /// ```ignore
+    /// ```
+    /// # use palantir::{Button, Ui};
+    /// # fn file_button(ui: &mut Ui) {
     /// let theme = ui.theme().clone();
     /// Button::new().label("File").style(&theme.button).show(ui);
+    /// # }
     /// ```
     #[inline]
     pub const fn theme(&self) -> &Rc<Theme> {
@@ -541,9 +544,12 @@ impl Ui {
     /// (fontdb face ids are never reused). A collection registers every face, reachable
     /// via [`FontFamily::named`](crate::FontFamily::named). Re-shapes this frame's text.
     ///
-    /// ```ignore
-    /// let mono = ui.load_font(include_bytes!("../assets/Iosevka.ttf"))?;
+    /// ```
+    /// # fn load(ui: &palantir::Ui, iosevka: &'static [u8]) -> Result<(), palantir::FontLoadError> {
+    /// let mono = ui.load_font(iosevka)?; // the bytes of `include_bytes!("Iosevka.ttf")`
     /// let sans = ui.load_font("/usr/share/fonts/TTF/Charter.ttf")?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// A `&str` is a path, never a family name.
@@ -1067,7 +1073,7 @@ impl Ui {
 
 /// The doors past [`Ui`]'s private fields, for white-box suites and benches.
 /// No `#[inline]`: nothing here reaches an optimized build that would want it.
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::widgets::theme::Theme;
     use std::rc::Rc;
@@ -1077,7 +1083,6 @@ pub(crate) mod internals {
     use crate::cascade::Cascade;
     use crate::display::Display;
     use crate::input::input_state::InputState;
-    #[cfg(any(test, feature = "bench"))]
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::layer_layout::LayerLayout;
@@ -1085,7 +1090,6 @@ pub(crate) mod internals {
     use crate::primitives::geometry::rect::Rect;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
-    #[cfg(any(test, feature = "bench"))]
     use crate::scene::forest::Forest;
     #[cfg(test)]
     use crate::scene::layer::Layer;
@@ -1131,7 +1135,6 @@ pub(crate) mod internals {
     }
 
     /// Read by benches as well as tests.
-    #[cfg(any(test, feature = "bench"))]
     impl Ui {
         /// The whole forest, for callers that re-run a pass over every layer.
         pub(crate) const fn forest(&self) -> &Forest {

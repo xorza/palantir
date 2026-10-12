@@ -51,11 +51,14 @@ jobs:
           # No `key`: the action already keys on job, OS and architecture, and
           # nothing else tells the matrix entries apart.
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      # Compiles the internals/golden/bench reach-ins and the examples. Clippy
+      # Compiles the internals and golden reach-ins and the examples. Clippy
       # never runs them, so the golden suite's absent baselines cost nothing and
       # `profile-with-tracy` starts no profiler. Only clippy may take
       # `--all-features`: a `cargo test` under it opens the Tracy socket.
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      # The build that ships: every other target turns `internals` on through the self
+      # dev-dependency, so only the libraries alone show what production compiles.
+      - run: cargo clippy --workspace --locked -- -D warnings
 
   test:
     name: test (${{ matrix.os }})

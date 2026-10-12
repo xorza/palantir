@@ -6,7 +6,7 @@
 //! [`MeshPipeline`]: crate::gpu::pipeline::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::gpu::pipeline::image_pipeline::ImagePipeline
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 use crate::common::span::Span;

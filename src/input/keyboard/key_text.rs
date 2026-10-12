@@ -77,7 +77,7 @@ impl fmt::Debug for KeyText {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::key_text::KeyText;

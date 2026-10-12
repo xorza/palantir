@@ -342,7 +342,7 @@ impl LayoutEngine {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::layout::engine::LayoutEngine;
     #[cfg(test)]

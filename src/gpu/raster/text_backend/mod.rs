@@ -10,7 +10,7 @@
 //!   clobber it.
 //! - The shader reads texels by index, so a grow changes only the bind group.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod encode;
 mod encoded_counters;
@@ -130,7 +130,7 @@ impl TextBackend {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::raster::text_backend::TextBackend;
 

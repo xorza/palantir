@@ -3,7 +3,7 @@
 //! in pre-order, so each node, grid hug value and shaped text run is retained
 //! once.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 use crate::common::content_hash::ContentHash;
@@ -524,7 +524,7 @@ impl MeasureCache {
 
 /// What the measure-cache tests reach, and the tree shapes the bench times:
 /// a deep chain and a balanced broad tree.
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
     use super::*;

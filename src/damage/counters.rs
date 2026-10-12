@@ -42,7 +42,7 @@ impl DamageCounters {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 impl DamageCounters {
     pub(crate) const fn subtree_skips(&self) -> u32 {
         self.subtree_skips.count()

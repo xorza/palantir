@@ -6,9 +6,9 @@
     clippy::disallowed_types,
     reason = "the one module that names wgpu; `clippy.toml` stops every other module doing the same"
 )]
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench_gpu;
 pub(crate) mod device;
 pub(crate) mod error;
@@ -17,6 +17,6 @@ pub(crate) mod pipeline;
 pub(crate) mod raster;
 pub(crate) mod resource;
 pub(crate) mod surface;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod test_gpu;
 pub(crate) mod wgpu_backend;

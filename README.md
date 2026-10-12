@@ -160,7 +160,7 @@ microseconds, so UI behaviour stays a plain `cargo test`.
 palantir = { version = "*", features = ["internals"] }
 ```
 
-```rust,ignore
+```rust
 use palantir::prelude::*;
 use palantir::internals::harness::UiHarness;
 

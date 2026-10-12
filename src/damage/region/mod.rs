@@ -144,7 +144,7 @@ impl DamageRegion {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 impl DamageRegion {
     pub(crate) fn from_rects(rects: &[Rect]) -> Self {
         let mut region = Self::default();

@@ -3,16 +3,14 @@
 //! **Not a supported API**; it breaks without notice.
 //!
 //! Items are `pub` when code outside the crate calls them, `pub(crate)` when
-//! only the crate's own tests and benches do; each module carries its own gate.
+//! only the crate's own tests and benches do. A module only the crate's own
+//! tests use is gated `#[cfg(test)]`.
 
-#[cfg(feature = "internals")]
 pub mod demo_swatches;
-#[cfg(feature = "internals")]
 pub mod frame_fixture;
 pub mod harness;
 #[cfg(test)]
 mod hot_struct_sizes;
-#[cfg(any(test, feature = "bench"))]
 pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;

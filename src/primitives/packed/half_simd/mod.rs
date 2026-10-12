@@ -268,7 +268,7 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
     }
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 #[cfg(test)]
 mod tests;

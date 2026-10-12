@@ -86,9 +86,8 @@ ron = "0.12"
 
 [features]
 default = ["winit"]
-internals = []
+internals = ["dep:criterion", "dep:clap", "dep:gethostname"]
 golden = ["dep:image"]
-bench = ["internals", "dep:criterion", "dep:clap", "dep:gethostname"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
 winit = ["dep:winit", "system-clipboard"]
@@ -153,7 +152,7 @@ required-features = ["winit"]
 [[bench]]
 name = "criterion"
 harness = false
-required-features = ["bench"]
+required-features = ["internals"]
 
 
 # The Darkroom workspace lint set, copied because a submodule does not inherit it. Warn, not

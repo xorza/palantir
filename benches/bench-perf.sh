@@ -10,7 +10,7 @@
 #   benches/bench-perf.sh 'workload$'              # further args go to the bench
 #
 # Env: DRIVER (frame), ARMS (cpu), PROFILE_TIME (5 s per benchmark),
-# FEATURES (added to `bench`), PIN_CPU (2), CALLGRAPH (dwarf, or lbr on
+# FEATURES (beside `internals`, which a bench build has), PIN_CPU (2), CALLGRAPH (dwarf, or lbr on
 # Intel), SKIP.
 
 set -uo pipefail
@@ -21,7 +21,7 @@ OUT=tmp/palantir-perf
 # `-`, not `:-`: an empty DRIVER means every default driver.
 DRIVERS="${DRIVER-frame}"
 PIN_CPU="${PIN_CPU:-2}"
-FEATURES="bench${FEATURES:+,$FEATURES}"
+FEATURES="${FEATURES:-}"
 skipped() { [[ " ${SKIP:-} " == *" $1 "* ]]; }
 note() { echo "    NOTE: $*" >&2; }
 failed() { echo "    ($1 failed)"; }
@@ -77,10 +77,10 @@ done
 # Standalone the profile cargo resolves is unchanged, so `cargo bench` and
 # this script build one binary and neither rebuilds after the other. Keep
 # the values in step with `Cargo.toml`.
-echo "==> Building (features: $FEATURES)"
+echo "==> Building (features: internals${FEATURES:+,$FEATURES})"
 if ! LOG=$(CARGO_PROFILE_BENCH_DEBUG=line-tables-only CARGO_PROFILE_BENCH_STRIP=none \
     CARGO_PROFILE_BENCH_SPLIT_DEBUGINFO=off \
-    cargo bench --bench criterion --features "$FEATURES" --no-run 2>&1); then
+    cargo bench --bench criterion ${FEATURES:+--features "$FEATURES"} --no-run 2>&1); then
     echo "$LOG" >&2
     exit 1
 fi

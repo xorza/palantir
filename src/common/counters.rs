@@ -3,7 +3,7 @@
 //! One cell type owns the gate: it holds its value only when the gate is on, and its mutators are **unconditional** methods with gated bodies, so call sites are plain method calls and the type is zero-sized when off. Only read accessors carry a `#[cfg]`.
 //!
 //! - [`TestOnly`] (`cfg(test)`): for counters nothing benches and for anything that allocates, which the allocation suite (`tests/alloc`) would otherwise measure instead of the frame.
-//! - [`BenchOnly`] (`cfg(any(test, feature = "bench"))`): for counters a benchmark reads, gated on `bench` not `internals`, which the integration suites enable without reading counters.
+//! - [`BenchOnly`] (`cfg(feature = "internals")`): for counters a benchmark reads; they never allocate, so the allocation suite, which builds with `internals`, measures the frame alone.
 //!
 //! `TestOnly` unless a benchmark reads the counter; a counter module documents what it measures, not which gate it picked.
 //!
@@ -77,8 +77,8 @@ gated_cell! {
 }
 
 gated_cell! {
-    /// Retained in `cfg(test)` and `bench` builds, for counters a benchmark asserts on.
-    BenchOnly, any(test, feature = "bench")
+    /// Retained in test and bench builds, for counters a benchmark asserts on.
+    BenchOnly, feature = "internals"
 }
 
 /// Log conveniences for [`TestOnly`] alone: a cell that allocates must not be live in a non-test build.
@@ -122,7 +122,7 @@ impl TestOnly<Cell<u32>> {
 }
 
 /// A counter set and the reading its readers subtract; [`counter_snapshot!`] generates the snapshot beside the cells. Gated with the union of the sets' `reads` gates.
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) trait CounterSet {
     type Counts: Copy + std::fmt::Debug + PartialEq + std::ops::Sub<Output = Self::Counts>;
 

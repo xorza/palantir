@@ -268,7 +268,6 @@ fn covered(rect: Rect, cover: &[Rect]) -> bool {
     pieces.into_iter().all(|piece| covered(piece, rest))
 }
 
-#[cfg(test)]
 mod tests {
     use super::covered;
     use crate::primitives::geometry::rect::Rect;

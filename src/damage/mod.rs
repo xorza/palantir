@@ -36,7 +36,7 @@
 use crate::damage::region::CollapsedDamage;
 use crate::primitives::geometry::rect::Rect;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod counters;
 pub(crate) mod engine;

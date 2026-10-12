@@ -471,7 +471,7 @@ impl WindowDriver {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
     use crate::host::window_driver::WindowDriver;

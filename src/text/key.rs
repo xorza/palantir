@@ -319,7 +319,7 @@ const fn dequantize(value: u32) -> f32 {
 }
 
 // Also built by the `text_atlas` benchmark.
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;

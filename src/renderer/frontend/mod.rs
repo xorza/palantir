@@ -1,7 +1,7 @@
 //! CPU paint: the [`Encoder`] walks the tree into a [`Composer`] session that fills a
 //! `RenderBuffer` (physical-px quads and scissor groups). No GPU handles.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod composer;
 pub(crate) mod encoder;
@@ -70,7 +70,7 @@ impl Frontend {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::renderer::frontend::Frontend;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;

@@ -1,28 +1,20 @@
 # Palantir
 
-A Rust GUI crate. **Immediate-mode authoring API**, **WPF-contract two-pass
-layout with flex-shrink sizing**, **wgpu rendering**.
+A Rust GUI crate: an **immediate-mode authoring API**, **WPF-contract
+two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 
 ## Posture
 
-- **Break things freely, once asked.** Big-bang renames and migrations are
-  welcome — no deprecation shims, compat aliases, feature flags, or migration
-  helpers. A change to the public API still waits for a go-ahead (**Public
-  API**, below).
-- **Per-frame allocation is a regression.** Steady state is heap-alloc-free
-  after warmup; push onto retained scratch with capacity reuse, never rebuild
-  a map per frame.
-- **API ergonomics matter.** Builder chains read like prose, defaults are
-  right, surprising behavior gets a pinning test. When in doubt, favor
-  call-site readability.
-- **Micro-optimize freely** — struct packing, const fns, scratch reuse, cache
-  layout — even without a workload demanding it. A *structural* change is the
-  opposite: with no motivating workload it is "too early", so shelve it with a
-  note.
-- **Ship in measurable slices.** One feature with tests and a showcase section
-  beats a half-finished cluster.
+- **Rewrite freely, except the public API.** Big-bang renames and migrations
+  take no deprecation shims, compat aliases, feature flags or migration
+  helpers; the public API waits for a go-ahead (**Public API**).
+- **Per-frame allocation is a regression.** After warmup a frame allocates
+  nothing: push onto retained scratch, never rebuild a map per frame.
+- **Micro-optimize freely** — struct packing, `const fn`, scratch reuse, cache
+  layout. A *structural* change with no workload that needs it is too early:
+  shelve it with a note.
 - **Docs are starting positions**, this file included. When one contradicts
-  user intent or current code, flag the conflict and ask rather than defer.
+  the user's intent or the code, flag the conflict and ask.
 
 ## Architecture
 
@@ -40,28 +32,24 @@ framework the bundled `widgets` are written on.
 
 ## Public API
 
-**Never change it on your own.** Adding, renaming, removing, or re-signing an
-exported item — a type, a method, an argument, a trait bound — waits for my
-go-ahead. Propose it, then stop.
-
-**Design it against its neighbours.** Before proposing new surface, read what
-it will sit beside — the widget's other setters, the sibling type's methods,
-the trait it joins, the `Response` its peers return — and match their names,
-argument shapes, and order. A new item that reads unlike its neighbours is a
-bug, however good it looks alone.
-
-**Widgets use only the public API.** A widget here reaches nothing an outside
-crate could not: no `pub(crate)` helper, private field, or crate-only trait or
-macro. When it needs more, make that public first, with the docs a stranger
-needs. The test: someone could reimplement the widget outside the crate, line
-for line.
+- **Never change it on your own.** Adding, renaming, removing or re-signing an
+  exported item — a type, a method, an argument, a trait bound — waits for a
+  go-ahead. Propose it, then stop.
+- **Match its neighbours.** Before proposing new surface, read what it will
+  sit beside — the widget's other setters, the sibling type's methods, the
+  trait it joins, the `Response` its peers return — and match their names,
+  argument shapes and order.
+- **Widgets use only the public API**: no `pub(crate)` helper, private field,
+  or crate-only trait or macro. When a widget needs more, make that public
+  first, with the docs a stranger needs: someone could reimplement the widget
+  outside the crate, line for line.
 
 ## Public API design
 
-Every exported item follows these rules; one that breaks a rule is a bug.
-`python3 scripts/api_surface.py` renders every exported declaration into
-`.notes/API_SURFACE.md`, over every public feature; regenerate it with any
-change to the surface, and audit against it.
+An exported item that breaks a rule below is a bug. `python3
+scripts/api_surface.py` renders every exported declaration, over every public
+feature, into `.notes/API_SURFACE.md`; regenerate it with any change to the
+surface, and audit against it.
 
 ### Kinds of type
 
@@ -291,68 +279,54 @@ panic says so under `# Panics`. The table is in the `domain` module doc.
 ```
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --lib --test alloc --features bench,golden,gpu-debug-markers
+cargo clippy -- -D warnings
+cargo test --lib --test alloc --features golden,gpu-debug-markers
 ```
 
-Every test run needs a GPU adapter: the self dev-dependency turns
-`internals` on in every test build, and the GPU tests it brings panic
-without one. A headless machine needs a software Vulkan driver (Mesa
-lavapipe, `mesa-vulkan-drivers`), as CI installs.
-
-`--all-features` is clippy's alone: `profile-with-tracy` starts the Tracy
-client before `main`, so a test binary under it opens the profiler's socket
-and prints `SymInitialize FAILED with code 87`. The test run names `alloc`
-rather than `--tests` because `golden` would pull in `visual`.
-
-Rendering changes (shaders, encoder/composer, atlases, colour pipeline, layout
-that moves pixels) also run the visual suite:
-
-```
-cargo test --test visual --features golden
-```
-
-Its goldens in `tests/visual/golden/` are local and show whatever tree last
-wrote them; a missing one is written and then failed. Run the suite on the
-unchanged tree first — if it fails there, rewrite the stale goldens with
-`UPDATE_GOLDEN=1` before changing anything. The goldens record the adapter
-that wrote them in `golden/adapter.txt`; a run on another adapter fails with
-that reason until `UPDATE_GOLDEN=1` adopts it. A failure leaves `actual.png`,
-`expected.png`, and `diff.png` in `tests/visual/output/<name>/`.
-
-A change a user can see ends with a look at `cargo run --example showcase`.
-
-Read `benches/AGENTS.md` before measuring or reaching for `perf`: it holds the
-A/B protocol and the traps that cost a wasted capture each.
+- **Every test run needs a GPU adapter**, as `internals`, on in every test
+  build, brings GPU tests. A headless machine needs a software Vulkan driver
+  (Mesa lavapipe, `mesa-vulkan-drivers`), as CI installs.
+- **The second clippy lints the build that ships**: every other target turns
+  `internals` on through the self dev-dependency.
+- **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
+  binary opens the Tracy socket. The test run names `alloc`, as `--tests`
+  with `golden` would pull in `visual`.
+- **Rendering changes** (shaders, encoder/composer, atlases, colour pipeline,
+  layout that moves pixels) also run `cargo test --test visual --features
+  golden`. Its goldens in `tests/visual/golden/` are local and record their
+  adapter in `golden/adapter.txt`. Run the suite on the unchanged tree first,
+  and rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1`
+  before changing anything. A missing golden is written, then failed; a
+  failure leaves `actual.png`, `expected.png` and `diff.png` in
+  `tests/visual/output/<name>/`.
+- **A change a user can see** ends with a look at
+  `cargo run --example showcase`.
+- **Before measuring or reaching for `perf`**, read `benches/AGENTS.md`.
 
 ## Non-shipping code
 
-Code that does not ship has four homes, apart from a file's own
-`#[cfg(test)] mod tests` and the helpers only that module uses. Three
-exceptions close the section.
+`internals` is the one feature for what only tests and benches build; the
+crate's dev-dependency on itself turns it on in every test and bench build.
+Test and bench code has four homes beside a file's own `#[cfg(test)] mod
+tests`:
 
-- **`internals` at the end of a file** — a reach-in: test or bench code
-  that needs that file's private items. One per file, the last item before
-  `mod tests`. Its `cfg` is exactly the builds its callers exist in —
-  `test`, `feature = "bench"`, `feature = "internals"`, or a mix — since
-  anything wider is dead code that `-W dead_code` reports. A wider module
-  narrows single items with their own `cfg`, and never needs a lint allow.
+- **`internals` at the end of a file** — a reach-in to the file's private
+  items, the last item before `mod tests`. Its gate is exactly the builds its
+  callers exist in: `#[cfg(test)]` when only this crate's unit tests call it,
+  `#[cfg(feature = "internals")]` when a bench or an integration test does —
+  never `any(test, feature = "internals")`. An item whose callers exist in
+  fewer builds narrows with its own `cfg`; a wrong gate shows as dead code,
+  which no lint allow hides.
 - **`crate::internals`** (`src/internals/`) — the subsystems: the frame
-  harness, the paint capture, the panic probe, the shared fixtures. It is
-  `palantir::internals` under `any(test, feature = "internals")`, and each
-  submodule carries its own narrower gate. Test code that is a subsystem
-  rather than a reach-in goes here, never among production modules.
-- **`bench.rs`** beside the code it measures, under `feature = "bench"`,
-  reached through the `bench` facade in `src/lib.rs`.
+  harness, the paint capture, the panic probe, the shared fixtures; public as
+  `palantir::internals`.
+- **`bench.rs`** beside the code it measures, reached through the `bench`
+  facade in `src/lib.rs`.
 - **`crate::golden`** (`src/golden/`) — golden-image comparison, under
-  `feature = "golden"`. It is public API rather than a reach-in, because
-  suites outside this crate that draw through Palantir use it too.
+  `feature = "golden"`; public API, as suites outside the crate use it.
 
-Visibility says who reaches in: `pub` when code outside the crate calls it
-(`tests/visual`, `tests/alloc`, the showcase, `benches/`), `pub(crate)` when
-only the crate's own tests and benches do.
-
-Three subsystems stay outside `src/internals/`. `gpu::test_gpu` and
-`gpu::bench_gpu` hold wgpu types, which `clippy.toml` keeps inside
-`crate::gpu`, so `crate::internals` re-exports the test GPU. `text::mono` is
-a measurement backend beside `cosmic`, gated `any(test, feature =
-"internals")`.
+Items code outside the crate calls (`tests/visual`, `tests/alloc`, the
+showcase, `benches/`) are `pub`; the rest are `pub(crate)`. Two subsystems sit
+outside `src/internals/`: `gpu::test_gpu` and `gpu::bench_gpu` hold wgpu
+types, which `clippy.toml` keeps in `crate::gpu`, and `text::mono` is a
+measurement backend beside `cosmic`.

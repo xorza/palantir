@@ -5,7 +5,7 @@
 //! grapheme/word walks ([`unicode`]).
 
 mod action;
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod caret_paint;
 mod edit_state;

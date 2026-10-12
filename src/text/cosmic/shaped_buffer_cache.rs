@@ -241,7 +241,7 @@ fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]

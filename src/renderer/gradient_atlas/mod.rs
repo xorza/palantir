@@ -30,7 +30,7 @@ use crate::renderer::gradient_atlas::mru_list::MruList;
 use rustc_hash::FxHashMap;
 
 pub(crate) mod bake;
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod counters;
 mod mru_list;

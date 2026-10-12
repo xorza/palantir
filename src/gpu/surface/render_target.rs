@@ -89,7 +89,7 @@ pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::surface::render_target;
     use glam::UVec2;

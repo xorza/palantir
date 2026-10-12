@@ -5,7 +5,7 @@ pub(crate) mod anim_row;
 pub(crate) mod animatable;
 pub(crate) mod animation_slot;
 pub(crate) mod animation_spec;
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod duration;
 pub(crate) mod easing;

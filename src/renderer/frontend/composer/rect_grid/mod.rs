@@ -4,7 +4,7 @@
 //!
 //! A union pre-reject plus linear scan still scans too much on surviving queries; a conservative coverage bitmap needs small cells to avoid false-positive flushes and then loses; sorted sweeps, interval trees and BVHs need an O(n log n) rebuild per frame. Exactness is what the grid pays for.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 use crate::common::counters::TestOnly;

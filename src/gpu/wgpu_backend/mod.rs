@@ -902,7 +902,7 @@ fn begin_load_pass<'e>(
     })
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
 
     use crate::gpu::surface::render_target::TargetFormat;

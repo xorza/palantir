@@ -683,7 +683,7 @@ pub(super) fn first_family(
     loaded.ok_or(FontLoadError::FamilyTableFull)
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]

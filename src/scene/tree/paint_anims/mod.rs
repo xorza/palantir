@@ -17,7 +17,7 @@
 //! need a swept union the cascade can't bound without sampling; a rotation's
 //! cover is the same square at every angle.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub mod curves;
 pub(crate) mod paint_animation;

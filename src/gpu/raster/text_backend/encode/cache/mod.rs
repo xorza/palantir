@@ -254,7 +254,7 @@ const _: () = assert!(
 
 // Gated with the churn fixture's readers, not `internals`, which integration
 // suites enable without a churn fixture.
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
@@ -365,14 +365,12 @@ pub(crate) mod internals {
 
     /// Sweep harness for the `encoded_cache_sweep` benchmark: `rows` live rows of
     /// `glyphs_per_row`, so an iteration measures [`EncodedCache::sweep`] alone.
-    #[cfg(feature = "bench")]
     #[derive(Debug, Default)]
     pub(crate) struct SweepBench {
         cache: EncodedCache,
         frame: u64,
     }
 
-    #[cfg(feature = "bench")]
     impl SweepBench {
         /// Build one row per frame so expiry tickets land on distinct buckets as in a
         /// real scene.
