@@ -8,12 +8,12 @@ states the rules: the kinds, the ids, one number for each case, and the
 ## Running
 
 ```sh
-cargo benches -- --list
-cargo benches -- '^atomic/hit_test/'
-cargo benches -- '/cpu/'                    # every case that opens no device
-cargo benches -- --exact integration/frame/gpu/cached
-cargo benches -- '^integration/frame/' --quick
-cargo benches -- --test                     # each case once
+./x.py bench -- --list
+./x.py bench -- '^atomic/hit_test/'
+./x.py bench -- '/cpu/'                    # every case that opens no device
+./x.py bench -- --exact integration/frame/gpu/cached
+./x.py bench -- '^integration/frame/' --quick
+./x.py bench --smoke                       # each case once
 ```
 
 - An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a
