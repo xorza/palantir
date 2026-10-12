@@ -174,18 +174,18 @@ impl AxisAlign {
     #[inline]
     pub(crate) const fn offset_in(self, slot: f32, extent: f32) -> f32 {
         match self {
-            AxisAlign::Center => (slot - extent) * 0.5,
-            AxisAlign::End => slot - extent,
-            AxisAlign::Auto | AxisAlign::Start | AxisAlign::Stretch => 0.0,
+            Self::Center => (slot - extent) * 0.5,
+            Self::End => slot - extent,
+            Self::Auto | Self::Start | Self::Stretch => 0.0,
         }
     }
 
     /// `Auto → Stretch`, otherwise unchanged. Grid's per-cell default is stretch
     /// (WPF); other drivers leave `Auto` to the child's `Sizing`.
     #[inline]
-    pub(crate) const fn or_stretch_if_auto(self) -> AxisAlign {
+    pub(crate) const fn or_stretch_if_auto(self) -> Self {
         match self {
-            AxisAlign::Auto => AxisAlign::Stretch,
+            Self::Auto => Self::Stretch,
             other => other,
         }
     }
@@ -194,15 +194,15 @@ impl AxisAlign {
 impl HAlign {
     pub(crate) const fn to_axis(self) -> AxisAlign {
         match self {
-            HAlign::Auto => AxisAlign::Auto,
-            HAlign::Left => AxisAlign::Start,
-            HAlign::Center => AxisAlign::Center,
-            HAlign::Right => AxisAlign::End,
-            HAlign::Stretch => AxisAlign::Stretch,
+            Self::Auto => AxisAlign::Auto,
+            Self::Left => AxisAlign::Start,
+            Self::Center => AxisAlign::Center,
+            Self::Right => AxisAlign::End,
+            Self::Stretch => AxisAlign::Stretch,
         }
     }
-    pub(crate) const fn or(self, default: HAlign) -> HAlign {
-        if matches!(self, HAlign::Auto) {
+    pub(crate) const fn or(self, default: Self) -> Self {
+        if matches!(self, Self::Auto) {
             default
         } else {
             self
@@ -213,15 +213,15 @@ impl HAlign {
 impl VAlign {
     pub(crate) const fn to_axis(self) -> AxisAlign {
         match self {
-            VAlign::Auto => AxisAlign::Auto,
-            VAlign::Top => AxisAlign::Start,
-            VAlign::Center => AxisAlign::Center,
-            VAlign::Bottom => AxisAlign::End,
-            VAlign::Stretch => AxisAlign::Stretch,
+            Self::Auto => AxisAlign::Auto,
+            Self::Top => AxisAlign::Start,
+            Self::Center => AxisAlign::Center,
+            Self::Bottom => AxisAlign::End,
+            Self::Stretch => AxisAlign::Stretch,
         }
     }
-    pub(crate) const fn or(self, default: VAlign) -> VAlign {
-        if matches!(self, VAlign::Auto) {
+    pub(crate) const fn or(self, default: Self) -> Self {
+        if matches!(self, Self::Auto) {
             default
         } else {
             self

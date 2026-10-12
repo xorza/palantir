@@ -1,6 +1,6 @@
 //! Which background a popup body paints.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;

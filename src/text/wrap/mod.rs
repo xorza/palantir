@@ -60,7 +60,7 @@ impl LineFit {
     /// `width_px` must be canonical (quantized once by `commit`); quantizing
     /// again could split the fit test from the key it decides about.
     pub(super) const fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
-        matches!(self, LineFit::Clip | LineFit::Ellipsis)
+        matches!(self, Self::Clip | Self::Ellipsis)
             && unbounded.single_line
             && unbounded.extent.size.w <= width_px
     }
@@ -96,10 +96,10 @@ impl TextWrap {
     /// keep the unbounded shape (`SingleLine`, `Scroll`).
     pub(super) const fn line_fit(self) -> Option<LineFit> {
         match self {
-            TextWrap::SingleLine | TextWrap::Scroll => None,
-            TextWrap::Truncate => Some(LineFit::Clip),
-            TextWrap::Ellipsis => Some(LineFit::Ellipsis),
-            TextWrap::Wrap | TextWrap::WrapWithOverflow => Some(LineFit::Wrap),
+            Self::SingleLine | Self::Scroll => None,
+            Self::Truncate => Some(LineFit::Clip),
+            Self::Ellipsis => Some(LineFit::Ellipsis),
+            Self::Wrap | Self::WrapWithOverflow => Some(LineFit::Wrap),
         }
     }
 
@@ -109,12 +109,10 @@ impl TextWrap {
     /// paragraph.
     pub(super) const fn floor_scan(self) -> WrapFloor {
         match self {
-            TextWrap::WrapWithOverflow => WrapFloor::Scan,
-            TextWrap::SingleLine
-            | TextWrap::Scroll
-            | TextWrap::Truncate
-            | TextWrap::Ellipsis
-            | TextWrap::Wrap => WrapFloor::Skip,
+            Self::WrapWithOverflow => WrapFloor::Scan,
+            Self::SingleLine | Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
+                WrapFloor::Skip
+            }
         }
     }
 
@@ -122,26 +120,24 @@ impl TextWrap {
     /// resolve whose height already reflects wrapping.
     pub(crate) const fn min_content(self, unbounded: &TextRoot) -> Size {
         match self {
-            TextWrap::SingleLine => unbounded.extent.size,
+            Self::SingleLine => unbounded.extent.size,
             // Scroll owns clipping; truncating and wrapping runs can shrink to nothing.
-            TextWrap::Scroll | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Wrap => {
+            Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
                 Size::new(0.0, unbounded.extent.size.h)
             }
-            TextWrap::WrapWithOverflow => {
-                Size::new(unbounded.wrap_floor(), unbounded.extent.size.h)
-            }
+            Self::WrapWithOverflow => Size::new(unbounded.wrap_floor(), unbounded.extent.size.h),
         }
     }
 
     /// Max-content demand, from the `unbounded` root measurement.
     pub(crate) const fn max_content(self, unbounded: &TextRoot) -> Size {
         match self {
-            TextWrap::Scroll => Size::new(0.0, unbounded.extent.size.h),
-            TextWrap::SingleLine
-            | TextWrap::Truncate
-            | TextWrap::Ellipsis
-            | TextWrap::Wrap
-            | TextWrap::WrapWithOverflow => unbounded.extent.size,
+            Self::Scroll => Size::new(0.0, unbounded.extent.size.h),
+            Self::SingleLine
+            | Self::Truncate
+            | Self::Ellipsis
+            | Self::Wrap
+            | Self::WrapWithOverflow => unbounded.extent.size,
         }
     }
 
@@ -150,12 +146,10 @@ impl TextWrap {
     /// unbreakable segment ([`Self::min_content`]'s floor).
     pub(super) const fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
-            TextWrap::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
-            TextWrap::SingleLine
-            | TextWrap::Scroll
-            | TextWrap::Truncate
-            | TextWrap::Ellipsis
-            | TextWrap::Wrap => available_width_px,
+            Self::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
+            Self::SingleLine | Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
+                available_width_px
+            }
         }
     }
 
@@ -196,12 +190,12 @@ impl TextWrap {
     /// Layout content contribution of a width-`resolved` extent.
     pub(crate) const fn content_size(self, resolved: Size) -> Size {
         match self {
-            TextWrap::Scroll => Size::new(0.0, resolved.h),
-            TextWrap::SingleLine
-            | TextWrap::Truncate
-            | TextWrap::Ellipsis
-            | TextWrap::Wrap
-            | TextWrap::WrapWithOverflow => resolved,
+            Self::Scroll => Size::new(0.0, resolved.h),
+            Self::SingleLine
+            | Self::Truncate
+            | Self::Ellipsis
+            | Self::Wrap
+            | Self::WrapWithOverflow => resolved,
         }
     }
 }

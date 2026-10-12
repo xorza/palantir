@@ -2,7 +2,7 @@
 
 use crate::primitives::math::domain;
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// The easing curve a duration-based tween follows.
 pub enum Easing {
@@ -23,12 +23,12 @@ impl Easing {
     pub const fn apply(self, t: f32) -> f32 {
         let t = domain::fraction(t);
         match self {
-            Easing::Linear => t,
-            Easing::OutCubic => {
+            Self::Linear => t,
+            Self::OutCubic => {
                 let inv = 1.0 - t;
                 1.0 - inv * inv * inv
             }
-            Easing::InOutCubic => {
+            Self::InOutCubic => {
                 if t < 0.5 {
                     4.0 * t * t * t
                 } else {
@@ -36,11 +36,11 @@ impl Easing {
                     1.0 + f * f * f * 0.5
                 }
             }
-            Easing::OutQuart => {
+            Self::OutQuart => {
                 let inv = 1.0 - t;
                 1.0 - inv * inv * inv * inv
             }
-            Easing::OutBack => {
+            Self::OutBack => {
                 const C1: f32 = 1.70158;
                 const C3: f32 = C1 + 1.0;
                 let inv = t - 1.0;

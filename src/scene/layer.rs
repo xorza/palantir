@@ -27,13 +27,13 @@ impl Layer {
     pub(crate) const COUNT: usize = 6;
 
     /// Every layer, back to front. Hit order is reversed. Held to the discriminants by the assertion below.
-    pub(crate) const PAINT_ORDER: [Layer; Layer::COUNT] = [
-        Layer::Main,
-        Layer::Popup,
-        Layer::Modal,
-        Layer::Menu,
-        Layer::Tooltip,
-        Layer::Debug,
+    pub(crate) const PAINT_ORDER: [Self; Self::COUNT] = [
+        Self::Main,
+        Self::Popup,
+        Self::Modal,
+        Self::Menu,
+        Self::Tooltip,
+        Self::Debug,
     ];
 
     #[inline]

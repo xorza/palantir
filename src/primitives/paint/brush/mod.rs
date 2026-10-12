@@ -42,17 +42,17 @@ impl Brush {
     #[track_caller]
     pub(crate) const fn validate(&self) {
         match self {
-            Brush::Solid(c) => {
+            Self::Solid(c) => {
                 let _ = domain::color(*c);
             }
-            Brush::Linear(g) => {
+            Self::Linear(g) => {
                 domain::angle(g.geometry.angle);
             }
-            Brush::Radial(g) => {
+            Self::Radial(g) => {
                 vec2::offset(g.geometry.center);
                 vec2::length(g.geometry.radius);
             }
-            Brush::Conic(g) => {
+            Self::Conic(g) => {
                 vec2::offset(g.geometry.center);
                 domain::angle(g.geometry.start_angle);
             }
@@ -66,10 +66,10 @@ impl Brush {
     /// Whether the brush paints nothing.
     pub const fn is_noop(&self) -> bool {
         match self {
-            Brush::Solid(c) => c.is_noop(),
-            Brush::Linear(g) => g.is_noop(),
-            Brush::Radial(g) => g.is_noop(),
-            Brush::Conic(g) => g.is_noop(),
+            Self::Solid(c) => c.is_noop(),
+            Self::Linear(g) => g.is_noop(),
+            Self::Radial(g) => g.is_noop(),
+            Self::Conic(g) => g.is_noop(),
         }
     }
 
@@ -77,8 +77,8 @@ impl Brush {
     /// The colour, if solid.
     pub const fn as_solid(&self) -> Option<RgbaF32> {
         match self {
-            Brush::Solid(c) => Some(*c),
-            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
+            Self::Solid(c) => Some(*c),
+            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => None,
         }
     }
 }
@@ -86,63 +86,63 @@ impl Brush {
 impl Default for Brush {
     #[inline]
     fn default() -> Self {
-        Brush::TRANSPARENT
+        Self::TRANSPARENT
     }
 }
 
 impl From<RgbaF32> for Brush {
     #[inline]
     fn from(c: RgbaF32) -> Self {
-        Brush::Solid(c)
+        Self::Solid(c)
     }
 }
 
 impl From<SrgbaU8> for Brush {
     #[inline]
     fn from(color: SrgbaU8) -> Self {
-        Brush::Solid(color.into())
+        Self::Solid(color.into())
     }
 }
 
 impl From<LinearGradient> for Brush {
     #[inline]
     fn from(gradient: LinearGradient) -> Self {
-        Brush::Linear(gradient)
+        Self::Linear(gradient)
     }
 }
 
 impl From<LinearGradientBuilder> for Brush {
     #[inline]
     fn from(builder: LinearGradientBuilder) -> Self {
-        Brush::Linear(builder.build())
+        Self::Linear(builder.build())
     }
 }
 
 impl From<RadialGradient> for Brush {
     #[inline]
     fn from(gradient: RadialGradient) -> Self {
-        Brush::Radial(gradient)
+        Self::Radial(gradient)
     }
 }
 
 impl From<RadialGradientBuilder> for Brush {
     #[inline]
     fn from(builder: RadialGradientBuilder) -> Self {
-        Brush::Radial(builder.build())
+        Self::Radial(builder.build())
     }
 }
 
 impl From<ConicGradient> for Brush {
     #[inline]
     fn from(gradient: ConicGradient) -> Self {
-        Brush::Conic(gradient)
+        Self::Conic(gradient)
     }
 }
 
 impl From<ConicGradientBuilder> for Brush {
     #[inline]
     fn from(builder: ConicGradientBuilder) -> Self {
-        Brush::Conic(builder.build())
+        Self::Conic(builder.build())
     }
 }
 
@@ -151,7 +151,7 @@ impl Animatable for Brush {
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         // Match by reference so the gradient fallback can return an original without cloning.
         match (&a, &b) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(RgbaF32::lerp(*x, *y, t)),
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(RgbaF32::lerp(*x, *y, t)),
             // Gradient morphs snap until interpolation between gradient payloads exists.
             _ => {
                 if t >= 1.0 {
@@ -166,7 +166,7 @@ impl Animatable for Brush {
     #[inline]
     fn sub(self, other: Self) -> Self {
         match (&self, &other) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.sub(*y)),
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.sub(*y)),
             _ => Self::zero(),
         }
     }
@@ -174,7 +174,7 @@ impl Animatable for Brush {
     #[inline]
     fn add(self, other: Self) -> Self {
         match (&self, &other) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.add(*y)),
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.add(*y)),
             _ => self,
         }
     }
@@ -182,35 +182,35 @@ impl Animatable for Brush {
     #[inline]
     fn scale(self, k: f32) -> Self {
         match self {
-            Brush::Solid(c) => Brush::Solid(c.scale(k)),
-            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => Self::zero(),
+            Self::Solid(c) => Self::Solid(c.scale(k)),
+            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => Self::zero(),
         }
     }
 
     #[inline]
     fn magnitude_squared(self) -> f32 {
         match self {
-            Brush::Solid(c) => c.magnitude_squared(),
-            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => 0.0,
+            Self::Solid(c) => c.magnitude_squared(),
+            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
         }
     }
 
     #[inline]
     fn settle_distance_squared(self) -> f32 {
         match self {
-            Brush::Solid(c) => c.settle_distance_squared(),
-            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => 0.0,
+            Self::Solid(c) => c.settle_distance_squared(),
+            Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
         }
     }
 
     #[inline]
     fn zero() -> Self {
-        Brush::Solid(RgbaF32::zero())
+        Self::Solid(RgbaF32::zero())
     }
 
     #[inline]
     fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
-        if !matches!((&*self, target), (Brush::Solid(_), Brush::Solid(_))) {
+        if !matches!((&*self, target), (Self::Solid(_), Self::Solid(_))) {
             if self != target {
                 *self = target.clone();
             }

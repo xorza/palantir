@@ -9,7 +9,7 @@ use crate::shape::paint::shape_stroke::ShapeStroke;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
-    /// Width is [`Background::border_inset`](crate::Background)'s fold even when the colour paints nothing; the payload normalizes it.
+    /// Width is [`Background::border_inset`](crate::Background::border_inset)'s fold even when the colour paints nothing; the payload normalizes it.
     pub(crate) border: ShapeStroke,
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,

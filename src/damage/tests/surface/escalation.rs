@@ -6,7 +6,7 @@ use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame};
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;

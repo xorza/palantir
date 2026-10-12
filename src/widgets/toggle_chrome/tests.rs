@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;

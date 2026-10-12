@@ -1,4 +1,4 @@
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
@@ -272,7 +272,7 @@ fn keyboard_nudges_leave_the_history_alone() {
         committed += usize::from(frame(&mut h, &mut color));
     }
     assert!(committed > 0, "premise: a nudge commits");
-    assert_eq!(h.state::<PickerState>(id).history.peek(), &row[..]);
+    assert_eq!(h.state::<PickerState>(id).history.peek(), &*row);
 }
 
 #[test]

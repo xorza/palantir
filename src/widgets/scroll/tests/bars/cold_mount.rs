@@ -1,7 +1,7 @@
 //! The first frame a scroll is recorded on: bars must be right before any settle.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;

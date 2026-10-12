@@ -80,7 +80,7 @@ impl IconBackend {
     /// icons flagged `filtered` prewarm; the rest are cheap on demand.
     ///
     /// Re-runs when the scale changes or a set is loaded.
-    pub(crate) fn prewarm(&mut self, ctx: &mut GpuCtx<'_>, scale: f32) {
+    pub(crate) fn prewarm(&mut self, ctx: &GpuCtx<'_>, scale: f32) {
         let mark = PrewarmMark {
             scale_bits: scale.to_bits(),
             epoch: self.icons.epoch(),
@@ -112,7 +112,7 @@ impl IconBackend {
     /// Encode one batch of icon rows into instances, rasterizing atlas misses.
     pub(crate) fn prepare_batch(
         &mut self,
-        ctx: &mut GpuCtx<'_>,
+        ctx: &GpuCtx<'_>,
         batch_idx: usize,
         rows: &[IconDrawRow],
     ) {

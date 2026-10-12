@@ -11,8 +11,8 @@ use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
@@ -206,7 +206,7 @@ impl<'a> ColorPicker<'a> {
 
 impl Configure for ColorPicker<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }
@@ -416,11 +416,12 @@ fn values_grid(
     let hex_id = id.with("hex");
     if ui.focus() != Some(hex_id) {
         state.hex.clear();
-        let _ = write!(
+        write!(
             state.hex,
             "#{:02X}{:02X}{:02X}",
             quantized.r, quantized.g, quantized.b,
-        );
+        )
+        .ok();
     }
 
     let mut rgb = [

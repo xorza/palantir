@@ -77,7 +77,7 @@ impl TextGeometry {
             },
             layout.block_size(placeholder_measured),
         );
-        TextGeometry {
+        Self {
             layout,
             block_offset: block.min,
             content_size: measured,

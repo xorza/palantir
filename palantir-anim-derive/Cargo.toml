@@ -12,17 +12,8 @@ categories = ["gui", "rust-patterns"]
 license = "MIT OR Apache-2.0"
 exclude = ["AGENTS.md", "CLAUDE.md"]
 
-[lints.rust]
-missing_debug_implementations = "deny"
-unreachable_pub = "deny"
-
-[lints.clippy]
-items_after_test_module = "deny"
-
-[lints.rustdoc]
-broken_intra_doc_links = "deny"
-private_intra_doc_links = "deny"
-redundant_explicit_links = "deny"
+[lints]
+workspace = true
 
 [lib]
 proc-macro = true

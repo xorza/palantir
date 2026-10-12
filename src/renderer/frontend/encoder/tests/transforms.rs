@@ -1,6 +1,6 @@
 //! Shapes under a transformed ancestor, and the bounds they claim.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;

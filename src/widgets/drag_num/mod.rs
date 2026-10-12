@@ -28,8 +28,8 @@ impl Num {
     /// write-back path uses it.
     pub(crate) const fn widen(self) -> f64 {
         match self {
-            Num::I64(v) => v as f64,
-            Num::F64(v) => v,
+            Self::I64(v) => v as f64,
+            Self::F64(v) => v,
         }
     }
 }

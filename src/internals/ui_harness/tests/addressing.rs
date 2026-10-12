@@ -1,8 +1,8 @@
 //! Reaching a widget by id: the rect that answers and the occlusion that refuses.
 
-use crate::internals::harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
-use crate::internals::harness::*;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;

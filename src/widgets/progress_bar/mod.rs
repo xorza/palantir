@@ -5,8 +5,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
@@ -74,7 +74,7 @@ impl<'a> ProgressBar<'a> {
 
 impl Configure for ProgressBar<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

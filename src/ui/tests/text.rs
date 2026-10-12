@@ -2,8 +2,8 @@
 
 use crate::InternedStr;
 use crate::Ui;
-use crate::internals::harness::UiHarness;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
@@ -289,7 +289,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
 #[test]
 fn paint_only_frames_advance_the_shared_text_clock() {
     let shared = UiResources::isolated_text();
-    let mut ui = UiHarness::from_resources(shared.clone(), SURFACE);
+    let mut ui = UiHarness::from_resources(shared, SURFACE);
     let shaper = ui.ui.resources.text().clone();
 
     let first = ui.frame(|ui| blinking_text(ui, "paint-only clock"));
@@ -346,7 +346,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
 fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let shared = UiResources::isolated_text();
     let mut idle = UiHarness::from_resources(shared.clone(), SURFACE);
-    let mut active = UiHarness::from_resources(shared.clone(), SURFACE);
+    let mut active = UiHarness::from_resources(shared, SURFACE);
 
     let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
     assert_eq!(idle_first.repaint_after, Some(HALF));

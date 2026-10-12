@@ -57,7 +57,7 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 impl<T: 'static> HostHandle<T> {
     /// Requests one frame of `window`. Lock-free; dropped silently if the loop or window is gone.
     pub fn request_repaint(&self, window: WindowToken) {
-        let _ = self.proxy.send_event(UserEvent::Repaint(window));
+        self.proxy.send_event(UserEvent::Repaint(window)).ok();
     }
 
     /// Schedules `f` on the main thread with `&mut` the app before the next
@@ -79,7 +79,7 @@ impl<T: 'static> HostHandle<T> {
 
     /// Asks the event loop to exit; the current frame finishes.
     pub fn quit(&self) {
-        let _ = self.proxy.send_event(UserEvent::Quit);
+        self.proxy.send_event(UserEvent::Quit).ok();
     }
 }
 

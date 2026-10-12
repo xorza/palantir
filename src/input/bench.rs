@@ -9,7 +9,7 @@
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

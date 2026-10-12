@@ -4,8 +4,8 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
@@ -250,7 +250,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
 
 impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

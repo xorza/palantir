@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::damage::region::DamageRegion;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -206,7 +206,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
         );
         // Uncut by damage the same scene draws the visible one, so the zero above is the cull's.
-        if let Cull::Damage = cull {
+        if matches!(cull, Cull::Damage) {
             assert_eq!(
                 count_draw_rects(&h.encode_paint()),
                 1,

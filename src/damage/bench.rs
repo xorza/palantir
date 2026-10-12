@@ -3,7 +3,7 @@
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;

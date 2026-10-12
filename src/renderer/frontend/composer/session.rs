@@ -1,5 +1,7 @@
 //! One frame being composed, and the sink paint calls arrive through.
 
+use std::num::NonZeroI64;
+
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::geometry::corners::Corners;
@@ -166,7 +168,7 @@ impl PaintSink for ComposeSession<'_> {
             Some(parent) => me.clamp_to(parent.scissor),
             None => me,
         };
-        let parent_chain = parent.map_or(Span::default(), |f| f.chain);
+        let parent_chain = parent.map_or_else(Span::default, |f| f.chain);
         let chain = if let Some(logical_radius) = logical_radius {
             let scale_phys = geometry::phys_scale(self.composer.transform.current(), scale);
             // `mask_rect` stays unclamped: the SDF needs the true edges or corners shift inward
@@ -351,7 +353,7 @@ impl PaintSink for ComposeSession<'_> {
         // following it would allocate and draw discarded pixels.
         if let Some(view) = view {
             let scale = self.out.display.scale_factor();
-            let cap = i64::from(self.composer.max_texture_dim.get());
+            let cap = NonZeroI64::from(self.composer.max_texture_dim).get();
             let whole = phys_rect.size;
             // The cap is measured against the whole view so the downsample does not change as the
             // view scrolls (it would shimmer).
@@ -984,7 +986,7 @@ impl ComposeSession<'_> {
     /// Close what the clip in force owns, if `next` differs. Chains compare by value, so a
     /// redundant push/pop is a no-op.
     fn break_for_clip(&mut self, next: Option<ClipFrame>) {
-        let next_chain = next.map_or(Span::default(), |frame| frame.chain);
+        let next_chain = next.map_or_else(Span::default, |frame| frame.chain);
         let chain_changed = !self
             .out
             .chains_equal(next_chain, self.composer.clip.chain());

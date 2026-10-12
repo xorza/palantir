@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::display::Display;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;

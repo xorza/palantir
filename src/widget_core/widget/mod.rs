@@ -27,7 +27,8 @@ use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::seen_ids::ResolvedId;
 use crate::ui::Ui;
-use crate::widget_core::configure::{Configure, ConfigureWidget};
+use crate::widget_core::configurator::Configurator;
+use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{InnerResponse, Response};
 use glam::Vec2;
 use std::panic::Location;
@@ -111,8 +112,8 @@ impl Widget {
 
     /// Scroll viewport. Children measure unbounded on the axes `axes` pans, and
     /// [`Ui::scroll_content`] reads their extent back next frame. It moves nothing
-    /// itself: pan with a [`transform`](ConfigureWidget::transform) of the negated
-    /// offset and clip with [`clip_rect`](ConfigureWidget::clip_rect), as
+    /// itself: pan with a [`transform`](Configurator::transform) of the negated
+    /// offset and clip with [`clip_rect`](Configurator::clip_rect), as
     /// [`crate::Scroll`] does. [`Self::scrollbars`] records bars for it.
     #[track_caller]
     pub(crate) fn scroll(axes: ScrollAxes) -> Self {
@@ -392,8 +393,8 @@ impl Widget {
 
 impl Configure for Widget {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
-        ConfigureWidget { widget: self }
+    fn configure(&mut self) -> Configurator<'_> {
+        Configurator { widget: self }
     }
 }
 

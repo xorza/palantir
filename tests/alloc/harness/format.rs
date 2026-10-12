@@ -37,14 +37,14 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
             );
             let line = symbol.lineno().unwrap_or(0);
             let col = symbol.colno().unwrap_or(0);
-            let _ = writeln!(out, "  {idx:>2}: {name}");
-            let _ = writeln!(out, "            at {rel}:{line}:{col}");
+            writeln!(out, "  {idx:>2}: {name}").ok();
+            writeln!(out, "            at {rel}:{line}:{col}").ok();
             idx += 1;
         }
     }
     if out.is_empty() {
         out.push_str("(no user-code frames matched — full stack:)\n");
-        let _ = write!(out, "{bt:?}");
+        write!(out, "{bt:?}").ok();
     }
     out
 }

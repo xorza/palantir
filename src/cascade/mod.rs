@@ -330,10 +330,10 @@ pub(crate) mod internals {
 
         /// Assert this cascade equals `cold`, a full rebuild over the same forest and layout, per node and column. The id lookup is excluded since it snapshots live seen ids.
         #[cfg(test)]
-        pub(crate) fn assert_same_as(&self, cold: &Cascade, forest: &Forest) {
+        pub(crate) fn assert_same_as(&self, cold: &Self, forest: &Forest) {
             assert_eq!(self.entries, cold.entries, "entry rows");
             assert_eq!(self.hits, cold.hits, "hit rows");
-            let scopes = |cascade: &Cascade| {
+            let scopes = |cascade: &Self| {
                 cascade
                     .scopes
                     .iter()

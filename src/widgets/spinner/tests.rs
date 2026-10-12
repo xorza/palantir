@@ -1,5 +1,5 @@
-use crate::internals::harness::UiHarness;
-use crate::internals::harness::size_trio::SizeTrio;
+use crate::internals::ui_harness::UiHarness;
+use crate::internals::ui_harness::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use std::f32::consts::TAU;
 
@@ -115,10 +115,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
 
     // An explicit width replaces the derived one, floor included.
     let explicit = stock.min_thickness * 0.5;
-    assert_eq!(
-        recorded(stock.clone(), 50.0, Some(explicit)).width,
-        explicit
-    );
+    assert_eq!(recorded(stock, 50.0, Some(explicit)).width, explicit);
 
     let loud = SpinnerTheme {
         sweep: 1.0,

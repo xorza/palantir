@@ -145,7 +145,7 @@ impl FloatHash for Sizing {
 
 impl<T: Num> From<T> for Sizing {
     fn from(v: T) -> Self {
-        Sizing::fixed(v.as_f32())
+        Self::fixed(v.as_f32())
     }
 }
 

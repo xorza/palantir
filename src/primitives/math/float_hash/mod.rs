@@ -1,6 +1,6 @@
 //! Feeding floats to a hasher under the crate's two tolerances.
 //!
-//! Comparison is public in [`domain`](crate::primitives::math::domain); this half is cache identity.
+//! Comparison is public in [`domain`]; this half is cache identity.
 
 use crate::primitives::math::domain;
 use glam::Vec2;

@@ -75,7 +75,7 @@ impl BenchGpu {
     }
 
     /// The process's device of `timing`, opened by the first caller.
-    pub fn shared(timing: Timing) -> &'static BenchGpu {
+    pub fn shared(timing: Timing) -> &'static Self {
         static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
         static PASS_ONLY: OnceLock<BenchGpu> = OnceLock::new();
         static BARE: OnceLock<BenchGpu> = OnceLock::new();
@@ -99,7 +99,7 @@ impl BenchGpu {
 
     /// Drains completed submissions without blocking; timing readback publishes on a poll.
     pub(crate) fn poll(&self) {
-        let _ = self.gpu.device.poll(wgpu::PollType::Poll);
+        self.gpu.device.poll(wgpu::PollType::Poll).ok();
     }
 
     /// Blocks until all submissions drain, keeping GPU work inside the measured window.

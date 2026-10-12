@@ -81,7 +81,7 @@ impl<'de> Deserialize<'de> for Stop {
         if !domain::is_color(raw.color) {
             return Err(D::Error::custom(domain::COLOR_RULE));
         }
-        Ok(Stop::new(raw.offset, raw.color))
+        Ok(Self::new(raw.offset, raw.color))
     }
 }
 

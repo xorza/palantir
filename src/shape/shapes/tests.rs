@@ -27,25 +27,25 @@ enum ColorSource {
 impl ColorSource {
     fn apply<'a>(self, shape: PolylineShape<'a>, colors: &'a [RgbaF32]) -> PolylineShape<'a> {
         match self {
-            ColorSource::Single => shape,
-            ColorSource::PerPoint => shape.per_point(colors),
-            ColorSource::PerSegment => shape.per_segment(colors),
+            Self::Single => shape,
+            Self::PerPoint => shape.per_point(colors),
+            Self::PerSegment => shape.per_segment(colors),
         }
     }
 
     fn accepts(self, points_len: usize, colors_len: usize) -> bool {
         match self {
-            ColorSource::Single => true,
-            ColorSource::PerPoint => colors_len == points_len,
-            ColorSource::PerSegment => colors_len == points_len.saturating_sub(1),
+            Self::Single => true,
+            Self::PerPoint => colors_len == points_len,
+            Self::PerSegment => colors_len == points_len.saturating_sub(1),
         }
     }
 
     fn stored_colors_len(self, points_len: usize) -> u32 {
         match self {
-            ColorSource::Single => 1,
-            ColorSource::PerPoint => points_len as u32,
-            ColorSource::PerSegment => points_len.saturating_sub(1) as u32,
+            Self::Single => 1,
+            Self::PerPoint => points_len as u32,
+            Self::PerSegment => points_len.saturating_sub(1) as u32,
         }
     }
 }
@@ -306,8 +306,8 @@ fn the_nan_gate_drops_every_shape_kind() {
 /// `GradientId` the gate cannot see.
 #[test]
 fn builders_refuse_what_they_check() {
-    use crate::internals::harness::UiHarness;
     use crate::internals::panic_probe;
+    use crate::internals::ui_harness::UiHarness;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::mesh::Mesh;
     use crate::primitives::math::domain;

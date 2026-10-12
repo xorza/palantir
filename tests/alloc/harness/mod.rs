@@ -24,7 +24,7 @@ use std::panic::Location;
 
 use glam::UVec2;
 use palantir::Ui;
-use palantir::internals::harness::UiHarness;
+use palantir::internals::ui_harness::UiHarness;
 use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES};
 
 use crate::allocator::{AuditResult, with_audit};
@@ -80,7 +80,7 @@ pub(crate) struct Report {
 
 impl Audit {
     pub(crate) const fn new() -> Self {
-        Audit {
+        Self {
             text: false,
             warmup: Warmup::Probe,
             frames: 64,

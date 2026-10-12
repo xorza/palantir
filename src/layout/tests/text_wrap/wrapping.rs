@@ -1,7 +1,7 @@
 //! A wrapping leaf's height, its truncating peer, and the intrinsics both report.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support;
 use crate::layout::tests::support::PARAGRAPH;

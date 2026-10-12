@@ -1,7 +1,7 @@
 //! What a record pass puts in the arena, and in what order.
 
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;

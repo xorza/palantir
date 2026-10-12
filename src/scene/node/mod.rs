@@ -195,8 +195,8 @@ impl Node {
     /// Takes over `from`'s placement (position in the parent and Tab order), nothing about contents or behavior; for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
     ///
     /// The destructure is exhaustive so a new field must be given a side.
-    pub(crate) fn adopt_placement(&mut self, from: Node) {
-        let Node {
+    pub(crate) fn adopt_placement(&mut self, from: Self) {
+        let Self {
             mode: _,
             // Box extent, not placement: the adopting node sizes itself.
             size: _,

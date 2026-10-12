@@ -2,8 +2,8 @@
 
 use crate::Ui;
 use crate::WidgetId;
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::PaintCall;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::layout::tests::support::chat_message;
 use crate::primitives::layout::align::Align;

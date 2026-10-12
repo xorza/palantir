@@ -1,7 +1,7 @@
 //! The `Ui` a test drives, and the frames it records into.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;

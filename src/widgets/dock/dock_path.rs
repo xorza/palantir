@@ -9,27 +9,27 @@ pub struct DockPath(u8);
 
 impl DockPath {
     /// The root node's address (the empty path).
-    pub const ROOT: DockPath = DockPath(1);
+    pub const ROOT: Self = Self(1);
 
     /// The most levels the packed byte can address.
     pub(crate) const CAPACITY: u32 = 7;
 
     /// The address of `self`'s first (left or top) child.
-    pub fn first(self) -> DockPath {
+    pub fn first(self) -> Self {
         self.child(false)
     }
 
     /// The address of `self`'s second (right or bottom) child.
-    pub fn second(self) -> DockPath {
+    pub fn second(self) -> Self {
         self.child(true)
     }
 
-    fn child(self, second: bool) -> DockPath {
+    fn child(self, second: bool) -> Self {
         assert!(
             self.0 < 0x80,
             "dock path capacity (7 levels) exceeded — the depth cap should stop far earlier"
         );
-        DockPath((self.0 << 1) | u8::from(second))
+        Self((self.0 << 1) | u8::from(second))
     }
 
     /// Whether the byte carries no sentinel bit: a corrupt address, reachable only through serde.

@@ -101,7 +101,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internals::harness::UiHarness;
+    use crate::internals::ui_harness::UiHarness;
     use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
     #[test]

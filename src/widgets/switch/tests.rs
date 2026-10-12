@@ -1,4 +1,4 @@
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 
 use crate::Ui;
 use crate::primitives::identity::widget_id::WidgetId;

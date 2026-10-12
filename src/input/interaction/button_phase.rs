@@ -9,7 +9,7 @@
 /// Collapsed batches: press+release gives `Up` (the click outranks the lost press edge); release+re-press gives `Down` (the live capture outranks the release).
 ///
 /// [`PointerEdge`](crate::PointerEdge) reports the same edges frame-wide as a second walk, not a projection of this one: a batch that presses, releases and presses again yields two edges there but one phase here.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ButtonPhase {
     /// Not down on this widget; no edge this frame.
     #[default]

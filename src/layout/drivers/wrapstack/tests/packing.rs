@@ -1,6 +1,6 @@
 //! Justify within a line, and children that pack differently or not at all.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;

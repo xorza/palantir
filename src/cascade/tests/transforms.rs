@@ -11,7 +11,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;

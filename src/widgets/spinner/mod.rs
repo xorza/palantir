@@ -11,8 +11,8 @@ use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
@@ -94,7 +94,7 @@ impl<'a> Spinner<'a> {
         let diameter = domain::length_at_least(self.diameter.unwrap_or(theme.diameter), 1.0);
         let width = self
             .thickness
-            .unwrap_or((diameter * theme.thickness_ratio).max(theme.min_thickness));
+            .unwrap_or_else(|| (diameter * theme.thickness_ratio).max(theme.min_thickness));
         let color = self.color.unwrap_or(theme.color);
         let sweep = theme.sweep;
         let speed = theme.speed;
@@ -118,7 +118,7 @@ impl<'a> Spinner<'a> {
 
 impl Configure for Spinner<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

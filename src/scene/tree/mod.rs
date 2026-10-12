@@ -238,12 +238,13 @@ impl Tree {
             let mut ph = Hasher::new();
             layouts[i].hash_with_flags(attrs[i], &mut lh);
             let ex = extras[i];
-            let mut tab_index = 0;
-            if let Some(s) = ex.bounds {
+            let tab_index = if let Some(s) = ex.bounds {
                 let bounds = &bounds_tab[s.idx()];
                 bounds.hash(&mut lh);
-                tab_index = bounds.tab_index;
-            }
+                bounds.tab_index
+            } else {
+                0
+            };
             // The transform moves no rect, so it rides the paint half: the measure cache
             // keeps hitting under a pan. It still dirties `node_hash` (pinned by
             // `self_transform_change_flips_node_hash`).

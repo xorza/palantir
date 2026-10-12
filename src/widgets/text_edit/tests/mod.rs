@@ -15,7 +15,7 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;

@@ -1,6 +1,6 @@
 //! The pixel damage oracle: a frame repainted only where damaged must equal the same frame painted in full, bit for bit.
 //!
-//! Complements the CPU oracle (`internals::harness::oracle`), which checks damage covers changed paint rows; this checks pixels, so it sees what no row describes. Each script runs through two renderers: one repaints damage only, the other is told its target is lost each frame and paints everything.
+//! Complements the CPU oracle (`internals::ui_harness::oracle`), which checks damage covers changed paint rows; this checks pixels, so it sees what no row describes. Each script runs through two renderers: one repaints damage only, the other is told its target is lost each frame and paints everything.
 
 use std::time::Duration;
 

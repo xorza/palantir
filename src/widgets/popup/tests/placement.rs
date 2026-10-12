@@ -4,7 +4,7 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;

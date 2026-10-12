@@ -59,7 +59,7 @@ pub(crate) trait F32Px {
 impl F32Px for f32 {
     #[inline]
     fn gaps_between(self, count: usize) -> f32 {
-        self * count.saturating_sub(1) as f32
+        self * count.saturating_sub(1) as Self
     }
 
     #[inline]
@@ -84,7 +84,7 @@ impl F32Px for f32 {
             bits += HALF >> e;
             bits &= !(FRAC_MASK >> e);
         }
-        f32::from_bits(bits)
+        Self::from_bits(bits)
     }
 
     #[inline]
@@ -98,17 +98,17 @@ impl F32Px for f32 {
             "ceil_px is for a non-negative pixel coordinate, got {self}",
         );
         let truncated = self as u32;
-        truncated.saturating_add(u32::from((truncated as f32) < self))
+        truncated.saturating_add(u32::from((truncated as Self) < self))
     }
 
     #[inline]
     fn is_integral(&self) -> bool {
-        *self == (*self as i64 as f32)
+        *self == (*self as i64 as Self)
     }
 
     #[inline]
     fn canonical_px(self) -> f32 {
-        self.max(0.0).quantize_px() as f32
+        self.max(0.0).quantize_px() as Self
     }
 
     #[inline]
@@ -130,7 +130,7 @@ pub(crate) trait Vec2Ext {
 impl Vec2Ext for Vec2 {
     #[inline]
     fn fast_round(self) -> Vec2 {
-        Vec2::new(self.x.fast_round(), self.y.fast_round())
+        Self::new(self.x.fast_round(), self.y.fast_round())
     }
 }
 

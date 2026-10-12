@@ -6,8 +6,8 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
@@ -69,7 +69,7 @@ impl PopupTrigger {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         self.popup = self.popup.background(background);
@@ -81,7 +81,7 @@ impl PopupTrigger {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         self.popup = self.popup.default_background(background);
@@ -168,7 +168,7 @@ impl PopupTrigger {
 /// Forwards to the popup this trigger drops.
 impl Configure for PopupTrigger {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.popup.configure()
     }
 }

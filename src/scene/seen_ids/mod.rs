@@ -71,7 +71,7 @@ pub(crate) enum LastFrame {
 /// An id [`SeenIds::resolve`] handed out this pass, with its entry's index.
 /// [`SeenIds::record_endpoint`] still checks the id against it: a stale value from
 /// an earlier pass would write another widget's entry. Packed to 4-byte alignment
-/// to fit beside [`Ident`](crate::scene::node::ident::Ident)'s tag.
+/// to fit beside [`Ident`]'s tag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(Rust, packed(4))]
 pub(crate) struct ResolvedId {
@@ -515,6 +515,10 @@ impl SeenIds {
         }
         // Ids seen only in a discarded pass are in neither `prev` nor `curr`, but the rows
         // they created must be swept.
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "the ids go into a set, so the order changes nothing"
+        )]
         for &wid in &self.discarded {
             if self.endpoint(wid).is_none() {
                 self.removed.insert(wid);

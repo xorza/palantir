@@ -9,8 +9,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
@@ -100,17 +100,15 @@ impl<'a> Slider<'a> {
 
         // The pointer drives the value on every gesture frame, release included; no
         // anchor is retained.
-        let mut changed = false;
-        if let Some(at) = response.press_fraction(knob) {
+        let pressed = response.press_fraction(knob).is_some_and(|at| {
             let v = snap_to_step(
                 fraction_to_value(at.x, self.min, self.max),
                 self.min,
                 self.step,
             );
-            changed = self
-                .value
-                .commit_value(v, self.decimals, self.min, self.max);
-        }
+            self.value
+                .commit_value(v, self.decimals, self.min, self.max)
+        });
         let keyed = !response.disabled
             && ui.is_focus_within(id)
             && key_target(ui, self.value.read().widen(), self.min, self.max, self.step)
@@ -122,7 +120,7 @@ impl<'a> Slider<'a> {
                         self.max,
                     )
                 });
-        changed |= keyed;
+        let changed = pressed | keyed;
         // Edge, not level: a press and release on the track writes a value without
         // latching a drag, so read `left.released()`, not `drag.stopped()`.
         let committed = !response.disabled && (response.left.released() || keyed);
@@ -165,7 +163,7 @@ impl<'a> Slider<'a> {
 
 impl Configure for Slider<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }
@@ -173,7 +171,7 @@ impl Configure for Slider<'_> {
 /// Fraction (0..1) of the way from `min` to `max` that `value` sits. Division and
 /// clamp stay in `f64`, as narrowing first would pin whole classes of ranges to one
 /// end. A non-finite share (coincident ends, unbounded range) reads as the low end,
-/// per [`domain::fraction_or`](crate::widget::domain::fraction_or). A reversed
+/// per [`domain::fraction_or`]. A reversed
 /// range runs `min` at the left, so values descend; this is the exact inverse of
 /// [`fraction_to_value`].
 fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {

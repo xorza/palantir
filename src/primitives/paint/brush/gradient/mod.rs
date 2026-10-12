@@ -63,6 +63,10 @@ pub(crate) mod sealed {
     use std::hash;
 
     /// The renderer's view of one gradient kind.
+    #[expect(
+        unnameable_types,
+        reason = "sealed: code outside the crate may use it, never name or implement it"
+    )]
     pub trait Geometry {
         /// Interpolation space a new gradient of this kind starts in.
         const DEFAULT_INTERPOLATION: Interpolation;
@@ -89,7 +93,7 @@ pub(crate) mod sealed {
 // stores its tag in values `interpolation` and `spread` never take, which only
 // works if that byte sits past the end of every smaller variant.
 #[repr(C)]
-#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
 #[must_use]
 pub struct Gradient<G> {
     #[serde(flatten)]

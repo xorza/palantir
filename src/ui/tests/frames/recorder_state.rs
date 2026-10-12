@@ -1,6 +1,6 @@
 //! Theme sharing, and a subtree disabled between frames.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;

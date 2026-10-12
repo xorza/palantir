@@ -13,8 +13,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
@@ -243,7 +243,7 @@ impl<'a> Expander<'a> {
 
 impl Configure for Expander<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

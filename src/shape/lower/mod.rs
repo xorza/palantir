@@ -211,7 +211,7 @@ pub(crate) fn polyline(
         point.hash_visual(&mut h);
     }
     h.pod_slice(lowered_colors);
-    let style = u64::from(float_hash::canon_bits(stroke.width)) << 24
+    let style = (u64::from(float_hash::canon_bits(stroke.width)) << 24)
         | ((mode as u64) << 16)
         | ((cap as u64) << 8)
         | (join as u64);

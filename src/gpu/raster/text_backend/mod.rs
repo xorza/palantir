@@ -67,7 +67,7 @@ impl TextBackend {
     /// opens the exclusive glyph lease.
     pub(crate) fn prepare_batch(
         &mut self,
-        ctx: &mut GpuCtx<'_>,
+        ctx: &GpuCtx<'_>,
         scale: f32,
         batch_idx: usize,
         runs: &[TextDrawRow],

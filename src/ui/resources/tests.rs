@@ -94,7 +94,7 @@ fn diagnostics_are_shared_across_clones() {
 fn clipboard_is_shared_within_one_host_and_isolated_between_hosts() {
     let first = UiResources::isolated_mono();
     let first_window = first.clone();
-    let second_window = first.clone();
+    let second_window = first;
     let second = UiResources::isolated_mono();
 
     first_window.clipboard().set_text("shared").unwrap();

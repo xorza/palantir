@@ -2,8 +2,8 @@
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::internals::harness::UiHarness;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
@@ -389,21 +389,17 @@ fn zoom_by_scales_and_clamps_into_the_configured_range() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| zoom_driven(ui, &[1.0]));
     assert_eq!(
-        read_state(&mut h).zoom,
+        read_state(&h).zoom,
         1.0,
         "premise: an identity request is a no-op",
     );
 
     h.frame(|ui| zoom_driven(ui, &[1.5]));
-    assert_eq!(
-        read_state(&mut h).zoom,
-        1.5,
-        "the factor multiplies the zoom"
-    );
+    assert_eq!(read_state(&h).zoom, 1.5, "the factor multiplies the zoom");
 
     h.frame(|ui| zoom_driven(ui, &[2.0]));
     assert_eq!(
-        read_state(&mut h).zoom,
+        read_state(&h).zoom,
         3.0,
         "and multiplies again, from where the last frame left it",
     );
@@ -411,12 +407,12 @@ fn zoom_by_scales_and_clamps_into_the_configured_range() {
     for _ in 0..40 {
         h.frame(|ui| zoom_driven(ui, &[2.0]));
     }
-    assert_eq!(read_state(&mut h).zoom, max_zoom, "clamped at the top");
+    assert_eq!(read_state(&h).zoom, max_zoom, "clamped at the top");
 
     for _ in 0..80 {
         h.frame(|ui| zoom_driven(ui, &[0.5]));
     }
-    assert_eq!(read_state(&mut h).zoom, min_zoom, "and at the bottom");
+    assert_eq!(read_state(&h).zoom, min_zoom, "and at the bottom");
 }
 
 #[test]
@@ -424,11 +420,7 @@ fn zoom_by_composes_across_calls() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| zoom_driven(ui, &[1.0]));
     h.frame(|ui| zoom_driven(ui, &[1.5, 2.0]));
-    assert_eq!(
-        read_state(&mut h).zoom,
-        3.0,
-        "1.5 then 2.0 is one factor of 3",
-    );
+    assert_eq!(read_state(&h).zoom, 3.0, "1.5 then 2.0 is one factor of 3");
 }
 
 /// An impossible zoom factor is a caller error.

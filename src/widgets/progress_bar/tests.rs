@@ -1,5 +1,5 @@
-use crate::internals::harness::UiHarness;
-use crate::internals::harness::size_trio::SizeTrio;
+use crate::internals::ui_harness::UiHarness;
+use crate::internals::ui_harness::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 
 use crate::primitives::layout::sizing::Sizing;

@@ -2,7 +2,7 @@
 //! thumb keeps.
 
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;

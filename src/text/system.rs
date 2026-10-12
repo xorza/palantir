@@ -95,6 +95,10 @@ impl TextSystem {
     /// Probes per removed widget instead of walking the table, whose cost is the
     /// session's peak and never shrinks.
     pub(crate) fn end_frame(&mut self, removed: &WidgetIdSet) {
+        #[expect(
+            clippy::iter_over_hash_type,
+            reason = "each widget's rows are trimmed alone, so the order changes nothing"
+        )]
         for &widget_id in removed {
             self.trim_rows(widget_id, 0);
         }

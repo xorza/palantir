@@ -4,7 +4,7 @@ use crate::damage::Damage;
 use crate::damage::engine::DamageEngine;
 use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one_frame};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 
 /// A single-leaf fill flip stays partial: far below the full-repaint threshold.

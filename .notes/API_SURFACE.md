@@ -3,9 +3,9 @@
 Every item the crate exports, rendered as its declaration from rustdoc JSON
 (`python3 scripts/api_surface.py`), sorted by path. The surface is the union of a
 build with no features and one build per public feature; a tag names the features an
-item needs. `internals` and `bench` are the crate's own test surface and are left out.
+item needs. `internals` is the crate's own test surface and is left out.
 
-Generated on top of `77f77573` (plus the working tree).
+Generated on top of `00efb6b4` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -233,6 +233,7 @@ ButtonPhase
         impl Copy
         impl Debug
         impl Default
+        impl Eq
         impl PartialEq
 
 ButtonState
@@ -509,7 +510,7 @@ ComboBoxTheme
 
 Configure
     trait Configure: Sized
-        fn configure(&mut self) -> ConfigureWidget<'_>
+        fn configure(&mut self) -> Configurator<'_>
         fn id_salt(self, key: impl Hash) -> Self { .. }
         fn id(self, id: WidgetId) -> Self { .. }
         fn auto_id(self) -> Self { .. }
@@ -674,7 +675,7 @@ Display
         pub fn logical_size(&self) -> Size
         pub fn system_logical_size(&self) -> Size
         pub fn logical_rect(&self) -> Rect
-        pub fn raster_eq(&self, other: &Display) -> bool
+        pub fn raster_eq(&self, other: &Self) -> bool
         impl Clone
         impl Copy
         impl Debug
@@ -742,9 +743,9 @@ DockOperation
 DockPath
     struct DockPath
         (_)
-        pub const ROOT: DockPath
-        pub fn first(self) -> DockPath
-        pub fn second(self) -> DockPath
+        pub const ROOT: Self
+        pub fn first(self) -> Self
+        pub fn second(self) -> Self
         impl Clone
         impl Copy
         impl Debug
@@ -933,6 +934,7 @@ Easing
         impl Clone
         impl Copy
         impl Debug
+        impl Eq
         impl PartialEq
         impl Serialize
         impl<'de> Deserialize<'de> for Easing
@@ -1213,6 +1215,7 @@ Gradient
         impl<'de, G> Deserialize<'de> for Gradient<G> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
+        impl<G: Eq> Eq for Gradient<G>
         impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G>
         impl<G: GradientGeometry> Hash for Gradient<G>
         impl<G: PartialEq> PartialEq for Gradient<G>
@@ -1281,6 +1284,8 @@ GridCell
         impl Copy
         impl Debug
         impl Default
+        impl DockTab  (blanket)
+        impl Eq
         impl From<(u16, u16)>
         impl Hash
         impl PartialEq
@@ -1922,7 +1927,7 @@ OverlayResponse
         impl<R: Default> Default for OverlayResponse<R>
 
 PLATFORM
-    const PLATFORM: Platform = { { Platform::Mac } }
+    const PLATFORM: Platform = { { Platform::Linux } }
 
 Palette
     struct Palette
@@ -2819,6 +2824,7 @@ TabGroup
         impl<'de, T> Deserialize<'de> for TabGroup<T> where T: Deserialize<'de>
         impl<T: Clone> Clone for TabGroup<T>
         impl<T: Debug> Debug for TabGroup<T>
+        impl<T: Eq> Eq for TabGroup<T>
         impl<T: PartialEq> PartialEq for TabGroup<T>
         impl<T> Serialize for TabGroup<T> where T: Serialize
 
@@ -3664,8 +3670,8 @@ widget::Caret
         impl Debug
         impl PartialEq
 
-widget::ConfigureWidget
-    struct ConfigureWidget<'a>
+widget::Configurator
+    struct Configurator<'a>
         // and private fields
         pub fn id_salt(&mut self, key: impl Hash) -> &mut Self
         pub const fn id(&mut self, id: WidgetId) -> &mut Self
@@ -3707,7 +3713,7 @@ widget::ConfigureWidget
         pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self
-        impl<'a> Debug for ConfigureWidget<'a>
+        impl<'a> Debug for Configurator<'a>
 
 widget::ContentType
     enum ContentType
@@ -3837,7 +3843,7 @@ widget::Mesh
         pub fn content_hash(&self) -> u64
         pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
-        pub fn append(&mut self, other: &Mesh)
+        pub fn append(&mut self, other: &Self)
         pub fn bbox(&self) -> Rect
         pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self
         pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self
@@ -3927,6 +3933,7 @@ widget::PaintTiming
         impl Clone
         impl Copy
         impl Debug
+        impl Eq
         impl PartialEq
 
 widget::PlacedGlyph

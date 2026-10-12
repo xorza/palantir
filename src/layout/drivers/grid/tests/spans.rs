@@ -2,7 +2,7 @@
 
 use crate::primitives::layout::axis::Axis;
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;

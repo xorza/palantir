@@ -28,13 +28,13 @@ impl SplitSide {
     /// The split this side implies.
     pub const fn direction(self) -> SplitDirection {
         match self {
-            SplitSide::Left | SplitSide::Right => SplitDirection::Row,
-            SplitSide::Top | SplitSide::Bottom => SplitDirection::Column,
+            Self::Left | Self::Right => SplitDirection::Row,
+            Self::Top | Self::Bottom => SplitDirection::Column,
         }
     }
 
     /// Whether the new pane is the split's first child (left or top).
     pub(crate) const fn new_pane_first(self) -> bool {
-        matches!(self, SplitSide::Left | SplitSide::Top)
+        matches!(self, Self::Left | Self::Top)
     }
 }

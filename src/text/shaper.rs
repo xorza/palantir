@@ -112,6 +112,13 @@ impl ShaperInner {
     }
 
     #[inline]
+    #[cfg_attr(
+        not(feature = "internals"),
+        expect(
+            clippy::needless_pass_by_ref_mut,
+            reason = "the count it bumps exists only under `internals`"
+        )
+    )]
     const fn tally_dispatch(&mut self) {
         #[cfg(feature = "internals")]
         {

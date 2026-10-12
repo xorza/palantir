@@ -7,7 +7,7 @@ use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::drag::Drag;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

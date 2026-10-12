@@ -232,7 +232,7 @@ mod tests {
                     used: UVec2::new(16, 24),
                     offset: UVec2::new(16, 0),
                     raster_scale: 2.0,
-                    ..draw.clone()
+                    ..draw
                 },
                 true,
             ),

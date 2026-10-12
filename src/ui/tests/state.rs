@@ -1,6 +1,6 @@
 //! Cross-frame state rows and the scope that lends them.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};

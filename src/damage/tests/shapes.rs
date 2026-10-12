@@ -3,7 +3,7 @@
 use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -611,6 +611,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
+    #[expect(clippy::iter_over_hash_type, reason = "each entry is checked alone")]
     for (k, s) in &h.engines.damage.prev {
         assert!(
             s.paint_span.len > 0,
@@ -670,7 +671,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see `text_paint_bbox_local`).
     let inflate = 1.0 + TEXT_SCALE_STEP;
     let prev_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
-    let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
+    let prev_size_short = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert_eq!(
         prev_text_rect.size, prev_size_short,
         "the short text's damage size"
@@ -678,7 +679,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 
     frame(&mut h, |ui| build("abcdef", ui));
     let curr_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
-    let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
+    let curr_size_long = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert_eq!(
         curr_text_rect.size, curr_size_long,
         "the long text's damage size"

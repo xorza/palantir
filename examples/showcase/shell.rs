@@ -44,17 +44,17 @@ enum Group {
 impl Group {
     const fn heading(self) -> &'static str {
         match self {
-            Group::Widgets => "WIDGETS",
-            Group::Input => "INPUT",
-            Group::Layout => "LAYOUT",
-            Group::Paint => "PAINT",
-            Group::Runtime => "RUNTIME",
-            Group::Diagnostics => "DIAGNOSTICS",
+            Self::Widgets => "WIDGETS",
+            Self::Input => "INPUT",
+            Self::Layout => "LAYOUT",
+            Self::Paint => "PAINT",
+            Self::Runtime => "RUNTIME",
+            Self::Diagnostics => "DIAGNOSTICS",
         }
     }
 
     const fn is_quiet(self) -> bool {
-        matches!(self, Group::Diagnostics)
+        matches!(self, Self::Diagnostics)
     }
 }
 
@@ -302,7 +302,7 @@ impl State {
         // The library default is no button animation; the showcase demos it.
         theme.button.defaults.animation = Some(AnimationSpec::SPRING);
         ui.set_theme(theme);
-        State {
+        Self {
             active: 0,
             app: AppState { counter: 0 },
         }

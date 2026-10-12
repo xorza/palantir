@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::common::content_hash::ContentHash;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;

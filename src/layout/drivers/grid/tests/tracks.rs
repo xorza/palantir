@@ -5,7 +5,7 @@ use crate::layout::drivers::grid::axis_scratch::HugRanges;
 use crate::primitives::layout::axis::Axis;
 
 use crate::common::span::Span;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;

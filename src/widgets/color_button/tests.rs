@@ -3,7 +3,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;

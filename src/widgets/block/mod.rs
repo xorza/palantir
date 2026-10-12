@@ -2,8 +2,8 @@
 
 use crate::primitives::paint::background::Background;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 
@@ -37,7 +37,7 @@ impl Block {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         background.validate();
@@ -49,7 +49,7 @@ impl Block {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         background.validate();
@@ -62,7 +62,7 @@ impl Block {
 
 impl Configure for Block {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

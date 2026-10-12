@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::input::keyboard::key::Key;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;

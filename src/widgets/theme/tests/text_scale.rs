@@ -194,14 +194,14 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     let tight_override = |theme: &mut Theme| {
         theme.button.looks.normal.text.line_height_factor = Some(0.001);
     };
-    let untouched = |_: &mut Theme| {};
+    let untouched: &dyn Fn(&mut Theme) = &|_| {};
     for (label, setup, factor, expected) in [
-        ("zero", &untouched as &dyn Fn(&mut Theme), 0.0, FACTOR),
-        ("negative", &untouched, -1.0, FACTOR),
-        ("not a number", &untouched, f32::NAN, FACTOR),
-        ("infinite", &untouched, f32::INFINITY, FACTOR),
-        ("overflow", &untouched, f32::MAX, RESULT),
-        ("sub-epsilon result", &untouched, EPS / 32.0, RESULT),
+        ("zero", untouched, 0.0, FACTOR),
+        ("negative", untouched, -1.0, FACTOR),
+        ("not a number", untouched, f32::NAN, FACTOR),
+        ("infinite", untouched, f32::INFINITY, FACTOR),
+        ("overflow", untouched, f32::MAX, RESULT),
+        ("sub-epsilon result", untouched, EPS / 32.0, RESULT),
         ("override size overflow", &big_override, 4.0, RESULT),
         ("override leading", &tight_override, 0.001, RESULT),
     ] {

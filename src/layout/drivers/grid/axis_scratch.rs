@@ -102,7 +102,7 @@ impl AxisScratch {
     pub(super) fn resolve_or_reuse(
         &mut self,
         tracks: &[Track],
-        track_state: &mut GridTrackStore,
+        track_state: &GridTrackStore,
         idx: GridDefId,
         axis: Axis,
         total: f32,

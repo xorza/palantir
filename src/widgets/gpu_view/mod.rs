@@ -5,8 +5,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use std::cell::RefCell;
@@ -104,7 +104,7 @@ impl GpuView {
 
 impl Configure for GpuView {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

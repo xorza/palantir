@@ -6,8 +6,8 @@ use crate::text::wrap::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::internals::harness::UiHarness;
 use crate::internals::paint_capture::internals::assert_same_capture;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;

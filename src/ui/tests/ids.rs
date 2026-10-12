@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::common::span::Span;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;

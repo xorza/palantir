@@ -326,7 +326,7 @@ impl GpuTimings {
                     });
             }
         }
-        let _ = device.poll(wgpu::PollType::Poll);
+        device.poll(wgpu::PollType::Poll).ok();
         for slot in &mut self.slots {
             if !slot.in_flight {
                 continue;
@@ -366,7 +366,7 @@ fn discard_slot(slot: &Slot, state: u8) {
     }
 }
 
-fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
+fn consume_slot(slot: &Slot, period_ns: f32, sink: &GpuPassStats) {
     let ts_range = slot
         .timestamps_buffer
         .slice(..)

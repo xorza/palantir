@@ -1,8 +1,8 @@
 //! Record to compose over [`ROWS`] blocks of repeated chrome: what a gradient fill costs the frontend over a solid one.
 
 use crate::bench::fixture::{Backend, Kind, Scale};
-use crate::internals::harness::UiHarness;
-use crate::internals::harness::frontend_harness::FrontendHarness;
+use crate::internals::ui_harness::UiHarness;
+use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;

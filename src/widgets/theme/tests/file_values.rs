@@ -3,7 +3,7 @@
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
 use crate::internals::frame_fixture::FrameFixture;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;

@@ -114,7 +114,7 @@ impl Animatable for Vec2 {
     }
     #[inline]
     fn zero() -> Self {
-        Vec2::ZERO
+        Self::ZERO
     }
 }
 

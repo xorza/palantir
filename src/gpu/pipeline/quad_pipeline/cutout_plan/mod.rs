@@ -374,7 +374,7 @@ impl CutoutPlan {
     }
 
     pub(crate) const fn code(cell: [u32; 2], side: u32) -> u32 {
-        cell[0] | cell[1] << 6 | side << 12
+        cell[0] | (cell[1] << 6) | (side << 12)
     }
 
     /// A table's side for `(r, σ)`: a texel per `σ / TEXELS_PER_SIGMA` across the cutout square widened by `reach`, plus one for bilinear.

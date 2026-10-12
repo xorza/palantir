@@ -9,8 +9,8 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::value_response::ValueResponse;
@@ -81,7 +81,7 @@ impl<'a> ColorButton<'a> {
         }
         let size = response
             .layout_rect
-            .map_or(Size::new(side, side), |r| r.size);
+            .map_or_else(|| Size::new(side, side), |r| r.size);
         let shown = self.picker.color();
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, shown, size));
@@ -114,7 +114,7 @@ impl<'a> ColorButton<'a> {
 
 impl Configure for ColorButton<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

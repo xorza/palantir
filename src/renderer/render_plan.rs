@@ -23,15 +23,15 @@ impl RenderPlan {
 
     /// Stamp `DamageEngine`'s output with the clear colour; no damage stays `None`.
     pub(crate) fn from_damage(damage: Option<Damage>, clear: RgbaF32) -> Option<Self> {
-        Some(RenderPlan {
+        Some(Self {
             clear,
             damage: damage?,
         })
     }
 
     /// This plan escalated to a full repaint, keeping its clear colour; for when partial damage can't be honoured (direct present, fresh backbuffer).
-    pub(crate) const fn to_full(self) -> RenderPlan {
-        RenderPlan {
+    pub(crate) const fn to_full(self) -> Self {
+        Self {
             clear: self.clear,
             damage: Damage::Full,
         }

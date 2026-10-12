@@ -4,7 +4,7 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::WidgetId;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::layout::axis::Axis;

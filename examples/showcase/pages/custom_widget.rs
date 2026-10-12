@@ -4,7 +4,7 @@
 
 use crate::support;
 use crate::support::{Column, api, columns, section, well};
-use palantir::widget::{ConfigureWidget, LineCap, LineJoin, PolylineShape, Shape, Widget};
+use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
     Align, Background, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense,
     Shadow, Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
@@ -260,7 +260,7 @@ impl<'a> Stepper<'a> {
 
 /// One method earns the whole chained-setter vocabulary for the builder.
 impl Configure for Stepper<'_> {
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

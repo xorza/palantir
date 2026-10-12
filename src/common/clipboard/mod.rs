@@ -182,7 +182,7 @@ impl Clipboard {
     pub(crate) fn system_or_memory() -> Self {
         let primary = arboard::Clipboard::new()
             .ok()
-            .map(|clipboard| Box::new(SystemBackend(clipboard)) as Box<dyn Backend>);
+            .map(|clipboard| -> Box<dyn Backend> { Box::new(SystemBackend(clipboard)) });
         Self::new(primary, Box::<MemoryBackend>::default())
     }
 

@@ -3,7 +3,7 @@
 
 use glam::{UVec2, Vec2};
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
@@ -983,13 +983,14 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         h.frame(|ui| {
             let mut operations = Vec::new();
             DockView::scan(ui, d, &mut operations);
+            #[expect(clippy::iter_with_drain, reason = "the buffer is filled again below")]
             for operation in operations.drain(..) {
                 d.apply(operation);
             }
             DockView::new(&*d, &mut operations)
                 .overflow(TabOverflow::Menu)
                 .show(ui, tabs);
-            for operation in operations.drain(..) {
+            for operation in operations {
                 d.apply(operation);
             }
         });
@@ -1049,7 +1050,7 @@ fn a_layout_deeper_than_the_default_cap_loads() {
         !loaded.can_split(group),
         "the default cap applies to new splits on the loaded state",
     );
-    assert!(loaded.clone().with_max_depth(6).can_split(group));
+    assert!(loaded.with_max_depth(6).can_split(group));
 }
 
 /// A chip drag's carried tab is kept on the dock's own id and leaves with it.
@@ -1075,7 +1076,10 @@ fn a_carried_tab_leaves_with_the_dock() {
     record(&mut h, &mut d, &mut tabs);
     h.drag_to(at + Vec2::new(0.0, 60.0));
     record(&mut h, &mut d, &mut tabs);
-    let carried = |h: &UiHarness| h.ui.state::<TabDrag<Tab>>(dock).and_then(|drag| drag.tab);
+    let carried = |h: &UiHarness| {
+        let drag = h.ui.state::<TabDrag<Tab>>(dock)?;
+        drag.tab
+    };
     assert_eq!(carried(&h), Some(Tab::Prefs), "the drag carries the tab");
     h.frame(|_| {});
     assert_eq!(carried(&h), None, "and leaves with the dock");

@@ -110,7 +110,7 @@ impl EditAction {
             }
             Self::Copy => {
                 if let Some(selected) = editor.selected_text() {
-                    let _ = clipboard.set_text(selected);
+                    clipboard.set_text(selected).ok();
                 }
             }
             Self::Paste => {

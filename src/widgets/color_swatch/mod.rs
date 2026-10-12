@@ -6,8 +6,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
@@ -54,7 +54,7 @@ impl<'a> ColorSwatch<'a> {
         let id = widget.resolve(ui);
         let size = response
             .layout_rect
-            .map_or(Size::new(side, side), |r| r.size);
+            .map_or_else(|| Size::new(side, side), |r| r.size);
         let color = self.color;
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, color, size));
@@ -64,7 +64,7 @@ impl<'a> ColorSwatch<'a> {
 
 impl Configure for ColorSwatch<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

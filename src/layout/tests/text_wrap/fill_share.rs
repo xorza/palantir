@@ -1,6 +1,6 @@
 //! Wrapping text inside a fill slot: the share it reshapes at, and its floor.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::layout::tests::support::chat_message;

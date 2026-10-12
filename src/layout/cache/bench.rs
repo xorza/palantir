@@ -15,7 +15,7 @@
 //! `cached / forced_miss` is what the cache buys on a comparable workload.
 
 use crate::bench::fixture::{Backend, Kind, Scale};
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;

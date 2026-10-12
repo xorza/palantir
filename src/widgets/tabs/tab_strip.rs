@@ -18,8 +18,8 @@ use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
@@ -243,7 +243,7 @@ impl<'a> TabStrip<'a> {
 
 impl Configure for TabStrip<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

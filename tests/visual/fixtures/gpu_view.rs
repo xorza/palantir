@@ -45,7 +45,7 @@ impl DepthTriangle {
     }
 }
 
-const TRI_SHADER: &str = r"
+const TRI_SHADER: &str = "
 @vertex
 fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     // Oversized triangle covering the whole clip space.

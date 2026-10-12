@@ -1,7 +1,7 @@
 //! A [`UiHarness`] with a deviceless `Frontend` behind it.
 
 use crate::damage::Damage;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::ui::Ui;

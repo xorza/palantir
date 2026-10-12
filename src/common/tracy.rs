@@ -67,7 +67,7 @@ impl FrameSet {
         )
     )]
     pub(crate) fn claim() -> Self {
-        FrameSet {
+        Self {
             #[cfg(feature = "profile-with-tracy")]
             index: {
                 static CLAIMED: std::sync::atomic::AtomicUsize =

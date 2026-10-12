@@ -18,11 +18,11 @@ pub enum Visibility {
 impl Visibility {
     /// Whether this node paints.
     pub const fn is_visible(self) -> bool {
-        matches!(self, Visibility::Visible)
+        matches!(self, Self::Visible)
     }
     /// Whether this node is skipped by layout entirely.
     pub const fn is_collapsed(self) -> bool {
-        matches!(self, Visibility::Collapsed)
+        matches!(self, Self::Collapsed)
     }
 }
 

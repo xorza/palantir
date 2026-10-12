@@ -12,7 +12,7 @@ use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::PointerWake;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;

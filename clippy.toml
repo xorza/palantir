@@ -22,7 +22,12 @@ absolute-paths-allowed-crates = ["std", "core", "alloc"]
 #
 # Regenerate it after a wgpu upgrade that introduces a type Palantir starts
 # using. A type missing from the list is simply unguarded, not an error.
+#
+# State lives on an owner. A `thread_local!` that the outside world forces gets an `expect`
+# saying so. The ban names the `LocalKey` the macro makes: clippy reads a lint level for an
+# item-position macro at the crate root alone, so an `expect` on its module would not apply.
 disallowed-types = [
+    { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
     { path = "wgpu::Adapter", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AdapterInfo", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AddressMode", reason = "wgpu belongs to crate::gpu" },

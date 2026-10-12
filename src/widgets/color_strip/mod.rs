@@ -13,8 +13,8 @@ use crate::primitives::paint::image::ImageFit;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
@@ -169,7 +169,7 @@ impl<'a> ColorStrip<'a> {
 
 impl Configure for ColorStrip<'_> {
     #[inline]
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
 }

@@ -4,7 +4,7 @@
 use super::*;
 use crate::Ui;
 use crate::common::clipboard::Clipboard;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};

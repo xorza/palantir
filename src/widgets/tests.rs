@@ -1,7 +1,7 @@
 //! Rules every chrome-bearing widget keeps alike; no trait holds them in step, so they are checked here.
 
 use crate::input::interaction::response_state::ResponseState;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -475,13 +475,14 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |_, _| {});
                 ComboBox::new(&mut stale, &OPTIONS).show(ui);
-                ComboBox::new(&mut empty, &[] as &[&str]).show(ui);
+                let no_options: [&str; 0] = [];
+                ComboBox::new(&mut empty, &no_options).show(ui);
                 TabbedView::new(&mut page, &OPTIONS)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |ui, i| {
                         Text::new(OPTIONS[i]).show(ui);
                     });
-                TabbedView::new(&mut no_page, &[] as &[&str])
+                TabbedView::new(&mut no_page, &no_options)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |_, _| {});
                 let items = [TabItem::new(1, ui.intern("one"))];

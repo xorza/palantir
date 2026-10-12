@@ -1,4 +1,4 @@
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;

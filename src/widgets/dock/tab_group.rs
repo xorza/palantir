@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct TabGroupId(pub(crate) u64);
 
 /// One pane's tab strip: the open tabs plus which one is visible.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabGroup<T> {
     /// Stable identity; survives the re-pack every structural operation ends with.
     pub id: TabGroupId,

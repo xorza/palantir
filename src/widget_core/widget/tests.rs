@@ -17,8 +17,8 @@ use crate::primitives::math::domain::{self, MAX_GAP};
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -27,7 +27,7 @@ use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, tex
 use glam::Vec2;
 
 fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
-    let ConfigureWidget { widget } = widget.configure();
+    let Configurator { widget } = widget.configure();
     &mut widget.node
 }
 

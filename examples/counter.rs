@@ -7,7 +7,7 @@ struct Counter {
 
 impl Counter {
     fn new(_ui: &mut Ui, _handle: HostHandle<Self>) -> Self {
-        Counter { clicks: 0 }
+        Self { clicks: 0 }
     }
 }
 

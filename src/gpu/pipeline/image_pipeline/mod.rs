@@ -218,8 +218,8 @@ mod tests {
         ];
         for (label, raw, expected_runs) in cases {
             let ids = textures(raw);
-            let runs: Vec<_> = image_runs(&ids, 0).collect();
-            assert_eq!(runs.len(), expected_runs, "{label}: bind + draw count");
+            let runs = image_runs(&ids, 0).count();
+            assert_eq!(runs, expected_runs, "{label}: bind + draw count");
             let per_draw: Vec<_> = ids.iter().copied().enumerate().collect();
             assert_eq!(expand(&ids, 0), per_draw, "{label}: draw sequence");
         }

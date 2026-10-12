@@ -11,8 +11,8 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ConfigureWidget;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
@@ -175,7 +175,7 @@ impl ContextMenu<'_> {
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn background(mut self, background: Background) -> Self {
         self.popup = self.popup.background(background);
@@ -187,7 +187,7 @@ impl ContextMenu<'_> {
     /// [`Self::background`] wins in either order.
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless `background` holds the kinds [`Background`] lists.
     #[track_caller]
     pub const fn default_background(mut self, background: Background) -> Self {
         self.popup = self.popup.default_background(background);
@@ -197,7 +197,7 @@ impl ContextMenu<'_> {
 
 /// Forwards to the popup this menu wraps; the menu keeps no node of its own.
 impl Configure for ContextMenu<'_> {
-    fn configure(&mut self) -> ConfigureWidget<'_> {
+    fn configure(&mut self) -> Configurator<'_> {
         self.popup.configure()
     }
 }

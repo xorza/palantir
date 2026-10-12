@@ -1,5 +1,5 @@
 use super::*;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;

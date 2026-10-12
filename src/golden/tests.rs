@@ -89,14 +89,14 @@ struct Scratch(PathBuf);
 impl Scratch {
     fn new(name: &str) -> Self {
         let dir = env::temp_dir().join(format!("palantir-golden-{name}-{}", process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        fs::remove_dir_all(&dir).ok();
         Self(dir)
     }
 }
 
 impl Drop for Scratch {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        fs::remove_dir_all(&self.0).ok();
     }
 }
 

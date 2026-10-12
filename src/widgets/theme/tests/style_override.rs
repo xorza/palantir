@@ -1,6 +1,6 @@
 //! What every widget's `style` setter is: the `Option`-taking setter naming a theme slot.
 
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;

@@ -49,7 +49,7 @@ const INDICES: [u16; 36] = [
     4, 5, 1, 4, 1, 0, // -y
 ];
 
-const SHADER: &str = r"
+const SHADER: &str = "
 struct Uniforms { mvp: mat4x4<f32> };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 

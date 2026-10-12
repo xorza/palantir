@@ -2,7 +2,7 @@
 
 use crate::Ui;
 use crate::input::scroll_targets::ScrollTargets;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -55,7 +55,7 @@ fn wheel_delta_advances_offset_with_clamp() {
             h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
-        assert_eq!(read_state(&mut h).offset.y, *expected, "case: {label}");
+        assert_eq!(read_state(&h).offset.y, *expected, "case: {label}");
     }
 }
 
@@ -81,13 +81,13 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
     // Pan left/up: a large negative delta clamps at `-m` on both axes.
     h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
     h.frame(build_m);
-    assert_eq!(read_state(&mut h).offset, Vec2::new(-m, -m));
+    assert_eq!(read_state(&h).offset, Vec2::new(-m, -m));
     // Pan back: clamp at `raw_slack + m` = (400 - 200) + 100 = 300.
     h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
     h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
-        read_state(&mut h).offset,
+        read_state(&h).offset,
         Vec2::new(raw_slack + m, raw_slack + m)
     );
 }
@@ -291,7 +291,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 10_000.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         600.0,
         "precondition: scrolled to max (800 - 200)",
     );
@@ -301,7 +301,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     // frame 2 records against it and clamps the stranded offset.
     h.prime(2, |ui| build(ui, 200.0, 300.0));
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         100.0,
         "offset must clamp to the new max (300 - 200) after a passive content shrink",
     );
@@ -331,7 +331,7 @@ fn content_margin_does_not_shift_content_that_fits() {
     };
     h.prime(2, build);
     assert_eq!(
-        read_state(&mut h).offset,
+        read_state(&h).offset,
         Vec2::ZERO,
         "fitting content must rest at the origin, not at the leading margin",
     );
@@ -342,14 +342,14 @@ fn content_margin_does_not_shift_content_that_fits() {
     h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
     h.frame(build);
     assert_eq!(
-        read_state(&mut h).offset,
+        read_state(&h).offset,
         Vec2::new(-m, -m),
         "the leading band is still reachable for content that fits",
     );
     h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
     h.frame(build);
     assert_eq!(
-        read_state(&mut h).offset,
+        read_state(&h).offset,
         Vec2::new(m, m),
         "and so is the trailing band",
     );
@@ -364,24 +364,24 @@ fn pan_by_pans_without_a_pointer_and_clamps() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| drive(ui, 0.0));
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         0.0,
         "premise: the viewport starts at the top",
     );
 
     h.frame(|ui| drive(ui, 50.0));
-    assert_eq!(read_state(&mut h).offset.y, 50.0, "one request, one step");
+    assert_eq!(read_state(&h).offset.y, 50.0, "one request, one step");
 
     h.frame(|ui| drive(ui, 50.0));
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         100.0,
         "and the steps accumulate, as a wheel's do",
     );
 
     h.frame(|ui| drive(ui, 9_999.0));
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         600.0,
         "clamped at content minus viewport, like every other pan",
     );
@@ -411,7 +411,7 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
             });
     });
     assert_eq!(
-        read_state(&mut h).offset.y,
+        read_state(&h).offset.y,
         50.0,
         "30 px of wheel and two requests of 12 and 8 are 50 px of pan",
     );

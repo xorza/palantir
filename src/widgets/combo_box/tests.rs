@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::internals::harness::UiHarness;
+use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -36,7 +36,8 @@ fn a_stale_selection_shows_the_last_option_without_writing_back() {
                 for (selected, id) in picks.iter_mut().zip(ids) {
                     ComboBox::new(selected, &OPTIONS).id(id).show(ui);
                 }
-                ComboBox::new(&mut none, &[] as &[&str]).id(empty).show(ui);
+                let no_options: [&str; 0] = [];
+                ComboBox::new(&mut none, &no_options).id(empty).show(ui);
             });
     });
     let width = |id: WidgetId| h.rect(id.with("label")).expect("label arranged").size.w;

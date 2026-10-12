@@ -284,14 +284,14 @@ fn growth_leaves_resident_lookups_on_their_original_rows() {
 fn eviction_drops_the_outgoing_key_from_the_index() {
     let mut atlas = CpuGradientAtlas::default();
     let first = distinct_grad(0);
-    let first_row = atlas.register(&first.clone().ramp).0;
+    let first_row = atlas.register(&first.ramp).0;
     for i in 1..(INITIAL_ATLAS_ROWS - 1) {
         atlas.register(&distinct_grad(i).ramp);
     }
     let _ = atlas.flush();
 
     let newcomer = distinct_grad(999900);
-    assert_eq!(atlas.register(&newcomer.clone().ramp).0, first_row);
+    assert_eq!(atlas.register(&newcomer.ramp).0, first_row);
     assert_eq!(
         atlas.resident_row(&first.ramp),
         None,
@@ -301,7 +301,7 @@ fn eviction_drops_the_outgoing_key_from_the_index() {
     assert_eq!(atlas.index_len(), (INITIAL_ATLAS_ROWS - 1) as usize);
 
     let _ = atlas.flush();
-    let reborn = atlas.register(&first.clone().ramp).0;
+    let reborn = atlas.register(&first.ramp).0;
     assert_ne!(reborn, first_row);
     let mut expected = fresh_row();
     bake::row(&first.ramp, &mut expected);

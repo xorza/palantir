@@ -16,7 +16,7 @@ pub(crate) fn hash_str(s: &str) -> u64 {
     h.finish()
 }
 
-/// `FxHasher` plus an inherent `pod()`; implements `Hasher`.
+/// `FxHasher` plus an inherent [`Self::pod_slice`]; implements `Hasher`.
 #[derive(Clone)]
 pub(crate) struct Hasher(FxHasher);
 
@@ -39,9 +39,9 @@ impl Hasher {
     /// built, whose field-by-field stores the CPU cannot forward.
     ///
     /// Does **not** write the length: fold it in for variable-length columns.
-    /// **Not hash-equal to a per-element [`Self::pod`] loop**, so fine for a hash
-    /// compared only against itself, wrong for anything persisted. Pinned by
-    /// `pod_slice_differs_from_element_wise_pod`.
+    /// **Not hash-equal to one `write` per element**, so fine for a hash compared
+    /// only against itself, wrong for anything persisted. Pinned by
+    /// `pod_slice_matches_write_of_bytes_and_chunks_by_word`.
     #[inline]
     pub(crate) fn pod_slice<T: bytemuck::NoUninit>(&mut self, v: &[T]) {
         self.0.write(bytemuck::cast_slice(v));
