@@ -1,4 +1,4 @@
-//! A viewer for the benchmark workload (the tree `cargo benches -- integration/frame/` records) drawn live at window scale.
+//! A viewer for the benchmark workload (the tree `./x.py bench -- integration/frame/` records) drawn live at window scale.
 //!
 //! The one page that builds no content of its own and borrows none of [`crate::support`]'s tokens: the fixture's node structure makes bench numbers comparable across releases, so a tour restyle must not retarget recorded series.
 //!

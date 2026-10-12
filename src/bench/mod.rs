@@ -1,4 +1,4 @@
-//! The criterion benches, which `benches/palantir.rs` runs: `cargo benches`.
+//! The criterion benches, which `benches/palantir.rs` runs: `./x.py bench`.
 //!
 //! Two kinds, and every case is one. An `atomic` case times one stage, one widget or one
 //! operation on a made input. An `integration` case times palantir's frame, or a chain of its

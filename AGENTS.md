@@ -276,29 +276,49 @@ panic says so under `# Panics`. The table is in the `domain` module doc.
 
 ## Verification
 
+`x.py` at the root runs every check (`python x.py` on Windows). `gate` runs,
+on the packages the working tree changed: rustfmt in place, clippy on every
+target per lint set, plain clippy for the build that ships, rustdoc with
+private items under `-D warnings`, the tests per test set, and the doc tests.
+It stops after the first step that fails. Each cargo call prints one line, a
+failure adds only its diagnostics or failed tests, and the full output is in
+`target/x/last/`.
+
 ```
-cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo clippy -- -D warnings
-cargo test --lib --test alloc --features golden,gpu-debug-markers
+./x.py gate                        # the changed packages
+./x.py gate -p <pkg>               # named packages; --workspace for every one
+./x.py test -p <pkg> -- <filter>   # one step: fmt, lint, doc, test, nextest, doctest
+./x.py test --lib                  # or --test <name>, in place of the set's targets
+./x.py bench -- <filter>           # --smoke runs each case once, --no-run prints the binary
+./x.py watch                       # rebuilds on change, so the cache stays warm
 ```
+
+Check through `x.py`, not cargo: each call is one package with fixed flags,
+so every run reuses the build `watch` keeps warm, and another flag set builds
+another copy of the crate. A package's feature sets are in its `Cargo.toml`,
+under `[package.metadata.x]`. `x.py` is one file, the same in darkroom and
+in each submodule: a change to it is copied to the others.
+
+CI runs the same `x.py` steps, with `--locked`.
 
 - **Every test run needs a GPU adapter**, as `internals`, on in every test
   build, brings GPU tests. A headless machine needs a software Vulkan driver
   (Mesa lavapipe, `mesa-vulkan-drivers`), as CI installs.
-- **The second clippy lints the build that ships**: every other target turns
+- **The plain clippy lints the build that ships**: every other target turns
   `internals` on through the self dev-dependency.
-- **A change to bench code** adds `cargo benches -- --test`, which runs each
+- **A change to bench code** adds `./x.py bench --smoke`, which runs each
   case once; `benches/AGENTS.md` says how to run and measure.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
-  binary opens the Tracy socket. The test run names `alloc`, as `--tests`
-  with `golden` would pull in `visual`.
+  binary opens the Tracy socket. The first test set names `alloc`, as
+  `--tests` with `golden` would pull in `visual`; the second builds the
+  library without `winit`, as a host that embeds the crate does.
 - **Rendering changes** (shaders, encoder/composer, atlases, colour pipeline,
-  layout that moves pixels) also run `cargo test --test visual --features
-  golden`. Its goldens in `tests/visual/golden/` are local and record their
-  adapter in `golden/adapter.txt`. Run the suite on the unchanged tree first,
-  and rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1`
-  before changing anything. A missing golden is written, then failed; a
+  layout that moves pixels) also run `./x.py test -p palantir --test
+  visual`, under the test set with `golden`. Its goldens in
+  `tests/visual/golden/` are local and record their adapter in
+  `golden/adapter.txt`. Run the suite on the unchanged tree first, and
+  rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1` before
+  changing anything. A missing golden is written, then failed; a
   failure leaves `actual.png`, `expected.png` and `diff.png` in
   `tests/visual/output/<name>/`.
 - **A change a user can see** ends with a look at

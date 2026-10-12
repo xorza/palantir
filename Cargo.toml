@@ -25,11 +25,18 @@ exclude = [
     "benches/bench-perf.sh",
     "docs/",
     "scripts/",
+    "x.py",
 ]
 
 
 [package.metadata.docs.rs]
 all-features = false
+
+# `--all-features` is clippy's alone: under `profile-with-tracy` a test binary opens the Tracy
+# socket. The first test set names `alloc`, as `--tests` with `golden` would pull in `visual`,
+# whose goldens are local; the second builds the crate without `winit`, as a host embeds it.
+[package.metadata.x]
+test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 
 [workspace]
 members = ["palantir-anim-derive"]

@@ -1,8 +1,3 @@
-[alias]
-# Every bench case, with the default features, so a case always measures the same build:
-# `cargo benches -- --list`, `-- '^atomic/'`, `-- '/cpu/'`, `-- --exact integration/frame/gpu/cached`.
-benches = "bench --bench palantir"
-
 # The f16 <-> f32 conversions behind colour, corner radii, spacing and shadow
 # geometry inline into their callers only when F16C is static; x86-64-v3
 # carries F16C, plus AVX2 and FMA. The floor it sets is Haswell (2013), which
