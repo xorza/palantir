@@ -111,7 +111,7 @@ pinning. For a capture it does not make, use this setup, which keeps the
 rules in `benches/AGENTS.md`:
 
 ```sh
-BIN=$(cargo bench --bench criterion --features bench --no-run 2>&1 |
+BIN=$(cargo bench --bench criterion --no-run 2>&1 |
     sed -n 's/.*Executable .*(\(.*\))$/\1/p')
 BENCH=(-- taskset -c 2 setarch -R "$BIN" --bench -d frame --arms cpu --profile-time 4)
 ```

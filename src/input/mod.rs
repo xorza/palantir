@@ -1,6 +1,6 @@
 //! Palantir-native input: the host-facing event vocabulary, the state machine consuming it, and the per-widget response the record pass reads back.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod capture;
 pub(crate) mod event_outcome;

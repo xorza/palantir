@@ -2,7 +2,7 @@
 //! store and gradient atlas write through [`TextureRegion::write`], so a third
 //! uploader cannot skip the tally; the glyph atlas batches through
 //! `copy_buffer_to_texture` instead and is not counted. Counting is behind the
-//! `bench` feature. Not a wrapper around `wgpu::Queue`: it could not make the
+//! `internals` feature. Not a wrapper around `wgpu::Queue`: it could not make the
 //! seam unbypassable, as [`GpuFrameContext`] hands app code the raw queue.
 //!
 //! [`GpuFrameContext`]: crate::gpu::device::gpu_frame_context::GpuFrameContext
@@ -25,7 +25,7 @@ pub(super) struct TextureRegion<'a> {
 impl TextureRegion<'_> {
     /// Counted [`wgpu::Queue::write_texture`] into this region; `data` is row-major at [`Self::bytes_per_row`].
     pub(super) fn write(self, queue: &wgpu::Queue, data: &[u8]) {
-        #[cfg(feature = "bench")]
+        #[cfg(feature = "internals")]
         counters::note(data.len() as u64);
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -53,7 +53,7 @@ impl TextureRegion<'_> {
     }
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod counters {
     use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 

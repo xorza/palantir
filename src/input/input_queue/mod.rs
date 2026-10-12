@@ -98,7 +98,7 @@ impl InputQueue {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::input::input_event::InputEvent;
     use crate::input::input_queue::InputQueue;

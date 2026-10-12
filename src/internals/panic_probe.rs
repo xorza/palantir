@@ -51,7 +51,6 @@ fn message_of(payload: &(dyn Any + Send)) -> &str {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 

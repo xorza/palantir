@@ -15,7 +15,7 @@
 //!
 //! [`cosmic`] is a directory around `CosmicMeasure`; its children reach the private fields directly.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 // Private so no cosmic type is nameable outside `crate::text`. `pub(crate)` inside the directory therefore reaches `crate::text` only, which is what a sibling of `cosmic` needs.
 mod cosmic;
@@ -32,7 +32,7 @@ pub(crate) mod font_weight;
 pub(crate) mod glyph_font;
 pub(crate) mod glyphs;
 pub(crate) mod key;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod mono;
 pub(crate) mod probe;
 pub(crate) mod render;
@@ -67,7 +67,7 @@ pub(crate) const RENDERED_RUN_KEEP_FRAMES: u64 = 120;
 /// Masked from the key, not counted, so the offset is stable per entry: a rotating counter could move a deadline inward on re-promotion, which the expiry wheel owes a fresh ticket for. The wheel is sized from the longest deadline, so this costs a larger ring.
 pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::text::cosmic::shaped_buffer_cache;
 

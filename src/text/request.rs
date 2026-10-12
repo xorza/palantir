@@ -56,7 +56,7 @@ impl<'a> TextShapeRequest<'a> {
 
 // Wider than `cfg(test)`: the text benches lower one const face through
 // `unbounded_request`.
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]

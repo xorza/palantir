@@ -2,7 +2,7 @@
 //! `RenderBuffer`. Production and tests share this step stream via
 //! [`for_each_step`], so asserted order can't drift from issued order.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 use crate::common::span::Span;
@@ -444,7 +444,7 @@ fn drain_group_batches(
     }
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
 

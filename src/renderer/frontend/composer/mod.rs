@@ -18,7 +18,7 @@ use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod clip_stack;
 mod geometry;
@@ -180,7 +180,7 @@ impl Composer {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 

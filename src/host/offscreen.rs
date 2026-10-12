@@ -202,15 +202,13 @@ impl OffscreenHost {
 }
 
 /// Peepholes for the visual suite and the `record_pass` benchmark.
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::host::offscreen::OffscreenHost;
-    #[cfg(feature = "bench")]
     use crate::renderer::render_buffer::RenderBuffer;
 
     /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
-    #[cfg(feature = "bench")]
     pub(crate) const fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
         &host.core.frontend.buffer
     }

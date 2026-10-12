@@ -13,8 +13,8 @@ diff, not only a renamed one.
 The surface is the union over every public feature: the crate is built once
 with no features and once per feature, and an item that only some builds
 export is tagged with the features that bring it (or `no-default` when only
-the bare build has it). `internals` and `bench` exist for this crate's own
-tests and benches, and are left out.
+the bare build has it). `internals` exists for this crate's own tests and
+benches, and is left out.
 
 The script also proves its own coverage: every public item defined in the
 crate must be reached from the crate root by some export path. A public item
@@ -34,7 +34,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 JSON = ROOT / "target" / "doc" / "palantir.json"
 OUT = ROOT / ".notes" / "API_SURFACE.md"
 FORMAT_VERSION = 61
-# Public features. `internals` and `bench` are the crate's own test surface.
+# Public features. `internals` is the crate's own test surface.
 FEATURES = ["winit", "system-clipboard", "golden", "gpu-debug-markers", "profile-with-tracy"]
 # Traits the compiler implements, or a derive implements beside the trait it
 # names; they say nothing about this crate's API. The std blanket impls
@@ -569,7 +569,7 @@ def main():
         "Every item the crate exports, rendered as its declaration from rustdoc JSON",
         "(`python3 scripts/api_surface.py`), sorted by path. The surface is the union of a",
         "build with no features and one build per public feature; a tag names the features an",
-        "item needs. `internals` and `bench` are the crate's own test surface and are left out.",
+        "item needs. `internals` is the crate's own test surface and is left out.",
         "",
         f"Generated on top of `{commit}` (plus the working tree).",
         "",

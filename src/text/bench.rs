@@ -49,8 +49,7 @@ const REUSE_LAYER_LABELS: usize = 64;
 /// [`measure_truncated`].
 const LEADING_RATIO: f32 = 1.2;
 
-/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture;
-/// `bench` implies `internals`.
+/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture.
 /// The body text size, which every arm but `two_faces`' heading shapes at.
 const BODY_PX: f32 = 14.0;
 

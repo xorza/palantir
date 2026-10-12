@@ -11,7 +11,7 @@
 use crate::common::counters::counter_snapshot;
 
 counter_snapshot! {
-    cells BenchOnly, reads cfg(any(test, feature = "bench"));
+    cells BenchOnly, reads cfg(feature = "internals");
 
     pub(super) struct GradientAtlasCounters;
 

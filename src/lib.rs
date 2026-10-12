@@ -79,8 +79,7 @@
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
 //! | `gpu-debug-markers` | no | GPU debug groups around every draw step for RenderDoc / Xcode captures; costs two commands and a label copy per step. |
 //! | `profile-with-tracy` | no | A Tracy zone per frame pass and a frame set per window. Needs the Tracy viewer. |
-//! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU). **Not a supported API.** |
-//! | `bench` | no | Benchmark drivers and the facade `benches/` calls. Implies `internals`. Not a supported API. |
+//! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
 //! | `golden` | no | The `golden` module for golden-image tests of suites that draw through Palantir; costs an image codec. |
 //!
 //! # Colour
@@ -105,7 +104,7 @@ pub(crate) mod common;
 
 pub(crate) mod animation;
 pub(crate) mod app;
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench;
 pub(crate) mod cascade;
 pub(crate) mod damage;
@@ -117,7 +116,7 @@ pub(crate) mod host;
 pub(crate) mod icons;
 pub(crate) mod input;
 /// Everything that does not ship. **Not a supported API.**
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod internals;
 pub(crate) mod layout;
 pub(crate) mod primitives;

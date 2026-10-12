@@ -53,8 +53,8 @@
 //!
 //! Tiers: `impl UiHarness` (`pub`) leaves the crate through
 //! `palantir::internals::harness`; `impl UiHarness` (`pub(crate)`) is construction;
-//! `mod unit` (`#[cfg(test)]`) is for in-tree suites only, so `bench` builds do not
-//! see it as unused.
+//! `mod unit` (`#[cfg(test)]`) is for in-tree suites only, so a bench build does
+//! not see it as unused.
 
 use crate::app::App;
 use crate::common::time::MAX_ANIM_DT;
@@ -663,7 +663,6 @@ impl UiHarness {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use crate::damage::region::{CollapsedDamage, DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::internals::harness::UiHarness;

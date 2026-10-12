@@ -189,7 +189,7 @@ fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
     })
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 

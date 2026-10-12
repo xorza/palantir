@@ -191,7 +191,7 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
 

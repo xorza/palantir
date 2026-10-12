@@ -193,7 +193,7 @@ fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     });
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 #[cfg(test)]

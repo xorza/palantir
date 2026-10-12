@@ -2,7 +2,7 @@
 //!
 //! [`CascadeEngine`](engine::CascadeEngine) updates a retained [`Cascade`]: while structure holds, geometry and paint changes refresh moved rows in place; a structural change rebuilds all rows. Downstream phases take `&Cascade` as their frozen-state handle.
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod cascade_input_hash;
 pub(crate) mod cascade_key;
@@ -244,7 +244,7 @@ impl Cascade {
 }
 
 // Reached only from test harness assertions; production uses the fused walks above.
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::cascade::Cascade;
     #[cfg(test)]

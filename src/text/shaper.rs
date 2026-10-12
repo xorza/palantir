@@ -47,11 +47,11 @@ pub(super) struct ShaperInner {
     /// Measure through the deterministic mono metric ([`crate::text::mono`]); only
     /// [`TextShaper::test_mono`] sets it. [`Self::root`] and [`Self::resolve`] mint no
     /// buffer, so the renderer drops mono runs.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     mono: bool,
     /// Total dispatches: `TextSystem` reuse misses plus every bypass
     /// [`TextShaper::layout`] call (the cosmic cache may still hit). Test builds only.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     measure_calls: u64,
 }
 
@@ -59,9 +59,9 @@ impl ShaperInner {
     const fn new(cosmic: CosmicMeasure) -> Self {
         Self {
             cosmic,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             mono: false,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             measure_calls: 0,
         }
     }
@@ -72,11 +72,11 @@ impl ShaperInner {
 
     /// Whether measurement takes the mono metric; a literal `false` in production.
     pub(super) const fn is_mono(&self) -> bool {
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         {
             self.mono
         }
-        #[cfg(not(any(test, feature = "internals")))]
+        #[cfg(not(feature = "internals"))]
         {
             false
         }
@@ -86,7 +86,7 @@ impl ShaperInner {
     /// [`TextRoot::intrinsic_min`].
     pub(super) fn root(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot {
         self.tally_dispatch();
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         #[expect(
             clippy::absolute_paths,
             reason = "a gated statement names the path inline instead of a cfg'd import"
@@ -100,7 +100,7 @@ impl ShaperInner {
     /// The extent at the width its key commits. The bounded half takes no `floor`.
     pub(super) fn resolve(&mut self, request: TextShapeRequest<'_>) -> TextExtent {
         self.tally_dispatch();
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         #[expect(
             clippy::absolute_paths,
             reason = "a gated statement names the path inline instead of a cfg'd import"
@@ -113,7 +113,7 @@ impl ShaperInner {
 
     #[inline]
     const fn tally_dispatch(&mut self) {
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         {
             self.measure_calls += 1;
         }
@@ -276,7 +276,7 @@ impl TextShaper {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
@@ -376,7 +376,6 @@ pub(crate) mod internals {
         }
     }
 
-    #[cfg(any(test, feature = "bench"))]
     impl TextShaper {
         pub(crate) fn cosmic_cache_len(&self) -> usize {
             self.shared.inner.borrow().cosmic.cache_len()

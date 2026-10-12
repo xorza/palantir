@@ -108,7 +108,7 @@ impl<'a> TextProbe<'a> {
     /// a cosmic run that lost its buffer trips the assertion instead of taking a mono
     /// estimate.
     fn unshaped_caret_x(&self, byte_offset: usize) -> f32 {
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         #[expect(
             clippy::absolute_paths,
             reason = "a gated statement names the path inline instead of a cfg'd import"
@@ -126,7 +126,7 @@ impl<'a> TextProbe<'a> {
 
     /// [`Self::unshaped_caret_x`]'s inverse; production answers 0.
     fn unshaped_byte_at(&self, target_x: f32) -> usize {
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         #[expect(
             clippy::absolute_paths,
             reason = "a gated statement names the path inline instead of a cfg'd import"
