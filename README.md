@@ -56,7 +56,7 @@ Intel Core i9-13980HX (Raptor Lake) with an RTX 4090 Laptop:
 | `scrolling` |       149 µs |          414 µs |
 | `resizing`  |       227 µs |          572 µs |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured ~5.07 GHz,
+Steady-state cost per frame on `integration/frame/cpu/cached` (measured ~5.07 GHz,
 ~79 µs/frame): **~1.72 M instructions retired**, **~403 K cycles**,
 **IPC ≈ 4.26**.
 
@@ -69,7 +69,7 @@ AMD Ryzen 7 6800U (Zen 3+) with its integrated Radeon 680M:
 | `scrolling` |       196 µs |         2.50 ms |
 | `resizing`  |       290 µs |         2.85 ms |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 4.58 GHz,
+Steady-state cost per frame on `integration/frame/cpu/cached` (measured 4.58 GHz,
 ~107 µs/frame): **~1.71 M instructions retired**, **~490 K cycles**,
 **IPC ≈ 3.49**.
 
@@ -82,7 +82,7 @@ Apple M5 (4 super + 6 efficiency cores) with its 10-core GPU, in a MacBook Air:
 | `scrolling` |       116 µs |          866 µs |
 | `resizing`  |       175 µs |         1.00 ms |
 
-Steady-state cost per frame on `frame/cached_cpu` (measured 4.32 GHz,
+Steady-state cost per frame on `integration/frame/cpu/cached` (measured 4.32 GHz,
 ~66 µs/frame): **~1.74 M instructions retired**, **~285 K cycles**,
 **IPC ≈ 6.1**.
 

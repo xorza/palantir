@@ -121,7 +121,7 @@ const FRAME_ENGINES_SIZE: usize = 2024;
 const PINS: &[Pin] = &[
     // Pinned for locality: every pass walks `&mut Ui`, so inline blobs between
     // its fields cost on all of them. `Theme` inline made `Ui` 15656 B; behind
-    // an `Rc` measured -6% on `frame/cached_cpu` and `frame/partial_cpu`.
+    // an `Rc` measured -6% on `integration/frame/cpu/cached` and `integration/frame/cpu/partial`.
     pin::<Ui>("ui::Ui", UI_SIZE, 8),
     // Split from `Ui` so cache growth is not mistaken for recorder growth.
     pin::<FrameEngines>("ui::FrameEngines", FRAME_ENGINES_SIZE, 8),

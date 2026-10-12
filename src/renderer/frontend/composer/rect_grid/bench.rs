@@ -67,7 +67,7 @@ impl SaturatedFixture {
     }
 }
 
-/// The realistic counterpart, shaped from the instrumented `frame/*_cpu` arms: ~70–200 label-sized rects live at once, ~2 quad queries per rect, about a third surviving the union pre-reject.
+/// The realistic counterpart, shaped from the instrumented `integration/frame/cpu/*` cases: ~70–200 label-sized rects live at once, ~2 quad queries per rect, about a third surviving the union pre-reject.
 #[derive(Debug)]
 struct RealisticFixture {
     grid: RectGrid,

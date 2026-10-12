@@ -71,9 +71,7 @@ unicode-segmentation = "1.13"
 criterion = { version = "0.8", optional = true }
 tracy-client = { version = "0.19", optional = true }
 
-# The self dependency turns `internals` on for every example and test, which
-# cannot enable a feature of their own package; packaging strips it.
-# `default-features = false` keeps `--no-default-features` builds winit-free.
+# No default features, so a `--no-default-features` build stays winit-free.
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = "0.3"
@@ -92,10 +90,10 @@ winit = ["dep:winit", "system-clipboard"]
 profile-with-tracy = ["dep:tracy-client"]
 
 
+# The same profiles in every workspace root here: Cargo reads them from the root alone.
 [profile.dev]
 opt-level = 1
-debug = "full"
-split-debuginfo = "unpacked"
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -104,30 +102,24 @@ opt-level = 3
 [profile.dev.package.objc2]
 debug-assertions = false
 
-[profile.release-dev]
-inherits = "release"
-lto = false
-codegen-units = 16
-incremental = true
-debug = "line-tables-only"
-split-debuginfo = "unpacked"
-strip = "none"
-
+# Full debug info, which `darkroom/packaging` splits out of the shipped binary.
 [profile.release]
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-debug = false
-strip = "debuginfo"
+debug = "full"
+split-debuginfo = "off"
 
-# `benches/bench-perf.sh` sets these three as `CARGO_PROFILE_BENCH_*` too,
-# with the same values, so it and `cargo bench` build one binary and neither
-# rebuilds after the other. Change them in both places.
 [profile.bench]
 debug = "line-tables-only"
-split-debuginfo = "off"
 strip = "none"
 
+[profile.release-dev]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = true
+debug = "line-tables-only"
 
 [[test]]
 name = "visual"
@@ -156,8 +148,8 @@ harness = false
 required-features = ["internals"]
 
 
-# The Darkroom workspace lint set, copied because a submodule does not inherit it. Warn, not
-# deny: the verification chain runs clippy with `-D warnings`.
+# The Darkroom workspace's lint set, copied as a submodule does not inherit it. Warn, not deny:
+# the verification chain runs clippy with `-D warnings`.
 [lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 elided_lifetimes_in_paths = "warn"
@@ -171,36 +163,25 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-# Documentation is reviewed, not linted, for these.
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
-# `assert!(x.is_empty())` reads plainer than a comparison with an empty array.
 assert_is_empty = "allow"
-# `usize -> f32/f64` loses precision only past 2^24.
+# A hit says nothing unless a `usize` passes 2^24, which the code cannot show.
 cast_precision_loss = "allow"
-# `f64 -> f32` narrowing is the design of the f32 pipelines.
 cast_possible_truncation = "allow"
-# Math code names things `x`, `y`, `dx`, `dy`, `cx`.
 similar_names = "allow"
 many_single_char_names = "allow"
-# Size is a review question, not a lint.
 too_many_lines = "allow"
-# `#[inline(always)]` on `#[target_feature]` SIMD helpers is deliberate.
 inline_always = "allow"
-# Exact comparison is deliberate: sample-domain scales, sentinels, tests of exact values.
 float_cmp = "allow"
 # Every pointer cast feeds an unaligned load (`_mm_loadu_*`).
 cast_ptr_alignment = "allow"
-# `cast_possible_truncation`, allowed above, already admits the wider `usize -> i32`.
+# `cast_possible_truncation`, allowed, already admits the wider `usize -> i32`.
 cast_possible_wrap = "allow"
-# Every proper noun was one more exception to list.
 doc_markdown = "allow"
-# Digit grouping is style only, and it hides the `RRGGBB` pattern of a hex colour.
 unreadable_literal = "allow"
-# State and config structs carry independent flags.
 struct_excessive_bools = "allow"
-# The gated `internals` and `tests` modules open with `use super::*`.
 wildcard_imports = "allow"
 # The subtraction already panics on underflow, as `checked_sub(..).unwrap()` would.
 unchecked_time_subtraction = "allow"
@@ -208,7 +189,6 @@ unchecked_time_subtraction = "allow"
 struct_field_names = "allow"
 # Equal arms stay apart for a guard, a fallback, or bindings no `|` pattern can join.
 match_same_arms = "allow"
-# A method is the house home for what works on a type, even when it reads no field.
 unused_self = "allow"
 absolute_paths = "warn"
 allow_attributes = "warn"
