@@ -11,7 +11,7 @@ two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 - **Per-frame allocation is a regression.** After warmup a frame allocates
   nothing: push onto retained scratch, never rebuild a map per frame.
 - **Micro-optimize freely** — struct packing, `const fn`, scratch reuse, cache
-  layout. A *structural* change with no workload that needs it is too early:
+  layout. A _structural_ change with no workload that needs it is too early:
   shelve it with a note.
 - **Docs are starting positions**, this file included. When one contradicts
   the user's intent or the code, flag the conflict and ask.
@@ -39,10 +39,6 @@ framework the bundled `widgets` are written on.
   sit beside — the widget's other setters, the sibling type's methods, the
   trait it joins, the `Response` its peers return — and match their names,
   argument shapes and order.
-- **Widgets use only the public API**: no `pub(crate)` helper, private field,
-  or crate-only trait or macro. When a widget needs more, make that public
-  first, with the docs a stranger needs: someone could reimplement the widget
-  outside the crate, line for line.
 
 ## Public API design
 
@@ -150,7 +146,7 @@ surface, and audit against it.
 - **Units.** A length is in logical pixels, and its name carries no unit
   (`font_size`, `thickness`, `min_thumb`). A device-pixel quantity says
   `physical` (`Display::physical`, `GpuFrameContext::physical_size`). An angle
-  is in radians. A fraction of a full circle is a *turn*, named `turn` or
+  is in radians. A fraction of a full circle is a _turn_, named `turn` or
   `hue`.
   Time is `std::time::Duration`, never a float of seconds or milliseconds. Any
   other unit is named in full in the identifier (`refresh_millihertz`,
@@ -225,8 +221,8 @@ surface, and audit against it.
 ### Input validation
 
 Every public input is asked two questions, as WPF asks them of a property
-value. *Validation* is about the value alone: finite, not negative, a power of
-two. *Coercion* is about the value against its context: inside a range, an
+value. _Validation_ is about the value alone: finite, not negative, a power of
+two. _Coercion_ is about the value against its context: inside a range, an
 index that exists, a `min` below its `max`.
 
 1. **Coercion is total and silent.** It never asserts, because its context is
@@ -238,22 +234,22 @@ index that exists, a `min` below its `max`.
    keeps its order only where the direction is the meaning: a `Slider` over
    `10.0..=0.0` runs from right to left.
 2. **Validation depends on where the value comes from.**
-   - *Per-frame authoring* — builder setters and the value constructors a
-     record pass calls: a release `assert!` with `#[track_caller]`, whose
-     message is the kind's rule, under `# Panics`. **This is a deliberate
-     exception to the global guide's "`debug_assert!` on hot paths"**, for
-     public input validation only: a wrong value is never drawn quietly, and
-     the cost is one comparison per value. A value computed at run time goes
-     through the kind's `is_*` predicate or a coercing kind first.
-   - *Cold configuration* — host builders, render targets, theme scaling,
-     dock configuration: a release `assert!` under `# Panics`.
-   - *Data from outside the program* — files, persisted settings, decoded
-     images, icon sources, font names, typed numbers: `Option` when one rule
-     can fail, `Result` with an error enum when several can.
+    - _Per-frame authoring_ — builder setters and the value constructors a
+      record pass calls: a release `assert!` with `#[track_caller]`, whose
+      message is the kind's rule, under `# Panics`. **This is a deliberate
+      exception to the global guide's "`debug_assert!` on hot paths"**, for
+      public input validation only: a wrong value is never drawn quietly, and
+      the cost is one comparison per value. A value computed at run time goes
+      through the kind's `is_*` predicate or a coercing kind first.
+    - _Cold configuration_ — host builders, render targets, theme scaling,
+      dock configuration: a release `assert!` under `# Panics`.
+    - _Data from outside the program_ — files, persisted settings, decoded
+      images, icon sources, font names, typed numbers: `Option` when one rule
+      can fail, `Result` with an error enum when several can.
 3. **Plain data stays plain.** Its fields are public, because arithmetic
    passes through invalid intermediate values. It is checked where it enters
    a widget, a shape or a node. Shape geometry — rects, points, mesh vertices,
-   text origins — is checked as *offsets*: finite. A negative size is not an
+   text origins — is checked as _offsets_: finite. A negative size is not an
    error; it paints nothing.
 4. **Themes.** A theme file is checked when it loads, by the same predicates
    as a call site, so the two cannot disagree. A theme built in code is plain
@@ -271,7 +267,7 @@ validates its setters the same way; `domain::vec2` and `domain::f64` hold the
 twins for `Vec2` and for the `f64` values `Slider` and `DragValue` bind. Each
 validating kind is an `is_*` predicate and a checker that returns its
 argument; each coercing kind is one total `const fn`. Every numeric
-parameter's doc names its kind ("`px`: a *length*"), and every setter that can
+parameter's doc names its kind ("`px`: a _length_"), and every setter that can
 panic says so under `# Panics`. The table is in the `domain` module doc.
 
 ## Verification
@@ -314,7 +310,7 @@ CI runs the same `x.py` steps, with `--locked`.
   library without `winit`, as a host that embeds the crate does.
 - **Rendering changes** (shaders, encoder/composer, atlases, colour pipeline,
   layout that moves pixels) also run `./x.py test -p palantir --test
-  visual`, under the test set with `golden`. Its goldens in
+visual`, under the test set with `golden`. Its goldens in
   `tests/visual/golden/` are local and record their adapter in
   `golden/adapter.txt`. Run the suite on the unchanged tree first, and
   rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1` before

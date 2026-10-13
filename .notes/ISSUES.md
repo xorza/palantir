@@ -4,6 +4,7 @@
 - `DamageEngine::compute` (`src/damage/engine.rs`) takes the behavior-selecting `force_full: bool`, carried from `FramePlan::FullRecord { force_full }`.
 - `RowMatcher::diff_changed_leg` (`src/damage/row_matcher.rs`) and `Composer::begin` (`src/renderer/frontend/composer/mod.rs`) take four parameters besides `self`.
 - `RenderOwnerId::reserve` (`src/renderer/render_owner_id.rs`) mints ids from a process-global `static` counter rather than from state on an owner.
+- `TextEpoch::reserve` (`src/primitives/text/text_epoch.rs`) mints epochs from a process-global `static` counter rather than from state on an owner.
 - `polyline_cmd` in `src/renderer/frontend/composer/tests/support.rs` takes eight parameters under `#[expect(clippy::too_many_arguments)]`.
 - `Rect::scaled_by(scale, snap: bool)` takes a behavior-selecting `bool`.
 - `TextWrap::commit` (`src/text/wrap/mod.rs`) takes four parameters besides `self`, and its `fit` restates `self.line_fit()`, which a caller can pass inconsistently.
@@ -25,5 +26,5 @@
 - `TextEdit`'s key handling branches on `PLATFORM == Platform::Mac` for its line, word and document chords (`is_line_nav`, `is_document_nav` and `WORD_NAV` in `src/widgets/text_edit/input_pass.rs`).
 - Several text-edit and scroll cases assert bounds rather than exact values: `src/widgets/text_edit/tests/click.rs` (`full > 0 && full < 10`), `tests/multiline.rs` (`caret > 6 && caret <= buf.len()`), `tests/scroll.rs` (`caret.abs_diff(expected) <= 1`), `tests/align.rs` (`settled.x > PAD_L + 1.0`), `tests/measure.rs` (`fill_w < text_w`), and `src/widgets/scroll/tests/bars/geometry.rs` (`v2 < v1`, ratio in `0.45..=0.55`).
 - `apply_key_with_clipboard` in `src/widgets/text_edit/tests/mod.rs` takes four parameters.
-- In-crate code imports items through their crate-root re-exports (`use crate::Ui;`, `crate::TextStyle`, `crate::WidgetId`, …) rather than their canonical module paths, in 38 files across `src/input`, `src/widgets`, `src/damage`, `src/renderer`, `src/text`, `src/primitives` and `src/host`.
+- In-crate code imports items through their crate-root re-exports (`use crate::Ui;`, `crate::TextStyle`, `crate::WidgetId`, …) rather than their canonical module paths, in 43 files across `src/damage`, `src/gpu`, `src/host`, `src/input`, `src/primitives`, `src/renderer`, `src/text` and `src/widgets`.
 - `src/layout/tests/text_wrap/multi_run.rs` asserts bounds rather than exact values on shaped text: `first.extent.size.w > 0.0 && second.extent.size.w > 0.0`, `second.extent.size.w > first.extent.size.w`, and the drag counters `d.shapes <= 1`, `shapes >= 10`, `resident <= 8`.
