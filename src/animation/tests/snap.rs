@@ -142,8 +142,8 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     use crate::primitives::paint::background::Background;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::theme::text_style::TextStyle;
     use crate::widget_core::widget_look::animated_look::AnimatedLook;
-    use crate::widgets::theme::text_style::TextStyle;
 
     let AnimUi { mut h, id } = support::setup_anim_ui("gradient-look-settle");
     let start = AnimatedLook {

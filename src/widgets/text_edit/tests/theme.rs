@@ -1,8 +1,8 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
+use crate::theme::text_style::{LINE_HEIGHT_MULT, TextStyle};
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::widgets::text_edit::tests::*;
-use crate::widgets::theme::text_style::{LINE_HEIGHT_MULT, TextStyle};
-use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -260,9 +260,9 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 #[test]
 fn textedit_style_override_replaces_default_theme() {
     use crate::shape::record::ShapeRecord;
+    use crate::theme::text_edit::TextEditTheme;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
-    use crate::widgets::theme::text_edit::TextEditTheme;
 
     for (label, factor, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
@@ -476,9 +476,9 @@ fn click_without_drag_clears_prior_selection() {
 fn line_height_override_changes_caret_rect_height() {
     // Caret height tracks the theme `text` style's leading.
     use crate::shape::record::ShapeRecord;
+    use crate::theme::text_edit::TextEditTheme;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
-    use crate::widgets::theme::text_edit::TextEditTheme;
 
     fn caret_height(style: Option<&TextEditTheme>) -> f32 {
         let mut h = UiHarness::new(NARROW);

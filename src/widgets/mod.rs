@@ -6,7 +6,6 @@
     reason = "every widget constructor is `#[track_caller]` to mint the widget id, which a derived `Default` cannot capture, and a hand-written one would only rename `new()`"
 )]
 
-pub(crate) mod arrow;
 pub(crate) mod axis_keys;
 pub(crate) mod block;
 pub(crate) mod button;
@@ -25,6 +24,7 @@ pub(crate) mod dock;
 pub(crate) mod drag_num;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
+pub(crate) mod frame_stats_readout;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;
@@ -41,7 +41,6 @@ pub(crate) mod switch;
 pub(crate) mod tabs;
 pub(crate) mod text;
 pub(crate) mod text_edit;
-pub(crate) mod theme;
 pub(crate) mod toggle_chrome;
 pub(crate) mod tooltip;
 

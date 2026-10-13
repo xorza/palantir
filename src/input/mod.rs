@@ -1,21 +1,14 @@
-//! Palantir-native input: the host-facing event vocabulary, the state machine consuming it, and the per-widget response the record pass reads back.
+//! Palantir-native input: the host-facing event vocabulary and the per-widget response the record pass reads back. The state machine consuming the events is `input_state`.
 
-pub(crate) mod arranged_frame;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-pub(crate) mod capture;
-pub(crate) mod event_outcome;
 pub(crate) mod ime_preedit;
 pub(crate) mod input_event;
-pub(crate) mod input_queue;
-pub(crate) mod input_state;
 pub(crate) mod interaction;
 pub(crate) mod key_class;
-pub(crate) mod key_reader;
 pub(crate) mod keyboard;
 pub(crate) mod pointer;
 pub(crate) mod policy;
-pub(crate) mod scope;
 pub(crate) mod scroll_targets;
 pub(crate) mod sense;
 pub(crate) mod shortcut;

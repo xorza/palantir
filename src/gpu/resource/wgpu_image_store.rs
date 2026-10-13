@@ -3,11 +3,11 @@
 
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::texture_region::TextureRegion;
+use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
-use crate::renderer::image_registry::image_store::ImageStore;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::array;
@@ -209,12 +209,12 @@ mod tests {
         WgpuImageStore, premultiplied_bytes, premultiply_into,
     };
     use crate::gpu::test_gpu;
+    use crate::image_registry::ImageRegistry;
+    use crate::image_registry::image_handle::ImageHandle;
     use crate::primitives::identity::texture_id::TextureId;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::srgba_u8::SrgbaU8;
     use crate::primitives::paint::image::Image;
-    use crate::renderer::image_registry::ImageRegistry;
-    use crate::renderer::image_registry::image_handle::ImageHandle;
     use glam::UVec2;
     use std::rc::Rc;
 

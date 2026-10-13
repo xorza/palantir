@@ -7,7 +7,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 /// [`Cascade::entries`](crate::cascade::Cascade::entries).
 ///
 /// Array-of-structs on purpose: every consumer is a single-index gather
-/// ([`crate::input::input_state::InputState::response_for`] reads all three
+/// ([`crate::input_state::InputState::response_for`] reads all three
 /// fields once per widget per frame), so interleaving them puts a lookup on
 /// one cache line, where `soa_rs` columns used three. The opposite call from
 /// `Tree.records: Soa<NodeRecord>`, whose columns the measure/arrange passes

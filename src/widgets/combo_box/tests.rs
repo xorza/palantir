@@ -6,15 +6,15 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::Theme;
+use crate::theme::button::ButtonTheme;
+use crate::theme::combo_box::ComboBoxTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
-use crate::widgets::theme::Theme;
-use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::combo_box::ComboBoxTheme;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);

@@ -5,10 +5,10 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 
 fn harness() -> UiHarness {

@@ -7,7 +7,6 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::common::tracy;
 use crate::damage::engine::DamageInput;
 use crate::damage::frame_baseline::FrameBaseline;
-use crate::diagnostics::frame_stats;
 use crate::display;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -21,6 +20,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
+use crate::widgets::frame_stats_readout;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 use std::mem;
@@ -190,7 +190,7 @@ impl<'a> FrameCycle<'a> {
     ///
     /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `release_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
-    /// [`InputState`]: crate::input::input_state::InputState
+    /// [`InputState`]: crate::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
         tracy::zone!("Ui::record_pass.warmup");
         let scratch = self.ui.input.warmup_scratch();
@@ -216,7 +216,7 @@ impl<'a> FrameCycle<'a> {
         }
         let action_flag = self.ui.input.take_action_flag();
         if self.ui.debug_overlay().frame_stats {
-            frame_stats::record(self.ui);
+            frame_stats_readout::record(self.ui);
         }
         self.ui.close_node();
         self.post_record();

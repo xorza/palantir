@@ -3,7 +3,6 @@
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -11,12 +10,13 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
+use crate::scene::scrollbars_def::ScrollbarsDef;
+use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::ScrollGeometry;
 use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel, TrackPage};
-use crate::widgets::theme::scrollbar::ScrollbarTheme;
 
 /// One scrollbar axis: the two overlay leaves and last frame's interaction on
 /// each.

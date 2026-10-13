@@ -2,7 +2,6 @@
 //! identity tracker and layer stack that recording needs.
 
 use crate::common::tracy;
-use crate::layout::drivers::scrollbars::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
@@ -15,6 +14,7 @@ use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::per_layer::PerLayer;
 use crate::scene::record_store::RecordStore;
+use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;

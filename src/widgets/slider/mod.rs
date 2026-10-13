@@ -8,6 +8,7 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
+use crate::theme::slider::SliderTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -15,7 +16,6 @@ use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::drag_num::{DragNum, StoreRule};
-use crate::widgets::theme::slider::SliderTheme;
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a numeric range, binding the same [`DragNum`] as

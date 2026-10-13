@@ -1,6 +1,6 @@
 //! The one `Sizing::HUG` sharer: when content-sized siblings want more than the container has, each gives way from what it wants toward its floor, in proportion to how far it can give. Shared by the stack's non-Fill children and the grid's Hug tracks. A rigid item (floor = extent) keeps its size and overflows.
 
-use crate::layout::measured::Measured;
+use crate::primitives::layout::offer;
 
 /// One participant in a Hug share. `key` is the caller's handle (child `NodeId` or track index), carried through untouched.
 #[derive(Clone, Copy, Debug)]
@@ -30,7 +30,7 @@ impl<K> HugItem<K> {
 
     /// Share `budget` across `items`, writing each extent into its [`Self::size`]: all at what they want when that fits or the budget is unbounded; all at their floor when floors don't fit; otherwise floor plus slack in proportion to `hi - lo`.
     ///
-    /// Returns the least finite budget from which the shares hold; see [`Measured::stable_from`].
+    /// Returns the least finite budget from which the shares hold; see [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
     pub(super) fn share(items: &mut [Self], budget: f32) -> f32 {
         let (lo_sum, hi_sum) = items.iter().fold((0.0_f32, 0.0_f32), |(lo, hi), item| {
             (lo + item.lo, hi + item.hi)
@@ -50,7 +50,7 @@ impl<K> HugItem<K> {
                 (item.lo + slack * (item.hi - item.lo) / range).min(item.hi)
             };
         }
-        Measured::AT_OFFER_ONLY
+        offer::AT_OFFER_ONLY
     }
 }
 

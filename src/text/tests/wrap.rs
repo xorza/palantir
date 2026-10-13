@@ -1,5 +1,5 @@
 use super::*;
-use crate::layout::measured::Measured;
+use crate::primitives::layout::offer;
 
 #[test]
 fn mono_measure_cases() {
@@ -127,7 +127,7 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
     }
 
     // "aa bbbb" is 7 cells of 8 px: 56 wide on one line. A never-binding policy holds anywhere; a truncating fit holds from 56 up and only at its offer where it cuts; a wrapping one binds to every width.
-    const AT: f32 = Measured::AT_OFFER_ONLY;
+    const AT: f32 = offer::AT_OFFER_ONLY;
     let mut text = TextSystem::mono();
     let widget_id = WidgetId::from_hash("wrap policy");
     let cases = [

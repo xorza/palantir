@@ -33,6 +33,8 @@ use crate::primitives::text::text_input::TextInput;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
+use crate::theme::text_edit::TextEditTheme;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -46,8 +48,6 @@ use crate::widgets::text_edit::paint_input::{CaretPaint, PaintInput};
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
 use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInput};
-use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 #[derive(Clone, Default, Debug)]

@@ -8,6 +8,7 @@ use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -18,7 +19,6 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::rc::Rc;
 
 /// A colour chip that opens a [`ColorPicker`] popup when clicked.

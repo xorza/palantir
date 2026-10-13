@@ -2,10 +2,10 @@
 //! miss falls through to.
 
 use crate::icons::icon_raster_key::IconRasterKey;
-use crate::icons::icon_registry::IconSetId;
-use crate::icons::icon_set::IconRef;
 use crate::icons::icon_table::IconTable;
 use crate::icons::svg_facts;
+use crate::primitives::identity::icon_ref::IconRef;
+use crate::primitives::identity::icon_set_id::IconSetId;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use glam::IVec2;

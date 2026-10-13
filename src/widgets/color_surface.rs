@@ -1,8 +1,8 @@
 //! A CPU-built texture a colour widget paints with, and when to rebuild it.
 
+use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::image::Image;
-use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::ui::Ui;
 use glam::UVec2;
 use std::num::NonZeroU32;

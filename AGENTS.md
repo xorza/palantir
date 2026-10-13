@@ -28,7 +28,9 @@ paint read, `damage` decides what repaints, `renderer` encodes and
 composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
 result type in `mod.rs` and their engine in `engine.rs`.
 `primitives` is the value vocabulary below all of them, `widget_core` the
-framework the bundled `widgets` are written on.
+framework the bundled `widgets` are written on, and `theme` the look they
+read. `input` holds the event vocabulary, and `input_state` the state
+machine that routes events over the cascade.
 
 ## Public API
 

@@ -1,23 +1,12 @@
-//! The baked icon-set data: an icon's id, its definition, and the name-sorted table
-//! plus one SVG blob.
+//! The baked icon-set data: an icon's definition, and the name-sorted table plus one SVG
+//! blob.
 
 use crate::common::span::Span;
 use crate::icons::error::IconTableError;
 use crate::icons::svg_facts::SvgFacts;
+use crate::primitives::identity::icon_id::IconId;
 use glam::Vec2;
 use std::borrow::Cow;
-
-/// Index of one icon within its [`IconTable`], resolved through
-/// [`IconSet::by_name`](crate::IconSet::by_name). The table mints every id, so
-/// an id always names an icon of the set it came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct IconId(u16);
-
-impl IconId {
-    pub(crate) const fn index(self) -> u16 {
-        self.0
-    }
-}
 
 /// One baked icon: its name, the size it was drawn at, where its normalized SVG
 /// sits in the set's blob, and two facts the renderer needs before parsing.
@@ -138,7 +127,7 @@ impl IconTable {
     pub(crate) fn entries(&self) -> impl Iterator<Item = (IconId, &IconDefinition)> {
         self.icons.iter().enumerate().map(|(i, def)| {
             let index = u16::try_from(i).expect("an IconId names every icon of a set");
-            (IconId(index), def)
+            (IconId::new(index), def)
         })
     }
 
@@ -147,7 +136,7 @@ impl IconTable {
         self.icons
             .binary_search_by(|def| def.name.as_ref().cmp(name))
             .ok()
-            .map(|i| IconId(u16::try_from(i).expect("an IconId names every icon of a set")))
+            .map(|i| IconId::new(u16::try_from(i).expect("an IconId names every icon of a set")))
     }
 
     /// The definition behind `icon`.
@@ -157,11 +146,11 @@ impl IconTable {
     /// Panics if `icon` is not from this set: an id crossed sets.
     pub(crate) fn def(&self, icon: IconId) -> &IconDefinition {
         let icons = &self.icons;
-        let index = usize::from(icon.0);
+        let index = usize::from(icon.index());
         assert!(
             index < icons.len(),
             "IconId({}) is not in this set ({} icons) — an id from another set?",
-            icon.0,
+            icon.index(),
             icons.len(),
         );
         &icons[index]
@@ -184,21 +173,10 @@ fn blob_len(lens: impl IntoIterator<Item = usize>) -> Result<usize, u128> {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
-    use crate::icons::icon_table::IconId;
-
-    impl IconId {
-        /// Icon `index` of a set, for a test that names one without a table.
-        pub(crate) const fn fixture(index: u16) -> Self {
-            Self(index)
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
-    use crate::icons::icon_table::{IconId, IconTable, blob_len};
+    use crate::icons::icon_table::{IconTable, blob_len};
     use crate::icons::internals::{BROKEN, ONE_COLOUR, TWO_COLOURS};
+    use crate::primitives::identity::icon_id::IconId;
     use glam::Vec2;
 
     /// `from_svgs` sorts by name, which `by_name`'s binary search rests on.
@@ -220,16 +198,16 @@ mod tests {
     #[test]
     fn spans_slice_each_icon_out_of_the_shared_blob() {
         let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]).unwrap();
-        assert_eq!(table.svg_bytes(IconId(0)), ONE_COLOUR.as_bytes());
-        assert_eq!(table.svg_bytes(IconId(1)), TWO_COLOURS.as_bytes());
-        assert_eq!(table.by_name("a"), Some(IconId(0)));
-        assert_eq!(table.by_name("b"), Some(IconId(1)));
+        assert_eq!(table.svg_bytes(IconId::new(0)), ONE_COLOUR.as_bytes());
+        assert_eq!(table.svg_bytes(IconId::new(1)), TWO_COLOURS.as_bytes());
+        assert_eq!(table.by_name("a"), Some(IconId::new(0)));
+        assert_eq!(table.by_name("b"), Some(IconId::new(1)));
         assert_eq!(table.by_name("c"), None);
         let minted: Vec<(IconId, &str)> = table
             .entries()
             .map(|(id, def)| (id, def.name.as_ref()))
             .collect();
-        assert_eq!(minted, [(IconId(0), "a"), (IconId(1), "b")]);
+        assert_eq!(minted, [(IconId::new(0), "a"), (IconId::new(1), "b")]);
     }
 
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;

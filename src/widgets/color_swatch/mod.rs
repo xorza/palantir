@@ -5,6 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -12,7 +13,6 @@ use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 
 /// A chip painting one colour, over a checkerboard when it is translucent.
 ///

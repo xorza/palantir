@@ -1,11 +1,11 @@
 //! What the display scale and a transform do to what is drawn.
 
-use crate::icons::icon_set::IconRef;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;

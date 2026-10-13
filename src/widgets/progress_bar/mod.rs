@@ -4,13 +4,13 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
+use crate::theme::progress_bar::ProgressBarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::theme::progress_bar::ProgressBarTheme;
 
 /// Determinate progress bar: a rounded `track` with an accent fill spanning `fraction` (clamped to `0..=1`) of its width.
 ///

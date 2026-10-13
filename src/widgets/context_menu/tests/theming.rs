@@ -10,6 +10,9 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::context_menu::ContextMenuTheme;
+use crate::theme::context_menu::menu_item::MenuItemTheme;
+use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget_look::theme_slot::SlotDefaults;
@@ -19,9 +22,6 @@ use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{
     MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
 };
-use crate::widgets::theme::context_menu::ContextMenuTheme;
-use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
-use crate::widgets::theme::separator::SeparatorTheme;
 use glam::Vec2;
 
 /// Both menu gutters are theme knobs: `context_menu.gap` is the row pitch, `context_menu.item.gap` the label-to-shortcut floor; each moves only its own axis.

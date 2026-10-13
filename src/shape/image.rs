@@ -1,11 +1,11 @@
 //! The textured-rectangle builder. Lowers to `ShapeRecord::Image`.
 
+use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
-use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;

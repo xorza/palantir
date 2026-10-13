@@ -1,5 +1,5 @@
 //! User-supplied raster images: the pure data types. The stateful lifecycle
-//! lives in [`crate::renderer::image_registry`].
+//! lives in [`crate::image_registry`].
 
 pub(crate) mod error;
 

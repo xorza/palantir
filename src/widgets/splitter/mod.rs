@@ -14,6 +14,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
+use crate::theme::splitter::SplitterTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -21,7 +22,6 @@ use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::splitter::split_half::SplitHalf;
-use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider: [`Splitter::row`] side by side,

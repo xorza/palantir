@@ -2,28 +2,10 @@
 
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
+use crate::primitives::identity::icon_set_id::IconSetId;
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::{Rc, Weak};
-
-/// Identity of a loaded icon set: a slot of [`IconRegistry`]'s table plus the occupant's generation. Half of an [`IconHandle`](crate::IconHandle) and of the atlas cache key, hence four bytes.
-///
-/// The generation makes a slot reusable: without it a `Copy` handle minted before a release would silently name the next set. Sixteen bits wrap after 65 536 cycles of one slot, giving a wrong icon, not unsoundness.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct IconSetId {
-    slot: u16,
-    generation: u16,
-}
-
-impl IconSetId {
-    pub(crate) const fn new(slot: u16, generation: u16) -> Self {
-        Self { slot, generation }
-    }
-
-    pub(crate) const fn bits(self) -> u32 {
-        self.slot as u32 | ((self.generation as u32) << 16)
-    }
-}
 
 /// RAII core of an [`IconSet`]: its [`Drop`] is the whole unload path. When the last clone goes the id is queued, and the next [`IconRegistry::drain_released`] frees the slot and tells the backend to forget it.
 pub(crate) struct IconSetToken {
@@ -81,7 +63,7 @@ struct Inner {
 
 /// The icon sets a host has loaded, shared between the `Ui` and the backend that rasterizes from them.
 ///
-/// The counterpart of [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry): **the caller's handle keeps the resource alive.** [`Self::register`] returns an [`IconSet`]; dropping the last clone queues the id and [`Self::drain_released`] frees the slot. There is no `unload`.
+/// The counterpart of [`ImageRegistry`](crate::image_registry::ImageRegistry): **the caller's handle keeps the resource alive.** [`Self::register`] returns an [`IconSet`]; dropping the last clone queues the id and [`Self::drain_released`] frees the slot. There is no `unload`.
 ///
 /// Unlike a never-reused `TextureId`, an `IconSetId` is a reusable table slot (it must fit beside an icon index in a cache key), so the table owns the row and stamps a generation. A set's release is also a family of keys found only by walking each backend store, so it is queued for one batched walk rather than done in `Drop`.
 ///
@@ -147,14 +129,15 @@ impl IconRegistry {
         let inner = self.inner.borrow();
         let table = inner
             .slots
-            .get(usize::from(id.slot))
-            .filter(|slot| slot.generation == id.generation)
+            .get(usize::from(id.slot()))
+            .filter(|slot| slot.generation == id.generation())
             .and_then(|slot| slot.table.as_ref());
         Rc::clone(table.unwrap_or_else(|| {
             panic!(
                 "icon set {}.{} is not loaded — an IconHandle outlived every \
                  IconSet holding its set, or crossed between hosts",
-                id.slot, id.generation,
+                id.slot(),
+                id.generation(),
             )
         }))
     }
@@ -172,11 +155,11 @@ impl IconRegistry {
             return;
         }
         for &id in released.iter() {
-            let slot = &mut slots[usize::from(id.slot)];
-            debug_assert_eq!(slot.generation, id.generation, "double release");
+            let slot = &mut slots[usize::from(id.slot())];
+            debug_assert_eq!(slot.generation, id.generation(), "double release");
             slot.table = None;
             slot.generation = slot.generation.wrapping_add(1);
-            free.push(id.slot);
+            free.push(id.slot());
         }
         forget(released);
         released.clear();

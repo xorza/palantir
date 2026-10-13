@@ -11,9 +11,9 @@ use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 

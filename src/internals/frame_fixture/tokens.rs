@@ -8,7 +8,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::widgets::theme::text_style::TextStyle;
+use crate::theme::text_style::TextStyle;
 use glam::Vec2;
 
 // Surface ladder and ink: the fixture's own; the showcase runs a different dark one deliberately.

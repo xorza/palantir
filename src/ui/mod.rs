@@ -29,14 +29,12 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
-use crate::input::arranged_frame::ArrangedFrame;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
-use crate::input::input_state::InputState;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
-use crate::input::key_reader::KeyReader;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -44,8 +42,10 @@ use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
+use crate::input_state::InputState;
+use crate::input_state::arranged_frame::ArrangedFrame;
+use crate::input_state::key_reader::KeyReader;
 use crate::layout::Layout;
-use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -60,12 +60,12 @@ use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_views::{GpuViews, RecordedView};
-use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::record_store::RecordStore;
+use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::{LastFrame, ResolvedId};
 use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
@@ -74,6 +74,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_source::FontSource;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
+use crate::theme::Theme;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
@@ -84,7 +85,6 @@ use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
-use crate::widgets::theme::Theme;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
@@ -1080,7 +1080,7 @@ impl Ui {
 /// No `#[inline]`: nothing here reaches an optimized build that would want it.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::widgets::theme::Theme;
+    use crate::theme::Theme;
     use std::rc::Rc;
 
     #[cfg(test)]
@@ -1088,7 +1088,7 @@ pub(crate) mod internals {
     use crate::cascade::Cascade;
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
-    use crate::input::input_state::InputState;
+    use crate::input_state::InputState;
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::layer_layout::LayerLayout;

@@ -1,5 +1,4 @@
 use crate::bench::fixture::{Backend, Kind, Scale};
-use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache;
@@ -10,6 +9,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
+use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};

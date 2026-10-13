@@ -3,9 +3,9 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::theme::text_style::TextStyle;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::look_plan::LookPlan;
-use crate::widgets::theme::text_style::TextStyle;
 
 /// A theme bundle a widget wears whole: per-state looks plus box defaults.
 /// [`Self::plan`] then [`LookPlan::apply`] are the two calls every themed widget makes:

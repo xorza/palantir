@@ -16,9 +16,9 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{
     block::Block, button::Button, grid::Grid, panel::Panel, scroll::Scroll, text::Text,
 };

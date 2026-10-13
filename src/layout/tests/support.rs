@@ -3,13 +3,13 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::scene::tree::node_id::NodeId;
+use crate::text::shaped_text::ShapedText;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 
 /// The paragraph the wrapping cases shape: nine words, so every narrow width breaks it.

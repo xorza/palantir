@@ -1,12 +1,12 @@
 //! Which draws share a group and a batch, and what forces a split.
 
 use crate::common::span::Span;
-use crate::icons::icon_set::IconRef;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;

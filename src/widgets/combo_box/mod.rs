@@ -14,6 +14,8 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
+use crate::theme::button::ButtonTheme;
+use crate::theme::combo_box::ComboBoxTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -25,8 +27,6 @@ use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::text::Text;
-use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::combo_box::ComboBoxTheme;
 use std::rc::Rc;
 
 /// A dropdown selector: a button-styled trigger showing the current choice,

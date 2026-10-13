@@ -9,13 +9,13 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
+use crate::theme::button::ButtonTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::theme::button::ButtonTheme;
 
 /// A clickable, themed rectangle carrying an optional label.
 ///

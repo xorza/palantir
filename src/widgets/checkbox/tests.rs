@@ -1,9 +1,9 @@
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::theme::palette::Palette;
 use crate::widget_core::configure::Configure;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
-use crate::widgets::theme::palette::Palette;
 use glam::{UVec2, Vec2};
 
 /// The tick is themed: `ToggleTheme::check_points` holds it in unit space and `check_polyline` scales it by `box_size`, so the drawn polyline tracks both.
@@ -11,7 +11,7 @@ use glam::{UVec2, Vec2};
 fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::scene::layer::Layer;
     use crate::shape::record::ShapeRecord;
-    use crate::widgets::theme::toggle::ToggleTheme;
+    use crate::theme::toggle::ToggleTheme;
 
     fn drawn(theme: ToggleTheme) -> Vec<Vec2> {
         let mut h = UiHarness::new(UVec2::new(200, 100));

@@ -9,13 +9,13 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::wrap::TextWrap;
+use crate::theme::text_style::TextStyle;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Standalone shaped-text leaf for labels, paragraphs and headings. **By default a
 /// single-line label keeps its full natural width** ([`TextWrap::SingleLine`]): its

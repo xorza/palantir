@@ -2,9 +2,9 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_swatch::ColorSwatch;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::UVec2;
 
 /// A chip is a `swatch_size` square from the theme or the bundle `style` names. Opaque, it records one shape, the colour. Translucent, the checker goes behind first: the light fill, then a dark cell on every other square of the `checker_cell` grid (24 / 6 = 4 cells a side, two dark per row over four rows).

@@ -5,9 +5,11 @@ mod gpu {
     use crate::gpu::raster::raster_program::RasterProgram;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::icons::icon_raster_key::IconRasterKey;
-    use crate::icons::icon_registry::{IconRegistry, IconSetId};
+    use crate::icons::icon_registry::IconRegistry;
     use crate::icons::icon_set::IconSet;
-    use crate::icons::icon_table::{IconId, IconTable};
+    use crate::icons::icon_table::IconTable;
+    use crate::primitives::identity::icon_id::IconId;
+    use crate::primitives::identity::icon_set_id::IconSetId;
     use glam::Vec2;
     use std::rc::Rc;
 
@@ -31,7 +33,7 @@ mod gpu {
 
     /// Draw `set`'s only icon at 16², putting a parse in the rasterizer and a raster in the atlas.
     fn draw(backend: &mut IconBackend, set: &IconSet) {
-        let icon = set.handle(IconId::fixture(0)).icon;
+        let icon = set.handle(IconId::new(0)).icon;
         let key = IconRasterKey::for_box(icon, Vec2::splat(16.0));
         assert!(
             backend.slot(key).is_some(),
@@ -87,17 +89,14 @@ mod gpu {
         let mut frame = 0u64;
 
         let first = load(&icons);
-        assert_eq!(
-            first.handle(IconId::fixture(0)).icon.set,
-            IconSetId::new(0, 0)
-        );
+        assert_eq!(first.handle(IconId::new(0)).icon.set, IconSetId::new(0, 0));
         draw(&mut backend, &first);
         drop(first);
         tick(&mut backend, &mut frame);
 
         let second = load(&icons);
         assert_eq!(
-            second.handle(IconId::fixture(0)).icon.set,
+            second.handle(IconId::new(0)).icon.set,
             IconSetId::new(0, 1),
             "the fixture only proves anything if the slot was reused",
         );

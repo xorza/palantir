@@ -1,6 +1,6 @@
 //! The atlas cache key for one rasterized icon, and the size quantization that bounds distinct rasters under continuous zoom.
 
-use crate::icons::icon_set::IconRef;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::math::num::F32Px;
 use glam::{U16Vec2, Vec2};
 
@@ -70,7 +70,7 @@ fn snap_px(px: u32) -> u16 {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::icons::icon_raster_key::IconRasterKey;
-    use crate::icons::icon_set::IconRef;
+    use crate::primitives::identity::icon_ref::IconRef;
     use glam::U16Vec2;
 
     impl IconRasterKey {

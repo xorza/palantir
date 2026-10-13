@@ -3,6 +3,7 @@
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -12,7 +13,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
-use crate::widgets::theme::tabs::TabsTheme;
 use std::hash::Hash;
 use std::rc::Rc;
 

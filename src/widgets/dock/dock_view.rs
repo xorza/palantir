@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
+use crate::theme::dock::DockTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -34,7 +35,6 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::text::Text;
-use crate::widgets::theme::dock::DockTheme;
 use crate::window::cursor_icon::CursorIcon;
 use std::rc::Rc;
 

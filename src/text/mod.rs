@@ -40,6 +40,7 @@ pub(crate) mod request;
 pub(crate) mod root;
 pub(crate) mod run;
 pub(crate) mod shaped_ref;
+pub(crate) mod shaped_text;
 pub(crate) mod shaper;
 pub(crate) mod system;
 pub(crate) mod wrap;

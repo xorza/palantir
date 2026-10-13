@@ -6,6 +6,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::theme::splitter::SplitterTheme;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::internals::ValueEdges;
@@ -13,7 +14,6 @@ use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::splitter::{Seam, Splitter, sanitize_ratio};
-use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
 

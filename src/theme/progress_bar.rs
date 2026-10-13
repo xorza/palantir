@@ -1,0 +1,33 @@
+//! What a progress bar wears: its track and the fill measuring the fraction.
+
+use crate::primitives::paint::color::RgbaF32;
+use crate::theme::palette::Palette;
+
+/// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent `fill` spanning the value; the pill radius is `thickness / 2`.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ProgressBarTheme {
+    /// Track color behind the fill.
+    pub track: RgbaF32,
+    /// Fill color (the completed portion).
+    pub fill: RgbaF32,
+    /// Cross-axis thickness of the bar in logical px.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub thickness: f32,
+}
+
+impl ProgressBarTheme {
+    /// A muted track under an accent fill.
+    pub const fn from_palette(p: &Palette) -> Self {
+        Self {
+            track: p.element_mid,
+            fill: p.accent,
+            thickness: 6.0,
+        }
+    }
+}
+
+impl Default for ProgressBarTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}

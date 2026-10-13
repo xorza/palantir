@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::size::Size;
 
-use crate::icons::icon_set::IconHandle;
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
