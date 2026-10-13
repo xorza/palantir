@@ -1,6 +1,6 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use glam::Vec2;
 
@@ -209,12 +209,18 @@ fn inscribed_for_corners_insets_to_the_arc_midpoint() {
 fn scaled_by_rounds_edges_only_when_snapping() {
     let r = Rect::new(10.25, 10.75, 20.5, 5.25);
     assert_eq!(
-        r.scaled_by(1.5, false),
+        r.scaled_by(1.5, EdgeRounding::Exact),
         Rect::new(15.375, 16.125, 30.75, 7.875)
     );
-    assert_eq!(r.scaled_by(1.5, true), Rect::new(15.0, 16.0, 31.0, 8.0));
+    assert_eq!(
+        r.scaled_by(1.5, EdgeRounding::WholePixels),
+        Rect::new(15.0, 16.0, 31.0, 8.0)
+    );
 
     let sliver = Rect::new(10.125, 0.0, 0.25, 1.0);
-    assert_eq!(sliver.scaled_by(1.0, false).size.w, 0.25);
-    assert_eq!(sliver.scaled_by(1.0, true), Rect::new(10.0, 0.0, 0.0, 1.0));
+    assert_eq!(sliver.scaled_by(1.0, EdgeRounding::Exact).size.w, 0.25);
+    assert_eq!(
+        sliver.scaled_by(1.0, EdgeRounding::WholePixels),
+        Rect::new(10.0, 0.0, 0.0, 1.0)
+    );
 }

@@ -23,7 +23,7 @@ use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
-use crate::gpu::raster::raster_atlas::clock_sweep::ClockSweep;
+use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
@@ -448,6 +448,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         bytes < self.eager_growth_bytes
     }
 
+    /// What a sweep for `content` may evict this frame.
+    const fn evictable(&self, content: ContentType) -> Evictable {
+        Evictable {
+            content,
+            current_frame: self.current_frame,
+        }
+    }
+
     /// Evict one glyph of `target` content not drawn this frame, chosen by a clock:
     /// a persistent hand over [`Self::slots`] that takes the first eligible entry and
     /// resumes next call. See [`ClockSweep`].
@@ -475,7 +483,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             // A fourth write of `last_use` would break the invariant that doc rests on, silently
             // stopping reclaim; debug pays one rotation to check it.
             debug_assert!(
-                ClockSweep::over(&self.slots, self.hand, target, self.current_frame)
+                ClockSweep::over(&self.slots, self.hand, self.evictable(target))
                     .victim
                     .is_none(),
                 "{target:?} latched dry on frame {} still has an evictable slot",
@@ -483,7 +491,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             );
             return false;
         }
-        let sweep = ClockSweep::over(&self.slots, self.hand, target, self.current_frame);
+        let sweep = ClockSweep::over(&self.slots, self.hand, self.evictable(target));
         self.hand = sweep.hand;
         self.counters
             .evict_scans

@@ -17,6 +17,15 @@ pub(crate) struct DynamicBuffer<T: bytemuck::Pod> {
     item: PhantomData<T>,
 }
 
+/// What [`DynamicBuffer::new`] builds: the buffer's name, what it binds as, and
+/// the items it holds before its first grow.
+#[derive(Clone, Copy, Debug)]
+struct BufferSpec {
+    label: &'static str,
+    usage: wgpu::BufferUsages,
+    initial_capacity: usize,
+}
+
 impl<T: bytemuck::Pod> DynamicBuffer<T> {
     /// Bytes per item, checked when a buffer of `T` is instantiated: a zero-sized row holds nothing,
     /// and the belt copy and mapped write both need whole rows in multiples of
@@ -40,9 +49,11 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     ) -> Self {
         Self::new(
             device,
-            label,
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            initial_capacity,
+            BufferSpec {
+                label,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                initial_capacity,
+            },
         )
     }
 
@@ -54,18 +65,20 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     ) -> Self {
         Self::new(
             device,
-            label,
-            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            initial_capacity,
+            BufferSpec {
+                label,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                initial_capacity,
+            },
         )
     }
 
-    fn new(
-        device: &wgpu::Device,
-        label: &'static str,
-        usage: wgpu::BufferUsages,
-        initial_capacity: usize,
-    ) -> Self {
+    fn new(device: &wgpu::Device, spec: BufferSpec) -> Self {
+        let BufferSpec {
+            label,
+            usage,
+            initial_capacity,
+        } = spec;
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: (initial_capacity * Self::ITEM_BYTES) as u64,

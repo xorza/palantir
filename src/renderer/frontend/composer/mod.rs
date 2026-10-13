@@ -4,7 +4,7 @@
 //! [`ComposeSession`] is one pass, holding that scratch together with the
 //! buffer it fills, and [`geometry`] is the arithmetic both are cut with.
 
-use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
@@ -16,7 +16,6 @@ use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::scene::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
-use std::time::Duration;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -149,14 +148,13 @@ impl Composer {
     /// closes the trailing batch and group.
     pub(crate) fn begin<'a>(
         &'a mut self,
-        display: Display,
-        time: Duration,
+        stamp: FrameStamp,
         store: &'a RecordStore,
         out: &'a mut RenderBuffer,
     ) -> ComposeSession<'a> {
-        out.start_frame(display, time);
+        out.start_frame(stamp);
 
-        self.reset_group_scratch(display.physical);
+        self.reset_group_scratch(stamp.display.physical);
         self.clip.clear();
         self.transform.clear();
 

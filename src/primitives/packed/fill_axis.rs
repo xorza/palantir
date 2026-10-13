@@ -23,8 +23,8 @@ impl FillAxis {
     pub(crate) const ZERO: Self = Self(F16x4::ZERO);
 
     #[inline]
-    pub(crate) fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
-        Self(F16x4::from_lanes([a, b, c, d]))
+    pub(crate) fn from_lanes(lanes: [f32; 4]) -> Self {
+        Self(F16x4::from_lanes(lanes))
     }
 
     #[inline]

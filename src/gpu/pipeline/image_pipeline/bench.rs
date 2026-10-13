@@ -14,15 +14,17 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::record_app::RecordApp;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
+use glam::Vec2;
 
 const PHYSICAL: UVec2 = UVec2::new(1024, 1024);
 const TEXEL: u32 = 256;
@@ -108,44 +110,51 @@ fn texels(edge: u32) -> Vec<u8> {
     pixels
 }
 
-fn record(ui: &mut Ui, handle: &mut Option<ImageHandle>, workload: Workload, phase: bool) {
-    let edge = workload.texel();
-    let image = handle
-        .get_or_insert_with(|| {
-            ui.load_image(&Image::from_srgba8(UVec2::new(edge, edge), texels(edge)).unwrap())
-                .expect("benchmark image fits every supported GPU")
-        })
-        .clone();
-    let tint = if phase {
-        RgbaF32::WHITE
-    } else {
-        RgbaF32::srgb(0.98, 0.99, 1.0)
-    };
-    let filter = workload.filter();
-    Panel::canvas()
-        .id_salt("image-pipeline-bench-root")
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for layer in 0..LAYERS {
-                Panel::zstack()
-                    .id_salt(("image-pipeline-bench-layer", layer))
-                    .position(Vec2::ZERO)
-                    .size((
-                        Sizing::fixed(PHYSICAL.x as f32),
-                        Sizing::fixed(PHYSICAL.y as f32),
-                    ))
-                    .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::image(image.clone())
-                                .fit(ImageFit::Fill)
-                                .min_filter(filter)
-                                .mag_filter(filter)
-                                .downsample(workload.downsample())
-                                .tint(tint),
-                        );
-                    });
-            }
-        });
+/// One frame's scene: `workload`'s image, loaded into `handle` on first use, tinted `tint`.
+#[derive(Debug)]
+struct Scene<'a> {
+    handle: &'a mut Option<ImageHandle>,
+    workload: Workload,
+    tint: RgbaF32,
+}
+
+impl Scene<'_> {
+    fn record(&mut self, ui: &mut Ui) {
+        let (workload, tint) = (self.workload, self.tint);
+        let handle = &mut *self.handle;
+        let edge = workload.texel();
+        let image = handle
+            .get_or_insert_with(|| {
+                ui.load_image(&Image::from_srgba8(UVec2::new(edge, edge), texels(edge)).unwrap())
+                    .expect("benchmark image fits every supported GPU")
+            })
+            .clone();
+        let filter = workload.filter();
+        Panel::canvas()
+            .id_salt("image-pipeline-bench-root")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for layer in 0..LAYERS {
+                    Panel::zstack()
+                        .id_salt(("image-pipeline-bench-layer", layer))
+                        .position(Vec2::ZERO)
+                        .size((
+                            Sizing::fixed(PHYSICAL.x as f32),
+                            Sizing::fixed(PHYSICAL.y as f32),
+                        ))
+                        .show(ui, |ui| {
+                            ui.add_shape(
+                                Shape::image(image.clone())
+                                    .fit(ImageFit::Fill)
+                                    .min_filter(filter)
+                                    .mag_filter(filter)
+                                    .downsample(workload.downsample())
+                                    .tint(tint),
+                            );
+                        });
+                }
+            });
+    }
 }
 
 #[derive(Debug)]
@@ -174,8 +183,17 @@ impl Fixture {
             handle,
             phase,
         } = self;
-        let phase = *phase;
-        let mut app = RecordApp::new(|ui| record(ui, handle, workload, phase));
+        let tint = if *phase {
+            RgbaF32::WHITE
+        } else {
+            RgbaF32::srgb(0.98, 0.99, 1.0)
+        };
+        let mut scene = Scene {
+            handle,
+            workload,
+            tint,
+        };
+        let mut app = RecordApp::new(|ui| scene.record(ui));
         host.frame(target.as_target(), 1.0, &mut app);
         gpu.wait();
     }

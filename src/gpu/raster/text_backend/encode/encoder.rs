@@ -4,7 +4,7 @@
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
-use crate::gpu::raster::text_backend::encode::cache::{EncodedCache, EncodedGlyph};
+use crate::gpu::raster::text_backend::encode::cache::{EncodeCoverage, EncodedCache, EncodedGlyph};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
@@ -120,8 +120,12 @@ impl TextEncoder {
         }
 
         // Partially visible or atlas-starved runs re-encode each frame; replaying a full template under narrower bounds is safe (the scissor clips).
-        let complete = !culled && !starved;
-        cache.settle(run_key.key, current_frame, complete);
+        let coverage = if culled || starved {
+            EncodeCoverage::Partial
+        } else {
+            EncodeCoverage::Complete
+        };
+        cache.settle(run_key.key, current_frame, coverage);
     }
 }
 

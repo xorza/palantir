@@ -1,6 +1,5 @@
 //! Gestures fed between two frames are spread one change of a kind per frame by `InputQueue`; each case steps frame by frame.
 
-use crate::Ui;
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
@@ -10,6 +9,7 @@ use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;

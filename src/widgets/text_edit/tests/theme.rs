@@ -259,10 +259,10 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
 
 #[test]
 fn textedit_style_override_replaces_default_theme() {
-    use crate::TextEditTheme;
     use crate::shape::record::ShapeRecord;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
+    use crate::widgets::theme::text_edit::TextEditTheme;
 
     for (label, factor, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
@@ -475,10 +475,10 @@ fn click_without_drag_clears_prior_selection() {
 #[test]
 fn line_height_override_changes_caret_rect_height() {
     // Caret height tracks the theme `text` style's leading.
-    use crate::TextEditTheme;
     use crate::shape::record::ShapeRecord;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::stateful_look::StatefulLook;
+    use crate::widgets::theme::text_edit::TextEditTheme;
 
     fn caret_height(style: Option<&TextEditTheme>) -> f32 {
         let mut h = UiHarness::new(NARROW);

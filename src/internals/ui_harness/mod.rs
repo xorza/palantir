@@ -59,6 +59,7 @@
 use crate::app::App;
 use crate::common::time::MAX_ANIM_DT;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::display::user_scale::UserScale;
 use crate::input::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
 use crate::input::input_event::InputEvent;
@@ -75,9 +76,8 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
+use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
-use crate::ui::frame_stamp::FrameInput;
-use crate::ui::frame_stamp::FrameStamp;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};

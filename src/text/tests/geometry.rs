@@ -410,8 +410,12 @@ fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
         .expect("the Arabic test face loads");
     let wrap = 200.0;
     let bounded = |halign| ui_shape(16.0).width(wrap).halign(halign);
-    for (label, text) in [("LTR", "ab cd"), ("RTL", "مرحبا بالعالم")] {
+    // Natural widths far under the 200 px target, or a measurement that ran
+    // to the target would pass by accident.
+    for (label, text, natural) in [("LTR", "ab cd", 43.0), ("RTL", "مرحبا بالعالم", 78.0)]
+    {
         let unbounded = m.measure(text, ui_shape(16.0)).size.w;
+        assert_eq!(unbounded, natural, "{label}");
         // The run fits on one line, so binding a width changes only where
         // cosmic puts the glyphs: every alignment reports the natural width.
         for halign in [
@@ -427,11 +431,6 @@ fn a_bounded_run_measures_its_glyphs_not_the_gap_before_them() {
                 "{label} {halign:?}: bounded {measured} must equal natural {unbounded}",
             );
         }
-        assert!(
-            unbounded < wrap - 100.0,
-            "{label} must be far narrower than the {wrap} px wrap target, or a \
-             measurement that ran to the target would pass by accident; got {unbounded}",
-        );
     }
 }
 

@@ -57,7 +57,7 @@ pub(super) fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live
 #[cfg(test)]
 mod tests {
     use crate::gpu::resource::gpu_view_targets::view_target::keep_target;
-    use crate::renderer::render_owner_id::RenderOwnerId;
+    use crate::renderer::render_owner_id::{RenderOwnerId, RenderOwners};
 
     fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
         entries
@@ -71,8 +71,9 @@ mod tests {
     /// Owner `b`'s `2` survives all of `a`'s submits, so only `retire_owner` frees a closed stream's targets.
     #[test]
     fn eviction_follows_the_live_roster_and_is_owner_scoped() {
-        let a = RenderOwnerId::reserve();
-        let b = RenderOwnerId::reserve();
+        let owners = RenderOwners::default();
+        let a = owners.reserve();
+        let b = owners.reserve();
         let entries = [(1, a), (3, a), (2, b)];
         let cases = [
             (a, &[1u64, 3][..], vec![]),

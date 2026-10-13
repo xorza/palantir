@@ -4,20 +4,29 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
 use glam::{UVec2, Vec2};
 
-/// A shadow of `kind` over a `w`×`h` quad, every corner `radius`, blurred by `sigma`, no spread.
-fn shadow(kind: FillKind, w: f32, h: f32, radius: f32, sigma: f32) -> Quad {
+/// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
+fn drop_shadow(size: Size, radius: f32, sigma: f32) -> Quad {
     Quad {
-        rect: Rect::new(0.0, 0.0, w, h),
+        rect: Rect::new(0.0, 0.0, size.w, size.h),
         corners: Corners::all(radius),
-        fill_kind: kind,
-        fill_axis: FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
+        fill_kind: FillKind::SHADOW_DROP,
+        fill_axis: FillAxis::from_lanes([0.0, 0.0, sigma, 0.0]),
         ..Quad::default()
+    }
+}
+
+/// [`drop_shadow`], cast inward.
+fn inset_shadow(size: Size, radius: f32, sigma: f32) -> Quad {
+    Quad {
+        fill_kind: FillKind::SHADOW_INSET,
+        ..drop_shadow(size, radius, sigma)
     }
 }
 
@@ -45,7 +54,7 @@ fn full(plan: &mut CutoutPlan, quads: &[Quad], viewport: UVec2) {
 fn row(n: usize, x: f32) -> Vec<Quad> {
     (0..n)
         .map(|k| {
-            let mut quad = shadow(FillKind::SHADOW_DROP, 100.0, 100.0, 8.0, 2.0);
+            let mut quad = drop_shadow(Size::new(100.0, 100.0), 8.0, 2.0);
             quad.rect.min.x = x + 120.0 * k as f32;
             quad
         })
@@ -91,10 +100,10 @@ fn radius_rules_follow_the_shader() {
 #[test]
 fn equal_corners_share_one_table() {
     let quads = [
-        shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, 16.0),
+        drop_shadow(Size::new(400.0, 300.0), 8.0, 16.0),
         Quad::default(),
-        shadow(FillKind::SHADOW_INSET, 200.0, 200.0, 8.0, 16.0),
-        shadow(FillKind::SHADOW_DROP, 500.0, 300.0, 8.0, 16.0),
+        inset_shadow(Size::new(200.0, 200.0), 8.0, 16.0),
+        drop_shadow(Size::new(500.0, 300.0), 8.0, 16.0),
     ];
     let plan = plan(&quads);
     let code = CutoutPlan::code([0, 0], 87);
@@ -139,7 +148,7 @@ fn equal_corners_share_one_table() {
 fn the_tables_entry_follows_the_blur() {
     let mut quads = Vec::new();
     for sigma in [3.75, 4.0] {
-        quads.extend((0..8).map(|_| shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, sigma)));
+        quads.extend((0..8).map(|_| drop_shadow(Size::new(400.0, 300.0), 8.0, sigma)));
     }
     let plan = plan(&quads);
     assert_eq!(plan.tables().len(), 2);
@@ -158,18 +167,18 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
     for (label, quad, entry) in [
         (
             "blur below the cutout form",
-            shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, 0.2),
+            drop_shadow(Size::new(400.0, 300.0), 8.0, 0.2),
             ShadowEntry::General,
         ),
         (
             "no radius",
-            shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 0.0, 16.0),
+            drop_shadow(Size::new(400.0, 300.0), 0.0, 16.0),
             ShadowEntry::TablesWide,
         ),
         // σ = 0.25 against a radius of 40: (40 + 3) · 40 + 2 = 1722 texels.
         (
             "past the side budget",
-            shadow(FillKind::SHADOW_INSET, 400.0, 300.0, 40.0, 0.25),
+            inset_shadow(Size::new(400.0, 300.0), 40.0, 0.25),
             ShadowEntry::General,
         ),
     ] {
@@ -180,7 +189,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
     }
     let mut off = CutoutPlan::new(CutoutMode::Shade);
     let census = off.build(
-        &[shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, 16.0)],
+        &[drop_shadow(Size::new(400.0, 300.0), 8.0, 16.0)],
         &RepaintScissors::Full,
         WIDE,
     );
@@ -205,15 +214,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
 fn tables_pack_into_shelves_until_the_atlas_is_full() {
     // Radii 1/16 apart, which `f16` holds exactly between 8 and 16.
     let quads: Vec<Quad> = (0..101)
-        .map(|k| {
-            shadow(
-                FillKind::SHADOW_DROP,
-                400.0,
-                300.0,
-                8.0 + k as f32 / 16.0,
-                16.0,
-            )
-        })
+        .map(|k| drop_shadow(Size::new(400.0, 300.0), 8.0 + k as f32 / 16.0, 16.0))
         .collect();
     let plan = plan(&quads);
     assert_eq!(plan.tables().len(), 100);
@@ -370,8 +371,8 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
 /// − 1 = 84` to the side, and y from 0 to `floor((7.25 + 64.5) · 0.625) + 3 = 47`.
 #[test]
 fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
-    let mut quad = shadow(FillKind::SHADOW_INSET, 200.0, 200.0, 7.25, 16.0);
-    quad.fill_axis = FillAxis::from_lanes(100.0, 0.0, 16.0, 0.0);
+    let mut quad = inset_shadow(Size::new(200.0, 200.0), 7.25, 16.0);
+    quad.fill_axis = FillAxis::from_lanes([100.0, 0.0, 16.0, 0.0]);
     let mut plan = plan(&[quad]);
     let code = CutoutPlan::code([0, 0], 87);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
@@ -413,7 +414,7 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
     assert!(plan.tables().is_empty());
     let others: Vec<Quad> = (0..14)
         .map(|k| {
-            let mut quad = shadow(FillKind::SHADOW_DROP, 100.0, 100.0, 12.0, 2.0);
+            let mut quad = drop_shadow(Size::new(100.0, 100.0), 12.0, 2.0);
             quad.rect.min = Vec2::new(120.0 * k as f32, 200.0);
             quad
         })
@@ -444,7 +445,7 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
 fn the_plan_does_not_hang_on_quad_order() {
     let quads: Vec<Quad> = [8.0, 8.0625, 8.125]
         .into_iter()
-        .map(|r| shadow(FillKind::SHADOW_DROP, 400.0, 300.0, r, 16.0))
+        .map(|r| drop_shadow(Size::new(400.0, 300.0), r, 16.0))
         .collect();
     let forward = plan(&quads);
     let mut reversed: Vec<Quad> = quads;

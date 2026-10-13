@@ -23,7 +23,7 @@ use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::layout::placed_child::Placed;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::math::num::F32Px;
 use crate::scene::tree::node_id::NodeId;
 use glam::BVec2;
@@ -363,8 +363,10 @@ impl LayoutDriver for Stack {
 
             let cross_p = placed_child.cross(axis, parent_child_align, cross);
 
-            let child_rect =
-                axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
+            let child_rect = axis.compose_rect(
+                AxisExtent::new(cursor, main_size),
+                AxisExtent::new(cross_min + cross_p.offset, cross_p.size),
+            );
             pass.arrange(c, child_rect);
             cursor += main_size;
         }

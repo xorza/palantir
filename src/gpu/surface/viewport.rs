@@ -2,7 +2,7 @@
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
@@ -69,7 +69,7 @@ impl<'a> IntoIterator for &'a PartialScissors {
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded by [`RenderPlan::AA_PADDING`] and clamped to the viewport; `None` if it clamps to zero area.
 fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
-    let phys = r.scaled_by(buffer.display.scale_factor(), true);
+    let phys = r.scaled_by(buffer.display.scale_factor(), EdgeRounding::WholePixels);
     let padded = phys.inflated(RenderPlan::AA_PADDING as f32);
     let physical = buffer.display.physical;
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
@@ -131,6 +131,7 @@ mod tests {
     use crate::damage::Damage;
     use crate::damage::region::DamageRegion;
     use crate::display::Display;
+    use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::urect::URect;
@@ -140,10 +141,10 @@ mod tests {
 
     fn buffer() -> RenderBuffer {
         let mut buffer = RenderBuffer::new();
-        buffer.start_frame(
+        buffer.start_frame(FrameStamp::new(
             Display::from_physical(UVec2::new(100, 100), 2.0),
             Duration::ZERO,
-        );
+        ));
         buffer
     }
 

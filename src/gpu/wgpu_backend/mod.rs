@@ -74,7 +74,7 @@ use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
-use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::surface::backbuffer::{Backbuffer, EnsuredBackbuffer};
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
@@ -377,12 +377,7 @@ impl WgpuBackend {
         let dim_undamaged = sub.dim_undamaged();
         let use_stencil = targets.stencil.is_some();
         let is_partial = plan.damage.is_partial();
-        let mut ctx = GpuCtx::new(
-            &self.gpu.device,
-            &self.gpu.queue,
-            &mut self.staging_belt,
-            encoder,
-        );
+        let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging_belt, encoder);
 
         // Texture-only upload (the belt is buffer-only), first so draws see the right pixels.
         self.gradient.upload(&ctx);
@@ -843,6 +838,25 @@ impl WgpuBackend {
         &self.texture_binding
     }
 
+    /// The window's backbuffer for `target`, built if `slot` is empty or no longer
+    /// [`describes`](Backbuffer::describes) it.
+    pub(crate) fn ensure_backbuffer<'s>(
+        &self,
+        slot: &'s mut Option<Backbuffer>,
+        target: RenderTarget<'_>,
+    ) -> EnsuredBackbuffer<'s> {
+        if slot.as_ref().is_some_and(|held| !held.describes(target)) {
+            *slot = None;
+        }
+        let recreated = slot.is_none();
+        EnsuredBackbuffer {
+            backbuffer: slot.get_or_insert_with(|| {
+                Backbuffer::new(self.device(), self.texture_binding(), target)
+            }),
+            recreated,
+        }
+    }
+
     /// Skip path: the target still needs valid pixels. A `Skip` requires the previous
     /// frame submitted at this size and format (`take_frame_plan` forces `Full`
     /// otherwise), so a missing or mismatched backbuffer crashes rather than present
@@ -854,7 +868,7 @@ impl WgpuBackend {
     ) {
         let surface_tex = target.texture();
         debug_assert!(
-            backbuffer.describes(surface_tex.size(), surface_tex.format()),
+            backbuffer.describes(target),
             "skip-copy backbuffer doesn't match the target — a Skip frame \
              implies the previous frame painted this size/format"
         );

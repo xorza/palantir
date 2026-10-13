@@ -15,7 +15,8 @@ fn writes_only_a_changed_quad() {
     let mut buffer = SingleQuadBuffer::new(device, "test.single_quad");
     let mut belt = StagingBelt::new(device.clone(), 1 << 12);
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    let mut ctx = GpuCtx::new(device, &gpu.queue, &mut belt, &mut encoder);
+    let handles = gpu.handles();
+    let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
     let quad = |w: f32, alpha: f32| Quad {
         rect: Rect::new(0.0, 0.0, w, 100.0),
         fill: RgbaF32::new(0.0, 0.0, 0.0, alpha).into(),

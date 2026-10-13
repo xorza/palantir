@@ -1,6 +1,6 @@
 //! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
-//! shaper, image and icon registries, gradient atlas, clipboard, window directory, diagnostics and user scale. Every
-//! field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
+//! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, diagnostics and
+//! user scale. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
 use std::rc::Rc;
 
@@ -15,6 +15,7 @@ use crate::renderer::error::ImageTooLarge;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::image_registry::image_handle::ImageHandle;
+use crate::renderer::render_owner_id::RenderOwners;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
@@ -36,6 +37,7 @@ pub(crate) struct UiResources {
     /// `Display::system_scale`, leaving a preference windows should not disagree about.
     user_scale: Rc<AppSetting<UserScale>>,
     windows: WindowDirectory,
+    render_owners: RenderOwners,
 }
 
 impl UiResources {
@@ -50,6 +52,7 @@ impl UiResources {
             diagnostics: Diagnostics::default(),
             user_scale: Rc::default(),
             windows: WindowDirectory::default(),
+            render_owners: RenderOwners::default(),
         }
     }
 
@@ -87,6 +90,10 @@ impl UiResources {
 
     pub(crate) const fn windows(&self) -> &WindowDirectory {
         &self.windows
+    }
+
+    pub(crate) const fn render_owners(&self) -> &RenderOwners {
+        &self.render_owners
     }
 
     pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {

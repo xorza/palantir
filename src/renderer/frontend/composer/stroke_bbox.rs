@@ -7,8 +7,8 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::phys_map::PhysMap;
-use crate::shape::stroke_bounds;
-use crate::shape::style::{LineCap, LineJoin};
+use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
+use crate::shape::style::LineCap;
 use glam::Vec2;
 
 /// One stroked shape's owner-local centerline and the style laid over it.
@@ -22,8 +22,7 @@ pub(super) struct StrokeBbox {
     pub(super) origin: Vec2,
     pub(super) width_phys: f32,
     pub(super) cap: LineCap,
-    /// `None` for a single-segment stroke, which has no joint.
-    pub(super) join: Option<LineJoin>,
+    pub(super) joints: StrokeJoints,
     pub(super) display: Display,
 }
 
@@ -38,11 +37,17 @@ impl StrokeBbox {
             origin,
             width_phys,
             cap,
-            join,
+            joints,
             display,
         } = self;
         let centerline_phys = PhysMap::new(xform, origin, display.scale_factor()).bbox(bbox);
-        let painted = stroke_bounds::bbox(centerline_phys, width_phys, AA_HALF_WIDTH, cap, join);
+        let painted = StrokeReach {
+            width: width_phys,
+            fringe: AA_HALF_WIDTH,
+            cap,
+            joints,
+        }
+        .bbox(centerline_phys);
         geometry::urect_from_phys(painted.min, painted.max(), display.physical)
     }
 }

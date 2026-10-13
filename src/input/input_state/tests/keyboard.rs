@@ -1,14 +1,14 @@
-use crate::FocusPolicy;
-use crate::KeyFilter;
 use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::input_state::tests::{
     BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, sample_layers,
 };
+use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::policy::FocusPolicy;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::shortcut::Shortcut;
 use crate::internals::ui_harness::UiHarness;
@@ -165,7 +165,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
         let two = |ui: &mut Ui| {
             let mut read_by_survivor = false;
             for id in ["first", "second"] {
-                scope_leaf(ui, Layer::Popup, id, |ui| {
+                popup_scope(ui, id, |ui| {
                     if id == survivor {
                         read_by_survivor = ui.key_pressed(Shortcut::key(Key::Escape));
                     }
@@ -330,9 +330,9 @@ fn press_escape(h: &mut UiHarness) {
     h.key(Key::Escape);
 }
 
-/// A node on `layer` declaring an all-taking scope; `body` records inside it.
-fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    ui.layer(layer).show(|ui| {
+/// A node on the popup layer declaring an all-taking scope; `body` records inside it.
+fn popup_scope(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+    ui.layer(Layer::Popup).show(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash(id))
             .input_scope(KeyFilter::ALL)
@@ -342,7 +342,7 @@ fn scope_leaf(ui: &mut Ui, layer: Layer, id: &'static str, body: impl FnOnce(&mu
 }
 
 fn popup_with_scope(ui: &mut Ui) {
-    scope_leaf(ui, Layer::Popup, "overlay", |_| {});
+    popup_scope(ui, "overlay", |_| {});
 }
 
 #[test]

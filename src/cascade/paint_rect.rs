@@ -13,8 +13,8 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::record::{self, ShapeRecord};
-use crate::shape::stroke_bounds;
+use crate::shape::record::{self, ShapeRecord, TextAnchor};
+use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 
@@ -213,14 +213,13 @@ impl PaintRectCtx<'_> {
                         let shaped =
                             shaped.expect("a text record always draws its run from the cursor");
                         let padding = tree.records.layout()[node.idx()].padding;
-                        let inked = record::text_paint_bbox_local(
-                            *local_origin,
-                            *align,
-                            padding,
-                            layout_rect.size,
-                            shaped.extent.size,
-                        )
-                        .inflated_by(shaped.extent.ink);
+                        let anchor = TextAnchor {
+                            local_origin: *local_origin,
+                            align: *align,
+                        };
+                        let inked = anchor
+                            .bbox_local(layout_rect.size, padding, shaped.extent.size)
+                            .inflated_by(shaped.extent.ink);
                         inflate_text_damage(shape.to_screen(inked, None), inked.size, shape_clip)
                     }
                     ShapeRecord::Polyline {
@@ -233,26 +232,26 @@ impl PaintRectCtx<'_> {
                     } => {
                         // The AA fringe is physical: inflate only after the centerline and stroke width reach screen space.
                         let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
-                        let screen = stroke_bounds::bbox(
-                            centerline,
-                            *width * shape_transform.scale,
-                            AA_HALF_WIDTH / display_scale,
-                            *cap,
-                            (points.len > 2).then_some(*join),
-                        );
+                        let screen = StrokeReach {
+                            width: *width * shape_transform.scale,
+                            fringe: AA_HALF_WIDTH / display_scale,
+                            cap: *cap,
+                            joints: StrokeJoints::polyline(points.len, *join),
+                        }
+                        .bbox(centerline);
                         clip_screen(screen, shape_clip)
                     }
                     ShapeRecord::Curve {
                         stroke, cap, bbox, ..
                     } => {
                         let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
-                        let screen = stroke_bounds::bbox(
-                            centerline,
-                            stroke.width * shape_transform.scale,
-                            AA_HALF_WIDTH / display_scale,
-                            *cap,
-                            None,
-                        );
+                        let screen = StrokeReach {
+                            width: stroke.width * shape_transform.scale,
+                            fringe: AA_HALF_WIDTH / display_scale,
+                            cap: *cap,
+                            joints: StrokeJoints::Unjoined,
+                        }
+                        .bbox(centerline);
                         clip_screen(screen, shape_clip)
                     }
                     // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.

@@ -3,13 +3,14 @@ use std::time::Duration;
 use glam::UVec2;
 
 use crate::common::time::MAX_ANIM_DT;
+use crate::damage::DamageBase;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
 use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::frame_stamp::FrameStamp;
 
 #[derive(Clone, Copy, Debug)]
 struct Case {
@@ -46,20 +47,26 @@ fn frame_classification_covers_external_entry_facts() {
             label: "first frame",
             previous: false,
             wake: WakeReasons::default(),
-            expected: FramePlan::FullRecord { force_full: true },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Discarded,
+            },
             ..QUIET
         },
         Case {
             label: "display change",
             display_changed: true,
             wake: WakeReasons::default(),
-            expected: FramePlan::FullRecord { force_full: true },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Discarded,
+            },
             ..QUIET
         },
         Case {
             label: "invalid prior output",
             damage_baseline_valid: false,
-            expected: FramePlan::FullRecord { force_full: true },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Discarded,
+            },
             ..QUIET
         },
         Case {
@@ -70,32 +77,42 @@ fn frame_classification_covers_external_entry_facts() {
         Case {
             label: "real wake",
             wake: WakeReasons::REAL,
-            expected: FramePlan::FullRecord { force_full: false },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Previous,
+            },
             ..QUIET
         },
         Case {
             label: "coalesced real and animation wake",
             wake: WakeReasons::REAL.merge(WakeReasons::ANIM),
-            expected: FramePlan::FullRecord { force_full: false },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Previous,
+            },
             ..QUIET
         },
         Case {
             label: "always input policy",
             input_policy: InputPolicy::Always,
             input_signal: InputSignal::Inert,
-            expected: FramePlan::FullRecord { force_full: false },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Previous,
+            },
             ..QUIET
         },
         Case {
             label: "delta input policy",
             input_signal: InputSignal::Repaint,
-            expected: FramePlan::FullRecord { force_full: false },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Previous,
+            },
             ..QUIET
         },
         Case {
             label: "close request",
             close_requested: true,
-            expected: FramePlan::FullRecord { force_full: false },
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Previous,
+            },
             ..QUIET
         },
     ];

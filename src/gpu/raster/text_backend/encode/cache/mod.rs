@@ -188,11 +188,11 @@ impl EncodedCache {
     }
 
     /// Publish the glyphs [`Self::stage`] accumulated as `key`'s template when the
-    /// encode was `complete`, else drop them. Only complete encodes become templates:
+    /// encode was [`EncodeCoverage::Complete`], else drop them. Only complete encodes become templates:
     /// `EncodedKey` carries neither bounds nor atlas occupancy, so a template with a
     /// hole would replay it forever. Incomplete cases are transient (y-culled lines
     /// return; a full atlas clears). An incomplete encode leaves any existing row intact.
-    pub(super) fn settle(&mut self, key: EncodedKey, frame: u64, complete: bool) {
+    pub(super) fn settle(&mut self, key: EncodedKey, frame: u64, coverage: EncodeCoverage) {
         // Destructured so the row is held through `map.entry` while the arena is written.
         let Self {
             map,
@@ -201,7 +201,7 @@ impl EncodedCache {
             expiry,
             ..
         } = self;
-        if !complete {
+        if coverage == EncodeCoverage::Partial {
             pending.clear();
             return;
         }
@@ -228,6 +228,14 @@ impl EncodedCache {
         }
         pending.clear();
     }
+}
+
+/// Whether an encode placed every glyph of its run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EncodeCoverage {
+    Complete,
+    /// A y-culled line or a full atlas left a hole.
+    Partial,
 }
 
 /// Frames an unused [`EncodedCache`] entry survives before
@@ -340,7 +348,7 @@ pub(crate) mod internals {
                     area_color: u64::from(run),
                     bins: 0,
                 };
-                self.cache.settle(key, self.frame, true);
+                self.cache.settle(key, self.frame, EncodeCoverage::Complete);
             }
             self.cache.sweep(self.frame);
             self.cache.map.len()
@@ -403,7 +411,7 @@ pub(crate) mod internals {
                     area_color: 0,
                     bins: 0,
                 };
-                cache.settle(key, frame, true);
+                cache.settle(key, frame, EncodeCoverage::Complete);
                 // Park `last_use` beyond any frame the bench reaches: rows never expire and every
                 // fired ticket re-files, the steady-state load.
                 cache

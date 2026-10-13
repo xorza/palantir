@@ -1,6 +1,5 @@
 //! Subtrees the diff can jump over, and the transitions that end that.
 
-use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::internals::ui_harness::UiHarness;
@@ -9,6 +8,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
 use crate::widgets::{block::Block, panel::Panel};

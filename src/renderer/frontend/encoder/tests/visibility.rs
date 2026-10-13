@@ -1,6 +1,5 @@
 //! Disabled and hidden subtrees, against the hit index that mirrors them.
 
-use crate::Ui;
 use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -9,6 +8,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};

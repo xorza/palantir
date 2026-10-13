@@ -85,7 +85,7 @@ fn redo_stack_changes_only_on_real_edit() {
             max_chars: Some(1),
         },
     );
-    apply_editor_key(&mut editor, press(Key::Char('x')));
+    apply_editor_key(&mut editor, press(Key::Char('x')), NAV);
     assert!(!editor.edited());
     assert_eq!(editor.text(), "a");
     assert_eq!(editor.redo_len(), 1);
@@ -112,6 +112,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             },
         ),
         press(Key::Backspace),
+        NAV,
     );
     assert_eq!(s, "a");
     assert_eq!(state.undo.len(), 1);
@@ -126,6 +127,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             },
         ),
         press(Key::Char('x')),
+        NAV,
     );
     assert_eq!(s, "a");
     assert_eq!(state.undo.len(), 1);
@@ -141,6 +143,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
             },
         ),
         press(Key::Backspace),
+        NAV,
     );
     assert_eq!(s, "");
     assert_eq!(state.undo.len(), 1);

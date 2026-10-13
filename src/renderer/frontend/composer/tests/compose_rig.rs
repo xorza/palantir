@@ -1,6 +1,7 @@
 //! A composer and its buffer, kept across frames as the frontend keeps them.
 
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
@@ -36,7 +37,11 @@ impl ComposeRig {
     /// Compose `recorded` as one frame into [`Self::out`].
     pub(super) fn compose(&mut self, recorded: &PaintCapture) {
         self.composer
-            .begin(self.display, Duration::ZERO, &self.store, &mut self.out)
+            .begin(
+                FrameStamp::new(self.display, Duration::ZERO),
+                &self.store,
+                &mut self.out,
+            )
             .replay_from(recorded);
     }
 }

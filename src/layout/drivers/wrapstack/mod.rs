@@ -18,7 +18,7 @@ use crate::layout::justify_offsets::{JustifyOffsets, JustifyRow};
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::math::num::F32Px;
 use crate::scene::tree::node_id::NodeId;
 
@@ -244,10 +244,8 @@ impl LayoutDriver for WrapStack {
                 // to line_cross, Hug aligns per child.
                 let cross_p = pass.placed(c).cross(axis, parent_child_align, line_cross);
                 let child_rect = axis.compose_rect(
-                    main_cursor,
-                    *cross_cursor + cross_p.offset,
-                    main_size,
-                    cross_p.size,
+                    AxisExtent::new(main_cursor, main_size),
+                    AxisExtent::new(*cross_cursor + cross_p.offset, cross_p.size),
                 );
                 pass.arrange(c, child_rect);
                 main_cursor += main_size;

@@ -1,6 +1,5 @@
 //! Which draws survive a partial frame's damage filter.
 
-use crate::Ui;
 use crate::damage::region::DamageRegion;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -11,6 +10,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};

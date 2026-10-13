@@ -1,6 +1,7 @@
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key_text::KeyText;
-use crate::{FocusPolicy, widgets::text_edit::tests::*};
+use crate::input::policy::FocusPolicy;
+use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn typing_inserts_text_when_focused() {
@@ -473,10 +474,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
     let full = caret_at_scale(1.0);
     let zoomed_out = caret_at_scale(0.5);
     let zoomed_in = caret_at_scale(2.0);
-    assert!(
-        full > 0 && full < 10,
-        "click should land mid-text, got {full}"
-    );
+    assert_eq!(full, 8, "80 px into the field lands after `abcdefgh`");
     assert_eq!(
         full, zoomed_out,
         "caret placement must be zoom-invariant (1x={full}, 0.5x={zoomed_out})"

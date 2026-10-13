@@ -9,7 +9,7 @@ use crate::text::font_scope::FontScope;
 use crate::text::font_source::FontSource;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::key::TextShapeKey;
-use crate::text::probe::TextProbe;
+use crate::text::probe::{ProbedShape, TextProbe};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::run::TextRun;
@@ -204,28 +204,35 @@ impl TextShaper {
         let Some(unbounded) = run.unbounded_request() else {
             // Nothing to shape (no bytes, or a face with no usable size): the block is empty
             // at its own origin.
-            return TextProbe::new(Size::ZERO, run.text, run.unbounded_key(), halign, inner);
+            let shape = ProbedShape {
+                size: Size::ZERO,
+                key: run.unbounded_key(),
+            };
+            return TextProbe::new(run, shape, inner);
         };
-        let (key, size) = match (run.wrap_width(), run.wrap.line_fit()) {
-            (Some(width), Some(fit)) => {
+        let shape = match (run.wrap_width(), run.wrap.fitted()) {
+            (Some(width), Some(fitted)) => {
                 let floor = run.wrap.floor_scan();
-                match run
-                    .wrap
-                    .commit(width, halign, fit, || inner.root(unbounded, floor))
-                {
-                    WrapCommit::Unbounded { extent } => (unbounded.key, extent.size),
+                match fitted.commit(width, halign, || inner.root(unbounded, floor)) {
+                    WrapCommit::Unbounded { extent } => ProbedShape {
+                        size: extent.size,
+                        key: Some(unbounded.key),
+                    },
                     WrapCommit::Bound(bound) => {
                         let bound = unbounded.with_bound(bound);
-                        (bound.key, inner.resolve(bound).size)
+                        ProbedShape {
+                            size: inner.resolve(bound).size,
+                            key: Some(bound.key),
+                        }
                     }
                 }
             }
-            _ => (
-                unbounded.key,
-                inner.root(unbounded, WrapFloor::Skip).extent.size,
-            ),
+            _ => ProbedShape {
+                size: inner.root(unbounded, WrapFloor::Skip).extent.size,
+                key: Some(unbounded.key),
+            },
         };
-        TextProbe::new(size, run.text, Some(key), halign, inner)
+        TextProbe::new(run, shape, inner)
     }
 
     /// The run's unbounded shape; `TextSystem` calls this on a reuse-slot miss. `floor`

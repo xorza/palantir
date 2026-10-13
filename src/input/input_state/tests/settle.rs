@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use glam::{UVec2, Vec2};
 
-use crate::Ui;
 use crate::input::capture::DRAG_THRESHOLD;
 use crate::input::watch::PointerWake;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 

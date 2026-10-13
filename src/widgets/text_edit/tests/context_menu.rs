@@ -120,9 +120,9 @@ fn clipboard_shortcuts_apply_keypresses() {
         KeyPress::with(Key::Char(c), Modifiers::ALT)
     }
 
-    let clipboard = Clipboard::memory();
+    let keys = FieldKeys::new(Clipboard::memory());
 
-    clipboard.set_text("").unwrap();
+    keys.clipboard.set_text("").unwrap();
     let mut text = String::from("hello");
     let mut state = EditState {
         caret: 4,
@@ -130,35 +130,35 @@ fn clipboard_shortcuts_apply_keypresses() {
         ..EditState::default()
     };
 
-    apply_key_with_clipboard(&mut text, &mut state, primary('c'), &clipboard);
+    keys.apply(&mut text, &mut state, primary('c'));
     assert_eq!(text, "hello");
-    assert_eq!(clipboard.text().unwrap(), "ell");
+    assert_eq!(keys.clipboard.text().unwrap(), "ell");
 
-    apply_key_with_clipboard(&mut text, &mut state, primary('x'), &clipboard);
+    keys.apply(&mut text, &mut state, primary('x'));
     assert_eq!(text, "ho");
-    assert_eq!(clipboard.text().unwrap(), "ell");
+    assert_eq!(keys.clipboard.text().unwrap(), "ell");
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
-    apply_key_with_clipboard(&mut text, &mut state, primary('v'), &clipboard);
+    keys.apply(&mut text, &mut state, primary('v'));
     assert_eq!(text, "hello");
     assert_eq!(state.caret, 4);
 
     // Non-primary modifier triggers nothing (raw Ctrl+C on macOS, Super+C elsewhere); reset and verify a no-op.
-    clipboard.set_text("CLIP").unwrap();
+    keys.clipboard.set_text("CLIP").unwrap();
     let mut text2 = String::from("hello");
     let mut state2 = EditState {
         caret: 4,
         selection: Some(1),
         ..EditState::default()
     };
-    apply_key_with_clipboard(&mut text2, &mut state2, non_primary('c'), &clipboard);
+    keys.apply(&mut text2, &mut state2, non_primary('c'));
     assert_eq!(
-        clipboard.text().unwrap(),
+        keys.clipboard.text().unwrap(),
         "CLIP",
         "non-primary must not copy"
     );
-    apply_key_with_clipboard(&mut text2, &mut state2, non_primary('v'), &clipboard);
+    keys.apply(&mut text2, &mut state2, non_primary('v'));
     // Option composes text on macOS, so `c` then `v` type characters; Alt alone types nothing elsewhere. Neither pastes "CLIP".
     let typed = if PLATFORM == Platform::Mac {
         "hcvo"
@@ -167,31 +167,21 @@ fn clipboard_shortcuts_apply_keypresses() {
     };
     assert_eq!(text2, typed, "non-primary must not paste");
 
-    let rejecting = internals::rejecting();
+    let rejecting = FieldKeys::new(internals::rejecting());
     let mut rejected_text = String::from("hello");
     let mut rejected_state = EditState {
         caret: 4,
         selection: Some(1),
         ..EditState::default()
     };
-    apply_key_with_clipboard(
-        &mut rejected_text,
-        &mut rejected_state,
-        primary('x'),
-        &rejecting,
-    );
+    rejecting.apply(&mut rejected_text, &mut rejected_state, primary('x'));
     assert_eq!(rejected_text, "hello");
     assert_eq!(rejected_state.caret, 4);
     assert_eq!(rejected_state.selection, Some(1));
     assert!(rejected_state.undo.is_empty());
 
     // A clipboard that cannot answer is not empty: the paste is dropped whole and the selection stays.
-    apply_key_with_clipboard(
-        &mut rejected_text,
-        &mut rejected_state,
-        primary('v'),
-        &rejecting,
-    );
+    rejecting.apply(&mut rejected_text, &mut rejected_state, primary('v'));
     assert_eq!(rejected_text, "hello");
     assert_eq!(rejected_state.caret, 4);
     assert_eq!(rejected_state.selection, Some(1));
@@ -219,16 +209,11 @@ fn paste_strips_newlines() {
     }
 
     // End-to-end via Cmd/Ctrl+V: a multi-line clipboard lands as one space-separated line.
-    let clipboard = Clipboard::memory();
-    clipboard.set_text("first\r\nsecond\nthird").unwrap();
+    let keys = FieldKeys::new(Clipboard::memory());
+    keys.clipboard.set_text("first\r\nsecond\nthird").unwrap();
     let mut text = String::new();
     let mut state = EditState::default();
-    apply_key_with_clipboard(
-        &mut text,
-        &mut state,
-        ctrl_press(Key::Char('v')),
-        &clipboard,
-    );
+    keys.apply(&mut text, &mut state, ctrl_press(Key::Char('v')));
     assert_eq!(text, "first second third");
     assert_eq!(state.caret, text.len());
 }
@@ -236,19 +221,18 @@ fn paste_strips_newlines() {
 /// `ctrl+c` etc. must not also insert the character.
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
-    let clipboard = Clipboard::memory();
-    clipboard.set_text("").unwrap();
+    let keys = FieldKeys::new(Clipboard::memory());
+    keys.clipboard.set_text("").unwrap();
 
     let mut text = String::from("ab");
     let mut state = EditState {
         caret: 2,
         ..EditState::default()
     };
-    apply_key_with_clipboard(
+    keys.apply(
         &mut text,
         &mut state,
         KeyPress::with(Key::Char('c'), Modifiers::CTRL),
-        &clipboard,
     );
     assert_eq!(text, "ab", "primary+c without a selection is a no-op");
     assert_eq!(state.caret, 2);

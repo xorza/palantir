@@ -1,6 +1,5 @@
 //! The commands one recorded frame lowers to.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -24,6 +23,7 @@ use crate::scene::layer::Layer;
 use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -31,7 +31,7 @@ use glam::{UVec2, Vec2};
 #[test]
 fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let gradient = RecordedGradient {
-        axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
+        axis: FillAxis::from_lanes([1.0, 0.0, 0.0, 1.0]),
         kind: FillKind::linear(Spread::Pad),
         ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
     };
@@ -227,7 +227,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 /// Both shadow kinds lower to their source rect and `(offset, σ, spread)` lanes.
 #[test]
 fn shadows_lower_to_their_source_and_geometry_lanes() {
-    use crate::Shadow;
+    use crate::primitives::paint::shadow::Shadow;
 
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::shape::Shape;
@@ -404,7 +404,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
 
 #[test]
 fn text_shape_carries_source_without_reconstructing_buffer() {
-    use crate::Text;
+    use crate::widgets::text::Text;
     fn body(ui: &mut Ui) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Text::new("hi").auto_id().show(ui);

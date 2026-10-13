@@ -87,7 +87,8 @@ impl TextRig {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
-            let mut ctx = GpuCtx::new(device, &self.lease.queue, &mut belt, &mut encoder);
+            let handles = self.lease.handles();
+            let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
             let interned_text = self.store.interned_text();
             for (index, runs) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {

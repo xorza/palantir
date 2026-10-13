@@ -8,14 +8,16 @@ use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::LineJoin;
 use crate::ui::Ui;
+use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::{Configure, Sizing, Vec2};
 use criterion::{Criterion, Throughput};
+use glam::Vec2;
 
 const PHYSICAL: glam::UVec2 = glam::UVec2::new(1024, 1024);
 const GRID: u32 = 64;
@@ -94,17 +96,30 @@ fn record_joins(ui: &mut Ui, phase: bool) {
     }
 }
 
-fn render(
-    gpu: &BenchGpu,
-    host: &mut OffscreenHost,
-    target: &BenchTarget,
-    workload: Workload,
-    phase: &mut bool,
-) {
-    *phase = !*phase;
-    let mut app = RecordApp::new(|ui| record(ui, workload, *phase));
-    host.frame(target.as_target(), 1.0, &mut app);
-    gpu.wait();
+/// A host, its target, and the toggle that keeps each frame repainting.
+#[derive(Debug)]
+struct Fixture {
+    host: OffscreenHost,
+    target: BenchTarget,
+    phase: bool,
+}
+
+impl Fixture {
+    fn new(gpu: &BenchGpu) -> Self {
+        Self {
+            host: gpu.plain_host(true),
+            target: gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL),
+            phase: false,
+        }
+    }
+
+    fn render(&mut self, gpu: &BenchGpu, workload: Workload) {
+        self.phase = !self.phase;
+        let phase = self.phase;
+        let mut app = RecordApp::new(|ui| record(ui, workload, phase));
+        self.host.frame(self.target.as_target(), 1.0, &mut app);
+        gpu.wait();
+    }
 }
 
 /// `atomic/curve_pipeline/gpu/<workload>`: the curve batch of one frame on the device, from its
@@ -118,14 +133,16 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
         group.throughput(Throughput::Elements(workload.instances()));
         group.bench_function(backend.case(workload.label()), |bencher| {
             let gpu = gpu();
-            let target = gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL);
-            let mut host = gpu.plain_host(true);
-            let mut phase = false;
+            let mut fixture = Fixture::new(gpu);
             // The timestamp readback lags a frame, so a few frames run before the first reads.
             let timed = (0..8).any(|_| {
-                render(gpu, &mut host, &target, workload, &mut phase);
+                fixture.render(gpu, workload);
                 gpu.poll();
-                host.gpu_pass_stats().last_kind(BatchKind::Curve).is_some()
+                fixture
+                    .host
+                    .gpu_pass_stats()
+                    .last_kind(BatchKind::Curve)
+                    .is_some()
             });
             assert!(
                 timed,
@@ -134,9 +151,11 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
             bencher.iter_custom(|iters| {
                 (0..iters)
                     .map(|_| {
-                        render(gpu, &mut host, &target, workload, &mut phase);
+                        fixture.render(gpu, workload);
                         gpu.poll();
-                        host.gpu_pass_stats()
+                        fixture
+                            .host
+                            .gpu_pass_stats()
                             .last_kind(BatchKind::Curve)
                             .expect("a curve batch timestamp every frame once one arrived")
                     })

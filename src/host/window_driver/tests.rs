@@ -485,13 +485,15 @@ mod record_store_tests {
 
     use crate::shape::Shape;
 
+    use crate::display::Display;
     use crate::ui::Ui;
     use crate::ui::frame_report::FrameProcessing;
     use crate::ui::resources::UiResources;
+    use crate::widget_core::configure::Configure;
     use crate::widgets::panel::Panel;
     use crate::widgets::spinner::Spinner;
     use crate::widgets::text::Text;
-    use crate::{Configure, Display, WindowToken};
+    use crate::window::window_token::WindowToken;
 
     #[derive(Debug, PartialEq)]
     struct RecordPayloadSnapshot {
@@ -529,31 +531,38 @@ mod record_store_tests {
         }
     }
 
-    fn record_scene(
-        ui: &mut Ui,
-        mesh: &Mesh,
-        points: &[Vec2],
-        colors: &[RgbaF32],
-        label: &str,
+    /// One window's content: a mesh, a per-point polyline, a `label` and a spinner, under `id`.
+    #[derive(Debug)]
+    struct Scene<'a> {
+        mesh: &'a Mesh,
+        points: &'a [Vec2],
+        colors: &'a [RgbaF32],
+        label: &'a str,
         id: &'static str,
-    ) {
-        Panel::zstack()
-            .id(WidgetId::from_hash(id))
-            .size(96.0)
-            .show(ui, |ui| {
-                ui.add_shape(Shape::mesh(mesh));
-                ui.add_shape(
-                    Shape::polyline(points, Stroke::new(RgbaF32::WHITE, 3.0)).per_point(colors),
-                );
-                let label = ui.intern(label);
-                Text::new(label)
-                    .id(WidgetId::from_hash((id, "text")))
-                    .show(ui);
-                Spinner::new()
-                    .id(WidgetId::from_hash((id, "spinner")))
-                    .diameter(92.0)
-                    .show(ui);
-            });
+    }
+
+    impl Scene<'_> {
+        fn record(&self, ui: &mut Ui) {
+            let id = self.id;
+            Panel::zstack()
+                .id(WidgetId::from_hash(id))
+                .size(96.0)
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::mesh(self.mesh));
+                    ui.add_shape(
+                        Shape::polyline(self.points, Stroke::new(RgbaF32::WHITE, 3.0))
+                            .per_point(self.colors),
+                    );
+                    let label = ui.intern(self.label);
+                    Text::new(label)
+                        .id(WidgetId::from_hash((id, "text")))
+                        .show(ui);
+                    Spinner::new()
+                        .id(WidgetId::from_hash((id, "spinner")))
+                        .diameter(92.0)
+                        .show(ui);
+                });
+        }
     }
 
     #[test]
@@ -645,9 +654,14 @@ mod record_store_tests {
             RgbaF32::WHITE,
         ];
 
-        let mut app_a = RecordApp::new(|ui| {
-            record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
-        });
+        let scene_a = Scene {
+            mesh: &mesh_a,
+            points: &points_a,
+            colors: &colors_a,
+            label: "retained A",
+            id: "window-a",
+        };
+        let mut app_a = RecordApp::new(|ui| scene_a.record(ui));
         let _ = window_a.cpu_frame(&mut frontend, display, &mut app_a);
         window_a.output_valid = true;
         let retained = snapshot(&window_a);
@@ -655,16 +669,14 @@ mod record_store_tests {
         assert_eq!(retained.polyline_points.len(), 4);
         assert_eq!(retained.text, "retained A");
 
-        let mut app_b = RecordApp::new(|ui| {
-            record_scene(
-                ui,
-                &mesh_b,
-                &points_b,
-                &colors_b,
-                "window B has a much longer label",
-                "window-b",
-            );
-        });
+        let scene_b = Scene {
+            mesh: &mesh_b,
+            points: &points_b,
+            colors: &colors_b,
+            label: "window B has a much longer label",
+            id: "window-b",
+        };
+        let mut app_b = RecordApp::new(|ui| scene_b.record(ui));
         let _ = window_b.cpu_frame(&mut frontend, display, &mut app_b);
         window_b.output_valid = true;
         assert_eq!(snapshot(&window_a), retained);
@@ -735,10 +747,12 @@ mod cutout_census_tests {
     use glam::UVec2;
 
     use crate::damage::Damage;
+    use crate::display::Display;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::host::window_driver::{PresentPath, PresentStrategy, WindowDriver};
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::background::Background;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
@@ -746,9 +760,10 @@ mod cutout_census_tests {
     use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
     use crate::shape::Shape;
     use crate::ui::resources::UiResources;
+    use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
-    use crate::{Configure, Display, Sizing, WindowToken};
+    use crate::window::window_token::WindowToken;
 
     /// Cards whose shadows share the `(8, 4)` key: 3 shade it and 4 pay for its
     /// table (see the damage oracle's `shadows`). A frame repainting only a tick

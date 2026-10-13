@@ -1,7 +1,6 @@
 //! Thumb size and offset against hand-computed cases, and what a travelling
 //! thumb keeps.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::rect::Rect;
@@ -11,6 +10,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
@@ -332,10 +332,8 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .unwrap()
         .size
         .h;
-    assert!(v2 < v1, "thumb should shrink under zoom (v1={v1}, v2={v2})");
-    let ratio = v2 / v1;
-    assert!(
-        (0.45..=0.55).contains(&ratio),
-        "thumb shrink ratio off; v1={v1} v2={v2} ratio={ratio}"
-    );
+    // The 200 px viewport shows half the 400 px content at zoom 1, a quarter
+    // of the 800 px it zooms to at 2: the thumb halves.
+    assert_eq!(v1, 88.0);
+    assert_eq!(v2, v1 / 2.0, "thumb shrink under zoom");
 }

@@ -13,7 +13,7 @@ use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::layout::layout_mode::ScrollbarsDefId;
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
@@ -64,15 +64,10 @@ impl LayoutDriver for Scrollbars {
         let bar_rects = |axis: Axis| {
             let bar = def.thumb(axis, inner, content)?;
             // The bar sits in the far-edge strip of the outer extent that `reserve` set aside.
-            let cross_pos = axis.cross(inner) - def.bar_thickness;
+            let cross = AxisExtent::new(axis.cross(inner) - def.bar_thickness, def.bar_thickness);
             Some(BarRects {
-                track: axis.compose_rect(0.0, cross_pos, bar.track, def.bar_thickness),
-                thumb: axis.compose_rect(
-                    bar.thumb_offset,
-                    cross_pos,
-                    bar.thumb_size,
-                    def.bar_thickness,
-                ),
+                track: axis.compose_rect(AxisExtent::new(0.0, bar.track), cross),
+                thumb: axis.compose_rect(AxisExtent::new(bar.thumb_offset, bar.thumb_size), cross),
             })
         };
         let vertical = bar_rects(Axis::Y);

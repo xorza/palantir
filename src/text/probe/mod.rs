@@ -9,6 +9,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::key::TextShapeKey;
+use crate::text::run::TextRun;
 use crate::text::shaper::ShaperInner;
 use std::cell::RefMut;
 use std::num::NonZeroU64;
@@ -36,19 +37,24 @@ pub struct TextProbe<'a> {
     inner: RefMut<'a, ShaperInner>,
 }
 
+/// What a probe's run shaped to: its extent and the key of the buffer behind it.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ProbedShape {
+    pub(super) size: Size,
+    pub(super) key: Option<TextShapeKey>,
+}
+
 impl<'a> TextProbe<'a> {
     pub(super) const fn new(
-        size: Size,
-        text: &'a str,
-        key: Option<TextShapeKey>,
-        halign: HAlign,
+        run: &TextRun<'a>,
+        shape: ProbedShape,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
         Self {
-            size,
-            text,
-            key,
-            halign,
+            size: shape.size,
+            text: run.text,
+            key: shape.key,
+            halign: run.align.halign(),
             inner,
         }
     }

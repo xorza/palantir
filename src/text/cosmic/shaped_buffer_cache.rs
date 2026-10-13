@@ -48,6 +48,15 @@ pub(crate) const PROBATION_KEEP_FRAMES: u64 = 4;
 /// The longest a rendered run waits to be retired: its keep plus the stagger.
 const KEEP_FRAMES: u64 = RENDERED_RUN_KEEP_FRAMES + RENDERED_RUN_KEEP_SPREAD_MASK;
 
+/// A freshly shaped buffer, as [`ShapedBufferCache::insert`] files it; the
+/// fields mean what [`CacheEntry`]'s do.
+#[derive(Debug)]
+pub(super) struct ShapedBuffer {
+    pub(super) buffer: Buffer,
+    pub(super) extent: CachedExtent,
+    pub(super) left: f32,
+}
+
 /// A resident shaped buffer with the x its glyph block starts at.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedRun<'a> {
@@ -129,14 +138,13 @@ impl ShapedBufferCache {
             .expect("truncation requires the cached unbounded shape")
     }
 
-    /// Store a freshly shaped buffer, probationary until a [`Self::hit`] promotes it.
-    pub(super) fn insert(
-        &mut self,
-        key: TextShapeKey,
-        buffer: Buffer,
-        extent: CachedExtent,
-        left: f32,
-    ) {
+    /// File `shaped` under `key`, probationary until a [`Self::hit`] promotes it.
+    pub(super) fn insert(&mut self, key: TextShapeKey, shaped: ShapedBuffer) {
+        let ShapedBuffer {
+            buffer,
+            extent,
+            left,
+        } = shaped;
         // Counted here, not per `shape_until_scroll`: one cached run is one tally even if
         // the truncation back-off reshapes several times. The ellipsis probe isn't counted.
         self.counters.shapes.bump();

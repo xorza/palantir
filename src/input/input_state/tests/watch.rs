@@ -3,9 +3,8 @@
 use crate::input::input_state::tests::{Stream, sample_layers};
 use crate::primitives::identity::widget_id::WidgetId;
 
-use crate::KeyFilter;
-use crate::Ui;
 use crate::input::input_event::InputEvent;
+use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -19,6 +18,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::modal::Modal;

@@ -7,6 +7,7 @@
 //!
 //! Built right after the main encoder; dropping it releases the borrows.
 
+use crate::gpu::device::gpu::Gpu;
 use wgpu::util;
 #[derive(Debug)]
 pub(crate) struct GpuCtx<'a> {
@@ -18,14 +19,13 @@ pub(crate) struct GpuCtx<'a> {
 
 impl<'a> GpuCtx<'a> {
     pub(crate) const fn new(
-        device: &'a wgpu::Device,
-        queue: &'a wgpu::Queue,
+        gpu: &'a Gpu,
         belt: &'a mut util::StagingBelt,
         encoder: &'a mut wgpu::CommandEncoder,
     ) -> Self {
         Self {
-            device,
-            queue,
+            device: &gpu.device,
+            queue: &gpu.queue,
             belt,
             encoder,
         }

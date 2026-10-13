@@ -1,12 +1,12 @@
 //! When a bar exists at all, and what retires it.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;

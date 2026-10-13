@@ -12,7 +12,7 @@ use std::time::Duration;
 use glam::UVec2;
 use palantir::golden::image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
-use palantir::internals::{HeadlessTestGpuLease, headless_test_gpu};
+use palantir::internals::{HeadlessTestGpuLease, TargetSpec, headless_test_gpu};
 use palantir::{
     DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RenderTarget, RgbaF32,
     TextShaper, Theme, Ui,
@@ -126,12 +126,12 @@ impl Harness {
         let physical = self
             .physical
             .expect("set the surface with Harness::size before a frame");
-        let target = self.gpu.target_with(
-            "palantir.visual_test.target",
-            physical,
-            self.format,
-            self.target_usages,
-        );
+        let target = self.gpu.target_with(TargetSpec {
+            label: "palantir.visual_test.target",
+            size: physical,
+            format: self.format,
+            usage: self.target_usages,
+        });
 
         self.host.ui().theme_mut().window_clear = self.clear;
         let report = self.host.frame(

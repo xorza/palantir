@@ -196,46 +196,83 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a fixture builder that mirrors the polyline command's own parameter list"
-)]
-pub(super) fn polyline_cmd(
-    b: &mut PaintCapture,
-    store: &mut RecordStore,
-    points: &[Vec2],
-    colors: &[RgbaF32],
-    mode: ColorMode,
+/// A polyline command a composer test records: white, one colour, butt-capped
+/// and mitred unless set.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct TestPolyline<'a> {
+    points: &'a [Vec2],
     width: f32,
+    colors: &'a [RgbaF32],
+    mode: ColorMode,
     cap: LineCap,
     join: LineJoin,
-) {
-    let p_start = store.polyline_points.len() as u32;
-    store.polyline_points.extend_from_slice(points);
-    let c_start = store.polyline_colors.len() as u32;
-    store
-        .polyline_colors
-        .extend(colors.iter().map(|&c| RgbaF16::from(c)));
-    let mut lo = points[0];
-    let mut hi = points[0];
-    for &p in points {
-        lo = lo.min(p);
-        hi = hi.max(p);
-    }
-    b.draw_polyline(
-        DrawPolylinePayload {
-            alpha: 1.0,
-            bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
-            origin: Vec2::ZERO,
+}
+
+impl<'a> TestPolyline<'a> {
+    pub(super) const fn new(points: &'a [Vec2], width: f32) -> Self {
+        Self {
+            points,
             width,
-            points: Span::new(p_start, points.len() as u32),
-            colors: Span::new(c_start, colors.len() as u32),
-            color_mode: mode,
+            colors: &[RgbaF32::WHITE],
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+        }
+    }
+
+    pub(super) const fn colors(self, colors: &'a [RgbaF32], mode: ColorMode) -> Self {
+        Self {
+            colors,
+            mode,
+            ..self
+        }
+    }
+
+    pub(super) const fn cap(self, cap: LineCap) -> Self {
+        Self { cap, ..self }
+    }
+
+    pub(super) const fn join(self, join: LineJoin) -> Self {
+        Self { join, ..self }
+    }
+
+    /// Lowers the points and colours into `store` and records the draw onto `b`.
+    pub(super) fn record(self, b: &mut PaintCapture, store: &mut RecordStore) {
+        let Self {
+            points,
+            width,
+            colors,
+            mode,
             cap,
             join,
-        },
-        1.0,
-    );
+        } = self;
+        let p_start = store.polyline_points.len() as u32;
+        store.polyline_points.extend_from_slice(points);
+        let c_start = store.polyline_colors.len() as u32;
+        store
+            .polyline_colors
+            .extend(colors.iter().map(|&c| RgbaF16::from(c)));
+        let mut lo = points[0];
+        let mut hi = points[0];
+        for &p in points {
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        b.draw_polyline(
+            DrawPolylinePayload {
+                alpha: 1.0,
+                bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
+                origin: Vec2::ZERO,
+                width,
+                points: Span::new(p_start, points.len() as u32),
+                colors: Span::new(c_start, colors.len() as u32),
+                color_mode: mode,
+                cap,
+                join,
+            },
+            1.0,
+        );
+    }
 }
 
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {

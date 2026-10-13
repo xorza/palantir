@@ -1,6 +1,5 @@
 //! The frame a damage test drives, and the colours it paints with.
 
-use crate::Ui;
 use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
@@ -9,6 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;

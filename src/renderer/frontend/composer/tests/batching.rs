@@ -14,8 +14,8 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, inked_text, mesh, params,
-    params_unsnapped, polyline_cmd, run, text,
+    TestPolyline, clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, inked_text, mesh,
+    params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -487,28 +487,12 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     let buf = run(
         |b, store| {
             text(b, Rect::new(0.0, 0.0, 300.0, 20.0));
-            polyline_cmd(
-                b,
-                store,
-                &[Vec2::new(200.0, 10.0), Vec2::new(300.0, 10.0)],
-                &[RgbaF32::WHITE],
-                ColorMode::Single,
-                1.0,
-                LineCap::Butt,
-                LineJoin::Miter,
-            );
+            TestPolyline::new(&[Vec2::new(200.0, 10.0), Vec2::new(300.0, 10.0)], 1.0)
+                .record(b, store);
             draw(b, Rect::new(0.0, 0.0, 100.0, 60.0));
             text(b, Rect::new(0.0, 100.0, 300.0, 20.0));
-            polyline_cmd(
-                b,
-                store,
-                &[Vec2::new(200.0, 110.0), Vec2::new(300.0, 110.0)],
-                &[RgbaF32::WHITE],
-                ColorMode::Single,
-                1.0,
-                LineCap::Butt,
-                LineJoin::Miter,
-            );
+            TestPolyline::new(&[Vec2::new(200.0, 110.0), Vec2::new(300.0, 110.0)], 1.0)
+                .record(b, store);
             draw(b, Rect::new(0.0, 100.0, 100.0, 60.0));
         },
         &params(1.0, UVec2::new(600, 600)),

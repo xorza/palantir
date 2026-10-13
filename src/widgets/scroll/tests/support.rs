@@ -1,11 +1,11 @@
 //! The scroll panel a test drives, and what its offsets are read back through.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::endpoint::Endpoint;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;

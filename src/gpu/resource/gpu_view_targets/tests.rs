@@ -7,7 +7,7 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
-use crate::renderer::render_owner_id::RenderOwnerId;
+use crate::renderer::render_owner_id::RenderOwners;
 use crate::text::shaper::TextShaper;
 use glam::UVec2;
 use std::cell::{Cell, RefCell};
@@ -34,7 +34,7 @@ fn an_unchanged_stamp_skips_the_paint() {
     let paints = Rc::new(Cell::new(0));
     let paint = GpuPaintRef(Rc::new(RefCell::new(CountingPaint(Rc::clone(&paints)))));
     let id = TextureId::reserve();
-    let owner = RenderOwnerId::reserve();
+    let owner = RenderOwners::default().reserve();
     let shaper = TextShaper::new();
     let draw = RenderTargetDraw {
         id,
@@ -86,7 +86,8 @@ fn an_unchanged_stamp_skips_the_paint() {
     for (at, (draw, painted)) in submits.into_iter().enumerate() {
         let before = paints.get();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let mut ctx = GpuCtx::new(device, &gpu.queue, &mut belt, &mut encoder);
+        let handles = gpu.handles();
+        let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
         targets.paint_gpu_views(
             &mut ctx,
             FrameViews {

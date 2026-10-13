@@ -66,38 +66,48 @@ fn churn_rung(i: u32) -> f32 {
     )
 }
 
-/// One single-line run of `text` at `origin`, shaped into `shaper` under the key it stamps.
-fn make_run(
-    store: &mut RecordStore,
-    shaper: &TextShaper,
-    text: &str,
+/// One single-line run of `text` at `origin`, in `grey`.
+#[derive(Clone, Copy, Debug)]
+struct BenchRun<'a> {
+    text: &'a str,
     font_size: f32,
     origin: Vec2,
     grey: f32,
-) -> TextDrawRow {
-    let interned = store.intern(text);
-    let recorded = store.record_text(interned);
-    // Warm through the run so the stamped key is the one the shaped buffer landed under (no width, non-binding policy: the unbounded root).
-    let run = TextRun {
-        text,
-        font: GlyphFont {
-            line_height: font_size * 1.2,
-            ..GlyphFont::new(font_size)
-        },
-        wrap: TextWrap::SingleLine,
-        align: Align::default(),
-        max_width: None,
-    };
-    let key = run
-        .unbounded_key()
-        .expect("the bench fixture names a usable face");
-    shaper.layout(&run);
-    TextDrawRow {
-        text: ShapedTextRef::new(key, &recorded),
-        origin,
-        bounds: URect::new(0, 0, PHYSICAL.x, PHYSICAL.y),
-        color: RgbaF16::new(grey, grey, grey, 1.0),
-        scale: 1.0,
+}
+
+impl BenchRun<'_> {
+    /// The run's draw row, shaped into `shaper` under the key it stamps.
+    fn row(self, store: &mut RecordStore, shaper: &TextShaper) -> TextDrawRow {
+        let Self {
+            text,
+            font_size,
+            origin,
+            grey,
+        } = self;
+        let interned = store.intern(text);
+        let recorded = store.record_text(interned);
+        // Warm through the run so the stamped key is the one the shaped buffer landed under (no width, non-binding policy: the unbounded root).
+        let run = TextRun {
+            text,
+            font: GlyphFont {
+                line_height: font_size * 1.2,
+                ..GlyphFont::new(font_size)
+            },
+            wrap: TextWrap::SingleLine,
+            align: Align::default(),
+            max_width: None,
+        };
+        let key = run
+            .unbounded_key()
+            .expect("the bench fixture names a usable face");
+        shaper.layout(&run);
+        TextDrawRow {
+            text: ShapedTextRef::new(key, &recorded),
+            origin,
+            bounds: URect::new(0, 0, PHYSICAL.x, PHYSICAL.y),
+            color: RgbaF16::new(grey, grey, grey, 1.0),
+            scale: 1.0,
+        }
     }
 }
 
@@ -113,7 +123,13 @@ fn node_rows(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRow> {
     for row in 0..ROWS {
         let y = 16.0 + row as f32 * 18.0;
         for (text, size, x, grey) in COLUMNS {
-            runs.push(make_run(store, shaper, text, size, Vec2::new(x, y), grey));
+            let run = BenchRun {
+                text,
+                font_size: size,
+                origin: Vec2::new(x, y),
+                grey,
+            };
+            runs.push(run.row(store, shaper));
         }
     }
     runs
@@ -125,14 +141,13 @@ fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRo
         .map(|i| {
             let (row, column) = (i as u32 % ROWS, i as u32 / ROWS);
             let origin = Vec2::new(16.0 + column as f32 * 80.0, 16.0 + row as f32 * 18.0);
-            make_run(
-                store,
-                shaper,
-                &format!("field {i}: f32"),
-                11.0,
+            BenchRun {
+                text: &format!("field {i}: f32"),
+                font_size: 11.0,
                 origin,
-                VALUE,
-            )
+                grey: VALUE,
+            }
+            .row(store, shaper)
         })
         .collect()
 }
@@ -189,7 +204,7 @@ impl Fixture {
                 label: Some("palantir.text_atlas.encoder"),
             });
         {
-            let mut ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
+            let mut ctx = GpuCtx::new(&g.gpu, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
             for (index, batch) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {

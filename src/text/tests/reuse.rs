@@ -112,28 +112,28 @@ fn reuse_rows_outlive_unused_frames_and_go_with_their_widget() {
     assert!(text.has_entry(b, 0), "unrelated hot row remains");
 }
 
-/// A run driven through `TextSystem` as a frame does; returns the bounded key the renderer would replay.
-fn drive(text: &mut TextSystem, slot: TextRunSlot, body: &str, width: Option<f32>) -> TextShapeKey {
-    let base = ui_shape(14.0).halign(HAlign::Left);
-    let shape = match width {
-        Some(w) => base.width(w),
-        None => base,
-    };
-    text.shape_run(slot, body, shape, TextWrap::Wrap)
-        .buffer_key()
+/// The reuse fixture's runs, driven through `TextSystem` as a frame does.
+trait DriveRuns {
+    /// `body` at `width`, shaped as layout shapes it; returns the bounded key the renderer would replay.
+    fn drive(&mut self, slot: TextRunSlot, body: &str, width: f32) -> TextShapeKey;
+
+    /// [`Self::drive`] plus the encoder's restore on an encoded-cache miss, the only promotion onto the protected window; a layout-only fixture would report a bounded cache either way.
+    fn drive_visible(&mut self, slot: TextRunSlot, body: &str, width: f32) -> TextShapeKey;
 }
 
-/// [`drive`] plus the encoder's restore on an encoded-cache miss, the only promotion onto the protected window; a layout-only fixture would report a bounded cache either way.
-fn drive_visible(
-    text: &mut TextSystem,
-    slot: TextRunSlot,
-    body: &str,
-    width: Option<f32>,
-) -> TextShapeKey {
-    let key = drive(text, slot, body, width);
-    text.shaper()
-        .render_ensure(TextShapeRequest::for_key(body, key).unwrap());
-    key
+impl DriveRuns for TextSystem {
+    fn drive(&mut self, slot: TextRunSlot, body: &str, width: f32) -> TextShapeKey {
+        let shape = ui_shape(14.0).halign(HAlign::Left).width(width);
+        self.shape_run(slot, body, shape, TextWrap::Wrap)
+            .buffer_key()
+    }
+
+    fn drive_visible(&mut self, slot: TextRunSlot, body: &str, width: f32) -> TextShapeKey {
+        let key = self.drive(slot, body, width);
+        self.shaper()
+            .render_ensure(TextShapeRequest::for_key(body, key).unwrap());
+        key
+    }
 }
 
 /// One frame boundary as production drives it: sweep rows of whatever left the tree, then tick the shared clock (the caller's job, as in the window runtime).
@@ -169,7 +169,7 @@ fn resize_drag_retains_only_the_probation_window() {
     for frame in 0..FRAMES {
         let width = 120.0 + frame as f32 * 3.0;
         for (s, body) in slots.iter().zip(&bodies) {
-            drive_visible(&mut text, *s, body, Some(width));
+            text.drive_visible(*s, body, width);
         }
         frame_end(&mut text);
     }
@@ -243,20 +243,10 @@ fn a_removed_widget_loses_all_its_rows_and_no_others() {
     let gone = WidgetId::from_hash("gone");
     let kept = WidgetId::from_hash("kept");
     for i in 0..3 {
-        drive(
-            &mut text,
-            slot_at(gone, i),
-            &format!("gone {i}"),
-            Some(200.0),
-        );
+        text.drive(slot_at(gone, i), &format!("gone {i}"), 200.0);
     }
     for i in 0..2 {
-        drive(
-            &mut text,
-            slot_at(kept, i),
-            &format!("kept {i}"),
-            Some(200.0),
-        );
+        text.drive(slot_at(kept, i), &format!("kept {i}"), 200.0);
     }
     assert_eq!(text.entry_count(), 5);
 
@@ -275,7 +265,7 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
     let keys: Vec<TextShapeKey> = (0..4)
         .map(|i| {
             let body = format!("row {i}");
-            drive_visible(&mut text, slot_at(w, i), &body, Some(200.0))
+            text.drive_visible(slot_at(w, i), &body, 200.0)
         })
         .collect();
     assert_eq!(text.entry_count(), 4);
@@ -312,7 +302,7 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
 fn scrolled_away_run_keeps_the_protected_window() {
     let mut text = TextSystem::cosmic();
     let wid = WidgetId::from_hash("scrolled row");
-    let key = drive_visible(&mut text, slot(wid), "row content", Some(200.0));
+    let key = text.drive_visible(slot(wid), "row content", 200.0);
     frame_end(&mut text);
 
     frame_end_removing(&mut text, &WidgetIdSet::from_iter([wid]));
@@ -324,7 +314,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
 
     // Back in view: the bounded buffer is still resident, so only the unbounded root reshapes (the reuse row caches its value, not a buffer).
     let before = text.shaper().cache_counts();
-    let again = drive(&mut text, slot(wid), "row content", Some(200.0));
+    let again = text.drive(slot(wid), "row content", 200.0);
     assert_eq!(again, key);
     assert_eq!(
         (text.shaper().cache_counts() - before).shapes,
@@ -341,10 +331,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
         "premise: the window lapsed"
     );
     let before = text.shaper().cache_counts();
-    assert_eq!(
-        drive_visible(&mut text, slot(wid), "row content", Some(200.0)),
-        key
-    );
+    assert_eq!(text.drive_visible(slot(wid), "row content", 200.0), key);
     assert_eq!(
         (text.shaper().cache_counts() - before).shapes,
         1,
@@ -360,14 +347,14 @@ fn superseded_key_still_hits_inside_the_probation_window() {
     let mut text = TextSystem::cosmic();
     let s = slot(WidgetId::from_hash("oscillating"));
 
-    let narrow = drive_visible(&mut text, s, "alternating label", Some(140.0));
+    let narrow = text.drive_visible(s, "alternating label", 140.0);
     frame_end(&mut text);
-    let wide = drive_visible(&mut text, s, "alternating label", Some(260.0));
+    let wide = text.drive_visible(s, "alternating label", 260.0);
     frame_end(&mut text);
     assert_ne!(narrow, wide);
 
     let before = text.shaper().cache_counts();
-    let returned = drive(&mut text, s, "alternating label", Some(140.0));
+    let returned = text.drive(s, "alternating label", 140.0);
     let counts = text.shaper().cache_counts() - before;
     assert_eq!(returned, narrow);
     assert_eq!(
@@ -389,14 +376,14 @@ fn steady_state_frames_neither_shape_nor_supersede() {
         .collect();
 
     for s in &slots {
-        drive(&mut text, *s, "unchanging label", Some(180.0));
+        text.drive(*s, "unchanging label", 180.0);
     }
     frame_end(&mut text);
 
     let before = text.shaper().cache_counts();
     for _ in 0..20 {
         for s in &slots {
-            drive(&mut text, *s, "unchanging label", Some(180.0));
+            text.drive(*s, "unchanging label", 180.0);
         }
         frame_end(&mut text);
     }
@@ -412,11 +399,11 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
     let mut text = TextSystem::cosmic();
     let s = slot(WidgetId::from_hash("editor"));
 
-    drive_visible(&mut text, s, "hell", Some(200.0));
+    text.drive_visible(s, "hell", 200.0);
     frame_end(&mut text);
 
     let before = text.shaper().cache_counts();
-    drive_visible(&mut text, s, "hello", Some(200.0));
+    text.drive_visible(s, "hello", 200.0);
     let counts = text.shaper().cache_counts() - before;
     assert_eq!(
         counts.supersedes, 2,
@@ -424,15 +411,17 @@ fn typing_supersedes_both_the_root_and_its_bounded_resolve() {
     );
 
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
-    let live = drive(&mut text, s, "hello", Some(200.0));
+    let live = text.drive(s, "hello", 200.0);
     assert!(
         text.shaper().has_cosmic_buffer(live),
         "the live run's own buffer must be resident after its reshape",
     );
-    assert!(
-        text.shaper().cosmic_cache_len() <= 2,
-        "stale keystroke buffers outlived the probation window: {} resident",
+    // The live bounded resolve alone: `drive_visible` promoted it, and both
+    // `hell` buffers and the `hello` root aged out on probation.
+    assert_eq!(
         text.shaper().cosmic_cache_len(),
+        1,
+        "stale keystroke buffers outlived the probation window",
     );
 }
 
@@ -445,12 +434,12 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
         slot(WidgetId::from_hash("cell b")),
     );
 
-    let shared = drive_visible(&mut text, a, "—", Some(60.0));
-    let same = drive_visible(&mut text, b, "—", Some(60.0));
+    let shared = text.drive_visible(a, "—", 60.0);
+    let same = text.drive_visible(b, "—", 60.0);
     assert_eq!(shared, same, "identical runs must share one key");
     frame_end(&mut text);
 
-    drive_visible(&mut text, a, "12.5", Some(60.0));
+    text.drive_visible(a, "12.5", 60.0);
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     assert!(
         !text.shaper().has_cosmic_buffer(shared),
@@ -459,7 +448,7 @@ fn shared_key_demotes_early_and_costs_at_most_one_reshape() {
 
     // Bounded at one reshape: `b` recovers on its next ask.
     let before = text.shaper().cache_counts();
-    let recovered = drive_visible(&mut text, b, "—", Some(60.0));
+    let recovered = text.drive_visible(b, "—", 60.0);
     assert_eq!(recovered, shared);
     assert_eq!(
         (text.shaper().cache_counts() - before).shapes,

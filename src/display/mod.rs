@@ -10,10 +10,11 @@
 //! so nothing divides by a value the platform never promised; the user factor
 //! carries its range in its type.
 
+pub(crate) mod frame_stamp;
 pub(crate) mod user_scale;
 
 use crate::display::user_scale::UserScale;
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
@@ -88,6 +89,15 @@ impl Default for Display {
 }
 
 impl Display {
+    /// Where the composer lands painted geometry edges, per [`Self::pixel_snap`].
+    pub(crate) const fn edge_rounding(&self) -> EdgeRounding {
+        if self.pixel_snap {
+            EdgeRounding::WholePixels
+        } else {
+            EdgeRounding::Exact
+        }
+    }
+
     /// Build from physical size and system scale, with no user scale,
     /// snapping on and no refresh rate.
     ///

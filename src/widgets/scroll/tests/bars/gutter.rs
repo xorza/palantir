@@ -1,10 +1,10 @@
 //! The width a bar reserves from the viewport, and the padding it lands in.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -133,7 +133,7 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
 /// `BarMode::Overlay` reserves no gutter; the bar paints over the content's far edge.
 #[test]
 fn overlay_mode_skips_gutter_reservation() {
-    use crate::BarMode;
+    use crate::widgets::scroll::bars::BarMode;
     let surface = UVec2::new(400, 600);
     let mut h = UiHarness::new(surface);
     let scroll_id = WidgetId::from_hash("scroll");

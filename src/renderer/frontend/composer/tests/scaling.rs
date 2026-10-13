@@ -20,6 +20,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::{RectQuad, TriangleQu
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
+use crate::shape::stroke_bounds::StrokeJoints;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
@@ -30,7 +31,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
     struct Case {
         scale: f32,
         cap: LineCap,
-        join: Option<LineJoin>,
+        joints: StrokeJoints,
         expected: URect,
     }
 
@@ -42,33 +43,33 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
         Case {
             scale: 0.5,
             cap: LineCap::Butt,
-            join: None,
+            joints: StrokeJoints::Unjoined,
             expected: URect::new(8, 18, 20, 12),
         },
         Case {
             scale: 1.0,
             cap: LineCap::Butt,
-            join: None,
+            joints: StrokeJoints::Unjoined,
             expected: URect::new(17, 37, 38, 23),
         },
         Case {
             scale: 2.0,
             cap: LineCap::Butt,
-            join: None,
+            joints: StrokeJoints::Unjoined,
             expected: URect::new(35, 75, 74, 44),
         },
         // At 1×, Square pad = 3.5√2 ≈ 4.9498.
         Case {
             scale: 1.0,
             cap: LineCap::Square,
-            join: None,
+            joints: StrokeJoints::Unjoined,
             expected: URect::new(16, 36, 40, 25),
         },
         // At 1×, Miter pad = 3.5·4 = 14.
         Case {
             scale: 1.0,
             cap: LineCap::Butt,
-            join: Some(LineJoin::Miter),
+            joints: StrokeJoints::Joined(LineJoin::Miter),
             expected: URect::new(7, 27, 58, 43),
         },
     ];
@@ -81,7 +82,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
             origin: Vec2::new(2.0, 4.0),
             width_phys: 4.0 * 1.5 * case.scale,
             cap: case.cap,
-            join: case.join,
+            joints: case.joints,
             display: params(case.scale, UVec2::new(200, 200)),
         }
         .urect();

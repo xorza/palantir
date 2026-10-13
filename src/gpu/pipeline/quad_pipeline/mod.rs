@@ -11,7 +11,7 @@ use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
-use crate::gpu::pipeline::quad_pipeline::runs::Runs;
+use crate::gpu::pipeline::quad_pipeline::runs::{RunKeys, Runs};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
@@ -332,13 +332,17 @@ impl QuadPipeline {
 
     /// The runs of `instances`, a shadow step's span, that draw through one [`ShadowEntry`], in paint order.
     pub(crate) fn shadow_runs(&self, instances: Span) -> Runs<'_, ShadowEntry> {
-        let entries = self.shadow_grid.then(|| self.cutouts.entries());
-        Runs::new(instances, entries, ShadowEntry::General)
+        let keys = if self.shadow_grid {
+            RunKeys::PerInstance(self.cutouts.entries())
+        } else {
+            RunKeys::Uniform(ShadowEntry::General)
+        };
+        Runs::new(instances, keys)
     }
 
     /// The runs of `instances`, a quad step's span, that each draw through one [`QuadForm`], in paint order.
     pub(crate) fn quad_runs(&self, instances: Span) -> Runs<'_, QuadForm> {
-        Runs::new(instances, Some(&self.forms), QuadForm::Solid)
+        Runs::new(instances, RunKeys::PerInstance(&self.forms))
     }
 
     /// [`Self::draw`] for shadows from [`Self::bind_shadows`]: each instance is the eight cells around the hole, two triangles each.
