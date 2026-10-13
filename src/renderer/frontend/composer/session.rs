@@ -51,6 +51,7 @@ use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::record::ColorMode;
+use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text::TEXT_SCALE_STEP;
 use glam::{U16Vec2, UVec2, Vec2};
 use std::num::NonZeroI64;
@@ -147,7 +148,10 @@ impl ComposeSession<'_> {
     /// once, for cull and instance alike.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
-        let phys = world.scaled_by(self.out.display.scale_factor(), self.out.display.pixel_snap);
+        let phys = world.scaled_by(
+            self.out.display.scale_factor(),
+            self.out.display.edge_rounding(),
+        );
         ScaledRect::from_phys(phys, self.out.display.physical)
     }
 
@@ -176,11 +180,11 @@ impl Drop for ComposeSession<'_> {
 impl PaintSink for ComposeSession<'_> {
     fn push_clip(&mut self, p: PushClipPayload) {
         let scale = self.out.display.scale_factor();
-        let snap = self.out.display.pixel_snap;
+        let edges = self.out.display.edge_rounding();
         let viewport_phys = self.out.display.physical;
         let logical_radius = (!p.corners.is_approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
-        let phys = world.scaled_by(scale, snap);
+        let phys = world.scaled_by(scale, edges);
         let me = geometry::urect_from_phys(phys.min, phys.max(), viewport_phys);
         let parent = self.composer.clip.top();
         let scissor = match parent {
@@ -413,7 +417,7 @@ impl PaintSink for ComposeSession<'_> {
             origin: p.origin,
             width_phys,
             cap,
-            join: None,
+            joints: StrokeJoints::Unjoined,
             display: self.out.display,
         }
         .urect();
@@ -515,7 +519,7 @@ impl PaintSink for ComposeSession<'_> {
                 origin: p.origin,
                 width_phys,
                 cap,
-                join: (p.points.len > 2).then_some(join),
+                joints: StrokeJoints::polyline(p.points.len, join),
                 display,
             }
             .urect(),
@@ -656,7 +660,7 @@ impl PaintSink for ComposeSession<'_> {
     fn text(&mut self, t: DrawTextPayload) {
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
-        let phys_rect = world.scaled_by(scale, self.out.display.pixel_snap);
+        let phys_rect = world.scaled_by(scale, self.out.display.edge_rounding());
         // What the glyphs can reach: ink from the placed origin at true size, padded by
         // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
         // Covered, never rounded in, so the last AA column is not cut.

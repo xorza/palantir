@@ -10,7 +10,9 @@ use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::WgpuBackend;
-use crate::host::window_driver::{CpuFrame, PresentPath, WindowDriver, WindowDriverBuilder};
+use crate::host::window_driver::{
+    CpuFrame, PresentPath, Presentation, WindowDriver, WindowDriverBuilder,
+};
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
@@ -112,6 +114,10 @@ impl HostCore {
         target: RenderTarget<'_>,
         mode: PresentPath,
     ) {
-        driver.render_to_texture(&self.frontend.buffer, &mut self.backend, target, mode);
+        driver.render_to_texture(
+            &self.frontend.buffer,
+            &mut self.backend,
+            Presentation { target, mode },
+        );
     }
 }

@@ -5,58 +5,82 @@ use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::input_pass::{
     KeyOutcome, ProbeMotion, ProbeTarget, apply_key as apply_editor_key,
 };
+use crate::widgets::text_edit::text_nav::TextNav;
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
     word_range_at,
 };
 
-use crate::Spacing;
-use crate::Ui;
 use crate::common::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::internals::ui_harness::UiHarness;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::record::ShapeRecord;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
 use std::iter;
 
+/// The build's own chords, for the cases that do not test them.
+const NAV: TextNav = TextNav::new(PLATFORM);
+
 fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
-    let clipboard = Clipboard::memory();
-    apply_key_with_clipboard(text, state, kp, &clipboard)
+    FieldKeys::new(Clipboard::memory()).apply(text, state, kp)
 }
 
-fn apply_key_with_clipboard(
-    text: &mut String,
-    state: &mut EditState,
-    kp: KeyPress,
-    clipboard: &Clipboard,
-) -> bool {
-    let mut ed = Editor::new(
-        text,
-        state,
-        EditRules {
-            multiline: false,
-            max_chars: None,
-        },
-    );
-    let blur = match EditAction::from_keypress(kp) {
-        Some(action) => {
-            action.execute(&mut ed, clipboard);
-            false
+/// A single-line field's key handling outside a frame: the clipboard its
+/// commands reach, and the platform whose chords it binds.
+#[derive(Debug)]
+struct FieldKeys {
+    clipboard: Clipboard,
+    nav: TextNav,
+}
+
+impl FieldKeys {
+    /// The build's own platform.
+    fn new(clipboard: Clipboard) -> Self {
+        Self {
+            clipboard,
+            nav: TextNav::new(PLATFORM),
         }
-        None => apply_editor_key(&mut ed, kp) == KeyOutcome::Blur,
-    };
-    ed.observe_text();
-    blur
+    }
+
+    fn on(platform: Platform) -> Self {
+        Self {
+            clipboard: Clipboard::memory(),
+            nav: TextNav::new(platform),
+        }
+    }
+
+    /// Whether `kp` blurred the field.
+    fn apply(&self, text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
+        let mut ed = Editor::new(
+            text,
+            state,
+            EditRules {
+                multiline: false,
+                max_chars: None,
+            },
+        );
+        let blur = match EditAction::from_keypress(kp) {
+            Some(action) => {
+                action.execute(&mut ed, &self.clipboard);
+                false
+            }
+            None => apply_editor_key(&mut ed, kp, self.nav) == KeyOutcome::Blur,
+        };
+        ed.observe_text();
+        blur
+    }
 }
 
 /// Every shape a widget paints, descendants included: a [`Text`](crate::Text) paints on its own leaf, a [`TextEdit`] on the block child carrying its alignment ([`block_of`]).

@@ -1,6 +1,5 @@
 //! What a clip and an overhang do to the region that comes out.
 
-use crate::Ui;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -12,6 +11,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -76,7 +76,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     type Build = fn(&mut Ui);
 
-    use crate::Shadow;
+    use crate::primitives::paint::shadow::Shadow;
 
     let frame_size = 50.0;
     let expected_paint_size = frame_size + 2.0 * (4.0 * 8.0 + 2.0);
@@ -159,7 +159,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
 /// before the ancestor clip, so a `ClipMode::Clip` parent caps it at its bounds.
 #[test]
 fn shadow_overhang_inside_clipped_parent_is_clamped() {
-    use crate::Shadow;
+    use crate::primitives::paint::shadow::Shadow;
 
     let viewport = 60.0;
     let card = 40.0;

@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::display::Display;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -7,6 +6,7 @@ use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel, spinner::Spinner};
 use glam::UVec2;

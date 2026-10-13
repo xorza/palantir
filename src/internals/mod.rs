@@ -21,6 +21,8 @@ use crate::text;
 /// The bench device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
 /// benches outside the crate, which share its adapter check and its devices.
 pub use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
+/// What a test target is; [`HeadlessTestGpuLease::target_with`] takes it.
+pub use crate::gpu::surface::render_target::internals::TargetSpec;
 /// The GPU test device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for the suites.
 pub use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,

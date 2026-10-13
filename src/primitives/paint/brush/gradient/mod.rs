@@ -141,8 +141,7 @@ impl<G: GradientGeometry> Gradient<G> {
     }
 
     pub(crate) fn axis(&self) -> FillAxis {
-        let [a, b, c, d] = self.geometry.axis_lanes();
-        FillAxis::from_lanes(a, b, c, d)
+        FillAxis::from_lanes(self.geometry.axis_lanes())
     }
 }
 

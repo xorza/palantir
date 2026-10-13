@@ -1,6 +1,7 @@
 //! Which axes a scroll viewport pans, which size to content, and the resulting child driver.
 
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::SizeSpec;
 use glam::BVec2;
 
 /// Which driver lays out a scroll viewport's children, derived from the pan axes so measure, arrange and intrinsics agree.
@@ -32,17 +33,17 @@ impl ScrollAxes {
     /// Pans on both axes; children stack at the origin.
     pub(crate) const BOTH: Self = Self(Self::PAN_X | Self::PAN_Y);
 
-    /// Sizes to content on each flagged panned axis, as a `Hug`
+    /// Sizes to content on each panned axis `size` hugs, as a `Hug`
     /// [`Scroll`](crate::Scroll) does, bounded by `max_size` and the parent's
-    /// space; min size stays zero. Replaces earlier flags; a flag on a
+    /// space; min size stays zero. Replaces earlier flags; a hug on a
     /// non-panning axis is dropped.
-    pub(crate) const fn fit_content(self, x: bool, y: bool) -> Self {
-        let fit_x = if x && self.0 & Self::PAN_X != 0 {
+    pub(crate) const fn fit_content(self, size: SizeSpec) -> Self {
+        let fit_x = if size.w().is_hug() && self.0 & Self::PAN_X != 0 {
             Self::FIT_X
         } else {
             0
         };
-        let fit_y = if y && self.0 & Self::PAN_Y != 0 {
+        let fit_y = if size.h().is_hug() && self.0 & Self::PAN_Y != 0 {
             Self::FIT_Y
         } else {
             0
@@ -114,6 +115,7 @@ impl ScrollAxes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::layout::sizing::Sizing;
 
     #[test]
     fn fit_content_flags_only_the_panned_axes() {
@@ -125,8 +127,12 @@ mod tests {
             (ScrollAxes::BOTH, true, false, true, false),
             (ScrollAxes::BOTH, false, false, false, false),
         ];
+        let hugs = |x: bool, y: bool| {
+            let sizing = |hug| if hug { Sizing::HUG } else { Sizing::FILL };
+            SizeSpec::new(sizing(x), sizing(y))
+        };
         for (axes, x, y, want_x, want_y) in cases {
-            let fitted = axes.fit_content(x, y);
+            let fitted = axes.fit_content(hugs(x, y));
             assert_eq!(fitted.pan_bits(), axes.pan_bits(), "{axes:?} ({x}, {y})");
             assert_eq!(
                 (fitted.contributes(Axis::X), fitted.contributes(Axis::Y)),
@@ -135,15 +141,15 @@ mod tests {
             );
         }
         assert_eq!(
-            ScrollAxes::VERTICAL.fit_content(true, false),
+            ScrollAxes::VERTICAL.fit_content(hugs(true, false)),
             ScrollAxes::VERTICAL,
             "a flag on an axis that does not pan is dropped, not stored",
         );
         assert_eq!(
             ScrollAxes::BOTH
-                .fit_content(true, true)
-                .fit_content(false, true),
-            ScrollAxes::BOTH.fit_content(false, true),
+                .fit_content(hugs(true, true))
+                .fit_content(hugs(false, true)),
+            ScrollAxes::BOTH.fit_content(hugs(false, true)),
         );
         let pans = |axes: ScrollAxes| (axes.pans(Axis::X), axes.pans(Axis::Y));
         assert_eq!(pans(ScrollAxes::HORIZONTAL), (true, false));

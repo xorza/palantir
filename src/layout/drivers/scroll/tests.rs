@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -401,7 +401,7 @@ fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
     /// a ZStack (the one driver that always clamped); `TextEdit` records the bare
     /// form.
     fn record_scroll(ui: &mut Ui) {
-        Widget::scroll(ScrollAxes::BOTH.fit_content(true, true))
+        Widget::scroll(ScrollAxes::BOTH.fit_content(SizeSpec::new(Sizing::HUG, Sizing::HUG)))
             .size((Sizing::HUG, Sizing::HUG))
             .id(WidgetId::from_hash(SCROLL))
             .record(ui, None, |ui| {

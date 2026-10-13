@@ -1,4 +1,3 @@
-use crate::widgets::text_edit::input_pass::internals::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 use std::ops;
 
@@ -75,7 +74,7 @@ fn word_range_at_picks_anchor_kind() {
 #[test]
 fn apply_key_word_nav_cases() {
     fn word_nav(key: Key) -> KeyPress {
-        KeyPress::with(key, WORD_NAV)
+        KeyPress::with(key, NAV.word_chord())
     }
 
     fn word_nav_shift(key: Key) -> KeyPress {

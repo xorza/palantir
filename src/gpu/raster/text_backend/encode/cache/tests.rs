@@ -36,12 +36,14 @@ fn same(a: &EncodedGlyph, b: &EncodedGlyph) -> bool {
         && a.generation == b.generation
 }
 
-/// Push `glyphs` onto the arena and point `k` at them, as a re-encode would.
-fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
-    for tag in tags {
-        cache.stage(glyph(tag));
+impl EncodedCache {
+    /// Push glyphs `tags` onto the arena and point `k` at them on frame `at`, as a re-encode would.
+    fn insert(&mut self, k: EncodedKey, tags: impl Iterator<Item = u32>, at: u64) {
+        for tag in tags {
+            self.stage(glyph(tag));
+        }
+        self.settle(k, at, EncodeCoverage::Complete);
     }
-    cache.settle(k, at, true);
 }
 
 /// Sweeping every frame makes retention exact: a row last used on frame `L` dies at `L + KEEP + 1`, whenever it was touched. Two offsets pin that the death frame tracks `L` rather than a grid.
@@ -49,7 +51,7 @@ fn insert(cache: &mut EncodedCache, k: EncodedKey, tags: impl Iterator<Item = u3
 fn unused_rows_die_one_frame_past_the_keep_window() {
     for last_use in [0u64, 9] {
         let mut cache = EncodedCache::default();
-        insert(&mut cache, key(1), 0..1, last_use);
+        cache.insert(key(1), 0..1, last_use);
         let mut died = None;
         for frame in last_use + 1..=last_use + 400 {
             cache.sweep(frame);
@@ -70,7 +72,7 @@ fn unused_rows_die_one_frame_past_the_keep_window() {
 #[test]
 fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     let mut cache = EncodedCache::default();
-    insert(&mut cache, key(1), 1000..1010, 0);
+    cache.insert(key(1), 1000..1010, 0);
     assert_eq!(
         cache.arena.slots.len(),
         12,
@@ -80,7 +82,7 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
     let before = cache.arena.counters.counts();
     for frame in 1u64..=8 {
         let base = frame as u32 * 10;
-        insert(&mut cache, key(2), base..base + 4, frame);
+        cache.insert(key(2), base..base + 4, frame);
         cache.sweep(frame);
         assert_eq!(
             cache.arena.slots.len(),
@@ -117,7 +119,7 @@ fn a_reencoded_row_reclaims_its_own_block_and_the_arena_stops_growing() {
 fn blocks_recycle_only_within_their_size_class() {
     let mut cache = EncodedCache::default();
     for (i, len) in [2u32, 5, 9].into_iter().enumerate() {
-        insert(&mut cache, key(i as u32), 0..len, 0);
+        cache.insert(key(i as u32), 0..len, 0);
     }
     assert_eq!(cache.arena.slots.len(), 4 + 8 + 12);
     let spans: Vec<Span> = (0..3).map(|i| cache.map[&key(i)].span).collect();
@@ -130,12 +132,7 @@ fn blocks_recycle_only_within_their_size_class() {
 
     let before = cache.arena.counters.counts();
     for (i, len) in [9u32, 5, 2].into_iter().enumerate() {
-        insert(
-            &mut cache,
-            key(100 + i as u32),
-            0..len,
-            ENCODED_CACHE_KEEP_FRAMES + 1,
-        );
+        cache.insert(key(100 + i as u32), 0..len, ENCODED_CACHE_KEEP_FRAMES + 1);
     }
     assert_eq!(
         cache.arena.slots.len(),
@@ -165,30 +162,31 @@ fn blocks_recycle_only_within_their_size_class() {
 #[test]
 fn a_shorter_row_reusing_a_block_exposes_only_its_own_glyphs() {
     let mut cache = EncodedCache::default();
-    insert(&mut cache, key(1), 700..704, 0); // 4 glyphs, class 0
+    cache.insert(key(1), 700..704, 0); // 4 glyphs, class 0
     let block = cache.map[&key(1)].span;
     for frame in 1..=ENCODED_CACHE_KEEP_FRAMES + 1 {
         cache.sweep(frame);
     }
-    insert(&mut cache, key(2), 900..901, ENCODED_CACHE_KEEP_FRAMES + 1);
+    cache.insert(key(2), 900..901, ENCODED_CACHE_KEEP_FRAMES + 1);
     let span = cache.map[&key(2)].span;
     assert_eq!(span.start, block.start, "same class, recycled block");
     assert_eq!(span.len, 1, "the span covers only what was written");
     assert!(same(&cache.arena.slots[span.range()][0], &glyph(900)));
 }
 
-/// An incomplete encode (y-culled line, atlas full; both settle as `complete: false`) leaves no map row and no dead glyphs. Caching a short run would replay its hole forever, since the key records neither bounds nor atlas occupancy.
+/// An incomplete encode (y-culled line, atlas full; both settle as `EncodeCoverage::Partial`) leaves no map row and no dead glyphs. Caching a short run would replay its hole forever, since the key records neither bounds nor atlas occupancy.
 #[test]
 fn only_complete_encodes_become_templates() {
-    for (complete, expect_rows) in [(true, 1), (false, 0)] {
+    for (coverage, expect_rows) in [(EncodeCoverage::Complete, 1), (EncodeCoverage::Partial, 0)] {
+        let complete = coverage == EncodeCoverage::Complete;
         let mut cache = EncodedCache::default();
-        insert(&mut cache, key(1), 100..103, 7);
+        cache.insert(key(1), 100..103, 7);
         let arena_before = cache.arena.slots.len();
         for tag in 200..202 {
             cache.stage(glyph(tag));
         }
 
-        cache.settle(key(2), 9, complete);
+        cache.settle(key(2), 9, coverage);
         assert!(cache.pending.is_empty(), "settle consumes the pending row");
 
         assert_eq!(
@@ -227,7 +225,7 @@ fn a_steadily_drawn_row_holds_one_ticket_not_one_per_frame() {
     const ROWS: u32 = 50;
     let mut cache = EncodedCache::default();
     for row in 0..ROWS {
-        insert(&mut cache, key(row), 0..4, 0);
+        cache.insert(key(row), 0..4, 0);
     }
     assert_eq!(cache.expiry.pending(), ROWS as usize, "one ticket each");
 
@@ -360,7 +358,7 @@ fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
     let mut arena_at = Vec::new();
     for frame in 1u64..=100 {
         let len = 16 * frame as u32;
-        insert(&mut cache, key(len), 0..len, frame);
+        cache.insert(key(len), 0..len, frame);
         cache.sweep(frame);
         if frame == 40 || frame == 100 {
             arena_at.push(cache.arena.slots.len());
@@ -382,7 +380,7 @@ fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
     // Bounded: a length returning to a class it left takes the parked block (frame 5's, free since frame 36).
     let before = cache.arena.counters.counts();
     for frame in 101u64..=110 {
-        insert(&mut cache, key(9999), 0..80, frame);
+        cache.insert(key(9999), 0..80, frame);
         cache.sweep(frame);
     }
     assert_eq!(

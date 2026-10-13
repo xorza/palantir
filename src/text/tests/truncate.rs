@@ -72,7 +72,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
 
     let mut keys = Vec::new();
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
-        let cut = measure_truncated(&mut c, long, params, fit);
+        let cut = c.measure_truncated(long, params, fit);
         assert!(
             cut.size.w <= w,
             "{fit:?} width {} must fit cap {w}",
@@ -95,7 +95,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
             "{fit:?}: bounded keys reuse the source text hash",
         );
 
-        let zero = measure_truncated(&mut c, long, params.width(0.0), fit);
+        let zero = c.measure_truncated(long, params.width(0.0), fit);
         assert_eq!(
             zero.size.w, 0.0,
             "{fit:?} at zero width must collapse to zero",
@@ -247,7 +247,7 @@ fn ellipsis_never_measures_wider_than_its_budget() {
             for fit in [LineFit::Clip, LineFit::Ellipsis] {
                 for width_px in 0..=160 {
                     let width = width_px as f32;
-                    let m = measure_truncated(&mut c, text, base.family(family).width(width), fit);
+                    let m = c.measure_truncated(text, base.family(family).width(width), fit);
                     assert!(
                         m.size.w <= width,
                         "{family:?} {fit:?} {text:?}: measured {} against budget {width}",
@@ -267,7 +267,7 @@ fn ellipsis_keeps_the_logical_prefix_in_both_reading_directions() {
         .expect("the Hebrew test face loads");
     let unbounded = shape(16.0);
     let elide = |c: &mut CosmicMeasure, text: &str, width: f32| {
-        measure_truncated(c, text, unbounded.width(width), LineFit::Ellipsis)
+        c.measure_truncated(text, unbounded.width(width), LineFit::Ellipsis)
             .size
             .w
     };
@@ -326,7 +326,7 @@ fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
         let params = shape(16.0).width(cap).halign(halign);
         let natural = c.measure(text, params.unbounded());
         for fit in [LineFit::Clip, LineFit::Ellipsis] {
-            let fitted = measure_truncated(&mut c, text, params, fit);
+            let fitted = c.measure_truncated(text, params, fit);
             assert_eq!(
                 fitted.size, natural.size,
                 "{label} ({fit:?}) must measure its natural extent",
@@ -363,11 +363,10 @@ fn truncation_from_cached_unbounded_is_order_independent() {
     let target = shape(14.0).width(80.0).halign(HAlign::Left);
 
     let mut fresh = CosmicMeasure::default();
-    let r_fresh = truncate(&mut fresh, long, target, LineFit::Ellipsis);
+    let r_fresh = fresh.truncate(long, target, LineFit::Ellipsis);
 
     let mut reused = CosmicMeasure::default();
-    measure_truncated(
-        &mut reused,
+    reused.measure_truncated(
         "a considerably longer string that grows the probe buffer capacity",
         shape(20.0)
             .width(220.0)
@@ -375,13 +374,12 @@ fn truncation_from_cached_unbounded_is_order_independent() {
             .halign(HAlign::Left),
         LineFit::Ellipsis,
     );
-    measure_truncated(
-        &mut reused,
+    reused.measure_truncated(
         "short",
         shape(10.0).width(30.0).halign(HAlign::Left),
         LineFit::Clip,
     );
-    let r_reused = measure_truncated(&mut reused, long, target, LineFit::Ellipsis);
+    let r_reused = reused.measure_truncated(long, target, LineFit::Ellipsis);
 
     assert_eq!(
         r_fresh.fitted.size, r_reused.size,
@@ -398,10 +396,9 @@ fn truncation_from_cached_unbounded_is_order_independent() {
         r_fresh.fitted.size.w,
         r_fresh.unbounded.size.w,
     );
-    assert!(
-        r_fresh.fitted.size.w <= 80.0,
-        "ellipsized width {} should fit within budget 80",
-        r_fresh.fitted.size.w,
+    assert_eq!(
+        r_fresh.fitted.size.w, 73.0,
+        "the kept prefix and its ellipsis, inside the 80 px budget",
     );
 }
 
@@ -418,7 +415,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     ];
 
     for face in faces {
-        truncate(&mut c, TEXT, face.width(120.0), LineFit::Ellipsis);
+        c.truncate(TEXT, face.width(120.0), LineFit::Ellipsis);
     }
     let warm = c.cache_counts();
     assert_eq!(
@@ -429,12 +426,7 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
     // Alternate with a fresh width each round (a drag over a two-style list): every round is a truncation miss and must still find its face.
     for round in 0..8 {
         for face in faces {
-            truncate(
-                &mut c,
-                TEXT,
-                face.width(119.0 - round as f32),
-                LineFit::Ellipsis,
-            );
+            c.truncate(TEXT, face.width(119.0 - round as f32), LineFit::Ellipsis);
         }
     }
     let churn = c.cache_counts() - warm;
@@ -452,11 +444,11 @@ fn the_ellipsis_memo_survives_interleaved_faces() {
         .map(|i| shape(10.0 + i as f32).leading(24.0))
         .collect();
     for face in &many {
-        truncate(&mut c, TEXT, face.width(100.0), LineFit::Ellipsis);
+        c.truncate(TEXT, face.width(100.0), LineFit::Ellipsis);
     }
     let before = c.cache_counts();
     for face in &many {
-        truncate(&mut c, TEXT, face.width(99.0), LineFit::Ellipsis);
+        c.truncate(TEXT, face.width(99.0), LineFit::Ellipsis);
     }
     assert!(
         (c.cache_counts() - before).ellipsis_misses > 0,
@@ -471,8 +463,7 @@ fn ellipsis_stays_within_budget_under_size_churn() {
     let width = 60.0;
     for i in 0..261 {
         let fs = 8.0 + i as f32 * 0.1;
-        let r = measure_truncated(
-            &mut c,
+        let r = c.measure_truncated(
             long,
             shape(fs).width(width).halign(HAlign::Left),
             LineFit::Ellipsis,
@@ -492,19 +483,16 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     let text = "first paragraph here\nsecond paragraph";
     let params = shape(16.0).width(90.0);
 
-    for fit in [LineFit::Clip, LineFit::Ellipsis] {
-        let r = measure_truncated(&mut c, text, params, fit);
+    // Inside the 90 px budget; the ellipsis costs the clip its last glyphs.
+    for (fit, width) in [(LineFit::Clip, 84.0), (LineFit::Ellipsis, 82.0)] {
+        let r = c.measure_truncated(text, params, fit);
         assert_eq!(
             r.size.h,
             one_line_h(params),
             "{fit:?} must measure one line, got h={}",
             r.size.h,
         );
-        assert!(
-            r.size.w <= 90.0,
-            "{fit:?} must fit the committed width, got w={}",
-            r.size.w,
-        );
+        assert_eq!(r.size.w, width, "{fit:?}");
         let newline = text.find('\n').unwrap();
         for g in glyph_positions(&c, r.buffer_key()) {
             assert!(
@@ -517,9 +505,10 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     }
 
     let wrapped = c.measure(text, params);
-    assert!(
-        wrapped.size.h > one_line_h(params) * 2.0,
-        "premise: wrapped keeps every line, got h={}",
+    assert_eq!(
         wrapped.size.h,
+        one_line_h(params) * 5.0,
+        "premise: wrapped keeps every line, one word each at 90 px: \
+         first / paragraph / here, then second / paragraph",
     );
 }

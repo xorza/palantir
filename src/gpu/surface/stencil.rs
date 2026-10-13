@@ -80,7 +80,7 @@ impl Stencil {
 
     /// The window's stencil attachment at `size`, built if the slot is empty or
     /// differently sized; returns it like
-    /// [`Backbuffer::ensure`](crate::gpu::surface::backbuffer::Backbuffer::ensure).
+    /// [`WgpuBackend::ensure_backbuffer`](crate::gpu::wgpu_backend::WgpuBackend::ensure_backbuffer).
     pub(crate) fn ensure<'s>(
         slot: &'s mut Option<Self>,
         device: &wgpu::Device,

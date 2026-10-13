@@ -12,7 +12,6 @@ mod trickle;
 mod watch;
 mod zoom;
 
-use crate::Ui;
 use crate::cascade::Cascade;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
@@ -21,6 +20,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::UVec2;

@@ -31,6 +31,14 @@ pub(super) struct RowMatcher {
     curr_keyed: Vec<(PaintKey, u32)>,
 }
 
+/// One node's paint rows across the frame boundary: the arena block holding last
+/// frame's, and this frame's.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct PaintsChange<'a> {
+    pub(super) prev: Span,
+    pub(super) curr: &'a [Paint],
+}
+
 impl RowMatcher {
     /// Prev row each curr row paired with on the last [`Self::diff_changed_leg`], `ROW_UNMATCHED` where none. Only read under [`ChangedLeg::order_inverted`], which no fast-path call sets.
     #[inline]
@@ -38,7 +46,7 @@ impl RowMatcher {
         &self.matched_pos
     }
 
-    /// Per-paint diff leg for the changed-paints arm, against the block `prev_span` names.
+    /// Per-paint diff leg for the changed-paints arm, from the block `change.prev` names to `change.curr`.
     ///
     /// Fast path: a bit-identical positional match emits no damage and reuses the span.
     ///
@@ -49,9 +57,12 @@ impl RowMatcher {
         &mut self,
         paints: &mut BlockArena<Paint>,
         out: &mut Vec<Rect>,
-        prev_span: Span,
-        curr_paints: &[Paint],
+        change: PaintsChange<'_>,
     ) -> ChangedLeg {
+        let PaintsChange {
+            prev: prev_span,
+            curr: curr_paints,
+        } = change;
         let prev_len = prev_span.len as usize;
         let prev = &paints.slots[prev_span.range()];
 

@@ -313,13 +313,13 @@ impl Rect {
         }
     }
 
-    /// Scale by `scale` and optionally snap edges to integer pixels, deriving size from the rounded edges to avoid width drift.
+    /// Scale by `scale` and land the edges per `edges`; a rounded size is derived from the rounded edges to avoid width drift.
     #[inline]
-    pub(crate) fn scaled_by(self, scale: f32, snap: bool) -> Self {
+    pub(crate) fn scaled_by(self, scale: f32, edges: EdgeRounding) -> Self {
         let m = self.max();
         let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);
         let mut max = Vec2::new(m.x * scale, m.y * scale);
-        if snap {
+        if edges == EdgeRounding::WholePixels {
             min = Vec2::new(min.x.fast_round(), min.y.fast_round());
             max = Vec2::new(max.x.fast_round(), max.y.fast_round());
         }
@@ -328,6 +328,14 @@ impl Rect {
             size: Size::new((max.x - min.x).max(0.0), (max.y - min.y).max(0.0)),
         }
     }
+}
+
+/// Where [`Rect::scaled_by`] lands a scaled rect's edges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EdgeRounding {
+    Exact,
+    /// Rounded to the nearest integer pixel.
+    WholePixels,
 }
 
 impl NanCheck for Rect {

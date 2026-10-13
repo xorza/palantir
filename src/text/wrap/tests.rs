@@ -3,7 +3,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::F32Px;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
-use crate::text::wrap::{LineFit, TextWrap};
+use crate::text::wrap::{FittedWrap, LineFit, TextWrap};
 
 /// Every policy, so a new one must be added here to compile.
 const ALL: [TextWrap; 6] = [
@@ -28,6 +28,7 @@ fn every_line_fit_is_some_policys_and_only_the_two_unbounded_ones_have_none() {
         (TextWrap::WrapWithOverflow, Some(LineFit::Wrap)),
     ] {
         assert_eq!(policy.line_fit(), expected, "{policy:?}");
+        assert_eq!(policy.fitted().map(FittedWrap::fit), expected, "{policy:?}");
     }
     for fit in [LineFit::Wrap, LineFit::Clip, LineFit::Ellipsis] {
         assert!(

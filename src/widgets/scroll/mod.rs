@@ -398,7 +398,7 @@ impl<'a> Scroll<'a> {
         // panned axis sets a fit bit so the scroll sizes to its content (capped by
         // `max_size`/available); `Fill`/`Fixed` stay content-independent.
         let user = self.widget.authored_size().unwrap_or_default();
-        let axes = self.axes.fit_content(user.w().is_hug(), user.h().is_hug());
+        let axes = self.axes.fit_content(user);
         let ScrollWrappers { outer, inner } = ScrollWrappers::split(&self.widget, axes);
         let mut inner = inner.id(scroll_id);
         inner

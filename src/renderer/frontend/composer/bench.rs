@@ -10,6 +10,7 @@
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
@@ -90,7 +91,11 @@ impl ComposeBench {
 
     fn compose(&mut self) -> usize {
         self.composer
-            .begin(self.display, Duration::ZERO, &self.store, &mut self.out)
+            .begin(
+                FrameStamp::new(self.display, Duration::ZERO),
+                &self.store,
+                &mut self.out,
+            )
             .replay_from(&self.cmds);
         self.out.meshes.len() + self.out.images.len() + self.out.curves.len()
     }

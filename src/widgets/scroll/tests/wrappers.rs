@@ -40,7 +40,7 @@ fn split_routes_sizing_outward_and_panel_knobs_inward() {
         .gap(3.0)
         .line_gap(5.0)
         .justify(Justify::SpaceBetween);
-    let axes = ScrollAxes::VERTICAL.fit_content(false, true);
+    let axes = ScrollAxes::VERTICAL.fit_content(SizeSpec::new(Sizing::FILL, Sizing::HUG));
     let ScrollWrappers { outer, inner } = ScrollWrappers::split(&scroll.widget, axes);
 
     assert_eq!(outer.authored_size(), Some(size));

@@ -134,40 +134,54 @@ const fn tint(phase: bool) -> RgbaF32 {
     }
 }
 
-fn record(ui: &mut Ui, handles: &[ImageHandle], workload: Workload, phase: bool) {
-    let color = tint(phase);
-    let style = TextStyle::default().with_color(color);
-    Panel::canvas()
-        .id_salt("record-bench-root")
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for i in 0..ITEMS {
-                let cell = Panel::zstack()
-                    .id_salt(("record-bench-cell", i))
-                    .position(cell_origin(i))
-                    .size((Sizing::fixed(CELL), Sizing::fixed(CELL)));
-                let cell = if workload.clipped() {
-                    cell.clip_rect()
-                } else {
-                    cell
-                };
-                cell.show(ui, |ui| match workload {
-                    Workload::GroupPerItem | Workload::SingleGroup => {
-                        ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, CELL, CELL)).fill(color));
-                    }
-                    Workload::ImagesDistinct | Workload::ImagesShared => {
-                        ui.add_shape(
-                            Shape::image(handles[i % handles.len()].clone())
-                                .fit(ImageFit::Fill)
-                                .tint(color),
-                        );
-                    }
-                    Workload::TextPerGroup | Workload::TextSingleBatch => {
-                        Text::new(LABEL).style(&style).show(ui);
-                    }
-                });
-            }
-        });
+/// One frame's scene: `workload`'s items in `color`, drawing `handles` where it shows images.
+#[derive(Debug)]
+struct Scene<'a> {
+    handles: &'a [ImageHandle],
+    workload: Workload,
+    color: RgbaF32,
+}
+
+impl Scene<'_> {
+    fn record(&self, ui: &mut Ui) {
+        let Self {
+            handles,
+            workload,
+            color,
+        } = *self;
+        let style = TextStyle::default().with_color(color);
+        Panel::canvas()
+            .id_salt("record-bench-root")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..ITEMS {
+                    let cell = Panel::zstack()
+                        .id_salt(("record-bench-cell", i))
+                        .position(cell_origin(i))
+                        .size((Sizing::fixed(CELL), Sizing::fixed(CELL)));
+                    let cell = if workload.clipped() {
+                        cell.clip_rect()
+                    } else {
+                        cell
+                    };
+                    cell.show(ui, |ui| match workload {
+                        Workload::GroupPerItem | Workload::SingleGroup => {
+                            ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, CELL, CELL)).fill(color));
+                        }
+                        Workload::ImagesDistinct | Workload::ImagesShared => {
+                            ui.add_shape(
+                                Shape::image(handles[i % handles.len()].clone())
+                                    .fit(ImageFit::Fill)
+                                    .tint(color),
+                            );
+                        }
+                        Workload::TextPerGroup | Workload::TextSingleBatch => {
+                            Text::new(LABEL).style(&style).show(ui);
+                        }
+                    });
+                }
+            });
+    }
 }
 
 /// The draw-list shape behind one arm's timing.
@@ -216,9 +230,12 @@ impl Fixture {
             workload,
             phase,
         } = self;
-        let workload = *workload;
-        let phase = *phase;
-        let mut app = RecordApp::new(|ui| record(ui, handles, workload, phase));
+        let scene = Scene {
+            handles,
+            workload: *workload,
+            color: tint(*phase),
+        };
+        let mut app = RecordApp::new(|ui| scene.record(ui));
         let report = host.frame(target.as_target(), 1.0, &mut app);
         // A `Partial` frame walks the schedule once per damage rect, which would make the numbers incomparable.
         assert_eq!(

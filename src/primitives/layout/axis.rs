@@ -106,18 +106,25 @@ impl Axis {
             Self::Y => Vec2::new(cross, main),
         }
     }
-    /// Build a `Rect` from main- and cross-axis positions and lengths.
-    pub(crate) const fn compose_rect(
-        self,
-        main_pos: f32,
-        cross_pos: f32,
-        main: f32,
-        cross: f32,
-    ) -> Rect {
+    /// Build a `Rect` from its main- and cross-axis extents.
+    pub(crate) const fn compose_rect(self, main: AxisExtent, cross: AxisExtent) -> Rect {
         match self {
-            Self::X => Rect::new(main_pos, cross_pos, main, cross),
-            Self::Y => Rect::new(cross_pos, main_pos, cross, main),
+            Self::X => Rect::new(main.start, cross.start, main.len, cross.len),
+            Self::Y => Rect::new(cross.start, main.start, cross.len, main.len),
         }
+    }
+}
+
+/// Where a rect starts along one axis and how far it reaches.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct AxisExtent {
+    pub(crate) start: f32,
+    pub(crate) len: f32,
+}
+
+impl AxisExtent {
+    pub(crate) const fn new(start: f32, len: f32) -> Self {
+        Self { start, len }
     }
 }
 

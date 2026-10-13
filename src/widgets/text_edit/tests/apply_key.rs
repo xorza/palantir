@@ -1,4 +1,3 @@
-use crate::widgets::text_edit::input_pass::internals::WORD_NAV;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -124,7 +123,7 @@ struct ExternalReplacementCase {
 #[test]
 fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
     fn word_nav(key: Key) -> KeyPress {
-        KeyPress::with(key, WORD_NAV)
+        KeyPress::with(key, NAV.word_chord())
     }
 
     let cases = [
@@ -286,6 +285,7 @@ fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>)
             },
         ),
         press(Key::Char(c)),
+        NAV,
     );
 }
 
@@ -382,6 +382,7 @@ fn ctrl_home_and_end_reach_the_document_ends() {
                 },
             ),
             kp,
+            NAV,
         )
     };
     assert_eq!(
@@ -407,29 +408,37 @@ fn ctrl_home_and_end_reach_the_document_ends() {
 /// macOS line chords (Cmd is `Modifiers::ctrl`): Cmd+Right / Left go to line end / start, Cmd+Backspace deletes to line start. Elsewhere Ctrl+Arrow is the word chord and Ctrl+Backspace deletes one grapheme.
 #[test]
 fn line_chords_follow_the_platform() {
-    let mut s = String::from("one two");
-    let mut state = EditState::default();
-    apply_key(&mut s, &mut state, ctrl_press(Key::ArrowRight));
-    let want = if PLATFORM == Platform::Mac { 7 } else { 3 };
-    assert_eq!(state.caret, want, "to the line end, or past the first word");
-    state.caret = 5;
-    apply_key(&mut s, &mut state, ctrl_press(Key::ArrowLeft));
-    let want = if PLATFORM == Platform::Mac { 0 } else { 4 };
-    assert_eq!(state.caret, want, "to the line start, or the word start");
+    // Carets after Ctrl+Right from 0 and Ctrl+Left from 5 in "one two", then
+    // the text left by Ctrl+Backspace after `two ` in "one\ntwo three".
+    let cases = [
+        (Platform::Mac, 7, 0, "one\nthree"),
+        (Platform::Windows, 3, 4, "one\ntwothree"),
+        (Platform::Linux, 3, 4, "one\ntwothree"),
+    ];
+    for (platform, right, left, deleted) in cases {
+        let keys = FieldKeys::on(platform);
+        let mut s = String::from("one two");
+        let mut state = EditState::default();
+        keys.apply(&mut s, &mut state, ctrl_press(Key::ArrowRight));
+        assert_eq!(
+            state.caret, right,
+            "{platform:?}: line end, or past the first word"
+        );
+        state.caret = 5;
+        keys.apply(&mut s, &mut state, ctrl_press(Key::ArrowLeft));
+        assert_eq!(
+            state.caret, left,
+            "{platform:?}: line start, or the word start"
+        );
 
-    // The caret after `two `, on the second line.
-    let mut s = String::from("one\ntwo three");
-    let mut state = EditState {
-        caret: 8,
-        ..EditState::default()
-    };
-    apply_key(&mut s, &mut state, ctrl_press(Key::Backspace));
-    let want = if PLATFORM == Platform::Mac {
-        "one\nthree"
-    } else {
-        "one\ntwothree"
-    };
-    assert_eq!(s, want);
+        let mut s = String::from("one\ntwo three");
+        let mut state = EditState {
+            caret: 8,
+            ..EditState::default()
+        };
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Backspace));
+        assert_eq!(s, deleted, "{platform:?}");
+    }
 }
 
 #[test]

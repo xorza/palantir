@@ -1,6 +1,5 @@
 //! The surface and output changes that force a full frame.
 
-use crate::Ui;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame};
@@ -12,6 +11,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_plan::RenderPlan;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;

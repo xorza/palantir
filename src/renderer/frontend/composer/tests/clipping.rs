@@ -1,6 +1,7 @@
 //! What a clip keeps, what it culls, and what a rounded one costs.
 
 use crate::common::span::Span;
+use crate::display::frame_stamp::FrameStamp;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -37,9 +38,11 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
 fn dropping_a_session_emits_the_trailing_group_and_batch() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     {
-        let mut session = rig
-            .composer
-            .begin(rig.display, Duration::ZERO, &rig.store, &mut rig.out);
+        let mut session = rig.composer.begin(
+            FrameStamp::new(rig.display, Duration::ZERO),
+            &rig.store,
+            &mut rig.out,
+        );
         let mut recorded = PaintCapture::default();
         draw(&mut recorded, Rect::new(0.0, 0.0, 10.0, 10.0));
         text(&mut recorded, Rect::new(0.0, 20.0, 10.0, 10.0));

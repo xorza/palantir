@@ -3,7 +3,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -374,11 +374,17 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         });
 
         let actual = h.main_child_rects(root);
+        let rect = |main_start, main_len, cross_len| {
+            case.axis.compose_rect(
+                AxisExtent::new(main_start, main_len),
+                AxisExtent::new(0.0, cross_len),
+            )
+        };
         let expected = [
-            case.axis.compose_rect(0.0, 0.0, 20.0, 10.0),
-            case.axis.compose_rect(25.0, 0.0, 30.0, 10.0),
-            case.axis.compose_rect(55.0, 0.0, 0.0, 0.0),
-            case.axis.compose_rect(60.0, 0.0, 140.0, 10.0),
+            rect(0.0, 20.0, 10.0),
+            rect(25.0, 30.0, 10.0),
+            rect(55.0, 0.0, 0.0),
+            rect(60.0, 140.0, 10.0),
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(

@@ -222,7 +222,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
 /// stops taking it and the app steals it mid-edit; pins the hand-kept `key_class::EDIT_CHORDS`.
 #[test]
 fn every_edit_action_chord_is_edit_class() {
-    use crate::KeyClass;
+    use crate::input::key_class::KeyClass;
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::modifiers::Modifiers;
     use crate::widgets::text_edit::action::EditAction;
@@ -269,7 +269,7 @@ fn every_edit_action_chord_is_edit_class() {
 /// Tab, Shift+Tab, page keys and Ctrl+Tab reach the root's own scope (which must declare one and take `FOCUS`).
 #[test]
 fn a_focused_field_yields_the_keys_it_does_not_act_on() {
-    use crate::KeyFilter;
+    use crate::input::key_class::KeyFilter;
     use crate::input::shortcut::{Shortcut, ShortcutMods};
 
     let field = WidgetId::from_hash(EDITOR);

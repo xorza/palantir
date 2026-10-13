@@ -1,8 +1,7 @@
 //! The off-screen colour target the backbuffer-copy path renders into.
 
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target::{self, TargetFormat};
-use glam::UVec2;
+use crate::gpu::surface::render_target::RenderTarget;
 
 /// Persistent off-screen colour target for the backbuffer-copy path; keeping
 /// last frame's pixels is what lets `LoadOp::Load` work for incremental damage.
@@ -23,31 +22,6 @@ pub(crate) struct EnsuredBackbuffer<'a> {
 }
 
 impl Backbuffer {
-    /// The window's backbuffer at `size` and `format`, built if the slot is empty
-    /// or no longer [`describes`](Self::describes) the target. `binding` is what
-    /// targets without copy support draw through.
-    pub(crate) fn ensure<'s>(
-        slot: &'s mut Option<Self>,
-        device: &wgpu::Device,
-        binding: &TextureBinding,
-        size: UVec2,
-        format: TargetFormat,
-    ) -> EnsuredBackbuffer<'s> {
-        let size = render_target::extent(size);
-        let format = format.get();
-        if slot
-            .as_ref()
-            .is_some_and(|held| !held.describes(size, format))
-        {
-            *slot = None;
-        }
-        let recreated = slot.is_none();
-        EnsuredBackbuffer {
-            backbuffer: slot.get_or_insert_with(|| Self::new(device, binding, size, format)),
-            recreated,
-        }
-    }
-
     /// Copies this backbuffer's pixels onto `surface_tex`, which needs `COPY_DST` and must [`describe`](Self::describes) this backbuffer.
     pub(crate) fn copy_onto(
         &self,
@@ -71,19 +45,20 @@ impl Backbuffer {
         );
     }
 
-    fn new(
+    /// A backbuffer [`describing`](Self::describes) `target`. `binding` is what
+    /// targets without copy support draw through.
+    pub(crate) fn new(
         device: &wgpu::Device,
         binding: &TextureBinding,
-        size: wgpu::Extent3d,
-        format: wgpu::TextureFormat,
+        target: RenderTarget<'_>,
     ) -> Self {
         let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
-            size,
+            size: target.texture().size(),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format,
+            format: target.texture().format(),
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::TEXTURE_BINDING,
@@ -132,8 +107,9 @@ impl Backbuffer {
         &self.view
     }
 
-    /// Whether this backbuffer matches a target of `size` and `format`.
-    pub(crate) fn describes(&self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
-        self.tex.size() == size && self.tex.format() == format
+    /// Whether this backbuffer matches `target`'s size and format.
+    pub(crate) fn describes(&self, target: RenderTarget<'_>) -> bool {
+        let texture = target.texture();
+        self.tex.size() == texture.size() && self.tex.format() == texture.format()
     }
 }

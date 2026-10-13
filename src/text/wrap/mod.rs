@@ -102,6 +102,14 @@ impl TextWrap {
         }
     }
 
+    /// This policy with its [`LineFit`], or `None` where [`Self::line_fit`] is.
+    pub(super) const fn fitted(self) -> Option<FittedWrap> {
+        match self.line_fit() {
+            Some(fit) => Some(FittedWrap { wrap: self, fit }),
+            None => None,
+        }
+    }
+
     /// Whether this policy reads [`TextRoot::intrinsic_min`], so shaping must
     /// pay for the segment scan. Only [`Self::WrapWithOverflow`] does; the
     /// scan costs 8x the rest of the measurement on a short label, 25x on a
@@ -152,40 +160,6 @@ impl TextWrap {
         }
     }
 
-    /// What a run bound to `available_width_px` actually shapes at.
-    ///
-    /// The one implementation of the binding sequence, shared by the public
-    /// `TextShaper::layout` probe and layout's `TextSystem::measure`, so a
-    /// caret never answers against a buffer wrapped at a different width.
-    ///
-    /// `root` is a thunk because only `WrapWithOverflow` (floor) and truncating
-    /// fits (already-fits test) read it; plain `Wrap` binds without a root
-    /// shape.
-    pub(super) fn commit(
-        self,
-        available_width_px: f32,
-        halign: HAlign,
-        fit: LineFit,
-        root: impl FnOnce() -> TextRoot,
-    ) -> WrapCommit {
-        // Canonicalized once: the fit test compares against it and
-        // `WrapBound::new` keys on it.
-        let available = available_width_px.canonical_px();
-        let committed = if self.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
-            let root = root();
-            if fit.resolves_to_unbounded(&root, available) {
-                return WrapCommit::Unbounded {
-                    extent: root.extent,
-                };
-            }
-            // The wrap floor is a measured extent, so `WrapBound::new` still quantizes it.
-            self.target_width(available, &root)
-        } else {
-            available
-        };
-        WrapCommit::Bound(WrapBound::new(committed, halign, fit))
-    }
-
     /// Layout content contribution of a width-`resolved` extent.
     pub(crate) const fn content_size(self, resolved: Size) -> Size {
         match self {
@@ -199,7 +173,55 @@ impl TextWrap {
     }
 }
 
-/// What [`TextWrap::commit`] decided a width-bounded run shapes at.
+/// A policy that binds to a width, with the [`LineFit`] it binds under; from
+/// [`TextWrap::fitted`], so the two never disagree.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FittedWrap {
+    wrap: TextWrap,
+    fit: LineFit,
+}
+
+impl FittedWrap {
+    pub(super) const fn fit(self) -> LineFit {
+        self.fit
+    }
+
+    /// What a run bound to `available_width_px` actually shapes at.
+    ///
+    /// The one implementation of the binding sequence, shared by the public
+    /// `TextShaper::layout` probe and layout's `TextSystem::measure`, so a
+    /// caret never answers against a buffer wrapped at a different width.
+    ///
+    /// `root` is a thunk because only `WrapWithOverflow` (floor) and truncating
+    /// fits (already-fits test) read it; plain `Wrap` binds without a root
+    /// shape.
+    pub(super) fn commit(
+        self,
+        available_width_px: f32,
+        halign: HAlign,
+        root: impl FnOnce() -> TextRoot,
+    ) -> WrapCommit {
+        let Self { wrap, fit } = self;
+        // Canonicalized once: the fit test compares against it and
+        // `WrapBound::new` keys on it.
+        let available = available_width_px.canonical_px();
+        let committed = if wrap.floor_scan() == WrapFloor::Scan || fit != LineFit::Wrap {
+            let root = root();
+            if fit.resolves_to_unbounded(&root, available) {
+                return WrapCommit::Unbounded {
+                    extent: root.extent,
+                };
+            }
+            // The wrap floor is a measured extent, so `WrapBound::new` still quantizes it.
+            wrap.target_width(available, &root)
+        } else {
+            available
+        };
+        WrapCommit::Bound(WrapBound::new(committed, halign, fit))
+    }
+}
+
+/// What [`FittedWrap::commit`] decided a width-bounded run shapes at.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum WrapCommit {
     /// The root's own unbounded shape stands (a truncating fit whose text

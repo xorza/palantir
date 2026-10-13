@@ -1,6 +1,5 @@
 //! What one node redrawing damages, shape by shape.
 
-use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::internals::ui_harness::UiHarness;
@@ -17,6 +16,7 @@ use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
 use crate::text::glyph_font::GlyphFont;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -668,7 +668,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         "steady frame must produce no diff"
     );
 
-    // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see `text_paint_bbox_local`).
+    // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see the cascade's `inflate_text_damage`).
     let inflate = 1.0 + TEXT_SCALE_STEP;
     let prev_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
     let prev_size_short = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);

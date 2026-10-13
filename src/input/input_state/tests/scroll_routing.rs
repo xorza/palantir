@@ -1,10 +1,10 @@
-use crate::Ui;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

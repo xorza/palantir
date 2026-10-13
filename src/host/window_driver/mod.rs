@@ -8,6 +8,7 @@ use crate::app::App;
 use crate::common::tracy;
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
@@ -23,9 +24,8 @@ use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
+use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
-use crate::ui::frame_stamp::FrameInput;
-use crate::ui::frame_stamp::FrameStamp;
 use crate::ui::resources::UiResources;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
@@ -170,6 +170,13 @@ pub(super) struct CpuFrame {
     pub(super) mode: PresentPath,
 }
 
+/// Where a submitted frame goes, and the path [`CpuFrame`] chose to take there.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Presentation<'a> {
+    pub(super) target: RenderTarget<'a>,
+    pub(super) mode: PresentPath,
+}
+
 #[derive(Debug)]
 pub(super) struct WindowDriverBuilder<'a> {
     token: WindowToken,
@@ -206,7 +213,7 @@ impl WindowDriverBuilder<'_> {
             token: self.token,
             engines: FrameEngines::new(self.resources),
             ui: Ui::new(self.resources.clone()),
-            render_owner: RenderOwnerId::reserve(),
+            render_owner: self.resources.render_owners().reserve(),
             backbuffer: None,
             backbuffer_fresh: false,
             output_valid: false,
@@ -372,15 +379,15 @@ impl WindowDriver {
     }
 
     /// GPU submit against a caller-supplied texture, dispatching on the sealed
-    /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto `target`.
+    /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto the target.
     pub(super) fn render_to_texture(
         &mut self,
         buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
-        target: RenderTarget<'_>,
-        mode: PresentPath,
+        presentation: Presentation<'_>,
     ) {
         tracy::zone!();
+        let Presentation { target, mode } = presentation;
         let size = target.size();
         let display_phys = self.ui.display().physical;
         debug_assert!(
@@ -432,13 +439,7 @@ impl WindowDriver {
             // the target.
             PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
                 let backbuffer = mode.renders_via_backbuffer().then(|| {
-                    let ensured = Backbuffer::ensure(
-                        &mut self.backbuffer,
-                        backend.device(),
-                        backend.texture_binding(),
-                        size,
-                        target.format(),
-                    );
+                    let ensured = backend.ensure_backbuffer(&mut self.backbuffer, target);
                     // A Partial arrives un-escalated only when `backbuffer_fresh`, so a recreate
                     // means that broke; the list was already Partial-culled, so escalating can't fix it.
                     debug_assert!(

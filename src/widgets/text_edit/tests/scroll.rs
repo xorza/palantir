@@ -1,8 +1,3 @@
-#![expect(
-    clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
-)]
-
 use crate::input::scroll_targets::ScrollTargets;
 use crate::widgets::block::Block;
 use crate::widgets::scroll::Scroll;
@@ -117,22 +112,20 @@ fn click_hit_test_compensates_for_scroll() {
     h.frame(|ui| body(ui, &mut buf));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut buf));
+    // Scrolled to the end: 100 mono glyphs of 8 px plus the 1.5 px caret room
+    // at each end, past the 280 - 2 × 6.5 = 267 px inner rect.
     let scroll_x = h.state::<TextEditState>(ed_id).view.scroll.offset.x;
-    assert!(scroll_x > 100.0, "precondition: editor is scrolled");
+    assert_eq!(scroll_x, 800.0 + 2.0 * 1.5 - 267.0);
 
-    // Click 8 px in (the inner rect's left edge). With scroll compensation, mono
-    // hit-test sees x = scroll_x (~537.5), byte ~67 (scroll_x / 8); without, byte 0.
+    // Click 8 px in, 1.5 px into the inner rect. With scroll compensation the
+    // hit-test sees the glyph boundary at scroll_x / 8 = 67; without, byte 0.
     h.press_at(Vec2::new(8.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     h.release();
     h.frame(|ui| body(ui, &mut buf));
 
     let caret = h.state::<TextEditState>(ed_id).edit.caret;
-    let expected = (scroll_x / 8.0).round() as usize;
-    assert!(
-        caret.abs_diff(expected) <= 1,
-        "click should land near byte {expected} (visible left edge), got {caret}",
-    );
+    assert_eq!(caret, 67, "the byte visibly at the left edge");
 }
 
 /// The wheel pans a multi-line editor whose content overflows, and the caret

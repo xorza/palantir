@@ -1,6 +1,6 @@
 //! How owner-local geometry lands in physical pixels.
 
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use glam::Vec2;
 
@@ -39,6 +39,6 @@ impl PhysMap {
                 min: bbox.min + self.origin,
                 size: bbox.size,
             })
-            .scaled_by(self.display_scale, false)
+            .scaled_by(self.display_scale, EdgeRounding::Exact)
     }
 }

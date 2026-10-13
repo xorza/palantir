@@ -1,8 +1,8 @@
 //! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (5, 3) plus 1.5 px stroke folded in: effective (6.5, 4.5), inner rect 267×31.
 
-use crate::Align;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::layout::align::Align;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::text_edit::tests::*;
@@ -119,7 +119,11 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
         shape_origins(&h.ui, node).text.expect("text shape emitted")
     };
-    assert!(settled.x > PAD_L + 1.0, "x = {} is not centred", settled.x);
+    assert_eq!(
+        settled.x,
+        PAD_L + (ALIGN_W - TEXT_W_4CH) / 2.0,
+        "centred in the inner width less the caret room",
+    );
 
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("abcd");

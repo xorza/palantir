@@ -1,6 +1,5 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
-use crate::Ui;
 use crate::input::interaction::drag::Drag;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
@@ -9,6 +8,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;

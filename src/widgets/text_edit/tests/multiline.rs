@@ -89,9 +89,8 @@ fn multiline_selection_crosses_newline() {
     );
     // Anchor stays at 3, caret past the newline (byte 6) on the second line.
     assert_eq!(st.edit.selection, Some(3));
-    assert!(
-        st.edit.caret > 6 && st.edit.caret <= buf.len(),
-        "caret landed on line 2 (byte > 6), got {}",
-        st.edit.caret,
+    assert_eq!(
+        st.edit.caret, 8,
+        "the x after `fir` lands after `se` on line 2, past the newline at byte 5",
     );
 }

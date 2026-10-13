@@ -8,11 +8,9 @@ pub(crate) mod encoder;
 pub(crate) mod paint_sink;
 pub(crate) mod payload;
 
-use std::time::Duration;
-
 use crate::cascade::Cascade;
 use crate::common::tracy;
-use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::layout::Layout;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
@@ -29,9 +27,8 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) layout: &'a Layout,
     pub(crate) cascade: &'a Cascade,
     pub(crate) gpu_views: &'a GpuViews,
-    pub(crate) display: Display,
-    /// Drives backend `GpuView` frame deltas and is not derivable from `Display`.
-    pub(crate) time: Duration,
+    /// The display and time; the time drives backend `GpuView` frame deltas.
+    pub(crate) stamp: FrameStamp,
 }
 
 /// CPU paint stage: tree to composed buffer, reused serially across window drivers.
@@ -54,12 +51,9 @@ impl Frontend {
 
     pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
         tracy::zone!();
-        let mut sink = self.composer.begin(
-            scene.display,
-            scene.time,
-            &scene.forest.record_store,
-            &mut self.buffer,
-        );
+        let mut sink =
+            self.composer
+                .begin(scene.stamp, &scene.forest.record_store, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         drop(sink);
         // Written after the session drops, since the composer's clear fold

@@ -7,7 +7,6 @@
 //!
 //! [`Paint::GRANULE`]: crate::common::block_arena::BlockSlot::GRANULE
 
-use crate::Ui;
 use crate::common::counters::CounterSet;
 use crate::common::span::Span;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
@@ -18,6 +17,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 

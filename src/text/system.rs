@@ -139,14 +139,12 @@ impl TextSystem {
         wrap_policy: TextWrap,
     ) -> TextRoot {
         debug_assert!(request.key.max_width().is_none(), "{UNBOUND_REQUEST}");
-        Self::refresh(
-            &mut self.entries,
-            &self.shaper,
+        let row = ReuseRow {
             slot,
             request,
-            wrap_policy.floor_scan(),
-        )
-        .root
+            floor: wrap_policy.floor_scan(),
+        };
+        Self::refresh(&mut self.entries, &self.shaper, row).root
     }
 
     /// The run's extent at a committed width plus the key of the shaped buffer the
@@ -177,9 +175,14 @@ impl TextSystem {
             font_epoch: _,
         } = self;
         let shapes_buffers = *shapes_buffers;
-        let entry = Self::refresh(entries, shaper, slot, request, wrap_policy.floor_scan());
+        let row = ReuseRow {
+            slot,
+            request,
+            floor: wrap_policy.floor_scan(),
+        };
+        let entry = Self::refresh(entries, shaper, row);
 
-        let Some(fit) = wrap_policy.line_fit() else {
+        let Some(fitted) = wrap_policy.fitted() else {
             entry.release_bound(shaper);
             return RunMeasure {
                 shaped: shaped(shapes_buffers, request.key, entry.root.extent),
@@ -189,7 +192,10 @@ impl TextSystem {
         let Some(width) = available_width else {
             // Unbounded, a truncating fit keeps the root, as under every width it fits.
             entry.release_bound(shaper);
-            let stable_from_w = if fit.resolves_to_unbounded(&entry.root, f32::INFINITY) {
+            let stable_from_w = if fitted
+                .fit()
+                .resolves_to_unbounded(&entry.root, f32::INFINITY)
+            {
                 entry.root.extent.size.w
             } else {
                 Measured::AT_OFFER_ONLY
@@ -200,7 +206,7 @@ impl TextSystem {
             };
         };
         // The same decision as the probe path; the root is already refreshed.
-        let bound = match wrap_policy.commit(width, halign, fit, || entry.root) {
+        let bound = match fitted.commit(width, halign, || entry.root) {
             WrapCommit::Unbounded { extent } => {
                 entry.release_bound(shaper);
                 // The fit test is monotone in width.
@@ -225,18 +231,18 @@ impl TextSystem {
         }
     }
 
-    /// Reuse row for `slot`, reshaped if it answers a different run. `floor` is a
-    /// freshness axis beyond the key: a row filled by a policy that skipped the floor
-    /// scan would return a `None` floor, so the shaper is asked again (backfilling
-    /// from the resident buffer, no reshape). Takes the two fields, not `&mut self`,
-    /// so the row borrows only the map.
+    /// The reuse row `row` names, reshaped if it answers a different run. Takes the
+    /// two fields, not `&mut self`, so the row borrows only the map.
     fn refresh<'a>(
         entries: &'a mut FxHashMap<TextRunSlot, TextReuseEntry>,
         shaper: &TextShaper,
-        slot: TextRunSlot,
-        request: TextShapeRequest<'_>,
-        floor: WrapFloor,
+        row: ReuseRow<'_>,
     ) -> &'a mut TextReuseEntry {
+        let ReuseRow {
+            slot,
+            request,
+            floor,
+        } = row;
         let fresh = || TextReuseEntry {
             key: request.key,
             root: shaper.root(request, floor),
@@ -261,6 +267,17 @@ fn shaped(shapes_buffers: bool, key: TextShapeKey, extent: TextExtent) -> Shaped
         extent,
         key: shapes_buffers.then_some(key),
     }
+}
+
+/// The reuse row [`TextSystem::refresh`] brings up to date. `floor` is a freshness
+/// axis beyond the key: a row filled by a policy that skipped the floor scan would
+/// return a `None` floor, so the shaper is asked again (backfilling from the
+/// resident buffer, no reshape).
+#[derive(Clone, Copy, Debug)]
+struct ReuseRow<'a> {
+    slot: TextRunSlot,
+    request: TextShapeRequest<'a>,
+    floor: WrapFloor,
 }
 
 /// What [`TextSystem::measure`] answers: the run and the widths it answers the

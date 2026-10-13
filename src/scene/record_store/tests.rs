@@ -24,12 +24,12 @@ fn stores_are_isolated() {
 fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
     let ramp = ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
     let first = RecordedGradient {
-        axis: FillAxis::from_lanes(1.0, 0.0, 0.0, 1.0),
+        axis: FillAxis::from_lanes([1.0, 0.0, 0.0, 1.0]),
         kind: FillKind::linear(Spread::Pad),
         ramp,
     };
     let colliding = RecordedGradient {
-        axis: FillAxis::from_lanes(0.0, 1.0, 0.0, 1.0),
+        axis: FillAxis::from_lanes([0.0, 1.0, 0.0, 1.0]),
         ..first
     };
     let mut gradients = RecordedGradients::default();
@@ -72,7 +72,7 @@ fn gradient_interner_dedups_at_every_table_width() {
 
     fn gradient(i: u64) -> RecordedGradient {
         RecordedGradient {
-            axis: FillAxis::from_lanes(i as f32, 0.0, 0.0, 1.0),
+            axis: FillAxis::from_lanes([i as f32, 0.0, 0.0, 1.0]),
             kind: FillKind::linear(Spread::Pad),
             ramp: ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE),
         }

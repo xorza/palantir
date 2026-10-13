@@ -5,7 +5,6 @@ use crate::cascade::paint::Paint;
 use crate::cascade::paint::PaintRows;
 use crate::common::block_arena::BlockArena;
 use crate::common::tracy;
-use crate::damage::Damage;
 use crate::damage::counters::DamageCounters;
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
@@ -15,6 +14,7 @@ use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::damage::root_order::RootOrder;
 use crate::damage::row_matcher::RowMatcher;
+use crate::damage::{Damage, DamageBase};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetIdMap, WidgetIdSet};
 use crate::scene::forest::Forest;
@@ -56,7 +56,7 @@ pub(crate) struct DamageInput<'a> {
 }
 
 impl DamageEngine {
-    /// Drops the per-widget snapshot map; [`Self::compute`] calls it on `force_full`.
+    /// Drops the per-widget snapshot map; [`Self::compute`] calls it on a full repaint.
     fn invalidate_prev(&mut self) {
         self.prev.clear();
         self.paints.clear();
@@ -66,14 +66,14 @@ impl DamageEngine {
     ///
     /// - `None`: nothing changed.
     /// - [`Damage::Partial`]: coverage below [`FULL_REPAINT_THRESHOLD`](crate::damage::FULL_REPAINT_THRESHOLD).
-    /// - [`Damage::Full`]: coverage above it, `force_full` (first frame, surface change, last frame unacked), or a moved [`FrameBaseline`].
+    /// - [`Damage::Full`]: coverage above it, a [`DamageBase::Discarded`] base, or a moved [`FrameBaseline`].
     ///
     /// `self.prev` is rolled forward in the same pass; entries in `removed` are dropped afterwards. Rects are in **screen space** (`Paint.screen`), matching where the GPU paints. See [`DamageInput::surface`].
     pub(crate) fn compute(
         &mut self,
         input: DamageInput<'_>,
         removed: &WidgetIdSet,
-        force_full: bool,
+        base: DamageBase,
     ) -> Option<Damage> {
         tracy::zone!();
         let DamageInput {
@@ -83,8 +83,8 @@ impl DamageEngine {
             baseline,
             ..
         } = input;
-        // Frame-wide inputs join the `force_full` signal: a moved baseline repaints the whole surface, and no snapshot carries it.
-        let force_full = force_full || self.presented != Some(baseline);
+        // Frame-wide inputs join the discarded base: a moved baseline repaints the whole surface, and no snapshot carries it.
+        let force_full = base == DamageBase::Discarded || self.presented != Some(baseline);
         // `force_full` means a fresh frame. Dropping the snapshot map here keeps a caller from passing it without the invalidation; the diff still repopulates the map and `Damage::Full` is returned.
         if force_full {
             self.invalidate_prev();

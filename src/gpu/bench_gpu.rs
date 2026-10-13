@@ -7,6 +7,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
+use crate::gpu::surface::render_target::internals::TargetSpec;
 use crate::gpu::surface::render_target::{self, RenderTarget};
 use crate::gpu::test_gpu::HeadlessTestGpuLease;
 use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
@@ -90,10 +91,12 @@ impl BenchGpu {
     pub fn target(&self, label: &str, size: UVec2) -> BenchTarget {
         BenchTarget(render_target::internals::texture(
             &self.gpu.device,
-            label,
-            size,
-            TARGET_FORMAT,
-            HeadlessTestGpuLease::TARGET_USAGES,
+            TargetSpec {
+                label,
+                size,
+                format: TARGET_FORMAT,
+                usage: HeadlessTestGpuLease::TARGET_USAGES,
+            },
         ))
     }
 

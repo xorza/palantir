@@ -4,6 +4,7 @@
 use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::gpu_paint::GpuPaint;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::renderer::gpu_paint::gpu_views::{RecordedView, ViewContent};
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -52,7 +53,7 @@ pub struct GpuView {
     /// Wrapped so a struct holding a `dyn GpuPaint` can still derive `Debug`:
     /// [`GpuPaintRef`] exists to avoid hand-writing that impl.
     paint: GpuPaintRef,
-    repaint: bool,
+    content: ViewContent,
 }
 
 impl GpuView {
@@ -69,7 +70,7 @@ impl GpuView {
         Self {
             widget: Widget::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
             paint: GpuPaintRef(paint),
-            repaint: true,
+            content: ViewContent::Changed,
         }
     }
 
@@ -83,7 +84,11 @@ impl GpuView {
     /// frame *recorded*), so sitting a frame out doesn't re-run [`GpuPaint::init`].
     /// Drive it from your own change tracking.
     pub const fn repaint(mut self, repaint: bool) -> Self {
-        self.repaint = repaint;
+        self.content = if repaint {
+            ViewContent::Changed
+        } else {
+            ViewContent::Unchanged
+        };
         self
     }
 
@@ -93,11 +98,13 @@ impl GpuView {
         let Self {
             mut widget,
             paint,
-            repaint,
+            content,
         } = self;
         let id = widget.resolve(ui);
         widget
-            .show(ui, None, |ui| ui.gpu_view(id, paint, repaint))
+            .show(ui, None, |ui| {
+                ui.gpu_view(RecordedView { id, paint, content });
+            })
             .response
     }
 }

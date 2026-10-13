@@ -5,9 +5,9 @@
 pub(crate) mod bench;
 mod frame_cycle;
 pub(crate) mod frame_engines;
+pub(crate) mod frame_input;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
-pub(crate) mod frame_stamp;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod singletons;
@@ -25,6 +25,7 @@ use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
@@ -58,8 +59,7 @@ use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::renderer::gpu_paint::gpu_views::GpuViews;
+use crate::renderer::gpu_paint::gpu_views::{GpuViews, RecordedView};
 use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::layer::Layer;
@@ -76,10 +76,10 @@ use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
+use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::frame_stamp::FrameInput;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::singletons::Singletons;
@@ -146,8 +146,7 @@ impl Ui {
             layout: &self.layout,
             cascade: &self.cascade,
             gpu_views: &self.gpu_views,
-            display: self.display,
-            time: self.frame_runtime.time,
+            stamp: FrameStamp::new(self.display, self.frame_runtime.time),
         }
     }
 
@@ -603,11 +602,11 @@ impl Ui {
         self.resources.clipboard().clone()
     }
 
-    /// Record a `GpuView` for widget `id`: refresh its row in [`Self::gpu_views`] and
-    /// append an image shape carrying the row's `epoch` to the active node.
-    pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: GpuPaintRef, repaint: bool) {
+    /// Record `view`: refresh its row in [`Self::gpu_views`] and append an image
+    /// shape carrying the row's `epoch` to the active node.
+    pub(crate) fn gpu_view(&mut self, view: RecordedView) {
         let frame = self.frame_runtime.render_frame_id;
-        let epoch = self.gpu_views.record(id, paint, repaint, frame);
+        let epoch = self.gpu_views.record(view, frame);
         self.forest.add_gpu_view(epoch);
     }
 
@@ -1088,6 +1087,7 @@ pub(crate) mod internals {
     use crate::animation::AnimMap;
     use crate::cascade::Cascade;
     use crate::display::Display;
+    use crate::display::frame_stamp::FrameStamp;
     use crate::input::input_state::InputState;
     use crate::layout::Layout;
     #[cfg(test)]
@@ -1107,7 +1107,6 @@ pub(crate) mod internals {
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     use crate::ui::frame_runtime::FrameRuntime;
-    use crate::ui::frame_stamp::FrameStamp;
     #[cfg(all(test, feature = "winit"))]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]

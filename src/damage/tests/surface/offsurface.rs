@@ -1,6 +1,5 @@
 //! Rects that lie partly or wholly outside the surface.
 
-use crate::Ui;
 use crate::cascade::paint::Paint;
 use crate::cascade::paint::PaintRows;
 use crate::damage::Damage;
@@ -13,6 +12,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::Vec2;

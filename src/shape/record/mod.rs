@@ -123,30 +123,34 @@ pub(crate) fn mesh_paint_bbox_local(bbox: Rect, local_rect: Option<Rect>) -> Rec
     }
 }
 
-/// Tight owner-local paint bbox of a [`ShapeRecord::Text`] from the shaped extent (`LayerLayout::text_shapes`); the encoder uses the same [`Align::place_in`] formula in screen space, so damage and draw rects can't drift.
-///
-/// **Damage inflation lives in cascade**, not here: the ladder-snap overshoot is `measured × STEP/2` in absolute screen pixels, so it applies after the cascade lifts the rect to screen; locally it would scale by `cascade_scale`.
-///
-/// - `local_origin: Some(origin)`: rect is `origin + measured`.
-/// - `local_origin: None`: placed by [`Align::place_in`] in the owner's padded inner rect.
-pub(crate) fn text_paint_bbox_local(
-    local_origin: Option<Vec2>,
-    align: Align,
-    padding: Spacing,
-    owner_size: Size,
-    measured: Size,
-) -> Rect {
-    if let Some(origin) = local_origin {
-        Rect {
-            min: origin,
-            size: measured,
+/// Where a [`ShapeRecord::Text`] puts its run in the owner: the record's `local_origin` and `align`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TextAnchor {
+    pub(crate) local_origin: Option<Vec2>,
+    pub(crate) align: Align,
+}
+
+impl TextAnchor {
+    /// Tight owner-local paint bbox of a run that measured `measured` (`LayerLayout::text_shapes`), in an owner of `owner_size` padded by `padding`; the encoder uses the same [`Align::place_in`] formula in screen space, so damage and draw rects can't drift.
+    ///
+    /// **Damage inflation lives in cascade**, not here: the ladder-snap overshoot is `measured × STEP/2` in absolute screen pixels, so it applies after the cascade lifts the rect to screen; locally it would scale by `cascade_scale`.
+    ///
+    /// - `local_origin: Some(origin)`: rect is `origin + measured`.
+    /// - `local_origin: None`: placed by [`Align::place_in`] in the owner's padded inner rect.
+    pub(crate) fn bbox_local(self, owner_size: Size, padding: Spacing, measured: Size) -> Rect {
+        if let Some(origin) = self.local_origin {
+            Rect {
+                min: origin,
+                size: measured,
+            }
+        } else {
+            let owner_local = Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            };
+            self.align
+                .place_in(owner_local.deflated_by(padding), measured)
         }
-    } else {
-        let owner_local = Rect {
-            min: Vec2::ZERO,
-            size: owner_size,
-        };
-        align.place_in(owner_local.deflated_by(padding), measured)
     }
 }
 

@@ -15,14 +15,20 @@ pub(super) struct ClockSweep {
     pub(super) examined: u32,
 }
 
+/// The slots a sweep may evict: packed with `content`, and not drawn on `current_frame`.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Evictable {
+    pub(super) content: ContentType,
+    pub(super) current_frame: u64,
+}
+
 impl ClockSweep {
-    /// Advance `hand` over `slots` to an entry that is packed, of `target` content, and not drawn on `current_frame`; gives up after one rotation. [`AtlasSlot::placement`] keeps free-listed slots out.
-    pub(super) fn over(
-        slots: &[AtlasSlot],
-        hand: u32,
-        target: ContentType,
-        current_frame: u64,
-    ) -> Self {
+    /// Advance `hand` over `slots` to an [`Evictable`] entry; gives up after one rotation. [`AtlasSlot::placement`] keeps free-listed slots out.
+    pub(super) fn over(slots: &[AtlasSlot], hand: u32, wanted: Evictable) -> Self {
+        let Evictable {
+            content: target,
+            current_frame,
+        } = wanted;
         let n = slots.len();
         if n == 0 {
             return Self {

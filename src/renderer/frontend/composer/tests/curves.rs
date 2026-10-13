@@ -11,7 +11,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
-    clip, curve, image, mesh, params, polyline_cmd, run, text,
+    TestPolyline, clip, curve, image, mesh, params, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -50,19 +50,14 @@ fn compose_polyline_over_prior_text_splits_text_batch() {
         let buf = run(
             |b, store| {
                 text(b, Rect::new(0.0, 0.0, 100.0, 20.0));
-                polyline_cmd(
-                    b,
-                    store,
+                TestPolyline::new(
                     &[
                         Vec2::new(0.0, case.stroke_y),
                         Vec2::new(100.0, case.stroke_y),
                     ],
-                    &[RgbaF32::WHITE],
-                    ColorMode::Single,
                     1.0,
-                    LineCap::Butt,
-                    LineJoin::Miter,
-                );
+                )
+                .record(b, store);
                 text(b, Rect::new(0.0, 40.0, 100.0, 20.0));
             },
             &params(1.0, UVec2::new(200, 200)),
@@ -93,16 +88,10 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     ];
     let mut commands = PaintCapture::default();
     let mut store = RecordStore::default();
-    polyline_cmd(
-        &mut commands,
-        &mut store,
-        &pts,
-        &[RgbaF32::WHITE],
-        ColorMode::Single,
-        4.0,
-        LineCap::Round,
-        LineJoin::Round,
-    );
+    TestPolyline::new(&pts, 4.0)
+        .cap(LineCap::Round)
+        .join(LineJoin::Round)
+        .record(&mut commands, &mut store);
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     rig.store = store;
     rig.compose(&commands);
@@ -166,21 +155,19 @@ fn a_join_between_colours_averages_them_premultiplied() {
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let mut commands = PaintCapture::default();
     let mut store = RecordStore::default();
-    polyline_cmd(
-        &mut commands,
-        &mut store,
+    TestPolyline::new(
         &[
             Vec2::new(10.0, 10.0),
             Vec2::new(60.0, 40.0),
             Vec2::new(110.0, 10.0),
             Vec2::new(160.0, 40.0),
         ],
-        &[red, RgbaF32::TRANSPARENT, red],
-        ColorMode::PerSegment,
         4.0,
-        LineCap::Round,
-        LineJoin::Round,
-    );
+    )
+    .colors(&[red, RgbaF32::TRANSPARENT, red], ColorMode::PerSegment)
+    .cap(LineCap::Round)
+    .join(LineJoin::Round)
+    .record(&mut commands, &mut store);
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     rig.store = store;
     rig.compose(&commands);
@@ -203,16 +190,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     let emit = |pts: [Vec2; 3]| {
         run(
             |b, store| {
-                polyline_cmd(
-                    b,
-                    store,
-                    &pts,
-                    &[RgbaF32::WHITE],
-                    ColorMode::Single,
-                    4.0,
-                    LineCap::Butt,
-                    LineJoin::Miter,
-                );
+                TestPolyline::new(&pts, 4.0).record(b, store);
             },
             &params(1.0, UVec2::new(300, 300)),
         )
@@ -268,16 +246,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     ];
     let buf = run(
         |b, store| {
-            polyline_cmd(
-                b,
-                store,
-                &pts,
-                &[red, green, green, blue],
-                ColorMode::PerPoint,
-                4.0,
-                LineCap::Butt,
-                LineJoin::Round,
-            );
+            TestPolyline::new(&pts, 4.0)
+                .colors(&[red, green, green, blue], ColorMode::PerPoint)
+                .join(LineJoin::Round)
+                .record(b, store);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -298,16 +270,10 @@ fn compose_polyline_color_modes_and_coincident_skip() {
 
     let buf = run(
         |b, store| {
-            polyline_cmd(
-                b,
-                store,
-                &pts,
-                &[red, green, blue],
-                ColorMode::PerSegment,
-                4.0,
-                LineCap::Butt,
-                LineJoin::Round,
-            );
+            TestPolyline::new(&pts, 4.0)
+                .colors(&[red, green, blue], ColorMode::PerSegment)
+                .join(LineJoin::Round)
+                .record(b, store);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -810,16 +776,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     for case in cases {
         let buf = run(
             |b, store| {
-                polyline_cmd(
-                    b,
-                    store,
-                    case.points,
-                    &[RgbaF32::WHITE],
-                    ColorMode::Single,
-                    2.0,
-                    LineCap::Butt,
-                    LineJoin::Miter,
-                );
+                TestPolyline::new(case.points, 2.0).record(b, store);
                 image(b, Rect::new(22.0, 0.0, 10.0, 10.0));
             },
             &params(1.0, UVec2::new(100, 100)),

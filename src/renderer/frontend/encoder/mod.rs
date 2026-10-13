@@ -45,13 +45,13 @@ impl Encoder {
             Damage::Full => None,
         };
 
-        let viewport = scene.display.logical_rect();
-        let now = scene.time;
+        let viewport = scene.stamp.display.logical_rect();
+        let now = scene.stamp.time;
         let mut gradients = self
             .gradients
             .begin(scene.forest.record_store.gradients.records.as_slice());
         // Matches the backend's padded physical scissor; both derive from `RenderPlan::AA_PADDING`.
-        let damage_cull_margin = RenderPlan::cull_margin(scene.display.scale_factor());
+        let damage_cull_margin = RenderPlan::cull_margin(scene.stamp.display.scale_factor());
         for (layer, tree) in scene.forest.trees.iter_paint_order() {
             let layer_cascades = &scene.cascade.layers[layer];
             let mut ctx = LayerCtx {

@@ -89,10 +89,9 @@ fn fill_width_editor_shrinks_below_text_content() {
     let mut buf = LONG.to_string();
     let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
     let text_w = h.ui.arranged_rect(Layer::Main, hug).size.w;
-    assert!(
-        text_w > NARROW_W,
-        "fixture requires the text ({text_w}) to be wider than the narrow container ({NARROW_W})",
-    );
+    // 43 mono glyphs of 8 px, 6.5 px padding and 1.5 px caret room each side:
+    // wider than the narrow container.
+    assert_eq!(text_w, 43.0 * 8.0 + 2.0 * 6.5 + 2.0 * 1.5);
 
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
@@ -100,10 +99,6 @@ fn fill_width_editor_shrinks_below_text_content() {
     assert_eq!(
         fill_w, NARROW_W,
         "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}"
-    );
-    assert!(
-        fill_w < text_w,
-        "Fill editor ({fill_w}) must be narrower than its text content ({text_w})",
     );
 }
 

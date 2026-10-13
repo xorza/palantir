@@ -1,6 +1,5 @@
 //! What moving, adding and removing nodes damages.
 
-use crate::Ui;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
 use crate::internals::ui_harness::UiHarness;
@@ -14,6 +13,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::Vec2;

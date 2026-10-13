@@ -6,6 +6,7 @@ use crate::layout::tests::support::ChatMessage;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::RgbaF32;
@@ -16,6 +17,7 @@ use crate::shape::Shape;
 use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::internals::PROBATION_KEEP_FRAMES;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -35,17 +37,11 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     );
     let first = h.ui.layout(Layer::Main).text_shapes[span.start as usize];
     let second = h.ui.layout(Layer::Main).text_shapes[(span.start + 1) as usize];
-    assert!(
-        first.extent.size.w > 0.0 && second.extent.size.w > 0.0,
-        "both runs must have measured nonzero width: first={:?} second={:?}",
-        first.extent.size,
+    assert_eq!(first.extent.size, Size::new(26.0, 16.0), "`first` at 14 px");
+    assert_eq!(
         second.extent.size,
-    );
-    assert!(
-        second.extent.size.w > first.extent.size.w,
-        "second run is longer text and should measure wider; first={} second={}",
-        first.extent.size.w,
-        second.extent.size.w,
+        Size::new(176.0, 16.0),
+        "`second-with-different-text` at 14 px",
     );
     assert_ne!(
         first.key, second.key,
@@ -123,6 +119,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 /// A `Fill` text child costs one bounded reshape per frame of a resize drag, through the real layout stack. `WrapSlot` caches one width-bounded resolve per reuse row, so a driver measuring a node at two widths would evict it and `supersede` a buffer it was about to reuse; the 1-shape count pins that. `supersede` is also the only signal that makes the probation window reachable.
 #[test]
 fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
+    const FRAMES: u32 = 12;
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
     // Frame 0 shapes the unbounded root and the first bounded resolve.
     h.frame_value(|ui| {
@@ -151,7 +148,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     // Drag the share: every frame commits a fresh whole-pixel width and demotes the one it replaced, including the first after the still frames (reuse rows outlive a frame they were not measured in).
     let mut shapes = 0;
     let mut supersedes = 0;
-    for frame in 0..12 {
+    for frame in 1..=FRAMES {
         let before = h.ui.shaper().cache_counts();
         h.frame_value(|ui| {
             ChatMessage {
@@ -163,31 +160,23 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
         });
         let d = h.ui.shaper().cache_counts() - before;
         // The unbounded root is shaped once for the whole drag; more than one means a driver measured this node at two widths in a frame.
-        assert!(
-            d.shapes <= 1,
-            "drag frame {frame} reshaped {} times, so some driver committed \
-             two widths to one node in one frame",
-            d.shapes,
+        assert_eq!(
+            (d.shapes, d.supersedes),
+            (1, 1),
+            "drag frame {frame}: one width shaped, the one it replaced demoted",
         );
         shapes += d.shapes;
         supersedes += d.supersedes;
     }
-    assert!(
-        shapes >= 10,
-        "the drag must actually be reshaping ({shapes})"
-    );
-    assert_eq!(
-        supersedes, shapes,
-        "every replaced width must be demoted, or the drag ages on the \
-         protected window",
-    );
+    assert_eq!((shapes, supersedes), (FRAMES, FRAMES));
 
-    // Twelve distinct widths, but retention tracks the probation window.
-    let resident = h.ui.shaper().cosmic_cache_len();
-    assert!(
-        resident <= 8,
-        "drag retained {resident} buffers for one run; supersession is not \
-         reaching them through the layout stack",
+    // Twelve distinct widths, but retention tracks the probation window: a
+    // layout-only frame promotes nothing, so what stays is the widths shaped in
+    // its last `PROBATION_KEEP_FRAMES + 1` frames, the root long gone.
+    assert_eq!(
+        h.ui.shaper().cosmic_cache_len(),
+        usize::try_from(PROBATION_KEEP_FRAMES + 1).unwrap(),
+        "supersession is not reaching the drag's buffers through the layout stack",
     );
 }
 

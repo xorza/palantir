@@ -1,12 +1,12 @@
 //! `InputDelta::repaint_requested` gating: pointer moves over inert surfaces leave it false.
 
-use crate::Ui;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::tests::forged_focus;
 use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

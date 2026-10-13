@@ -41,7 +41,7 @@ use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::shape::record::{self, ShapeRecord};
+use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
@@ -180,11 +180,13 @@ impl LayerCtx<'_, '_> {
                     return;
                 };
                 // `local_rect: None`: the encoder places the bbox in the owner's padded inner rect via `Align::place_in`; `Some(origin)`: the widget places it at `owner.min + origin`. Shared placement, so the cascade's paint rect and damage agree with paint.
-                let local = record::text_paint_bbox_local(
-                    *local_origin,
-                    *align,
-                    self.tree.records.layout()[id.idx()].padding,
+                let anchor = TextAnchor {
+                    local_origin: *local_origin,
+                    align: *align,
+                };
+                let local = anchor.bbox_local(
                     owner_rect.size,
+                    self.tree.records.layout()[id.idx()].padding,
                     shaped.extent.size,
                 );
                 let rect = geometry::resolve_local_rect(owner_rect, Some(local));

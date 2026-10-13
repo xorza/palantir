@@ -5,27 +5,28 @@
 pub(crate) mod wake;
 
 use crate::common::time::{self, ANIM_SUBSTEP_DT, MAX_ANIM_DT};
+use crate::damage::DamageBase;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
 use crate::text::shaper::TextShaper;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
-use crate::ui::frame_stamp::FrameStamp;
 use std::mem;
 use std::time::Duration;
 
 /// What `Ui::frame` does this frame, decided at entry from fired wake reasons,
-/// input state and prior-frame validity. The variants make `paint_only ⇒
-/// !force_full` unrepresentable to break.
+/// input state and prior-frame validity. The variants make a paint-only frame
+/// with a discarded damage base unrepresentable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum FramePlan {
     /// Skip pre_record, record, finalize, layout and cascade; reuse the prior
     /// frame's tree and cascade. Fired only by the anim-only fast path.
     PaintOnly,
-    /// Run record, optional double-layout and finalize. `force_full` discards
-    /// the prior damage snapshot (surface change, missed submit, first frame).
-    FullRecord { force_full: bool },
+    /// Run record, optional double-layout and finalize, diffing damage against
+    /// `base`.
+    FullRecord { base: DamageBase },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -187,7 +188,13 @@ impl FrameRuntime {
         if paint_only {
             FramePlan::PaintOnly
         } else {
-            FramePlan::FullRecord { force_full }
+            FramePlan::FullRecord {
+                base: if force_full {
+                    DamageBase::Discarded
+                } else {
+                    DamageBase::Previous
+                },
+            }
         }
     }
 

@@ -61,6 +61,16 @@ mod row_matcher;
 /// corners score near 0 %.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
+/// Whether a frame's damage diffs against the last presented frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DamageBase {
+    /// Diff against it.
+    Previous,
+    /// Discard it and repaint the whole surface: the first frame, a surface
+    /// change, or a missed submit.
+    Discarded,
+}
+
 /// What the GPU should do with this frame. "Nothing changed" is `None`, not a
 /// variant; see [`Damage::new`]. Clear colour is a presentation concern
 /// stamped in by [`crate::renderer::render_plan::RenderPlan`].

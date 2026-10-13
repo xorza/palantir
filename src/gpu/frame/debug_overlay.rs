@@ -11,7 +11,7 @@ use crate::gpu::pipeline::quad_pipeline::QuadBinding;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::surface::viewport::ViewportPush;
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
@@ -122,7 +122,10 @@ impl DebugOverlay {
                 // collapse to zero area. The pass is unscissored and the surface clips the
                 // spill.
                 for r in damage.region.iter_rects() {
-                    quads.push(outline(r.scaled_by(scale, true).inflated(gap_px)));
+                    quads.push(outline(
+                        r.scaled_by(scale, EdgeRounding::WholePixels)
+                            .inflated(gap_px),
+                    ));
                 }
             }
             // The full-viewport outline insets instead: outsetting would push it off-screen.

@@ -21,7 +21,6 @@ use crate::text::probe::internals as probe;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
 use crate::text::root::TextRoot;
-use crate::text::root::internals::TestMeasure;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
@@ -80,28 +79,6 @@ fn mono_extent(text: &str, shape: TestShape, fit: LineFit) -> Size {
 
 fn mono_root(text: &str, shape: TestShape) -> TextRoot {
     mono::root(shape.unbounded_request(text), WrapFloor::Scan)
-}
-
-/// A truncating measure and the unbounded probe it cuts from (which must be measured first).
-#[derive(Debug)]
-struct Truncated {
-    fitted: TestMeasure,
-    unbounded: TestMeasure,
-}
-
-fn truncate(cosmic: &mut CosmicMeasure, text: &str, shape: TestShape, fit: LineFit) -> Truncated {
-    let unbounded = cosmic.measure(text, shape.unbounded());
-    let fitted = cosmic.measure_with_fit(text, shape, fit, unbounded.buffer_key());
-    Truncated { fitted, unbounded }
-}
-
-fn measure_truncated(
-    cosmic: &mut CosmicMeasure,
-    text: &str,
-    shape: TestShape,
-    fit: LineFit,
-) -> TestMeasure {
-    truncate(cosmic, text, shape, fit).fitted
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -9,6 +9,13 @@ use glam::{I16Vec2, IVec2, UVec2};
 /// satisfies the bounds; nothing depends on what a key means.
 type TestKey = u16;
 
+fn evictable(content: ContentType, current_frame: u64) -> Evictable {
+    Evictable {
+        content,
+        current_frame,
+    }
+}
+
 fn key(id: u16) -> TestKey {
     id
 }
@@ -188,7 +195,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
 
     // From rest, the first eligible mask slot is 0, not the older 5. One step
     // examined; the hand parks past it.
-    let first = ClockSweep::over(&slots, 0, ContentType::Mask, 10);
+    let first = ClockSweep::over(&slots, 0, evictable(ContentType::Mask, 10));
     assert_eq!(
         first,
         ClockSweep {
@@ -198,7 +205,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         },
     );
     // Resuming takes slot 1 in one step: the hand did not restart.
-    let second = ClockSweep::over(&slots, first.hand, ContentType::Mask, 10);
+    let second = ClockSweep::over(&slots, first.hand, evictable(ContentType::Mask, 10));
     assert_eq!(
         second,
         ClockSweep {
@@ -209,7 +216,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // Now it walks over unallocated slot 2, colour slot 3 and current-frame
     // slot 4 to reach 5.
-    let third = ClockSweep::over(&slots, second.hand, ContentType::Mask, 10);
+    let third = ClockSweep::over(&slots, second.hand, evictable(ContentType::Mask, 10));
     assert_eq!(
         third,
         ClockSweep {
@@ -220,13 +227,13 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // The colour side sees only its own slot, wherever the hand is.
     assert_eq!(
-        ClockSweep::over(&slots, 5, ContentType::Color, 10).victim,
+        ClockSweep::over(&slots, 5, evictable(ContentType::Color, 10)).victim,
         Some(3),
     );
     // Nothing eligible: one full rotation, no victim, hand left where it
     // started. Frame 1, not 2: slot 5's `last_use` of 1 still qualifies at
     // frame 2, and the oldest slot must be at the frame for the side to be dry.
-    let dry = ClockSweep::over(&slots, 2, ContentType::Mask, 1);
+    let dry = ClockSweep::over(&slots, 2, evictable(ContentType::Mask, 1));
     assert_eq!(
         dry,
         ClockSweep {
@@ -237,7 +244,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     );
     // An empty slab is not a rotation over nothing.
     assert_eq!(
-        ClockSweep::over(&[], 7, ContentType::Mask, 10),
+        ClockSweep::over(&[], 7, evictable(ContentType::Mask, 10)),
         ClockSweep {
             victim: None,
             hand: 0,

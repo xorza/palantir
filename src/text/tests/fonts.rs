@@ -2,12 +2,12 @@
 //! unknown family falls back to, and what the axes shape against.
 
 use super::*;
-use crate::Ui;
 use crate::common::clipboard::Clipboard;
 use crate::internals::ui_harness::UiHarness;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
+use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::resources::UiResources;
 use crate::widget_core::configure::Configure;

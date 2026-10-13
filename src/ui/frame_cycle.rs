@@ -15,10 +15,10 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::ident::Ident;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
+use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
-use crate::ui::frame_stamp::FrameInput;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::window::cursor_icon::CursorIcon;
@@ -131,10 +131,10 @@ impl<'a> FrameCycle<'a> {
         };
         let damage = match plan {
             FramePlan::PaintOnly => self.engines.damage.compute_paint_only(input),
-            FramePlan::FullRecord { force_full } => {
+            FramePlan::FullRecord { base } => {
                 self.engines
                     .damage
-                    .compute(input, &self.ui.forest.ids.removed, force_full)
+                    .compute(input, &self.ui.forest.ids.removed, base)
             }
         };
 

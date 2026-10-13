@@ -6,17 +6,27 @@ use crate::input::keyboard::key_text::KeyText;
 use crate::input::pointer::PointerButton;
 use std::time::Duration;
 
-fn key(key: Key, text: KeyText, repeat: bool) -> InputEvent<'static> {
+fn key(key: Key, text: KeyText) -> InputEvent<'static> {
     InputEvent::KeyDown {
         key,
-        repeat,
+        repeat: false,
         physical: Key::Other,
         text,
     }
 }
 
+/// An auto-repeat of the text-less `key`.
+fn key_repeat(key: Key) -> InputEvent<'static> {
+    InputEvent::KeyDown {
+        key,
+        repeat: true,
+        physical: Key::Other,
+        text: KeyText::EMPTY,
+    }
+}
+
 fn typed(c: char) -> InputEvent<'static> {
-    key(Key::Char(c), KeyText::from_char(c), false)
+    key(Key::Char(c), KeyText::from_char(c))
 }
 
 /// Admit `event` and note what it changes, as `InputState::apply` does.
@@ -64,38 +74,34 @@ fn a_frame_admits_one_change_per_button_and_one_command_key() {
         ),
         (
             "text after a command key waits",
-            &[key(Key::Escape, KeyText::EMPTY, false), typed('a')],
+            &[key(Key::Escape, KeyText::EMPTY), typed('a')],
             &[true, false],
         ),
         (
             "a command key after text closes the run",
-            &[
-                typed('a'),
-                key(Key::Backspace, KeyText::EMPTY, false),
-                typed('c'),
-            ],
+            &[typed('a'), key(Key::Backspace, KeyText::EMPTY), typed('c')],
             &[true, true, false],
         ),
         (
             "repeats of the held command key ride along",
             &[
-                key(Key::Backspace, KeyText::EMPTY, false),
-                key(Key::Backspace, KeyText::EMPTY, true),
-                key(Key::Backspace, KeyText::EMPTY, true),
+                key(Key::Backspace, KeyText::EMPTY),
+                key_repeat(Key::Backspace),
+                key_repeat(Key::Backspace),
             ],
             &[true, true, true],
         ),
         (
             "a second command key waits",
             &[
-                key(Key::ArrowLeft, KeyText::EMPTY, false),
-                key(Key::ArrowRight, KeyText::EMPTY, false),
+                key(Key::ArrowLeft, KeyText::EMPTY),
+                key(Key::ArrowRight, KeyText::EMPTY),
             ],
             &[true, false],
         ),
         (
             "a bare modifier does not end a typing run",
-            &[key(Key::Other, KeyText::EMPTY, false), typed('a')],
+            &[key(Key::Other, KeyText::EMPTY), typed('a')],
             &[true, true],
         ),
     ];

@@ -4,6 +4,8 @@
 //! as the offset of a *narrow* line relative to the widest, never of the block
 //! (that would apply it twice).
 
+use crate::primitives::layout::align::Align;
+use crate::primitives::layout::align::HAlign;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -12,7 +14,6 @@ use crate::text::key::LineAlign;
 use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
 use crate::widgets::text_edit::tests::*;
-use crate::{Align, HAlign};
 
 const FS: f32 = 16.0;
 const LH: f32 = 19.2;

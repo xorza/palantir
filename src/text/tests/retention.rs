@@ -36,7 +36,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let mut truncated = CosmicMeasure::default();
         let params = wrap_params.width(84.003);
-        let cut = truncate(&mut truncated, text, params, fit);
+        let cut = truncated.truncate(text, params, fit);
         let (original, unbounded) = (cut.fitted, cut.unbounded);
         let original_glyphs = glyph_positions(&truncated, original.buffer_key());
         truncated.drop_all_buffers();
@@ -54,7 +54,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             truncated.shaped_run(unbounded.buffer_key()).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
-        let restored = truncated.measure_with_fit(text, params, fit, unbounded.buffer_key());
+        let restored = truncated.measure_with_fit(text, params, fit);
         assert_eq!(restored.size, original.size, "fit: {fit:?}");
         assert_eq!(
             restored.intrinsic_min, original.intrinsic_min,

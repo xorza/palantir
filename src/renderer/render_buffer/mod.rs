@@ -2,6 +2,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::display::frame_stamp::FrameStamp;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
@@ -90,12 +91,12 @@ impl RenderBuffer {
         }
     }
 
-    /// Reset every per-frame column (capacity retained) and stamp viewport and scale from `display`.
-    pub(crate) fn start_frame(&mut self, display: Display, time: Duration) {
+    /// Reset every per-frame column (capacity retained) and stamp viewport, scale and time from `stamp`.
+    pub(crate) fn start_frame(&mut self, stamp: FrameStamp) {
         self.discard_scene();
         self.clear_override = None;
-        self.display = display;
-        self.time = time;
+        self.display = stamp.display;
+        self.time = stamp.time;
     }
 
     pub(crate) fn draws_len(&self, tier: PaintTier) -> u32 {

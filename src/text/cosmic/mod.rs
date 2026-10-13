@@ -16,7 +16,7 @@ use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
 use crate::text::cosmic::glyph_ink::GlyphInk;
-use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
+use crate::text::cosmic::shaped_buffer_cache::{ShapedBuffer, ShapedBufferCache, ShapedRun};
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
 use crate::text::font_family::FontFamily;
@@ -412,7 +412,14 @@ impl CosmicMeasure {
             None => CachedExtent::Root(geometry.root(extent)),
             Some(_) => CachedExtent::Bounded(extent),
         };
-        self.cache.insert(key, buffer, extent, geometry.left);
+        self.cache.insert(
+            key,
+            ShapedBuffer {
+                buffer,
+                extent,
+                left: geometry.left,
+            },
+        );
         extent
     }
 
@@ -649,8 +656,14 @@ impl CosmicMeasure {
         let extent = self
             .glyph_ink
             .extent(&buffer, &mut self.font_system, &geometry);
-        self.cache
-            .insert(key, buffer, CachedExtent::Bounded(extent), geometry.left);
+        self.cache.insert(
+            key,
+            ShapedBuffer {
+                buffer,
+                extent: CachedExtent::Bounded(extent),
+                left: geometry.left,
+            },
+        );
         extent
     }
 
@@ -720,6 +733,14 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::root::internals::TestMeasure;
 
+    /// A truncating measure and the unbounded probe it cuts from.
+    #[cfg(test)]
+    #[derive(Debug)]
+    pub(crate) struct Truncated {
+        pub(crate) fitted: TestMeasure,
+        pub(crate) unbounded: TestMeasure,
+    }
+
     impl Default for CosmicMeasure {
         fn default() -> Self {
             Self::new(FontScope::Bundled)
@@ -745,17 +766,39 @@ pub(crate) mod internals {
             }
         }
 
+        /// `text` under `fit`; the unbounded probe it cuts from must be resident.
         #[cfg(test)]
         pub(crate) fn measure_with_fit(
             &mut self,
             text: &str,
             shape: TestShape,
             fit: LineFit,
-            unbounded_key: TextShapeKey,
         ) -> TestMeasure {
             let request = shape.request(text, fit);
-            debug_assert_eq!(request.key.unbounded_version(), unbounded_key);
+            debug_assert!(
+                self.shaped_run(request.key.unbounded_version()).is_some(),
+                "measure the unbounded probe first",
+            );
             self.measure_with_fit_key(request)
+        }
+
+        /// `text` under `fit`, after the unbounded probe it cuts from.
+        #[cfg(test)]
+        pub(crate) fn truncate(&mut self, text: &str, shape: TestShape, fit: LineFit) -> Truncated {
+            let unbounded = self.measure(text, shape.unbounded());
+            let fitted = self.measure_with_fit(text, shape, fit);
+            Truncated { fitted, unbounded }
+        }
+
+        /// [`Self::truncate`]'s fitted measure alone.
+        #[cfg(test)]
+        pub(crate) fn measure_truncated(
+            &mut self,
+            text: &str,
+            shape: TestShape,
+            fit: LineFit,
+        ) -> TestMeasure {
+            self.truncate(text, shape, fit).fitted
         }
 
         pub(crate) fn cache_len(&self) -> usize {

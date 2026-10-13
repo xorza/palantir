@@ -10,7 +10,7 @@ use crate::damage::counters::DamageCounters;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::layer_frame::LayerFrame;
 use crate::damage::node_snapshot::NodeSnapshot;
-use crate::damage::row_matcher::RowMatcher;
+use crate::damage::row_matcher::{PaintsChange, RowMatcher};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::tree::iter::TreeItem;
@@ -173,9 +173,13 @@ impl LayerWalk<'_> {
         let Visit { i, wid, parent_key } = node;
         let node = NodeId(i as u32);
         let curr = self.frame.cascade.paint_arena.rows_of(i);
+        let change = PaintsChange {
+            prev: prev.paint_span,
+            curr,
+        };
         let leg = self
             .matcher
-            .diff_changed_leg(self.paints, self.raw_rects, prev.paint_span, curr);
+            .diff_changed_leg(self.paints, self.raw_rects, change);
 
         // Exact-matched rows emit no content damage, but a pair whose paint order inverted still flips its overlap. Only exact pairs participate; moved and added rows already cover theirs.
         if leg.order_inverted {

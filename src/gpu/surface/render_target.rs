@@ -94,14 +94,27 @@ pub(crate) mod internals {
     use crate::gpu::surface::render_target;
     use glam::UVec2;
 
-    /// A single-sample 2D render target of `size`.
-    pub(crate) fn texture(
-        device: &wgpu::Device,
-        label: &str,
-        size: UVec2,
-        format: wgpu::TextureFormat,
-        usage: wgpu::TextureUsages,
-    ) -> wgpu::Texture {
+    /// A test or bench render target: `label` names it in RenderDoc and validation errors.
+    #[derive(Clone, Copy, Debug)]
+    pub struct TargetSpec<'a> {
+        /// The debug name.
+        pub label: &'a str,
+        /// Physical pixels.
+        pub size: UVec2,
+        /// The texel format.
+        pub format: wgpu::TextureFormat,
+        /// What the texture may be used for.
+        pub usage: wgpu::TextureUsages,
+    }
+
+    /// A single-sample 2D render target as `spec` describes it.
+    pub(crate) fn texture(device: &wgpu::Device, spec: TargetSpec<'_>) -> wgpu::Texture {
+        let TargetSpec {
+            label,
+            size,
+            format,
+            usage,
+        } = spec;
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
             size: render_target::extent(size),
@@ -117,7 +130,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::surface::render_target::internals::texture;
+    use crate::gpu::surface::render_target::internals::{TargetSpec, texture};
     use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::internals::panic_probe;
@@ -138,8 +151,15 @@ mod tests {
         }
 
         let gpu = headless_test_gpu();
-        let made =
-            |format, usage| texture(&gpu.device, "target-check", UVec2::splat(4), format, usage);
+        let made = |format, usage| {
+            let spec = TargetSpec {
+                label: "target-check",
+                size: UVec2::splat(4),
+                format,
+                usage,
+            };
+            texture(&gpu.device, spec)
+        };
         let good = made(F::Rgba8UnormSrgb, U::RENDER_ATTACHMENT);
         assert_eq!(RenderTarget::new(&good).size(), UVec2::splat(4));
         let linear = made(F::Rgba8Unorm, U::RENDER_ATTACHMENT);

@@ -1,11 +1,10 @@
 //! One frame's pointer and keyboard dispatch for a TextEdit.
 
-use crate::common::platform::{PLATFORM, Platform};
+use crate::common::platform::PLATFORM;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
-use crate::input::keyboard::modifiers::Modifiers;
 use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
@@ -14,6 +13,7 @@ use crate::widgets::text_edit::edit_state::EditKind;
 use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
+use crate::widgets::text_edit::text_nav::TextNav;
 
 /// Result of one frame's input pass: edge signals `show()` folds into
 /// [`crate::widgets::text_edit::TextEditResponse`].
@@ -153,7 +153,7 @@ impl InputPass<'_> {
                 action.execute(&mut ed, &clipboard);
                 continue;
             }
-            match apply_key(&mut ed, kp) {
+            match apply_key(&mut ed, kp, TextNav::new(PLATFORM)) {
                 KeyOutcome::Blur => {
                     canceled = true;
                     assert_only_repeats_after(ui.keyboard_events(), i);
@@ -187,23 +187,23 @@ fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
     );
 }
 
-pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
+pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress, nav: TextNav) -> KeyOutcome {
     let motion = CaretMove::from(keypress.mods);
     let probe = |target| KeyOutcome::Probe(ProbeMotion { target, motion });
-    let line_nav = is_line_nav(keypress.mods);
+    let line_nav = nav.is_line(keypress.mods);
     match keypress.key {
         Key::Backspace if line_nav => editor.delete_to_line_start(),
         Key::Backspace => editor.delete_backward(),
         Key::Delete => editor.delete_forward(),
-        Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(motion),
-        Key::ArrowRight if is_word_nav(keypress.mods) => editor.move_word_right(motion),
+        Key::ArrowLeft if nav.is_word(keypress.mods) => editor.move_word_left(motion),
+        Key::ArrowRight if nav.is_word(keypress.mods) => editor.move_word_right(motion),
         Key::ArrowLeft if line_nav && editor.multiline() => return probe(ProbeTarget::RowStart),
         Key::ArrowRight if line_nav && editor.multiline() => return probe(ProbeTarget::RowEnd),
         Key::ArrowLeft if line_nav => editor.move_caret(0, motion),
         Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), motion),
         // Document ends: Ctrl+Home/End, and Cmd+Up/Down on macOS.
-        Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, motion),
-        Key::End | Key::ArrowDown if is_document_nav(keypress) => {
+        Key::Home | Key::ArrowUp if nav.is_document(keypress) => editor.move_caret(0, motion),
+        Key::End | Key::ArrowDown if nav.is_document(keypress) => {
             editor.move_caret(editor.text().len(), motion);
         }
         Key::ArrowLeft => editor.move_grapheme_left(motion),
@@ -233,36 +233,6 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         _ => {}
     }
     KeyOutcome::None
-}
-
-/// macOS line chords: Cmd+Left / Right and Cmd+Backspace (`Modifiers::ctrl`
-/// is Cmd there).
-fn is_line_nav(modifiers: Modifiers) -> bool {
-    PLATFORM == Platform::Mac && modifiers.ctrl && !modifiers.alt
-}
-
-/// Ctrl with Home / End everywhere, Cmd with Up / Down on macOS.
-fn is_document_nav(keypress: KeyPress) -> bool {
-    let mods = keypress.mods;
-    if !mods.ctrl || mods.alt {
-        return false;
-    }
-    match keypress.key {
-        Key::Home | Key::End => true,
-        Key::ArrowUp | Key::ArrowDown => PLATFORM == Platform::Mac,
-        _ => false,
-    }
-}
-
-/// Alt on macOS (Cmd is the line chord), Ctrl elsewhere.
-const WORD_NAV: Modifiers = match PLATFORM {
-    Platform::Mac => Modifiers::ALT,
-    _ => Modifiers::CTRL,
-};
-
-/// [`WORD_NAV`] held without the other of Ctrl and Alt.
-const fn is_word_nav(modifiers: Modifiers) -> bool {
-    modifiers.ctrl == WORD_NAV.ctrl && modifiers.alt == WORD_NAV.alt
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -319,12 +289,4 @@ impl ProbeTarget {
             Self::RowEnd => probe.byte_at(probe.size().w + 1.0, pos.y_top + pos.line_height * 0.5),
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::input::keyboard::modifiers::Modifiers;
-
-    /// The platform's word-motion chord, for the cases that press it.
-    pub(crate) const WORD_NAV: Modifiers = super::WORD_NAV;
 }
