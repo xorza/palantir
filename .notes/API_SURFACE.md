@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` is the crate's own test surface and is left out.
 
-Generated on top of `fde47148` (plus the working tree).
+Generated on top of `24c4029e` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -3762,6 +3762,15 @@ widget::AnimationSlot
         impl Hash
         impl PartialEq
 
+widget::Backdrop
+    enum Backdrop
+        None
+        Root
+        Eater(WidgetId)
+        impl Clone
+        impl Copy
+        impl Debug
+
 widget::Caret
     struct Caret
         pub x: f32
@@ -3847,6 +3856,7 @@ widget::CubicBezier
         impl Clone
         impl Copy
         impl Debug
+        impl From<QuadraticBezier>
         impl PartialEq
 
 widget::CurveShape
@@ -4006,6 +4016,30 @@ widget::MeshVertex
         impl Pod
         impl Zeroable
 
+widget::OverlayScope
+    struct OverlayScope
+        // and private fields
+        pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
+        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R>
+        pub fn withdraw(self, ui: &mut Ui)
+        impl Debug
+
+widget::OverlaySpec
+    struct OverlaySpec
+        pub layer: Layer
+        pub anchor: Option<Anchor>
+        pub backdrop: Backdrop
+        impl Clone
+        impl Copy
+        impl Debug
+
+widget::OverlayTurn
+    struct OverlayTurn<R>
+        pub inner: R
+        pub escape: bool
+        pub outside: bool
+        impl<R: Debug> Debug for OverlayTurn<R>
+
 widget::PaintAnimation
     struct PaintAnimation
         pub channel: PaintChannel
@@ -4089,6 +4123,17 @@ widget::PolylineShape
         impl<'a> Clone for PolylineShape<'a>
         impl<'a> Debug for PolylineShape<'a>
 
+widget::QuadraticBezier
+    struct QuadraticBezier
+        pub p0: Vec2
+        pub p1: Vec2
+        pub p2: Vec2
+        impl Clone
+        impl Copy
+        impl Debug
+        impl From<QuadraticBezier> for CubicBezier
+        impl PartialEq
+
 widget::RasterImage
     struct RasterImage<'a>
         pub content: ContentType
@@ -4128,7 +4173,7 @@ widget::Shape
         pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape
         pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_>
         pub const fn cubic_bezier(bezier: CubicBezier, stroke: Stroke) -> CurveShape
-        pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape
+        pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Stroke) -> CurveShape
         pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape
         pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape
         pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape

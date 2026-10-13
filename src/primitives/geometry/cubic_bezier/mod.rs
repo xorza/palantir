@@ -1,5 +1,6 @@
 //! The cubic Bézier [`Shape::cubic_bezier`](crate::widget::Shape::cubic_bezier) strokes and lowering reduces lines and quadratics to, and the tight bbox that sizes its arena payload.
 
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::vec2;
 use glam::Vec2;
@@ -26,17 +27,6 @@ impl CubicBezier {
         vec2::offset(self.p1);
         vec2::offset(self.p2);
         vec2::offset(self.p3);
-    }
-
-    /// The cubic tracing the quadratic `(p0, c, p2)` exactly: inner points `p0 + 2/3·(c - p0)` and `p2 + 2/3·(c - p2)`.
-    #[inline]
-    pub(crate) fn from_quadratic(p0: Vec2, c: Vec2, p2: Vec2) -> Self {
-        Self {
-            p0,
-            p1: p0 + (c - p0) * (2.0 / 3.0),
-            p2: p2 + (c - p2) * (2.0 / 3.0),
-            p3: p2,
-        }
     }
 
     /// Tight bbox of the curve trace, not its control polygon (which overstates the extent). Solve `B'(t) = 0` per axis, keep roots in `(0, 1)`, combine with the endpoints.
@@ -77,6 +67,20 @@ impl CubicBezier {
             }
         }
         Rect::from_min_max(lo, hi)
+    }
+}
+
+/// The cubic tracing the quadratic exactly: inner points `p0 + 2/3·(p1 - p0)` and `p2 + 2/3·(p1 - p2)`.
+impl From<QuadraticBezier> for CubicBezier {
+    #[inline]
+    fn from(quadratic: QuadraticBezier) -> Self {
+        let QuadraticBezier { p0, p1, p2 } = quadratic;
+        Self {
+            p0,
+            p1: p0 + (p1 - p0) * (2.0 / 3.0),
+            p2: p2 + (p1 - p2) * (2.0 / 3.0),
+            p3: p2,
+        }
     }
 }
 

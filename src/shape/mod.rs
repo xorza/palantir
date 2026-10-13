@@ -25,6 +25,7 @@ use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::shadow::Shadow;
@@ -158,16 +159,16 @@ impl Shape {
         CurveShape::new(CurveGeometry::CubicBezier(bezier), stroke)
     }
 
-    /// A quadratic Bézier through `p0`/`p1`/`p2`.
+    /// A quadratic Bézier `bezier` in `stroke` (`Butt` cap).
     ///
     /// # Panics
     ///
     /// As [`Self::line`].
     #[track_caller]
-    pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape {
+    pub const fn quadratic_bezier(bezier: QuadraticBezier, stroke: Stroke) -> CurveShape {
         stroke.validate();
-        let (p0, p1, p2) = (vec2::offset(p0), vec2::offset(p1), vec2::offset(p2));
-        CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
+        bezier.validate();
+        CurveShape::new(CurveGeometry::QuadraticBezier(bezier), stroke)
     }
 
     /// A circular `arc` in `stroke` (`Butt` cap). A sweep past a full circle, `±2π`, draws the full circle.

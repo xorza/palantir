@@ -2,7 +2,7 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
-use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, Shape};
+use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
 use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui, Vec2};
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -204,9 +204,11 @@ fn cubic(ui: &mut Ui) {
 
 fn quadratic(ui: &mut Ui) {
     ui.add_shape(Shape::quadratic_bezier(
-        Q0,
-        Q1,
-        Q2,
+        QuadraticBezier {
+            p0: Q0,
+            p1: Q1,
+            p2: Q2,
+        },
         Stroke::new(support::C, 4.0),
     ));
 }
@@ -236,9 +238,16 @@ fn gradient_multistop(ui: &mut Ui) {
         Stop::new(1.0, support::A),
     ]);
     ui.add_shape(
-        Shape::quadratic_bezier(Q0, Q1, Q2, Stroke::new(RgbaF32::WHITE, 10.0))
-            .ramp(ramp)
-            .cap(LineCap::Round),
+        Shape::quadratic_bezier(
+            QuadraticBezier {
+                p0: Q0,
+                p1: Q1,
+                p2: Q2,
+            },
+            Stroke::new(RgbaF32::WHITE, 10.0),
+        )
+        .ramp(ramp)
+        .cap(LineCap::Round),
     );
 }
 

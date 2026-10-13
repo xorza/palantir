@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
@@ -22,7 +23,7 @@ use std::f32::consts::TAU;
 pub(crate) enum CurveGeometry {
     Line { a: Vec2, b: Vec2 },
     CubicBezier(CubicBezier),
-    QuadraticBezier { p0: Vec2, p1: Vec2, p2: Vec2 },
+    QuadraticBezier(QuadraticBezier),
     Arc(CircularArc),
 }
 
@@ -40,9 +41,7 @@ impl CurveGeometry {
                 })
             }
             Self::CubicBezier(bezier) => CurveBasis::Cubic(bezier),
-            Self::QuadraticBezier { p0, p1, p2 } => {
-                CurveBasis::Cubic(CubicBezier::from_quadratic(p0, p1, p2))
-            }
+            Self::QuadraticBezier(bezier) => CurveBasis::Cubic(CubicBezier::from(bezier)),
             Self::Arc(arc) => {
                 debug_assert!(
                     arc.sweep.abs() <= TAU,
@@ -106,7 +105,7 @@ impl sealed::LowerShape for CurveShape {
             CurveGeometry::CubicBezier(CubicBezier { p0, p1, p2, p3 }) => {
                 vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2) && vec2::approx_eq(*p0, *p3)
             }
-            CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
+            CurveGeometry::QuadraticBezier(QuadraticBezier { p0, p1, p2 }) => {
                 vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2)
             }
             CurveGeometry::Arc(CircularArc { radius, sweep, .. }) => {
@@ -122,7 +121,7 @@ impl sealed::LowerShape for CurveShape {
             CurveGeometry::CubicBezier(CubicBezier { p0, p1, p2, p3 }) => {
                 p0.has_nan() || p1.has_nan() || p2.has_nan() || p3.has_nan()
             }
-            CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
+            CurveGeometry::QuadraticBezier(QuadraticBezier { p0, p1, p2 }) => {
                 p0.has_nan() || p1.has_nan() || p2.has_nan()
             }
             CurveGeometry::Arc(CircularArc {
