@@ -4,6 +4,7 @@ use crate::internals::panic_probe;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -14,7 +15,6 @@ use crate::widgets::scroll::tests::support::{
     SURFACE, build, fixed_block, read_state, zoom_driven,
 };
 use crate::widgets::scroll::zoom_config::ZoomConfig;
-use crate::widgets::theme::text_style::TextStyle;
 use glam::{UVec2, Vec2};
 
 #[test]

@@ -1,6 +1,6 @@
 //! One chip's whole draw state, and the two small values it carries.
 
-use crate::icons::icon_set::IconHandle;
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::text::interned_str::InternedStr;
 
 /// One tab, as [`TabStrip`](crate::TabStrip) draws it. Every id the strip derives comes from `key`, not the

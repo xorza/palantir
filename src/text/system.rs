@@ -16,14 +16,15 @@
 //! measure cache skips whole subtrees); the `text_shape/reuse_layer/*` bench
 //! (`src/text/bench.rs`) replays runs every frame, so read it as an upper bound.
 
-use crate::layout::measured::Measured;
-use crate::layout::text::shaped_text::ShapedText;
+use crate::primitives::layout::offer;
+
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
 use crate::text::extent::TextExtent;
 use crate::text::key::{TextShapeKey, WrapBound};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
+use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::{TextWrap, WrapCommit, WrapFloor};
 use rustc_hash::FxHashMap;
@@ -198,7 +199,7 @@ impl TextSystem {
             {
                 entry.root.extent.size.w
             } else {
-                Measured::AT_OFFER_ONLY
+                offer::AT_OFFER_ONLY
             };
             return RunMeasure {
                 shaped: shaped(shapes_buffers, request.key, entry.root.extent),
@@ -227,7 +228,7 @@ impl TextSystem {
         };
         RunMeasure {
             shaped: shaped(shapes_buffers, request.key.with_bound(bound), extent),
-            stable_from_w: Measured::AT_OFFER_ONLY,
+            stable_from_w: offer::AT_OFFER_ONLY,
         }
     }
 
@@ -287,7 +288,7 @@ pub(crate) struct RunMeasure {
     pub(crate) shaped: ShapedText,
     /// The least finite width from which `shaped` is the answer: zero for a policy that
     /// never binds, the root's width (or the offer, if less) for a truncating fit its
-    /// text fits, [`Measured::AT_OFFER_ONLY`] for a run bound to its width.
+    /// text fits, [`offer::AT_OFFER_ONLY`] for a run bound to its width.
     pub(crate) stable_from_w: f32,
 }
 

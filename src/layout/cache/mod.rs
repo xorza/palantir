@@ -15,7 +15,6 @@ use crate::layout::cache::measure_snapshot::{ArenaSnapshot, MeasureSnapshot, Sub
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::measured::Measured;
-use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -24,6 +23,7 @@ use crate::primitives::math::num::F32Px;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
+use crate::text::shaped_text::ShapedText;
 use glam::{IVec2, Vec2};
 use std::mem;
 

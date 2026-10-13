@@ -8,6 +8,7 @@ use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::text::text_input::TextInput;
+use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -16,7 +17,6 @@ use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::text::Text;
-use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 
 /// One row inside a [`ContextMenu`](crate::ContextMenu): label left, optional right-aligned shortcut hint. Clicking calls [`CloseHandle::close`]. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
 #[derive(Debug)]

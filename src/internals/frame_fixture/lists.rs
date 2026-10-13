@@ -12,6 +12,7 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::wrap::TextWrap;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -20,7 +21,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
-use crate::widgets::theme::text_style::TextStyle;
 
 pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
     Card::new("recent", "RECENT CAPTURES").show(ui, |ui| {

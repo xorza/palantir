@@ -7,12 +7,12 @@ use crate::internals::ui_harness::UiHarness;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::ui::resources::UiResources;
 use crate::widget_core::configure::Configure;
 use crate::widgets::text::Text;
-use crate::widgets::theme::text_style::TextStyle;
 use glam::UVec2;
 
 // No face file is unregistered by the bundled scope, so the load cases start

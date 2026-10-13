@@ -10,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -28,7 +29,6 @@ use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use std::fmt::Write as _;
 use std::rc::Rc;
 

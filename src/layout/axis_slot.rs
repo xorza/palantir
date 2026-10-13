@@ -1,5 +1,7 @@
 //! The per-axis inputs the measure pass resolves an outer extent from.
 
+use crate::primitives::layout::offer;
+
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::measured::Measured;
@@ -164,12 +166,12 @@ impl AxisSlot {
                 if self.available.is_finite() || content_plus_padding == floors {
                     0.0
                 } else {
-                    Measured::AT_OFFER_ONLY
+                    offer::AT_OFFER_ONLY
                 }
             } else if content_plus_padding <= self.available - self.margin {
                 content_plus_padding + self.margin
             } else {
-                Measured::AT_OFFER_ONLY
+                offer::AT_OFFER_ONLY
             }
         } else {
             0.0
@@ -254,8 +256,8 @@ impl NodeSlot<'_> {
             "a driver's floor {floor:?} exceeds its content {size:?}",
         );
         debug_assert!(
-            (stable_from.w <= inner_avail.w || stable_from.w == Measured::AT_OFFER_ONLY)
-                && (stable_from.h <= inner_avail.h || stable_from.h == Measured::AT_OFFER_ONLY),
+            (stable_from.w <= inner_avail.w || stable_from.w == offer::AT_OFFER_ONLY)
+                && (stable_from.h <= inner_avail.h || stable_from.h == offer::AT_OFFER_ONLY),
             "a driver holds from {stable_from:?}, past the {inner_avail:?} it measured at",
         );
 
@@ -269,8 +271,8 @@ impl NodeSlot<'_> {
             h.stable_from(size.h + p_vert, floor.h + p_vert, stable_from.h),
         );
         debug_assert!(
-            (stable_from.w <= available.w || stable_from.w == Measured::AT_OFFER_ONLY)
-                && (stable_from.h <= available.h || stable_from.h == Measured::AT_OFFER_ONLY),
+            (stable_from.w <= available.w || stable_from.w == offer::AT_OFFER_ONLY)
+                && (stable_from.h <= available.h || stable_from.h == offer::AT_OFFER_ONLY),
             "a node holds from {stable_from:?}, past the {available:?} it measured at",
         );
         Measured {
@@ -288,7 +290,7 @@ impl NodeSlot<'_> {
 mod tests {
     use super::*;
 
-    const AT: f32 = Measured::AT_OFFER_ONLY;
+    const AT: f32 = offer::AT_OFFER_ONLY;
 
     /// A slot with a 2 px margin, 4 px padding and no `min`/`max` clamp.
     const fn slot(sizing: Sizing, available: f32, intrinsic_min: f32) -> AxisSlot {

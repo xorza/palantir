@@ -8,6 +8,8 @@
 //! in Stack: each line's cross size is the max child cross, and Fill children
 //! grow to it without shrinking below their measured content.
 
+use crate::primitives::layout::offer;
+
 use crate::layout::depth_scratch::DepthScratch;
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
@@ -169,7 +171,7 @@ impl LayoutDriver for WrapStack {
         let stable_main = if line_count <= 1 {
             max_line_main.min(axis.main(inner_avail))
         } else {
-            Measured::AT_OFFER_ONLY
+            offer::AT_OFFER_ONLY
         };
 
         // Arrange packs again against the extent it is handed, so a wrap stack

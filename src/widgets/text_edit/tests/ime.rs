@@ -11,11 +11,11 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
+use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::tests::{SMALL, block_of};
-use crate::widgets::theme::text_edit::TextEditTheme;
 
 fn field() -> WidgetId {
     WidgetId::from_hash("ime-edit")

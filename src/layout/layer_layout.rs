@@ -3,10 +3,10 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
-use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
+use crate::text::shaped_text::ShapedText;
 use std::hash::Hasher as _;
 
 /// Per-layer layout output: the SoA columns, indexed by `NodeId.0`, the encoder and hit-index read

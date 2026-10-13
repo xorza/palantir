@@ -1,7 +1,7 @@
 //! One baked-icon draw.
 
-use crate::icons::icon_set::IconRef;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
 /// One baked-icon draw, in logical px; physical box, raster size and atlas slot are decided downstream.

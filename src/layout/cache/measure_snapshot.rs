@@ -5,8 +5,8 @@ use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::layout::cache::AvailableKey;
 use crate::layout::cache::node_arenas::NodeArenas;
-use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+use crate::text::shaped_text::ShapedText;
 
 /// One cacheable subtree's place in a [`MeasureSnapshot`]: what it was
 /// measured as, and the spans of its rows in each arena.

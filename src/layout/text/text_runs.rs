@@ -2,8 +2,8 @@
 
 use crate::common::span::Span;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::text::shaped_text::ShapedText;
 use crate::shape::record::ShapeRecord;
+use crate::text::shaped_text::ShapedText;
 
 /// One node's shaped-text runs, handed out in record order.
 ///

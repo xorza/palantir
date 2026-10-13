@@ -15,7 +15,7 @@ pub(crate) struct TextureId(pub(crate) u64);
 
 impl TextureId {
     /// The next unused id, from a process-wide counter, not per host: an
-    /// [`ImageHandle`](crate::renderer::image_registry::image_handle::ImageHandle) can be carried anywhere and the draw
+    /// [`ImageHandle`](crate::image_registry::image_handle::ImageHandle) can be carried anywhere and the draw
     /// resolves it by this number alone, so two per-host counters would hand unrelated images one id and a foreign
     /// handle would draw the wrong picture instead of missing.
     pub(crate) fn reserve() -> Self {

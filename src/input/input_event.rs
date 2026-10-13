@@ -99,7 +99,7 @@ impl<'a> InputEvent<'a> {
 
     /// Whether this event's payload is one the pipeline can act on. **The screen on
     /// host input**, applied once by
-    /// [`InputState::on_input`](crate::input::input_state::InputState): a
+    /// [`InputState::on_input`](crate::input_state::InputState): a
     /// non-finite scalar would poison retained state (NaN fails every hit-test; an
     /// offset holding one trips [`TranslateScale::new`](crate::TranslateScale)'s
     /// finite check later). Zoom composes by multiplication, so it must be strictly

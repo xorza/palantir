@@ -1,6 +1,7 @@
 use crate::icons::icon_raster_key::{IconRasterKey, MAX_RASTER_PX};
-use crate::icons::icon_registry::IconSetId;
-use crate::icons::icon_set::{IconHandle, IconRef};
+use crate::primitives::identity::icon_handle::IconHandle;
+use crate::primitives::identity::icon_ref::IconRef;
+use crate::primitives::identity::icon_set_id::IconSetId;
 use glam::{U16Vec2, Vec2};
 
 fn icon() -> IconRef {

@@ -7,6 +7,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
+use crate::theme::tooltip::TooltipTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -15,7 +16,6 @@ use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
-use crate::widgets::theme::tooltip::TooltipTheme;
 use std::rc::Rc;
 use std::time::Duration;
 

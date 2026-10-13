@@ -10,10 +10,10 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
 
 fn harness() -> UiHarness {

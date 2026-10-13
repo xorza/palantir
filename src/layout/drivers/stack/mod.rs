@@ -9,6 +9,8 @@
 //! axis children measure against the whole extent and heights are shared at
 //! arrange.
 
+use crate::primitives::layout::offer;
+
 use crate::layout::axis_share;
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
@@ -140,7 +142,7 @@ impl Stack {
         fill.truncate(fill_start);
         WidthShare {
             start: hug_start,
-            squeezed: shares_from == Measured::AT_OFFER_ONLY,
+            squeezed: shares_from == offer::AT_OFFER_ONLY,
             stable_from: if shares_from > 0.0 {
                 shares_from + total_gap
             } else {
@@ -254,7 +256,7 @@ impl LayoutDriver for Stack {
         // A Fill or squeezed child's share moves with every change to the axis;
         // unsqueezed widths hold while the children still fit.
         if fill_end > fill_start {
-            stable_main = Measured::AT_OFFER_ONLY;
+            stable_main = offer::AT_OFFER_ONLY;
         }
         if let Some(w) = &widths {
             stable_main = stable_main.max(w.stable_from);

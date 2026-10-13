@@ -1,7 +1,7 @@
 //! The baked-icon builder and its fit policy; lowers to `ShapeRecord::Icon`.
 
-use crate::icons::icon_set::IconHandle;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;

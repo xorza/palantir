@@ -13,12 +13,12 @@ use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
-use crate::widgets::theme::text_style::TextStyle;
 
 /// Four metric tiles. Each is a ZStack — gradient plate under a text
 /// column — so the strip carries all four `Brush` variants at once.

@@ -11,6 +11,7 @@ use crate::primitives::paint::image::Image;
 use crate::primitives::paint::image::ImageFit;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -22,7 +23,6 @@ use crate::widgets::axis_keys::AxisKeys;
 use crate::widgets::axis_keys::KeyPair;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::Vec2;
 
 /// The two-axis area of a colour picker: saturation left to right, value bottom to top, at the bound hue. Exact per texel: a CPU texture refreshed in place when hue or model moves, since a gradient stack interpolates in linear light and a vertex-coloured mesh crushes the darks. Returns [`ValueResponse`].

@@ -1,11 +1,11 @@
 //! What [`Tree::compute_rollups`](crate::scene::tree::Tree) read on the previous pass, so an identical pass keeps them.
 
 use crate::common::content_hash::ContentHash;
-use crate::layout::drivers::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
 use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::track::Track;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
+use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_record::NodeRecord;
 #[cfg(debug_assertions)]

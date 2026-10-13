@@ -7,21 +7,21 @@ use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
+use crate::primitives::geometry::arrow::Arrow;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
+use crate::theme::expander::ExpanderTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::arrow::Arrow;
 use crate::widgets::text::Text;
-use crate::widgets::theme::expander::ExpanderTheme;
 use std::rc::Rc;
 
 /// A header that reveals or hides a body, like HTML `<details>`.

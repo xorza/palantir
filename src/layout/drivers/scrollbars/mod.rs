@@ -2,9 +2,6 @@
 //!
 //! Children are recorded in a fixed order (vertical track, vertical thumb, horizontal track, horizontal thumb) and an absent bar arranges zero-extent, so the child list and bar ids stay stable across an overflow toggle.
 
-pub(crate) mod bar_geometry;
-pub(crate) mod scrollbars_def;
-
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;

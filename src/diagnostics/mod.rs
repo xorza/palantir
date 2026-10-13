@@ -1,4 +1,4 @@
-//! App-global diagnostic configuration, GPU measurement handles, and the `frame_stats` overlay. Backend collection lives in `gpu`.
+//! App-global diagnostic configuration, GPU measurement handles, and the counters the frame-stats readout draws. Backend collection lives in `gpu`, the readout in `widgets`.
 
 pub(crate) mod frame_stats;
 pub(crate) mod gpu_pass_stats;

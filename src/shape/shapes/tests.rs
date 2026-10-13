@@ -1,3 +1,5 @@
+use crate::image_registry::ImageRegistry;
+use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
@@ -5,8 +7,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::image_registry::image_handle::ImageHandle;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
 use crate::shape::paint::image_source::ImageSource;

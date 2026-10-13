@@ -12,6 +12,7 @@ use crate::primitives::paint::image::Image;
 use crate::primitives::paint::image::ImageFit;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -24,7 +25,6 @@ use crate::widgets::axis_keys::KeyPair;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::Vec2;
 
 /// A one-axis bar of a colour picker: the hue ramp, or one colour's alpha ramp over its checker.

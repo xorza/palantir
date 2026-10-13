@@ -8,6 +8,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::theme::modal::ModalTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -16,7 +17,6 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::theme::modal::ModalTheme;
 use std::rc::Rc;
 
 /// A centred dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].

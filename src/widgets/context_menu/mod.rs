@@ -10,6 +10,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
+use crate::theme::context_menu::ContextMenuTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -18,7 +19,6 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
-use crate::widgets::theme::context_menu::ContextMenuTheme;
 
 use glam::Vec2;
 use std::rc::Rc;

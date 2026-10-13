@@ -7,11 +7,11 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::theme::spinner::SpinnerTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::spinner::{ArcGeometry, comet};
-use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::UVec2;
 use glam::Vec2;
 

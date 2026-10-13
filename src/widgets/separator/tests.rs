@@ -6,10 +6,10 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::theme::separator::SeparatorTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::separator::Separator;
-use crate::widgets::theme::separator::SeparatorTheme;
 use glam::UVec2;
 
 /// `Separator` takes a per-instance `.style(&SeparatorTheme)` so `MenuSeparator` can hand its slot down whole. `margin` fills in where the builder is silent and loses where it isn't: the menu slot holds the rule off the rows, the in-flow slot is zero, `.margin(...)` beats both.

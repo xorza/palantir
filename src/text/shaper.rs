@@ -294,8 +294,6 @@ impl TextShaper {
 pub(crate) mod internals {
     use super::*;
     #[cfg(test)]
-    use crate::layout::text::shaped_text::ShapedText;
-    #[cfg(test)]
     use crate::primitives::layout::align::Align;
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
@@ -303,6 +301,8 @@ pub(crate) mod internals {
     use crate::text::probe::Caret;
     #[cfg(test)]
     use crate::text::request::internals::TestShape;
+    #[cfg(test)]
+    use crate::text::shaped_text::ShapedText;
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
 

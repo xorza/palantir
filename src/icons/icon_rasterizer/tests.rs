@@ -1,10 +1,11 @@
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
-use crate::icons::icon_registry::IconSetId;
-use crate::icons::icon_set::IconRef;
-use crate::icons::icon_table::{IconDefinition, IconId, IconTable};
+use crate::icons::icon_table::{IconDefinition, IconTable};
 use crate::icons::internals::BROKEN;
+use crate::primitives::identity::icon_id::IconId;
+use crate::primitives::identity::icon_ref::IconRef;
+use crate::primitives::identity::icon_set_id::IconSetId;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
@@ -20,8 +21,8 @@ fn fixtures() -> IconTable {
     IconTable::from_svgs([("half", HALF), ("solid", SOLID)]).unwrap()
 }
 
-const HALF_ID: IconId = IconId::fixture(0);
-const SOLID_ID: IconId = IconId::fixture(1);
+const HALF_ID: IconId = IconId::new(0);
+const SOLID_ID: IconId = IconId::new(1);
 
 /// Rasterize and require an image.
 fn raster<'a>(r: &'a mut IconRasterizer, table: &IconTable, key: IconRasterKey) -> RasterImage<'a> {
@@ -45,22 +46,22 @@ fn parse_cache_caps_at_the_ceiling_and_drops_the_coldest() {
         (name, SOLID)
     }))
     .unwrap();
-    let icon = |n: usize| key(IconId::fixture(n as u16), 4, 4).icon;
+    let icon = |n: usize| key(IconId::new(n as u16), 4, 4).icon;
     let mut r = IconRasterizer::default();
     for i in 0..MAX_PARSED_TREES {
-        raster(&mut r, &table, key(IconId::fixture(i as u16), 4, 4));
+        raster(&mut r, &table, key(IconId::new(i as u16), 4, 4));
     }
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "filled to the ceiling");
 
     // Re-drawing icon 0 makes icon 1 the coldest; re-drawing a resident icon evicts nothing.
-    raster(&mut r, &table, key(IconId::fixture(0), 4, 4));
+    raster(&mut r, &table, key(IconId::new(0), 4, 4));
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES, "a hit evicts nothing");
 
     // The next *distinct* icon costs exactly one resident: icon 1.
     raster(
         &mut r,
         &table,
-        key(IconId::fixture(MAX_PARSED_TREES as u16), 4, 4),
+        key(IconId::new(MAX_PARSED_TREES as u16), 4, 4),
     );
     assert_eq!(r.parsed_count(), MAX_PARSED_TREES);
     assert!(
@@ -132,8 +133,8 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
     let table = IconTable::baked(&BROKEN_ICONS, BROKEN.as_bytes());
 
     let mut r = IconRasterizer::default();
-    assert!(r.rasterize(&table, key(IconId::fixture(0), 8, 8)).is_none());
-    assert!(r.rasterize(&table, key(IconId::fixture(0), 9, 9)).is_none());
+    assert!(r.rasterize(&table, key(IconId::new(0), 8, 8)).is_none());
+    assert!(r.rasterize(&table, key(IconId::new(0), 9, 9)).is_none());
     assert_eq!(
         r.parsed_count(),
         1,

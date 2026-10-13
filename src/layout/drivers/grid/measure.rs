@@ -1,5 +1,7 @@
 //! What a grid asks of its children, and the size that falls out.
 
+use crate::primitives::layout::offer;
+
 use crate::layout::drivers::grid::Grid;
 use crate::layout::drivers::grid::grid_context::GridContext;
 use crate::layout::intrinsic::len_req::LenReq;
@@ -169,7 +171,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         !grid_sizing_w.is_hug() && cols.tracks.iter().any(|t| t.size.fill_weight().is_some());
     let stable_from = Size::new(
         if commits_fill_cols {
-            Measured::AT_OFFER_ONLY
+            offer::AT_OFFER_ONLY
         } else {
             s.col.stable_from
         },

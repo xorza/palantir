@@ -16,7 +16,7 @@ use crate::gpu::raster::raster_program::RasterProgram;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;
-use crate::icons::icon_set::IconRef;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 
 /// What one [`IconBackend::prewarm`] pass covered: a scale change invalidates

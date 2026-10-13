@@ -1,5 +1,7 @@
 //! Per-frame layout scratch for the measure and arrange passes, with capacity kept across frames.
 
+use crate::primitives::layout::offer;
+
 use crate::common::span::Span;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
 use crate::layout::counters::LayoutCounters;
@@ -8,7 +10,6 @@ use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::measured::Measured;
 use crate::layout::pass::ReplayOrigin;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
@@ -48,9 +49,9 @@ pub(crate) struct LayoutScratch {
     pub(super) wrap: WrapScratch,
     pub(super) stack: StackScratch,
     pub(super) desired: Vec<Size>,
-    /// Each node's measured floor, margin-inclusive; see [`Measured`]. Arrange places a node at it when its slot is smaller than `desired`.
+    /// Each node's measured floor, margin-inclusive; see [`Measured`](crate::layout::measured::Measured). Arrange places a node at it when its slot is smaller than `desired`.
     pub(super) floor: Vec<Size>,
-    /// Each node's [`Measured::stable_from`].
+    /// Each node's [`Measured::stable_from`](crate::layout::measured::Measured::stable_from).
     /// Read by no pass after measure; kept for the next capture.
     pub(super) stable_from: Vec<Size>,
     /// Each node's slot origin in its parent's inner box; captured beside `rect` so a translated replay rebuilds it with the same adds.
@@ -91,10 +92,7 @@ impl LayoutScratch {
         floor.resize(n, Size::ZERO);
         // A node measure never reaches, below a collapsed one, claims no range.
         stable_from.clear();
-        stable_from.resize(
-            n,
-            Size::new(Measured::AT_OFFER_ONLY, Measured::AT_OFFER_ONLY),
-        );
+        stable_from.resize(n, Size::new(offer::AT_OFFER_ONLY, offer::AT_OFFER_ONLY));
         arrange_src.clear();
         arrange_src.resize(n, NO_ARRANGE_SRC);
         local.clear();

@@ -2,7 +2,7 @@
 //!
 //! The set is an [`IconTable`](crate::icons::icon_table::IconTable): SVG sources plus a name table, compiled in as a generated `const` or built at runtime. Nothing is pre-rasterized: the renderer rasterizes each icon at its exact physical size ([`IconRasterizer`](crate::icons::icon_rasterizer::IconRasterizer)) into an atlas, so icons are pixel-exact at every scale and zoom.
 //!
-//! [`IconHandle`](crate::icons::icon_set::IconHandle) names one icon of one loaded set in sixteen `Copy` bytes (two ids plus the viewBox, so [`IconFit`](crate::widget::IconFit) resolves without a lookup). It owns nothing: the set lives while an [`IconSet`](crate::IconSet) clone does.
+//! [`IconHandle`](crate::primitives::identity::icon_handle::IconHandle) names one icon of one loaded set in sixteen `Copy` bytes (two ids plus the viewBox, so [`IconFit`](crate::widget::IconFit) resolves without a lookup). It owns nothing: the set lives while an [`IconSet`](crate::IconSet) clone does.
 
 pub(crate) mod error;
 pub(crate) mod icon_raster_key;

@@ -1,6 +1,7 @@
 //! Logical and physical rectangles, extents, insets, radii, transforms, and
 //! the arc, curve and mesh geometry shapes are built from.
 
+pub(crate) mod arrow;
 pub(crate) mod circular_arc;
 pub(crate) mod corners;
 pub(crate) mod cubic_bezier;

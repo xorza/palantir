@@ -11,8 +11,6 @@ pub(crate) mod zoom_config;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::layout::drivers::scrollbars::bar_geometry::BarGeometry;
-use crate::layout::drivers::scrollbars::scrollbars_def::ScrollbarsDef;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -21,6 +19,9 @@ use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::background::Background;
+use crate::scene::bar_geometry::BarGeometry;
+use crate::scene::scrollbars_def::ScrollbarsDef;
+use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -29,7 +30,6 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::bars::{BarMode, Bars};
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
-use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::Vec2;
 
 /// What one scroll frame resolves against, read from last frame's layout before

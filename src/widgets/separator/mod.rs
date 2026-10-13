@@ -6,13 +6,13 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::theme::separator::SeparatorTheme;
 
 /// A thin divider rule: `thickness` tall across the parent's width, or wide as a column. Sized `Hug` plus
 /// Stretch on its long axis so it fills the cross extent without leaking an infinite size to a `Hug`

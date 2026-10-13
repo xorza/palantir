@@ -11,7 +11,6 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
-use crate::widgets::block::Block;
 
 /// What stands between an overlay's body and the layers below it. Pointer and keys
 /// are one decision: an overlay takes both or neither.
@@ -108,11 +107,11 @@ impl OverlayScope {
         } = self.spec;
         if let Backdrop::Eater(id) = backdrop {
             ui.layer(layer).show(|ui| {
-                Block::new()
+                Widget::leaf()
                     .id(id)
                     .size((Sizing::FILL, Sizing::FILL))
                     .sense(Sense::ABSORB_POINTER)
-                    .show(ui);
+                    .show(ui, None, |_| {});
             });
         }
         let owns_input = backdrop.owns_input();

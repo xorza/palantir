@@ -9,7 +9,7 @@ use crate::primitives::geometry::size::Size;
 ///
 /// The floor is the smallest extent without overflow (wrapped text at its shaped width, fixed extents, child floors); giving-way content such as a scroll's panned axis adds nothing. A `Hug` axis shrinks no further. Never above `size`.
 ///
-/// `stable_from` is per axis the least finite offer from which every larger finite offer measures the same, so the measure cache can serve other offers. Zero when no finite offer changes it, [`Self::AT_OFFER_ONLY`] when only the measured offer holds.
+/// `stable_from` is per axis the least finite offer from which every larger finite offer measures the same, so the measure cache can serve other offers. Zero when no finite offer changes it, [`offer::AT_OFFER_ONLY`](crate::primitives::layout::offer::AT_OFFER_ONLY) when only the measured offer holds.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Measured {
     pub(super) size: Size,
@@ -18,9 +18,6 @@ pub(crate) struct Measured {
 }
 
 impl Measured {
-    /// `stable_from` of an axis that read its offer (Fill share, line break, width-bound text); no finite offer reaches it, so the cache serves only the same offer.
-    pub(crate) const AT_OFFER_ONLY: f32 = f32::INFINITY;
-
     pub(super) const ZERO: Self = Self {
         size: Size::ZERO,
         floor: Size::ZERO,

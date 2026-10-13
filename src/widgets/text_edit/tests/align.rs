@@ -5,8 +5,8 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::align::Align;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
+use crate::theme::text_style::LINE_HEIGHT_MULT;
 use crate::widgets::text_edit::tests::*;
-use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;

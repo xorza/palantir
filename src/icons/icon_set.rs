@@ -1,49 +1,13 @@
-//! The handles a caller names an icon with, and the loaded set they resolve
-//! against.
+//! The loaded icon set a caller's handles resolve against.
 
-use crate::icons::icon_registry::{IconSetId, IconSetToken};
-use crate::icons::icon_table::IconId;
+use crate::icons::icon_registry::IconSetToken;
+use crate::primitives::identity::icon_handle::IconHandle;
+use crate::primitives::identity::icon_id::IconId;
+use crate::primitives::identity::icon_ref::IconRef;
 use crate::shape::Shape;
 use crate::shape::icon::IconShape;
-use glam::Vec2;
 use std::fmt;
 use std::rc::Rc;
-
-/// Which icon of which loaded set. Split from [`IconHandle`] so the atlas
-/// key holds identity without the size.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct IconRef {
-    pub(crate) set: IconSetId,
-    pub(crate) icon: IconId,
-}
-
-/// Names one icon of one loaded set, with the size its artwork was drawn at.
-/// `Copy`, so it carries `view_box` and icon-fit resolution needs no registry
-/// lookup.
-///
-/// **It owns nothing**, unlike [`ImageHandle`](crate::ImageHandle): the
-/// [`IconSet`] keeps the set loaded, and a handle outliving every clone of it
-/// panics when drawn.
-///
-/// From [`IconSet::handle`]; consumed by [`Shape::icon`](crate::widget::Shape::icon).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct IconHandle {
-    pub(crate) icon: IconRef,
-    /// The artwork's viewBox extent in logical px.
-    ///
-    /// Read-only: the shape hash omits it because one `(set, icon)` pair has one
-    /// value, so a writable field could move the painted rect unseen.
-    view_box: Vec2,
-}
-
-impl IconHandle {
-    /// The artwork's viewBox extent in logical px, the size to give its node.
-    /// Valid to read after the set is gone; drawing is not.
-    #[inline]
-    pub const fn view_box(&self) -> Vec2 {
-        self.view_box
-    }
-}
 
 /// A loaded icon set, and an **RAII owner** of what the host caches for it:
 /// set data, SVG parses and atlas rasters.
@@ -86,13 +50,13 @@ impl IconSet {
     pub fn handle(&self, icon: IconId) -> IconHandle {
         // Resolved now so a bad id fails at the caller and the encoder never
         // consults the registry.
-        IconHandle {
-            icon: IconRef {
+        IconHandle::new(
+            IconRef {
                 set: self.inner.id(),
                 icon,
             },
-            view_box: self.inner.table().def(icon).view_box,
-        }
+            self.inner.table().def(icon).view_box,
+        )
     }
 
     /// Look an icon up by name (binary search; no allocation). Resolve once and
@@ -109,22 +73,5 @@ impl IconSet {
     /// caught.
     pub fn shape(&self, icon: IconId) -> IconShape {
         Shape::icon(self.handle(icon))
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::icons::icon_registry::IconSetId;
-    use crate::icons::icon_set::IconRef;
-    use crate::icons::icon_table::IconId;
-
-    impl IconRef {
-        /// Icon `icon` of the first generation of set slot `set`.
-        pub(crate) const fn fixture(set: u16, icon: u16) -> Self {
-            Self {
-                set: IconSetId::new(set, 0),
-                icon: IconId::fixture(icon),
-            }
-        }
     }
 }

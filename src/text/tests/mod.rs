@@ -27,7 +27,7 @@ use crate::text::shaper::TextShaper;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use crate::widgets::theme::text_style::LINE_HEIGHT_MULT;
+use crate::theme::text_style::LINE_HEIGHT_MULT;
 
 mod fonts;
 mod geometry;

@@ -6,8 +6,8 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
-use crate::widgets::theme::color_picker::ColorPickerTheme;
 
 /// The light ground with dark squares drawn over it, behind translucent colour.
 ///
