@@ -1,18 +1,15 @@
 # Public API surface
 
 Every item the crate exports, rendered as its declaration from rustdoc JSON
-(`python3 scripts/api_surface.py`), sorted by path. The surface is the union of a
-build with no features and one build per public feature; a tag names the features an
-item needs. `internals` is the crate's own test surface and is left out.
-
-Generated on top of `24c4029e` (plus the working tree).
+(`cargo run -p api-surface`), sorted by path. The surface is the union of a build with
+no features and one build per public feature; a tag names the builds an item needs or
+loses. `internals` is the crate's own test surface and is left out.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
 ```text
 Align
-    struct Align
-        (_)
+    struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const fn new(h: HAlign, v: VAlign) -> Self
         pub const fn h(h: HAlign) -> Self
         pub const fn v(v: VAlign) -> Self
@@ -28,32 +25,17 @@ Align
         pub const BOTTOM: Self
         pub const BOTTOM_RIGHT: Self
         pub const STRETCH: Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 AllowedSplits
-    enum AllowedSplits
+    enum AllowedSplits: Clone, Copy, Debug, Default, Eq, PartialEq
         All
         Row
         Column
         None
         pub fn allows(self, side: SplitSide) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 Anchor
-    struct Anchor
-        // and private fields
+    struct Anchor: Clone, Copy, Debug
         pub const fn at_point(point: Vec2) -> Self
         pub const fn above(rect: Rect) -> Self
         pub const fn below(rect: Rect) -> Self
@@ -61,35 +43,20 @@ Anchor
         pub const fn right_of(rect: Rect) -> Self
         pub const fn with_align(self, align: AnchorAlign) -> Self
         pub const fn with_gap(self, px: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
 
 AnchorAlign
-    enum AnchorAlign
+    enum AnchorAlign: Clone, Copy, Debug, Default, Eq, PartialEq
         Start
         Center
         End
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 AnimatedLook
-    struct AnimatedLook
+    struct AnimatedLook: Animatable, Clone, Debug, Default, PartialEq
         pub background: Background
         pub text: TextStyle
-        impl Animatable
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
 
 AnimationSpec
-    struct AnimationSpec
-        // and private fields
+    struct AnimationSpec: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub const FAST: Self
         pub const MEDIUM: Self
         pub const SNAP: Self
@@ -97,12 +64,6 @@ AnimationSpec
         pub const fn duration(length: Duration, ease: Easing) -> Self
         pub fn spring(stiffness: f32, damping: f32) -> Self
         pub const fn is_instant(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for AnimationSpec
 
 App
     trait App
@@ -110,19 +71,12 @@ App
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
 
 Axis
-    enum Axis
+    enum Axis: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         X
         Y
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Background
-    struct Background
+    struct Background: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub fill: Brush
         pub border: Stroke
         pub corners: Corners
@@ -133,28 +87,15 @@ Background
         pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
-        impl Animatable
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Background
 
 BarMode
-    enum BarMode
+    enum BarMode: Clone, Copy, Debug, Default, Eq, PartialEq
         Reserved
         Overlay
         Hidden
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 BatchKind
-    enum BatchKind
+    enum BatchKind: Clone, Copy, Debug, Eq, PartialEq
         Setup = 0
         PreClear = 1
         Mask = 2
@@ -168,25 +109,16 @@ BatchKind
         pub const COUNT: usize
         pub const ALL: [Self; 10]
         pub const fn label(self) -> &'static str
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 Block
-    struct Block
-        // and private fields
+    struct Block: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 Brush
-    enum Brush
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<GradientBuilder<ConicGeometry>>, From<GradientBuilder<LinearGeometry>>, From<GradientBuilder<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
         Solid(RgbaF32)
         Linear(LinearGradient)
         Radial(RadialGradient)
@@ -194,50 +126,25 @@ Brush
         pub const TRANSPARENT: Self
         pub const fn is_noop(&self) -> bool
         pub const fn as_solid(&self) -> Option<RgbaF32>
-        impl Animatable
-        impl Clone
-        impl Debug
-        impl Default
-        impl From<Gradient<ConicGeometry>>
-        impl From<Gradient<LinearGeometry>>
-        impl From<Gradient<RadialGeometry>>
-        impl From<GradientBuilder<ConicGeometry>>
-        impl From<GradientBuilder<LinearGeometry>>
-        impl From<GradientBuilder<RadialGeometry>>
-        impl From<RgbaF32>
-        impl From<SrgbaU8>
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Brush
 
 Button
-    struct Button<'a>
-        // and private fields
+    struct Button<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Button<'a>
 
 ButtonPhase
-    enum ButtonPhase
+    enum ButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
         Idle
         Down { count: u8 }
         Held
         Up { click: Option<u8> }
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 ButtonState
-    struct ButtonState
+    struct ButtonState: Clone, Copy, Debug, Default, PartialEq
         pub phase: ButtonPhase
         pub drag: Drag
         pub const fn held(self) -> bool
@@ -246,94 +153,46 @@ ButtonState
         pub const fn press_count(self) -> u8
         pub const fn click_count(self) -> u8
         pub const fn double_clicked(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 ButtonTheme
-    struct ButtonTheme
+    struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_palette(p: &Palette) -> Self
         pub fn menu_button(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for ButtonTheme
 
 CheckState
-    enum CheckState
+    enum CheckState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
         Unchecked
         Checked
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl From<bool>
-        impl PartialEq
 
 Checkbox
-    struct Checkbox<'a>
-        // and private fields
+    struct Checkbox<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Checkbox<'a>
 
 ClickOutside
-    enum ClickOutside
+    enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
         Block
         Dismiss
         PassThrough
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 ClipMode
-    enum ClipMode
+    enum ClipMode: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd, Serialize
         None = 0
         Rect = 1
         Rounded = 2
         pub const fn is_clip(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl Ord
-        impl PartialEq
-        impl PartialOrd
-        impl Serialize
-        impl<'de> Deserialize<'de> for ClipMode
 
 Clipboard
-    struct Clipboard
-        // and private fields
+    struct Clipboard: Clone, Debug
         pub fn text(&self) -> Result<String, ClipboardUnavailable>
         pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable>
-        impl Clone
-        impl Debug
 
 ClipboardUnavailable
-    struct ClipboardUnavailable
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
+    struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
 Clock
     trait Clock: Debug
@@ -342,25 +201,18 @@ Clock
         fn deadline(&self, at: Duration) -> Option<Instant> { .. }
 
 CloseHandle
-    struct CloseHandle
-        // and private fields
+    struct CloseHandle: Debug, Default
         pub fn close(&self)
         pub const fn requested(&self) -> bool
-        impl Debug
-        impl Default
 
 ColorButton
-    struct ColorButton<'a>
-        // and private fields
+    struct ColorButton<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ColorButton<'a>
 
 ColorCoords
-    enum ColorCoords
+    enum ColorCoords: Clone, Copy, Debug, Default, PartialEq
         Okhsv(Okhsv)
         Hsv(Hsv)
         pub fn new(model: ColorModel, color: RgbaF32, fallback_hue: f32) -> Self
@@ -373,44 +225,24 @@ ColorCoords
         pub const fn set_hue(&mut self, h: f32)
         pub const fn set_saturation(&mut self, s: f32)
         pub const fn set_value(&mut self, v: f32)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 ColorField
-    struct ColorField<'a>
-        // and private fields
+    struct ColorField<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(coords: &'a mut ColorCoords) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ColorField<'a>
 
 ColorModel
-    enum ColorModel
+    enum ColorModel: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Okhsv
         Hsv
         pub const ALL: [Self; 2]
         pub const fn label(self) -> &'static str
         pub fn slice(self, hue: f32) -> HueSlice
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for ColorModel
 
 ColorPicker
-    struct ColorPicker<'a>
-        // and private fields
+    struct ColorPicker<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(color: &'a mut RgbaF32) -> Self
         pub const fn alpha(self, on: bool) -> Self
         pub const fn model(self, model: ColorModel) -> Self
@@ -420,12 +252,9 @@ ColorPicker
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub const fn color(&self) -> RgbaF32
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ColorPicker<'a>
 
 ColorPickerTheme
-    struct ColorPickerTheme
+    struct ColorPickerTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub field_width: f32
         pub field_height: f32
         pub bar_thickness: f32
@@ -447,55 +276,32 @@ ColorPickerTheme
         pub hex: TextEditTheme
         pub label: TextStyleOverrides
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ColorPickerTheme
 
 ColorRamp
-    struct ColorRamp
+    struct ColorRamp: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub stops: GradientStops
         pub interpolation: Interpolation
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
         pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for ColorRamp
 
 ColorStrip
-    struct ColorStrip<'a>
-        // and private fields
+    struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn for_hue(coords: &'a mut ColorCoords) -> Self
         pub fn for_alpha(color: &'a mut RgbaF32) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ColorStrip<'a>
 
 ColorSwatch
-    struct ColorSwatch<'a>
-        // and private fields
+    struct ColorSwatch<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(color: RgbaF32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ColorSwatch<'a>
 
 ComboBox
-    struct ComboBox<'a, S, L>
-        // and private fields
+    struct ComboBox<'a, S, L>: Configure, ThemeDefaults (blanket)
         impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str>
             pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
         impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L>
@@ -503,21 +309,14 @@ ComboBox
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl ThemeDefaults  (blanket)
         impl<'a, S: Debug, L: Debug> Debug for ComboBox<'a, S, L>
-        impl<S, L> Configure for ComboBox<'_, S, L>
 
 ComboBoxTheme
-    struct ComboBoxTheme
+    struct ComboBoxTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub gap: f32
         pub arrow_size: Vec2
         pub arrow_width: f32
         pub const fn from_palette(_p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ComboBoxTheme
 
 Configure
     trait Configure: Sized
@@ -555,16 +354,9 @@ Configure
         fn clip_rounded(self) -> Self { .. }
 
 ConicGeometry
-    struct ConicGeometry
+    struct ConicGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
         pub center: Vec2
         pub start_angle: f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl GradientGeometry  (blanket)
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for ConicGeometry
 
 ConicGradient
     type ConicGradient = Gradient<ConicGeometry>
@@ -573,8 +365,7 @@ ConicGradientBuilder
     type ConicGradientBuilder = GradientBuilder<ConicGeometry>
 
 ContextMenu
-    struct ContextMenu<'a>
-        // and private fields
+    struct ContextMenu<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn for_id(for_id: WidgetId) -> Self
         pub fn on(snapshot: &ResponseSnapshot) -> Self
         pub fn style(self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self
@@ -584,12 +375,9 @@ ContextMenu
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ContextMenu<'a>
 
 ContextMenuTheme
-    struct ContextMenuTheme
+    struct ContextMenuTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub panel: Background
         pub padding: Spacing
         pub min_width: f32
@@ -597,15 +385,9 @@ ContextMenuTheme
         pub item: MenuItemTheme
         pub separator: SeparatorTheme
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ContextMenuTheme
 
 Corners
-    struct Corners
-        (_)
+    struct Corners: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn as_array(self) -> [f32; 4]
         pub fn all(r: f32) -> Self
@@ -616,24 +398,12 @@ Corners
         pub fn right(r: f32) -> Self
         pub fn scaled_by(self, factor: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Serialize
-        impl Zeroable
-        impl<'de> Deserialize<'de> for Corners
         impl<T: Num, B: Num> From<(T, B)> for Corners
         impl<T: Num> From<T> for Corners
         impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners
 
 CursorIcon
-    enum CursorIcon
+    enum CursorIcon: Clone, Copy, Debug, Default, Eq, PartialEq
         Default
         Pointer
         Text
@@ -644,28 +414,15 @@ CursorIcon
         EwResize
         NsResize
         NotAllowed
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 DebugOverlayConfig
-    struct DebugOverlayConfig
+    struct DebugOverlayConfig: Clone, Copy, Debug, Default, Eq, PartialEq
         pub damage_rect: bool
         pub dim_undamaged: bool
         pub frame_stats: bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 DeviceFeatures
-    struct DeviceFeatures
-        (_)
+    struct DeviceFeatures: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
         pub const IMMEDIATES: Self
         pub const NONE: Self
         pub const ALL: Self
@@ -677,30 +434,18 @@ DeviceFeatures
         pub const fn insert(&mut self, other: Self)
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Display
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 DeviceRequirements
-    struct DeviceRequirements
+    struct DeviceRequirements: Clone, Debug
         pub features: Features
         pub limits: Limits
         pub const FEATURES: Features
         pub const GPU_TIMING_FEATURES: Features
         pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, UnmetRequirements>
         pub fn met_by(device: &Device) -> Result<(), UnmetRequirements>
-        impl Clone
-        impl Debug
 
 Display
-    struct Display
+    struct Display: Clone, Copy, Debug, Default, PartialEq
         pub physical: UVec2
         pub system_scale: f32
         pub user_scale: UserScale
@@ -712,23 +457,11 @@ Display
         pub fn system_logical_size(&self) -> Size
         pub fn logical_rect(&self) -> Rect
         pub fn raster_eq(&self, other: &Self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 DockDrop
-    enum DockDrop
+    enum DockDrop: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         Into { group: TabGroupId, index: usize }
         Split { group: TabGroupId, side: SplitSide }
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for DockDrop
 
 DockError
     enum DockError<T>
@@ -755,11 +488,11 @@ DockNode
     enum DockNode<T>
         Split(DockSplit)
         Group(TabGroup<T>)
-        impl<'de, T> Deserialize<'de> for DockNode<T> where T: Deserialize<'de>
+        impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
         impl<T: Clone> Clone for DockNode<T>
         impl<T: Debug> Debug for DockNode<T>
         impl<T: PartialEq> PartialEq for DockNode<T>
-        impl<T> Serialize for DockNode<T> where T: Serialize
+        impl<T> Serialize where T: Serialize
 
 DockOperation
     enum DockOperation<T>
@@ -769,47 +502,28 @@ DockOperation
         MoveTab { tab: T, to: DockDrop }
         SetRatio { split: DockPath, ratio: f32 }
         FocusPane { group: TabGroupId }
-        impl<'de, T> Deserialize<'de> for DockOperation<T> where T: Deserialize<'de>
+        impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
         impl<T: Clone> Clone for DockOperation<T>
         impl<T: Copy> Copy for DockOperation<T>
         impl<T: Debug> Debug for DockOperation<T>
         impl<T: PartialEq> PartialEq for DockOperation<T>
-        impl<T> Serialize for DockOperation<T> where T: Serialize
+        impl<T> Serialize where T: Serialize
 
 DockPath
-    struct DockPath
-        (_)
+    struct DockPath: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub const ROOT: Self
         pub fn first(self) -> Self
         pub fn second(self) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for DockPath
 
 DockSplit
-    struct DockSplit
-        // and private fields
+    struct DockSplit: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub const fn direction(self) -> SplitDirection
         pub const fn ratio(self) -> f32
         pub const fn first(self) -> NodeIndex
         pub const fn second(self) -> NodeIndex
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for DockSplit
 
 DockState
     struct DockState<T>
-        // and private fields
         impl<T: DockTab> DockState<T>
             pub const ROOT: NodeIndex
             pub const RATIO_MIN: f32
@@ -832,11 +546,11 @@ DockState
             pub fn find_or_insert(&mut self, tab: T, group: TabGroupId)
             pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
             pub fn can_split(&self, group: TabGroupId) -> bool
-        impl<'de, T> Deserialize<'de> for DockState<T> where T: DockTab + Deserialize<'de>
+        impl<'de, T> Deserialize<'de> where T: DockTab + Deserialize<'de>
         impl<T: Clone> Clone for DockState<T>
         impl<T: Debug> Debug for DockState<T>
         impl<T: PartialEq> PartialEq for DockState<T>
-        impl<T> Serialize for DockState<T> where T: Serialize
+        impl<T> Serialize where T: Serialize
 
 DockTab
     trait DockTab: Copy + Eq + Hash + Debug + 'static
@@ -862,7 +576,7 @@ DockTabs
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
 DockTheme
-    struct DockTheme
+    struct DockTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub preview_fill: RgbaF32
         pub preview_stroke: Stroke
         pub preview_radius: f32
@@ -872,15 +586,9 @@ DockTheme
         pub ghost_offset: Vec2
         pub edge_fraction: f32
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for DockTheme
 
 DockView
-    struct DockView<'a, T>
-        // and private fields
+    struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
         impl<'a, T: DockTab> DockView<'a, T>
             pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
             pub const fn min_pane(self, px: f32) -> Self
@@ -897,12 +605,10 @@ DockView
             pub fn tab_key(tab: T) -> u64
             pub fn scan(ui: &mut Ui, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
             pub fn content_size(ui: &Ui, state: &DockState<T>, group: TabGroupId) -> Option<Size>
-        impl ThemeDefaults  (blanket)
         impl<'a, T: Debug> Debug for DockView<'a, T>
-        impl<T> Configure for DockView<'_, T>
 
 Drag
-    enum Drag
+    enum Drag: Clone, Copy, Debug, Default, PartialEq
         None
         Started { delta: Vec2 }
         Active { delta: Vec2 }
@@ -911,23 +617,14 @@ Drag
         pub const fn is_live(self) -> bool
         pub const fn started(self) -> bool
         pub const fn stopped(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 DragNum
-    enum DragNum<'a>
+    enum DragNum<'a>: Debug, From<&'a mut f64>, From<&'a mut i64>
         I64(&'a mut i64)
         F64(&'a mut f64)
-        impl<'a> Debug for DragNum<'a>
-        impl<'a> From<&'a mut f64> for DragNum<'a>
-        impl<'a> From<&'a mut i64> for DragNum<'a>
 
 DragValue
-    struct DragValue<'a>
-        // and private fields
+    struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: impl Into<DragNum<'a>>) -> Self
         pub const fn speed(self, speed: f64) -> Self
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
@@ -936,67 +633,39 @@ DragValue
         pub const fn editable(self, on: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for DragValue<'a>
 
 DragValueTheme
-    struct DragValueTheme
+    struct DragValueTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub chip: ButtonTheme
         pub editor: TextEditTheme
         pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for DragValueTheme
 
 DriverError
-    struct DriverError
-        (_)
-        impl Debug
-        impl Display
-        impl Error
+    struct DriverError: Debug, Display, Error
 
 Easing
-    enum Easing
+    enum Easing: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         Linear
         OutCubic
         InOutCubic
         OutQuart
         OutBack
         pub const fn apply(self, t: f32) -> f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Easing
 
 Engagement
-    enum Engagement
+    enum Engagement: Clone, Copy, Debug, Eq, PartialEq
         Pressed
         Focused
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 Expander
-    struct Expander<'a>
-        // and private fields
+    struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub const fn start_open(self, open: bool) -> Self
         pub const fn open(self, open: &'a mut bool) -> Self
         pub const fn keep_body(self, keep: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Expander<'a>
 
 ExpanderResponse
     struct ExpanderResponse<'a, R>
@@ -1007,7 +676,7 @@ ExpanderResponse
         impl<'a, R: Debug> Debug for ExpanderResponse<'a, R>
 
 ExpanderTheme
-    struct ExpanderTheme
+    struct ExpanderTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub arrow_size: Vec2
         pub arrow_radius: f32
@@ -1018,113 +687,54 @@ ExpanderTheme
         pub body_padding: Spacing
         pub defaults: SlotDefaults
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for ExpanderTheme
 
 FixedClock
-    struct FixedClock
-        // and private fields
+    struct FixedClock: Clock, Debug, Default
         pub const fn new(now: Duration) -> Self
         pub fn advance(&mut self, dt: Duration)
-        impl Clock
-        impl Debug
-        impl Default
 
 FocusPolicy
-    enum FocusPolicy
+    enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
         PreserveOnMiss
         ClearOnMiss
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 FocusRingTheme
-    struct FocusRingTheme
+    struct FocusRingTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub color: RgbaF32
         pub width: f32
         pub const fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for FocusRingTheme
 
 FontFamily
-    struct FontFamily
-        (_)
+    struct FontFamily: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub const SANS: Self
         pub const MONO: Self
         pub fn named(name: &str) -> Option<Self>
         pub fn name(self) -> &'static str
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for FontFamily
 
 FontLoadError
-    enum FontLoadError
+    enum FontLoadError: Debug, Display, Error
         Io { path: PathBuf, source: Error }
         NoFaces
         FamilyTableFull
-        impl Debug
-        impl Display
-        impl Error
 
 FontScope
-    enum FontScope
+    enum FontScope: Clone, Copy, Debug, Eq, PartialEq
         Bundled
         System
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 FontSlant
-    enum FontSlant
+    enum FontSlant: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Normal = 0
         Italic = 1
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for FontSlant
 
 FontSource
-    enum FontSource
+    enum FontSource: Clone, Debug, From<&'static [u8]>, From<&Path>, From<&str>, From<Cow<'static, [u8]>>, From<PathBuf>, From<Vec<u8>>
         Bytes(Cow<'static, [u8]>)
         File(PathBuf)
-        impl Clone
-        impl Debug
-        impl From<&'static [u8]>
-        impl From<&Path>
-        impl From<&str>
-        impl From<Cow<'static, [u8]>>
-        impl From<PathBuf>
-        impl From<Vec<u8>>
         impl<const N: usize> From<&'static [u8; N]> for FontSource
 
 FontWeight
-    struct FontWeight
-        (_)
+    struct FontWeight: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd, Serialize
         pub const THIN: Self
         pub const EXTRA_LIGHT: Self
         pub const LIGHT: Self
@@ -1136,48 +746,26 @@ FontWeight
         pub const BLACK: Self
         pub const fn new(weight: u16) -> Self
         pub const fn get(self) -> u16
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl Ord
-        impl PartialEq
-        impl PartialOrd
-        impl Serialize
-        impl<'de> Deserialize<'de> for FontWeight
 
 FramePaint
-    enum FramePaint
+    enum FramePaint: Clone, Copy, Debug, Eq, PartialEq
         Skip
         Full
         Partial
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 FrameReport
-    struct FrameReport
+    struct FrameReport: Debug
         pub repaint_requested: bool
         pub repaint_after: Option<Duration>
         pub ime_area: Option<Rect>
-        // and private fields
         pub const fn paint(&self) -> FramePaint
-        impl Debug
 
 Gpu
-    struct Gpu
-        // and private fields
+    struct Gpu: Clone, Debug
         pub const fn new(device: Device, queue: Queue) -> Self
-        impl Clone
-        impl Debug
 
 GpuFrameContext
-    struct GpuFrameContext<'a>
+    struct GpuFrameContext<'a>: Debug
         pub device: &'a Device
         pub queue: &'a Queue
         pub encoder: &'a mut CommandEncoder
@@ -1188,14 +776,12 @@ GpuFrameContext
         pub display_scale: f32
         pub raster_scale: f32
         pub dt: Duration
-        impl Debug
 
 GpuInitContext
-    struct GpuInitContext<'a>
+    struct GpuInitContext<'a>: Debug
         pub device: &'a Device
         pub target_format: TextureFormat
         pub text: &'a TextShaper
-        impl<'a> Debug for GpuInitContext<'a>
 
 GpuPaint
     trait GpuPaint: 'static
@@ -1203,37 +789,26 @@ GpuPaint
         fn paint(&mut self, context: &mut GpuFrameContext<'_>)
 
 GpuPassStats
-    struct GpuPassStats
-        // and private fields
+    struct GpuPassStats: Clone, Debug, Default
         pub fn last_pass(&self) -> Option<Duration>
         pub fn last_kind(&self, kind: BatchKind) -> Option<Duration>
         pub fn last_pipeline_stats(&self) -> Option<PipelineStats>
         pub fn last_copy_out(&self) -> Option<Duration>
         pub fn last_main_pass_cpu(&self) -> Option<Duration>
-        impl Clone
-        impl Debug
-        impl Default
 
 GpuRequestError  [shape differs by feature]
     #[non_exhaustive]
-    enum GpuRequestError
+    enum GpuRequestError: Debug, Display, Error
         NoBackend
         RequestAdapter { source: DriverError }
         Requirements { source: UnmetRequirements }
         RequestDevice { source: DriverError }
-        impl Debug
-        impl Display
-        impl Error
 
 GpuView
-    struct GpuView
-        // and private fields
+    struct GpuView: Configure, Debug, ThemeDefaults (blanket)
         pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self
         pub const fn repaint(self, repaint: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 Gradient
     struct Gradient<G>
@@ -1258,18 +833,17 @@ Gradient
         impl From<Gradient<ConicGeometry>> for Brush
         impl From<Gradient<LinearGeometry>> for Brush
         impl From<Gradient<RadialGeometry>> for Brush
-        impl<'de, G> Deserialize<'de> for Gradient<G> where G: Deserialize<'de>
+        impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
         impl<G: Eq> Eq for Gradient<G>
         impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G>
         impl<G: GradientGeometry> Hash for Gradient<G>
         impl<G: PartialEq> PartialEq for Gradient<G>
-        impl<G> Serialize for Gradient<G> where G: Serialize
+        impl<G> Serialize where G: Serialize
 
 GradientBuilder
     struct GradientBuilder<G>
-        // and private fields
         impl<G: GradientGeometry> GradientBuilder<G>
             pub fn stop(self, offset: f32, color: RgbaF32) -> Self
             pub const fn spread(self, spread: Spread) -> Self
@@ -1287,23 +861,11 @@ GradientGeometry
         impl<T: Geometry> GradientGeometry for T
 
 GradientStops
-    struct GradientStops
-        // and private fields
+    struct GradientStops: Clone, Copy, Debug, Deref, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Deref
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for GradientStops
 
 Grid
-    struct Grid<Rows = [Track; 0], Cols = [Track; 0]>
-        // and private fields
+    struct Grid<Rows = [Track; 0], Cols = [Track; 0]>: ThemeDefaults (blanket)
         impl Grid
             pub fn new() -> Self
         impl<Rows, Cols> Grid<Rows, Cols>
@@ -1312,13 +874,11 @@ Grid
             pub const fn background(self, background: Background) -> Self
             pub const fn default_background(self, background: Background) -> Self
             pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
-        impl ThemeDefaults  (blanket)
         impl<Rows, Cols> Configure for Grid<Rows, Cols>
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
 
 GridCell
-    struct GridCell
-        // and private fields
+    struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, PartialEq, Pod, Zeroable
         pub const fn at(row: u16, col: u16) -> Self
         pub const fn with_span(self, row_span: u16, col_span: u16) -> Self
         pub const fn row(self) -> u16
@@ -1326,138 +886,75 @@ GridCell
         pub const fn row_span(self) -> u16
         pub const fn col_span(self) -> u16
         pub const fn along(axis: Axis, main: u16) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl From<(u16, u16)>
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 HAlign
-    enum HAlign
+    enum HAlign: Clone, Copy, Debug, Default, Eq, PartialEq
         Auto = 0
         Left = 1
         Center = 2
         Right = 3
         Stretch = 4
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
-HostDisconnected  [feature: winit]
-    struct HostDisconnected
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
+HostDisconnected  [features: winit]
+    struct HostDisconnected: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
-HostHandle  [feature: winit]
-    struct HostHandle<T: 'static>
-        // and private fields
+HostHandle  [features: winit]
+    struct HostHandle<T: 'static>: Clone, Debug
         pub fn request_repaint(&self, window: WindowToken)
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
-        impl<T: 'static> Clone for HostHandle<T>
-        impl<T: 'static> Debug for HostHandle<T>
 
 Hsv
-    struct Hsv
+    struct Hsv: Clone, Copy, Debug, Default, PartialEq
         pub h: f32
         pub s: f32
         pub v: f32
         pub const fn new(h: f32, s: f32, v: f32) -> Self
         pub fn to_color(self) -> RgbaF32
         pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 HueSlice
-    struct HueSlice
-        (_)
+    struct HueSlice: Clone, Copy, Debug
         pub fn color(self, s: f32, v: f32) -> RgbaF32
-        impl Clone
-        impl Copy
-        impl Debug
 
 IVec2
     pub use glam::IVec2 as IVec2
 
 IconDefinition
-    struct IconDefinition
+    struct IconDefinition: Clone, Debug
         pub name: Cow<'static, str>
         pub view_box: Vec2
         pub svg: Span
         pub tintable: bool
         pub filtered: bool
-        impl Clone
-        impl Debug
 
 IconHandle
-    struct IconHandle
-        // and private fields
+    struct IconHandle: Clone, Copy, Debug, PartialEq
         pub const fn view_box(&self) -> Vec2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 IconId
-    struct IconId
-        (_)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
+    struct IconId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
 
 IconSet
-    struct IconSet
-        // and private fields
+    struct IconSet: Clone, Debug
         pub fn handle(&self, icon: IconId) -> IconHandle
         pub fn by_name(&self, name: &str) -> Option<IconId>
         pub fn shape(&self, icon: IconId) -> IconShape
-        impl Clone
-        impl Debug
 
 IconTable
-    struct IconTable
-        // and private fields
+    struct IconTable: Debug
         pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self
         pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(sources: impl IntoIterator<Item = (N, &'a str)>) -> Result<Self, IconTableError>
-        impl Debug
 
 IconTableError
-    enum IconTableError
+    enum IconTableError: Clone, Debug, Display, Eq, Error, PartialEq
         Unreadable { name: Cow<'static, str> }
         TooMany { count: usize }
         DuplicateName { name: Cow<'static, str> }
         TooLarge { bytes: u128 }
-        impl Clone
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
 
 Image
-    struct Image
-        // and private fields
+    struct Image: Clone, Debug, Eq, PartialEq
         pub fn from_srgba8(size: UVec2, pixels: Vec<u8>) -> Result<Self, ImageDataError>
         pub fn blank(size: UVec2) -> Self
         pub const fn size(&self) -> UVec2
@@ -1466,91 +963,46 @@ Image
         pub fn fill_with(&mut self, texel: impl FnMut(u32, u32) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
-        impl Clone
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 ImageDataError
-    enum ImageDataError
+    enum ImageDataError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         ZeroSize { size: UVec2 }
         TooLarge { size: UVec2 }
         LengthMismatch { size: UVec2, expected: usize, actual: usize }
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
 
 ImageDownsample
-    enum ImageDownsample
+    enum ImageDownsample: Clone, Copy, Debug, Default, Eq, PartialEq
         Single
         Mean
         Peak
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 ImageFilter
-    enum ImageFilter
+    enum ImageFilter: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
         Linear
         Nearest
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for ImageFilter
 
 ImageFit
-    enum ImageFit
+    enum ImageFit: Clone, Copy, Debug, Default, PartialEq
         Fill
         Contain
         Cover
         None
         Tile { offset: Vec2, scale: Vec2 }
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 ImageHandle
-    struct ImageHandle
-        // and private fields
+    struct ImageHandle: Clone, Debug
         pub fn size(&self) -> UVec2
         pub fn update(&self, image: &Image)
-        impl Clone
-        impl Debug
 
 ImageTooLarge
-    struct ImageTooLarge
+    struct ImageTooLarge: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         pub size: UVec2
         pub max_dimension: u32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
 
 ImePreedit
-    struct ImePreedit<'a>
+    struct ImePreedit<'a>: Clone, Copy, Debug, Eq, PartialEq
         pub text: &'a str
         pub cursor: Option<Span>
-        impl<'a> Clone for ImePreedit<'a>
-        impl<'a> Copy for ImePreedit<'a>
-        impl<'a> Debug for ImePreedit<'a>
-        impl<'a> Eq for ImePreedit<'a>
-        impl<'a> PartialEq for ImePreedit<'a>
 
 InnerResponse
     struct InnerResponse<'a, R>
@@ -1559,17 +1011,11 @@ InnerResponse
         impl<'a, R: Debug> Debug for InnerResponse<'a, R>
 
 InputDelta
-    struct InputDelta
+    struct InputDelta: Clone, Copy, Debug, Default, Eq, PartialEq
         pub repaint_requested: bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 InputEvent
-    enum InputEvent<'a>
+    enum InputEvent<'a>: Clone, Copy, Debug
         PointerMoved(Vec2)
         PointerLeft
         PointerPressed(PointerButton)
@@ -1582,63 +1028,32 @@ InputEvent
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
-        impl<'a> Clone for InputEvent<'a>
-        impl<'a> Copy for InputEvent<'a>
-        impl<'a> Debug for InputEvent<'a>
 
 InputPolicy
-    enum InputPolicy
+    enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
         Always
         OnDelta
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 InternedStr
-    struct InternedStr
-        // and private fields
+    struct InternedStr: Clone, Copy, Debug
         pub const fn is_empty(&self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
         impl From<InternedStr> for TextInput<'_>
 
 Interpolation
-    enum Interpolation
+    enum Interpolation: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Oklab
         Linear
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Interpolation
 
 Justify
-    enum Justify
+    enum Justify: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         Start
         Center
         End
         SpaceBetween
         SpaceAround
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Key
-    enum Key
+    enum Key: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         ArrowLeft
         ArrowRight
         ArrowUp
@@ -1666,16 +1081,9 @@ Key
         F12
         Char(char)
         Other
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 KeyClass
-    enum KeyClass
+    enum KeyClass: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         Text
         Edit
         Caret
@@ -1685,17 +1093,9 @@ KeyClass
         Escape
         Accel
         pub fn of(press: KeyPress) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 KeyFilter
-    struct KeyFilter
-        (_)
+    struct KeyFilter: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const TEXT: Self
         pub const EDIT: Self
         pub const CARET: Self
@@ -1717,48 +1117,26 @@ KeyFilter
         pub const TEXT_FIELD: Self
         pub const fn takes(self, class: KeyClass) -> bool
         pub fn takes_press(self, press: KeyPress) -> bool
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 KeyPress
-    struct KeyPress
+    struct KeyPress: Clone, Copy, Debug, Eq, PartialEq
         pub key: Key
         pub mods: Modifiers
         pub repeat: bool
         pub physical: Key
         pub text: KeyText
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 KeyText
-    struct KeyText
-        // and private fields
+    struct KeyText: Clone, Copy, Debug, Default, Eq, PartialEq
         pub const CAPACITY: usize
         pub const EMPTY: Self
         pub fn new(text: &str) -> Self
         pub fn from_char(c: char) -> Self
         pub fn as_str(&self) -> &str
         pub fn is_empty(&self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 KeyboardWake
-    struct KeyboardWake
-        (_)
+    struct KeyboardWake: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const KEY: Self
         pub const MODIFIER: Self
         pub const NONE: Self
@@ -1771,54 +1149,26 @@ KeyboardWake
         pub const fn insert(&mut self, other: Self)
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Layer
-    enum Layer
+    enum Layer: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd
         Main = 0
         Popup = 1
         Modal = 2
         Menu = 3
         Tooltip = 4
         Debug = 5
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl Ord
-        impl PartialEq
-        impl PartialOrd
 
 LayerScope
-    struct LayerScope<'a>
-        // and private fields
+    struct LayerScope<'a>: Debug
         pub const fn fixed_at(self, point: Vec2) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn max_size(self, size: impl Into<Size>) -> Self
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
-        impl<'a> Debug for LayerScope<'a>
 
 LinearGeometry
-    struct LinearGeometry
+    struct LinearGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
         pub angle: f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl GradientGeometry  (blanket)
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for LinearGeometry
 
 LinearGradient
     type LinearGradient = Gradient<LinearGeometry>
@@ -1827,69 +1177,46 @@ LinearGradientBuilder
     type LinearGradientBuilder = GradientBuilder<LinearGeometry>
 
 MenuItem
-    struct MenuItem<'a>
-        // and private fields
+    struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
         pub const fn shortcut(self, s: Shortcut) -> Self
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
         pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for MenuItem<'a>
 
 MenuItemTheme
-    struct MenuItemTheme
+    struct MenuItemTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub shortcut: RgbaF32
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for MenuItemTheme
 
 MenuSeparator
-    struct MenuSeparator<'a>
-        // and private fields
+    struct MenuSeparator<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for MenuSeparator<'a>
 
 Modal
-    struct Modal<'a>
-        // and private fields
+    struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn backdrop(self, c: RgbaF32) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Modal<'a>
 
 ModalTheme
-    struct ModalTheme
+    struct ModalTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub panel: Background
         pub backdrop: RgbaF32
         pub padding: Spacing
         pub min_width: f32
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ModalTheme
 
 Modifiers
-    struct Modifiers
+    struct Modifiers: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub ctrl: bool
         pub shift: bool
         pub alt: bool
@@ -1901,43 +1228,22 @@ Modifiers
         pub const ALT: Self
         pub const CTRL_SHIFT: Self
         pub const fn has_command(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
         impl From<Modifiers> for ShortcutMods
-        impl Hash
-        impl PartialEq
 
 NodeIndex
-    struct NodeIndex
-        (_)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for NodeIndex
+    struct NodeIndex: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
 
 OffscreenHost
-    struct OffscreenHost
-        // and private fields
+    struct OffscreenHost: Debug
         pub const WINDOW: WindowToken
         pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder
         pub const fn ui(&mut self) -> &mut Ui
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
-        impl Debug
 
 OffscreenHostBuilder  [shape differs by feature]
-    struct OffscreenHostBuilder
-        // and private fields
+    struct OffscreenHostBuilder: Debug
         pub fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub const fn collect_gpu_stats(self, collect: bool) -> Self
@@ -1945,21 +1251,15 @@ OffscreenHostBuilder  [shape differs by feature]
         pub const fn retained_target(self, retained: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub fn build(self) -> OffscreenHost
-        impl Debug
 
 Okhsv
-    struct Okhsv
+    struct Okhsv: Clone, Copy, Debug, Default, PartialEq
         pub h: f32
         pub s: f32
         pub v: f32
         pub const fn new(h: f32, s: f32, v: f32) -> Self
         pub fn to_color(self) -> RgbaF32
         pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 OverlayResponse
     struct OverlayResponse<R>
@@ -1977,7 +1277,7 @@ PLATFORM
     const PLATFORM: Platform = { { Platform::Linux } }
 
 Palette
-    struct Palette
+    struct Palette: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub text: RgbaF32
         pub text_muted: RgbaF32
         pub text_disabled: RgbaF32
@@ -1992,16 +1292,9 @@ Palette
         pub const fn border_mid(&self) -> RgbaF32
         pub const fn border_strong(&self) -> RgbaF32
         pub fn popup_panel(&self) -> Background
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Palette
 
 Panel
-    struct Panel
-        // and private fields
+    struct Panel: Configure, Debug, ThemeDefaults (blanket)
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
         pub fn hstack() -> Self
         pub fn vstack() -> Self
@@ -2012,89 +1305,51 @@ Panel
         pub fn canvas() -> Self
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 PipelineStats
-    struct PipelineStats
+    struct PipelineStats: Clone, Copy, Debug, Default, Eq, PartialEq
         pub vertex_shader_invocations: u64
         pub clipper_invocations: u64
         pub clipper_primitives_out: u64
         pub fragment_shader_invocations: u64
         pub compute_shader_invocations: u64
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 Platform
-    enum Platform
+    enum Platform: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         Mac
         Windows
         Linux
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 PointerAction
-    struct PointerAction
+    struct PointerAction: Clone, Copy, Debug, Eq, PartialEq
         pub id: WidgetId
         pub button: PointerButton
         pub edge: PointerEdge
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 PointerButton
-    enum PointerButton
+    enum PointerButton: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         Left = 0
         Right = 1
         Middle = 2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 PointerEdge
-    enum PointerEdge
+    enum PointerEdge: Clone, Copy, Debug, Eq, PartialEq
         Pressed { count: u8 }
         Clicked { count: u8 }
         DragStarted
         DragStopped
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 PointerEvent
-    enum PointerEvent
+    enum PointerEvent: Clone, Copy, Debug, PartialEq
         Move(Vec2)
         Down { pos: Vec2, button: PointerButton }
         Up { pos: Vec2, button: PointerButton }
         Scroll { pos: Vec2, pixels: Vec2, lines: Vec2 }
         Zoom { pos: Vec2, factor: f32 }
         Leave
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 PointerWake
-    struct PointerWake
-        (_)
+    struct PointerWake: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const BUTTONS: Self
         pub const MOVE: Self
         pub const SCROLL: Self
@@ -2109,19 +1364,9 @@ PointerWake
         pub const fn insert(&mut self, other: Self)
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Popup
-    struct Popup
-        // and private fields
+    struct Popup: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(anchor: Anchor) -> Self
         pub const fn layer(self, layer: Layer) -> Self
         pub const fn click_outside(self, m: ClickOutside) -> Self
@@ -2129,13 +1374,9 @@ Popup
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 PopupTrigger
-    struct PopupTrigger
-        // and private fields
+    struct PopupTrigger: Configure, Debug, ThemeDefaults (blanket)
         pub fn on(snapshot: &ResponseSnapshot) -> Self
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
@@ -2143,55 +1384,30 @@ PopupTrigger
         pub fn open(ui: &mut Ui, for_id: WidgetId)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 PowerPreference
-    enum PowerPreference
+    enum PowerPreference: Clone, Copy, Debug, Default, Eq, PartialEq
         Any
         LowPower
         HighPerformance
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 ProgressBar
-    struct ProgressBar<'a>
-        // and private fields
+    struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(fraction: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for ProgressBar<'a>
 
 ProgressBarTheme
-    struct ProgressBarTheme
+    struct ProgressBarTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub thickness: f32
         pub const fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ProgressBarTheme
 
 RadialGeometry
-    struct RadialGeometry
+    struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
         pub center: Vec2
         pub radius: Vec2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl GradientGeometry  (blanket)
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for RadialGeometry
 
 RadialGradient
     type RadialGradient = Gradient<RadialGeometry>
@@ -2200,26 +1416,19 @@ RadialGradientBuilder
     type RadialGradientBuilder = GradientBuilder<RadialGeometry>
 
 RadioButton
-    struct RadioButton<'a, T: PartialEq>
-        // and private fields
+    struct RadioButton<'a, T: PartialEq>: Configure, ThemeDefaults (blanket)
         pub fn new(current: &'a mut T, value: T) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl ThemeDefaults  (blanket)
         impl<'a, T: Debug + PartialEq> Debug for RadioButton<'a, T>
-        impl<T: PartialEq> Configure for RadioButton<'_, T>
 
 RealtimeClock
-    struct RealtimeClock
-        // and private fields
+    struct RealtimeClock: Clock, Debug, Default
         pub fn new() -> Self
-        impl Clock
-        impl Debug
-        impl Default
 
 Rect
-    struct Rect
+    struct Rect: Clone, Copy, Debug, Default, Hash, PartialEq, Pod, Zeroable
         pub min: Vec2
         pub size: Size
         pub const ZERO: Self
@@ -2240,50 +1449,30 @@ Rect
         pub const fn intersect(self, other: Self) -> Option<Self>
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 RenderTarget
-    struct RenderTarget<'a>
-        // and private fields
+    struct RenderTarget<'a>: Clone, Copy, Debug
         pub fn new(texture: &'a Texture) -> Self
-        impl<'a> Clone for RenderTarget<'a>
-        impl<'a> Copy for RenderTarget<'a>
-        impl<'a> Debug for RenderTarget<'a>
 
 RequestedGpu
-    struct RequestedGpu
+    struct RequestedGpu: Debug
         pub adapter: Adapter
         pub gpu: Gpu
         pub fn headless(power_preference: PowerPreference, optional: Features) -> Result<Self, GpuRequestError>
-        impl Debug
 
 Response
-    struct Response<'a>
+    struct Response<'a>: Debug, Deref
         pub id: WidgetId
-        // and private fields
         pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self
         pub fn snapshot(&self) -> ResponseSnapshot
-        impl Debug
-        impl Deref
 
 ResponseSnapshot
-    struct ResponseSnapshot
+    struct ResponseSnapshot: Clone, Copy, Debug, Deref
         pub id: WidgetId
         pub state: ResponseState
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Deref
 
 ResponseState
-    struct ResponseState
+    struct ResponseState: Clone, Copy, Debug, Default
         pub rect: Option<Rect>
         pub layout_rect: Option<Rect>
         pub transform: TranslateScale
@@ -2302,13 +1491,9 @@ ResponseState
         pub const fn button(&self, button: PointerButton) -> &ButtonState
         pub const fn pressed(&self) -> bool
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
 
 RgbaF32
-    struct RgbaF32
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, From<SrgbaU8>, FromStr, Hash, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -2324,25 +1509,11 @@ RgbaF32
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
         pub fn to_srgba_u8(self) -> SrgbaU8
-        impl Animatable
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
         impl From<RgbaF32> for Brush
         impl From<RgbaF32> for SrgbaU8
-        impl From<SrgbaU8>
-        impl FromStr
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Serialize
-        impl Zeroable
-        impl<'de> Deserialize<'de> for RgbaF32
 
 Scroll
-    struct Scroll<'a>
-        // and private fields
+    struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn vertical() -> Self
         pub fn horizontal() -> Self
         pub fn both() -> Self
@@ -2358,24 +1529,16 @@ Scroll
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Scroll<'a>
 
 ScrollDelta
-    struct ScrollDelta
+    struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
         pub pixels: Vec2
         pub lines: Vec2
         pub zoom: ZoomFactor
         pub fn pan(self, line_height: f32) -> Vec2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 ScrollbarTheme
-    struct ScrollbarTheme
+    struct ScrollbarTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub thickness: f32
         pub gap: f32
         pub min_thumb: f32
@@ -2384,15 +1547,9 @@ ScrollbarTheme
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for ScrollbarTheme
 
 Sense
-    struct Sense
-        (_)
+    struct Sense: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const HOVER: Self
         pub const CLICK: Self
         pub const DRAG: Self
@@ -2411,44 +1568,26 @@ Sense
         pub const fn set(&mut self, other: Self, on: bool)
         pub const SCROLL: Self
         pub const ABSORB_POINTER: Self
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Separator
-    struct Separator<'a>
-        // and private fields
+    struct Separator<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn horizontal() -> Self
         pub fn vertical() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub const fn thickness(self, px: f32) -> Self
         pub const fn color(self, c: RgbaF32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Separator<'a>
 
 SeparatorTheme
-    struct SeparatorTheme
+    struct SeparatorTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub color: RgbaF32
         pub thickness: f32
         pub margin: Spacing
         pub const fn from_palette(p: &Palette) -> Self
         pub fn menu_separator(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for SeparatorTheme
 
 Shadow
-    struct Shadow
+    struct Shadow: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub offset: Vec2
         pub blur: f32
@@ -2459,17 +1598,9 @@ Shadow
         pub const fn with_spread(self, spread: f32) -> Self
         pub const fn inset(self) -> Self
         pub const fn is_noop(&self) -> bool
-        impl Animatable
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Shadow
 
 Shortcut
-    struct Shortcut
+    struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, Hash, PartialEq
         pub mods: ShortcutMods
         pub key: Key
         pub const fn new(mods: ShortcutMods, key: Key) -> Self
@@ -2477,17 +1608,9 @@ Shortcut
         pub const fn ctrl(c: char) -> Self
         pub const fn ctrl_shift(c: char) -> Self
         pub fn matches(self, press: KeyPress) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Display
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 ShortcutMods
-    struct ShortcutMods
+    struct ShortcutMods: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<Modifiers>, Hash, PartialEq
         pub ctrl: bool
         pub shift: bool
         pub alt: bool
@@ -2498,18 +1621,9 @@ ShortcutMods
         pub const CTRL: Self
         pub const ALT: Self
         pub const CTRL_SHIFT: Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl From<Modifiers>
-        impl Hash
-        impl PartialEq
 
 Size
-    struct Size
+    struct Size: Clone, Copy, Debug, Default, Deserialize<'de>, Hash, PartialEq, Pod, Serialize, Zeroable
         pub w: f32
         pub h: f32
         pub const ZERO: Self
@@ -2520,41 +1634,21 @@ Size
         pub const fn min(self, other: Self) -> Self
         pub const fn max(self, other: Self) -> Self
         pub const fn scaled_by(self, factor: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
         impl From<Size> for SizeSpec
         impl From<Size> for Vec2
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Serialize
-        impl Zeroable
-        impl<'de> Deserialize<'de> for Size
         impl<T: Num> From<T> for Size
         impl<W: Num, H: Num> From<(W, H)> for Size
 
 SizeSpec
-    struct SizeSpec
-        // and private fields
+    struct SizeSpec: Clone, Copy, Debug, Default, From<Size>, From<Sizing>, Hash, PartialEq
         pub const fn new(w: Sizing, h: Sizing) -> Self
         pub const fn w(self) -> Sizing
         pub const fn h(self) -> Sizing
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl From<Size>
-        impl From<Sizing>
-        impl Hash
-        impl PartialEq
         impl<T: Num> From<T> for SizeSpec
         impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec
 
 Sizing
-    struct Sizing
-        (_)
+    struct Sizing: Clone, Copy, Debug, Default, Hash, PartialEq
         pub const HUG: Self
         pub const FILL: Self
         pub const fn fixed(value: f32) -> Self
@@ -2563,56 +1657,35 @@ Sizing
         pub const fn fixed_value(self) -> Option<f32>
         pub const fn fill_weight(self) -> Option<f32>
         pub const fn is_hug(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
         impl From<Sizing> for SizeSpec
         impl From<Sizing> for Track
-        impl Hash
-        impl PartialEq
         impl<T: Num> From<T> for Sizing
 
 Slider
-    struct Slider<'a>
-        // and private fields
+    struct Slider<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self
         pub const fn step(self, step: f64) -> Self
         pub const fn decimals(self, n: usize) -> Self
         pub fn style(self, s: impl Into<Option<&'a SliderTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Slider<'a>
 
 SliderTheme
-    struct SliderTheme
+    struct SliderTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub knob: RgbaF32
         pub knob_size: f32
         pub track_thickness: f32
         pub const fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for SliderTheme
 
 SlotDefaults
-    struct SlotDefaults
+    struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, Serialize
         pub padding: Spacing
         pub margin: Spacing
         pub animation: Option<AnimationSpec>
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Serialize
-        impl<'de> Deserialize<'de> for SlotDefaults
 
 Spacing
-    struct Spacing
-        (_)
+    struct Spacing: Add, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn as_array(self) -> [f32; 4]
         pub fn all(v: f32) -> Self
@@ -2620,38 +1693,21 @@ Spacing
         pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self
         pub fn from_array(v: [f32; 4]) -> Self
         pub fn sums(self) -> Size
-        impl Add
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Serialize
-        impl Zeroable
-        impl<'de> Deserialize<'de> for Spacing
         impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing
         impl<T: Num> From<T> for Spacing
         impl<X: Num, Y: Num> From<(X, Y)> for Spacing
 
 Spinner
-    struct Spinner<'a>
-        // and private fields
+    struct Spinner<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn diameter(self, px: f32) -> Self
         pub const fn color(self, c: RgbaF32) -> Self
         pub const fn thickness(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Spinner<'a>
 
 SpinnerTheme
-    struct SpinnerTheme
+    struct SpinnerTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub color: RgbaF32
         pub diameter: f32
         pub sweep: f32
@@ -2659,93 +1715,50 @@ SpinnerTheme
         pub thickness_ratio: f32
         pub min_thickness: f32
         pub const fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for SpinnerTheme
 
 SplitDirection
-    enum SplitDirection
+    enum SplitDirection: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         Row
         Column
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for SplitDirection
 
 SplitHalf
-    enum SplitHalf
+    enum SplitHalf: Clone, Copy, Debug, Eq, PartialEq
         First
         Second
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 SplitSide
-    enum SplitSide
+    enum SplitSide: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         Left
         Right
         Top
         Bottom
         pub const fn direction(self) -> SplitDirection
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for SplitSide
 
 Splitter
-    struct Splitter<'a>
-        // and private fields
+    struct Splitter<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn row(ratio: &'a mut f32) -> Self
         pub fn column(ratio: &'a mut f32) -> Self
         pub const fn min_pane(self, px: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self
         pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Splitter<'a>
 
 SplitterTheme
-    struct SplitterTheme
+    struct SplitterTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub grab_thickness: f32
         pub rule: RgbaF32
         pub rule_thickness: f32
         pub hovered: RgbaF32
         pub active: RgbaF32
         pub const fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for SplitterTheme
 
 Spread
-    enum Spread
+    enum Spread: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         Pad = 0
         Repeat = 1
         Reflect = 2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Spread
 
 SrgbaU8
-    struct SrgbaU8
+    struct SrgbaU8: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<RgbaF32>, Hash, PartialEq, Pod, Zeroable
         pub r: u8
         pub g: u8
         pub b: u8
@@ -2754,81 +1767,42 @@ SrgbaU8
         pub const fn rgb(r: u8, g: u8, b: u8) -> Self
         pub const fn hex(rgb: u32) -> Self
         pub const fn hexa(rgba: u32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl From<RgbaF32>
         impl From<SrgbaU8> for Brush
         impl From<SrgbaU8> for RgbaF32
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 StatefulLook
-    struct StatefulLook
+    struct StatefulLook: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub normal: WidgetLook
         pub hovered: WidgetLook
         pub active: WidgetLook
         pub disabled: WidgetLook
         pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for StatefulLook
 
 Stop
-    struct Stop
-        // and private fields
+    struct Stop: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
         pub fn new(offset: f32, color: RgbaF32) -> Self
         pub const fn offset(self) -> f32
         pub const fn color(self) -> RgbaF32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Stop
 
 Stroke
-    struct Stroke
+    struct Stroke: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub width: f32
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub const fn new(color: RgbaF32, width: f32) -> Self
-        impl Animatable
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for Stroke
 
-SurfaceError  [feature: winit]
+SurfaceError  [features: winit]
     #[non_exhaustive]
-    enum SurfaceError
+    enum SurfaceError: Debug, Display, Error, From<GpuRequestError>
         Create { source: DriverError }
         Device { source: GpuRequestError }
         Incompatible
         MissingSrgb
         MissingUsages { missing: SurfaceUsages }
-        impl Debug
-        impl Display
-        impl Error
-        impl From<GpuRequestError>
 
-SurfaceUsages  [feature: winit]
-    struct SurfaceUsages
-        (_)
+SurfaceUsages  [features: winit]
+    struct SurfaceUsages: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
         pub const RENDER_ATTACHMENT: Self
         pub const NONE: Self
         pub const ALL: Self
@@ -2840,51 +1814,26 @@ SurfaceUsages  [feature: winit]
         pub const fn insert(&mut self, other: Self)
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
-        impl BitOr
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Display
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Switch
-    struct Switch<'a>
-        // and private fields
+    struct Switch<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Switch<'a>
 
 TabAddress
-    struct TabAddress
+    struct TabAddress: Clone, Copy, Debug, Eq, PartialEq
         pub group: TabGroupId
         pub index: usize
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 TabBadge
-    enum TabBadge
+    enum TabBadge: Clone, Copy, Debug, Default, Eq, PartialEq
         None
         Idle
         On
         pub const fn is_reserved(self) -> bool
         pub const fn is_inked(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 TabGroup
     struct TabGroup<T>
@@ -2893,28 +1842,18 @@ TabGroup
         pub active: usize
         impl<T: Copy> TabGroup<T>
             pub fn active_tab(&self) -> T
-        impl<'de, T> Deserialize<'de> for TabGroup<T> where T: Deserialize<'de>
+        impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
         impl<T: Clone> Clone for TabGroup<T>
         impl<T: Debug> Debug for TabGroup<T>
         impl<T: Eq> Eq for TabGroup<T>
         impl<T: PartialEq> PartialEq for TabGroup<T>
-        impl<T> Serialize for TabGroup<T> where T: Serialize
+        impl<T> Serialize where T: Serialize
 
 TabGroupId
-    struct TabGroupId
-        (_)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for TabGroupId
+    struct TabGroupId: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
 
 TabItem
-    struct TabItem
+    struct TabItem: Clone, Copy, Debug
         pub key: u64
         pub label: InternedStr
         pub closable: bool
@@ -2922,35 +1861,19 @@ TabItem
         pub badge: TabBadge
         pub icon: Option<IconHandle>
         pub const fn new(key: u64, label: InternedStr) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
 
 TabOverflow
-    enum TabOverflow
+    enum TabOverflow: Clone, Copy, Debug, Default, Eq, PartialEq
         Scroll
         Menu
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 TabSelection
-    enum TabSelection
+    enum TabSelection: Clone, Copy, Debug, Eq, From<bool>, PartialEq
         Unselected
         Selected
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl From<bool>
-        impl PartialEq
 
 TabStrip
-    struct TabStrip<'a>
-        // and private fields
+    struct TabStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(items: &'a [TabItem]) -> Self
         pub fn selected(self, selected: impl Into<Option<usize>>) -> Self
         pub const fn focused(self, focused: bool) -> Self
@@ -2959,22 +1882,14 @@ TabStrip
         pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn close_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for TabStrip<'a>
 
 TabStripFocus
-    enum TabStripFocus
+    enum TabStripFocus: Clone, Copy, Debug, Eq, PartialEq
         Focused
         Unfocused
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 TabStripResponse
-    struct TabStripResponse<'a>
+    struct TabStripResponse<'a>: Debug
         pub response: Response<'a>
         pub clicked: Option<usize>
         pub keyed: Option<usize>
@@ -2983,11 +1898,9 @@ TabStripResponse
         pub drag_started: Option<usize>
         pub drag_stopped: Option<usize>
         pub fn activated(&self) -> Option<usize>
-        impl<'a> Debug for TabStripResponse<'a>
 
 TabbedView
-    struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>
-        // and private fields
+    struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>: ThemeDefaults (blanket)
         impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str>
             pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
         impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L>
@@ -2999,29 +1912,22 @@ TabbedView
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
-        impl ThemeDefaults  (blanket)
         impl<'a, S: Debug, L: Debug, K: Debug> Debug for TabbedView<'a, S, L, K>
         impl<S, L, K> Configure for TabbedView<'_, S, L, K>
 
 TabbedViewResponse
-    struct TabbedViewResponse<'a>
+    struct TabbedViewResponse<'a>: Debug
         pub response: Response<'a>
         pub action: Option<TabsAction>
-        impl<'a> Debug for TabbedViewResponse<'a>
 
 TabsAction
-    enum TabsAction
+    enum TabsAction: Clone, Copy, Debug, Eq, PartialEq
         Activated { index: usize }
         Closed { index: usize }
         Reordered { from: usize, to: usize }
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 TabsTheme
-    struct TabsTheme
+    struct TabsTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
         pub active: StatefulLook
         pub inactive: StatefulLook
         pub accent: RgbaF32
@@ -3045,28 +1951,13 @@ TabsTheme
         pub defaults: SlotDefaults
         pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for TabsTheme
 
 TargetFormat
-    struct TargetFormat
-        (_)
+    struct TargetFormat: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         pub fn new(format: TextureFormat) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Text
-    struct Text<'a>
-        // and private fields
+    struct Text<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextStyle>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
@@ -3080,13 +1971,9 @@ Text
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Text<'a>
 
 TextEdit
-    struct TextEdit<'a>
-        // and private fields
+    struct TextEdit<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: &'a mut String) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
@@ -3104,12 +1991,9 @@ TextEdit
         pub const fn multiline(self, on: bool) -> Self
         pub fn placeholder(self, text: impl Into<TextInput<'a>>) -> Self
         pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_>
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for TextEdit<'a>
 
 TextEditResponse
-    struct TextEditResponse<'a>
+    struct TextEditResponse<'a>: Debug
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
@@ -3117,10 +2001,9 @@ TextEditResponse
         pub canceled: bool
         pub focus_gained: bool
         pub focus_lost: bool
-        impl<'a> Debug for TextEditResponse<'a>
 
 TextEditTheme
-    struct TextEditTheme
+    struct TextEditTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub placeholder: RgbaF32
         pub caret: RgbaF32
@@ -3129,40 +2012,25 @@ TextEditTheme
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for TextEditTheme
 
 TextInput
-    enum TextInput<'a>
+    enum TextInput<'a>: Debug, Default, From<Cow<'a, str>>, From<InternedStr>, From<String>
         Borrowed(&'a str)
         Owned(String)
         Interned(InternedStr)
-        impl Default
-        impl From<InternedStr>
-        impl From<String>
         impl<'a, T: AsRef<str> + ?Sized> From<&'a T> for TextInput<'a>
-        impl<'a> Debug for TextInput<'a>
-        impl<'a> From<Cow<'a, str>> for TextInput<'a>
 
 TextShaper
-    struct TextShaper
-        // and private fields
+    struct TextShaper: Clone, Debug, Default
         pub fn new() -> Self
         pub fn with_fonts(scope: FontScope) -> Self
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
         pub fn glyphs(&self) -> TextGlyphs<'_>
-        impl Clone
-        impl Debug
-        impl Default
 
 TextStyle
-    struct TextStyle
+    struct TextStyle: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub font_size: f32
         pub color: RgbaF32
         pub line_height_factor: f32
@@ -3179,17 +2047,9 @@ TextStyle
         pub const fn with_slant(self, slant: FontSlant) -> Self
         pub const fn bold(self) -> Self
         pub const fn italic(self) -> Self
-        impl Animatable
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for TextStyle
 
 TextStyleOverrides
-    struct TextStyleOverrides
+    struct TextStyleOverrides: Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: Option<RgbaF32>
         pub font_size: Option<f32>
         pub line_height_factor: Option<f32>
@@ -3204,33 +2064,18 @@ TextStyleOverrides
         pub const fn with_family(self, family: FontFamily) -> Self
         pub const fn with_weight(self, weight: FontWeight) -> Self
         pub const fn with_slant(self, slant: FontSlant) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for TextStyleOverrides
 
 TextWrap
-    enum TextWrap
+    enum TextWrap: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         SingleLine
         Scroll
         Truncate
         Ellipsis
         Wrap
         WrapWithOverflow
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 Theme
-    struct Theme
+    struct Theme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub button: ButtonTheme
         pub checkbox: ToggleTheme
         pub radio: ToggleTheme
@@ -3258,14 +2103,9 @@ Theme
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for Theme
 
 ToggleTheme
-    struct ToggleTheme
+    struct ToggleTheme: Clone, Debug, Deserialize<'de>, Serialize, ThemeSlot
         pub unchecked: StatefulLook
         pub checked: StatefulLook
         pub indicator: RgbaF32
@@ -3279,15 +2119,9 @@ ToggleTheme
         pub fn checkbox(p: &Palette) -> Self
         pub fn radio(p: &Palette) -> Self
         pub fn switch(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Serialize
-        impl ThemeSlot
-        impl<'de> Deserialize<'de> for ToggleTheme
 
 Tooltip
-    struct Tooltip<'a>
-        // and private fields
+    struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TooltipTheme>>) -> Self
         pub const fn delay(self, delay: Duration) -> Self
@@ -3295,19 +2129,13 @@ Tooltip
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
         pub const fn background(self, background: Background) -> Self
         pub const fn default_background(self, background: Background) -> Self
-        impl Configure
-        impl ThemeDefaults  (blanket)
-        impl<'a> Debug for Tooltip<'a>
 
 TooltipResponse
-    struct TooltipResponse
+    struct TooltipResponse: Clone, Copy, Debug
         pub visible: bool
-        impl Clone
-        impl Copy
-        impl Debug
 
 TooltipTheme
-    struct TooltipTheme
+    struct TooltipTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
         pub panel: Background
         pub text: TextStyleOverrides
         pub padding: Spacing
@@ -3316,15 +2144,9 @@ TooltipTheme
         pub warmup: Duration
         pub gap: f32
         pub fn from_palette(p: &Palette) -> Self
-        impl Clone
-        impl Debug
-        impl Default
-        impl Serialize
-        impl<'de> Deserialize<'de> for TooltipTheme
 
 Track
-    struct Track
-        // and private fields
+    struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq
         pub const fn new(size: Sizing) -> Self
         pub const HUG: Self
         pub const FILL: Self
@@ -3332,16 +2154,9 @@ Track
         pub const fn fill(weight: f32) -> Self
         pub const fn with_min(self, min: f32) -> Self
         pub const fn with_max(self, max: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl From<Sizing>
-        impl Hash
-        impl PartialEq
 
 TranslateScale
-    struct TranslateScale
-        // and private fields
+    struct TranslateScale: Clone, Copy, Debug, Default, PartialEq
         pub const IDENTITY: Self
         pub const fn is_identity(self) -> bool
         pub const fn new(translation: Vec2, scale: f32) -> Self
@@ -3352,18 +2167,12 @@ TranslateScale
         pub const fn apply_point(self, p: Vec2) -> Vec2
         pub const fn inverse_vector(self, v: Vec2) -> Vec2
         pub const fn apply_rect(self, r: Rect) -> Rect
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
 
 UVec2
     pub use glam::UVec2 as UVec2
 
 Ui
-    struct Ui
-        // and private fields
+    struct Ui: Debug
         pub const fn theme(&self) -> &Rc<Theme>
         pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
@@ -3434,22 +2243,14 @@ Ui
         pub const fn set_focus_policy(&mut self, p: FocusPolicy)
         pub const fn input_policy(&self) -> InputPolicy
         pub const fn set_input_policy(&mut self, p: InputPolicy)
-        impl Debug
 
 UnmetRequirements
-    enum UnmetRequirements
+    enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
         Features { missing: DeviceFeatures }
         Limit { name: &'static str, required: u64, available: u64 }
-        impl Clone
-        impl Debug
-        impl Display
-        impl Eq
-        impl Error
-        impl PartialEq
 
 UserScale
-    struct UserScale
-        (_)
+    struct UserScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd
         pub const ONE: Self
         pub const LADDER: [f32; 13]
         pub const MIN: f32
@@ -3460,97 +2261,51 @@ UserScale
         pub fn stepped_up(self) -> Self
         pub fn stepped_down(self) -> Self
         pub const fn percent(self) -> u32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl PartialOrd
 
 VAlign
-    enum VAlign
+    enum VAlign: Clone, Copy, Debug, Default, Eq, PartialEq
         Auto = 0
         Top = 1
         Center = 2
         Bottom = 3
         Stretch = 4
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 ValueResponse
-    struct ValueResponse<'a>
+    struct ValueResponse<'a>: Debug
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
-        impl<'a> Debug for ValueResponse<'a>
 
 Vec2
     pub use glam::Vec2 as Vec2
 
 Visibility
-    enum Visibility
+    enum Visibility: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd
         Visible = 0
         Hidden = 1
         Collapsed = 2
         pub const fn is_visible(self) -> bool
         pub const fn is_collapsed(self) -> bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl Ord
-        impl PartialEq
-        impl PartialOrd
 
 Vsync
-    enum Vsync
+    enum Vsync: Clone, Copy, Debug, Default, Eq, PartialEq
         On
         Off
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 WidgetId
-    struct WidgetId
-        (_)
+    struct WidgetId: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq, Pod, Zeroable
         pub fn from_hash(h: impl Hash) -> Self
         pub fn with(self, h: impl Hash) -> Self
         pub fn auto() -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 WidgetLook
-    struct WidgetLook
+    struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub background: Background
         pub text: TextStyleOverrides
         pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook
-        impl Clone
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Serialize
-        impl<'de> Deserialize<'de> for WidgetLook
 
 WindowConfig
-    struct WindowConfig
+    struct WindowConfig: Clone, Debug, Default
         pub title: String
         pub inner_size: Option<UVec2>
         pub min_inner_size: Option<UVec2>
@@ -3565,53 +2320,30 @@ WindowConfig
         pub const fn with_maximized(self, maximized: bool) -> Self
         pub fn with_icon(self, icon: Image) -> Self
         pub fn with_app_id(self, app_id: impl Into<String>) -> Self
-        impl Clone
-        impl Debug
-        impl Default
 
 WindowGeometry
-    struct WindowGeometry
+    struct WindowGeometry: Clone, Copy, Debug, Default
         pub inner_size: UVec2
         pub placement: WindowPlacement
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
 
 WindowPlacement
-    struct WindowPlacement
+    struct WindowPlacement: Clone, Copy, Debug, Default, Eq, PartialEq
         pub position: Option<IVec2>
         pub maximized: bool
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 WindowToken
-    struct WindowToken
-        (pub u64)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
+    struct WindowToken: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        pub 0: u64
 
-WinitHost  [feature: winit]
-    struct WinitHost<T: 'static>
-        // and private fields
+WinitHost  [features: winit]
+    struct WinitHost<T: 'static>: Debug
         impl<T> WinitHost<T> where T: App + 'static
             pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T>
             pub fn handle(&self) -> HostHandle<T>
             pub fn run(self) -> Result<(), WinitHostError>
-        impl<T: 'static> Debug for WinitHost<T>
 
-WinitHostBuilder  [feature: winit]
+WinitHostBuilder  [features: winit]
     struct WinitHostBuilder<T>
-        // and private fields
         impl<T> WinitHostBuilder<T> where T: App + 'static
             pub fn window(self, window: WindowConfig) -> Self
             pub fn title(self, title: impl Into<String>) -> Self
@@ -3623,104 +2355,70 @@ WinitHostBuilder  [feature: winit]
             pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
         impl<T: Debug> Debug for WinitHostBuilder<T>
 
-WinitHostError  [feature: winit]
+WinitHostError  [features: winit]
     #[non_exhaustive]
-    enum WinitHostError
+    enum WinitHostError: Debug, Display, Error
         CreateEventLoop { source: EventLoopError }
         RunEventLoop { source: EventLoopError }
         CreateWindow { token: WindowToken, source: OsError }
         Surface { token: WindowToken, source: SurfaceError }
-        impl Debug
-        impl Display
-        impl Error
 
 ZoomConfig
-    struct ZoomConfig
-        // and private fields
+    struct ZoomConfig: Clone, Debug, Default
         pub const fn new(range: RangeInclusive<f32>, step: f32) -> Self
         pub const fn with_modifier(self, modifier: ZoomModifier) -> Self
         pub const fn with_pivot(self, pivot: ZoomPivot) -> Self
-        impl Clone
-        impl Debug
-        impl Default
 
 ZoomFactor
-    struct ZoomFactor
-        (_)
+    struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd
         pub const ONE: Self
         pub const fn new(factor: f32) -> Option<Self>
         pub fn from_wheel(step: f32, notches: f32) -> Self
         pub fn combine(self, rhs: Self) -> Self
         pub const fn get(self) -> f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl PartialOrd
 
 ZoomModifier
-    enum ZoomModifier
+    enum ZoomModifier: Clone, Copy, Debug, Eq, PartialEq
         Ctrl
         Always
         PinchOnly
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 ZoomPivot
-    enum ZoomPivot
+    enum ZoomPivot: Clone, Copy, Debug, Eq, PartialEq
         Pointer
         Center
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 fmt
     macro fmt!
 
-golden  [feature: golden]
+golden  [features: golden]
     mod
 
-golden::DiffReport  [feature: golden]
-    struct DiffReport
+golden::DiffReport  [features: golden]
+    struct DiffReport: Debug
         pub max_channel_delta: u8
         pub differing_pixels: u32
         pub diff_image: RgbaImage
         pub tolerance: Tolerance
         pub const fn passes(&self) -> bool
-        impl Debug
 
-golden::Goldens  [feature: golden]
-    struct Goldens
-        // and private fields
+golden::Goldens  [features: golden]
+    struct Goldens: Clone, Debug
         pub fn new(root: impl Into<PathBuf>) -> Self
         pub fn with_adapter(self, adapter: impl Into<String>) -> Self
         pub fn orphans<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<PathBuf>
         pub const fn with_tolerance(self, tolerance: Tolerance) -> Self
         pub fn assert_matches(&self, name: &str, actual: &RgbaImage)
         pub fn assert_same(&self, name: &str, actual: &RgbaImage, expected: &RgbaImage)
-        impl Clone
-        impl Debug
 
-golden::Tolerance  [feature: golden]
-    struct Tolerance
+golden::Tolerance  [features: golden]
+    struct Tolerance: Clone, Copy, Debug, Default, Eq, PartialEq
         pub max_delta: u8
         pub max_pixels: u32
         pub const EXACT: Self
         pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
-golden::image  [feature: golden]
+golden::image  [features: golden]
     pub use image as image
 
 wgpu
@@ -3750,51 +2448,30 @@ widget::AnimationRequest
         impl<T: Debug + Animatable> Debug for AnimationRequest<T>
 
 widget::AnimationSlot
-    struct AnimationSlot
-        // and private fields
+    struct AnimationSlot: Clone, Copy, Debug, DockTab (blanket), Eq, From<&'static str>, Hash, PartialEq
         pub const fn new(name: &'static str) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl From<&'static str>
-        impl Hash
-        impl PartialEq
 
 widget::Backdrop
-    enum Backdrop
+    enum Backdrop: Clone, Copy, Debug
         None
         Root
         Eater(WidgetId)
-        impl Clone
-        impl Copy
-        impl Debug
 
 widget::Caret
-    struct Caret
+    struct Caret: Clone, Copy, Debug, PartialEq
         pub x: f32
         pub y_top: f32
         pub line_height: f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 widget::CircularArc
-    struct CircularArc
+    struct CircularArc: Clone, Copy, Debug, PartialEq
         pub center: Vec2
         pub radius: f32
         pub start_angle: f32
         pub sweep: f32
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 widget::Configurator
-    struct Configurator<'a>
-        // and private fields
+    struct Configurator<'a>: Debug
         pub fn id_salt(&mut self, key: impl Hash) -> &mut Self
         pub const fn id(&mut self, id: WidgetId) -> &mut Self
         pub const fn auto_id(&mut self) -> &mut Self
@@ -3835,150 +2512,86 @@ widget::Configurator
         pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self
-        impl<'a> Debug for Configurator<'a>
 
 widget::ContentType
-    enum ContentType
+    enum ContentType: Clone, Copy, Debug, Eq, PartialEq
         Mask = 0
         Color = 1
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 widget::CubicBezier
-    struct CubicBezier
+    struct CubicBezier: Clone, Copy, Debug, From<QuadraticBezier>, PartialEq
         pub p0: Vec2
         pub p1: Vec2
         pub p2: Vec2
         pub p3: Vec2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl From<QuadraticBezier>
-        impl PartialEq
 
 widget::CurveShape
-    struct CurveShape
-        // and private fields
+    struct CurveShape: Clone, Debug, Lower (blanket)
         pub const fn ramp(self, ramp: ColorRamp) -> Self
         pub const fn cap(self, cap: LineCap) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::GlyphFont
-    struct GlyphFont
+    struct GlyphFont: Clone, Copy, Debug, PartialEq
         pub size: f32
         pub line_height: f32
         pub family: FontFamily
         pub weight: FontWeight
         pub slant: FontSlant
         pub const fn new(size: f32) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 widget::GlyphLine
-    struct GlyphLine<'a>
+    struct GlyphLine<'a>: Clone, Copy, Debug
         pub text: &'a str
         pub font: GlyphFont
         pub raster_scale: f32
-        impl<'a> Clone for GlyphLine<'a>
-        impl<'a> Copy for GlyphLine<'a>
-        impl<'a> Debug for GlyphLine<'a>
 
 widget::GlyphRasterKey
-    struct GlyphRasterKey
-        (_)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
+    struct GlyphRasterKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
 
 widget::IconFit
-    enum IconFit
+    enum IconFit: Clone, Copy, Debug, Default, Eq, PartialEq
         Contain
         Fill
         None
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl PartialEq
 
 widget::IconShape
-    struct IconShape
-        // and private fields
+    struct IconShape: Clone, Copy, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: IconFit) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
         pub const fn desaturate(self, desaturate: bool) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Lower  (blanket)
 
 widget::ImageShape
-    struct ImageShape
-        // and private fields
+    struct ImageShape: Clone, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
         pub const fn fit(self, fit: ImageFit) -> Self
         pub const fn min_filter(self, min_filter: ImageFilter) -> Self
         pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::LineCap
-    enum LineCap
+    enum LineCap: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         Butt = 0
         Square = 1
         Round = 2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 widget::LineJoin
-    enum LineJoin
+    enum LineJoin: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         Miter = 0
         Bevel = 1
         Round = 2
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl DockTab  (blanket)
-        impl Eq
-        impl Hash
-        impl PartialEq
 
 widget::LookPlan
-    struct LookPlan
-        // and private fields
+    struct LookPlan: Debug
         pub fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook
-        impl Debug
 
 widget::Lower
     trait Lower: LowerShape
         impl<T: LowerShape> Lower for T
 
 widget::Mesh
-    struct Mesh
-        // and private fields
+    struct Mesh: Clone, Debug, Default
         pub const fn new() -> Self
         pub fn with_capacity(vertices: usize, indices: usize) -> Self
         pub fn clear(&mut self)
@@ -3990,48 +2603,29 @@ widget::Mesh
         pub fn bbox(&self) -> Rect
         pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<SrgbaU8>) -> Self
         pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self
-        impl Clone
-        impl Debug
-        impl Default
 
 widget::MeshShape
-    struct MeshShape<'a>
-        // and private fields
+    struct MeshShape<'a>: Clone, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
-        impl Lower  (blanket)
-        impl<'a> Clone for MeshShape<'a>
-        impl<'a> Debug for MeshShape<'a>
 
 widget::MeshVertex
-    struct MeshVertex
+    struct MeshVertex: Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable
         pub pos: Vec2
         pub color: SrgbaU8
         pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 widget::OverlayScope
-    struct OverlayScope
-        // and private fields
+    struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
         pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R>
         pub fn withdraw(self, ui: &mut Ui)
-        impl Debug
 
 widget::OverlaySpec
-    struct OverlaySpec
+    struct OverlaySpec: Clone, Copy, Debug
         pub layer: Layer
         pub anchor: Option<Anchor>
         pub backdrop: Backdrop
-        impl Clone
-        impl Copy
-        impl Debug
 
 widget::OverlayTurn
     struct OverlayTurn<R>
@@ -4041,7 +2635,7 @@ widget::OverlayTurn
         impl<R: Debug> Debug for OverlayTurn<R>
 
 widget::PaintAnimation
-    struct PaintAnimation
+    struct PaintAnimation: Clone, Copy, Debug
         pub channel: PaintChannel
         pub timing: PaintTiming
         pub curve: PaintCurve
@@ -4054,117 +2648,73 @@ widget::PaintAnimation
         pub const fn with_repeat(self, repeat: PaintRepeat) -> Self
         pub const fn with_steps(self, n: u32) -> Self
         pub const fn with_curve(self, curve: PaintCurve) -> Self
-        impl Clone
-        impl Copy
-        impl Debug
 
 widget::PaintChannel
-    struct PaintChannel
+    struct PaintChannel: Clone, Copy, Debug, PartialEq
         pub alpha: Option<(f32, f32)>
         pub turn: Option<(f32, f32)>
-        impl Clone
-        impl Copy
-        impl Debug
-        impl PartialEq
 
 widget::PaintCurve
     type PaintCurve = fn(f32) -> f32
 
 widget::PaintRepeat
-    enum PaintRepeat
+    enum PaintRepeat: Clone, Copy, Debug, Eq, PartialEq
         Once
         Forever
         Settle(Duration)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 widget::PaintSteps
-    enum PaintSteps
+    enum PaintSteps: Clone, Copy, Debug, Eq, PartialEq
         Continuous
         Steps(NonZeroU32)
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 widget::PaintTiming
-    struct PaintTiming
+    struct PaintTiming: Clone, Copy, Debug, Eq, PartialEq
         pub started_at: Duration
         pub period: Duration
         pub repeat: PaintRepeat
         pub steps: PaintSteps
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Eq
-        impl PartialEq
 
 widget::PlacedGlyph
-    struct PlacedGlyph
+    struct PlacedGlyph: Clone, Copy, Debug
         pub raster_key: GlyphRasterKey
         pub x: i32
         pub y: i32
-        impl Clone
-        impl Copy
-        impl Debug
 
 widget::PolylineShape
-    struct PolylineShape<'a>
-        // and private fields
+    struct PolylineShape<'a>: Clone, Debug, Lower (blanket)
         pub const fn per_point(self, colors: &'a [RgbaF32]) -> Self
         pub const fn per_segment(self, colors: &'a [RgbaF32]) -> Self
         pub const fn cap(self, cap: LineCap) -> Self
         pub const fn join(self, join: LineJoin) -> Self
-        impl Lower  (blanket)
-        impl<'a> Clone for PolylineShape<'a>
-        impl<'a> Debug for PolylineShape<'a>
 
 widget::QuadraticBezier
-    struct QuadraticBezier
+    struct QuadraticBezier: Clone, Copy, Debug, PartialEq
         pub p0: Vec2
         pub p1: Vec2
         pub p2: Vec2
-        impl Clone
-        impl Copy
-        impl Debug
         impl From<QuadraticBezier> for CubicBezier
-        impl PartialEq
 
 widget::RasterImage
-    struct RasterImage<'a>
+    struct RasterImage<'a>: Clone, Copy, Debug
         pub content: ContentType
         pub size: UVec2
         pub bearing: IVec2
         pub data: &'a [u8]
-        impl<'a> Clone for RasterImage<'a>
-        impl<'a> Copy for RasterImage<'a>
-        impl<'a> Debug for RasterImage<'a>
 
 widget::RectShape
-    struct RectShape
-        // and private fields
+    struct RectShape: Clone, Debug, Lower (blanket)
         pub fn fill(self, fill: impl Into<Brush>) -> Self
         pub const fn border(self, border: Stroke) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::ShadowShape
-    struct ShadowShape
-        // and private fields
+    struct ShadowShape: Clone, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::Shape
-    struct Shape
+    struct Shape: Clone, Copy, Debug
         pub const fn rect(rect: Rect) -> RectShape
         pub const fn owner_rect() -> RectShape
         pub const fn windowed_rect(rect: Rect) -> RectShape
@@ -4181,62 +2731,41 @@ widget::Shape
         pub fn image(handle: ImageHandle) -> ImageShape
         pub fn icon(handle: IconHandle) -> IconShape
         pub const fn mesh(mesh: &Mesh) -> MeshShape<'_>
-        impl Clone
-        impl Copy
-        impl Debug
 
 widget::Span
-    struct Span
+    struct Span: Clone, Copy, Debug, Default, Eq, From<Range<u32>>, From<Range<usize>>, PartialEq, Pod, Zeroable
         pub start: u32
         pub len: u32
         pub const fn new(start: u32, len: u32) -> Self
         pub const fn range(self) -> Range<usize>
-        impl Clone
-        impl Copy
-        impl Debug
-        impl Default
-        impl Eq
-        impl From<Range<u32>>
-        impl From<Range<usize>>
         impl From<Span> for Range<u32>
         impl From<Span> for Range<usize>
-        impl PartialEq
-        impl Pod
-        impl Zeroable
 
 widget::TextGlyphs
-    struct TextGlyphs<'a>
-        // and private fields
+    struct TextGlyphs<'a>: Debug
         pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>)
         pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size
         pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>>
-        impl<'a> Debug for TextGlyphs<'a>
 
 widget::TextProbe
-    struct TextProbe<'a>
-        // and private fields
+    struct TextProbe<'a>: Debug
         pub const fn size(&self) -> Size
         pub fn text_hash(&self) -> Option<NonZeroU64>
         pub fn hash_of(text: &str) -> NonZeroU64
         pub fn caret_at(&self, byte_offset: usize) -> Caret
         pub fn byte_at(&self, x: f32, y: f32) -> usize
         pub fn selection_rects(&self, range: Range<usize>, out: impl FnMut(Rect))
-        impl<'a> Debug for TextProbe<'a>
 
 widget::TextRun
-    struct TextRun<'a>
+    struct TextRun<'a>: Clone, Copy, Debug
         pub text: &'a str
         pub font: GlyphFont
         pub wrap: TextWrap
         pub align: Align
         pub max_width: Option<f32>
-        impl<'a> Clone for TextRun<'a>
-        impl<'a> Copy for TextRun<'a>
-        impl<'a> Debug for TextRun<'a>
 
 widget::TextShape
-    struct TextShape
-        // and private fields
+    struct TextShape: Clone, Debug, Lower (blanket)
         pub const fn at_origin(self, origin: Vec2) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn wrap(self, wrap: TextWrap) -> Self
@@ -4244,9 +2773,6 @@ widget::TextShape
         pub const fn family(self, family: FontFamily) -> Self
         pub const fn weight(self, weight: FontWeight) -> Self
         pub const fn slant(self, slant: FontSlant) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::ThemeDefaults
     trait ThemeDefaults: Configure
@@ -4269,18 +2795,13 @@ widget::ThemeSlot
         fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }
 
 widget::TriangleShape
-    struct TriangleShape
-        // and private fields
+    struct TriangleShape: Clone, Debug, Lower (blanket)
         pub const fn fill(self, fill: RgbaF32) -> Self
         pub const fn border(self, border: Stroke) -> Self
         pub const fn radius(self, radius: f32) -> Self
-        impl Clone
-        impl Debug
-        impl Lower  (blanket)
 
 widget::Widget
-    struct Widget
-        // and private fields
+    struct Widget: Configure, Debug, ThemeDefaults (blanket)
         pub fn leaf() -> Self
         pub fn hstack() -> Self
         pub fn vstack() -> Self
@@ -4318,9 +2839,6 @@ widget::Widget
         pub const fn authored_visibility(&self) -> Visibility
         pub const fn authored_clip(&self) -> Option<ClipMode>
         pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track])
-        impl Configure
-        impl Debug
-        impl ThemeDefaults  (blanket)
 
 widget::curves
     mod
@@ -4478,12 +2996,6 @@ widget::domain::vec2::offset
 
 Items declared `pub` that no path from the crate root reaches. A caller cannot name
 them; each one is either dead surface or a type that leaks through a signature.
-
-```text
-(none)
-```
-
-## Rustdoc JSON the renderer does not know
 
 ```text
 (none)

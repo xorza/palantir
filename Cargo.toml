@@ -24,7 +24,6 @@ exclude = [
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",
-    "scripts/",
     "x.py",
 ]
 
@@ -39,7 +38,12 @@ all-features = false
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 
 [workspace]
-members = ["palantir-anim-derive"]
+members = ["api-surface", "palantir-anim-derive"]
+
+[workspace.dependencies]
+# Exactly the rustdoc JSON format `api-surface` reads; a nightly that writes another fails loudly.
+rustdoc-types = "=0.61.0"
+serde_json = "1.0"
 
 [lints]
 workspace = true

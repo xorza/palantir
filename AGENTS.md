@@ -44,10 +44,12 @@ machine that routes events over the cascade.
 
 ## Public API design
 
-An exported item that breaks a rule below is a bug. `python3
-scripts/api_surface.py` renders every exported declaration, over every public
-feature, into `.notes/API_SURFACE.md`; regenerate it with any change to the
-surface, and audit against it.
+An exported item that breaks a rule below is a bug. `cargo run -p
+api-surface` renders every exported declaration, over every public feature,
+into `.notes/API_SURFACE.md`; it needs a nightly toolchain, as rustdoc JSON is
+nightly-only. Regenerate the file with any change to the surface, and audit
+against it: CI fails when the committed file differs from what the tree
+renders.
 
 ### Kinds of type
 

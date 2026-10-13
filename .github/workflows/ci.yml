@@ -131,3 +131,21 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
       - run: python x.py --locked doc --workspace
+
+  api-surface:
+    name: public API surface
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      # rustdoc JSON is nightly-only; the tool itself builds on stable, which the second step
+      # makes the default.
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      # The committed surface must be what the tree renders: a change to the public API shows
+      # here as a diff until `.notes/API_SURFACE.md` is regenerated with it.
+      - run: cargo run --locked -p api-surface
+      - run: git diff --exit-code -- .notes/API_SURFACE.md
