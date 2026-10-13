@@ -36,9 +36,7 @@ impl TriangleShape {
             border: Stroke::NONE,
         }
     }
-}
 
-impl TriangleShape {
     /// Interior paint.
     ///
     /// # Panics
@@ -73,27 +71,27 @@ impl TriangleShape {
         self.radius = domain::length(radius);
         self
     }
+
+    /// Whether the triangle's own area paints nothing. A rounding radius
+    /// can still paint around it, so `is_noop` asks only at no radius.
+    fn area_is_paint_empty(&self) -> bool {
+        let ab = self.b - self.a;
+        let ac = self.c - self.a;
+        let bc = self.c - self.b;
+        let max_edge_len_sq = ab
+            .length_squared()
+            .max(ac.length_squared())
+            .max(bc.length_squared());
+        let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
+        is_invisible(normalized_twice_area)
+    }
 }
 
-/// Whether the triangle's own area paints nothing. A rounding radius
-/// can still paint around it — see [`TriangleShape`]'s `is_noop`.
-#[inline]
-fn triangle_paint_empty(a: Vec2, b: Vec2, c: Vec2) -> bool {
-    let ab = b - a;
-    let ac = c - a;
-    let bc = c - b;
-    let max_edge_len_sq = ab
-        .length_squared()
-        .max(ac.length_squared())
-        .max(bc.length_squared());
-    let normalized_twice_area = ab.perp_dot(ac).abs() / max_edge_len_sq;
-    is_invisible(normalized_twice_area)
-}
 impl sealed::LowerShape for TriangleShape {
     /// A thin or collapsed triangle with a radius paints a bar or a disc, so it is not empty.
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.border.is_noop())
-            || (is_invisible(self.radius) && triangle_paint_empty(self.a, self.b, self.c))
+            || (is_invisible(self.radius) && self.area_is_paint_empty())
     }
 
     /// `radius` must be checked here: lowering launders NaN to `0.0`, so the record would hide it.
@@ -106,7 +104,7 @@ impl sealed::LowerShape for TriangleShape {
             || self.border.has_nan()
     }
 
-    /// `bbox` is the AABB of `a`/`b`/`c` inflated by `radius`. The AA fringe is added later in `cascade::paint_rect`, since it is half a physical pixel and this rect is logical. Nothing is staged, so nothing goes through `lower::`.
+    /// `bbox` is the AABB of `a`/`b`/`c` inflated by `radius`. The AA fringe is added later in `cascade::paint_rect`, since it is half a physical pixel and this rect is logical.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             a,

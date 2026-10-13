@@ -1,6 +1,7 @@
 //! One widget or small composition per fixture, each painting the same tree every frame on a strict-zero budget.
 
-use crate::harness::{Audit, new_ui};
+use crate::harness;
+use crate::harness::Audit;
 use std::time::Duration;
 
 use palantir::{
@@ -88,7 +89,7 @@ fn expander_mid_reveal_alloc_free() {
         },
         ..base
     };
-    let mut h = new_ui();
+    let mut h = harness::new_ui();
     let mut open = true;
     let section = |ui: &mut Ui, open: &mut bool| {
         Expander::new("section")
@@ -197,7 +198,7 @@ fn state_map_counter_alloc_free() {
     });
 }
 
-/// Content that overflows pins `PostArrangeRegistry` bucket reuse and the in-place `ScrollHook::run`; content that fits pins the hook's `overflow == new_overflow` early exit.
+/// A scroll whose content overflows the viewport, and one whose content fits it.
 #[test]
 fn scroll_alloc_free() {
     for height in [800.0, 40.0] {
@@ -251,7 +252,7 @@ fn tooltip_bubble_alloc_free() {
             .delay(Duration::ZERO)
             .show(ui)
     };
-    let mut h = new_ui();
+    let mut h = harness::new_ui();
     let _ = h.frame(|ui| {
         scene(ui);
     });

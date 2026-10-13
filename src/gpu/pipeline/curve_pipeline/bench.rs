@@ -7,6 +7,7 @@ use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::record_app::RecordApp;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
@@ -65,10 +66,12 @@ fn record_cubics(ui: &mut Ui, phase: bool) {
         for col in 0..GRID {
             let origin = Vec2::new(col as f32 * CELL, row as f32 * CELL);
             ui.add_shape(Shape::cubic_bezier(
-                origin + Vec2::new(2.0, 8.0),
-                origin + Vec2::new(5.0, 5.5 + wobble),
-                origin + Vec2::new(11.0, 10.5),
-                origin + Vec2::new(14.0, 8.0),
+                CubicBezier {
+                    p0: origin + Vec2::new(2.0, 8.0),
+                    p1: origin + Vec2::new(5.0, 5.5 + wobble),
+                    p2: origin + Vec2::new(11.0, 10.5),
+                    p3: origin + Vec2::new(14.0, 8.0),
+                },
                 Stroke::new(color, 2.0),
             ));
         }

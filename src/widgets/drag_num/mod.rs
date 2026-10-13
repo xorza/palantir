@@ -2,6 +2,8 @@
 
 pub(crate) mod limits;
 
+use crate::primitives::text::interned_str::InternedStr;
+use crate::ui::Ui;
 use crate::widgets::drag_num::limits::Limits;
 
 /// The numeric target a value widget writes through: an `i64` or `f64`, borrowed
@@ -34,6 +36,27 @@ impl Num {
     }
 }
 
+/// How a value widget stores a number: clamped into `limits`, a float target snapped
+/// to `decimals` fractional digits.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct StoreRule {
+    pub(crate) limits: Limits<f64>,
+    pub(crate) decimals: usize,
+}
+
+impl StoreRule {
+    /// The rule for a widget bounded by `min` and `max` in either order.
+    pub(crate) fn new(min: f64, max: f64, decimals: usize) -> Self {
+        Self {
+            limits: Limits::of(min, max),
+            decimals,
+        }
+    }
+}
+
+/// The most fractional digits an `f64` holds; more would also overflow `10^decimals`.
+const MAX_DECIMALS: usize = 15;
+
 impl DragNum<'_> {
     pub(crate) const fn read(&self) -> Num {
         match self {
@@ -42,34 +65,37 @@ impl DragNum<'_> {
         }
     }
 
-    /// Commit a scrubbed value: `anchor` moved by `offset`, clamped into `[min,
-    /// max]`. The integer target adds the nearest whole step; the float target
-    /// snaps to `decimals` (`1.98457…` at 3 → `1.985`). Returns whether the stored
-    /// value changed.
-    pub(crate) fn commit_drag(
-        &mut self,
-        anchor: Num,
-        offset: f64,
-        decimals: usize,
-        min: f64,
-        max: f64,
-    ) -> bool {
-        let limits = Limits::of(min, max);
+    /// Commit a scrubbed value: `anchor` moved by `offset`, stored under `rule`. The
+    /// integer target adds the nearest whole step; the float target snaps to
+    /// `rule.decimals` (`1.98457…` at 3 → `1.985`). Returns whether the stored value
+    /// changed.
+    pub(crate) fn commit_drag(&mut self, anchor: Num, offset: f64, rule: StoreRule) -> bool {
         match (self, anchor) {
             (DragNum::I64(v), Num::I64(a)) => {
-                store_i64(v, a.saturating_add(whole_step(offset)), limits)
+                store_i64(v, a.saturating_add(whole_step(offset)), rule.limits)
             }
-            (DragNum::I64(v), Num::F64(a)) => store_i64(v, whole_step(a + offset), limits),
-            (DragNum::F64(v), a) => {
-                store_f64(v, round_to_decimals(a.widen() + offset, decimals), limits)
-            }
+            (DragNum::I64(v), Num::F64(a)) => store_i64(v, whole_step(a + offset), rule.limits),
+            (DragNum::F64(v), a) => store_f64(
+                v,
+                round_to_decimals(a.widen() + offset, rule.decimals),
+                rule.limits,
+            ),
         }
     }
 
     /// Commit an absolute `value` named by a track position; the integer target
     /// rounds it whole.
-    pub(crate) fn commit_value(&mut self, value: f64, decimals: usize, min: f64, max: f64) -> bool {
-        self.commit_drag(Num::F64(value), 0.0, decimals, min, max)
+    pub(crate) fn commit_value(&mut self, value: f64, rule: StoreRule) -> bool {
+        self.commit_drag(Num::F64(value), 0.0, rule)
+    }
+
+    /// One unit of the last shown digit: `1` for the integer target, `10^-decimals`
+    /// for the float one.
+    pub(crate) fn unit(&self, decimals: usize) -> f64 {
+        match self {
+            DragNum::I64(_) => 1.0,
+            DragNum::F64(_) => 1.0 / decimal_shift(decimals),
+        }
     }
 
     /// Write back `value` exactly, undoing a canceled edit. Returns whether it
@@ -90,6 +116,14 @@ impl DragNum<'_> {
         }
     }
 
+    /// The value at `decimals` places, then `suffix`, interned for this frame.
+    pub(crate) fn label(&self, ui: &mut Ui, decimals: usize, suffix: &str) -> InternedStr {
+        match self {
+            DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
+            DragNum::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
+        }
+    }
+
     pub(crate) fn edit_string(&self) -> String {
         match self {
             DragNum::I64(v) => v.to_string(),
@@ -97,11 +131,10 @@ impl DragNum<'_> {
         }
     }
 
-    /// Parse `text` and write it clamped into `[min, max]`. Unparseable or
-    /// non-finite text leaves the value alone, since a committed NaN would poison
-    /// every later scrub.
-    pub(crate) fn parse_from(&mut self, text: &str, min: f64, max: f64) -> bool {
-        let limits = Limits::of(min, max);
+    /// Parse `text` and write it clamped into `limits`. Unparseable or non-finite
+    /// text leaves the value alone, since a committed NaN would poison every later
+    /// scrub.
+    pub(crate) fn parse_from(&mut self, text: &str, limits: Limits<f64>) -> bool {
         match self {
             DragNum::I64(v) => match text.parse::<i64>() {
                 // Parsed as `i64`: widening through `f64` would lose low bits past
@@ -163,14 +196,18 @@ const WHOLE_ONLY: f64 = (1u64 << f64::MANTISSA_DIGITS) as f64;
 /// the nearest f64 to a short decimal. Past [`WHOLE_ONLY`] the value is returned as
 /// is, as shifting `1e308` would overflow to infinity.
 fn round_to_decimals(v: f64, decimals: usize) -> f64 {
-    // Capped at 15 digits: f64 holds no more, and 10^decimals would overflow.
-    let p = 10f64.powi(decimals.min(15) as i32);
+    let p = decimal_shift(decimals);
     let shifted = v * p;
     if shifted.abs() < WHOLE_ONLY {
         shifted.round() / p
     } else {
         v
     }
+}
+
+/// `10^decimals`, the digits capped at [`MAX_DECIMALS`].
+fn decimal_shift(decimals: usize) -> f64 {
+    10f64.powi(decimals.min(MAX_DECIMALS) as i32)
 }
 
 #[cfg(test)]

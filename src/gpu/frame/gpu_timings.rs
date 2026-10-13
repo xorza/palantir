@@ -43,6 +43,14 @@ const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
         .union(wgpu::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS)
         .union(wgpu::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS);
 
+/// The pipeline-statistics query and its resolve buffer, present together when the
+/// device has `PIPELINE_STATISTICS_QUERY`.
+#[derive(Debug)]
+struct StatsQuery {
+    query_set: wgpu::QuerySet,
+    resolve: wgpu::Buffer,
+}
+
 #[derive(Debug)]
 struct Slot {
     timestamps_buffer: wgpu::Buffer,
@@ -72,9 +80,8 @@ pub(crate) struct GpuTimings {
     inside_passes: bool,
     /// Whether `TIMESTAMP_QUERY_INSIDE_ENCODERS` is available; off, the copy-out is not timed.
     inside_encoders: bool,
-    stats_query_set: Option<wgpu::QuerySet>,
+    stats: Option<StatsQuery>,
     timestamps_resolve: wgpu::Buffer,
-    stats_resolve: Option<wgpu::Buffer>,
     slots: [Slot; NUM_STAGING],
     pending_slot: Option<usize>,
     period_ns: f32,
@@ -82,13 +89,11 @@ pub(crate) struct GpuTimings {
 }
 
 impl GpuTimings {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        period_ns: f32,
-        inside_passes: bool,
-        inside_encoders: bool,
-        pipeline_stats: bool,
-    ) -> Self {
+    /// Timings at `period_ns` per tick, attributed as finely as `features` allow.
+    pub(crate) fn new(device: &wgpu::Device, period_ns: f32, features: wgpu::Features) -> Self {
+        let inside_passes = features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
+        let inside_encoders = features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
+        let pipeline_stats = features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY);
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
             label: Some("palantir.gpu_timings.timestamps"),
             ty: wgpu::QueryType::Timestamp,
@@ -101,22 +106,19 @@ impl GpuTimings {
             mapped_at_creation: false,
         });
 
-        let (stats_query_set, stats_resolve) = if pipeline_stats {
-            let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
+        let stats = pipeline_stats.then(|| StatsQuery {
+            query_set: device.create_query_set(&wgpu::QuerySetDescriptor {
                 label: Some("palantir.gpu_timings.stats"),
                 ty: wgpu::QueryType::PipelineStatistics(PIPELINE_STATS_FLAGS),
                 count: 1,
-            });
-            let buf = device.create_buffer(&wgpu::BufferDescriptor {
+            }),
+            resolve: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.gpu_timings.stats.resolve"),
                 size: STATS_BUFFER_BYTES,
                 usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
-            });
-            (Some(qs), Some(buf))
-        } else {
-            (None, None)
-        };
+            }),
+        });
 
         let slots = array::from_fn(|_| Slot {
             timestamps_buffer: device.create_buffer(&wgpu::BufferDescriptor {
@@ -144,9 +146,8 @@ impl GpuTimings {
             timestamp_query_set,
             inside_passes,
             inside_encoders,
-            stats_query_set,
+            stats,
             timestamps_resolve,
-            stats_resolve,
             slots,
             pending_slot: None,
             period_ns,
@@ -216,13 +217,13 @@ impl GpuTimings {
     }
 
     pub(crate) fn begin_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if let Some(qs) = &self.stats_query_set {
-            pass.begin_pipeline_statistics_query(qs, 0);
+        if let Some(stats) = &self.stats {
+            pass.begin_pipeline_statistics_query(&stats.query_set, 0);
         }
     }
 
     pub(crate) fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if self.stats_query_set.is_some() {
+        if self.stats.is_some() {
             pass.end_pipeline_statistics_query();
         }
     }
@@ -292,13 +293,9 @@ impl GpuTimings {
         }
         self.slots[slot].copied_out = copied_out;
 
-        if let (Some(stats_qs), Some(stats_resolve), Some(stats_staging)) = (
-            &self.stats_query_set,
-            &self.stats_resolve,
-            &self.slots[slot].stats_buffer,
-        ) {
-            encoder.resolve_query_set(stats_qs, 0..1, stats_resolve, 0);
-            encoder.copy_buffer_to_buffer(stats_resolve, 0, stats_staging, 0, STATS_BUFFER_BYTES);
+        if let (Some(stats), Some(stats_staging)) = (&self.stats, &self.slots[slot].stats_buffer) {
+            encoder.resolve_query_set(&stats.query_set, 0..1, &stats.resolve, 0);
+            encoder.copy_buffer_to_buffer(&stats.resolve, 0, stats_staging, 0, STATS_BUFFER_BYTES);
         }
 
         self.slots[slot].in_flight = true;
@@ -327,6 +324,10 @@ impl GpuTimings {
             }
         }
         device.poll(wgpu::PollType::Poll).ok();
+        let publisher = Publisher {
+            period_ns: self.period_ns,
+            sink,
+        };
         for slot in &mut self.slots {
             if !slot.in_flight {
                 continue;
@@ -336,9 +337,9 @@ impl GpuTimings {
                 continue;
             }
             if mappings_failed(state) {
-                discard_slot(slot, state);
+                slot.discard(state);
             } else {
-                consume_slot(slot, self.period_ns, sink);
+                slot.consume(publisher);
             }
             slot.map_state.store(0, Release);
             slot.in_flight = false;
@@ -355,87 +356,107 @@ const fn mappings_failed(state: u8) -> bool {
     state & (TIMESTAMPS_FAILED | STATS_FAILED) != 0
 }
 
-fn discard_slot(slot: &Slot, state: u8) {
-    if state & TIMESTAMPS_FAILED == 0 {
-        slot.timestamps_buffer.unmap();
+impl Slot {
+    /// Unmap whatever mapped, after either mapping failed.
+    fn discard(&self, state: u8) {
+        if state & TIMESTAMPS_FAILED == 0 {
+            self.timestamps_buffer.unmap();
+        }
+        if state & STATS_FAILED == 0
+            && let Some(stats_buf) = &self.stats_buffer
+        {
+            stats_buf.unmap();
+        }
     }
-    if state & STATS_FAILED == 0
-        && let Some(stats_buf) = &slot.stats_buffer
-    {
-        stats_buf.unmap();
-    }
-}
 
-fn consume_slot(slot: &Slot, period_ns: f32, sink: &GpuPassStats) {
-    let ts_range = slot
-        .timestamps_buffer
-        .slice(..)
-        .get_mapped_range()
-        .expect("map timestamps range");
-    publish_timestamps(
-        &ts_range,
-        slot.timestamps_count as usize,
-        &slot.segment_kinds,
-        period_ns,
-        sink,
-    );
-    publish_copy_out(&ts_range, slot.copied_out, period_ns, sink);
-    drop(ts_range);
-    slot.timestamps_buffer.unmap();
-
-    if let Some(stats_buf) = &slot.stats_buffer {
-        let s_range = stats_buf
+    /// Publish this slot's landed readback and unmap it.
+    fn consume(&self, publisher: Publisher<'_>) {
+        let ts_range = self
+            .timestamps_buffer
             .slice(..)
             .get_mapped_range()
-            .expect("map stats range");
-        publish_stats(&s_range, sink);
-        drop(s_range);
-        stats_buf.unmap();
+            .expect("map timestamps range");
+        publisher.timestamps(
+            &ts_range,
+            &self.segment_kinds,
+            self.timestamps_count as usize,
+        );
+        publisher.copy_out(&ts_range, self.copied_out);
+        drop(ts_range);
+        self.timestamps_buffer.unmap();
+
+        if let Some(stats_buf) = &self.stats_buffer {
+            let s_range = stats_buf
+                .slice(..)
+                .get_mapped_range()
+                .expect("map stats range");
+            publisher.stats(&s_range);
+            drop(s_range);
+            stats_buf.unmap();
+        }
     }
 }
 
-/// Parses `count` resolved timestamps and publishes pass and per-kind durations; split from [`consume_slot`] to test without wgpu buffers.
-fn publish_timestamps(
-    ts: &[u8],
-    count: usize,
-    segment_kinds: &[BatchKind],
+/// Where a landed readback goes, and the tick length that turns it into time; split from
+/// [`Slot::consume`] to test without wgpu buffers.
+#[derive(Clone, Copy, Debug)]
+struct Publisher<'a> {
     period_ns: f32,
-    sink: &GpuPassStats,
-) {
-    // Pass duration = last - first. The per-kind table clears on every measured frame, so a begin/end-only frame doesn't keep stale values.
-    if count >= 2 {
-        sink.record_pass_ns(span_ns(ts, 0, count - 1, period_ns));
-        sink.clear_kinds();
-    }
-    if count >= 3 {
-        let mut per_kind_ns = [0u64; BatchKind::COUNT];
-        let mut seen = [false; BatchKind::COUNT];
-        for i in 0..count - 1 {
-            let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
-            let seg_ns = span_ns(ts, i, i + 1, period_ns);
-            seen[kind.idx()] = true;
-            per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
+    sink: &'a GpuPassStats,
+}
+
+impl Publisher<'_> {
+    /// Parses `count` resolved timestamps and publishes pass and per-kind durations.
+    fn timestamps(self, ts: &[u8], segment_kinds: &[BatchKind], count: usize) {
+        // Pass duration = last - first. The per-kind table clears on every measured frame, so a begin/end-only frame doesn't keep stale values.
+        if count >= 2 {
+            self.sink.record_pass_ns(self.span_ns(ts, 0, count - 1));
+            self.sink.clear_kinds();
         }
-        for kind in BatchKind::ALL {
-            if seen[kind.idx()] {
-                sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
+        if count >= 3 {
+            let mut per_kind_ns = [0u64; BatchKind::COUNT];
+            let mut seen = [false; BatchKind::COUNT];
+            for i in 0..count - 1 {
+                let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
+                let seg_ns = self.span_ns(ts, i, i + 1);
+                seen[kind.idx()] = true;
+                per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
+            }
+            for kind in BatchKind::ALL {
+                if seen[kind.idx()] {
+                    self.sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
+                }
             }
         }
     }
-}
 
-fn publish_copy_out(ts: &[u8], copied_out: bool, period_ns: f32, sink: &GpuPassStats) {
-    let begin = COPY_OUT_INDEX as usize;
-    let ns = copied_out.then(|| span_ns(ts, begin, begin + 1, period_ns));
-    sink.record_copy_out_ns(ns);
-}
+    fn copy_out(self, ts: &[u8], copied_out: bool) {
+        let begin = COPY_OUT_INDEX as usize;
+        let ns = copied_out.then(|| self.span_ns(ts, begin, begin + 1));
+        self.sink.record_copy_out_ns(ns);
+    }
 
-#[expect(
-    clippy::cast_sign_loss,
-    reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
-)]
-fn span_ns(ts: &[u8], from: usize, to: usize, period_ns: f32) -> u64 {
-    (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(period_ns)) as u64
+    fn stats(self, bytes: &[u8]) {
+        let mut values = [0u64; STATS_FIELD_COUNT];
+        for (i, v) in values.iter_mut().enumerate() {
+            *v = tick(bytes, i);
+        }
+        self.sink.record_pipeline_stats(PipelineStats {
+            vertex_shader_invocations: values[0],
+            clipper_invocations: values[1],
+            clipper_primitives_out: values[2],
+            fragment_shader_invocations: values[3],
+            compute_shader_invocations: values[4],
+        });
+    }
+
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
+    )]
+    fn span_ns(self, ts: &[u8], from: usize, to: usize) -> u64 {
+        (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(self.period_ns)) as u64
+    }
 }
 
 /// The `index`th 64-bit word of a resolved query buffer. `pod_read_unaligned` rather than `bytemuck::cast_slice`: a mapped range's alignment is the driver's to promise, and a panicking cast would take the frame down over a debug counter.
@@ -443,20 +464,6 @@ fn span_ns(ts: &[u8], from: usize, to: usize, period_ns: f32) -> u64 {
 fn tick(bytes: &[u8], index: usize) -> u64 {
     let off = index * 8;
     bytemuck::pod_read_unaligned(&bytes[off..off + 8])
-}
-
-fn publish_stats(bytes: &[u8], sink: &GpuPassStats) {
-    let mut values = [0u64; STATS_FIELD_COUNT];
-    for (i, v) in values.iter_mut().enumerate() {
-        *v = tick(bytes, i);
-    }
-    sink.record_pipeline_stats(PipelineStats {
-        vertex_shader_invocations: values[0],
-        clipper_invocations: values[1],
-        clipper_primitives_out: values[2],
-        fragment_shader_invocations: values[3],
-        compute_shader_invocations: values[4],
-    });
 }
 
 #[cfg(test)]
@@ -471,14 +478,16 @@ mod tests {
     #[test]
     fn per_kind_publish_distinguishes_absent_zero_and_blank() {
         let sink = GpuPassStats::default();
+        let at = |period_ns| Publisher {
+            period_ns,
+            sink: &sink,
+        };
 
         // Frame 1: timestamps [1000, 1001, 3001, 5001] at 0.5 ns/tick: pass floor(4001 * 0.5) = 2000, quads floor(1 * 0.5) = 0, shadows 1000, text 1000 ns.
-        publish_timestamps(
+        at(0.5).timestamps(
             &ts_bytes(&[1000, 1001, 3001, 5001]),
-            4,
             &[BatchKind::Quads, BatchKind::Shadows, BatchKind::Text],
-            0.5,
-            &sink,
+            4,
         );
         assert_eq!(sink.last_pass(), Some(Duration::from_micros(2)));
         assert_eq!(sink.last_kind(BatchKind::Quads), Some(Duration::ZERO));
@@ -493,7 +502,7 @@ mod tests {
         assert_eq!(sink.last_kind(BatchKind::Mesh), None);
 
         // Frame 2: begin/end only (a blank window): pass 14000 - 10000 = 4000 ns; per-kind slots clear to None.
-        publish_timestamps(&ts_bytes(&[10_000, 14_000]), 2, &[], 1.0, &sink);
+        at(1.0).timestamps(&ts_bytes(&[10_000, 14_000]), &[], 2);
         assert_eq!(sink.last_pass(), Some(Duration::from_micros(4)));
         for kind in BatchKind::ALL {
             assert_eq!(
@@ -513,16 +522,24 @@ mod tests {
         ticks[COPY_OUT_INDEX as usize] = 7_000;
         ticks[COPY_OUT_INDEX as usize + 1] = 7_600;
         let bytes = ts_bytes(&ticks);
-        publish_copy_out(&bytes, true, 0.5, &sink);
+        let publisher = Publisher {
+            period_ns: 0.5,
+            sink: &sink,
+        };
+        publisher.copy_out(&bytes, true);
         assert_eq!(sink.last_copy_out(), Some(Duration::from_nanos(300)));
-        publish_copy_out(&bytes, false, 0.5, &sink);
+        publisher.copy_out(&bytes, false);
         assert_eq!(sink.last_copy_out(), None, "a frame with no copy clears it");
     }
 
     #[test]
     fn stats_publish_in_flag_declaration_order() {
         let sink = GpuPassStats::default();
-        publish_stats(&ts_bytes(&[10, 20, 30, 40, 0]), &sink);
+        Publisher {
+            period_ns: 1.0,
+            sink: &sink,
+        }
+        .stats(&ts_bytes(&[10, 20, 30, 40, 0]));
         let s = sink.last_pipeline_stats().expect("published");
         assert_eq!(s.vertex_shader_invocations, 10);
         assert_eq!(s.clipper_invocations, 20);

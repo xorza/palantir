@@ -1,7 +1,6 @@
 //! Text owned by a container rather than a leaf: paint-only, ordered, and
 //! cached alongside its children.
 
-use crate::Ui;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support::PARAGRAPH;
@@ -17,6 +16,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::text::Text;
 use crate::widgets::{block::Block, panel::Panel};
@@ -199,7 +199,7 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
         .size((Sizing::HUG, Sizing::HUG))
         .padding(10.0)
         .show(ui, |ui| {
-            add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
+            DirectText::PARAGRAPH.add(ui);
             child = Some(
                 Block::new()
                     .id_salt("container-size-driver")
@@ -222,14 +222,14 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
         .id_salt("interleaved-container-text")
         .size((Sizing::fixed(240.0), Sizing::fixed(100.0)))
         .show(ui, |ui| {
-            add_direct_text(
-                ui,
-                "parent-before",
-                12.0,
-                14.0,
-                TextWrap::SingleLine,
-                Some(glam::Vec2::new(0.0, 0.0)),
-            );
+            DirectText {
+                text: "parent-before",
+                font_size: 12.0,
+                line_height: 14.0,
+                wrap: TextWrap::SingleLine,
+                local_origin: Some(glam::Vec2::new(0.0, 0.0)),
+            }
+            .add(ui);
             child = Some(
                 Text::new("child-between")
                     .id_salt("interleaved-child")
@@ -237,14 +237,14 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
                     .show(ui)
                     .node(),
             );
-            add_direct_text(
-                ui,
-                "parent-after-is-longer",
-                14.0,
-                16.0,
-                TextWrap::SingleLine,
-                Some(glam::Vec2::new(0.0, 60.0)),
-            );
+            DirectText {
+                text: "parent-after-is-longer",
+                font_size: 14.0,
+                line_height: 16.0,
+                wrap: TextWrap::SingleLine,
+                local_origin: Some(glam::Vec2::new(0.0, 60.0)),
+            }
+            .add(ui);
         })
         .response
         .node();
@@ -261,37 +261,51 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
         .padding(10.0)
         .visibility(visibility)
         .show(ui, |ui| {
-            add_direct_text(ui, PARAGRAPH, 14.0, 16.0, TextWrap::Wrap, None);
+            DirectText::PARAGRAPH.add(ui);
         })
         .response
         .node()
 }
 
-fn add_direct_text(
-    ui: &mut Ui,
+/// One text shape recorded straight on the open node, at `local_origin` or the default.
+#[derive(Clone, Copy, Debug)]
+struct DirectText {
     text: &'static str,
     font_size: f32,
     line_height: f32,
     wrap: TextWrap,
     local_origin: Option<glam::Vec2>,
-) {
-    let text = ui.intern(text);
-    let shape = Shape::text(
-        text,
-        GlyphFont {
-            line_height,
-            ..GlyphFont::new(font_size)
-        },
-    )
-    .color(RgbaF32::WHITE)
-    .wrap(wrap)
-    .align(Align::default())
-    .family(FontFamily::SANS)
-    .weight(FontWeight::REGULAR);
-    ui.add_shape(match local_origin {
-        Some(origin) => shape.at_origin(origin),
-        None => shape,
-    });
+}
+
+impl DirectText {
+    /// A wrapping paragraph at 14 px over 16 px lines, at the default origin.
+    const PARAGRAPH: Self = Self {
+        text: PARAGRAPH,
+        font_size: 14.0,
+        line_height: 16.0,
+        wrap: TextWrap::Wrap,
+        local_origin: None,
+    };
+
+    fn add(self, ui: &mut Ui) {
+        let text = ui.intern(self.text);
+        let shape = Shape::text(
+            text,
+            GlyphFont {
+                line_height: self.line_height,
+                ..GlyphFont::new(self.font_size)
+            },
+        )
+        .color(RgbaF32::WHITE)
+        .wrap(self.wrap)
+        .align(Align::default())
+        .family(FontFamily::SANS)
+        .weight(FontWeight::REGULAR);
+        ui.add_shape(match self.local_origin {
+            Some(origin) => shape.at_origin(origin),
+            None => shape,
+        });
+    }
 }
 
 #[derive(Debug)]

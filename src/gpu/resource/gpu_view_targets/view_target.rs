@@ -3,7 +3,7 @@
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target;
-use crate::renderer::render_buffer::image::ViewStamp;
+use crate::renderer::render_buffer::render_target_draw::ViewStamp;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::UVec2;
 use std::time::Duration;
@@ -48,15 +48,15 @@ impl AllocatedTarget {
 /// Per-submit eviction: keep an entry unless the submitting owner has stopped recording it (`live` means still
 /// recorded, not painted this frame). Another owner's entries always survive, so a *closed* owner must be
 /// retired explicitly through
-/// [`GpuViewTargets::retire_owner`](super::GpuViewTargets::retire_owner),
-/// (it never has a submit to be absent from).
+/// [`GpuViewTargets::retire_owner`](crate::gpu::resource::gpu_view_targets::GpuViewTargets::retire_owner),
+/// as it never has a submit to be absent from.
 pub(super) fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live: bool) -> bool {
     entry_owner != owner || live
 }
 
 #[cfg(test)]
 mod tests {
-    use super::keep_target;
+    use crate::gpu::resource::gpu_view_targets::view_target::keep_target;
     use crate::renderer::render_owner_id::RenderOwnerId;
 
     fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {

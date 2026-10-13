@@ -12,6 +12,7 @@ pub(crate) mod bench;
 pub(crate) mod bench_gpu;
 pub(crate) mod device;
 pub(crate) mod error;
+pub(crate) mod flag_names;
 pub(crate) mod frame;
 pub(crate) mod pipeline;
 pub(crate) mod raster;

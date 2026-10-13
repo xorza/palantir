@@ -178,10 +178,8 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
             bbox,
             origin: Vec2::ZERO,
             tint: RgbaF32::WHITE.into(),
-            v_start: 0,
-            v_len: 3,
-            i_start: 0,
-            i_len: 3,
+            vertices: Span::new(0, 3),
+            indices: Span::new(0, 3),
         },
         1.0,
     );
@@ -230,10 +228,8 @@ pub(super) fn polyline_cmd(
             bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
             origin: Vec2::ZERO,
             width,
-            points_start: p_start,
-            points_len: points.len() as u32,
-            colors_start: c_start,
-            colors_len: colors.len() as u32,
+            points: Span::new(p_start, points.len() as u32),
+            colors: Span::new(c_start, colors.len() as u32),
             color_mode: mode,
             cap,
             join,
@@ -243,18 +239,19 @@ pub(super) fn polyline_cmd(
 }
 
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
+    use crate::primitives::geometry::cubic_bezier::CubicBezier;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
     b.draw_curve(
         DrawCurvePayload {
             bounds: StrokeBounds::Still(bbox),
             origin: Vec2::ZERO,
-            basis: CurveBasis::Cubic {
+            basis: CurveBasis::Cubic(CubicBezier {
                 p0: bbox.min,
                 p1: Vec2::new(bbox.min.x + bbox.size.w * 0.3, bbox.max().y),
                 p2: Vec2::new(bbox.min.x + bbox.size.w * 0.7, bbox.max().y),
                 p3: bbox.max(),
-            },
+            }),
             fill: GpuFill {
                 color: RgbaF32::WHITE.into(),
                 ..Default::default()

@@ -50,8 +50,8 @@ impl ImageHandle {
         self.inner.id
     }
 
-    #[inline]
     /// Pixel size.
+    #[inline]
     pub fn size(&self) -> UVec2 {
         self.inner.size
     }

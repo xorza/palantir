@@ -10,6 +10,8 @@ use std::hash;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
+const NANOS_PER_SEC: u128 = 1_000_000_000;
+
 /// A phase in `[0, 1)` mapped to a unit value in `[0, 1]`.
 ///
 /// A plain `fn`, so it cannot capture: the encoder samples with no accumulator, so a dropped frame or irregular `dt` must not make it drift.
@@ -300,9 +302,17 @@ impl PaintTiming {
                 if step.is_zero() {
                     return None;
                 }
+                // The rest of the step `now` is in, in exact nanoseconds, so no count of
+                // steps since `started_at` can overflow on a long run.
+                let step_nanos = step.as_nanos();
                 let elapsed = now.checked_sub(self.started_at).unwrap();
-                let k = (elapsed.as_nanos() / step.as_nanos()) as u32;
-                self.started_at + step.saturating_mul(k + 1)
+                let left = step_nanos - elapsed.as_nanos() % step_nanos;
+                let left = Duration::new(
+                    u64::try_from(left / NANOS_PER_SEC)
+                        .expect("under one step, which is a `Duration`"),
+                    u32::try_from(left % NANOS_PER_SEC).unwrap(),
+                );
+                now.saturating_add(left)
             }
         };
         Some(settles_at.map_or(wake, |at| wake.min(at)))

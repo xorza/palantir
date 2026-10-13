@@ -17,7 +17,7 @@ use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::mesh::MeshVertex;
-use crate::renderer::render_buffer::mesh::{MeshDraw, MeshInstance};
+use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
 
 /// One frame's mesh geometry and per-draw state, uploaded together because an
 /// instance indexes a draw's vertex and index spans.
@@ -126,10 +126,9 @@ impl MeshPipeline {
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        variant: &'a StencilVariant,
-        use_stencil: bool,
+        pipeline: &'a wgpu::RenderPipeline,
     ) {
-        pass.set_pipeline(variant.select(use_stencil));
+        pass.set_pipeline(pipeline);
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(
@@ -142,7 +141,7 @@ impl MeshPipeline {
     /// selects this batch's slice (the same `Span` that indexes the instance buffer).
     ///
     /// One `draw_indexed` per mesh, with no run to coalesce unlike `ImagePipeline`:
-    /// `shapes::lower` appends each mesh's vertices and indices to the record
+    /// `MeshShape`'s lowering appends each mesh's vertices and indices to the record
     /// payloads without interning, so no two `MeshDraw`s are equal. Interning by
     /// `content_hash` would be the prerequisite for batching.
     pub(crate) fn draw<'a>(
@@ -216,7 +215,7 @@ const _: () = {
 
 #[cfg(test)]
 mod tests {
-    use super::mesh_upload_required;
+    use crate::gpu::pipeline::mesh_pipeline::mesh_upload_required;
     use crate::internals::panic_probe;
 
     #[test]

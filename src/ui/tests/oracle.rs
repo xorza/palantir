@@ -1,6 +1,5 @@
 //! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::ui_harness::oracle::Oracle)); one test per mutation.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::internals::ui_harness::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -14,6 +13,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};

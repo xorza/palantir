@@ -17,7 +17,7 @@ use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::image::ImageInstance;
+use crate::renderer::render_buffer::image_draw_row::ImageInstance;
 use rustc_hash::FxHashMap;
 
 /// One batch of image draws: the frame's per-draw texture column and this
@@ -27,6 +27,24 @@ use rustc_hash::FxHashMap;
 pub(crate) struct ImageBatch<'a> {
     pub(crate) ids: &'a [TextureId],
     pub(crate) items: Span,
+}
+
+/// The two stores an image draw's texture id resolves in: registered images first, as the common
+/// draw, then `GpuView` targets.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ImageTextures<'a> {
+    pub(crate) images: &'a FxHashMap<TextureId, ImageTexture>,
+    pub(crate) targets: &'a GpuViewTargets,
+}
+
+impl<'a> ImageTextures<'a> {
+    /// The bind group `id` samples through, or `None` once its owner dropped it.
+    fn bind_group(self, id: TextureId) -> Option<&'a wgpu::BindGroup> {
+        self.images
+            .get(&id)
+            .map(|entry| &entry.bind_group)
+            .or_else(|| self.targets.bind_group(id))
+    }
 }
 
 #[derive(Debug)]
@@ -96,10 +114,9 @@ impl ImagePipeline {
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        variant: &'a StencilVariant,
-        use_stencil: bool,
+        pipeline: &'a wgpu::RenderPipeline,
     ) {
-        pass.set_pipeline(variant.select(use_stencil));
+        pass.set_pipeline(pipeline);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
@@ -115,16 +132,10 @@ impl ImagePipeline {
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         ImageBatch { ids, items }: ImageBatch<'_>,
-        images: &FxHashMap<TextureId, ImageTexture>,
-        targets: &GpuViewTargets,
+        textures: ImageTextures<'_>,
     ) {
         for run in image_runs(&ids[items.range()], items.start) {
-            // Registered images first: they are the common draw.
-            let Some(bind_group) = images
-                .get(&run.id)
-                .map(|entry| &entry.bind_group)
-                .or_else(|| targets.bind_group(run.id))
-            else {
+            let Some(bind_group) = textures.bind_group(run.id) else {
                 continue;
             };
             pass.set_bind_group(0, bind_group, &[]);
@@ -158,13 +169,13 @@ fn image_runs(ids: &[TextureId], first_instance: u32) -> impl Iterator<Item = Im
 }
 
 const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
-    0 => Float32x2, // rect.min
-    1 => Float32x2, // rect.size
-    2 => Float32x2, // uv_min
-    3 => Float32x2, // uv_size
+    0 => Float32x2,
+    1 => Float32x2,
+    2 => Float32x2,
+    3 => Float32x2,
     // Tint is linear straight-alpha; the shader premultiplies at write.
-    4 => Float16x4, // tint
-    5 => Uint32,    // flags (`ImageFlags`)
+    4 => Float16x4,
+    5 => Uint32,
 ];
 
 // Attribute offsets must match the `ImageInstance` fields; `offset_of!`

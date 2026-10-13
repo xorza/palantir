@@ -66,19 +66,22 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         let left = h.arranged(WidgetId::from_hash("left"));
         let right = h.arranged(WidgetId::from_hash("right"));
 
-        // With room for the 204 floor the right cell gets at least 204 and the left absorbs the squeeze (CSS Flexbox).
-        assert!(
-            right.size.w >= 204.0 - 0.5,
-            "outer_w={outer_w}: right cell shrunk below its 204 min-content floor; \
-             left.w={} right.w={}",
+        // The row fills the surface, so the two cells share `outer_w − 12` (the gap): an
+        // even split while each half covers the right cell's 204 floor, else the right
+        // cell holds 204 and the left absorbs the squeeze (CSS Flexbox). Either way they
+        // end flush with the row.
+        let share = (outer_w as f32 - 12.0) / 2.0;
+        assert_eq!(
+            right.size.w,
+            share.max(204.0),
+            "outer_w={outer_w}: left.w={} right.w={}",
             left.size.w,
             right.size.w,
         );
-        let row_right_edge = row.min.x + row.size.w;
-        let right_right_edge = right.min.x + right.size.w;
-        assert!(
-            right_right_edge <= row_right_edge + 0.5,
-            "outer_w={outer_w}: right cell overflows HStack",
+        assert_eq!(
+            [row.min.x + row.size.w, right.min.x + right.size.w],
+            [outer_w as f32; 2],
+            "outer_w={outer_w}: right cell must end at the row's edge",
         );
     }
 }

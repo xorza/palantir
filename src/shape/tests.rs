@@ -1,3 +1,5 @@
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::align::Align;
@@ -8,6 +10,9 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::Shape;
+use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::record::ShapeRecord;
 use crate::shape::rect::RectKind;
 use crate::shape::sealed::LowerShape as _;
 use crate::text::font_family::FontFamily;
@@ -16,6 +21,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::ptr;
 
 #[test]
@@ -260,5 +266,92 @@ fn curve_noop_follows_the_stroke_and_the_ramp() {
             shape = shape.ramp(ramp);
         }
         assert_eq!(shape.is_noop(), expected_noop, "case: {label}");
+    }
+}
+
+/// Every curve lowers onto one of the pipeline's two bases with its tight centerline bbox. A line from (0, 0) to (9, 3) puts its inner points on the thirds, (3, 1) and (6, 2), and is bounded by its ends. The quadratic (0, 0), (6, 6), (12, 0) promotes to inner points `2/3` of the way to its control, (4, 4) and (8, 4), and peaks at `t = ½`, `0.25·0 + 0.5·6 + 0.25·0 = 3`. A cubic passes through as authored; the arch (0, 0), (3, 4), (6, 4), (9, 0) has `y(t) = 12·t(1 − t)`, peaking at 3. A quarter arc of radius 5 about (10, 20) from 0 to π/2 runs from (15, 20) to (10, 25); the same arc swept 3π lowers as the full circle, a 2π sweep bounded by (5, 15) and (15, 25).
+#[test]
+fn curves_lower_to_their_basis_and_tight_bbox() {
+    let stroke = Stroke::new(RgbaF32::WHITE, 1.0);
+    let arch = CubicBezier {
+        p0: Vec2::ZERO,
+        p1: Vec2::new(3.0, 4.0),
+        p2: Vec2::new(6.0, 4.0),
+        p3: Vec2::new(9.0, 0.0),
+    };
+    let quarter = CircularArc {
+        center: Vec2::new(10.0, 20.0),
+        radius: 5.0,
+        start_angle: 0.0,
+        sweep: FRAC_PI_2,
+    };
+    let cases = [
+        (
+            "line",
+            Shape::line(Vec2::ZERO, Vec2::new(9.0, 3.0), stroke),
+            CurveBasis::Cubic(CubicBezier {
+                p0: Vec2::ZERO,
+                p1: Vec2::new(3.0, 1.0),
+                p2: Vec2::new(6.0, 2.0),
+                p3: Vec2::new(9.0, 3.0),
+            }),
+            Rect::new(0.0, 0.0, 9.0, 3.0),
+        ),
+        (
+            "quadratic",
+            Shape::quadratic_bezier(
+                Vec2::ZERO,
+                Vec2::new(6.0, 6.0),
+                Vec2::new(12.0, 0.0),
+                stroke,
+            ),
+            CurveBasis::Cubic(CubicBezier {
+                p0: Vec2::ZERO,
+                p1: Vec2::new(4.0, 4.0),
+                p2: Vec2::new(8.0, 4.0),
+                p3: Vec2::new(12.0, 0.0),
+            }),
+            Rect::new(0.0, 0.0, 12.0, 3.0),
+        ),
+        (
+            "cubic",
+            Shape::cubic_bezier(arch, stroke),
+            CurveBasis::Cubic(arch),
+            Rect::new(0.0, 0.0, 9.0, 3.0),
+        ),
+        (
+            "arc",
+            Shape::arc(quarter, stroke),
+            CurveBasis::Arc(quarter),
+            Rect::new(10.0, 20.0, 5.0, 5.0),
+        ),
+        (
+            "arc past a full circle",
+            Shape::arc(
+                CircularArc {
+                    sweep: 3.0 * PI,
+                    ..quarter
+                },
+                stroke,
+            ),
+            CurveBasis::Arc(CircularArc {
+                sweep: TAU,
+                ..quarter
+            }),
+            Rect::new(5.0, 15.0, 10.0, 10.0),
+        ),
+    ];
+    for (label, shape, want_basis, want_bbox) in cases {
+        let ShapeRecord::Curve {
+            basis,
+            bbox,
+            ramp: CurveRamp::None,
+            ..
+        } = shape.lower(&mut RecordStore::default())
+        else {
+            panic!("{label}: a curve without a ramp lowers to a ramp-less curve record");
+        };
+        assert_eq!(basis, want_basis, "{label}");
+        assert_eq!(bbox, want_bbox, "{label}");
     }
 }

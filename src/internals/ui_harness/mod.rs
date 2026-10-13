@@ -113,6 +113,15 @@ pub struct UiHarness {
     held: [Option<PressOrigin>; PointerButton::COUNT],
 }
 
+/// Whether a frame's surface still holds the last frame's pixels, as a window driver reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DamageBaseline {
+    Kept,
+    /// Lost, so the frame repaints in full.
+    #[cfg(test)]
+    Dropped,
+}
+
 /// Where a held button went down; `None` when the pointer was off-surface.
 #[derive(Clone, Copy, Debug)]
 struct PressOrigin {
@@ -186,18 +195,18 @@ impl UiHarness {
     /// Run frames of a whole [`App`] as a host does, delivering held input first.
     pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport {
         self.deliver_held_input(app);
-        self.drive(true, app)
+        self.drive(DamageBaseline::Kept, app)
     }
 
     fn deliver_held_input(&mut self, app: &mut impl App) {
         while self.ui.input().has_held_input() {
-            self.drive(true, app);
+            self.drive(DamageBaseline::Kept, app);
         }
     }
 
     /// Exactly one host frame, delivering nothing held.
     pub fn step(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.drive(true, &mut RecordApp::new(record))
+        self.drive(DamageBaseline::Kept, &mut RecordApp::new(record))
     }
 
     /// Run one frame and keep each record pass's value, warmup excluded. See [`Passes`].
@@ -627,14 +636,10 @@ impl UiHarness {
         harness
     }
 
-    fn drive(&mut self, damage_baseline_valid: bool, app: &mut impl App) -> FrameReport {
+    fn drive(&mut self, baseline: DamageBaseline, app: &mut impl App) -> FrameReport {
         let stamp = FrameStamp::new(self.frame_display(), self.time);
-        self.ui.frame(
-            &mut self.engines,
-            FrameInput::new(stamp, damage_baseline_valid),
-            WindowToken(0),
-            app,
-        )
+        let input = FrameInput::new(stamp, baseline == DamageBaseline::Kept, WindowToken(0));
+        self.ui.frame(&mut self.engines, input, app)
     }
 
     /// The display a frame runs at, derived as the window driver does.
@@ -690,7 +695,8 @@ mod unit {
     use crate::damage::region::DamageRegion;
     use crate::internals::paint_capture::PaintCapture;
     use crate::internals::record_app::RecordApp;
-    use crate::internals::ui_harness::UiHarness;
+    use crate::internals::ui_harness::{DamageBaseline, UiHarness};
+    use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
     use crate::layout::intrinsic::len_req::LenReq;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::widget_id::WidgetId;
@@ -721,7 +727,7 @@ mod unit {
             &mut self,
             record: impl FnMut(&mut Ui),
         ) -> FrameReport {
-            self.drive(false, &mut RecordApp::new(record))
+            self.drive(DamageBaseline::Dropped, &mut RecordApp::new(record))
         }
 
         /// A `FILL`/`FILL` hstack wrapped around `f`, returning `f`'s node.
@@ -742,7 +748,8 @@ mod unit {
         pub(crate) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
             self.engines
                 .layout
-                .main_intrinsic(self.ui.forest(), node, axis, req)
+                .main_intrinsic(self.ui.forest(), node, IntrinsicQuery::single(axis, req))
+                .get(req)
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {

@@ -24,6 +24,7 @@ impl<T> PerLayer<T> {
         self.0.iter()
     }
 
+    /// [`Self::iter`], mutably.
     pub(crate) fn iter_mut(&mut self) -> slice::IterMut<'_, T> {
         self.0.iter_mut()
     }
@@ -34,6 +35,24 @@ impl<T> PerLayer<T> {
             .iter()
             .copied()
             .map(move |layer| (layer, &self.0[layer.idx()]))
+    }
+}
+
+impl<'a, T> IntoIterator for &'a PerLayer<T> {
+    type Item = &'a T;
+    type IntoIter = slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut PerLayer<T> {
+    type Item = &'a mut T;
+    type IntoIter = slice::IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 

@@ -4,7 +4,7 @@
 
 pub(crate) mod wake;
 
-use crate::common::time::{ANIM_SUBSTEP_DT, MAX_ANIM_DT, coalesce_dt_for_refresh};
+use crate::common::time::{self, ANIM_SUBSTEP_DT, MAX_ANIM_DT};
 use crate::display::Display;
 use crate::input::policy::{InputPolicy, InputSignal};
 use crate::primitives::math::domain::EPS;
@@ -129,7 +129,7 @@ impl FrameRuntime {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
             // Bounds what one frame spends (this plus a carry of up to one
-            // accumulator step); `spring::step` takes `MAX_ANIM_DT` as its
+            // accumulator step); `Spring::step` takes `MAX_ANIM_DT` as its
             // contract. The excess is dropped, not carried, so a stall cannot
             // bleed into later frames as catch-up motion.
             spent.min(MAX_ANIM_DT)
@@ -197,7 +197,7 @@ impl FrameRuntime {
         reasons: WakeReasons,
         refresh_millihertz: Option<u32>,
     ) {
-        let coalesce = coalesce_dt_for_refresh(refresh_millihertz);
+        let coalesce = time::coalesce_dt_for_refresh(refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
         let position = self
             .repaint_wakes

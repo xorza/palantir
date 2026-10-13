@@ -4,12 +4,11 @@ use glam::UVec2;
 use palantir::{Background, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_scene_matches_golden;
 
-/// Multi-line paragraph with mixed sizes/colors; looser tolerance as glyph AA varies across drivers.
+/// A multi-line paragraph in mixed sizes and colours.
 #[test]
 fn text_paragraph_matches_golden() {
-    assert_scene_matches_golden(GoldenName::TextParagraph, UVec2::new(360, 140), |ui| {
+    GoldenName::TextParagraph.assert_scene(UVec2::new(360, 140), |ui| {
         Panel::vstack()
             .auto_id()
             .padding(16.0)
@@ -43,7 +42,7 @@ fn text_paragraph_matches_golden() {
     });
 }
 
-/// Many labels under per-row backgrounds: text-batch coalescing across distinct scissors (each row's background makes a group), the composer fusing all text into one glyphon `prepare`/`render`. Every label must read on its row, no glyphs missing.
+/// Many labels under per-row backgrounds: each row's background makes a draw group, and text batches across them. Every label must read on its row, no glyphs missing.
 #[test]
 fn text_row_list_batches_into_one_render() {
     let rows = [
@@ -54,7 +53,7 @@ fn text_row_list_batches_into_one_render() {
         ("Echo", RgbaF32::srgb(0.35, 0.55, 0.55)),
         ("Foxtrot", RgbaF32::srgb(0.65, 0.55, 0.30)),
     ];
-    assert_scene_matches_golden(GoldenName::TextRowListBatched, UVec2::new(220, 200), |ui| {
+    GoldenName::TextRowListBatched.assert_scene(UVec2::new(220, 200), |ui| {
         Panel::vstack()
             .auto_id()
             .padding(8.0)

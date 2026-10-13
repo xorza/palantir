@@ -1,6 +1,8 @@
 //! Pin: `Sizing::fill` is a WPF Stretch: content size at measure, fills its slot at arrange.
 use crate::internals::ui_harness::UiHarness;
+use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -26,10 +28,10 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     });
     let parent = h.arranged(node_id);
     let button = h.arranged(button_id);
-    assert!(
-        parent.size.w < 100.0,
-        "Hug parent must hug to content, not balloon to surface; got w={}",
-        parent.size.w,
+    let button_content = h.intrinsic(h.node_for_widget_id(button_id), Axis::X, LenReq::MaxContent);
+    assert_eq!(
+        parent.size.w, button_content,
+        "Hug parent must hug to its Fill child's content, not balloon to the 800 px surface",
     );
     assert_eq!(
         button.size.w, parent.size.w,

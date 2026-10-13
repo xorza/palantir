@@ -14,9 +14,7 @@ use crate::primitives::paint::raster_image::RasterImage;
 use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
-use crate::text::cosmic::geometry::{
-    SegmentScratch, first_line_right, intrinsic_min_width, shaped_geometry,
-};
+use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
 use crate::text::cosmic::glyph_ink::GlyphInk;
 use crate::text::cosmic::shaped_buffer_cache::{ShapedBufferCache, ShapedRun};
 use crate::text::error::FontLoadError;
@@ -145,25 +143,41 @@ const WGHT_AXIS: swash::Tag = u32::from_be_bytes(*b"wght");
 /// The angle a synthetic italic leans by, rasterized and measured alike; cosmic's own.
 const FAKE_ITALIC_SKEW_DEGREES: f32 = 14.0;
 
-/// The scaler a glyph of `font` is read through, instanced on [`WGHT_AXIS`] for
-/// variable faces. Uses `normalized_coords`, not `variations`, which leaves stale
-/// entries in the retained context so a bold glyph bleeds into the next regular one.
-fn glyph_scaler<'a>(
-    context: &'a mut ScaleContext,
-    font: &'a Font,
+/// How a glyph's scaler is instanced: what [`Self::scaler`] reads beyond the face.
+#[derive(Clone, Copy, Debug)]
+struct ScalerSpec {
+    /// Pixels per em; zero reads outlines in font units.
     size: f32,
-    hint: bool,
+    hinting: Hinting,
+    /// The weight a variable face's [`WGHT_AXIS`] is set to.
     weight: Weight,
-) -> Scaler<'a> {
-    let face = font.as_swash();
-    let mut builder = context.builder(face).size(size).hint(hint);
-    if let Some(axis) = face.variations().find_by_tag(WGHT_AXIS) {
-        builder = builder.normalized_coords(face.variations().normalized_coords([(
-            WGHT_AXIS,
-            f32::from(weight.0).clamp(axis.min_value(), axis.max_value()),
-        )]));
+}
+
+/// Whether a scaler applies the face's TrueType hinting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Hinting {
+    On,
+    Off,
+}
+
+impl ScalerSpec {
+    /// The scaler a glyph of `font` is read through, instanced on [`WGHT_AXIS`] for
+    /// variable faces. Uses `normalized_coords`, not `variations`, which leaves stale
+    /// entries in the retained context so a bold glyph bleeds into the next regular one.
+    fn scaler<'a>(self, context: &'a mut ScaleContext, font: &'a Font) -> Scaler<'a> {
+        let face = font.as_swash();
+        let mut builder = context
+            .builder(face)
+            .size(self.size)
+            .hint(self.hinting == Hinting::On);
+        if let Some(axis) = face.variations().find_by_tag(WGHT_AXIS) {
+            builder = builder.normalized_coords(face.variations().normalized_coords([(
+                WGHT_AXIS,
+                f32::from(self.weight.0).clamp(axis.min_value(), axis.max_value()),
+            )]));
+        }
+        builder.build()
     }
-    builder.build()
 }
 
 /// The fractional pen offset `key` was binned at. A pixel font rounds its bins away: sub-pixel
@@ -268,7 +282,11 @@ impl CosmicMeasure {
             .iter()
             .enumerate()
             .filter(|(_, answer)| **answer != FamilyResolution::Unasked)
-            .map(|(index, _)| FontFamily::from_raw(index as u16))
+            .map(|(index, _)| {
+                FontFamily::from_raw(
+                    u16::try_from(index).expect("`resolved` is indexed by a u16 family index"),
+                )
+            })
             .collect();
         if !warm.contains(&loaded) {
             warm.push(loaded);
@@ -351,7 +369,7 @@ impl CosmicMeasure {
         if let Some(entry) = self.cache.hit(key) {
             let root = entry.extent.root_mut();
             if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
-                root.intrinsic_min = Some(intrinsic_min_width(&entry.buffer, breaks));
+                root.intrinsic_min = Some(breaks.intrinsic_min_width(&entry.buffer));
             }
             return entry.extent.root();
         }
@@ -386,7 +404,7 @@ impl CosmicMeasure {
         buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let geometry = shaped_geometry(&buffer, floor, &mut self.break_scratch);
+        let geometry = ShapedGeometry::of(&buffer, floor, &mut self.break_scratch);
         let extent = self
             .glyph_ink
             .extent(&buffer, &mut self.font_system, &geometry);
@@ -496,13 +514,17 @@ impl CosmicMeasure {
         let font = self
             .font_system
             .get_font(cache_key.font_id, cache_key.font_weight)?;
-        let mut scaler = glyph_scaler(
-            &mut self.scale_context,
-            &font,
-            f32::from_bits(cache_key.font_size_bits),
-            !cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING),
-            cache_key.font_weight,
-        );
+        let hinting = if cache_key.flags.contains(CacheKeyFlags::DISABLE_HINTING) {
+            Hinting::Off
+        } else {
+            Hinting::On
+        };
+        let mut scaler = ScalerSpec {
+            size: f32::from_bits(cache_key.font_size_bits),
+            hinting,
+            weight: cache_key.font_weight,
+        }
+        .scaler(&mut self.scale_context, &font);
         // Cleared, not overwritten: `render_into` zero-fills only what a resize added, so a smaller
         // glyph would read the last one's coverage.
         self.glyph_image.clear();
@@ -537,7 +559,7 @@ impl CosmicMeasure {
     }
 
     /// Shape `text` as a single line truncated to fit `w`. The cached unbounded shape
-    /// gives per-glyph advances, [`ClusterGlyph::fitting_prefix`] cuts after the last
+    /// gives per-glyph advances, [`cluster_glyph::fitting_prefix`] cuts after the last
     /// fully paid-for cluster, and the prefix is shaped on one natural line with no
     /// per-line align (the encoder positions it, so the extent is the glyph width, not
     /// `w`). `LineFit::Ellipsis` reserves room for a trailing `…`; `LineFit::Clip` cuts
@@ -583,7 +605,7 @@ impl CosmicMeasure {
         let geometry = if fits_whole {
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+            ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch)
         } else {
             // The cut spends advances from the whole run's shaping, but the prefix reshapes
             // in its own context (a joining script's last letter takes a wider final form). So
@@ -601,7 +623,7 @@ impl CosmicMeasure {
             }
             let mut max_end = usize::MAX;
             loop {
-                let cut = ClusterGlyph::fitting_prefix(&mut self.cut_glyphs, avail, max_end);
+                let cut = cluster_glyph::fitting_prefix(&mut self.cut_glyphs, avail, max_end);
                 self.truncate_scratch.clear();
                 self.truncate_scratch
                     .push_str(request.text[..cut].trim_end());
@@ -615,7 +637,8 @@ impl CosmicMeasure {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
-                let geometry = shaped_geometry(&buffer, WrapFloor::Skip, &mut self.break_scratch);
+                let geometry =
+                    ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch);
                 if geometry.size.w <= width || cut == 0 {
                     break geometry;
                 }

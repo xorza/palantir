@@ -2,43 +2,39 @@
 //! arcs and triangles, and the order they paint in.
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{LineCap, LineJoin, Shape};
+use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, Shape};
 use palantir::{
     Background, Block, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke,
 };
 
-use crate::fixtures::{DARK_BG, SRGB_ROUND_TRIP, assert_px, canvas};
+use crate::fixtures;
+use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
-use crate::goldens::{assert_matches_golden, assert_scene_matches_golden};
 use crate::harness::Harness;
 
 /// Pin `Shape::windowed_rect`'s inverted fill: the windowed rect over gradient content fills the corner wedges with the background and strokes the boundary. The golden must read as a rounded-clipped card.
 #[test]
 fn windowed_rect_masks_corners_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::WindowedRectMasksCorners,
-        UVec2::new(220, 140),
-        |ui| {
-            Panel::vstack()
-                .auto_id()
-                .padding(20.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    let card = Rect::new(0.0, 0.0, 180.0, 100.0);
-                    ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
-                        0.0,
-                        RgbaF32::hex(0xff5e44),
-                        RgbaF32::hex(0xfacc15),
-                    )));
-                    ui.add_shape(
-                        Shape::windowed_rect(card)
-                            .corners(20.0)
-                            .fill(DARK_BG)
-                            .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
-                    );
-                });
-        },
-    );
+    GoldenName::WindowedRectMasksCorners.assert_scene(UVec2::new(220, 140), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let card = Rect::new(0.0, 0.0, 180.0, 100.0);
+                ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
+                    0.0,
+                    RgbaF32::hex(0xff5e44),
+                    RgbaF32::hex(0xfacc15),
+                )));
+                ui.add_shape(
+                    Shape::windowed_rect(card)
+                        .corners(20.0)
+                        .fill(DARK_BG)
+                        .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                );
+            });
+    });
 }
 
 /// Pin the slot mechanism: three sub-rect shapes interleaved with two child Frames, each overlapping the children that paint under it, so pixels tell "right slot" from "all collapsed to slot 0".
@@ -48,47 +44,42 @@ fn windowed_rect_masks_corners_matches_golden() {
 /// Expected: cyan(0..30), green(30..60), yellow(60..90), blue(90..150). Collapsed: cyan(0..60), yellow(60..120), blue(120..150).
 #[test]
 fn interleaved_shapes_paint_in_record_order() {
-    assert_scene_matches_golden(
-        GoldenName::InterleavedShapesPaintOrder,
-        UVec2::new(220, 60),
-        |ui| {
-            Panel::hstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .padding(0.0)
-                .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0))
-                            .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-                    );
-                    Block::new()
-                        .id_salt("cyan")
-                        .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 1.0)))
-                        .size((Sizing::fixed(60.0), Sizing::FILL))
-                        .show(ui);
-                    ui.add_shape(
-                        Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
-                            .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
-                    );
-                    Block::new()
-                        .id_salt("yellow")
-                        .background(Background::fill(RgbaF32::srgb(1.0, 1.0, 0.0)))
-                        .size((Sizing::fixed(60.0), Sizing::FILL))
-                        .show(ui);
-                    ui.add_shape(
-                        Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
-                            .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
-                    );
-                });
-        },
-    );
+    GoldenName::InterleavedShapesPaintOrder.assert_scene(UVec2::new(220, 60), |ui| {
+        Panel::hstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(0.0)
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                );
+                Block::new()
+                    .id_salt("cyan")
+                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 1.0)))
+                    .size((Sizing::fixed(60.0), Sizing::FILL))
+                    .show(ui);
+                ui.add_shape(
+                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
+                        .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
+                );
+                Block::new()
+                    .id_salt("yellow")
+                    .background(Background::fill(RgbaF32::srgb(1.0, 1.0, 0.0)))
+                    .size((Sizing::fixed(60.0), Sizing::FILL))
+                    .show(ui);
+                ui.add_shape(
+                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
+                        .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
+                );
+            });
+    });
 }
 
 /// Pin: `Shape::line` paints a fringe-AA stroke; a non-AA path stair-steps a diagonal and fails the channel tolerance.
 #[test]
 fn line_diagonal_aa_matches_golden() {
-    assert_scene_matches_golden(GoldenName::LineDiagonalAa, UVec2::new(160, 120), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::LineDiagonalAa.assert_scene(UVec2::new(160, 120), |ui| {
+        fixtures::canvas(ui, |ui| {
             ui.add_shape(Shape::line(
                 Vec2::new(10.0, 10.0),
                 Vec2::new(150.0, 110.0),
@@ -109,8 +100,8 @@ fn line_diagonal_aa_matches_golden() {
 /// Pin: `Shape::polyline` with `per_point` colours paints a gradient by vertex interpolation; a stride-1 cross-section would collapse to single-colour strips.
 #[test]
 fn polyline_gradient_matches_golden() {
-    assert_scene_matches_golden(GoldenName::PolylineGradient, UVec2::new(160, 140), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::PolylineGradient.assert_scene(UVec2::new(160, 140), |ui| {
+        fixtures::canvas(ui, |ui| {
             let pts = [
                 Vec2::new(10.0, 10.0),
                 Vec2::new(50.0, 130.0),
@@ -131,8 +122,8 @@ fn polyline_gradient_matches_golden() {
 /// Pin: sharp Miter joins downgrade to a bevel instead of an unbounded spike. A join regression shows as missing pixels in the sharp stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
-    assert_scene_matches_golden(GoldenName::PolylineBevelJoin, UVec2::new(180, 140), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::PolylineBevelJoin.assert_scene(UVec2::new(180, 140), |ui| {
+        fixtures::canvas(ui, |ui| {
             let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
             let shallow = [
                 Vec2::new(15.0, 30.0),
@@ -153,8 +144,8 @@ fn polyline_bevel_join_matches_golden() {
 /// Pin: `LineCap::Round` paints a half-disc fan at each endpoint, beside Butt and Square.
 #[test]
 fn polyline_round_caps_match_golden() {
-    assert_scene_matches_golden(GoldenName::PolylineRoundCaps, UVec2::new(180, 140), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::PolylineRoundCaps.assert_scene(UVec2::new(180, 140), |ui| {
+        fixtures::canvas(ui, |ui| {
             for (y, cap, color) in [
                 (30.0_f32, LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
                 (70.0, LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
@@ -176,8 +167,8 @@ fn polyline_round_caps_match_golden() {
 /// Pin: `LineJoin::Round` paints a circular arc at interior joins; Miter / Bevel / Round must differ visibly.
 #[test]
 fn polyline_round_join_matches_golden() {
-    assert_scene_matches_golden(GoldenName::PolylineRoundJoin, UVec2::new(180, 200), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::PolylineRoundJoin.assert_scene(UVec2::new(180, 200), |ui| {
+        fixtures::canvas(ui, |ui| {
             let cyan = RgbaF32::srgb(0.2, 0.9, 1.0);
             for (y, join) in [
                 (30.0_f32, LineJoin::Miter),
@@ -203,7 +194,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
         .size(UVec2::new(180, 160))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 for (i, join) in [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round]
                     .iter()
                     .enumerate()
@@ -236,7 +227,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
              adjacent segments double-blended their concave overlap",
         );
     }
-    assert_matches_golden(GoldenName::PolylineTranslucentJoins, &img);
+    GoldenName::PolylineTranslucentJoins.assert_matches(&img);
 }
 
 /// Pin: a translucent polyline blends correctly through `PREMULTIPLIED_ALPHA_BLENDING`. Green α=0.5 over magenta gives linear `(0.5, 0.5, 0.5)`, sRGB 188 grey; a straight-alpha source tints green (>220).
@@ -246,7 +237,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         .size(UVec2::new(120, 120))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0))
                         .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
@@ -260,10 +251,9 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         })
         .image;
     let grey = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba_u8();
-    assert_px(
+    fixtures::assert_px(
         img.get_pixel(60, 60).0,
         [grey.r, grey.g, grey.b, 255],
-        SRGB_ROUND_TRIP,
         "the stroke's centre blends to grey; green means the stroke shader skipped premultiplying",
     );
 }
@@ -271,8 +261,8 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
 /// Pin the curve pipeline: `Shape::cubic_bezier` lowers to `ShapeRecord::Curve` and draws per scissor group. Three identical cubics with Butt / Square / Round caps differ only at the endpoints; a fourth quadratic pins quadratic→cubic promotion.
 #[test]
 fn curve_caps_match_golden() {
-    assert_scene_matches_golden(GoldenName::CurveCaps, UVec2::new(220, 240), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::CurveCaps.assert_scene(UVec2::new(220, 240), |ui| {
+        fixtures::canvas(ui, |ui| {
             for (i, (cap, color)) in [
                 (LineCap::Butt, RgbaF32::srgb(1.0, 0.4, 0.4)),
                 (LineCap::Square, RgbaF32::srgb(0.4, 1.0, 0.4)),
@@ -284,10 +274,12 @@ fn curve_caps_match_golden() {
                 let dy = 20.0 + i as f32 * 55.0;
                 ui.add_shape(
                     Shape::cubic_bezier(
-                        Vec2::new(30.0, dy + 40.0),
-                        Vec2::new(60.0, dy - 10.0),
-                        Vec2::new(140.0, dy - 10.0),
-                        Vec2::new(170.0, dy + 40.0),
+                        CubicBezier {
+                            p0: Vec2::new(30.0, dy + 40.0),
+                            p1: Vec2::new(60.0, dy - 10.0),
+                            p2: Vec2::new(140.0, dy - 10.0),
+                            p3: Vec2::new(170.0, dy + 40.0),
+                        },
                         Stroke::new(*color, 8.0),
                     )
                     .cap(*cap),
@@ -309,8 +301,8 @@ fn curve_caps_match_golden() {
 /// Pin the `FillKind::TRIANGLE` shader branch: sharp vs rounded corners, solid vs fill+inner-stroke vs stroke-only, and both windings (bottom-right is CW).
 #[test]
 fn triangle_matches_golden() {
-    assert_scene_matches_golden(GoldenName::Triangle, UVec2::new(240, 240), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::Triangle.assert_scene(UVec2::new(240, 240), |ui| {
+        fixtures::canvas(ui, |ui| {
             ui.add_shape(
                 Shape::triangle(
                     Vec2::new(20.0, 100.0),
@@ -356,8 +348,8 @@ fn triangle_matches_golden() {
 #[test]
 fn arc_shapes_match_golden() {
     use std::f32::consts::{FRAC_PI_2, PI};
-    assert_scene_matches_golden(GoldenName::ArcShapes, UVec2::new(180, 140), |ui| {
-        canvas(ui, |ui| {
+    GoldenName::ArcShapes.assert_scene(UVec2::new(180, 140), |ui| {
+        fixtures::canvas(ui, |ui| {
             ui.add_shape(Shape::circle(
                 Vec2::new(45.0, 70.0),
                 30.0,
@@ -369,10 +361,12 @@ fn arc_shapes_match_golden() {
             );
             ui.add_shape(
                 Shape::arc(
-                    Vec2::new(130.0, 70.0),
-                    30.0,
-                    -FRAC_PI_2,
-                    1.5 * PI,
+                    CircularArc {
+                        center: Vec2::new(130.0, 70.0),
+                        radius: 30.0,
+                        start_angle: -FRAC_PI_2,
+                        sweep: 1.5 * PI,
+                    },
                     Stroke::new(RgbaF32::WHITE, 8.0),
                 )
                 .ramp(comet)
@@ -392,7 +386,7 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
         .size(UVec2::new(100, 70))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::triangle(
                         Vec2::new(10.0, 20.0),
@@ -425,12 +419,12 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
 /// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's centre is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
 #[test]
 fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
-    let mut h = Harness::new_with_pixel_snap(false);
+    let mut h = Harness::unsnapped();
     let img = h
         .size(UVec2::new(140, 80))
         .clear(RgbaF32::WHITE)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 ui.add_shape(Shape::rect(Rect::new(40.75, 20.75, 59.5, 39.5)).fill(RgbaF32::BLACK));
             });
         })

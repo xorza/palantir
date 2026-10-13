@@ -20,7 +20,7 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -68,13 +68,13 @@ fn windowed_rect_is_not_an_opaque_cover() {
         |b, _| {
             draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
             b.draw_quad(
-                DrawQuadPayload::rect_of_kind(
-                    RectKind::Windowed,
-                    Rect::new(0.0, 0.0, 200.0, 200.0),
-                    Corners::default(),
-                    BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
-                    Stroke::NONE.into(),
-                ),
+                DrawQuadPayload::rect(RectQuad {
+                    kind: RectKind::Windowed,
+                    rect: Rect::new(0.0, 0.0, 200.0, 200.0),
+                    corners: Corners::default(),
+                    fill: BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).into()),
+                    stroke: Stroke::NONE.into(),
+                }),
                 1.0,
             );
         },

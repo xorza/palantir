@@ -7,35 +7,35 @@ use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_operation::DockDrop;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
-use crate::widgets::tabs::tab_strip::TabStrip;
+use crate::widgets::tabs::tab_strip;
 
 /// One pane's last-frame geometry for drop classification; a struct because `pane` and `strip` are both
 /// `Rect`, so transposed arguments would type-check. Panes hold still during a tab drag.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PaneGeometry<'a> {
-    pub(crate) group: TabGroupId,
-    pub(crate) pane: Rect,
-    pub(crate) strip: Rect,
-    pub(crate) chips: &'a [Rect],
+pub(super) struct PaneGeometry<'a> {
+    pub(super) group: TabGroupId,
+    pub(super) pane: Rect,
+    pub(super) strip: Rect,
+    pub(super) chips: &'a [Rect],
     /// Whether this pane may still split (nesting cap); if not, edge wedges degrade to a join.
-    pub(crate) can_split: bool,
-    pub(crate) allowed: AllowedSplits,
+    pub(super) can_split: bool,
+    pub(super) allowed: AllowedSplits,
     /// Reach of the split wedges in from each edge, as a fraction of the content rect.
-    pub(crate) edge_fraction: f32,
-    pub(crate) caret_width: f32,
+    pub(super) edge_fraction: f32,
+    pub(super) caret_width: f32,
 }
 
 /// Where a drop over one pane would land, plus the region to highlight.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DropTarget {
-    pub(crate) drop: DockDrop,
-    pub(crate) highlight: Rect,
+pub(super) struct DropTarget {
+    pub(super) drop: DockDrop,
+    pub(super) highlight: Rect,
 }
 
 impl PaneGeometry<'_> {
     /// Classifies pointer `p` (known to be over this pane): strip band inserts, inner box joins, outer band
     /// splits toward the nearest offered edge; at the nesting cap or without an offered edge it joins.
-    pub(crate) fn classify(&self, p: Vec2) -> DropTarget {
+    pub(super) fn classify(&self, p: Vec2) -> DropTarget {
         let Self {
             group,
             pane,
@@ -44,13 +44,13 @@ impl PaneGeometry<'_> {
             can_split,
             allowed,
             edge_fraction,
-            caret_width,
+            caret_width: _,
         } = *self;
         if strip.contains(p) {
-            let index = TabStrip::insertion_slot(chips.iter().copied(), p.x);
+            let index = tab_strip::insertion_slot(chips.iter().copied(), p.x);
             return DropTarget {
                 drop: DockDrop::Into { group, index },
-                highlight: caret_rect(strip, chips, index, caret_width),
+                highlight: self.caret_rect(index),
             };
         }
 
@@ -92,6 +92,27 @@ impl PaneGeometry<'_> {
             None => join,
         }
     }
+
+    /// The insertion caret on the boundary of slot `index`; an empty strip degrades to the left inset.
+    fn caret_rect(&self, index: usize) -> Rect {
+        let Self {
+            strip,
+            chips,
+            caret_width,
+            ..
+        } = *self;
+        let x = match (chips.get(index), chips.last()) {
+            (Some(next), _) => next.min.x - 1.5,
+            (None, Some(last)) => last.max().x + 1.5,
+            (None, None) => strip.min.x + 6.0,
+        };
+        Rect::new(
+            x - caret_width * 0.5,
+            strip.min.y + 2.0,
+            caret_width,
+            (strip.size.h - 2.0).max(0.0),
+        )
+    }
 }
 
 fn center_box(content: Rect, fraction: f32) -> Rect {
@@ -112,19 +133,4 @@ fn half_rect(content: Rect, side: SplitSide) -> Rect {
         SplitSide::Top => Rect::new(min.x, min.y, size.w, size.h * 0.5),
         SplitSide::Bottom => Rect::new(min.x, min.y + size.h * 0.5, size.w, size.h * 0.5),
     }
-}
-
-/// The insertion caret on the boundary of slot `index`; an empty strip degrades to the left inset.
-fn caret_rect(strip: Rect, chips: &[Rect], index: usize, width: f32) -> Rect {
-    let x = match (chips.get(index), chips.last()) {
-        (Some(next), _) => next.min.x - 1.5,
-        (None, Some(last)) => last.max().x + 1.5,
-        (None, None) => strip.min.x + 6.0,
-    };
-    Rect::new(
-        x - width * 0.5,
-        strip.min.y + 2.0,
-        width,
-        (strip.size.h - 2.0).max(0.0),
-    )
 }

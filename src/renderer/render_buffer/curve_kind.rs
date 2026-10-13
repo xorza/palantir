@@ -4,7 +4,7 @@ use bytemuck::{Pod, Zeroable};
 
 /// How the curve shader reads a [`CurveInstance`]'s geometry lanes; `repr(transparent)` over the `u32` vertex attribute.
 ///
-/// [`CurveInstance`]: crate::renderer::render_buffer::curve::CurveInstance
+/// [`CurveInstance`]: crate::renderer::render_buffer::curve_instance::CurveInstance
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Pod, Zeroable)]
 pub(crate) struct CurveKind(u32);

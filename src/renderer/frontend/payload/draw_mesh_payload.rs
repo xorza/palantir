@@ -1,5 +1,6 @@
 //! One indexed-triangle mesh draw.
 
+use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;
@@ -13,10 +14,8 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: Vec2,
     pub(crate) tint: RgbaF16,
-    pub(crate) v_start: u32,
-    pub(crate) v_len: u32,
-    pub(crate) i_start: u32,
-    pub(crate) i_len: u32,
+    pub(crate) vertices: Span,
+    pub(crate) indices: Span,
 }
 
 impl DrawMeshPayload {
@@ -35,6 +34,9 @@ impl DrawMeshPayload {
     /// Paints nothing with empty vertices, under one triangle, a non-multiple-of-3 index count, or a transparent tint.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
-        self.v_len == 0 || self.i_len < 3 || !self.i_len.is_multiple_of(3) || self.tint.is_noop()
+        self.vertices.len == 0
+            || self.indices.len < 3
+            || !self.indices.len.is_multiple_of(3)
+            || self.tint.is_noop()
     }
 }

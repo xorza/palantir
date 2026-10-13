@@ -11,8 +11,6 @@ use std::panic::Location;
 /// Identity hasher for [`WidgetIdMap`]: a [`WidgetId`] is already a hash, so re-hashing is wasted.
 ///
 /// Forwarding means the bucket index is the id's low bits, so distribution comes entirely from [`WidgetId::finalize`], which every constructor funnels through.
-///
-/// The `rustc-hash` version behaviour that once supplied entropy is deliberately untested: occupancy on sequential inputs would score 1.x better, and a discriminating test pins rustc-hash internals.
 #[derive(Debug, Default)]
 pub(crate) struct IdHasher(u64);
 

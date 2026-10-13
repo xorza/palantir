@@ -15,7 +15,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
 use crate::widgets::scroll::tests::support::fixed_block;
 use glam::UVec2;

@@ -8,10 +8,9 @@ use winit::window::WindowId;
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
-use crate::gpu::surface::surface_manager::{HostGpuConfig, SurfaceManager, SurfaceStartup};
+use crate::gpu::surface::surface_manager::{SurfaceManager, SurfaceStartup};
 use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::PresentStrategy;
-use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
@@ -57,14 +56,13 @@ impl<T: App + 'static> WinitRuntime<T> {
         let SurfaceStartup {
             surfaces,
             first_surface,
-        } = SurfaceManager::start(&window, native::physical_size(&window), gpu_config(config))
+        } = SurfaceManager::start(&window, native::physical_size(&window), config.gpu_config())
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let core = HostCore::new(
             surfaces.gpu.clone(),
-            surfaces.max_texture_dim,
-            fonts.join(),
-            Clipboard::system_or_memory(),
             HostCoreConfig {
+                shaper: fonts.join(),
+                clipboard: Clipboard::system_or_memory(),
                 collect_gpu_stats: config.collect_gpu_stats,
                 pixel_snap: config.pixel_snap,
             },
@@ -111,19 +109,16 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Paint one window; it drains its commands into the pending queue.
     pub(super) fn draw(&mut self, slot: WindowSlot) {
         let single_window = self.windows.len() == 1;
-        self.windows.at(slot).frame(
-            &self.surfaces.gpu,
-            &mut self.core,
-            &mut self.app,
-            &mut self.pending_commands,
-        );
+        self.windows
+            .at(slot)
+            .frame(&mut self.core, &mut self.app, &mut self.pending_commands);
         if single_window {
             tracy::mark_main_frame();
         }
     }
 
     pub(super) fn repaint_all(&mut self) {
-        for win in self.windows.iter_mut() {
+        for win in &mut self.windows {
             win.next = FramePresent::Immediate;
         }
     }
@@ -200,14 +195,6 @@ impl<T: App + 'static> WinitRuntime<T> {
         if let Some(win) = self.windows.take(token) {
             self.core.retire(&win.driver);
         }
-    }
-}
-
-const fn gpu_config(config: &WinitHostConfig) -> HostGpuConfig {
-    HostGpuConfig {
-        power_preference: config.power_preference,
-        vsync: config.vsync,
-        collect_gpu_stats: config.collect_gpu_stats,
     }
 }
 

@@ -8,7 +8,7 @@ use crate::app::App;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
-use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::Clock;
 use crate::host::core::{HostCore, HostCoreConfig};
@@ -109,18 +109,13 @@ impl OffscreenHostBuilder {
         if let Err(unmet) = self.gpu.requirements_met() {
             panic!("offscreen host device cannot run Palantir: {unmet}");
         }
-        let max_texture_dim = self.gpu.max_texture_dim();
-        let clipboard = self.clipboard();
-        let core = HostCore::new(
-            self.gpu,
-            max_texture_dim,
-            self.shaper.unwrap_or_default(),
-            clipboard,
-            HostCoreConfig {
-                collect_gpu_stats: self.collect_gpu_stats,
-                pixel_snap: self.pixel_snap,
-            },
-        );
+        let config = HostCoreConfig {
+            clipboard: self.clipboard(),
+            shaper: self.shaper.unwrap_or_default(),
+            collect_gpu_stats: self.collect_gpu_stats,
+            pixel_snap: self.pixel_snap,
+        };
+        let core = HostCore::new(self.gpu, config);
         let strategy = if self.retained_target {
             PresentStrategy::DirectAdaptive
         } else {
@@ -208,12 +203,12 @@ pub(crate) mod internals {
     use crate::host::offscreen::OffscreenHost;
     use crate::renderer::render_buffer::RenderBuffer;
 
-    /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
-    pub(crate) const fn last_render_buffer(host: &OffscreenHost) -> &RenderBuffer {
-        &host.core.frontend.buffer
-    }
-
     impl OffscreenHost {
+        /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
+        pub(crate) const fn last_render_buffer(&self) -> &RenderBuffer {
+            &self.core.frontend.buffer
+        }
+
         /// Shades every shadow corner's cutout instead of baking tables; the visual suite's reference.
         pub fn disable_cutout_tables(&mut self) {
             self.driver.disable_cutout_tables();

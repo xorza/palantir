@@ -7,9 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::recorded_gradients::GradientId;
-use crate::shape::hash::compute_record_hash;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
-use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
 use crate::text::font_family::FontFamily;
@@ -22,16 +20,16 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     #[track_caller]
     fn moves(label: &str, a: &ShapeRecord, b: &ShapeRecord) {
         assert_ne!(
-            compute_record_hash(a),
-            compute_record_hash(b),
+            a.content_hash(),
+            b.content_hash(),
             "{label}: the field never reaches the hasher",
         );
     }
     #[track_caller]
     fn excluded(label: &str, a: &ShapeRecord, b: &ShapeRecord) {
         assert_eq!(
-            compute_record_hash(a),
-            compute_record_hash(b),
+            a.content_hash(),
+            b.content_hash(),
             "{label}: the field must stay out of the hash",
         );
     }
@@ -792,12 +790,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         bbox,
         ramp,
     };
-    let cubic = CurveBasis::Cubic {
+    let cubic = CurveBasis::Cubic(CubicBezier {
         p0: Vec2::ZERO,
         p1: Vec2::ZERO,
         p2: Vec2::ZERO,
         p3: Vec2::ZERO,
-    };
+    });
     let none = CurveRamp::None;
     let interned = |id, hash| CurveRamp::Interned {
         id: GradientId(id),
@@ -810,12 +808,12 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &base,
         &curve(
             LineCap::Butt,
-            CurveBasis::Arc {
+            CurveBasis::Arc(CircularArc {
                 center: Vec2::ZERO,
                 radius: 1.0,
-                a0: 0.0,
-                a1: 1.0,
-            },
+                start_angle: 0.0,
+                sweep: 1.0,
+            }),
             stroke,
             Rect::ZERO,
             none,

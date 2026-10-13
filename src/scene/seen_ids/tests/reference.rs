@@ -2,6 +2,7 @@
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
+use crate::scene::node::ident::IdKind;
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId};
 use std::mem;
 
@@ -70,9 +71,9 @@ impl Reference {
         self.curr.recorded().collect()
     }
 
-    pub(super) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> ResolvedId {
+    pub(super) fn resolve(&mut self, raw_id: WidgetId, kind: IdKind) -> ResolvedId {
         if let Some(&entry) = self.curr.index.get(&raw_id) {
-            if is_explicit && self.curr.entries[entry].endpoint.is_none() {
+            if kind == IdKind::Explicit && self.curr.entries[entry].endpoint.is_none() {
                 return ResolvedId {
                     id: raw_id,
                     entry: entry as u32,
@@ -90,7 +91,7 @@ impl Reference {
             }
         };
         self.counters.insert(raw_id, count);
-        if is_explicit {
+        if kind == IdKind::Explicit {
             self.pending.push((raw_id, final_id));
         }
         self.reserve(final_id)

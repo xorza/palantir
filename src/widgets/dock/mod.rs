@@ -11,9 +11,9 @@ pub(crate) mod dock_tab;
 pub(crate) mod dock_tabs;
 pub(crate) mod dock_view;
 pub(crate) mod error;
-pub(crate) mod pane_geometry;
+mod pane_geometry;
 pub(crate) mod split_side;
-pub(crate) mod tab_drag;
+mod tab_drag;
 pub(crate) mod tab_group;
 
 #[cfg(test)]

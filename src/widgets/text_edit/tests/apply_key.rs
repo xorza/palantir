@@ -276,7 +276,17 @@ fn external_buffer_replacement_repairs_offsets_before_edit_and_navigation() {
 
 /// Type one char via the real (cap-aware) `apply_key`.
 fn type_char(s: &mut String, state: &mut EditState, c: char, max: Option<usize>) {
-    apply_editor_key(&mut Editor::new(s, state, false, max), press(Key::Char(c)));
+    apply_editor_key(
+        &mut Editor::new(
+            s,
+            state,
+            EditRules {
+                multiline: false,
+                max_chars: max,
+            },
+        ),
+        press(Key::Char(c)),
+    );
 }
 
 /// The cap reaches the widget through `show`: typed keys stop at `max_chars` and a paste truncates to what fits ("ab" capped at 5 takes "cd" typed, then one char of "xyz").
@@ -362,7 +372,17 @@ fn ctrl_home_and_end_reach_the_document_ends() {
         ..EditState::default()
     };
     let key = |s: &mut String, state: &mut EditState, kp: KeyPress| {
-        apply_editor_key(&mut Editor::new(s, state, true, None), kp)
+        apply_editor_key(
+            &mut Editor::new(
+                s,
+                state,
+                EditRules {
+                    multiline: true,
+                    max_chars: None,
+                },
+            ),
+            kp,
+        )
     };
     assert_eq!(
         key(&mut s, &mut state, ctrl_press(Key::End)),
@@ -376,10 +396,10 @@ fn ctrl_home_and_end_reach_the_document_ends() {
     assert_eq!(state.caret, 0);
     assert_eq!(
         key(&mut s, &mut state, press(Key::End)),
-        KeyOutcome::LineEdge {
-            end: true,
-            extend: false
-        },
+        KeyOutcome::Probe(ProbeMotion {
+            target: ProbeTarget::RowEnd,
+            motion: CaretMove::Collapse,
+        }),
         "plain End is still the visual line's",
     );
 }

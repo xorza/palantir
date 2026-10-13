@@ -2,11 +2,11 @@
 //! scene's per-frame work. [`Audit`] is the single way in: warmup length, measured
 //! frame count and per-frame budget. [`Audit::run`] raises a `UiHarness`; anything
 //! rendering frames its own way (renderer fixtures, the full-tree gate, device
-//! gates through [`OffscreenTarget`]) drives [`Audit::run_frames`].
+//! gates through [`offscreen::OffscreenTarget`]) drives [`Audit::run_frames`].
 //!
 //! Both terminals are `#[track_caller]`, so cargo prints the failing test's own
-//! name, and both run inside [`with_audit`] whose per-thread counter (see
-//! `allocator.rs`) parallel tests cannot pollute.
+//! name, and both run inside [`allocator::with_audit`], whose per-thread counter
+//! parallel tests cannot pollute.
 
 #![expect(
     clippy::print_stderr,
@@ -14,12 +14,10 @@
     reason = "the allocation suite reports each failing allocation and its backtrace to the terminal"
 )]
 
-mod format;
-mod offscreen;
+pub(crate) mod format;
+pub(crate) mod offscreen;
 
-pub(crate) use format::user_frames;
-pub(crate) use offscreen::OffscreenTarget;
-
+use std::fmt;
 use std::panic::Location;
 
 use glam::UVec2;
@@ -27,7 +25,8 @@ use palantir::Ui;
 use palantir::internals::ui_harness::UiHarness;
 use palantir::internals::{PROBATION_KEEP_FRAMES, SHAPED_BUFFER_RING_FRAMES};
 
-use crate::allocator::{AuditResult, with_audit};
+use crate::allocator;
+use crate::allocator::AuditResult;
 
 /// Logical display every fixture renders at: `UiHarness`'s defaults (scale 1.0,
 /// pixel-snapped, no refresh rate) at 800×600, shared by [`Audit::run`] and
@@ -65,6 +64,25 @@ pub(crate) struct Audit {
     frames: usize,
     budget: u64,
     paint_only: bool,
+}
+
+/// One measured frame, as every report about it names it.
+#[derive(Clone, Copy, Debug)]
+struct MeasuredFrame {
+    at: &'static Location<'static>,
+    index: usize,
+    frames: usize,
+    warmup: usize,
+}
+
+impl fmt::Display for MeasuredFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "alloc-audit {}: frame {}/{} (after {} warmup)",
+            self.at, self.index, self.frames, self.warmup,
+        )
+    }
 }
 
 /// What an audit observed. The worst frame is the number that matters to a budget;
@@ -181,22 +199,25 @@ impl Audit {
         };
 
         let mut counts = Vec::with_capacity(self.frames);
-        for i in 0..self.frames {
+        for index in 0..self.frames {
+            let measured = MeasuredFrame {
+                at,
+                index,
+                frames: self.frames,
+                warmup,
+            };
             let mut recorded = false;
-            let result = with_audit(|| recorded = frame());
+            let result = allocator::with_audit(|| recorded = frame());
             if recorded == self.paint_only {
                 let what = if recorded {
                     "ran the scene, but the audit is paint_only"
                 } else {
                     "skipped the scene, so the audit measured none of it — see Audit::paint_only"
                 };
-                panic!(
-                    "alloc-audit {at}: frame {i}/{} (after {warmup} warmup) {what}",
-                    self.frames,
-                );
+                panic!("{measured} {what}");
             }
             if result.allocs > self.budget {
-                self.fail(at, i, warmup, result);
+                self.fail(measured, result);
             }
             counts.push(result.allocs);
         }
@@ -241,7 +262,7 @@ impl Audit {
         let mut warmup = 0;
         let mut stable = 0;
         while warmup < MAX_WARMUP {
-            let result = with_audit(|| {
+            let result = allocator::with_audit(|| {
                 frame();
             });
             warmup += 1;
@@ -257,21 +278,14 @@ impl Audit {
         warmup
     }
 
-    fn fail(
-        self,
-        at: &'static Location<'static>,
-        frame_idx: usize,
-        warmup: usize,
-        mut result: AuditResult,
-    ) -> ! {
+    fn fail(self, measured: MeasuredFrame, mut result: AuditResult) -> ! {
         eprintln!(
-            "alloc-audit {at}: frame {frame_idx}/{} (after {warmup} warmup) allocated {} times, \
-             {} B — budget is {}/frame",
-            self.frames, result.allocs, result.bytes, self.budget,
+            "{measured} allocated {} times, {} B — budget is {}/frame",
+            result.allocs, result.bytes, self.budget,
         );
         let traced = result.traces.len() as u64;
         for (i, bt) in result.traces.iter_mut().enumerate() {
-            eprintln!("--- alloc #{i} backtrace ---\n{}", user_frames(bt));
+            eprintln!("--- alloc #{i} backtrace ---\n{}", format::user_frames(bt));
         }
         if result.allocs > traced {
             eprintln!(
@@ -283,8 +297,8 @@ impl Audit {
             "(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)"
         );
         panic!(
-            "alloc budget exceeded at {at} on frame {frame_idx} (budget {}/frame, got {})",
-            self.budget, result.allocs,
+            "alloc budget exceeded at {} on frame {} (budget {}/frame, got {})",
+            measured.at, measured.index, self.budget, result.allocs,
         );
     }
 }

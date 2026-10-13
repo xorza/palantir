@@ -1,10 +1,8 @@
 //! Every input a cascade run reads, hashed into one value per frame.
 
+use crate::cascade::cascade_source::CascadeSource;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::display::Display;
-use crate::layout::Layout;
-use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use std::hash::Hasher as _;
@@ -16,7 +14,7 @@ use std::hash::Hasher as _;
 pub(crate) struct CascadeKey {
     /// `Display::scale_factor` bits, the walk's only display read; surface size arrives via [`LayerKey::rects`].
     scale: u32,
-    /// `TextShaper::font_epoch`: a later font load can move ink extent without moving any rect or authoring.
+    /// [`CascadeSource::font_epoch`].
     font_epoch: u32,
     layers: PerLayer<LayerKey>,
 }
@@ -35,7 +33,13 @@ struct LayerKey {
 }
 
 impl CascadeKey {
-    pub(crate) fn new(forest: &Forest, layout: &Layout, display: Display, font_epoch: u32) -> Self {
+    pub(crate) fn new(source: CascadeSource<'_>) -> Self {
+        let CascadeSource {
+            forest,
+            layout,
+            display,
+            font_epoch,
+        } = source;
         let mut layers = PerLayer::<LayerKey>::default();
         for (layer, tree) in forest.trees.iter_paint_order() {
             let mut paint = Hasher::new();

@@ -3,7 +3,7 @@
 //! (draw groups split on text↔quad transitions), chrome concentricity, and premultiplied-alpha blending.
 
 use crate::support;
-use crate::support::{api, captioned_cell, demo_cell, note, section, swatch_bg, tiles};
+use crate::support::{DemoCell, Section, Surface, api};
 use palantir::widget::Shape;
 use palantir::{
     Align, Background, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke,
@@ -11,14 +11,12 @@ use palantir::{
 };
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "Id collisions",
-        &[api!(
+    Section::new("Id collisions")
+        .apis(&[api!(
             Button::id_salt as fn(Button<'static>, &'static str) -> Button<'static>
-        )],
-        |ui| {
-            note(
+        )])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "The first row reuses one explicit id across siblings and gets the \
                  magenta outline. The second row is clean.",
@@ -45,56 +43,61 @@ pub(crate) fn build(ui: &mut Ui) {
                     .label("clean B")
                     .show(ui);
             });
-        },
-    );
+        });
 
-    section(ui, "Text z-order", &[], |ui| {
-        note(
+    Section::new("Text z-order").show(ui, |ui| {
+        support::note(
             ui,
             "Record order decides what covers what, quads and text alike.",
         );
-        tiles(ui, |ui| {
-            zorder_cell(ui, "text over an earlier quad", false);
-            zorder_cell(ui, "quad recorded AFTER the text covers it", true);
+        support::tiles(ui, |ui| {
+            zorder_cell(ui, "text over an earlier quad", Order::TextOver);
+            zorder_cell(
+                ui,
+                "quad recorded AFTER the text covers it",
+                Order::QuadOver,
+            );
         });
     });
 
-    section(ui, "Chrome and blending", &[], |ui| {
-        note(
+    Section::new("Chrome and blending").show(ui, |ui| {
+        support::note(
             ui,
             "Concentric corners, and premultiplied-alpha repros over a magenta \
                  backdrop.",
         );
-        tiles(ui, |ui| {
-            captioned_cell(
-                ui,
-                "chrome concentricity",
-                support::TILE,
-                support::TILE,
-                concentricity,
-            );
-            demo_cell(ui, "premul — solid α 0.5, expect grey", translucent_solid);
-            demo_cell(ui, "premul — per-point α 0.5", translucent_per_point);
-            demo_cell(
-                ui,
-                "premul — α 0.25, expect slight tint",
-                translucent_quarter,
-            );
+        support::tiles(ui, |ui| {
+            DemoCell::new("chrome concentricity")
+                .surface(Surface::Bare)
+                .show(ui, concentricity);
+            DemoCell::new("premul — solid α 0.5, expect grey").show(ui, translucent_solid);
+            DemoCell::new("premul — per-point α 0.5").show(ui, translucent_per_point);
+            DemoCell::new("premul — α 0.25, expect slight tint").show(ui, translucent_quarter);
         });
     });
 }
 
-#[track_caller]
-fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
-    captioned_cell(ui, label, support::TILE, support::TILE, |ui| {
+/// Which of a z-order cell's text and second quad records last.
+#[derive(Clone, Copy, Debug)]
+enum Order {
+    /// The text over the backdrop quad, nothing after it.
+    TextOver,
+    /// A dark quad recorded after the text, covering it.
+    QuadOver,
+}
+
+fn zorder_cell(ui: &mut Ui, label: &'static str, order: Order) {
+    DemoCell::new(label).surface(Surface::Bare).show(ui, |ui| {
         Panel::zstack()
-            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(12.0)
             .show(ui, |ui| {
                 Block::new()
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(swatch_bg(if quad_after { support::B } else { support::A }))
+                    .background(support::swatch_bg(match order {
+                        Order::TextOver => support::A,
+                        Order::QuadOver => support::B,
+                    }))
                     .show(ui);
                 Text::new("T-shirt")
                     .style(
@@ -103,10 +106,10 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, quad_after: bool) {
                             .with_color(RgbaF32::hex(0x14161a)),
                     )
                     .show(ui);
-                if quad_after {
+                if matches!(order, Order::QuadOver) {
                     Block::new()
                         .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                        .background(swatch_bg(RgbaF32::hex(0x14161a)))
+                        .background(support::swatch_bg(RgbaF32::hex(0x14161a)))
                         .show(ui);
                 }
             });

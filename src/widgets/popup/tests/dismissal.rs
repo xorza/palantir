@@ -2,17 +2,18 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
+use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::click_outside::ClickOutside;
 use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
-use crate::{Sense, Ui};
 use glam::Vec2;
 
 #[test]

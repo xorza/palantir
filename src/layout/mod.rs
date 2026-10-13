@@ -4,7 +4,6 @@
 //! container kind is a [`LayoutDriver`](drivers::LayoutDriver) reached through one dispatch.
 
 mod axis_align_pair;
-mod axis_placement;
 mod axis_share;
 mod axis_slot;
 pub(crate) mod cache;
@@ -16,10 +15,12 @@ mod fill_item;
 mod hug_item;
 pub(crate) mod intrinsic;
 mod justify_offsets;
+pub(crate) mod layer_input;
 pub(crate) mod layer_layout;
 pub(crate) mod layout_scratch;
 pub(crate) mod measured;
 pub(crate) mod pass;
+mod placed_child;
 pub(crate) mod text;
 
 use crate::layout::layer_layout::LayerLayout;

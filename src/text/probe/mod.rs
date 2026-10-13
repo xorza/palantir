@@ -75,7 +75,7 @@ impl<'a> TextProbe<'a> {
     /// assert_ne!(TextProbe::hash_of("hello"), TextProbe::hash_of("world"));
     /// ```
     pub fn hash_of(text: &str) -> NonZeroU64 {
-        TextShapeKey::content_hash(hash::hash_str(text))
+        TextShapeKey::content_hash(hash::str(text))
     }
 
     fn line_height(&self) -> f32 {
@@ -224,9 +224,14 @@ impl<'a> TextProbe<'a> {
             return;
         };
         let lines = LineMap::new(buffer, self.text);
-        let (start, end) = (lines.cursor(range.start), lines.cursor(range.end));
+        let selection = lines.cursor(range.start)..lines.cursor(range.end);
+        // Back from buffer space to block-local, as `caret_at` reports.
+        let mut block_local = |mut rect: Rect| {
+            rect.min.x -= left;
+            out(rect);
+        };
         for run in buffer.layout_runs() {
-            push_run_selection_rects(&run, start, end, left, &mut out);
+            push_run_selection_rects(&run, &selection, &mut block_local);
         }
     }
 }
@@ -255,13 +260,16 @@ fn empty_line_x(block_w: f32, halign: HAlign) -> f32 {
     }
 }
 
+/// The rects `selection` covers on `run`, in buffer space.
 fn push_run_selection_rects(
     run: &cosmic_text::LayoutRun<'_>,
-    cursor_start: cosmic_text::Cursor,
-    cursor_end: cosmic_text::Cursor,
-    left: f32,
+    selection: &Range<cosmic_text::Cursor>,
     out: &mut impl FnMut(Rect),
 ) {
+    let Range {
+        start: cursor_start,
+        end: cursor_end,
+    } = *selection;
     // Runs outside the selected lines are rejected first, as cosmic-text's editor
     // does: the per-grapheme test below treats a run whose line differs from both
     // cursors as fully selected.
@@ -273,12 +281,7 @@ fn push_run_selection_rects(
         if let Some((min_x, max_x)) = selected.take() {
             let width = max_x - min_x;
             if width > 0.0 {
-                out(Rect::new(
-                    min_x - left,
-                    run.line_top,
-                    width,
-                    run.line_height,
-                ));
+                out(Rect::new(min_x, run.line_top, width, run.line_height));
             }
         }
     };

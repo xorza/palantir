@@ -93,6 +93,7 @@ impl Display {
     ///
     /// For an embedder assembling a frame itself; Palantir's hosts mint theirs
     /// through `WindowDriver`, which supplies `pixel_snap` and `user_scale`.
+    ///
     /// # Panics
     ///
     /// Panics unless `system_scale` is finite and at least `1e-4`.

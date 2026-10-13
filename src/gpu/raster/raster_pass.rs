@@ -9,7 +9,7 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
-use crate::gpu::raster::raster_atlas::{RasterAtlas, RasterAtlasConfig};
+use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::paint::content_type::ContentType;
@@ -99,12 +99,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
     /// whose extents or bearing overflow [`PackedMetadata`], or that covers no
     /// pixels, takes a slot owning no rectangle, so the key is a hit forever and
     /// the rasterizer runs once.
-    pub(super) fn insert_raster(
-        &mut self,
-        device: &wgpu::Device,
-        key: K,
-        image: RasterImage<'_>,
-    ) -> Rasterized {
+    pub(super) fn insert_raster(&mut self, key: K, image: RasterImage<'_>) -> Rasterized {
         let Some(metadata) = PackedMetadata::new(image.size, image.bearing) else {
             tracing::warn!(
                 ?key,
@@ -120,10 +115,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         if metadata.is_empty() {
             return Rasterized::Slot(self.atlas.insert_unallocated(key));
         }
-        if let Some(idx) = self
-            .atlas
-            .insert(device, key, image.content, metadata, image.data)
-        {
+        let raster = PackedRaster {
+            metadata,
+            content: image.content,
+            pixels: image.data,
+        };
+        if let Some(idx) = self.atlas.insert(key, raster) {
             Rasterized::Slot(idx)
         } else {
             self.note_atlas_starved();

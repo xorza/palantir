@@ -6,8 +6,8 @@
 
 use crate::display::Display;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
-use crate::renderer::frontend::composer::higher_kind::HigherKindRects;
-use crate::renderer::frontend::composer::occlusion::OcclusionPruner;
+use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
+use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
@@ -22,11 +22,13 @@ use std::time::Duration;
 pub(crate) mod bench;
 mod clip_stack;
 mod geometry;
-mod higher_kind;
-mod occlusion;
+mod higher_kind_rects;
+mod occlusion_pruner;
+mod phys_map;
 pub(crate) mod session;
 // `pub(crate)` only so `bench::driver` can name `rect_grid::bench`.
 pub(crate) mod rect_grid;
+mod stroke_bbox;
 mod transform_stack;
 
 /// The retained half of the CPU compose engine: buffers and stacks kept across

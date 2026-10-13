@@ -1,7 +1,7 @@
 //! The incremental walk against a full one, and the gates that bust reuse.
 
-use crate::Ui;
-use crate::cascade::engine::{CascadeContext, build_cascade_prefix, finish_cascade_input};
+use crate::cascade::cascade_input_hash::CascadeInputHash;
+use crate::cascade::engine::CascadeContext;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -18,9 +18,10 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::font_scope::internals::INTER;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -29,11 +30,12 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
     use crate::primitives::math::domain::EPS;
 
     let hash = |transform, rect| {
-        let prefix = build_cascade_prefix(CascadeContext {
+        let prefix = CascadeContext {
             transform,
             ..CascadeContext::ROOT
-        });
-        finish_cascade_input(&prefix, rect, false)
+        }
+        .prefix();
+        CascadeInputHash::finish(&prefix, rect, false)
     };
     let baseline = hash(TranslateScale::IDENTITY, Rect::ZERO);
     assert_eq!(
@@ -271,7 +273,7 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
     assert_eq!(
         h.engines.cascade.counters.abandoned_incrementals(),
         baseline,
-        "a row-count change must be caught by `can_update`, not discovered mid-walk",
+        "a row-count change must be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
     );
 
     let rows = h.ui.cascade().layers[Layer::Main]
@@ -281,10 +283,7 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
         .map(|span| span.len)
         .max()
         .expect("nodes recorded");
-    assert!(
-        rows >= 2,
-        "the rebuilt cascade must carry both shape rows, got {rows}",
-    );
+    assert_eq!(rows, 2, "the rebuilt cascade must carry both shape rows");
 }
 
 /// Every cascade input moves the key and takes the path its kind calls for. An
@@ -400,7 +399,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         assert_eq!(
             h.engines.cascade.counters.abandoned_incrementals(),
             abandoned,
-            "`{label}` should be caught by `can_update`, not discovered mid-walk",
+            "`{label}` should be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
         );
         assert_cascades_match_full(&h.ui, label);
     }
@@ -489,22 +488,18 @@ fn refresh_recomputes_only_what_moved() {
 
 fn assert_cascades_match_full(ui: &Ui, label: &str) {
     use crate::cascade::Cascade;
-    use crate::cascade::cascade_key::CascadeKey;
+    use crate::cascade::cascade_source::CascadeSource;
     use crate::cascade::engine::CascadeEngine;
 
     let mut engine = CascadeEngine::default();
     let mut full = Cascade::default();
-    let key = CascadeKey::new(
-        ui.forest(),
-        ui.layout_tables(),
-        ui.display(),
-        ui.font_epoch(),
-    );
     engine.run_full(
-        ui.forest(),
-        ui.layout_tables(),
-        ui.display(),
-        &key,
+        CascadeSource {
+            forest: ui.forest(),
+            layout: ui.layout_tables(),
+            display: ui.display(),
+            font_epoch: ui.font_epoch(),
+        },
         &mut full,
     );
     assert_eq!(ui.cascade().key, full.key, "{label}: key");

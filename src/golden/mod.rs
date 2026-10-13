@@ -102,6 +102,16 @@ impl DiffReport {
 /// Set to anything non-empty to rewrite every golden the run touches.
 const UPDATE: &str = "UPDATE_GOLDEN";
 
+/// What a comparison does with a golden that is missing, fails, or was written on another
+/// adapter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OnMismatch {
+    /// Write a missing golden, then fail; fail anything else.
+    Fail,
+    /// Rewrite it and pass: an [`UPDATE`] run.
+    Rewrite,
+}
+
 /// A directory of golden images and the tolerance they are held to: goldens at
 /// `<root>/golden/<name>.png`, failure artifacts in `<root>/output/<name>/`.
 #[derive(Debug, Clone)]
@@ -113,6 +123,14 @@ pub struct Goldens {
 }
 
 const ADAPTER_FILE: &str = "adapter.txt";
+
+/// A comparison that failed: the two images and what [`Tolerance::diff`] measured between them.
+#[derive(Clone, Copy, Debug)]
+struct Failure<'a> {
+    actual: &'a RgbaImage,
+    expected: &'a RgbaImage,
+    report: &'a DiffReport,
+}
 
 impl Goldens {
     /// Rooted at `root`, usually a suite's directory under `CARGO_MANIFEST_DIR`.
@@ -177,8 +195,12 @@ impl Goldens {
     /// is rewritten and passes. A pass clears an earlier failure's output.
     #[track_caller]
     pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
-        let forced = env::var_os(UPDATE).is_some_and(|value| !value.is_empty());
-        self.check(name, actual, forced);
+        let on_mismatch = if env::var_os(UPDATE).is_some_and(|value| !value.is_empty()) {
+            OnMismatch::Rewrite
+        } else {
+            OnMismatch::Fail
+        };
+        self.check(name, actual, on_mismatch);
     }
 
     /// Compare `actual` against `expected`, two images the caller holds, under the
@@ -196,18 +218,25 @@ impl Goldens {
             Self::clear_output(&output);
             return;
         }
-        let stats = self.record_failure(&output, actual, expected, &report);
+        let stats = self.record_failure(
+            &output,
+            Failure {
+                actual,
+                expected,
+                report: &report,
+            },
+        );
         panic!("`{name}`: the two images differ:\n{stats}");
     }
 
     #[track_caller]
-    fn check(&self, name: &str, actual: &RgbaImage, forced: bool) {
-        self.check_adapter(forced);
+    fn check(&self, name: &str, actual: &RgbaImage, on_mismatch: OnMismatch) {
+        self.check_adapter(on_mismatch);
         let golden = self.golden_path(name);
         let output = self.output_dir(name);
         if !golden.exists() {
             self.write(&golden, actual);
-            if forced {
+            if on_mismatch == OnMismatch::Rewrite {
                 return;
             }
             panic!(
@@ -225,7 +254,7 @@ impl Goldens {
             Self::clear_output(&output);
             return;
         }
-        if forced {
+        if on_mismatch == OnMismatch::Rewrite {
             self.write(&golden, actual);
             Self::clear_output(&output);
             return;
@@ -238,7 +267,14 @@ impl Goldens {
             );
         };
 
-        let stats = self.record_failure(&output, actual, &expected, &report);
+        let stats = self.record_failure(
+            &output,
+            Failure {
+                actual,
+                expected: &expected,
+                report: &report,
+            },
+        );
         panic!(
             "`{name}` does not match its golden:\n{stats}\n\
              Re-run with {UPDATE}=1 once the change is the one you wanted."
@@ -246,14 +282,14 @@ impl Goldens {
     }
 
     #[track_caller]
-    fn check_adapter(&self, forced: bool) {
+    fn check_adapter(&self, on_mismatch: OnMismatch) {
         let Some(adapter) = &self.adapter else {
             return;
         };
         let sidecar = self.root.join("golden").join(ADAPTER_FILE);
         match fs::read_to_string(&sidecar) {
             Ok(stored) if stored == *adapter => {}
-            Ok(stored) if !forced => panic!(
+            Ok(stored) if on_mismatch == OnMismatch::Fail => panic!(
                 "the goldens in {} were written on adapter {stored:?}, and this run draws on \
                  {adapter:?}.\nRe-run with {UPDATE}=1 to adopt this adapter's goldens.",
                 sidecar.parent().expect("sidecar has a directory").display()
@@ -280,13 +316,12 @@ impl Goldens {
         fs::rename(&staged, sidecar).expect("move the adapter sidecar into place");
     }
 
-    fn record_failure(
-        &self,
-        output: &Path,
-        actual: &RgbaImage,
-        expected: &RgbaImage,
-        report: &DiffReport,
-    ) -> String {
+    fn record_failure(&self, output: &Path, failure: Failure<'_>) -> String {
+        let Failure {
+            actual,
+            expected,
+            report,
+        } = failure;
         fs::create_dir_all(output).expect("create golden output directory");
         actual.save(output.join("actual.png")).expect("save actual");
         expected

@@ -1,9 +1,8 @@
-//! The one `queue.write_texture` seam and its per-frame counters. The image
-//! store and gradient atlas write through [`TextureRegion::write`], so a third
-//! uploader cannot skip the tally; the glyph atlas batches through
-//! `copy_buffer_to_texture` instead and is not counted. Counting is behind the
-//! `internals` feature. Not a wrapper around `wgpu::Queue`: it could not make the
-//! seam unbypassable, as [`GpuFrameContext`] hands app code the raw queue.
+//! The one `queue.write_texture` seam: the image store and gradient atlas write
+//! through [`TextureRegion::write`]; the glyph atlas batches through
+//! `copy_buffer_to_texture` instead. Not a wrapper around `wgpu::Queue`: it could
+//! not make the seam unbypassable, as [`GpuFrameContext`] hands app code the raw
+//! queue.
 //!
 //! [`GpuFrameContext`]: crate::gpu::device::gpu_frame_context::GpuFrameContext
 

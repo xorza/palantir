@@ -13,10 +13,18 @@ use crate::layout::pass::ReplayOrigin;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use glam::Vec2;
-use std::ops;
+use std::ops::Range;
 
 /// `LayoutScratch::arrange_src` entry for a node whose subtree measure did not restore from the cache, so arrange must run the drivers. `u32::MAX` cannot be an arena index.
 pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
+
+/// Where a measure-cache hit lands: the live tree, the subtree's node range in it, and the layer's output columns.
+#[derive(Debug)]
+pub(super) struct RestoreTarget<'a> {
+    pub(super) tree: &'a Tree,
+    pub(super) subtree: Range<usize>,
+    pub(super) layer: &'a mut LayerLayout,
+}
 
 /// Per-frame intermediate state, reset at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run). Capacity is retained so steady state is alloc-free.
 /// ## Cache-hit contract
@@ -98,20 +106,23 @@ impl LayoutScratch {
         grid.track_state.reset_for(tree);
     }
 
-    /// Splat per-subtree columns (scroll content, text shapes, grid hug arrays) back into the live pools after a cache hit. Here, not on `LayoutEngine`, to keep borrows of `engine.cache` disjoint.
+    /// Splat a cache hit's per-subtree columns (desired sizes, scroll content, text shapes, grid hug arrays) back into the live pools, and point each node's arrange at its snapshot row. Here, not on `LayoutEngine`, to keep borrows of `engine.cache` disjoint.
     #[inline]
     pub(super) fn restore_after_cache_hit(
         &mut self,
-        tree: &Tree,
-        subtree: ops::Range<usize>,
         cached: &CachedSubtree<'_>,
-        layer: &mut LayerLayout,
+        target: RestoreTarget<'_>,
     ) {
-        // Destructured exhaustively so a new `CachedSubtree` column cannot go unrestored. The `_` bindings: `root` and `nodes_base` describe the snapshot, and `desired` is restored by the measure-hit site.
+        let RestoreTarget {
+            tree,
+            subtree,
+            layer,
+        } = target;
+        // Destructured exhaustively so a new `CachedSubtree` column cannot go unrestored. The `_` binding: `root` describes the snapshot, and the measure-hit site returns it.
         let CachedSubtree {
             root: _,
-            nodes_base: _,
-            desired: _,
+            nodes_base,
+            desired,
             floor,
             stable_from,
             scroll_content,
@@ -123,6 +134,12 @@ impl LayoutScratch {
             text_shapes_base,
         } = cached;
 
+        self.desired[subtree.clone()].copy_from_slice(desired);
+        // Every node of the subtree, so a descendant arranged at its cached size replays
+        // even when the root, at a new size, must dispatch.
+        for (src, offset) in self.arrange_src[subtree.clone()].iter_mut().zip(0..) {
+            *src = nodes_base + offset;
+        }
         layer.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
         // Append the snapshot's text-shape range to the live buffer, rebasing its spans by `dest_start`.
         let dest_start = layer.text_shapes.len() as u32;

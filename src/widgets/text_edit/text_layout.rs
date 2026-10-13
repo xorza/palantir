@@ -73,21 +73,13 @@ impl TextLayout {
         let inner = input
             .response_rect
             .map(|rect| rect.deflated_by(input.padding));
-        let wrap_target = inner.filter(|_| input.multiline).map(|rect| rect.size.w);
         let text_align = input.text_align.unwrap_or(if input.multiline {
             Align::TOP_LEFT
         } else {
             Align::LEFT
         });
-        let ctx = ShapeCtx::new(
-            input.font,
-            input.padding,
-            wrap_target,
-            input.multiline,
-            text_align.halign(),
-        );
         Self {
-            ctx,
+            ctx: ShapeCtx::new(&input, inner, text_align.halign()),
             text_align,
             caret_room,
             inner,

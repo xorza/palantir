@@ -1,6 +1,16 @@
 //! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that `Spacing`, `Corners`, `RgbaF16`, `FillAxis` and `LoweredShadow` wrap.
 //!
-//! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. On x86_64 the F16C intrinsics run under a `#[target_feature]` unsafe inner; with static F16C the wrapper is one instruction, otherwise it branches on the cached detection. Pre-F16C x86 uses `half`'s scalar kernel (`from_f32_const`, since the detection is already settled). Other targets use `half`'s slice path.
+//! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. Each architecture's conversions are a file of their own, picked here and nowhere else: `x86_64` runs the F16C intrinsics, `portable` takes `half`'s slice path.
+
+#[cfg(not(target_arch = "x86_64"))]
+mod portable;
+#[cfg(target_arch = "x86_64")]
+mod x86_64;
+
+#[cfg(not(target_arch = "x86_64"))]
+use crate::primitives::packed::half_simd::portable as arch;
+#[cfg(target_arch = "x86_64")]
+use crate::primitives::packed::half_simd::x86_64 as arch;
 
 use crate::primitives::math::domain::EPS;
 use std::hash;
@@ -38,7 +48,7 @@ impl F16x4 {
 
     #[inline]
     pub(crate) fn from_lanes(lanes: [f32; 4]) -> Self {
-        Self(f16x4_from_f32x4(lanes))
+        Self(arch::from_f32x4(lanes))
     }
 
     /// True if any lane's magnitude exceeds the f16 bit pattern `bits` (sign ignored). `bits` must be `<= 0x7FFF`.
@@ -102,7 +112,7 @@ impl F16x4 {
 
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
-        f16x4_to_f32x4(self.0)
+        arch::to_f32x4(self.0)
     }
 
     /// Per-lane f32 multiply, re-quantized through f16.
@@ -110,7 +120,7 @@ impl F16x4 {
     /// Fused because `from_lanes(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
     #[inline]
     pub(crate) fn scaled(self, k: f32) -> Self {
-        Self(f16x4_scaled(self.0, k))
+        Self(arch::scaled(self.0, k))
     }
 
     /// The 8 storage bytes as one `u64`, for a single hasher write.
@@ -132,131 +142,6 @@ impl hash::Hash for F16x4 {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.as_u64());
-    }
-}
-
-/// The scalar encode every x86 fallback shares. `from_f32_const`, not `from_f32`: the public converter re-runs F16C detection per lane, which callers have already settled.
-#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-#[inline]
-fn f16x4_from_f32x4_scalar(src: [f32; 4]) -> [u16; 4] {
-    src.map(|v| half::f16::from_f32_const(v).to_bits())
-}
-
-#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-#[inline]
-fn f16x4_to_f32x4_scalar(bits: [u16; 4]) -> [f32; 4] {
-    bits.map(|b| half::f16::from_bits(b).to_f32_const())
-}
-
-#[inline]
-pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
-    #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-    {
-        unsafe { f16x4_to_f32x4_f16c(bits) }
-    }
-    #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-    {
-        if std::arch::is_x86_feature_detected!("f16c") {
-            return unsafe { f16x4_to_f32x4_f16c(bits) };
-        }
-        f16x4_to_f32x4_scalar(bits)
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        // `half`'s slice path: `fcvtl` on aarch64-fp16, scalar elsewhere.
-        use half::slice::HalfFloatSliceExt as _;
-        let arr: &[half::f16; 4] = bytemuck::cast_ref(&bits);
-        let mut out = [0.0f32; 4];
-        arr.convert_to_f32_slice(&mut out);
-        out
-    }
-}
-
-#[inline]
-pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
-    #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-    {
-        unsafe { f16x4_from_f32x4_f16c(src) }
-    }
-    #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-    {
-        if std::arch::is_x86_feature_detected!("f16c") {
-            return unsafe { f16x4_from_f32x4_f16c(src) };
-        }
-        f16x4_from_f32x4_scalar(src)
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        use half::slice::HalfFloatSliceExt as _;
-        let mut out = [half::f16::ZERO; 4];
-        out.convert_from_f32_slice(&src);
-        bytemuck::cast(out)
-    }
-}
-
-/// Decode, scale and re-encode in one pass; see [`F16x4::scaled`].
-#[inline]
-pub(crate) fn f16x4_scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
-    #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-    {
-        unsafe { f16x4_scaled_f16c(bits, k) }
-    }
-    #[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-    {
-        if std::arch::is_x86_feature_detected!("f16c") {
-            return unsafe { f16x4_scaled_f16c(bits, k) };
-        }
-        // One detect covers both conversions, so the fallback goes straight to the scalar pair.
-        f16x4_from_f32x4_scalar(f16x4_to_f32x4_scalar(bits).map(|v| v * k))
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        f16x4_from_f32x4(f16x4_to_f32x4(bits).map(|v| v * k))
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline]
-#[target_feature(enable = "f16c")]
-unsafe fn f16x4_scaled_f16c(bits: [u16; 4], k: f32) -> [u16; 4] {
-    use std::arch::x86_64::{
-        _MM_FROUND_TO_NEAREST_INT, _mm_cvtph_ps, _mm_cvtps_ph, _mm_loadl_epi64, _mm_mul_ps,
-        _mm_set1_ps, _mm_storel_epi64,
-    };
-    unsafe {
-        let lanes = _mm_cvtph_ps(_mm_loadl_epi64(bits.as_ptr().cast()));
-        let packed = _mm_cvtps_ph::<_MM_FROUND_TO_NEAREST_INT>(_mm_mul_ps(lanes, _mm_set1_ps(k)));
-        let mut out = [0u16; 4];
-        _mm_storel_epi64(out.as_mut_ptr().cast(), packed);
-        out
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline]
-#[target_feature(enable = "f16c")]
-unsafe fn f16x4_to_f32x4_f16c(bits: [u16; 4]) -> [f32; 4] {
-    use std::arch::x86_64::{_mm_cvtph_ps, _mm_loadl_epi64};
-    unsafe {
-        let v = _mm_loadl_epi64(bits.as_ptr().cast());
-        let f = _mm_cvtph_ps(v);
-        core::mem::transmute(f)
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline]
-#[target_feature(enable = "f16c")]
-unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
-    use std::arch::x86_64::{
-        _MM_FROUND_TO_NEAREST_INT, _mm_cvtps_ph, _mm_loadu_ps, _mm_storel_epi64,
-    };
-    unsafe {
-        let v = _mm_loadu_ps(src.as_ptr());
-        let h = _mm_cvtps_ph::<{ _MM_FROUND_TO_NEAREST_INT }>(v);
-        let mut out = [0u16; 4];
-        _mm_storel_epi64(out.as_mut_ptr().cast(), h);
-        out
     }
 }
 

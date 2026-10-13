@@ -1,8 +1,9 @@
-//! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`] and [`widget_look`](crate::widget_core::widget_look) vocabulary.
+//! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`], [`text_style_overrides`] and [`widget_look`](crate::widget_core::widget_look) vocabulary.
 //!
 //! [`Theme`] aggregates them; a widget reads only its own slice, so a bundle grows a field without changing existing widgets.
 
 pub(crate) mod button;
+pub(crate) mod check_state;
 pub(crate) mod color_picker;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
@@ -19,9 +20,12 @@ mod serde;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
+pub(crate) mod tab_selection;
+pub(crate) mod tab_strip_focus;
 pub(crate) mod tabs;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
+pub(crate) mod text_style_overrides;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
@@ -46,7 +50,8 @@ use crate::widgets::theme::spinner::SpinnerTheme;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
 

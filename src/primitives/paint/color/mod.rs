@@ -7,8 +7,6 @@
 //! convention); `Srgba` is encoded. Every conversion lives here, so the two
 //! quantize policies cannot drift.
 
-pub(crate) mod srgba_u8;
-
 pub(crate) mod color_coords;
 pub(crate) mod color_model;
 pub(crate) mod hsv;
@@ -16,6 +14,7 @@ pub(crate) mod okhsv;
 pub(crate) mod oklab;
 pub(crate) mod rgba_f16;
 mod srgb_transfer;
+pub(crate) mod srgba_u8;
 
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
@@ -189,7 +188,7 @@ impl RgbaF32 {
     /// This colour times `tint`, channel by channel with alpha: the rule for
     /// mesh, image and stroke tints.
     #[inline]
-    pub(crate) fn tinted(self, tint: Self) -> Self {
+    pub(crate) const fn tinted(self, tint: Self) -> Self {
         Self {
             r: self.r * tint.r,
             g: self.g * tint.g,

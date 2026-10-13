@@ -17,7 +17,7 @@ use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::renderer::render_buffer::curve::{CurveInstance, SEGMENTS_PER_INSTANCE};
+use crate::renderer::render_buffer::curve_instance::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use wgpu::util::DeviceExt;
 
 const INDICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
@@ -118,11 +118,10 @@ impl CurvePipeline {
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        variant: &'a StencilVariant,
-        use_stencil: bool,
+        pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        pass.set_pipeline(variant.select(use_stencil));
+        pass.set_pipeline(pipeline);
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
@@ -174,7 +173,7 @@ mod tests {
     use crate::gpu::pipeline::curve_pipeline::{
         CURVE_INDICES, INDICES_PER_INSTANCE, UNIQUE_VERTICES_PER_INSTANCE,
     };
-    use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
+    use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 
     #[test]
     fn curve_indices_tile_adjacent_cross_sections() {

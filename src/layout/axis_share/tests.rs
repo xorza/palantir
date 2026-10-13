@@ -1,5 +1,5 @@
 use crate::layout::axis_share;
-use crate::layout::fill_item::FillItem;
+use crate::layout::fill_item::{FillDemand, FillItem};
 use crate::layout::hug_item::HugItem;
 use crate::layout::measured::Measured;
 
@@ -19,7 +19,14 @@ fn fill_floors_come_first_then_hug_then_fill() {
     ];
     for (label, budget, hug_shares, fill_share, stable_from) in cases {
         let mut hugs = [HugItem::new(0, 30.0, 30.0), HugItem::new(1, 0.0, 400.0)];
-        let mut fills = [FillItem::new(2, 1.0, 20.0, f32::INFINITY)];
+        let mut fills = [FillItem::new(
+            2,
+            FillDemand {
+                weight: 1.0,
+                floor: 20.0,
+                cap: f32::INFINITY,
+            },
+        )];
         assert_eq!(
             axis_share::solve(&mut hugs, &mut fills, budget),
             stable_from,

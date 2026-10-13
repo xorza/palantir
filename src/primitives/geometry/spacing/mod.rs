@@ -23,9 +23,7 @@ impl Spacing {
     pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
     }
-}
 
-impl Spacing {
     /// The same value on all four edges.
     #[inline]
     pub fn all(v: f32) -> Self {
@@ -87,7 +85,7 @@ impl LaneCodec for Spacing {
     const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
 
     fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
+        Self::from_array(lanes)
     }
 
     fn to_lane_array(&self) -> [f32; 4] {

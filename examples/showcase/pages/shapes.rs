@@ -3,58 +3,59 @@
 //! stencil pass.
 
 use crate::support;
-use crate::support::{api, demo_cell, note, section, tiles};
+use crate::support::{DemoCell, Section, api};
 use palantir::widget::{Mesh, Shape};
 use palantir::{LinearGradient, RgbaF32, Stroke, Ui, Vec2, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(ui, "Triangles", &[api!(Shape::triangle)], |ui| {
-        note(
-            ui,
-            "One instanced quad each: coverage, rounded corners and the stroke \
+    Section::new("Triangles")
+        .apis(&[api!(Shape::triangle)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "One instanced quad each: coverage, rounded corners and the stroke \
                  all come from the signed distance field.",
-        );
-        tiles(ui, |ui| {
-            demo_cell(ui, "sharp fill", sharp);
-            demo_cell(ui, "rounded 12 px", rounded);
-            demo_cell(ui, "fill + inner stroke", stroked);
-            demo_cell(ui, "outline only", outline);
-            demo_cell(ui, "play glyph — radii 0 / 4 / 10", radii);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("sharp fill").show(ui, sharp);
+                DemoCell::new("rounded 12 px").show(ui, rounded);
+                DemoCell::new("fill + inner stroke").show(ui, stroked);
+                DemoCell::new("outline only").show(ui, outline);
+                DemoCell::new("play glyph — radii 0 / 4 / 10").show(ui, radii);
+            });
         });
-    });
 
-    section(ui, "Meshes", &[api!(type Mesh), api!(Shape::mesh)], |ui| {
-        note(
-            ui,
-            "Raw vertices and indices, sent straight to the mesh pipeline. Each \
+    Section::new("Meshes")
+        .apis(&[api!(type Mesh), api!(Shape::mesh)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "Raw vertices and indices, sent straight to the mesh pipeline. Each \
                  mesh is built once and kept in a state row.",
-        );
-        tiles(ui, |ui| {
-            demo_cell(ui, "single triangle", mesh_triangle);
-            demo_cell(ui, "star — centroid fan", polygon_star);
-            demo_cell(ui, "per-vertex gradient", gradient_quad);
-            demo_cell(ui, "5 000-vertex stress grid", stress);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("single triangle").show(ui, mesh_triangle);
+                DemoCell::new("star — centroid fan").show(ui, polygon_star);
+                DemoCell::new("per-vertex gradient").show(ui, gradient_quad);
+                DemoCell::new("2 500-vertex stress grid").show(ui, stress);
+            });
         });
-    });
 
-    section(
-        ui,
-        "Windowed rect",
-        &[api!(Shape::owner_windowed_rect)],
-        |ui| {
-            note(
+    Section::new("Windowed rect")
+        .apis(&[api!(Shape::owner_windowed_rect)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "An inverted rounded-rect fill: it paints the corner wedges and \
                  leaves the window alone, which gives rounded clipping with no \
                  stencil pass.",
             );
-            tiles(ui, |ui| {
-                demo_cell(ui, "corner mask over content", window_mask);
-                demo_cell(ui, "anatomy — translucent fill", window_anatomy);
+            support::tiles(ui, |ui| {
+                DemoCell::new("corner mask over content").show(ui, window_mask);
+                DemoCell::new("anatomy — translucent fill").show(ui, window_anatomy);
             });
-        },
-    );
+        });
 }
 
 const A: Vec2 = Vec2::new(20.0, 142.0);
@@ -161,7 +162,7 @@ fn gradient_quad(ui: &mut Ui) {
     });
 }
 
-/// 2 500 vertices, ~5 000 triangles: exercises the alloc-free claim and index-buffer growth.
+/// 2 500 vertices, 4 802 triangles: exercises the alloc-free claim and index-buffer growth.
 fn stress(ui: &mut Ui) {
     const SIDE: u32 = 50;
     const STEP: f32 = 3.0;

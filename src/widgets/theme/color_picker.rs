@@ -10,7 +10,7 @@ use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and its parts
 /// ([`crate::ColorField`], [`crate::ColorStrip`], [`crate::ColorSwatch`],

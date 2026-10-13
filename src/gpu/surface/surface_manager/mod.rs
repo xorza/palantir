@@ -7,15 +7,16 @@ use std::sync::Arc;
 use glam::UVec2;
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
-use crate::gpu::device::requested_gpu::Gpu;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
-use crate::gpu::error::{self, DriverError, SurfaceError};
+use crate::gpu::error::{DriverError, SurfaceError};
+use crate::gpu::surface::surface_usages::SurfaceUsages;
 use crate::gpu::surface::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
 use std::fmt;
 
-const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT;
+const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = SurfaceUsages::ALL.to_wgpu();
 
 /// Taken when offered. A GLES surface is the default framebuffer and
 /// advertises only `RENDER_ATTACHMENT`, so requiring this made it unusable;
@@ -186,10 +187,9 @@ fn build_surface_config(
     if caps.formats.is_empty() || caps.present_modes.is_empty() || caps.alpha_modes.is_empty() {
         return Err(SurfaceError::Incompatible);
     }
-    if !caps.usages.contains(REQUIRED_SURFACE_USAGES) {
-        return Err(SurfaceError::MissingUsages {
-            missing: error::flag_names((REQUIRED_SURFACE_USAGES - caps.usages).iter_names()),
-        });
+    let missing = SurfaceUsages::ALL.difference(SurfaceUsages::from_wgpu_truncate(caps.usages));
+    if !missing.is_empty() {
+        return Err(SurfaceError::MissingUsages { missing });
     }
     // The pipeline writes linear values and relies on an sRGB swapchain.
     let format = caps

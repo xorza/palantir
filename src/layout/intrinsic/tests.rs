@@ -1,13 +1,17 @@
-use crate::layout::intrinsic::*;
-
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
+use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::layer_input::LayerInput;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
@@ -49,7 +53,7 @@ fn intrinsic_cache_populated_after_run() {
     );
 }
 
-/// `engine.intrinsic` short-circuits on a cache hit: a sentinel in the slot must come back.
+/// `IntrinsicPass::query` short-circuits on a cache hit: a sentinel in the slot must come back.
 #[test]
 fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
@@ -92,10 +96,11 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     h.engines.layout.scratch.counters.reset_intrinsic_computes();
     let store = h.ui.record_store();
     let interned_text = store.interned_text();
-    let range =
-        h.engines
-            .layout
-            .intrinsic_range(h.ui.tree(Layer::Main), child, Axis::X, &interned_text);
+    let input = LayerInput {
+        tree: h.ui.tree(Layer::Main),
+        interned_text: &interned_text,
+    };
+    let range = IntrinsicPass::new(&mut h.engines.layout, input).range(child, Axis::X);
     assert_eq!(
         range,
         IntrinsicRange {
@@ -237,26 +242,22 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
 
     let store = h.ui.record_store();
     let interned_text = store.interned_text();
+    let input = LayerInput {
+        tree,
+        interned_text: &interned_text,
+    };
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
             h.engines.layout.forget_intrinsics();
-            let min =
-                h.engines
-                    .layout
-                    .intrinsic(tree, node, axis, LenReq::MinContent, &interned_text);
-            let max =
-                h.engines
-                    .layout
-                    .intrinsic(tree, node, axis, LenReq::MaxContent, &interned_text);
+            let mut pass = IntrinsicPass::new(&mut h.engines.layout, input);
+            let min = pass.single(node, axis, LenReq::MinContent);
+            let max = pass.single(node, axis, LenReq::MaxContent);
             let separate_computes = h.engines.layout.scratch.counters.intrinsic_computes();
 
             h.engines.layout.forget_intrinsics();
-            let range = h
-                .engines
-                .layout
-                .intrinsic_range(tree, node, axis, &interned_text);
+            let range = IntrinsicPass::new(&mut h.engines.layout, input).range(node, axis);
             let range_computes = h.engines.layout.scratch.counters.intrinsic_computes();
 
             assert_eq!(range.min, min, "{mode:?} {axis:?} min-content");

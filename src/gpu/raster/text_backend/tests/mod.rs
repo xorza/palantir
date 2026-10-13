@@ -8,7 +8,7 @@ use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::Vec2;
 use std::slice;

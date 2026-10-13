@@ -1,7 +1,8 @@
 //! `Ui::animate` end to end: the repaint it requests and the rows it drops.
 
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::animation::tests::support::{AnimUi, SLOT, setup_anim_ui};
+use crate::animation::tests::support::{self, AnimUi, SLOT};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
@@ -12,11 +13,14 @@ use std::time::Duration;
 /// First-touch settled: no repaint; in-flight retarget: repaint; repeated frames settle and stop requesting.
 #[test]
 fn animate_drives_repaint_until_settle() {
-    let AnimUi { mut h, id } = setup_anim_ui("anim-test");
+    let AnimUi { mut h, id } = support::setup_anim_ui("anim-test");
 
     let repaint = h
         .frame(|ui| {
-            let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimationSpec::FAST));
+            let _ = ui.animate(
+                AnimationRequest::new(id, SLOT, 0.0_f32),
+                Some(AnimationSpec::FAST),
+            );
             Block::new().id(id).show(ui);
         })
         .repaint_requested;
@@ -28,7 +32,10 @@ fn animate_drives_repaint_until_settle() {
     let repaint = h
         .at(Duration::from_millis(16))
         .frame(|ui| {
-            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
+            let _ = ui.animate(
+                AnimationRequest::new(id, SLOT, 1.0_f32),
+                Some(AnimationSpec::FAST),
+            );
             Block::new().id(id).show(ui);
         })
         .repaint_requested;
@@ -36,7 +43,10 @@ fn animate_drives_repaint_until_settle() {
 
     // FAST is 120 ms; frame `n` after the retarget has spent n × 16 ms: 112 at 7, 128 at 8.
     let frames = h.frames_until_idle(100, Duration::from_millis(16), |ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
+        let _ = ui.animate(
+            AnimationRequest::new(id, SLOT, 1.0_f32),
+            Some(AnimationSpec::FAST),
+        );
         Block::new().id(id).show(ui);
     });
     assert_eq!(frames, Some(8), "the 8th 16 ms frame passes 120 ms");
@@ -47,10 +57,10 @@ fn animate_drives_repaint_until_settle() {
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
     for (label, spec) in [("none", None), ("snap", Some(AnimationSpec::SNAP))] {
-        let AnimUi { mut h, id } = setup_anim_ui("anim-none");
+        let AnimUi { mut h, id } = support::setup_anim_ui("anim-none");
         let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
-            let v1 = ui.animate(id, SLOT, 7.0_f32, spec);
-            let v2 = ui.animate(id, SLOT, 9.0_f32, spec);
+            let v1 = ui.animate(AnimationRequest::new(id, SLOT, 7.0_f32), spec);
+            let v2 = ui.animate(AnimationRequest::new(id, SLOT, 9.0_f32), spec);
             Block::new().id(id).show(ui);
             [v1, v2]
         });
@@ -70,13 +80,19 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
 /// Switching from `Some(spec)` to `None` mid-flight drops the stale row, so a later retarget starts fresh.
 #[test]
 fn animate_some_then_none_drops_stale_row() {
-    let AnimUi { mut h, id } = setup_anim_ui("anim-toggle");
+    let AnimUi { mut h, id } = support::setup_anim_ui("anim-toggle");
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimationSpec::FAST));
+        let _ = ui.animate(
+            AnimationRequest::new(id, SLOT, 0.0_f32),
+            Some(AnimationSpec::FAST),
+        );
         Block::new().id(id).show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimationSpec::FAST));
+        let _ = ui.animate(
+            AnimationRequest::new(id, SLOT, 1.0_f32),
+            Some(AnimationSpec::FAST),
+        );
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -86,7 +102,7 @@ fn animate_some_then_none_drops_stale_row() {
     );
 
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, None);
+        let _ = ui.animate(AnimationRequest::new(id, SLOT, 1.0_f32), None);
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -105,10 +121,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::paint::stroke::Stroke;
     use crate::widget_core::widget_look::WidgetLook;
     use crate::widget_core::widget_look::animated_look::AnimatedLook;
-    use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+    use crate::widgets::theme::text_style::TextStyle;
+    use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
     use std::cell::Cell;
 
-    let AnimUi { mut h, id } = setup_anim_ui("look-test");
+    let AnimUi { mut h, id } = support::setup_anim_ui("look-test");
 
     let bg = Background {
         fill: RgbaF32::hex(0x336699).into(),
@@ -125,7 +142,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
-        captured.set(Some(ui.animate(id, WidgetLook::SLOT_LOOK, target, None)));
+        captured.set(Some(ui.animate(
+            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            None,
+        )));
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
@@ -156,7 +176,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     };
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
-        let _ = ui.animate(id, WidgetLook::SLOT_LOOK, target, Some(AnimationSpec::FAST));
+        let _ = ui.animate(
+            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            Some(AnimationSpec::FAST),
+        );
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -184,9 +207,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(48)).frame(|ui| {
         let target = look3.to_animated(ambient);
         captured.set(Some(ui.animate(
-            id.with("own"),
-            WidgetLook::SLOT_LOOK,
-            target,
+            AnimationRequest::new(id.with("own"), WidgetLook::SLOT_LOOK, target),
             None,
         )));
         Block::new().id(id).show(ui);
@@ -207,11 +228,14 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 #[test]
 fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     use crate::animation::easing::Easing;
-    let AnimUi { mut h, id } = setup_anim_ui("from-rest");
+    let AnimUi { mut h, id } = support::setup_anim_ui("from-rest");
     let record = |h: &mut UiHarness, at: Duration, target: f32| {
         let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {
-            value.set(ui.animate(id, SLOT, target, Some(AnimationSpec::FAST)));
+            value.set(ui.animate(
+                AnimationRequest::new(id, SLOT, target),
+                Some(AnimationSpec::FAST),
+            ));
             Block::new().id(id).show(ui);
         });
         value.get()

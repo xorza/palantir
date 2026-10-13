@@ -10,11 +10,11 @@ use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutPlan};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
-use crate::gpu::surface::viewport::build_repaint_scissors;
+use crate::gpu::surface::viewport::RepaintScissors;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::renderer::frontend::Frontend;
@@ -177,7 +177,7 @@ pub(super) struct WindowDriverBuilder<'a> {
     strategy: PresentStrategy,
     clock: Box<dyn Clock>,
     pixel_snap: bool,
-    bake_cutouts: bool,
+    cutout_mode: CutoutMode,
 }
 
 impl WindowDriverBuilder<'_> {
@@ -192,10 +192,10 @@ impl WindowDriverBuilder<'_> {
         self
     }
 
-    /// Whether to bake shadow cutout tables ([`WgpuBackend::bakes_cutouts`]); off
-    /// shades every corner, which is right on any device.
-    pub(super) const fn bake_cutouts(mut self, bake: bool) -> Self {
-        self.bake_cutouts = bake;
+    /// How shadow corners are cut, as the backend allows ([`WgpuBackend::cutout_mode`]);
+    /// [`CutoutMode::Shade`] by default, which is right on any device.
+    pub(super) const fn cutout_mode(mut self, mode: CutoutMode) -> Self {
+        self.cutout_mode = mode;
         self
     }
 
@@ -215,7 +215,7 @@ impl WindowDriverBuilder<'_> {
             clock: self.clock,
             pixel_snap: self.pixel_snap,
             target: None,
-            cutouts: CutoutPlan::new(self.bake_cutouts),
+            cutouts: CutoutPlan::new(self.cutout_mode),
         }
     }
 }
@@ -249,7 +249,7 @@ impl WindowDriver {
             strategy: PresentStrategy::DirectAdaptive,
             clock: Box::new(RealtimeClock::new()),
             pixel_snap,
-            bake_cutouts: false,
+            cutout_mode: CutoutMode::Shade,
         }
     }
 
@@ -306,8 +306,8 @@ impl WindowDriver {
             FrameInput::new(
                 FrameStamp::new(display, self.clock.now()),
                 self.output_valid,
+                self.token,
             ),
-            self.token,
             app,
         );
         self.finish_cpu_frame(frontend, report)
@@ -333,7 +333,7 @@ impl WindowDriver {
     }
 
     fn plan_cutouts(&mut self, buffer: &RenderBuffer, plan: RenderPlan) -> Census {
-        let scissors = build_repaint_scissors(plan.damage, buffer);
+        let scissors = RepaintScissors::new(plan.damage, buffer);
         self.cutouts
             .build(&buffer.quads, &scissors, buffer.display.physical)
     }
@@ -471,13 +471,13 @@ impl WindowDriver {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
     use crate::host::window_driver::WindowDriver;
 
     impl WindowDriver {
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
-            self.cutouts = CutoutPlan::new(false);
+            self.cutouts = CutoutPlan::new(CutoutMode::Shade);
         }
 
         /// Whether the target holds this driver's last output; read by offscreen tests.

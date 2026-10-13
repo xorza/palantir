@@ -3,7 +3,7 @@
 use glam::UVec2;
 
 use crate::common::tracy;
-use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::surface_manager::{swapchain_mode, vsync_of};
 use crate::window::vsync::Vsync;

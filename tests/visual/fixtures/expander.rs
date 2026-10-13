@@ -5,7 +5,6 @@ use glam::UVec2;
 use palantir::{Configure, Expander, Panel, Sizing, Text, TextWrap, Ui};
 
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_settled_scene_matches_golden;
 
 pub(crate) const SURFACE: UVec2 = UVec2::new(280, 124);
 
@@ -37,5 +36,5 @@ pub(crate) fn scene(ui: &mut Ui) {
 
 #[test]
 fn expander_open_and_closed_matches_golden() {
-    assert_settled_scene_matches_golden(GoldenName::ExpanderOpenAndClosed, SURFACE, 2, scene);
+    GoldenName::ExpanderOpenAndClosed.assert_settled_scene(SURFACE, 2, scene);
 }

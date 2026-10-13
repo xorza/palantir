@@ -3,8 +3,8 @@
 //! whose interprocess lock a bench must not block behind.
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
-use crate::gpu::device::requested_gpu::Gpu;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::surface::render_target::{self, RenderTarget};

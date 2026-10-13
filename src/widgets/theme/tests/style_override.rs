@@ -18,7 +18,8 @@ use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::Theme;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 200);

@@ -23,7 +23,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::background::Background;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::ident::{IdKind, Ident};
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::seen_ids::ResolvedId;
 use crate::ui::Ui;
@@ -381,11 +381,11 @@ impl Widget {
     }
 
     /// Identity's half of "explicit wins, the theme fills in the rest". Silence is
-    /// [`Ident::is_explicit`], not an `Option`: every widget carries an auto id from
+    /// [`IdKind::Auto`], not an `Option`: every widget carries an auto id from
     /// construction.
     #[inline]
     pub(crate) const fn fill_id(&mut self, id: WidgetId) {
-        if !self.ident.is_explicit() {
+        if matches!(self.ident.kind(), IdKind::Auto) {
             self.ident = Ident::Verbatim(id);
         }
     }

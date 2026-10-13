@@ -1,6 +1,5 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
-use crate::Ui;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::input::keyboard::key::Key;
@@ -22,9 +21,10 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
-use crate::ui::tests::support::{SURFACE, add_blink_shape, ui_with_shared};
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
@@ -211,7 +211,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
-            add_blink_shape(ui, half);
+            support::add_blink_shape(ui, half);
         });
     }
 
@@ -284,7 +284,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Text::new(label)
                 .id(WidgetId::from_hash("retained-text"))
                 .show(ui);
-            add_blink_shape(ui, half);
+            support::add_blink_shape(ui, half);
         });
     }
 
@@ -344,14 +344,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                 LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
             ));
-            add_blink_shape(ui, half);
+            support::add_blink_shape(ui, half);
         });
     }
 
     let shared = UiResources::isolated_mono();
     let atlas = shared.gradient_atlas().clone();
-    let mut a = ui_with_shared(&shared);
-    let mut b = ui_with_shared(&shared);
+    let mut a = support::ui_with_shared(&shared);
+    let mut b = support::ui_with_shared(&shared);
     let half = Duration::from_millis(500);
 
     a.frame(|ui| window_a(ui, half));
@@ -398,7 +398,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
-            add_blink_shape(ui, half);
+            support::add_blink_shape(ui, half);
         });
     }
 
@@ -427,7 +427,7 @@ fn input_policy_routes_paint_only_gate() {
                     .id(WidgetId::from_hash("inert"))
                     .size(80.0)
                     .show(ui);
-                add_blink_shape(ui, half);
+                support::add_blink_shape(ui, half);
             });
     }
 

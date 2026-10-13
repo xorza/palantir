@@ -2,7 +2,7 @@
 
 use crate::cascade::Cascade;
 use crate::cascade::cascade_key::CascadeKey;
-use crate::cascade::entry::ScopeRow;
+use crate::cascade::rows::scope_row::ScopeRow;
 use crate::common::counters::TestOnly;
 use crate::input::key_class::KeyClass;
 use crate::primitives::identity::widget_id::WidgetId;

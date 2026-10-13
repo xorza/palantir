@@ -1,7 +1,8 @@
 //! One frame of [`ROWS`] widgets retargeting their animated look: the per-widget
 //! tick every animating theme slot pays, under each kind of motion.
 
-use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped};
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
@@ -57,17 +58,20 @@ fn bench_motion(group: &mut BenchmarkGroup<'_, WallTime>, motion: Motion) {
         let second = look(RgbaF32::srgb(0.8, 0.4, 0.2), RgbaF32::BLACK);
         let spec = motion.spec();
         let mut map = AnimMapTyped::default();
+        let mut clock = AnimClock {
+            dt: 1.0 / 60.0,
+            render_frame_id: 1,
+        };
         for &id in &ids {
-            map.tick(id, SLOT, first.clone(), spec, 1.0 / 60.0, 1);
+            map.tick(AnimationRequest::new(id, SLOT, first.clone()), spec, clock);
         }
-        let mut render_frame_id = 1u64;
         let mut use_second = true;
         b.iter(|| {
-            render_frame_id += 1;
+            clock.render_frame_id += 1;
             let target = if use_second { &second } else { &first };
             use_second = !use_second;
             for &id in &ids {
-                black_box(map.tick(id, SLOT, target.clone(), spec, 1.0 / 60.0, render_frame_id));
+                black_box(map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock));
             }
         });
     });

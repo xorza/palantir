@@ -371,11 +371,11 @@ impl<T: DockTab> DockState<T> {
             return;
         }
         let mut idx = Self::ROOT;
-        for second in path.directions() {
+        for half in path.directions() {
             let DockNode::Split(s) = self.node(idx) else {
                 return;
             };
-            idx = if second { s.second } else { s.first };
+            idx = s.child(half);
         }
         if let DockNode::Split(s) = &mut self.nodes[idx.usize()] {
             s.ratio = domain::fraction_or(ratio, 0.5).clamp(RATIO_MIN, RATIO_MAX);
@@ -402,19 +402,18 @@ impl<T: DockTab> DockState<T> {
 
     /// Number of split ancestors above `id`'s group.
     fn group_depth(&self, id: TabGroupId) -> Option<u32> {
-        fn walk<T>(
-            nodes: &[DockNode<T>],
-            idx: NodeIndex,
-            id: TabGroupId,
-            depth: u32,
-        ) -> Option<u32> {
-            match &nodes[idx.usize()] {
-                DockNode::Group(g) => (g.id == id).then_some(depth),
-                DockNode::Split(s) => walk(nodes, s.first, id, depth + 1)
-                    .or_else(|| walk(nodes, s.second, id, depth + 1)),
-            }
+        self.depth_below(Self::ROOT, id)
+    }
+
+    /// Number of splits between `idx` and `id`'s group, if the group is under `idx`.
+    fn depth_below(&self, idx: NodeIndex, id: TabGroupId) -> Option<u32> {
+        match self.node(idx) {
+            DockNode::Group(g) => (g.id == id).then_some(0),
+            DockNode::Split(s) => self
+                .depth_below(s.first, id)
+                .or_else(|| self.depth_below(s.second, id))
+                .map(|depth| depth + 1),
         }
-        walk(&self.nodes, Self::ROOT, id, 0)
     }
 
     /// Replace the `target` group's node with a split of it and `new_group` on `side`.
@@ -427,8 +426,8 @@ impl<T: DockTab> DockState<T> {
         else {
             return;
         };
-        let existing_idx = NodeIndex(self.nodes.len() as u32);
-        let fresh_idx = NodeIndex(self.nodes.len() as u32 + 1);
+        let existing_idx = NodeIndex::at(self.nodes.len());
+        let fresh_idx = NodeIndex::at(self.nodes.len() + 1);
         let (first, second) = if side.new_pane_first() {
             (fresh_idx, existing_idx)
         } else {
@@ -450,91 +449,60 @@ impl<T: DockTab> DockState<T> {
     /// Re-pack `nodes` into canonical pre-order, dropping empty groups and dissolving
     /// splits with one live child, then re-point a dangling focus at the primary group.
     fn normalize(&mut self) {
-        // Liveness bottom-up.
-        fn alive<T>(nodes: &[DockNode<T>], idx: NodeIndex) -> bool {
-            match &nodes[idx.usize()] {
-                DockNode::Group(g) => !g.tabs.is_empty(),
-                DockNode::Split(s) => alive(nodes, s.first) || alive(nodes, s.second),
-            }
-        }
-        // Pre-order copy; a split with one live child dissolves into it.
-        fn copy<T: Clone>(
-            src: &[DockNode<T>],
-            idx: NodeIndex,
-            out: &mut Vec<DockNode<T>>,
-        ) -> NodeIndex {
-            match &src[idx.usize()] {
-                DockNode::Group(g) => {
-                    out.push(DockNode::Group(g.clone()));
-                    NodeIndex(out.len() as u32 - 1)
-                }
-                DockNode::Split(s) => match (alive(src, s.first), alive(src, s.second)) {
-                    (true, true) => {
-                        // Reserve the parent's slot; the children land right after.
-                        let slot = out.len();
-                        out.push(DockNode::Split(*s));
-                        let first = copy(src, s.first, out);
-                        let second = copy(src, s.second, out);
-                        out[slot] = DockNode::Split(DockSplit {
-                            first,
-                            second,
-                            ..*s
-                        });
-                        NodeIndex(slot as u32)
-                    }
-                    (true, false) => copy(src, s.first, out),
-                    (false, true) => copy(src, s.second, out),
-                    (false, false) => unreachable!("a dead subtree is dissolved by its parent"),
-                },
-            }
-        }
         assert!(
-            alive(&self.nodes, Self::ROOT),
+            self.is_alive(Self::ROOT),
             "the pinned tab keeps the tree non-empty"
         );
         let mut out = Vec::with_capacity(self.nodes.len());
-        copy(&self.nodes, Self::ROOT, &mut out);
+        self.copy_live(Self::ROOT, &mut out);
         self.nodes = out;
         if self.group(self.focused).is_none() {
             self.focused = self.primary().id;
         }
     }
 
+    /// Whether any tab survives under `idx`.
+    fn is_alive(&self, idx: NodeIndex) -> bool {
+        match self.node(idx) {
+            DockNode::Group(g) => !g.tabs.is_empty(),
+            DockNode::Split(s) => self.is_alive(s.first) || self.is_alive(s.second),
+        }
+    }
+
+    /// Copy the live subtree under `idx` onto `out` in pre-order, returning where
+    /// it landed; a split with one live child dissolves into it.
+    fn copy_live(&self, idx: NodeIndex, out: &mut Vec<DockNode<T>>) -> NodeIndex {
+        match self.node(idx) {
+            DockNode::Group(g) => {
+                out.push(DockNode::Group(g.clone()));
+                NodeIndex::at(out.len() - 1)
+            }
+            DockNode::Split(s) => match (self.is_alive(s.first), self.is_alive(s.second)) {
+                (true, true) => {
+                    // Reserve the parent's slot; the children land right after.
+                    let slot = out.len();
+                    out.push(DockNode::Split(*s));
+                    let first = self.copy_live(s.first, out);
+                    let second = self.copy_live(s.second, out);
+                    out[slot] = DockNode::Split(DockSplit {
+                        first,
+                        second,
+                        ..*s
+                    });
+                    NodeIndex::at(slot)
+                }
+                (true, false) => self.copy_live(s.first, out),
+                (false, true) => self.copy_live(s.second, out),
+                (false, false) => unreachable!("a dead subtree is dissolved by its parent"),
+            },
+        }
+    }
+
     /// Structural validation in every build. A deserialized tree is untrusted, so a
     /// violation is a returned error and indices are bounds-checked first.
-    pub(crate) fn validate(&self) -> Result<(), DockError<T>> {
-        // Walking must visit exactly slots `0..len` in order: reachability, dead slots
-        // and acyclicity in one sweep.
-        fn walk<T>(
-            nodes: &[DockNode<T>],
-            idx: NodeIndex,
-            depth: u32,
-            cap: u32,
-            expect: &mut u32,
-        ) -> Result<(), DockError<T>> {
-            if idx.0 != *expect {
-                return Err(DockError::NonCanonical);
-            }
-            if idx.usize() >= nodes.len() {
-                return Err(DockError::NodeOutOfRange { index: idx.0 });
-            }
-            *expect += 1;
-            if let DockNode::Split(s) = &nodes[idx.usize()] {
-                if depth >= cap {
-                    return Err(DockError::SplitNesting);
-                }
-                if !(RATIO_MIN..=RATIO_MAX).contains(&s.ratio) {
-                    return Err(DockError::SplitRatio { ratio: s.ratio });
-                }
-                walk(nodes, s.first, depth + 1, cap, expect)?;
-                walk(nodes, s.second, depth + 1, cap, expect)?;
-            }
-            Ok(())
-        }
+    pub(super) fn validate(&self) -> Result<(), DockError<T>> {
         let mut expect = 0;
-        // Structure, not policy: a loaded layout is checked against the depth a
-        // `DockPath` addresses; `max_depth` governs later splits only.
-        walk(&self.nodes, Self::ROOT, 0, DockPath::CAPACITY, &mut expect)?;
+        self.check_canonical(Self::ROOT, 0, &mut expect)?;
         if expect as usize != self.nodes.len() {
             return Err(DockError::UnreachableSlots);
         }
@@ -575,6 +543,39 @@ impl<T: DockTab> DockState<T> {
             return Err(DockError::MissingFocusedGroup {
                 group: self.focused,
             });
+        }
+        Ok(())
+    }
+
+    /// Walk the subtree at `idx`, which must sit in slot `*expect`, at `depth`
+    /// splits below the root. Walking must visit exactly slots `0..len` in order:
+    /// reachability, dead slots and acyclicity in one sweep. Indices are
+    /// bounds-checked before they are read, since the tree is untrusted.
+    ///
+    /// Structure, not policy: depth is checked against what a [`DockPath`]
+    /// addresses; `max_depth` governs later splits only.
+    fn check_canonical(
+        &self,
+        idx: NodeIndex,
+        depth: u32,
+        expect: &mut u32,
+    ) -> Result<(), DockError<T>> {
+        if idx.0 != *expect {
+            return Err(DockError::NonCanonical);
+        }
+        let Some(node) = self.nodes.get(idx.usize()) else {
+            return Err(DockError::NodeOutOfRange { index: idx.0 });
+        };
+        *expect += 1;
+        if let DockNode::Split(s) = node {
+            if depth >= DockPath::CAPACITY {
+                return Err(DockError::SplitNesting);
+            }
+            if !(RATIO_MIN..=RATIO_MAX).contains(&s.ratio) {
+                return Err(DockError::SplitRatio { ratio: s.ratio });
+            }
+            self.check_canonical(s.first, depth + 1, expect)?;
+            self.check_canonical(s.second, depth + 1, expect)?;
         }
         Ok(())
     }

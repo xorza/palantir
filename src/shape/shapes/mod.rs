@@ -10,7 +10,6 @@ use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::scene::record_store::RecordStore;
 use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
-use crate::shape::hash;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
 use std::fmt;
@@ -79,7 +78,7 @@ impl Shapes {
     /// Append an already-lowered record, returning its index.
     fn push(&mut self, record: ShapeRecord) -> u32 {
         let idx = self.records.len() as u32;
-        let hash = hash::compute_record_hash(&record);
+        let hash = record.content_hash();
         self.records.push(record);
         self.hashes.push(hash);
         idx

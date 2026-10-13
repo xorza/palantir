@@ -131,7 +131,7 @@ const fn grown_capacity(needed_len: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::grown_capacity;
+    use crate::gpu::resource::dynamic_buffer::grown_capacity;
 
     #[test]
     fn growth_rounds_to_the_next_power_of_two() {

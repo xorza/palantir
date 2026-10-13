@@ -5,7 +5,6 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -18,6 +17,7 @@ use crate::shape::Shape;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::rect::{RectKind, RectShape};
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::UVec2;

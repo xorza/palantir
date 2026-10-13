@@ -2,9 +2,10 @@
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widgets::theme::ThemeText;
 
-/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), supplied as [`Self::pick`]'s flag so precedence is uniform. Embedded (serde-flattened) by [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
+/// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. Embedded (serde-flattened) by [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
 // Not `Copy` because `WidgetLook` isn't.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatefulLook {
@@ -19,12 +20,16 @@ pub struct StatefulLook {
 }
 
 impl StatefulLook {
-    /// Pick precedence: disabled > active > hovered > normal. `active` is the widget's engaged flag; `disabled` / `hovered` come from `state`.
+    /// Pick precedence: disabled > active > hovered > normal, all read from `state`; `engagement` names the state that counts as active.
     #[inline(always)]
-    pub const fn pick(&self, state: &ResponseState, active: bool) -> &WidgetLook {
+    pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook {
+        let engaged = match engagement {
+            Engagement::Pressed => state.pressed(),
+            Engagement::Focused => state.focused,
+        };
         if state.disabled {
             &self.disabled
-        } else if active {
+        } else if engaged {
             &self.active
         } else if state.hovered() {
             &self.hovered

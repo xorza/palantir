@@ -1,6 +1,5 @@
 //! The rollup: what a subtree hash covers, and where its span ends.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::EPS;
@@ -8,7 +7,8 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::tests::support::{SURFACE, record};
+use crate::scene::tree::tests::support::{self, SURFACE};
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 
@@ -32,7 +32,10 @@ fn subtree_hash_stable_across_frames() {
             .response
             .node()
     };
-    assert_eq!(record(build).subtree, record(build).subtree);
+    assert_eq!(
+        support::record(build).subtree,
+        support::record(build).subtree
+    );
 }
 
 #[test]
@@ -50,8 +53,8 @@ fn subtree_hash_changes_when_descendant_changes() {
             .response
             .node()
     }
-    let h1 = record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).subtree;
-    let h2 = record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).subtree;
+    let h1 = support::record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).subtree;
+    let h2 = support::record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).subtree;
     assert_ne!(h1, h2, "leaf change must invalidate every ancestor");
 }
 
@@ -86,8 +89,8 @@ fn subtree_hash_changes_on_sibling_reorder() {
             .response
             .node()
     }
-    let h_ab = record(|ui| build(ui, false)).subtree;
-    let h_ba = record(|ui| build(ui, true)).subtree;
+    let h_ab = support::record(|ui| build(ui, false)).subtree;
+    let h_ba = support::record(|ui| build(ui, true)).subtree;
     assert_ne!(h_ab, h_ba);
 }
 
@@ -107,7 +110,10 @@ fn self_transform_change_flips_node_hash() {
     // Both transforms are non-identity: identity is the noop sentinel (`PanelExtras::DEFAULT.transform`) and would carry no row.
     let t_a = TranslateScale::from_translation(Vec2::new(1.0, 0.0));
     let t_b = TranslateScale::from_translation(Vec2::new(10.0, 0.0));
-    let (a, b) = (record(|ui| build(ui, t_a)), record(|ui| build(ui, t_b)));
+    let (a, b) = (
+        support::record(|ui| build(ui, t_a)),
+        support::record(|ui| build(ui, t_b)),
+    );
     assert_ne!(a.node, b.node, "self transform MUST change node hash");
     assert_ne!(
         a.subtree, b.subtree,
@@ -126,8 +132,8 @@ fn self_transform_change_flips_node_hash() {
     let identity = TranslateScale::IDENTITY;
     let visual_noop = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
     assert_eq!(
-        record(|ui| build(ui, identity)).node,
-        record(|ui| build(ui, visual_noop)).node,
+        support::record(|ui| build(ui, identity)).node,
+        support::record(|ui| build(ui, visual_noop)).node,
     );
 }
 

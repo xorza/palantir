@@ -11,11 +11,10 @@ use glam::UVec2;
 
 /// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
-// A multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` (256), which `write_texture`
-// does not require but wgpu passes through in one copy; any other pitch is
-// re-packed row by row.
+// `write_texture` does not require the copy alignment, but wgpu passes an aligned
+// pitch through in one copy; any other pitch is re-packed row by row.
 const _: () = assert!(
-    ROW_PITCH.is_multiple_of(256),
+    ROW_PITCH.is_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
     "gradient atlas row pitch must stay 256-aligned to keep write_texture on its single-copy path"
 );
 

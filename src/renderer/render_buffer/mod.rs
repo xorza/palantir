@@ -2,36 +2,38 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::curve::CurveInstance;
+use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
-use crate::renderer::render_buffer::icon::IconDrawRow;
-use crate::renderer::render_buffer::image::{FrameViews, ImageDrawRow, RenderTargetDraw};
-use crate::renderer::render_buffer::mesh::MeshDrawRow;
+use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
+use crate::renderer::render_buffer::image_draw_row::ImageDrawRow;
+use crate::renderer::render_buffer::mesh_draw_row::MeshDrawRow;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
+use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use soa_rs::Soa;
 use std::time::Duration;
 
-pub(crate) mod curve;
 pub(crate) mod curve_caps;
+pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;
 pub(crate) mod draw_group;
 pub(crate) mod group_batch;
-pub(crate) mod icon;
-pub(crate) mod image;
+pub(crate) mod icon_draw_row;
+pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
-pub(crate) mod mesh;
+pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
 pub(crate) mod per_group_batch;
-pub(crate) mod text;
+pub(crate) mod render_target_draw;
+pub(crate) mod rounded_clip;
 pub(crate) mod text_batch;
+pub(crate) mod text_draw_row;
 
 /// Deepest rounded-mask chain the eight-bit stencil counter can represent.
 pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
@@ -144,11 +146,4 @@ impl RenderBuffer {
         self.curves.clear();
         self.rounded_clips.clear();
     }
-}
-
-/// Physical-px rounded-clip geometry for stencil masking. `mask_rect` is the clip's full rect, **not** clamped to viewport or ancestor scissor, so corner curves stay anchored at the true edges when partially off-screen.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RoundedClip {
-    pub(crate) mask_rect: Rect,
-    pub(crate) corners: Corners,
 }

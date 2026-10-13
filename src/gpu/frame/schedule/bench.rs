@@ -24,16 +24,18 @@ use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::schedule::internals::Walk;
+use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
-use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
@@ -68,8 +70,11 @@ impl Workload {
         }
     }
 
-    const fn use_stencil(self) -> bool {
-        matches!(self, Self::RoundedChain)
+    const fn stencil(self) -> StencilMode {
+        match self {
+            Self::RoundedChain => StencilMode::Test,
+            _ => StencilMode::Off,
+        }
     }
 
     /// One rect per group. Distinct rects walk down the viewport in 8px bands (wrapping well inside it);
@@ -99,7 +104,7 @@ impl Workload {
         let mut buffer = RenderBuffer::new();
         buffer.display = Display::from_physical(UVec2::splat(VIEWPORT), 1.0);
         buffer.quads = vec![Quad::default(); groups];
-        if self.use_stencil() {
+        if self.stencil() == StencilMode::Test {
             buffer.rounded_clips = vec![RoundedClip {
                 mask_rect: Rect {
                     min: Vec2::ZERO,
@@ -108,7 +113,7 @@ impl Workload {
                 corners: Corners::all(4.0),
             }];
         }
-        let chain = if self.use_stencil() {
+        let chain = if self.stencil() == StencilMode::Test {
             Span::new(0, 1)
         } else {
             Span::default()
@@ -155,9 +160,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
             group.bench_function(Backend::Cpu.case(&case), |b| {
                 let buffer = workload.fixture(groups);
                 let walk = Walk::new(&buffer);
-                let counts = walk.run(&buffer, None, workload.use_stencil());
+                let counts = walk.run(&buffer, None, workload.stencil());
                 assert_eq!(counts.scissors, workload.scissors(groups), "{case}");
-                b.iter(|| black_box(walk.run(&buffer, None, workload.use_stencil())));
+                b.iter(|| black_box(walk.run(&buffer, None, workload.stencil())));
             });
         }
     }

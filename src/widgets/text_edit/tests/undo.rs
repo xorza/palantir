@@ -77,7 +77,14 @@ fn redo_stack_changes_only_on_real_edit() {
     assert_eq!(s, "a");
     assert_eq!(state.redo.len(), 1);
 
-    let mut editor = Editor::new(&mut s, &mut state, false, Some(1));
+    let mut editor = Editor::new(
+        &mut s,
+        &mut state,
+        EditRules {
+            multiline: false,
+            max_chars: Some(1),
+        },
+    );
     apply_editor_key(&mut editor, press(Key::Char('x')));
     assert!(!editor.edited());
     assert_eq!(editor.text(), "a");
@@ -96,14 +103,28 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
     };
 
     apply_editor_key(
-        &mut Editor::new(&mut s, &mut state, false, Some(1)),
+        &mut Editor::new(
+            &mut s,
+            &mut state,
+            EditRules {
+                multiline: false,
+                max_chars: Some(1),
+            },
+        ),
         press(Key::Backspace),
     );
     assert_eq!(s, "a");
     assert_eq!(state.undo.len(), 1);
 
     apply_editor_key(
-        &mut Editor::new(&mut s, &mut state, false, Some(1)),
+        &mut Editor::new(
+            &mut s,
+            &mut state,
+            EditRules {
+                multiline: false,
+                max_chars: Some(1),
+            },
+        ),
         press(Key::Char('x')),
     );
     assert_eq!(s, "a");
@@ -111,7 +132,14 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
     assert_eq!(state.last_edit_kind, Some(EditKind::Delete));
 
     apply_editor_key(
-        &mut Editor::new(&mut s, &mut state, false, Some(1)),
+        &mut Editor::new(
+            &mut s,
+            &mut state,
+            EditRules {
+                multiline: false,
+                max_chars: Some(1),
+            },
+        ),
         press(Key::Backspace),
     );
     assert_eq!(s, "");

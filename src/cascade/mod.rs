@@ -6,19 +6,23 @@
 pub(crate) mod bench;
 pub(crate) mod cascade_input_hash;
 pub(crate) mod cascade_key;
+pub(crate) mod cascade_source;
 pub(crate) mod counters;
 pub(crate) mod engine;
-pub(crate) mod entry;
 pub(crate) mod layer_cascade;
 pub(crate) mod paint;
 mod paint_rect;
+pub(crate) mod rows;
 
 use crate::cascade::cascade_key::CascadeKey;
-use crate::cascade::entry::{
-    ArrowGroupRow, EntryRow, HitRow, HitTargets, PressTargets, RootRow, ScopeRow, TabDirection,
-    TabDomain, TabStopRow, WidgetLocation,
-};
 use crate::cascade::layer_cascade::LayerCascade;
+use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
+use crate::cascade::rows::entry_row::EntryRow;
+use crate::cascade::rows::hit_row::HitRow;
+use crate::cascade::rows::root_row::RootRow;
+use crate::cascade::rows::scope_row::ScopeRow;
+use crate::cascade::rows::tab_stop_row::TabStopRow;
+use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::endpoint::Endpoint;
@@ -46,6 +50,55 @@ pub(crate) struct Cascade {
     pub(crate) by_id: WidgetIdMap<Endpoint>,
     /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
+}
+
+/// Where one widget's per-frame rows live: the flat
+/// [`Cascade::entries`] index plus the `(layer, node)`
+/// [`Endpoint`] the layout columns are keyed by. From
+/// [`Cascade::locate`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct WidgetLocation {
+    pub(crate) entry_idx: u32,
+    pub(crate) endpoint: Endpoint,
+}
+
+/// Which way a Tab press moves focus: Tab forward, Shift+Tab back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDirection {
+    Next,
+    Previous,
+}
+
+/// The stops one Tab press may reach; see
+/// [`Cascade::next_tab_stop`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TabDomain {
+    /// The stops recorded under one overlay root.
+    Root(WidgetId),
+    /// Every stop of one layer.
+    Layer(Layer),
+    /// The stops recorded under one arrow group.
+    Group(WidgetId),
+}
+
+/// What a press lands on: the topmost clickable row under the point and the
+/// topmost focusable one, from a single reverse scan. The answers are
+/// independent (clicking a `Button` must not steal focus from a `TextEdit`)
+/// except that a disabled row absorbs the press, so `focus` is whatever sat
+/// above it, `None` if nothing did.
+#[derive(Default, Clone, Copy, Debug)]
+pub(crate) struct PressTargets {
+    pub(crate) click: Option<WidgetId>,
+    pub(crate) focus: Option<WidgetId>,
+}
+
+/// Topmost interactive row under a point for each independent sense filter
+/// (hover, each wheel axis, pinch), from one reverse scan.
+#[derive(Default, Clone, Copy, Debug)]
+pub(crate) struct HitTargets {
+    pub(crate) hover: Option<WidgetId>,
+    pub(crate) scroll: ScrollTargets,
+    pub(crate) pinch: Option<WidgetId>,
 }
 
 impl Cascade {
@@ -243,12 +296,10 @@ impl Cascade {
     }
 }
 
-// Reached only from test harness assertions; production uses the fused walks above.
+/// What test harness assertions read; production uses the fused walks above.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::cascade::Cascade;
-    #[cfg(test)]
-    use crate::cascade::LayerCascade;
     #[cfg(test)]
     use crate::common::content_hash::ContentHash;
     use crate::input::sense::Sense;
@@ -257,12 +308,6 @@ pub(crate) mod internals {
     use crate::primitives::identity::widget_id::WidgetId;
     #[cfg(test)]
     use crate::scene::forest::Forest;
-    #[cfg(test)]
-    use crate::scene::tree::Tree;
-    #[cfg(test)]
-    use crate::scene::tree::iter::TreeItem;
-    #[cfg(test)]
-    use crate::scene::tree::node_id::NodeId;
     use glam::Vec2;
 
     /// One paint row with its owning widget; what the damage oracle diffs.
@@ -274,41 +319,6 @@ pub(crate) mod internals {
         pub(crate) hash: ContentHash,
         /// Position in the frame's paint order.
         pub(crate) rank: u32,
-    }
-
-    #[cfg(test)]
-    impl LayerCascade {
-        fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
-            let arena = &self.paint_arena;
-            let span = arena.node_spans[node.idx()];
-            // An invisible node's span is empty, and so is every one under it.
-            if span.len == 0 {
-                return;
-            }
-            let owner = tree.records.widget_id()[node.idx()];
-            let mut row = span.start as usize;
-            let push = |row: usize, out: &mut Vec<OwnedPaint>| {
-                let paint = arena.rows[row];
-                out.push(OwnedPaint {
-                    owner,
-                    screen: paint.screen,
-                    hash: paint.hash,
-                    rank: out.len() as u32,
-                });
-            };
-            if tree.chrome(node).is_some() {
-                push(row, out);
-                row += 1;
-            }
-            for item in tree.tree_items(node) {
-                match item {
-                    TreeItem::ShapeRecord(..) => push(row, out),
-                    TreeItem::Child(child) => self.owned_paints_of(tree, child.id, out),
-                }
-                row += 1;
-            }
-            debug_assert_eq!(row, span.range().end, "rows out of sync with the span");
-        }
     }
 
     impl Cascade {

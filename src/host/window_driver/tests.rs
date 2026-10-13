@@ -598,9 +598,11 @@ mod record_store_tests {
         let display = Display::from_physical(UVec2::new(112, 112), 1.0);
 
         let mesh_a = Mesh::filled_triangle(
-            Vec2::new(12.0, 14.0),
-            Vec2::new(72.0, 20.0),
-            Vec2::new(26.0, 74.0),
+            [
+                Vec2::new(12.0, 14.0),
+                Vec2::new(72.0, 20.0),
+                Vec2::new(26.0, 74.0),
+            ],
             RgbaF32::srgb(0.15, 0.65, 0.95),
         );
         let points_a = [
@@ -733,6 +735,7 @@ mod cutout_census_tests {
     use glam::UVec2;
 
     use crate::damage::Damage;
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::host::window_driver::{PresentPath, PresentStrategy, WindowDriver};
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
@@ -758,7 +761,7 @@ mod cutout_census_tests {
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let mut driver = WindowDriver::builder(WindowToken(1), &shared, true)
             .strategy(PresentStrategy::BackbufferCopy)
-            .bake_cutouts(true)
+            .cutout_mode(CutoutMode::Bake)
             .build();
         let display = Display::from_physical(UVec2::new(600, 200), 1.0);
         let cards = Cell::new(3);

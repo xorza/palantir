@@ -12,7 +12,9 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::theme::check_state::CheckState;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::toggle_chrome;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
@@ -32,7 +34,7 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            widget: ToggleChrome::row(),
+            widget: toggle_chrome::row(),
             value,
             label: TextInput::default(),
             style: None,
@@ -56,8 +58,8 @@ impl<'a> Checkbox<'a> {
         let response = self.widget.response(ui);
 
         let before = *self.value;
-        let checked = ToggleChrome::toggled(
-            ToggleChrome::activated(ui, &mut self.widget, &response),
+        let checked = toggle_chrome::toggled(
+            toggle_chrome::activated(ui, &mut self.widget, &response),
             self.value,
         );
         let changed = checked != before;
@@ -69,13 +71,16 @@ impl<'a> Checkbox<'a> {
         let indicator_width = domain::length_at_least(slot.indicator_width, 0.0);
         let check = slot.check_polyline();
         let chrome = ToggleChrome {
-            plan: slot.plan(&response, checked, theme.text),
+            row: self.widget,
+            response,
+            label: self.label,
+            plan: slot.plan(&response, CheckState::from(checked), theme.text),
             gap: slot.gap,
             boxed: Widget::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
             // Square box: the theme's corner radius stands.
             pill: None,
         };
-        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
+        let response = chrome.record_row(ui, |ui, _| {
             if checked {
                 ui.add_shape(
                     Shape::polyline(&check, Stroke::new(indicator, indicator_width))

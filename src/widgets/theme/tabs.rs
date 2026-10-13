@@ -7,11 +7,14 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::tab_selection::TabSelection;
+use crate::widgets::theme::tab_strip_focus::TabStripFocus;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Visuals for [`crate::TabStrip`], [`crate::TabbedView`] and every
 /// [`crate::DockView`] pane. One four-state look pack per selected state,
@@ -108,11 +111,10 @@ impl TabsTheme {
     }
 
     /// The cap colour a strip paints under its selected chip.
-    pub const fn cap(&self, focused: bool) -> RgbaF32 {
-        if focused {
-            self.accent
-        } else {
-            self.accent_idle
+    pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32 {
+        match focus {
+            TabStripFocus::Focused => self.accent,
+            TabStripFocus::Unfocused => self.accent_idle,
         }
     }
 
@@ -191,16 +193,15 @@ impl Default for TabsTheme {
 }
 
 impl ThemeSlot for TabsTheme {
-    type Pick = bool;
+    type Pick = TabSelection;
 
     /// The selected or unselected pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, selected: bool) -> &WidgetLook {
-        let pack = if selected {
-            &self.active
-        } else {
-            &self.inactive
+    fn look(&self, response: &ResponseState, selection: TabSelection) -> &WidgetLook {
+        let pack = match selection {
+            TabSelection::Selected => &self.active,
+            TabSelection::Unselected => &self.inactive,
         };
-        pack.pick(response, response.pressed())
+        pack.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

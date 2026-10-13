@@ -21,6 +21,7 @@ use crate::widgets::dock::pane_geometry::PaneGeometry;
 use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::panel::Panel;
+use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use ron::ser;
@@ -433,7 +434,7 @@ fn dock_path_packs_distinct_addresses() {
             .first()
             .directions()
             .collect::<Vec<_>>(),
-        [true, false],
+        [SplitHalf::Second, SplitHalf::First],
         "turns replay in root-to-leaf order"
     );
     assert_eq!(DockPath::ROOT.directions().count(), 0);

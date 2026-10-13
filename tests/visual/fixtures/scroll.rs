@@ -7,7 +7,7 @@ use palantir::{
 };
 
 use crate::golden_name::GoldenName;
-use crate::goldens::{assert_same, assert_settled_scene_matches_golden};
+use crate::goldens;
 use crate::harness::Harness;
 
 const CARD: RgbaF32 = RgbaF32::srgb(0.16, 0.20, 0.28);
@@ -26,7 +26,7 @@ fn light_thumb_theme(ui: &mut Ui) {
 /// `scene` in a padded well under the light thumb matches `golden` on its second frame, once the bar exists.
 #[track_caller]
 fn assert_well_matches_golden(golden: GoldenName, size: UVec2, scene: impl Fn(&mut Ui)) {
-    assert_settled_scene_matches_golden(golden, size, 1, |ui| {
+    golden.assert_settled_scene(size, 1, |ui| {
         light_thumb_theme(ui);
         Panel::vstack()
             .id_salt("well")
@@ -189,5 +189,5 @@ fn scroll_warm_cache_repaint_matches_the_cold_encode() {
     h.host.invalidate_target_contents();
     let warm = h.frame(scene);
     assert_eq!(warm.paint, FramePaint::Full, "the warm frame repaints");
-    assert_same("scroll_warm_cache_repaint", &warm.image, &cold.image);
+    goldens::assert_same("scroll_warm_cache_repaint", &warm.image, &cold.image);
 }

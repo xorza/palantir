@@ -1,5 +1,6 @@
 //! The indeterminate activity spinner, rotating on the paint clock.
 
+use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
@@ -101,11 +102,19 @@ impl<'a> Spinner<'a> {
         self.widget
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
-                let ArcGeometry { center, radius } = arc_geometry(diameter, width);
+                let ArcGeometry { center, radius } = ArcGeometry::new(diameter, width);
                 ui.add_shape_animated(
-                    Shape::arc(center, radius, 0.0, sweep, Stroke::new(color, width))
-                        .ramp(comet())
-                        .cap(LineCap::Round),
+                    Shape::arc(
+                        CircularArc {
+                            center,
+                            radius,
+                            start_angle: 0.0,
+                            sweep,
+                        },
+                        Stroke::new(color, width),
+                    )
+                    .ramp(comet())
+                    .cap(LineCap::Round),
                     PaintAnimation::turn(0.0, 1.0)
                         .with_period(Duration::from_secs_f32(TAU / speed))
                         .with_repeat(PaintRepeat::Forever)
@@ -129,11 +138,13 @@ struct ArcGeometry {
     radius: f32,
 }
 
-/// Insets the trace circle by half the stroke width so round caps stay inside.
-fn arc_geometry(diameter: f32, width: f32) -> ArcGeometry {
-    ArcGeometry {
-        center: Vec2::splat(diameter * 0.5),
-        radius: (diameter - width).max(0.0) * 0.5,
+impl ArcGeometry {
+    /// Insets the trace circle by half the stroke width so round caps stay inside.
+    fn new(diameter: f32, width: f32) -> Self {
+        Self {
+            center: Vec2::splat(diameter * 0.5),
+            radius: (diameter - width).max(0.0) * 0.5,
+        }
     }
 }
 

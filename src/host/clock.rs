@@ -81,7 +81,7 @@ impl Clock for FixedClock {
 
 #[cfg(test)]
 mod tests {
-    use super::{Clock, FixedClock, RealtimeClock};
+    use crate::host::clock::{Clock, FixedClock, RealtimeClock};
     use std::time::Duration;
 
     #[test]

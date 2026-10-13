@@ -2,7 +2,8 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::layout::drivers::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
-use crate::primitives::layout::track::{GridDef, Track};
+use crate::primitives::layout::grid_def::GridDef;
+use crate::primitives::layout::track::Track;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::tree::Tree;

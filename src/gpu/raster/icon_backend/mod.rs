@@ -17,8 +17,7 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;
 use crate::icons::icon_set::IconRef;
-use crate::icons::icon_table::IconId;
-use crate::renderer::render_buffer::icon::IconDrawRow;
+use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 
 /// What one [`IconBackend::prewarm`] pass covered: a scale change invalidates
 /// every raster, and a later-loaded set was never warmed.
@@ -80,7 +79,7 @@ impl IconBackend {
     /// icons flagged `filtered` prewarm; the rest are cheap on demand.
     ///
     /// Re-runs when the scale changes or a set is loaded.
-    pub(crate) fn prewarm(&mut self, ctx: &GpuCtx<'_>, scale: f32) {
+    pub(crate) fn prewarm(&mut self, scale: f32) {
         let mark = PrewarmMark {
             scale_bits: scale.to_bits(),
             epoch: self.icons.epoch(),
@@ -93,32 +92,21 @@ impl IconBackend {
             let Some(set) = self.icons.resident(slot) else {
                 continue;
             };
-            for (i, def) in set.table.icons().iter().enumerate() {
+            for (icon, def) in set.table.entries() {
                 if !def.filtered {
                     continue;
                 }
-                let icon = IconRef {
-                    set: set.id,
-                    icon: IconId(i as u16),
-                };
-                self.slot(
-                    ctx.device,
-                    IconRasterKey::for_box(icon, def.view_box * scale),
-                );
+                let icon = IconRef { set: set.id, icon };
+                self.slot(IconRasterKey::for_box(icon, def.view_box * scale));
             }
         }
     }
 
     /// Encode one batch of icon rows into instances, rasterizing atlas misses.
-    pub(crate) fn prepare_batch(
-        &mut self,
-        ctx: &GpuCtx<'_>,
-        batch_idx: usize,
-        rows: &[IconDrawRow],
-    ) {
+    pub(crate) fn prepare_batch(&mut self, batch_idx: usize, rows: &[IconDrawRow]) {
         self.pass.open_batch(batch_idx);
         for row in rows {
-            let Some(idx) = self.slot(ctx.device, row.key) else {
+            let Some(idx) = self.slot(row.key) else {
                 continue;
             };
             let slot = self.pass.atlas.slots[idx as usize]
@@ -135,13 +123,13 @@ impl IconBackend {
     /// The atlas slab index holding `key`, rasterizing on a miss. `None` when the
     /// icon could not be rasterized, or the atlas is at its ceiling with nothing
     /// evictable (transient; retried next frame).
-    fn slot(&mut self, device: &wgpu::Device, key: IconRasterKey) -> Option<u32> {
+    fn slot(&mut self, key: IconRasterKey) -> Option<u32> {
         if let Some(idx) = self.pass.atlas.touch(&key) {
             return Some(idx);
         }
         let table = self.icons.get(key.icon.set);
         let raster = self.rasterizer.rasterize(&table, key)?;
-        match self.pass.insert_raster(device, key, raster) {
+        match self.pass.insert_raster(key, raster) {
             Rasterized::Slot(idx) => Some(idx),
             Rasterized::AtlasFull => None,
         }

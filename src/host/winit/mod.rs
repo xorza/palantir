@@ -6,8 +6,6 @@
 //!
 //! Usage:
 //!
-//! Usage:
-//!
 //! ```no_run
 //! # use palantir::{AnimationSpec, Theme, Ui, WindowToken, WinitHost, WinitHostError};
 //! # fn demo() -> Result<(), WinitHostError> {
@@ -33,6 +31,29 @@ pub(crate) mod error;
 pub(crate) mod handle;
 mod input;
 mod native;
+#[cfg_attr(target_os = "macos", path = "platform/macos.rs")]
+#[cfg_attr(
+    any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    ),
+    path = "platform/linux.rs"
+)]
+#[cfg_attr(
+    not(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+    )),
+    path = "platform/other.rs"
+)]
+mod platform;
 mod runtime;
 mod window;
 mod window_set;
@@ -182,12 +203,7 @@ where
         create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
     ) -> Result<WinitHost<T>, WinitHostError> {
         let mut event_loop_builder = EventLoop::<UserEvent<T>>::with_user_event();
-        // winit's default macOS menu binds ⌘Q to `terminate:`, killing the process before the app can veto `CloseRequested`. Drop it so ⌘Q arrives as an ordinary key event.
-        #[cfg(target_os = "macos")]
-        {
-            use winit::platform::macos::EventLoopBuilderExtMacOS;
-            event_loop_builder.with_default_menu(false);
-        }
+        platform::configure_event_loop(&mut event_loop_builder);
         let event_loop = event_loop_builder
             .build()
             .map_err(|source| WinitHostError::CreateEventLoop { source })?;

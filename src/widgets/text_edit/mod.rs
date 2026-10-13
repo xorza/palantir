@@ -1,13 +1,12 @@
 //! The editable text leaf and the machinery one edit costs: buffer and selection
 //! ([`editor`], [`edit_state`]), keys and gestures ([`action`], [`input_pass`]),
 //! placement and caret mapping ([`text_layout`], [`text_geometry`], [`shape_ctx`],
-//! [`caret_paint`], [`paint_input`]), retained scroll and focus ([`view_state`]), and
+//! [`paint_input`]), retained scroll and focus ([`view_state`]), and
 //! grapheme/word walks ([`unicode`]).
 
 mod action;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-mod caret_paint;
 mod edit_state;
 mod editor;
 mod input_pass;
@@ -39,16 +38,15 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::text_edit::caret_paint::CaretPaint;
 use crate::widgets::text_edit::edit_state::{EditKind, EditState};
-use crate::widgets::text_edit::editor::Editor;
+use crate::widgets::text_edit::editor::{EditRules, Editor};
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
-use crate::widgets::text_edit::paint_input::PaintInput;
+use crate::widgets::text_edit::paint_input::{CaretPaint, PaintInput};
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
 use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInput};
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 #[derive(Clone, Default, Debug)]
@@ -370,6 +368,10 @@ impl<'a> TextEdit<'a> {
             previous_block_offset,
         });
         let ctx = layout.ctx;
+        let rules = EditRules {
+            multiline: self.multiline,
+            max_chars: self.max_chars,
+        };
         // Pre-input caret snapshot, before the input pass's clamp, so an external shrink that
         // displaces the caret still resets the blink.
         let caret_before = state.edit.caret;
@@ -384,7 +386,7 @@ impl<'a> TextEdit<'a> {
             text: self.text,
             layout: &layout,
             policy: AcceptPolicy {
-                max_chars: self.max_chars,
+                rules,
                 select_all_on_focus: self.select_all_on_focus,
                 filter,
             },
@@ -406,7 +408,7 @@ impl<'a> TextEdit<'a> {
         // history once. A disabled editor offers no menu; not recording it closes any open
         // one, else Cut / Paste / Clear would keep executing.
         let menu_edited = !response.disabled && {
-            let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
+            let mut editor = Editor::new(self.text, &mut state.edit, rules);
             editor.show_menu(ui, &snapshot, filter)
         };
         // A composition types nothing until it commits; starting one over a selection deletes the
@@ -423,7 +425,7 @@ impl<'a> TextEdit<'a> {
                 None => false,
             };
         let cleared = composing && !state.composing && {
-            let mut editor = Editor::new(self.text, &mut state.edit, ctx.multiline, self.max_chars);
+            let mut editor = Editor::new(self.text, &mut state.edit, rules);
             let had_selection = editor.has_selection();
             if had_selection {
                 editor.replace_selection("", EditKind::Delete);

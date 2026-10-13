@@ -4,9 +4,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::font_scope::internals::INTER;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
-use crate::Ui;
-use crate::internals::paint_capture::internals::assert_same_capture;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -19,7 +16,9 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{
     block::Block, button::Button, grid::Grid, panel::Panel, scroll::Scroll, text::Text,
 };
@@ -28,11 +27,9 @@ use glam::UVec2;
 /// Run `record` cold then warm and assert every captured node's rect matches. `record` pushes the nodes that matter into `capture`.
 fn assert_warm_rects_match_cold(
     h: &mut UiHarness,
-    size: UVec2,
     msg: &str,
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
-    h.resize(size);
     let cold_nodes = h.frame_value(|ui| {
         let mut nodes = Vec::new();
         record(ui, &mut nodes);
@@ -206,12 +203,7 @@ fn cache_hit_preserves_grid_cell_rects() {
     ];
     for (label, record) in cases {
         let mut h = UiHarness::with_text(UVec2::new(800, 600));
-        assert_warm_rects_match_cold(
-            &mut h,
-            UVec2::new(800, 600),
-            &format!("case: {label}"),
-            *record,
-        );
+        assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
         // The hit must land at the viewport root so grid measure is skipped and the hug-restore path runs.
         assert!(
             h.engines
@@ -343,12 +335,7 @@ fn cache_hit_preserves_per_driver_rects() {
     ];
     for (label, record) in cases {
         let mut h = UiHarness::with_text(UVec2::new(800, 600));
-        assert_warm_rects_match_cold(
-            &mut h,
-            UVec2::new(800, 600),
-            &format!("case: {label}"),
-            *record,
-        );
+        assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
     }
 }
 
@@ -425,7 +412,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     h.frame(|ui| record(ui));
     let warm = h.encode_paint();
 
-    assert_same_capture(&cold, &warm);
+    cold.assert_same(&warm);
 }
 
 /// Stress: resizes on both axes force repeated hit/replace transitions; warm rects and text shapes must equal a cold remeasure. Children probe thresholds, e.g. 400 px of rows 30 px down in a Fill canvas hold from 430, so 420 must miss.
@@ -677,9 +664,10 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
 
     h.ui.load_font(INTER).expect("the bundled Inter loads");
     h.frame(record);
-    assert!(
-        dispatches(&h) > warm,
-        "a font load must throw the snapshot away and remeasure",
+    assert_eq!(
+        dispatches(&h),
+        warm + 1,
+        "a font load must throw the snapshot away and remeasure the one run",
     );
 }
 
@@ -711,17 +699,21 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     let mut h = UiHarness::new(size);
 
     h.frame(|ui| build(ui, 0));
+    // Each of the three panels (the harness root, the outer stack, `heavy`) is walked once per
+    // axis, and each of the 31 text leaves once for both: 3·2 + 31 = 37.
     let cold = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
-    assert!(
-        cold > HEAVY,
-        "cold frame should compute the whole tree's intrinsics, got {cold}",
+    assert_eq!(
+        cold,
+        3 * 2 + HEAVY + 1,
+        "cold frame should compute the whole tree's intrinsics once",
     );
 
-    // `heavy` hits and its restored intrinsics skip a re-walk: the count is the changed chain (~root + tiny), not ~2·HEAVY.
+    // `heavy` hits and its restored intrinsics skip a re-walk: the count is the changed chain,
+    // the two panels above `tiny` once per axis and `tiny` once, 2·2 + 1 = 5, not ~2·HEAVY.
     h.frame(|ui| build(ui, 1));
     let warm = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
-    assert!(
-        warm < HEAVY / 2,
+    assert_eq!(
+        warm, 5,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
          computes (heavy={HEAVY}, cold={cold}); the cache-hit intrinsic restore \
          should bound this to the changed ancestor chain",

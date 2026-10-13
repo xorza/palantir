@@ -7,52 +7,34 @@ use crate::primitives::paint::content_type::ContentType;
 /// The group-0 binding over an atlas's `[mask, color]` sides, in two tiers: the layout outlives any pair of textures and any atlas, so it belongs to the shared [`RasterProgram`]; the bind group describes current textures and a grow replaces it via [`Self::rebind`].
 #[derive(Debug)]
 pub(super) struct BoundSides {
+    layout: SidesLayout,
+    bind_group: wgpu::BindGroup,
+}
+
+/// The shared program's layout and the label every group this atlas binds on it carries.
+#[derive(Debug)]
+pub(super) struct SidesLayout {
     /// A clone of the shared [`RasterProgram`]'s layout.
     layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
-    /// Held here so [`Self::rebind`] needs only the device and sides; the debug label tells the two atlases apart in a capture.
+    /// Tells the two atlases apart in a capture.
     label: String,
 }
 
-impl BoundSides {
-    /// Bind `sides` against the shared program's layout.
-    pub(super) fn new(
-        device: &wgpu::Device,
-        program: &RasterProgram,
-        sides: &[Side; 2],
-        stem: &str,
-    ) -> Self {
-        let layout = program.layout().clone();
-        let label = format!("{stem} atlas bg");
-        let bind_group = Self::create_bind_group(device, &layout, sides, &label);
+impl SidesLayout {
+    pub(super) fn new(program: &RasterProgram, stem: &str) -> Self {
         Self {
-            layout,
-            bind_group,
-            label,
+            layout: program.layout().clone(),
+            label: format!("{stem} atlas bg"),
         }
     }
 
-    /// Re-bind after a grow moved a side's texture. The layout is untouched, so pipelines built against it stay valid.
-    pub(super) fn rebind(&mut self, device: &wgpu::Device, sides: &[Side; 2]) {
-        self.bind_group = Self::create_bind_group(device, &self.layout, sides, &self.label);
-    }
-
-    pub(super) const fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
-    }
-
     /// The group-0 bind group itself, over the two side views.
-    fn create_bind_group(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        sides: &[Side; 2],
-        label: &str,
-    ) -> wgpu::BindGroup {
+    fn bind(&self, device: &wgpu::Device, sides: &[Side; 2]) -> wgpu::BindGroup {
         let mask = &sides[ContentType::Mask as usize];
         let color = &sides[ContentType::Color as usize];
         device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(label),
-            layout,
+            label: Some(&self.label),
+            layout: &self.layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -64,5 +46,22 @@ impl BoundSides {
                 },
             ],
         })
+    }
+}
+
+impl BoundSides {
+    /// Bind `sides` against `layout`.
+    pub(super) fn new(device: &wgpu::Device, layout: SidesLayout, sides: &[Side; 2]) -> Self {
+        let bind_group = layout.bind(device, sides);
+        Self { layout, bind_group }
+    }
+
+    /// Re-bind after a grow moved a side's texture. The layout is untouched, so pipelines built against it stay valid.
+    pub(super) fn rebind(&mut self, device: &wgpu::Device, sides: &[Side; 2]) {
+        self.bind_group = self.layout.bind(device, sides);
+    }
+
+    pub(super) const fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
     }
 }

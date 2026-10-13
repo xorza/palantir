@@ -11,7 +11,8 @@ use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse
 /// skips it and `magnitude` excludes it.
 ///
 /// Struct attribute `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
-/// unit (settle distance = magnitude over `EXPR²`); without it, the animated fields' own sum.
+/// unit (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated
+/// fields' own sum.
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -42,13 +43,10 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let mut anim: Vec<(&Ident, &Type)> = Vec::new();
     let mut snap: Vec<(&Ident, &Type)> = Vec::new();
     for f in fields {
-        let Some(ident) = f.ident.as_ref() else {
-            continue;
-        };
-        if classify_field(f)? {
-            snap.push((ident, &f.ty));
-        } else {
-            anim.push((ident, &f.ty));
+        let ident = f.ident.as_ref().expect("named fields have idents");
+        match FieldKind::of(f)? {
+            FieldKind::Snap => snap.push((ident, &f.ty)),
+            FieldKind::Animated => anim.push((ident, &f.ty)),
         }
     }
 
@@ -58,37 +56,24 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let lerp_snap = snap.iter().map(|(f, _)| {
         quote! { #f: b.#f, }
     });
+    let keep_snap: Vec<TokenStream2> = snap.iter().map(|(f, _)| quote! { #f: self.#f, }).collect();
 
     let sub_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::sub(self.#f, other.#f), }
-    });
-    let sub_snap = snap.iter().map(|(f, _)| {
-        quote! { #f: self.#f, }
     });
 
     let add_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::add(self.#f, other.#f), }
     });
-    let add_snap = snap.iter().map(|(f, _)| {
-        quote! { #f: self.#f, }
-    });
 
     let scale_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::scale(self.#f, k), }
     });
-    let scale_snap = snap.iter().map(|(f, _)| {
-        quote! { #f: self.#f, }
-    });
 
-    let mag_sq_terms: Vec<TokenStream2> = anim
-        .iter()
-        .map(|(f, _)| quote! { ::palantir::widget::Animatable::magnitude_squared(self.#f) })
-        .collect();
-    let magnitude_squared_body = if mag_sq_terms.is_empty() {
-        quote! { 0.0_f32 }
-    } else {
-        quote! { #(#mag_sq_terms)+* }
-    };
+    let magnitude_squared_body = sum_or_zero(
+        anim.iter()
+            .map(|(f, _)| quote! { ::palantir::widget::Animatable::magnitude_squared(self.#f) }),
+    );
 
     let settle_distance_squared_body = if let Some(eps) = &settle_eps {
         quote! {
@@ -96,17 +81,9 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             ::palantir::widget::Animatable::magnitude_squared(self) / (eps * eps)
         }
     } else {
-        let terms: Vec<TokenStream2> = anim
-            .iter()
-            .map(|(f, _)| {
-                quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
-            })
-            .collect();
-        if terms.is_empty() {
-            quote! { 0.0_f32 }
-        } else {
-            quote! { #(#terms)+* }
-        }
+        sum_or_zero(anim.iter().map(|(f, _)| {
+            quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
+        }))
     };
 
     let zero_anim = anim.iter().map(|(f, ty)| {
@@ -139,21 +116,21 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             fn sub(self, other: Self) -> Self {
                 Self {
                     #(#sub_anim)*
-                    #(#sub_snap)*
+                    #(#keep_snap)*
                 }
             }
             #[inline]
             fn add(self, other: Self) -> Self {
                 Self {
                     #(#add_anim)*
-                    #(#add_snap)*
+                    #(#keep_snap)*
                 }
             }
             #[inline]
             fn scale(self, k: f32) -> Self {
                 Self {
                     #(#scale_anim)*
-                    #(#scale_snap)*
+                    #(#keep_snap)*
                 }
             }
             #[inline]
@@ -182,6 +159,16 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     Ok(expanded)
 }
 
+/// `a + b + …` over `terms`, or `0.0_f32` for none.
+fn sum_or_zero(terms: impl IntoIterator<Item = TokenStream2>) -> TokenStream2 {
+    let terms: Vec<TokenStream2> = terms.into_iter().collect();
+    if terms.is_empty() {
+        quote! { 0.0_f32 }
+    } else {
+        quote! { #(#terms)+* }
+    }
+}
+
 /// The struct's `#[animate(settle_eps = EXPR)]`, if any; other options and a second tolerance error.
 fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
     let mut eps = None;
@@ -204,23 +191,34 @@ fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
     Ok(eps)
 }
 
-/// Whether the field is `#[animate(snap)]` or `skip`; unknown idents error so typos fail to compile.
-fn classify_field(f: &Field) -> syn::Result<bool> {
-    let mut snap = false;
-    for attr in &f.attrs {
-        if !attr.path().is_ident("animate") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("snap") || meta.path.is_ident("skip") {
-                snap = true;
-                Ok(())
-            } else {
-                Err(meta.error("unknown #[animate(...)] option; expected `snap` or `skip`"))
+/// How the derive treats one field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FieldKind {
+    /// Forwarded to the field's own `Animatable` impl.
+    Animated,
+    /// `#[animate(snap)]` or `skip`: takes the target's value and stays out of the arithmetic.
+    Snap,
+}
+
+impl FieldKind {
+    /// Unknown idents error, so typos fail to compile.
+    fn of(f: &Field) -> syn::Result<Self> {
+        let mut kind = Self::Animated;
+        for attr in &f.attrs {
+            if !attr.path().is_ident("animate") {
+                continue;
             }
-        })?;
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("snap") || meta.path.is_ident("skip") {
+                    kind = Self::Snap;
+                    Ok(())
+                } else {
+                    Err(meta.error("unknown #[animate(...)] option; expected `snap` or `skip`"))
+                }
+            })?;
+        }
+        Ok(kind)
     }
-    Ok(snap)
 }
 
 #[cfg(test)]

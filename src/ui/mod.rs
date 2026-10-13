@@ -14,12 +14,13 @@ pub(crate) mod singletons;
 pub(crate) mod state;
 
 use crate::animation::AnimMap;
+use crate::animation::anim_map_typed::AnimClock;
 use crate::animation::animatable::Animatable;
-use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
 use crate::cascade::Cascade;
-use crate::cascade::entry::WidgetLocation;
+use crate::cascade::WidgetLocation;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -27,12 +28,14 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
+use crate::input::arranged_frame::ArrangedFrame;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::input_state::InputState;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::key_reader::KeyReader;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -58,7 +61,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::image_registry::image_handle::ImageHandle;
-use crate::scene::forest::Forest;
+use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
@@ -190,17 +193,16 @@ impl Ui {
         self.theme = theme.into();
     }
 
-    /// Drive one application frame for `win` via [`FrameCycle`]. Pass the same
-    /// `engines` every frame; a fresh set discards the measure cache, cascade and
+    /// Drive one application frame for `input.window` via [`FrameCycle`]. Pass the
+    /// same `engines` every frame; a fresh set discards the measure cache, cascade and
     /// damage baseline, forcing a full repaint.
     pub(crate) fn frame<T: App>(
         &mut self,
         engines: &mut FrameEngines,
         input: FrameInput,
-        win: WindowToken,
         app: &mut T,
     ) -> FrameReport {
-        FrameCycle::new(self, engines).run(input, win, app)
+        FrameCycle::new(self, engines).run(input, app)
     }
 
     /// The scale the current cascade was laid out at; a host divides event
@@ -262,18 +264,21 @@ impl Ui {
     /// else the keyboard wake-gate parks off-focus presses until the next frame.
     #[inline]
     pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
-        let layer = self.forest.current_layer();
-        let parent = self.forest.current_parent_id();
-        self.input
-            .key_pressed(layer, parent, &self.cascade, shortcut)
+        let reader = KeyReader {
+            layer: self.forest.current_layer(),
+            parent: self.forest.current_parent_id(),
+        };
+        self.input.key_pressed(reader, &self.cascade, shortcut)
     }
 
     /// [`Self::key_pressed`] read as `reader` rather than the record position.
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
-        let layer = self.forest.current_layer();
-        self.input
-            .key_pressed(layer, Some(reader), &self.cascade, shortcut)
+        let reader = KeyReader {
+            layer: self.forest.current_layer(),
+            parent: Some(reader),
+        };
+        self.input.key_pressed(reader, &self.cascade, shortcut)
     }
 
     /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer
@@ -704,7 +709,8 @@ impl Ui {
         } else {
             Stroke::NONE
         };
-        self.forest.open_node(resolved, node, chrome, ring);
+        self.forest
+            .open_node(resolved, node, NodeChrome { bg: chrome, ring });
     }
 
     #[inline]
@@ -745,13 +751,19 @@ impl Ui {
     /// `Widget::response`.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
         let loc = self.last_frame_location(id);
-        let mut state = self
-            .input
-            .response_for(id, loc, &self.cascade, &self.layout);
+        let mut state = self.input.response_for(id, loc, self.arranged_frame());
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
         state.merge_disabled(self.forest.ancestor_disabled());
         state
+    }
+
+    /// Last frame's cascade and layout, as a response reads them.
+    const fn arranged_frame(&self) -> ArrangedFrame<'_> {
+        ArrangedFrame {
+            cascade: &self.cascade,
+            layout: &self.layout,
+        }
     }
 
     /// Where the most recent cascade run put `id`; uses
@@ -828,27 +840,23 @@ impl Ui {
         out
     }
 
-    /// Advance an animation row keyed by `(id, slot)` and return the current value.
-    /// [`AnimationSpec::SNAP`] and `None` land on `target` now, drop any stale row and
-    /// request no repaint.
+    /// Advance the animation row `request` names toward its target and return the
+    /// current value. [`AnimationSpec::SNAP`] and `None` land on the target now, drop
+    /// any stale row and request no repaint.
     // Keep the no-map/no-spec return in the widget's block so a static theme does
     // not pay an outlined call plus a large `V` return-slot handoff.
     #[inline(always)]
     pub fn animate<V: Animatable>(
         &mut self,
-        id: WidgetId,
-        slot: impl Into<AnimationSlot>,
-        target: V,
+        request: AnimationRequest<V>,
         spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
-        let r = self.anim.animate(
-            id,
-            slot,
-            target,
-            spec.into(),
-            self.frame_runtime.dt,
-            self.frame_runtime.render_frame_id,
-        );
+        let spec = spec.into().unwrap_or(AnimationSpec::SNAP);
+        let clock = AnimClock {
+            dt: self.frame_runtime.dt,
+            render_frame_id: self.frame_runtime.render_frame_id,
+        };
+        let r = self.anim.animate(request, spec, clock);
         if !r.settled {
             self.frame_runtime.repaint_requested = true;
         }
@@ -1011,8 +1019,7 @@ impl Ui {
     #[inline]
     pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2> {
         self.watch_pointer(PointerWake::MOVE);
-        self.input
-            .pointer_local_for(id, &self.cascade, &self.layout)
+        self.input.pointer_local_for(id, self.arranged_frame())
     }
 
     /// Currently held modifier keys. Auto-watches [`KeyboardWake::MODIFIER`]; when
@@ -1034,8 +1041,7 @@ impl Ui {
     /// [`Self::peek_pointer_pos`].
     #[inline]
     pub fn peek_pointer_local(&self, id: WidgetId) -> Option<Vec2> {
-        self.input
-            .pointer_local_for(id, &self.cascade, &self.layout)
+        self.input.pointer_local_for(id, self.arranged_frame())
     }
 
     /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch. Use the
@@ -1208,7 +1214,6 @@ pub(crate) mod internals {
         /// The active theme, for in-place edits. Gated: apps build a [`Theme`] and call
         /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
-        #[inline]
         pub fn theme_mut(&mut self) -> &mut Theme {
             Rc::make_mut(&mut self.theme)
         }

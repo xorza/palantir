@@ -11,7 +11,7 @@ fn size(w: f32, h: f32) -> U16Vec2 {
     IconRasterKey::for_box(icon(), Vec2::new(w, h)).size()
 }
 
-/// Pins the sizes doc comments quote (they went stale when [`IconSetId`] gained a generation). Each is the sum of the one below: id = slot + generation, ref = id + icon index, key = ref + `u16` box. Nothing is padded; a key is hashed per icon draw.
+/// Pins the sizes doc comments quote. Each is the sum of the one below: id = slot + generation, ref = id + icon index, key = ref + `u16` box. Nothing is padded; a key is hashed per icon draw.
 #[test]
 fn the_key_chain_is_as_wide_as_its_docs_claim() {
     assert_eq!(size_of::<IconSetId>(), 4, "two u16s");
@@ -57,11 +57,15 @@ fn aspect_survives_the_coarse_band() {
 fn oversize_boxes_clamp_to_the_ceiling_and_keep_aspect() {
     assert_eq!(
         size(4096.0, 4096.0),
-        U16Vec2::splat(MAX_RASTER_PX as u16),
+        U16Vec2::splat(MAX_RASTER_PX),
         "a deeply zoomed canvas must not ask for a 64 MB raster",
     );
     // 4:1 at the ceiling: long axis clamps, short axis follows.
     assert_eq!(size(2048.0, 512.0), U16Vec2::new(512, 128));
+    // Past `u32::MAX` px the long axis saturates to `u32::MAX`; the rounding add must not wrap it to a zero rung.
+    assert_eq!(size(1e10, 1e10), U16Vec2::splat(MAX_RASTER_PX));
+    // 4:1 there too: 512 × 2.5e9/1e10 = 128.
+    assert_eq!(size(1e10, 2.5e9), U16Vec2::new(512, 128));
 }
 
 /// A sub-pixel box still gets a slot; a zero-pixel raster can't be allocated or drawn.

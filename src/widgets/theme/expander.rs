@@ -5,11 +5,12 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
@@ -114,7 +115,7 @@ impl ThemeSlot for ExpanderTheme {
     type Pick = ();
 
     fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
-        self.looks.pick(response, response.pressed())
+        self.looks.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

@@ -57,7 +57,7 @@ fn cache_key_discriminates_every_shaping_axis() {
     assert_eq!(base.slant(), FontSlant::Normal);
     assert_eq!(
         base.text_hash,
-        TextShapeKey::content_hash(hash::hash_str("hi")),
+        TextShapeKey::content_hash(hash::str("hi")),
         "direct shaping and authoring use the same canonical text hash",
     );
     assert_eq!(
@@ -332,7 +332,7 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
     let mut store = RecordStore::default();
     let interned = store.intern("hi");
     let recorded = store.record_text(interned);
-    assert_eq!(recorded.hash, hash::hash_str("hi"));
+    assert_eq!(recorded.hash, hash::str("hi"));
     let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
 

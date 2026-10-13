@@ -1,6 +1,5 @@
 //! A line's cross extent: its max, floors and caps.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
@@ -10,6 +9,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -74,9 +74,9 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
                 .size((Sizing::HUG, Sizing::HUG))
                 .gap(5.0)
                 .show(ui, |ui| {
-                    cell(ui, "zero", zero_size.w, zero_size.h);
+                    cell(ui, "zero", zero_size);
                     if case.with_normal {
-                        cell(ui, "normal", normal_size.w, normal_size.h);
+                        cell(ui, "normal", normal_size);
                     }
                 });
         });
@@ -104,9 +104,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             .gap(0.0)
             .line_gap(0.0)
             .show(ui, |ui| {
-                cell(ui, "tall", 100.0, 60.0);
-                cell(ui, "short", 100.0, 20.0);
-                cell(ui, "next-line", 100.0, 30.0);
+                cell(ui, "tall", Size::new(100.0, 60.0));
+                cell(ui, "short", Size::new(100.0, 20.0));
+                cell(ui, "next-line", Size::new(100.0, 30.0));
             });
     });
     let tall = h.arranged(WidgetId::from_hash("tall"));
@@ -127,7 +127,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             .size((Sizing::fixed(300.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
-                cell(ui, "tall", 100.0, 60.0);
+                cell(ui, "tall", Size::new(100.0, 60.0));
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
@@ -184,13 +184,12 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                     .line_gap(7.0)
                     .show(ui, |ui| {
                         for (index, floor) in case.floors.iter().enumerate() {
-                            fill_cross_cell(
-                                ui,
-                                ["fill-a", "fill-b", "fill-c"][index],
+                            FillCrossCell {
+                                id: ["fill-a", "fill-b", "fill-c"][index],
                                 axis,
-                                60.0,
-                                *floor,
-                            );
+                                main: 60.0,
+                            }
+                            .show(ui, *floor);
                         }
                     });
             });
@@ -255,11 +254,16 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
                 .gap(5.0)
                 .line_gap(7.0)
                 .show(ui, |ui| {
-                    fill_cross_cell(ui, "mixed-fill", axis, 50.0, 40.0);
+                    FillCrossCell {
+                        id: "mixed-fill",
+                        axis,
+                        main: 50.0,
+                    }
+                    .show(ui, 40.0);
                     let fixed_size = axis.compose_size(50.0, 20.0);
-                    cell(ui, "mixed-fixed", fixed_size.w, fixed_size.h);
+                    cell(ui, "mixed-fixed", fixed_size);
                     let next_size = axis.compose_size(50.0, 10.0);
-                    cell(ui, "mixed-next", next_size.w, next_size.h);
+                    cell(ui, "mixed-next", next_size);
                 });
         });
 
@@ -286,9 +290,24 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
                 .gap(5.0)
                 .line_gap(5.0)
                 .show(ui, |ui| {
-                    fill_cross_cell(ui, "min-fill", axis, 50.0, 25.0);
-                    max_capped_fill_cross_cell(ui, "max-fill", axis, 50.0, 50.0, 35.0);
-                    fill_cross_cell(ui, "next-fill", axis, 50.0, 15.0);
+                    FillCrossCell {
+                        id: "min-fill",
+                        axis,
+                        main: 50.0,
+                    }
+                    .show(ui, 25.0);
+                    FillCrossCell {
+                        id: "max-fill",
+                        axis,
+                        main: 50.0,
+                    }
+                    .show_max_capped(ui, 50.0, 35.0);
+                    FillCrossCell {
+                        id: "next-fill",
+                        axis,
+                        main: 50.0,
+                    }
+                    .show(ui, 15.0);
                 });
         });
 
@@ -308,33 +327,40 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     }
 }
 
-fn fill_cross_cell(ui: &mut Ui, id: &'static str, axis: Axis, main: f32, min_cross: f32) -> NodeId {
-    Block::new()
-        .id(WidgetId::from_hash(id))
-        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
-        .min_size(axis.compose_size(0.0, min_cross))
-        .show(ui)
-        .node()
-}
-
-fn max_capped_fill_cross_cell(
-    ui: &mut Ui,
+/// A cell fixed at `main` on `axis` that fills its line's cross extent.
+#[derive(Clone, Copy, Debug)]
+struct FillCrossCell {
     id: &'static str,
     axis: Axis,
     main: f32,
-    content_cross: f32,
-    max_cross: f32,
-) -> NodeId {
-    Panel::zstack()
-        .id(WidgetId::from_hash(id))
-        .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
-        .max_size(axis.compose_size(f32::INFINITY, max_cross))
-        .show(ui, |ui| {
-            Block::new()
-                .id(WidgetId::from_hash("max-capped-content"))
-                .size(axis.compose_sizing(Sizing::fixed(0.0), Sizing::fixed(content_cross)))
-                .show(ui);
-        })
-        .response
-        .node()
+}
+
+impl FillCrossCell {
+    /// Floored at `min_cross` across.
+    fn show(self, ui: &mut Ui, min_cross: f32) -> NodeId {
+        let Self { id, axis, main } = self;
+        Block::new()
+            .id(WidgetId::from_hash(id))
+            .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
+            .min_size(axis.compose_size(0.0, min_cross))
+            .show(ui)
+            .node()
+    }
+
+    /// Holding content `content_cross` across, capped at `max_cross`.
+    fn show_max_capped(self, ui: &mut Ui, content_cross: f32, max_cross: f32) -> NodeId {
+        let Self { id, axis, main } = self;
+        Panel::zstack()
+            .id(WidgetId::from_hash(id))
+            .size(axis.compose_sizing(Sizing::fixed(main), Sizing::FILL))
+            .max_size(axis.compose_size(f32::INFINITY, max_cross))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("max-capped-content"))
+                    .size(axis.compose_sizing(Sizing::fixed(0.0), Sizing::fixed(content_cross)))
+                    .show(ui);
+            })
+            .response
+            .node()
+    }
 }

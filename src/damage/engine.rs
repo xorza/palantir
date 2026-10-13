@@ -9,11 +9,12 @@ use crate::damage::Damage;
 use crate::damage::counters::DamageCounters;
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
+use crate::damage::layer_frame::LayerFrame;
+use crate::damage::layer_walk::LayerWalk;
 use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::damage::root_order::RootOrder;
 use crate::damage::row_matcher::RowMatcher;
-use crate::damage::walk::LayerWalk;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetIdMap, WidgetIdSet};
 use crate::scene::forest::Forest;
@@ -31,7 +32,7 @@ pub(crate) struct DamageEngine {
     /// Pass-1 scratch: every damage source appends here unmerged; pass 2 collapses it via `DamageRegion::collapse_from`.
     pub(crate) raw_rects: Vec<Rect>,
 
-    /// Scratch for [`build_row_extents`](crate::damage::walk::LayerWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::walk::LayerWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
+    /// Scratch for [`build_row_extents`](crate::damage::layer_walk::LayerWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::layer_walk::LayerWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
     order_extents: Vec<Rect>,
 
     inversions: InvertedOverlaps,
@@ -80,8 +81,7 @@ impl DamageEngine {
             cascade,
             surface,
             baseline,
-            prev_time,
-            now,
+            ..
         } = input;
         // Frame-wide inputs join the `force_full` signal: a moved baseline repaints the whole surface, and no snapshot carries it.
         let force_full = force_full || self.presented != Some(baseline);
@@ -95,6 +95,11 @@ impl DamageEngine {
         self.raw_rects.clear();
 
         for (layer, tree) in forest.trees.iter_paint_order() {
+            let frame = LayerFrame {
+                layer,
+                tree,
+                cascade: &cascade.layers[layer],
+            };
             LayerWalk {
                 prev: &mut self.prev,
                 paints: &mut self.paints,
@@ -105,18 +110,14 @@ impl DamageEngine {
                 counters: &mut self.counters,
                 surface,
                 force_full,
-                layer,
-                tree,
-                cascade: &cascade.layers[layer],
+                frame,
             }
             .run();
-            self.root_order.diff(
-                layer,
-                tree,
-                &cascade.layers[layer],
-                force_full,
-                &mut self.raw_rects,
-            );
+            if force_full {
+                self.root_order.remember(frame);
+            } else {
+                self.root_order.diff(frame, &mut self.raw_rects);
+            }
         }
 
         // `self.prev` is populated for next frame; on `force_full` the rest would build a discarded region, so short-circuit.
@@ -125,7 +126,7 @@ impl DamageEngine {
         }
 
         // Predamaged anim rects: the structural diff is content-only and misses phase flips (bumping `node_hash` would invalidate MeasureCache for no layout change); the encoder's `PaintAnimCursor::sample` decides per rect.
-        extend_predamaged(&mut self.raw_rects, forest, cascade, prev_time, now);
+        self.extend_predamaged(&input);
 
         // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps.
         #[expect(
@@ -173,44 +174,40 @@ impl DamageEngine {
             return self.note_presented(input.baseline, Some(Damage::Full));
         }
         self.raw_rects.clear();
-        extend_predamaged(
-            &mut self.raw_rects,
-            input.forest,
-            input.cascade,
-            input.prev_time,
-            input.now,
-        );
+        self.extend_predamaged(&input);
         let damage = self.finish_region(input.surface);
         self.note_presented(input.baseline, damage)
     }
-}
 
-fn extend_predamaged(
-    out: &mut Vec<Rect>,
-    forest: &Forest,
-    cascade: &Cascade,
-    prev_time: Option<Duration>,
-    now: Duration,
-) {
-    // No prev frame: Pass 1 already contributed every painting widget, and an anim rect is a sub-rect of its owner.
-    let Some(prev) = prev_time else { return };
-    for (layer, tree) in forest.trees.iter_paint_order() {
-        let arena = &cascade.layers[layer].paint_arena;
-        let paints = &arena.rows;
-        let node_spans = &arena.node_spans;
-        for e in &tree.paint_anims.entries {
-            if e.anim.next_wake(prev).is_none_or(|wake| wake > now) {
-                continue;
+    /// Push the rect of every paint animation whose phase flipped since the last frame.
+    fn extend_predamaged(&mut self, input: &DamageInput<'_>) {
+        // No prev frame: Pass 1 already contributed every painting widget, and an anim rect is a sub-rect of its owner.
+        let Some(prev) = input.prev_time else { return };
+        let DamageInput {
+            forest,
+            cascade,
+            now,
+            ..
+        } = *input;
+        for (layer, tree) in forest.trees.iter_paint_order() {
+            let arena = &cascade.layers[layer].paint_arena;
+            let paints = &arena.rows;
+            let node_spans = &arena.node_spans;
+            for e in &tree.paint_anims.entries {
+                if e.anim.next_wake(prev).is_none_or(|wake| wake > now) {
+                    continue;
+                }
+                let node_span = node_spans[e.node.idx()];
+                // `e.row` came from the recording counter and `compute_paint_rect` emits rows in the same order, so a miss means they drifted.
+                debug_assert!(
+                    e.row < node_span.len,
+                    "paint-anim row {} out of the owner's {} paint rows",
+                    e.row,
+                    node_span.len,
+                );
+                self.raw_rects
+                    .push(paints[(node_span.start + e.row) as usize].screen);
             }
-            let node_span = node_spans[e.node.idx()];
-            // `e.row` came from the recording counter and `compute_paint_rect` emits rows in the same order, so a miss means they drifted.
-            debug_assert!(
-                e.row < node_span.len,
-                "paint-anim row {} out of the owner's {} paint rows",
-                e.row,
-                node_span.len,
-            );
-            out.push(paints[(node_span.start + e.row) as usize].screen);
         }
     }
 }

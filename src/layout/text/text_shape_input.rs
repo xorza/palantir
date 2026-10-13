@@ -156,11 +156,11 @@ mod tests {
 
     #[test]
     fn shape_request_reuses_the_recorded_hash() {
-        let request = input(hash::hash_str("hello")).shape_request();
+        let request = input(hash::str("hello")).shape_request();
         assert_eq!(request.text(), "hello");
         assert_eq!(
             request.key(),
-            TextShapeKey::unbounded(hash::hash_str("hello"), FACE),
+            TextShapeKey::unbounded(hash::str("hello"), FACE),
             "the retained hash must mint the same key re-hashing would",
         );
     }

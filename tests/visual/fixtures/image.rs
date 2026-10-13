@@ -9,11 +9,11 @@ use glam::{UVec2, Vec2};
 use palantir::golden::image::RgbaImage;
 use palantir::widget::{ImageShape, Shape};
 use palantir::{
-    Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, RgbaF32, Sizing,
-    SrgbaU8, Ui,
+    Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, Rect, RgbaF32,
+    Sizing, SrgbaU8, Ui,
 };
 
-use crate::fixtures::{SRGB_ROUND_TRIP, assert_px, canvas};
+use crate::fixtures;
 use crate::harness::Harness;
 
 const RED: [u8; 4] = [230, 60, 60, 255];
@@ -37,35 +37,31 @@ fn load(h: &mut Harness, texels: &[[u8; 4]]) -> ImageHandle {
 fn render(h: &mut Harness, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
     h.size(size)
         .clear(RgbaF32::BLACK)
-        .frame(|ui| canvas(ui, &mut scene))
+        .frame(|ui| fixtures::canvas(ui, &mut scene))
         .image
 }
 
-/// `image` in a pane `size` at `(x, 0)`.
-fn pane(ui: &mut Ui, x: f32, size: Vec2, image: ImageShape) {
+/// `image` in a pane over `at`.
+fn pane(ui: &mut Ui, at: Rect, image: ImageShape) {
     Panel::zstack()
-        .id_salt(("pane", x as i32))
-        .position(Vec2::new(x, 0.0))
-        .size((Sizing::fixed(size.x), Sizing::fixed(size.y)))
+        .id_salt(("pane", at.min.x as i32))
+        .position(at.min)
+        .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| ui.add_shape(image));
 }
 
-/// `handle` under `fit`, minified with `min` and magnified with `mag`.
-fn filtered(handle: &ImageHandle, fit: ImageFit, min: ImageFilter, mag: ImageFilter) -> ImageShape {
-    Shape::image(handle.clone())
-        .fit(fit)
-        .min_filter(min)
-        .mag_filter(mag)
+/// `handle` stretched over its pane.
+fn filled(handle: &ImageHandle) -> ImageShape {
+    Shape::image(handle.clone()).fit(ImageFit::Fill)
 }
 
 /// Each `(x, colour, what)` probe on row `y` reads its colour.
 #[track_caller]
 fn assert_probes(img: &RgbaImage, y: u32, probes: &[(u32, [u8; 4], &str)]) {
     for &(x, want, what) in probes {
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, y).0,
             want,
-            SRGB_ROUND_TRIP,
             format_args!("{what} at ({x}, {y})"),
         );
     }
@@ -93,23 +89,19 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
     assert_eq!(h.host.gpu_image_cache_len(), 1);
 
     image.texels_mut().rotate_left(1);
-    let nearest = filtered(
-        &clone,
-        ImageFit::Fill,
-        ImageFilter::Nearest,
-        ImageFilter::Nearest,
-    );
+    let nearest = filled(&clone)
+        .min_filter(ImageFilter::Nearest)
+        .mag_filter(ImageFilter::Nearest);
     for expected in [[RED, BLUE, BLUE, RED], [BLUE, BLUE, RED, RED]] {
         let out = render(&mut h, UVec2::new(4, 2), |ui| {
             for x in [0.0, 2.0] {
-                pane(ui, x, Vec2::splat(2.0), nearest.clone());
+                pane(ui, Rect::new(x, 0.0, 2.0, 2.0), nearest.clone());
             }
         });
         for (x, y, pixel) in out.enumerate_pixels() {
-            assert_px(
+            fixtures::assert_px(
                 pixel.0,
                 expected[(y * 2 + x % 2) as usize],
-                SRGB_ROUND_TRIP,
                 format_args!("pixel ({x}, {y})"),
             );
         }
@@ -136,15 +128,13 @@ fn minification_and_magnification_filters_are_independent() {
         let size = Vec2::new(128.0, 64.0);
         pane(
             ui,
-            0.0,
-            size,
-            filtered(&two, ImageFit::Fill, Nearest, Linear),
+            Rect::new(0.0, 0.0, size.x, size.y),
+            filled(&two).min_filter(Nearest).mag_filter(Linear),
         );
         pane(
             ui,
-            128.0,
-            size,
-            filtered(&two, ImageFit::Fill, Linear, Nearest),
+            Rect::new(128.0, 0.0, size.x, size.y),
+            filled(&two).min_filter(Linear).mag_filter(Nearest),
         );
     });
     assert_probes(
@@ -166,15 +156,13 @@ fn minification_and_magnification_filters_are_independent() {
         let size = Vec2::new(2.0, 16.0);
         pane(
             ui,
-            0.0,
-            size,
-            filtered(&four, ImageFit::Fill, Nearest, Linear),
+            Rect::new(0.0, 0.0, size.x, size.y),
+            filled(&four).min_filter(Nearest).mag_filter(Linear),
         );
         pane(
             ui,
-            2.0,
-            size,
-            filtered(&four, ImageFit::Fill, Linear, Nearest),
+            Rect::new(2.0, 0.0, size.x, size.y),
+            filled(&four).min_filter(Linear).mag_filter(Nearest),
         );
     });
     assert_probes(
@@ -211,15 +199,13 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
         let size = Vec2::new(100.0, 32.0);
         pane(
             ui,
-            0.0,
-            size,
-            filtered(&three, ImageFit::Fill, Linear, Linear),
+            Rect::new(0.0, 0.0, size.x, size.y),
+            filled(&three).min_filter(Linear).mag_filter(Linear),
         );
         pane(
             ui,
-            100.0,
-            size,
-            filtered(&three, ImageFit::Fill, Nearest, Nearest),
+            Rect::new(100.0, 0.0, size.x, size.y),
+            filled(&three).min_filter(Nearest).mag_filter(Nearest),
         );
     });
     assert_probes(
@@ -243,8 +229,22 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     };
     let tiled = render(&mut h, UVec2::new(200, 16), |ui| {
         let size = Vec2::new(100.0, 16.0);
-        pane(ui, 0.0, size, filtered(&two, tile, Linear, Linear));
-        pane(ui, 100.0, size, filtered(&two, tile, Nearest, Nearest));
+        pane(
+            ui,
+            Rect::new(0.0, 0.0, size.x, size.y),
+            Shape::image(two.clone())
+                .fit(tile)
+                .min_filter(Linear)
+                .mag_filter(Linear),
+        );
+        pane(
+            ui,
+            Rect::new(100.0, 0.0, size.x, size.y),
+            Shape::image(two.clone())
+                .fit(tile)
+                .min_filter(Nearest)
+                .mag_filter(Nearest),
+        );
     });
     let tpx = |x: u32| tiled.get_pixel(x, 8).0;
     // Bilinear over a repeat blends across every seam, edges included: at 20 px per texel, x = 0 and x = 39 read a blend, not the pure texel a clamp would give.
@@ -301,17 +301,16 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
             let image = Shape::image(source.clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
-            pane(ui, i as f32 * PANE.x, PANE, image);
+            pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
         }
     });
 
     let mut measured = Vec::with_capacity(cases.len());
     for (i, (_, expected, label)) in cases.iter().enumerate() {
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
-        assert_px(
+        fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
-            SRGB_ROUND_TRIP,
             format_args!("{label} must read {expected} grey, got {pixel:?}"),
         );
         assert_eq!(
@@ -363,16 +362,15 @@ fn downsample_combines_taps_in_premultiplied_space() {
             let image = Shape::image(sources[i].clone())
                 .fit(ImageFit::Fill)
                 .downsample(*mode);
-            pane(ui, i as f32 * PANE.x, PANE, image);
+            pane(ui, Rect::new(i as f32 * PANE.x, 0.0, PANE.x, PANE.y), image);
         }
     });
 
     for (i, (_, _, expected, label)) in cases.iter().enumerate() {
         let pixel = out.get_pixel(i as u32 * PANE.x as u32 + 4, 8).0;
-        assert_px(
+        fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
-            SRGB_ROUND_TRIP,
             format_args!("{label} must read {expected} grey, got {pixel:?}"),
         );
     }
@@ -391,17 +389,15 @@ fn a_magnified_transparent_edge_keeps_its_colour() {
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         pane(
             ui,
-            0.0,
-            Vec2::splat(16.0),
+            Rect::new(0.0, 0.0, 16.0, 16.0),
             Shape::image(source.clone()).fit(ImageFit::Fill),
         );
     });
 
     let pixel = out.get_pixel(7, 8).0;
-    assert_px(
+    fixtures::assert_px(
         pixel,
         [199, 0, 0, 255],
-        SRGB_ROUND_TRIP,
         format_args!("half-covered red must stay red at half coverage, got {pixel:?}"),
     );
 }
@@ -424,15 +420,14 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
                 scale: Vec2::new(24.0, 1.0),
             })
             .downsample(ImageDownsample::Mean);
-        pane(ui, 0.0, Vec2::new(8.0, 16.0), image);
+        pane(ui, Rect::new(0.0, 0.0, 8.0, 16.0), image);
     });
 
     for x in 0..8 {
         let pixel = out.get_pixel(x, 8).0;
-        assert_px(
+        fixtures::assert_px(
             pixel,
             [137, 137, 137, 255],
-            SRGB_ROUND_TRIP,
             format_args!("tiled tap column {x} must read 137 grey, got {pixel:?}"),
         );
     }
@@ -455,13 +450,14 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     let handles = SOURCES.map(|texel| load(&mut h, &[texel]));
     let out = render(&mut h, UVec2::new(192, 32), |ui| {
         for (pane_index, &source) in PATTERN.iter().enumerate() {
-            let image = filtered(
-                &handles[source],
-                ImageFit::Fill,
-                ImageFilter::Linear,
-                ImageFilter::Linear,
+            let image = filled(&handles[source])
+                .min_filter(ImageFilter::Linear)
+                .mag_filter(ImageFilter::Linear);
+            pane(
+                ui,
+                Rect::new(pane_index as f32 * PANE, 0.0, PANE, PANE),
+                image,
             );
-            pane(ui, pane_index as f32 * PANE, Vec2::splat(PANE), image);
         }
     });
 
@@ -469,10 +465,9 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
         let expected = SOURCES[source];
         let x = pane as u32 * PANE as u32 + PANE as u32 / 2;
         let pixel = out.get_pixel(x, 16).0;
-        assert_px(
+        fixtures::assert_px(
             pixel,
             expected,
-            SRGB_ROUND_TRIP,
             format_args!("pane {pane} draws source {source}: expected {expected:?}, got {pixel:?}"),
         );
     }

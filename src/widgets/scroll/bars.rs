@@ -15,7 +15,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::ScrollGeometry;
-use crate::widgets::scroll::state::{ScrollState, ThumbTravel, TrackPage};
+use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel, TrackPage};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 
 /// One scrollbar axis: the two overlay leaves and last frame's interaction on
@@ -102,12 +102,7 @@ impl Bars {
                 continue;
             }
             let travel = geom.thumb(axis, state).map(ThumbTravel::of);
-            state.apply_thumb_drag(
-                axis,
-                bar.thumb.left.drag.started(),
-                bar.thumb.left.drag.delta(),
-                travel,
-            );
+            state.apply_thumb_drag(axis, bar.thumb.left.drag, travel);
         }
         for (axis, bar) in self.axes() {
             if !axes.pans(axis) || !bar.track.clicked() {

@@ -2,6 +2,7 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -9,6 +10,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::ContextMenu;
@@ -18,7 +20,6 @@ use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::{Sense, Ui};
 use glam::Vec2;
 
 #[test]

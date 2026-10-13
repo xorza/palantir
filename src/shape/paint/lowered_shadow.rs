@@ -51,7 +51,7 @@ impl LoweredShadow {
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
         // Geometry is screened for NaN, not magnitude: a zero-sigma zero-offset shadow still paints, so only the tint
-        // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `emit_shadow` through this form with no NaN gate.
+        // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `DrawQuadPayload::shadow` through this form with no NaN gate.
         self.color.is_noop() || self.geom_f16.has_nan()
     }
 

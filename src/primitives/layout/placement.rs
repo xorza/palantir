@@ -47,8 +47,8 @@ impl Placement {
     pub(crate) fn available(self, surface: Rect) -> Size {
         match (self.max_size, self.origin) {
             (Some(size), _) => Size::new(size.w.min(surface.size.w), size.h.min(surface.size.h)),
-            (None, Origin::Fixed(anchor)) => {
-                let remaining = (surface.max() - anchor).max(Vec2::ZERO);
+            (None, Origin::Fixed(point)) => {
+                let remaining = (surface.max() - point).max(Vec2::ZERO);
                 Size::new(remaining.x, remaining.y)
             }
             (None, Origin::Anchored(_)) => surface.size,
@@ -57,8 +57,8 @@ impl Placement {
 
     pub(crate) fn origin(self, measured: Size, surface: Rect) -> Vec2 {
         match self.origin {
-            Origin::Fixed(anchor) => anchor,
-            Origin::Anchored(position) => position.resolve(measured, surface),
+            Origin::Fixed(point) => point,
+            Origin::Anchored(anchor) => anchor.resolve(measured, surface),
         }
     }
 }

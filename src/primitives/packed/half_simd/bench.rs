@@ -1,5 +1,5 @@
 //! f16 pack/unpack: the crate's SIMD path against `half`'s scalar one, plus
-//! the fused [`f16x4_scaled`]; each is a standing claim in [`super`]'s docs.
+//! the fused [`F16x4::scaled`]; each is a standing claim in [`super`]'s docs.
 //!
 //! ## Why there is no `const` arm
 //!
@@ -14,7 +14,7 @@
 //! read identical.
 
 use crate::bench::fixture::{Backend, Kind, Scale};
-use crate::primitives::packed::half_simd::{F16x4, f16x4_from_f32x4, f16x4_scaled, f16x4_to_f32x4};
+use crate::primitives::packed::half_simd::F16x4;
 use criterion::{Criterion, Throughput};
 use half::f16;
 use std::hint::black_box;
@@ -37,8 +37,8 @@ fn inputs() -> Vec<[f32; 4]> {
         .collect()
 }
 
-fn packed() -> Vec<[u16; 4]> {
-    inputs().into_iter().map(f16x4_from_f32x4).collect()
+fn packed() -> Vec<F16x4> {
+    inputs().into_iter().map(F16x4::from_lanes).collect()
 }
 
 /// `half`'s scalar conversion, the reference for the SIMD path. Uses
@@ -75,9 +75,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
 
     g.bench_function(Backend::Cpu.case("from_f32x4/runtime_simd"), |b| {
         b.iter(|| {
-            let mut acc = [0u16; 4];
+            let mut acc = F16x4::ZERO;
             for v in black_box(&src) {
-                acc = f16x4_from_f32x4(black_box(*v));
+                acc = F16x4::from_lanes(black_box(*v));
             }
             acc
         });
@@ -96,7 +96,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
         b.iter(|| {
             let mut acc = [0.0f32; 4];
             for v in black_box(&bits) {
-                acc = f16x4_to_f32x4(black_box(*v));
+                acc = black_box(*v).lanes();
             }
             acc
         });
@@ -105,7 +105,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
         b.iter(|| {
             let mut acc = [0.0f32; 4];
             for v in black_box(&bits) {
-                acc = scalar_to_f32x4(black_box(*v));
+                acc = scalar_to_f32x4(black_box(v.0));
             }
             acc
         });
@@ -114,9 +114,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
     // The fused decode-multiply-encode against the two-step form; keeps `F16x4::scaled`'s quoted ratio honest.
     g.bench_function(Backend::Cpu.case("scaled/fused"), |b| {
         b.iter(|| {
-            let mut acc = [0u16; 4];
+            let mut acc = F16x4::ZERO;
             for v in black_box(&bits) {
-                acc = f16x4_scaled(black_box(*v), black_box(1.75));
+                acc = black_box(*v).scaled(black_box(1.75));
             }
             acc
         });
@@ -126,7 +126,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
             let mut acc = F16x4::ZERO;
             for v in black_box(&bits) {
                 let k = black_box(1.75);
-                acc = F16x4::from_lanes(F16x4::from_bits(black_box(*v)).lanes().map(|x| x * k));
+                acc = F16x4::from_lanes(black_box(*v).lanes().map(|x| x * k));
             }
             acc
         });

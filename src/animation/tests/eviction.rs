@@ -1,39 +1,41 @@
 //! Which rows the per-frame sweep drops.
 
-use crate::animation::tests::support::wid;
-use crate::animation::*;
+use crate::animation::AnimMap;
+use crate::animation::animation_request::AnimationRequest;
+use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::tests::support;
+use crate::primitives::identity::widget_id::WidgetIdSet;
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 
 #[test]
 fn removed_widget_evicts_all_slots_across_typed_maps() {
     let mut map = AnimMap::default();
-    let id = wid("a");
-    let other = wid("b");
-    let _ =
-        map.typed_mut::<f32>()
-            .step(id, AnimationSlot::new("a"), 1.0, AnimationSpec::FAST, 0.016);
-    let _ =
-        map.typed_mut::<f32>()
-            .step(id, AnimationSlot::new("b"), 2.0, AnimationSpec::FAST, 0.016);
-    let _ = map.typed_mut::<Vec2>().step(
-        id,
-        AnimationSlot::new("a"),
-        Vec2::ONE,
-        AnimationSpec::FAST,
-        0.016,
-    );
-    let _ = map.typed_mut::<RgbaF32>().step(
-        id,
-        AnimationSlot::new("a"),
-        RgbaF32::srgb(1.0, 0.0, 0.0),
+    let id = support::wid("a");
+    let other = support::wid("b");
+    let _ = map.typed_mut::<f32>().step(
+        AnimationRequest::new(id, AnimationSlot::new("a"), 1.0),
         AnimationSpec::FAST,
         0.016,
     );
     let _ = map.typed_mut::<f32>().step(
-        other,
-        AnimationSlot::new("a"),
-        9.0,
+        AnimationRequest::new(id, AnimationSlot::new("b"), 2.0),
+        AnimationSpec::FAST,
+        0.016,
+    );
+    let _ = map.typed_mut::<Vec2>().step(
+        AnimationRequest::new(id, AnimationSlot::new("a"), Vec2::ONE),
+        AnimationSpec::FAST,
+        0.016,
+    );
+    let _ = map.typed_mut::<RgbaF32>().step(
+        AnimationRequest::new(id, AnimationSlot::new("a"), RgbaF32::srgb(1.0, 0.0, 0.0)),
+        AnimationSpec::FAST,
+        0.016,
+    );
+    let _ = map.typed_mut::<f32>().step(
+        AnimationRequest::new(other, AnimationSlot::new("a"), 9.0),
         AnimationSpec::FAST,
         0.016,
     );
@@ -61,15 +63,19 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
 #[test]
 fn post_record_evicts_untouched_slots() {
     let mut map = AnimMap::default();
-    let id = wid("a");
+    let id = support::wid("a");
     let empty = WidgetIdSet::default();
 
-    let _ =
-        map.typed_mut::<f32>()
-            .step(id, AnimationSlot::new("a"), 1.0, AnimationSpec::FAST, 0.016);
-    let _ =
-        map.typed_mut::<f32>()
-            .step(id, AnimationSlot::new("b"), 2.0, AnimationSpec::FAST, 0.016);
+    let _ = map.typed_mut::<f32>().step(
+        AnimationRequest::new(id, AnimationSlot::new("a"), 1.0),
+        AnimationSpec::FAST,
+        0.016,
+    );
+    let _ = map.typed_mut::<f32>().step(
+        AnimationRequest::new(id, AnimationSlot::new("b"), 2.0),
+        AnimationSpec::FAST,
+        0.016,
+    );
     map.sweep_removed(&empty);
     let count = |m: &mut AnimMap| m.row_count::<f32>();
     assert_eq!(
@@ -78,9 +84,11 @@ fn post_record_evicts_untouched_slots() {
         "both slots must survive the first sweep"
     );
 
-    let _ =
-        map.typed_mut::<f32>()
-            .step(id, AnimationSlot::new("a"), 1.0, AnimationSpec::FAST, 0.016);
+    let _ = map.typed_mut::<f32>().step(
+        AnimationRequest::new(id, AnimationSlot::new("a"), 1.0),
+        AnimationSpec::FAST,
+        0.016,
+    );
     map.sweep_removed(&empty);
     assert_eq!(
         count(&mut map),
@@ -89,9 +97,7 @@ fn post_record_evicts_untouched_slots() {
     );
 
     let r = map.typed_mut::<f32>().step(
-        id,
-        AnimationSlot::new("b"),
-        99.0,
+        AnimationRequest::new(id, AnimationSlot::new("b"), 99.0),
         AnimationSpec::FAST,
         0.016,
     );

@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::cascade::Cascade;
+use crate::input::arranged_frame::ArrangedFrame;
 use crate::input::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input::input_state::InputState;
 use crate::input::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
@@ -358,10 +359,14 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     };
 
     let at = h.ui.cascade().locate(focusable_id());
+    let frame = ArrangedFrame {
+        cascade: h.ui.cascade(),
+        layout: h.ui.layout_tables(),
+    };
     s.frame_quiescent = true;
-    let quiet = s.response_for(focusable_id(), at, h.ui.cascade(), h.ui.layout_tables());
+    let quiet = s.response_for(focusable_id(), at, frame);
     s.frame_quiescent = false;
-    let full = s.response_for(focusable_id(), at, h.ui.cascade(), h.ui.layout_tables());
+    let full = s.response_for(focusable_id(), at, frame);
 
     assert_eq!(quiet.rect, full.rect);
     assert_eq!(quiet.layout_rect, full.layout_rect);

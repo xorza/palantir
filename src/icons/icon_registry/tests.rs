@@ -54,13 +54,16 @@ fn reregistering_a_held_set_shares_one_owner_rather_than_taking_a_slot() {
 
     // Same allocation: same id, no second entry, so a per-frame loader does not grow the table.
     let again = reg.register(Rc::clone(&data_a));
-    assert_eq!(again.handle(IconId(0)), set_a.handle(IconId(0)));
+    assert_eq!(
+        again.handle(IconId::fixture(0)),
+        set_a.handle(IconId::fixture(0))
+    );
     assert_eq!(resident(&reg).len(), 2);
 
     drop(again);
     assert!(drain(&reg).is_empty(), "a live clone still holds the set");
     assert_eq!(
-        reg.get(set_a.handle(IconId(0)).icon.set).icons()[0].name,
+        reg.get(set_a.handle(IconId::fixture(0)).icon.set).icons()[0].name,
         "a"
     );
 
@@ -75,7 +78,7 @@ fn clones_of_the_registry_share_one_table() {
     let reg = IconRegistry::default();
     let clone = reg.clone();
     let set = reg.register(a());
-    let id = set.handle(IconId(0)).icon.set;
+    let id = set.handle(IconId::fixture(0)).icon.set;
     assert_eq!(
         resident(&clone),
         vec![id],
@@ -88,7 +91,7 @@ fn clones_of_the_registry_share_one_table() {
 fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
     let reg = IconRegistry::default();
     let set = reg.register(a());
-    let id = set.handle(IconId(0)).icon.set;
+    let id = set.handle(IconId::fixture(0)).icon.set;
     let loaded_epoch = reg.epoch();
 
     let clone = set.clone();
@@ -115,7 +118,7 @@ fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
     assert!(drain(&reg).is_empty(), "a drained release does not repeat");
 
     let next = reg.register(b());
-    let next_id = next.handle(IconId(0)).icon.set;
+    let next_id = next.handle(IconId::fixture(0)).icon.set;
     assert_eq!(next_id, IconSetId::new(0, 1), "same slot, next generation");
     assert_ne!(next_id, id);
     assert_eq!(reg.get(next_id).icons()[0].name, "b");
@@ -127,13 +130,13 @@ fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
 fn a_handle_outliving_its_set_panics_instead_of_naming_the_slot_s_new_owner() {
     let reg = IconRegistry::default();
     let set = reg.register(a());
-    let stale = set.handle(IconId(0));
+    let stale = set.handle(IconId::fixture(0));
     drop(set);
     drain(&reg);
 
     let replacement = reg.register(b());
     assert_eq!(
-        replacement.handle(IconId(0)).icon.set,
+        replacement.handle(IconId::fixture(0)).icon.set,
         IconSetId::new(0, 1),
         "the replacement took the same slot, which is what makes this a trap",
     );
@@ -149,7 +152,7 @@ fn loading_a_fresh_atlas_every_frame_cycles_a_fixed_pair_of_slots() {
     let mut last = IconSetId::new(0, 0);
     for frame in 0..64u16 {
         let next = reg.register(a());
-        last = next.handle(IconId(0)).icon.set;
+        last = next.handle(IconId::fixture(0)).icon.set;
         slots_used.insert(last.slot);
         held = Some(next);
         reg.drain_released(|_| {});
@@ -174,8 +177,8 @@ fn one_drain_reports_every_set_released_since_the_last() {
     let reg = IconRegistry::default();
     let (first, second, held) = (reg.register(a()), reg.register(b()), reg.register(a()));
     let ids = [
-        first.handle(IconId(0)).icon.set,
-        second.handle(IconId(0)).icon.set,
+        first.handle(IconId::fixture(0)).icon.set,
+        second.handle(IconId::fixture(0)).icon.set,
     ];
     drop((first, second));
 

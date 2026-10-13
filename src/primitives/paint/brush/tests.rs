@@ -17,7 +17,7 @@ use std::fmt;
 use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
 
-/// `LinearGradient::Hash` is what `shapes::lower` folds into a record's gradient content hash.
+/// `LinearGradient::Hash` is what `lower::brush` folds into a record's gradient content hash.
 fn h(g: &LinearGradient) -> u64 {
     let mut s = DefaultHasher::new();
     g.hash(&mut s);

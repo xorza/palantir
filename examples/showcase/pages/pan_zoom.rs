@@ -26,7 +26,26 @@ struct State {
     auto: bool,
     /// Auto-drive frame counter, the oscillator's phase; reset when the drive stops.
     tick: u32,
-    last_click: Option<(u32, u32)>,
+    last_click: Option<CellPos>,
+}
+
+/// A button's place in a cell grid.
+#[derive(Clone, Copy, Debug)]
+struct CellPos {
+    row: u32,
+    col: u32,
+}
+
+impl CellPos {
+    fn color(self) -> RgbaF32 {
+        let tr = self.row as f32 / 24.0;
+        let tc = self.col as f32 / 24.0;
+        RgbaF32::srgb(
+            0.30 + 0.55 * tc,
+            0.55 - 0.25 * (tr - 0.5).abs(),
+            0.85 - 0.55 * tr,
+        )
+    }
 }
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -61,7 +80,7 @@ fn page(ui: &mut Ui, s: &mut State) {
             .label("auto-drive input")
             .show(ui);
         let click = match s.last_click {
-            Some((r, c)) => fmt!(ui, "row {r}, column {c}"),
+            Some(CellPos { row, col }) => fmt!(ui, "row {row}, column {col}"),
             None => ui.intern("— click a cell to check hit-testing through the zoom"),
         };
         support::readout(ui, "last click", click);
@@ -74,7 +93,12 @@ fn page(ui: &mut Ui, s: &mut State) {
         .zoom_by(auto_zoom)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match s.content {
-            Content::Grid => cell_grid(ui, "pz", 24, 24, &mut clicked),
+            Content::Grid => CellGrid {
+                salt: "pz",
+                rows: 24,
+                cols: 24,
+            }
+            .show(ui, &mut clicked),
             Content::Document => document(ui, &mut clicked),
         });
     if clicked.is_some() {
@@ -82,15 +106,25 @@ fn page(ui: &mut Ui, s: &mut State) {
     }
 }
 
-fn document(ui: &mut Ui, clicked: &mut Option<(u32, u32)>) {
+fn document(ui: &mut Ui, clicked: &mut Option<CellPos>) {
     Panel::vstack().gap(16.0).padding(8.0).show(ui, |ui| {
         header_band(ui);
         property_grid(ui);
         gradient_strip(ui);
-        cell_grid(ui, "cells-a", 24, 24, clicked);
+        CellGrid {
+            salt: "cells-a",
+            rows: 24,
+            cols: 24,
+        }
+        .show(ui, clicked);
         chat_messages(ui, 20);
         canvas_polylines(ui);
-        cell_grid(ui, "cells-b", 12, 32, clicked);
+        CellGrid {
+            salt: "cells-b",
+            rows: 12,
+            cols: 32,
+        }
+        .show(ui, clicked);
     });
 }
 
@@ -193,34 +227,40 @@ fn gradient_strip(ui: &mut Ui) {
         });
 }
 
-fn cell_grid(
-    ui: &mut Ui,
+/// A `rows` by `cols` grid of clickable cells under `salt`.
+#[derive(Debug)]
+struct CellGrid {
     salt: &'static str,
     rows: u32,
     cols: u32,
-    clicked: &mut Option<(u32, u32)>,
-) {
-    // One theme for the whole grid, repointed per cell: building a `ButtonTheme` per cell would dominate per-cell work.
-    let mut style = cell_theme();
-    Panel::vstack().id_salt(salt).gap(4.0).show(ui, |ui| {
-        for r in 0..rows {
-            Panel::hstack().id_salt(r).gap(4.0).show(ui, |ui| {
-                for c in 0..cols {
-                    recolor_cell(&mut style, cell_color(r, c));
-                    if cell(ui, r, c, &style) {
-                        *clicked = Some((r, c));
-                    }
-                }
-            });
-        }
-    });
 }
 
-fn cell(ui: &mut Ui, r: u32, c: u32, style: &ButtonTheme) -> bool {
+impl CellGrid {
+    /// Records the grid, writing the clicked cell to `clicked`.
+    fn show(self, ui: &mut Ui, clicked: &mut Option<CellPos>) {
+        // One theme for the whole grid, repointed per cell: building a `ButtonTheme` per cell would dominate per-cell work.
+        let mut style = cell_theme();
+        Panel::vstack().id_salt(self.salt).gap(4.0).show(ui, |ui| {
+            for row in 0..self.rows {
+                Panel::hstack().id_salt(row).gap(4.0).show(ui, |ui| {
+                    for col in 0..self.cols {
+                        let pos = CellPos { row, col };
+                        recolor_cell(&mut style, pos.color());
+                        if cell(ui, pos, &style) {
+                            *clicked = Some(pos);
+                        }
+                    }
+                });
+            }
+        });
+    }
+}
+
+fn cell(ui: &mut Ui, pos: CellPos, style: &ButtonTheme) -> bool {
     // Formatted into the record arena, not a `String`: this runs for every cell every frame.
-    let label = fmt!(ui, "{r},{c}");
+    let label = fmt!(ui, "{},{}", pos.row, pos.col);
     Button::new()
-        .id_salt(c)
+        .id_salt(pos.col)
         .label(label)
         .size((Sizing::fixed(56.0), Sizing::fixed(40.0)))
         .padding((6.0, 4.0))
@@ -244,7 +284,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                         Block::new()
                             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                             .background(Background::rounded(
-                                cell_color(i, i / 3),
+                                CellPos { row: i, col: i / 3 }.color(),
                                 Corners::all(20.0),
                             ))
                             .show(ui);
@@ -336,14 +376,4 @@ fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
 
 const fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {
     support::mix(c, RgbaF32::WHITE.with_alpha(c.a), t)
-}
-
-fn cell_color(r: u32, c: u32) -> RgbaF32 {
-    let tr = r as f32 / 24.0;
-    let tc = c as f32 / 24.0;
-    RgbaF32::srgb(
-        0.30 + 0.55 * tc,
-        0.55 - 0.25 * (tr - 0.5).abs(),
-        0.85 - 0.55 * tr,
-    )
 }

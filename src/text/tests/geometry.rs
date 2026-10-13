@@ -130,7 +130,7 @@ fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
     m.probe_layout("hello", ui_shape(16.0), |layout| {
         assert_eq!(
             layout.text_hash(),
-            Some(TextShapeKey::content_hash(hash::hash_str("hello"))),
+            Some(TextShapeKey::content_hash(hash::str("hello"))),
         );
         layout.selection_rects(5..5, &mut |rect| out.push(rect));
     });

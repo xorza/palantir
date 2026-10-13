@@ -133,33 +133,38 @@ impl DamageRegion {
     }
 }
 
-#[cfg(test)]
-impl DamageRegion {
-    /// These rects with no coverage measured, for consumers that read only rects.
-    pub(crate) fn unmeasured(self) -> CollapsedDamage {
-        CollapsedDamage {
-            region: self,
-            coverage: 0.0,
-        }
-    }
-}
-
 #[cfg(feature = "internals")]
-impl DamageRegion {
-    pub(crate) fn from_rects(rects: &[Rect]) -> Self {
-        let mut region = Self::default();
-        for r in rects {
-            region.add(*r, DEFAULT_PASS_BUDGET_PX);
-        }
-        region
-    }
-}
+pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::damage::region::CollapsedDamage;
+    use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
+    use crate::primitives::geometry::rect::Rect;
 
-/// Wrap a single rect with the default budget. Gated with its callers (tests); production folds through [`DamageRegion::add`].
-#[cfg(test)]
-impl From<Rect> for DamageRegion {
-    fn from(r: Rect) -> Self {
-        Self::from_rects(&[r])
+    impl DamageRegion {
+        pub(crate) fn from_rects(rects: &[Rect]) -> Self {
+            let mut region = Self::default();
+            for r in rects {
+                region.add(*r, DEFAULT_PASS_BUDGET_PX);
+            }
+            region
+        }
+
+        /// These rects with no coverage measured, for consumers that read only rects.
+        #[cfg(test)]
+        pub(crate) const fn unmeasured(self) -> CollapsedDamage {
+            CollapsedDamage {
+                region: self,
+                coverage: 0.0,
+            }
+        }
+    }
+
+    /// Wrap a single rect with the default budget; production folds through [`DamageRegion::add`].
+    #[cfg(test)]
+    impl From<Rect> for DamageRegion {
+        fn from(r: Rect) -> Self {
+            Self::from_rects(&[r])
+        }
     }
 }
 

@@ -19,9 +19,10 @@ use std::hash;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct URect {
-    pub min: UVec2,
+    /// Top-left corner.
+    pub(crate) min: UVec2,
     /// Extent from [`Self::min`]. The bottom-right corner is [`Self::max`].
-    pub size: UVec2,
+    pub(crate) size: UVec2,
 }
 
 impl hash::Hash for URect {

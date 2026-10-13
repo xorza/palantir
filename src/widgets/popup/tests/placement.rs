@@ -3,7 +3,6 @@
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -11,6 +10,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -154,7 +154,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
 /// A popup containing [`crate::Scroll`] resolves at an edge in one frame.
 #[test]
 fn popup_with_scroll_settles_in_one_frame() {
-    use crate::Scroll;
+    use crate::widgets::scroll::Scroll;
     const SURF: UVec2 = UVec2::new(400, 400);
     // Anchor near the right edge so any body-width change between passes would drift.
     let anchor = Vec2::new(380.0, 20.0);

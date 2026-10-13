@@ -6,11 +6,12 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`] (`active` = pressed).
 /// `active` defaults to `hovered`: a click closes the menu.
@@ -74,7 +75,7 @@ impl ThemeSlot for MenuItemTheme {
     type Pick = ();
 
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.looks.pick(response, response.pressed())
+        self.looks.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

@@ -2,7 +2,7 @@
 
 use crate::shell;
 use crate::support;
-use crate::support::{api, note, section};
+use crate::support::{Section, api};
 use palantir::{Align, App, Button, Configure, Text, Ui, fmt};
 
 /// State threaded through the whole showcase frame.
@@ -12,21 +12,21 @@ pub(crate) struct AppState {
 }
 
 pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
-    section(ui, "Counter", &[api!(type App)], |ui| {
-        note(
-            ui,
-            "The app owns this value and passes &mut AppState into the record call beside \
+    Section::new("Counter")
+        .apis(&[api!(type App)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "The app owns this value and passes &mut AppState into the record call beside \
              &mut Ui, so any depth of widgets can read and write it without a global.",
-        );
-        counter(ui, app);
-    });
+            );
+            counter(ui, app);
+        });
 
-    section(
-        ui,
-        "Second window",
-        &[api!(Ui::open_window), api!(Ui::is_window_open)],
-        |ui| {
-            note(
+    Section::new("Second window")
+        .apis(&[api!(Ui::open_window), api!(Ui::is_window_open)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "The inspector records its own tree from this same &mut AppState: change the \
                  counter in either window and both move. The live window set is the source of \
@@ -42,8 +42,7 @@ pub(crate) fn build(ui: &mut Ui, app: &mut AppState) {
             if Button::new().label(label).show(ui).clicked() {
                 shell::toggle_inspector(ui);
             }
-        },
-    );
+        });
 }
 
 /// The counter, recorded by this page and the inspector window.

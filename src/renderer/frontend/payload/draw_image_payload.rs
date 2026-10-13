@@ -17,7 +17,7 @@ pub(crate) struct DrawImagePayload {
     /// Registration id keying the backend's texture cache; `TextureId(0)` means no texture and skips the draw.
     pub(crate) handle: TextureId,
     /// Tile wrap, nearest sampling and minification tap mode, forwarded to
-    /// [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
+    /// [`ImageInstance::flags`](crate::renderer::render_buffer::image_draw_row::ImageInstance).
     /// [`ImageFlags::NONE`] takes one bilinear tap.
     pub(crate) flags: ImageFlags,
 }

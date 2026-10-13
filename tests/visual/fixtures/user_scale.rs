@@ -4,7 +4,7 @@ use glam::UVec2;
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
-use crate::goldens::assert_same;
+use crate::goldens;
 use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(200, 160);
@@ -44,7 +44,7 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
     let user = h.scale(1.0).frame(block).image;
 
-    assert_same("user_scale_halves", &user, &system);
+    goldens::assert_same("user_scale_halves", &user, &system);
 }
 
 /// Scaling up paints up: 40×24 physical at 100%, 80×48 at 200%.

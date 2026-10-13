@@ -1,5 +1,6 @@
 //! The disclosure control: a header that reveals or hides a body.
 
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
@@ -155,7 +156,10 @@ impl<'a> Expander<'a> {
             } else {
                 t.defaults.animation
             };
-            let openness = ui.animate(header_id, SLOT_OPEN, f32::from(now_open), spec);
+            let openness = ui.animate(
+                AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),
+                spec,
+            );
             let showing = openness > 0.0;
             let [a, b, c] =
                 Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));

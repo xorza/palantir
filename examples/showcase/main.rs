@@ -6,19 +6,18 @@ mod pages;
 mod shell;
 mod support;
 
-fn main() -> Result<(), palantir::WinitHostError> {
-    use tracing_subscriber::EnvFilter;
+use palantir::{UVec2, WindowConfig, WinitHost, WinitHostError};
+use tracing_subscriber::EnvFilter;
+
+fn main() -> Result<(), WinitHostError> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 
-    palantir::WinitHost::builder(shell::MAIN_WINDOW)
-        .window(
-            palantir::WindowConfig::new("palantir showcase")
-                .with_inner_size(palantir::UVec2::new(1600, 1000)),
-        )
-        .build(|ui, _handle| shell::State::new(ui))?
+    WinitHost::builder(shell::MAIN_WINDOW)
+        .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
+        .build(|ui, _handle| shell::Shell::new(ui))?
         .run()
 }

@@ -1,5 +1,6 @@
 //! The paint sink's no-op gate: what it drops and passes.
 
+use crate::common::span::Span;
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
@@ -86,7 +87,7 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
 
     for case in cases {
         let payload = DrawPolylinePayload {
-            points_len: case.points_len,
+            points: Span::new(0, case.points_len),
             width: case.width,
             alpha: case.alpha,
             ..Default::default()
@@ -204,7 +205,7 @@ fn the_gate_sees_the_faded_payload() {
 
     // A polyline gates alike: its fade rides the payload's alpha lane, its colours being in the record store.
     let line = DrawPolylinePayload {
-        points_len: 2,
+        points: Span::new(0, 2),
         width: 1.0,
         alpha: 1.0,
         ..Default::default()

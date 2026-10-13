@@ -6,7 +6,7 @@
 //! on emit, since eviction reuses slot rectangles.
 
 use crate::primitives::math::num::F32Px;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::SubpixelOrigin;
 use glam::Vec2;
@@ -74,7 +74,7 @@ mod tests {
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::render_buffer::text::TextDrawRow;
+    use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
     use crate::text::key::TextShapeKey;
     use crate::text::shaped_ref::ShapedTextRef;
     use glam::Vec2;

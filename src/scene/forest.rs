@@ -45,6 +45,15 @@ pub(crate) struct Forest {
     layer_stack: Vec<Layer>,
 }
 
+/// What paints behind a node [`Forest::open_node`] opens: its background, borrowed so a chromed widget doesn't re-copy it down the record chain, and the focus ring over it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NodeChrome<'a> {
+    /// `None` for a chrome-less node.
+    pub(crate) bg: Option<&'a Background>,
+    /// `Stroke::NONE` unless the node shows keyboard focus.
+    pub(crate) ring: Stroke,
+}
+
 impl Forest {
     /// Active layer for the next `open_node`; `Main` outside `Ui::layer` scopes.
     #[inline]
@@ -103,7 +112,7 @@ impl Forest {
         let parent = self.current_parent_id();
         match ident {
             Ident::Auto(_) | Ident::Hash(_) => self.ids.resolve_scoped(ident, parent),
-            _ => self.ids.resolve(ident.raw_id(parent), ident.is_explicit()),
+            _ => self.ids.resolve(ident.raw_id(parent), ident.kind()),
         }
     }
 
@@ -112,11 +121,11 @@ impl Forest {
         self.layer_stack.clear();
         self.ids.pre_record();
         self.collisions.clear();
-        for t in self.trees.iter_mut() {
-            t.pre_record();
+        for tree in &mut self.trees {
+            tree.pre_record();
         }
-        for s in self.scratch.iter_mut() {
-            s.clear();
+        for scratch in &mut self.scratch {
+            scratch.clear();
         }
     }
 
@@ -150,27 +159,20 @@ impl Forest {
     }
 
     /// Opens a node whose id was already resolved by [`crate::widget::Widget::resolve`], and records its endpoint (also emitting any pending explicit collision pair).
-    ///
-    /// `chrome` is borrowed so a chromed widget doesn't re-copy its `Background` down the record chain.
     #[inline]
-    pub(crate) fn open_node(
-        &mut self,
-        resolved: ResolvedId,
-        node: &Node,
-        chrome: Option<&Background>,
-        ring: Stroke,
-    ) {
+    pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: NodeChrome<'_>) {
         let layer = self.current_layer();
         let store = &mut self.record_store;
+        let NodeChrome { bg, ring } = chrome;
         // A ring with no background rides an empty one.
-        let chrome = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
-            bg: chrome.unwrap_or(&Background::NONE),
+        let chrome = (bg.is_some() || !ring.is_noop()).then(|| ChromeInput {
+            bg: bg.unwrap_or(&Background::NONE),
             ring,
             store,
         });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        let node_id = tree.open_node(scratch, resolved.id(), node, chrome);
+        let node_id = tree.open_node(scratch, node.columns(resolved.id()), chrome);
         let endpoint = Endpoint {
             layer,
             node: node_id,

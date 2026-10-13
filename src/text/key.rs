@@ -70,7 +70,7 @@ impl TextShapeKey {
     /// Unlike [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded), keeps empty text.
     pub(crate) fn for_text(text: &str, font: GlyphFont) -> Option<Self> {
         font.metrics_valid()
-            .then(|| Self::unbounded(hash::hash_str(text), font))
+            .then(|| Self::unbounded(hash::str(text), font))
     }
 
     /// The key `text_hash` shapes under at `font`, before any width.

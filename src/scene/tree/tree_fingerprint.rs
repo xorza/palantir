@@ -1,4 +1,4 @@
-//! The two whole-tree numbers `CascadeEngine::can_update` compares each frame.
+//! The two whole-tree numbers `CascadeKey::keeps_structure` compares each frame.
 
 use crate::common::content_hash::ContentHash;
 
@@ -11,7 +11,7 @@ pub(crate) struct TreeFingerprint {
     /// order key); geometry and paint stay out, so a change here forces a full rebuild.
     pub(crate) cascade_static: ContentHash,
     /// Counts of stored shapes, chrome rows and nodes folded together, so any move in how many paint rows
-    /// nodes emit changes the hash. It lets `can_update` foresee that the incremental walk, which repairs paint
+    /// nodes emit changes the hash. It lets `CascadeKey::keeps_structure` foresee that the incremental walk, which repairs paint
     /// rows only in place, would bail (a widget adding a shape without moving, e.g. a caret). A conservative
     /// optimisation: it can miss or over-fire, and the per-node length check stays the correctness backstop.
     pub(crate) paint_counts: ContentHash,

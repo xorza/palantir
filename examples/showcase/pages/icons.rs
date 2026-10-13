@@ -6,7 +6,8 @@
 //! `IconTable::from_svgs` derives each icon's viewBox, tintability and filter use from the artwork,
 //! so a demo page states only its SVGs.
 
-use crate::support::{api, demo_cell_at, note, section, tiles};
+use crate::support;
+use crate::support::{DemoCell, Section, api};
 use palantir::{IconId, IconSet, IconTable, RgbaF32, Ui, WidgetId};
 use std::rc::Rc;
 
@@ -72,122 +73,139 @@ struct Icons {
     wide: IconId,
 }
 
-/// The loaded set, parked in a state row across frames: an `IconSet` owns the host's parsed SVGs and
-/// atlas rasters, so letting one drop at the end of every frame would unload and re-rasterize the
-/// set each frame. The row is scoped to the `Ui` that minted the handles, not to the thread.
-fn icons(ui: &mut Ui) -> Icons {
-    ui.with_state::<Option<Icons>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
-        held.get_or_insert_with(|| {
-            let set = ui.load_icons(Rc::new(
-                IconTable::from_svgs([
-                    ("folder", FOLDER_SVG),
-                    ("new-file", NEW_FILE_SVG),
-                    ("save", SAVE_SVG),
-                    ("wide", WIDE_SVG),
-                ])
-                .expect("the bundled icons are readable SVGs with distinct names"),
-            ));
-            let id = |name| set.by_name(name).expect("bundled icon");
-            Icons {
-                folder: id("folder"),
-                new_file: id("new-file"),
-                save: id("save"),
-                wide: id("wide"),
-                set,
-            }
+impl Icons {
+    /// The loaded set, parked in a state row across frames: an `IconSet` owns the host's parsed SVGs and
+    /// atlas rasters, so letting one drop at the end of every frame would unload and re-rasterize the
+    /// set each frame. The row is scoped to the `Ui` that minted the handles, not to the thread.
+    fn load(ui: &mut Ui) -> Self {
+        ui.with_state::<Option<Self>, _>(WidgetId::from_hash("showcase::icons::set"), |ui, held| {
+            held.get_or_insert_with(|| {
+                let set = ui.load_icons(Rc::new(
+                    IconTable::from_svgs([
+                        ("folder", FOLDER_SVG),
+                        ("new-file", NEW_FILE_SVG),
+                        ("save", SAVE_SVG),
+                        ("wide", WIDE_SVG),
+                    ])
+                    .expect("the bundled icons are readable SVGs with distinct names"),
+                ));
+                let id = |name| set.by_name(name).expect("bundled icon");
+                Self {
+                    folder: id("folder"),
+                    new_file: id("new-file"),
+                    save: id("save"),
+                    wide: id("wide"),
+                    set,
+                }
+            })
+            .clone()
         })
-        .clone()
-    })
+    }
+
+    fn draw(&self, ui: &mut Ui, icon: IconId, tint: RgbaF32) {
+        ui.add_shape(self.set.shape(icon).tint(tint));
+    }
 }
 
 pub(crate) fn build(ui: &mut Ui) {
-    let icons = icons(ui);
+    let icons = Icons::load(ui);
 
-    section(
-        ui,
-        "Sizes",
-        &[
+    Section::new("Sizes")
+        .apis(&[
             api!(Ui::load_icons as fn(&Ui, IconTable) -> IconSet),
             api!(IconSet::shape),
-        ],
-        |ui| {
-            note(
+        ])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Each cell rasterizes the icon at its own physical size — not a \
                  scaled copy. Change the UI scale and every cell rasterizes again, so \
                  edges stay exact.",
             );
-            tiles(ui, |ui| {
+            support::tiles(ui, |ui| {
                 for (px, label) in SIZES {
-                    demo_cell_at(ui, label, px + 24.0, px + 24.0, |ui| {
-                        draw(ui, &icons, icons.save, RgbaF32::WHITE);
-                    });
+                    DemoCell::new(label)
+                        .size(px + 24.0, px + 24.0)
+                        .show(ui, |ui| {
+                            icons.draw(ui, icons.save, RgbaF32::WHITE);
+                        });
                 }
             });
-        },
-    );
+        });
 
-    section(ui, "Artwork", &[api!(type IconTable)], |ui| {
-        note(
-            ui,
-            "Gradients, a clip path, a filter, a tintable outline, and a 2:1 \
+    Section::new("Artwork")
+        .apis(&[api!(type IconTable)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "Gradients, a clip path, a filter, a tintable outline, and a 2:1 \
                  aspect.",
-        );
-        tiles(ui, |ui| {
-            demo_cell_at(ui, "save — gradient + clip path", 120.0, 120.0, |ui| {
-                draw(ui, &icons, icons.save, RgbaF32::WHITE);
-            });
-            demo_cell_at(ui, "folder — radial + drop shadow", 120.0, 120.0, |ui| {
-                draw(ui, &icons, icons.folder, RgbaF32::WHITE);
-            });
-            demo_cell_at(ui, "new-file — tintable outline", 120.0, 120.0, |ui| {
-                draw(ui, &icons, icons.new_file, RgbaF32::WHITE);
-            });
-            demo_cell_at(ui, "wide — 2:1, Contain", 160.0, 120.0, |ui| {
-                draw(ui, &icons, icons.wide, RgbaF32::WHITE);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("save — gradient + clip path")
+                    .size(120.0, 120.0)
+                    .show(ui, |ui| {
+                        icons.draw(ui, icons.save, RgbaF32::WHITE);
+                    });
+                DemoCell::new("folder — radial + drop shadow")
+                    .size(120.0, 120.0)
+                    .show(ui, |ui| {
+                        icons.draw(ui, icons.folder, RgbaF32::WHITE);
+                    });
+                DemoCell::new("new-file — tintable outline")
+                    .size(120.0, 120.0)
+                    .show(ui, |ui| {
+                        icons.draw(ui, icons.new_file, RgbaF32::WHITE);
+                    });
+                DemoCell::new("wide — 2:1, Contain")
+                    .size(160.0, 120.0)
+                    .show(ui, |ui| {
+                        icons.draw(ui, icons.wide, RgbaF32::WHITE);
+                    });
             });
         });
-    });
 
-    section(ui, "Tint", &[], |ui| {
-        note(
+    Section::new("Tint").show(ui, |ui| {
+        support::note(
             ui,
             "A single-colour icon takes the whole tint. A colour icon takes only \
                  its alpha, and desaturate is the other half of a disabled look.",
         );
-        tiles(ui, |ui| {
+        support::tiles(ui, |ui| {
             for (label, tint) in [
                 ("tintable, white", RgbaF32::WHITE),
                 ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
                 ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
             ] {
-                demo_cell_at(ui, label, 96.0, 96.0, |ui| {
-                    draw(ui, &icons, icons.new_file, tint);
+                DemoCell::new(label).size(96.0, 96.0).show(ui, |ui| {
+                    icons.draw(ui, icons.new_file, tint);
                 });
             }
             // A colour icon takes only the tint's alpha: fading, not recolouring.
-            demo_cell_at(ui, "colour icon at 40% alpha", 96.0, 96.0, |ui| {
-                draw(ui, &icons, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
-            });
+            DemoCell::new("colour icon at 40% alpha")
+                .size(96.0, 96.0)
+                .show(ui, |ui| {
+                    icons.draw(ui, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
+                });
             // …and `desaturate` is the other half of a disabled state: the artwork's own luminance, hue gone.
-            demo_cell_at(ui, "colour icon desaturated", 96.0, 96.0, |ui| {
-                ui.add_shape(icons.set.shape(icons.save).desaturate(true));
-            });
-            demo_cell_at(ui, "desaturated + 50% alpha", 96.0, 96.0, |ui| {
-                ui.add_shape(
-                    icons
-                        .set
-                        .shape(icons.save)
-                        .desaturate(true)
-                        .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
-                );
-            });
+            DemoCell::new("colour icon desaturated")
+                .size(96.0, 96.0)
+                .show(ui, |ui| {
+                    ui.add_shape(icons.set.shape(icons.save).desaturate(true));
+                });
+            DemoCell::new("desaturated + 50% alpha")
+                .size(96.0, 96.0)
+                .show(ui, |ui| {
+                    ui.add_shape(
+                        icons
+                            .set
+                            .shape(icons.save)
+                            .desaturate(true)
+                            .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
+                    );
+                });
         });
     });
-}
-
-fn draw(ui: &mut Ui, icons: &Icons, icon: IconId, tint: RgbaF32) {
-    ui.add_shape(icons.set.shape(icon).tint(tint));
 }
 
 /// Cell captions need a `&'static str` and the sizes are a fixed list, so the label rides alongside the number.

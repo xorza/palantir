@@ -42,9 +42,7 @@ impl From<PackedLayoutMeta> for LayoutMode {
     }
 }
 
-// One index type per side table, so a grid index can't reach the scrollbar table.
-
-/// Index into `Tree::grid_defs`.
+/// Index into `Tree::grid_defs`; a type per side table, so a grid index can't reach the scrollbar table.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct GridDefId(Index16);

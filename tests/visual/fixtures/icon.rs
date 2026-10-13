@@ -11,12 +11,12 @@
 use glam::{UVec2, Vec2};
 use palantir::golden::image::RgbaImage;
 use palantir::widget::{IconFit, IconShape};
-use palantir::{Configure, IconSet, IconTable, Panel, RgbaF32, Sizing, Text, TextStyle, Ui};
+use palantir::{Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, Text, TextStyle, Ui};
+use std::ops;
 use std::rc::Rc;
 
-use crate::fixtures::{SRGB_ROUND_TRIP, assert_px, canvas};
+use crate::fixtures;
 use crate::harness::Harness;
-use std::ops;
 
 /// Fills its 8x8 viewBox with one colour, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.
@@ -45,10 +45,9 @@ fn assert_pane_interior(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
         for dx in 1..19 {
             let (x, y) = (ox + dx, oy + dy);
             let [r, g, b] = expected;
-            assert_px(
+            fixtures::assert_px(
                 img.get_pixel(x, y).0,
                 [r, g, b, 255],
-                SRGB_ROUND_TRIP,
                 format_args!("({x},{y}) is the tint, opaque"),
             );
         }
@@ -62,10 +61,9 @@ fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
     let (ox, oy) = (at.x as u32, at.y as u32);
     for (dx, dy) in [(-2, 10), (10, -2), (22, 10), (10, 22)] {
         let (x, y) = (ox.wrapping_add_signed(dx), oy.wrapping_add_signed(dy));
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, y).0,
             [0, 0, 0, 255],
-            SRGB_ROUND_TRIP,
             format_args!(
                 "({x},{y}) = {:?} must still be the clear colour",
                 img.get_pixel(x, y).0
@@ -83,7 +81,7 @@ fn render(size: UVec2, scale: f32, mut scene: impl FnMut(&mut Ui, &IconSet)) -> 
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             let icons = ui.load_icons(Rc::clone(&atlas));
-            canvas(ui, |ui| scene(ui, &icons));
+            fixtures::canvas(ui, |ui| scene(ui, &icons));
         })
         .image
 }
@@ -95,12 +93,12 @@ fn icon(icons: &IconSet, name: &str) -> IconShape {
         .fit(IconFit::Fill)
 }
 
-/// `icon` in a pane `size` at `at`.
-fn pane(ui: &mut Ui, at: Vec2, size: Vec2, icon: IconShape) {
+/// `icon` in a pane over `at`.
+fn pane(ui: &mut Ui, at: Rect, icon: IconShape) {
     Panel::zstack()
-        .id_salt(("pane", at.x as i32, at.y as i32))
-        .position(at)
-        .size((Sizing::fixed(size.x), Sizing::fixed(size.y)))
+        .id_salt(("pane", at.min.x as i32, at.min.y as i32))
+        .position(at.min)
+        .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| ui.add_shape(icon));
 }
 
@@ -112,8 +110,7 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let img = render(UVec2::new(48, 48), 1.0, |ui, icons| {
         pane(
             ui,
-            Vec2::new(6.0, 6.0),
-            Vec2::splat(20.0),
+            Rect::new(6.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
         );
     });
@@ -128,18 +125,16 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
     let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
         pane(
             ui,
-            Vec2::new(8.0, 4.0),
-            Vec2::new(32.0, 24.0),
+            Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::srgb(1.0, 0.0, 0.0)),
         );
     });
 
     // Pane spans x 8..40, so the seam is x = 24; sample inside each half.
     for (x, half) in [(14, LEFT), (34, RIGHT)] {
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, 16).0,
             half,
-            SRGB_ROUND_TRIP,
             format_args!(
                 "({x}, 16) is the authored colour: a colour icon must not take the tint's RGB"
             ),
@@ -155,8 +150,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     let img = render(UVec2::new(48, 48), 1.5, |ui, icons| {
         pane(
             ui,
-            Vec2::new(4.0, 4.0),
-            Vec2::splat(20.0),
+            Rect::new(4.0, 4.0, 20.0, 20.0),
             icon(icons, "solid").tint(RgbaF32::WHITE),
         );
     });
@@ -188,8 +182,7 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
     let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
         pane(
             ui,
-            Vec2::new(8.0, 4.0),
-            Vec2::new(32.0, 24.0),
+            Rect::new(8.0, 4.0, 32.0, 24.0),
             icon(icons, "halves").tint(RgbaF32::WHITE).desaturate(true),
         );
     });
@@ -201,10 +194,9 @@ fn desaturate_greys_a_colour_icon_by_its_luminance() {
             px[0] == px[1] && px[1] == px[2],
             "{label} half = {px:?} must be neutral grey after desaturation",
         );
-        assert_px(
+        fixtures::assert_px(
             px,
             [expected, expected, expected, 255],
-            SRGB_ROUND_TRIP,
             format_args!("{label} half is its luminance, opaque"),
         );
     }
@@ -246,8 +238,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
         label(ui, "under", Vec2::new(6.0, 6.0));
         pane(
             ui,
-            Vec2::new(20.0, 6.0),
-            Vec2::splat(20.0),
+            Rect::new(20.0, 6.0, 20.0, 20.0),
             icon(icons, "solid").tint(tint),
         );
         // A rect clip changes the scissor without changing the stencil
@@ -285,8 +276,7 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
         render(UVec2::new(680, 680), 2.0, |ui, icons| {
             pane(
                 ui,
-                Vec2::new(20.0, 20.0),
-                Vec2::splat(300.0),
+                Rect::new(20.0, 20.0, 300.0, 300.0),
                 icon(icons, name).tint(RgbaF32::WHITE),
             );
         })
@@ -302,10 +292,9 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
     // its colour, filtered only along the seam.
     let img = capped("halves");
     for (x, half) in [(60, LEFT), (620, RIGHT)] {
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, 340).0,
             half,
-            SRGB_ROUND_TRIP,
             format_args!("({x}, 340) is its half's colour"),
         );
     }

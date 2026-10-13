@@ -3,6 +3,7 @@
 pub(crate) mod anim_map_typed;
 pub(crate) mod anim_row;
 pub(crate) mod animatable;
+pub(crate) mod animation_request;
 pub(crate) mod animation_slot;
 pub(crate) mod animation_spec;
 #[cfg(feature = "internals")]
@@ -11,12 +12,12 @@ mod duration;
 pub(crate) mod easing;
 mod spring;
 
-use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
+use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
 use crate::animation::animatable::Animatable;
-use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::common::typed_stores::{Drained, TypedStores};
-use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::identity::widget_id::WidgetIdSet;
 
 /// Central animation table on [`crate::Ui`]; typed maps are allocated on demand by `TypeId`.
 #[derive(Debug, Default)]
@@ -25,38 +26,31 @@ pub(crate) struct AnimMap {
 }
 
 impl AnimMap {
-    /// Resolve one call site's animated value for this frame: snap to
+    /// Resolve one call site's animated value for this frame.
     ///
-    /// Cheapest first: nothing has ever animated and no motion wanted returns `target` before any probe; a degenerate spec (`None` or ≈0 `Duration`) drops any stale row without allocating a typed map; otherwise tick.
+    /// Cheapest first: nothing has ever animated and no motion wanted returns the target before
+    /// any probe; an instant spec ([`AnimationSpec::is_instant`]) drops any stale row without
+    /// allocating a typed map; otherwise tick.
     ///
     /// The caller owes the repaint when the result is unsettled.
     pub(crate) fn animate<T: Animatable>(
         &mut self,
-        id: WidgetId,
-        slot: impl Into<AnimationSlot>,
-        target: T,
-        spec: Option<AnimationSpec>,
-        dt: f32,
-        frame: u64,
+        request: AnimationRequest<T>,
+        spec: AnimationSpec,
+        clock: AnimClock,
     ) -> TickResult<T> {
-        if self.is_empty() && spec.is_none_or(AnimationSpec::is_instant) {
+        if spec.is_instant() {
+            if !self.is_empty()
+                && let Some(typed) = self.try_typed_mut::<T>()
+            {
+                typed.drop_row(request.id, request.slot);
+            }
             return TickResult {
-                current: target,
+                current: request.target,
                 settled: true,
             };
         }
-        let slot = slot.into();
-        let Some(spec) = spec.filter(|s| !s.is_instant()) else {
-            if let Some(typed) = self.try_typed_mut::<T>() {
-                typed.drop_row(id, slot);
-            }
-            return TickResult {
-                current: target,
-                settled: true,
-            };
-        };
-        self.typed_mut::<T>()
-            .tick(id, slot, target, spec, dt, frame)
+        self.typed_mut::<T>().tick(request, spec, clock)
     }
 
     /// Get-or-create the typed map for `T`.
@@ -69,7 +63,7 @@ impl AnimMap {
         self.stores.is_empty()
     }
 
-    /// Borrow the typed map for `T` if it exists, so `Ui::animate(.., None)` can drop a stale row without allocating.
+    /// Borrow the typed map for `T` if it exists, so an instant spec can drop a stale row without allocating.
     pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimMapTyped<T>> {
         self.stores.get_mut::<AnimMapTyped<T>>()
     }

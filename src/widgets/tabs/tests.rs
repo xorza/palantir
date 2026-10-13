@@ -15,8 +15,9 @@ use crate::widgets::block::Block;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
+use crate::widgets::tabs::tab_strip;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
 use crate::widgets::text::Text;
@@ -389,7 +390,7 @@ fn travel_needs_focus_inside_the_strip() {
 /// A focused strip takes Ctrl+Tab and lets bare Tab pass to the app root.
 #[test]
 fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
-    use crate::KeyFilter;
+    use crate::input::key_class::KeyFilter;
     use crate::input::shortcut::{Shortcut, ShortcutMods};
 
     let scene = |ui: &mut Ui, probe: Shortcut| {
@@ -440,14 +441,14 @@ fn the_insertion_slot_counts_the_centres_passed() {
         Rect::new(100.0, 0.0, 40.0, 20.0),
     ];
     // Centres sit at 20, 70 and 120.
-    let slot = |x: f32| TabStrip::insertion_slot(chips.iter().copied(), x);
+    let slot = |x: f32| tab_strip::insertion_slot(chips.iter().copied(), x);
     assert_eq!(slot(-5.0), 0, "before the first chip");
     assert_eq!(slot(19.0), 0, "the leading half of the first chip");
     assert_eq!(slot(21.0), 1, "past the first centre");
     assert_eq!(slot(71.0), 2);
     assert_eq!(slot(500.0), 3, "past every centre appends");
     assert_eq!(
-        TabStrip::insertion_slot(iter::empty(), 0.0),
+        tab_strip::insertion_slot(iter::empty(), 0.0),
         0,
         "an empty strip has one slot"
     );

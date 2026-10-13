@@ -20,11 +20,21 @@ use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
-use crate::gpu::raster::text_backend::encode::encoder::TextEncoder;
+use crate::gpu::raster::text_backend::encode::encoder::{MissedRun, TextEncoder};
 use crate::primitives::text::interned_text::InternedText;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::render::{GlyphRasterKey, RunPlacement};
 use crate::text::shaper::TextShaper;
+
+/// One text batch to prepare: its rows, the frame's raster scale, and the text they resolve against.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TextBatchInput<'a> {
+    /// The batch's index in the frame; batches arrive in order.
+    pub(crate) index: usize,
+    pub(crate) runs: &'a [TextDrawRow],
+    pub(crate) scale: f32,
+    pub(crate) interned_text: InternedText<'a>,
+}
 
 #[derive(Debug)]
 pub(crate) struct TextBackend {
@@ -65,16 +75,15 @@ impl TextBackend {
 
     /// Append-mode prepare. Encoded-cache hits bypass shaping; the first miss
     /// opens the exclusive glyph lease.
-    pub(crate) fn prepare_batch(
-        &mut self,
-        ctx: &GpuCtx<'_>,
-        scale: f32,
-        batch_idx: usize,
-        runs: &[TextDrawRow],
-        interned_text: &InternedText<'_>,
-    ) {
+    pub(crate) fn prepare_batch(&mut self, batch: TextBatchInput<'_>) {
+        let TextBatchInput {
+            index,
+            runs,
+            scale,
+            interned_text,
+        } = batch;
         self.encoder.sync_fonts(self.shaper.font_epoch());
-        self.pass.open_batch(batch_idx);
+        self.pass.open_batch(index);
 
         // One walk: hits emit directly, misses encode through the lazily opened
         // lease, so an all-hit frame never touches cosmic.
@@ -87,15 +96,16 @@ impl TextBackend {
             let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
             self.encoder.encode_run(
                 &mut self.pass,
-                ctx.device,
                 glyphs,
-                r.text.resolve_request(interned_text),
-                RunPlacement {
-                    origin: run_key.origin(),
-                    scale: scale * r.scale,
-                    bounds: Some(r.bounds),
+                MissedRun {
+                    request: r.text.resolve_request(&interned_text),
+                    placement: RunPlacement {
+                        origin: run_key.origin(),
+                        scale: scale * r.scale,
+                        bounds: Some(r.bounds),
+                    },
+                    key: run_key,
                 },
-                run_key,
             );
         }
     }

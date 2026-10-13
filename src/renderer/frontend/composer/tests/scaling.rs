@@ -8,7 +8,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::composer::geometry::StrokeBbox;
+use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, params, params_unsnapped, run, text,
@@ -16,8 +16,10 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::{RectQuad, TriangleQuad};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
@@ -100,12 +102,13 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     let buf = run(
         |b, _arena| {
             b.draw_quad(
-                DrawQuadPayload::rect(
-                    Rect::new(10.0, 20.0, 30.0, 40.0),
-                    Corners::ZERO,
-                    BrushSource::Solid(RgbaF32::WHITE.into()),
-                    nan_stroke,
-                ),
+                DrawQuadPayload::rect(RectQuad {
+                    kind: RectKind::Rounded,
+                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                    corners: Corners::ZERO,
+                    fill: BrushSource::Solid(RgbaF32::WHITE.into()),
+                    stroke: nan_stroke,
+                }),
                 1.0,
             );
         },
@@ -120,17 +123,17 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     let buf = run(
         |b, _arena| {
             b.draw_quad(
-                DrawQuadPayload::triangle(
-                    Vec2::ZERO,
-                    [
+                DrawQuadPayload::triangle(TriangleQuad {
+                    origin: Vec2::ZERO,
+                    points: [
                         Vec2::new(0.0, 0.0),
                         Vec2::new(10.0, 0.0),
                         Vec2::new(5.0, 8.0),
                     ],
-                    RgbaF32::WHITE.into(),
-                    0.0,
-                    nan_stroke,
-                ),
+                    radius: 0.0,
+                    fill: RgbaF32::WHITE.into(),
+                    stroke: nan_stroke,
+                }),
                 1.0,
             );
         },
@@ -146,12 +149,13 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     let buf = run(
         |b, _arena| {
             b.draw_quad(
-                DrawQuadPayload::rect(
-                    Rect::new(10.0, 20.0, 30.0, 40.0),
-                    Corners::ZERO,
-                    BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
-                    nan_stroke,
-                ),
+                DrawQuadPayload::rect(RectQuad {
+                    kind: RectKind::Rounded,
+                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                    corners: Corners::ZERO,
+                    fill: BrushSource::Solid(RgbaF32::TRANSPARENT.into()),
+                    stroke: nan_stroke,
+                }),
                 1.0,
             );
         },
@@ -411,13 +415,13 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     let buf = run(
         |b, _arena| {
             b.draw_quad(
-                DrawQuadPayload::triangle(
-                    Vec2::ZERO,
+                DrawQuadPayload::triangle(TriangleQuad {
+                    origin: Vec2::ZERO,
                     points,
-                    RgbaF32::WHITE.into(),
-                    2.0,
-                    Stroke::NONE.into(),
-                ),
+                    radius: 2.0,
+                    fill: RgbaF32::WHITE.into(),
+                    stroke: Stroke::NONE.into(),
+                }),
                 1.0,
             );
         },
@@ -487,18 +491,14 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
 /// (48, 48, 4, 4). With no blur and no spread it casts nothing.
 #[test]
 fn drop_shadow_quad_grows_from_the_snapped_source() {
-    use crate::primitives::packed::fill_axis::FillAxis;
-    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::shadow::Shadow;
 
     let drop = |source: Rect, corners: f32, lanes: [f32; 4]| {
         let [x, y, blur, spread] = lanes;
-        DrawQuadPayload::shadow(
-            source,
-            Corners::all(corners),
-            RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
-            FillKind::SHADOW_DROP,
-            FillAxis::from_lanes(x, y, blur, spread),
-        )
+        let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(x, y), blur)
+            .with_spread(spread);
+        DrawQuadPayload::shadow(source, Corners::all(corners), shadow.into())
+            .expect("a half-black shadow paints")
     };
     let buf = run(
         |b, _| {

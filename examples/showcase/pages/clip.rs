@@ -1,7 +1,7 @@
 //! Clip modes and subtree transforms. Each card holds a child overflowing on all four sides via negative margins; the clip mode decides what survives (none spills, rect cuts square, rounded trims to the corner radius), and padding moves the boundary to the content rect. `TranslateScale` applies to whole subtrees, stroke widths included.
 
 use crate::support;
-use crate::support::{api, captioned_cell, demo_cell, note, section, tiles};
+use crate::support::{DemoCell, Section, Surface, api};
 use palantir::{
     Align, Background, Block, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
     Ui, Vec2,
@@ -13,58 +13,78 @@ const SPILL: f32 = 18.0;
 const CELL: f32 = CARD + 2.0 * SPILL;
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(
-        ui,
-        "Clip modes",
-        &[api!(Panel::clip_rect), api!(Panel::clip_rounded)],
-        |ui| {
-            note(
+    Section::new("Clip modes")
+        .apis(&[api!(Panel::clip_rect), api!(Panel::clip_rounded)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "The same child, overflowing the card by 18 px on every side, under each mode.",
             );
-            tiles(ui, |ui| {
-                clip_card(ui, "None — the child spills", Mode::None, 0.0);
-                clip_card(ui, "Rect — square cut at the bounds", Mode::Rect, 0.0);
-                clip_card(ui, "Rounded — follows the radius", Mode::Rounded, 0.0);
+            support::tiles(ui, |ui| {
+                for (label, mode) in [
+                    ("None — the child spills", Mode::None),
+                    ("Rect — square cut at the bounds", Mode::Rect),
+                    ("Rounded — follows the radius", Mode::Rounded),
+                ] {
+                    ClipCard {
+                        label,
+                        mode,
+                        padding: 0.0,
+                    }
+                    .show(ui);
+                }
             });
-        },
-    );
+        });
 
-    section(ui, "Clip and padding", &[], |ui| {
-        note(
+    Section::new("Clip and padding").show(ui, |ui| {
+        support::note(
             ui,
             "Padding moves the clip boundary in, to the content rect, and the rounded mask \
                  follows the same edge.",
         );
-        tiles(ui, |ui| {
-            clip_card(ui, "padded, no clip", Mode::None, 28.0);
-            clip_card(ui, "padded, Rect", Mode::Rect, 28.0);
-            clip_card(ui, "padded, Rounded", Mode::Rounded, 14.0);
+        support::tiles(ui, |ui| {
+            for card in [
+                ClipCard {
+                    label: "padded, no clip",
+                    mode: Mode::None,
+                    padding: 28.0,
+                },
+                ClipCard {
+                    label: "padded, Rect",
+                    mode: Mode::Rect,
+                    padding: 28.0,
+                },
+                ClipCard {
+                    label: "padded, Rounded",
+                    mode: Mode::Rounded,
+                    padding: 14.0,
+                },
+            ] {
+                card.show(ui);
+            }
         });
     });
 
-    section(
-        ui,
-        "Subtree transform",
-        &[api!(Panel::transform), api!(TranslateScale::from_scale)],
-        |ui| {
-            note(
+    Section::new("Subtree transform")
+        .apis(&[api!(Panel::transform), api!(TranslateScale::from_scale)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "A TranslateScale on a container moves and scales everything under it, stroke \
                  widths included. Nested transforms compose.",
             );
-            tiles(ui, |ui| {
-                demo_cell(ui, "translate (30, 24)", |ui| {
+            support::tiles(ui, |ui| {
+                DemoCell::new("translate (30, 24)").show(ui, |ui| {
                     Panel::zstack()
                         .transform(TranslateScale::from_translation(Vec2::new(30.0, 24.0)))
                         .show(ui, |ui| tile(ui));
                 });
-                demo_cell(ui, "scale 1.5 — strokes scale too", |ui| {
+                DemoCell::new("scale 1.5 — strokes scale too").show(ui, |ui| {
                     Panel::zstack()
                         .transform(TranslateScale::from_scale(1.5))
                         .show(ui, |ui| tile(ui));
                 });
-                demo_cell(ui, "composed — scale 1.25, then translate", |ui| {
+                DemoCell::new("composed — scale 1.25, then translate").show(ui, |ui| {
                     Panel::zstack()
                         .transform(TranslateScale::from_scale(1.25))
                         .show(ui, |ui| {
@@ -74,8 +94,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         });
                 });
             });
-        },
-    );
+        });
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -91,26 +110,42 @@ fn card_bg() -> Background {
         .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5))
 }
 
-#[track_caller]
-fn clip_card(ui: &mut Ui, label: &'static str, mode: Mode, padding: f32) {
-    captioned_cell(ui, label, CELL, CELL, |ui| {
-        Panel::zstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .child_align(Align::CENTER)
+/// A card under one clip mode, its child overflowing on every side.
+#[derive(Debug)]
+struct ClipCard {
+    label: &'static str,
+    mode: Mode,
+    padding: f32,
+}
+
+impl ClipCard {
+    fn show(self, ui: &mut Ui) {
+        let Self {
+            label,
+            mode,
+            padding,
+        } = self;
+        DemoCell::new(label)
+            .size(CELL, CELL)
+            .surface(Surface::Bare)
             .show(ui, |ui| {
-                let mut panel = Panel::zstack()
-                    .size((Sizing::fixed(CARD), Sizing::fixed(CARD)))
-                    .padding(padding)
-                    .background(card_bg());
-                panel = match mode {
-                    Mode::None => panel,
-                    Mode::Rect => panel.clip_rect(),
-                    Mode::Rounded => panel.clip_rounded(),
-                };
-                panel.show(ui, spiller);
+                Panel::zstack()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .child_align(Align::CENTER)
+                    .show(ui, |ui| {
+                        let mut panel = Panel::zstack()
+                            .size((Sizing::fixed(CARD), Sizing::fixed(CARD)))
+                            .padding(padding)
+                            .background(card_bg());
+                        panel = match mode {
+                            Mode::None => panel,
+                            Mode::Rect => panel.clip_rect(),
+                            Mode::Rounded => panel.clip_rounded(),
+                        };
+                        panel.show(ui, spiller);
+                    });
             });
-    });
+    }
 }
 
 /// Rectangle overflowing the card on all sides: the negative margin grows its slot past the content rect and `Fill` takes it all, so the overhang stays [`SPILL`] padded or not.

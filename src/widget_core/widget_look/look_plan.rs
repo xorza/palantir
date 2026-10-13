@@ -1,5 +1,6 @@
 //! Owned theme values for a themed widget, so the theme borrow ends before its `&mut Ui` body.
 
+use crate::animation::animation_request::AnimationRequest;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -39,6 +40,9 @@ impl LookPlan {
             .default_padding(padding)
             .default_margin(margin);
         let id = widget.resolve(ui);
-        ui.animate(id, WidgetLook::SLOT_LOOK, target, animation)
+        ui.animate(
+            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            animation,
+        )
     }
 }

@@ -18,14 +18,20 @@ fn field() -> WidgetId {
     WidgetId::from_hash("ime-field")
 }
 
-/// A focused, empty field, settled.
-fn focused_field() -> (UiHarness, String) {
+/// A focused, empty field, settled: the harness and the field's bound text.
+#[derive(Debug)]
+struct FocusedField {
+    h: UiHarness,
+    buf: String,
+}
+
+fn focused_field() -> FocusedField {
     let mut h = UiHarness::with_text(SURFACE);
     let mut buf = String::new();
     h.frame(|ui| record(ui, &mut buf));
     h.set_focus(field());
     h.frame(|ui| record(ui, &mut buf));
-    (h, buf)
+    FocusedField { h, buf }
 }
 
 fn record(ui: &mut Ui, buf: &mut String) {
@@ -35,7 +41,7 @@ fn record(ui: &mut Ui, buf: &mut String) {
 /// While IME is on, typing arrives as commits, so a commit, Backspace and commit in one frame apply in that order: `a`, erased, then `b`.
 #[test]
 fn commits_and_keys_type_in_arrival_order() {
-    let (mut h, mut buf) = focused_field();
+    let FocusedField { mut h, mut buf } = focused_field();
     h.on_input(InputEvent::ImeCommit("a"));
     h.key(Key::Backspace);
     h.on_input(InputEvent::ImeCommit("b"));
@@ -46,7 +52,7 @@ fn commits_and_keys_type_in_arrival_order() {
 /// A commit longer than one press holds splits between characters (3 bytes each, four to a 14-byte press) and arrives whole, control characters dropped and held modifiers ignored: Ctrl held while an input method commits `z` types `z`.
 #[test]
 fn a_commit_splits_between_characters_and_types_whole() {
-    let (mut h, mut buf) = focused_field();
+    let FocusedField { mut h, mut buf } = focused_field();
     let text = "日本語の文章を入力する";
     h.set_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::ImeCommit("日本語の文章を入力する\tz\n"));
@@ -67,7 +73,7 @@ fn a_commit_splits_between_characters_and_types_whole() {
 /// The preedit belongs to the focused widget: read as the last event left it, its cursor a byte range, gone once committed or when focus is lost.
 #[test]
 fn the_preedit_is_a_level_for_the_focused_widget() {
-    let (mut h, mut buf) = focused_field();
+    let FocusedField { mut h, mut buf } = focused_field();
     h.on_input(InputEvent::ImePreedit(ImePreedit {
         text: "かな",
         cursor: Some(Span::new(3, 3)),
@@ -99,7 +105,7 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
 /// A commit behind a held key waits with it, keeping its text (the queue copied it, the host's string being gone), and types after the key.
 #[test]
 fn a_held_commit_keeps_its_text() {
-    let (mut h, mut buf) = focused_field();
+    let FocusedField { mut h, mut buf } = focused_field();
     h.on_input(InputEvent::ImeCommit("ab"));
     // Two command keys: the second waits a frame, and so does everything after it.
     h.key(Key::ArrowLeft);

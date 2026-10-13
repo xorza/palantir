@@ -121,8 +121,13 @@ fn surface_config_rejects_each_missing_hard_capability() {
     let SurfaceError::MissingUsages { missing } = &unmet else {
         panic!("{unmet:?}");
     };
-    assert!(
-        missing.contains("RENDER_ATTACHMENT") && !missing.contains("COPY_DST"),
-        "the report must name the usage the surface lacks, not the one it has: {missing}"
+    assert_eq!(
+        *missing,
+        SurfaceUsages::RENDER_ATTACHMENT,
+        "the usage the surface lacks, not the one it has"
+    );
+    assert_eq!(
+        unmet.to_string(),
+        "window surface cannot do RENDER_ATTACHMENT, which Palantir's compositor needs"
     );
 }

@@ -198,7 +198,8 @@ impl ShapedBufferCache {
                 return None;
             };
             // Supplanted by a later `supersede`: the live ticket is still outstanding, so
-            // this one dies. Re-filing it grew the ticket count for as long as the entry lived.
+            // this one dies. Re-filing it would grow the ticket count for as long as the entry
+            // lived.
             if seq != slot.get().ticket_seq {
                 return None;
             }

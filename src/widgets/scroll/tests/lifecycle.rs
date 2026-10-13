@@ -1,6 +1,7 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
 use crate::Ui;
+use crate::input::interaction::drag::Drag;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -12,7 +13,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::{BarDomain, ScrollState, ThumbTravel};
+use crate::widgets::scroll::scroll_state::{BarDomain, ScrollState, ThumbTravel};
 use crate::widgets::scroll::tests::support::{
     SURFACE, build, read_state, scroll_content, scroll_viewport,
 };
@@ -101,12 +102,24 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
 
-    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
-    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 5.0)), geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
+    state.apply_thumb_drag(
+        Axis::Y,
+        Drag::Active {
+            delta: Vec2::new(0.0, 5.0),
+        },
+        geom,
+    );
     assert_eq!(state.offset.y, 20.0);
     assert!(!state.drag_anchor_is_none(), "the press is still held");
 
-    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 40.0)), None);
+    state.apply_thumb_drag(
+        Axis::Y,
+        Drag::Active {
+            delta: Vec2::new(0.0, 40.0),
+        },
+        None,
+    );
     assert_eq!(state.offset.y, 20.0, "no geometry, no movement");
     assert!(
         state.drag_anchor_is_none(),
@@ -114,12 +127,24 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
     );
 
     // Geometry returns under the same press: a surviving anchor would jump 10 + 60 * 2 = 130, clamped to 100.
-    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 60.0)), geom);
+    state.apply_thumb_drag(
+        Axis::Y,
+        Drag::Active {
+            delta: Vec2::new(0.0, 60.0),
+        },
+        geom,
+    );
     assert_eq!(state.offset.y, 20.0, "a dead anchor must not resume");
 
     // A fresh press re-anchors against the current offset: 20 + 3 * 2 = 26.
-    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
-    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 3.0)), geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
+    state.apply_thumb_drag(
+        Axis::Y,
+        Drag::Active {
+            delta: Vec2::new(0.0, 3.0),
+        },
+        geom,
+    );
     assert_eq!(state.offset.y, 26.0);
 }
 
@@ -318,9 +343,15 @@ fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, -30.0);
 
-    state.apply_thumb_drag(Axis::Y, true, Some(Vec2::ZERO), geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
     // One pixel of thumb travel buys `factor` px of offset from the clamped anchor 0, not from -30.
-    state.apply_thumb_drag(Axis::Y, false, Some(Vec2::new(0.0, 1.0)), geom);
+    state.apply_thumb_drag(
+        Axis::Y,
+        Drag::Active {
+            delta: Vec2::new(0.0, 1.0),
+        },
+        geom,
+    );
     assert_eq!(
         state.offset.y, 2.0,
         "the first tracked pixel must move the thumb, not repay the band",

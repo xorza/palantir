@@ -1,6 +1,5 @@
 //! A wrapping leaf's height, its truncating peer, and the intrinsics both report.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support;
@@ -14,6 +13,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::record::ShapeRecord;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;

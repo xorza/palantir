@@ -1,4 +1,4 @@
-//! Duration motion model: the `(secs, ease)` validity bound and snap-if-close floor. Sibling of [`spring`](crate::animation::spring); each model owns its admission predicate and settle tolerance.
+//! Duration motion model: the `(secs, ease)` validity bound and snap-if-close floor. Sibling of [`Spring`](crate::animation::spring::Spring); each model owns its admission predicate and settle tolerance.
 
 use crate::animation::animatable::Animatable;
 
@@ -13,7 +13,7 @@ pub(super) const DURATION_ERROR: &str =
     "animation duration must be finite and in 0.0..=60.0 seconds";
 
 /// Whether `secs` names a duration this crate will animate over.
-pub(super) const fn duration_is_valid(secs: f32) -> bool {
+pub(super) const fn is_valid(secs: f32) -> bool {
     secs.is_finite() && secs >= 0.0 && secs <= MAX_DURATION_SECS
 }
 
@@ -21,6 +21,6 @@ pub(super) const fn duration_is_valid(secs: f32) -> bool {
 ///
 /// The spring's tolerance ([`Animatable::settle_distance_squared`]): any visible change runs the full curve; only sub-perceptual drift (ulp rounding in theme math) snaps. Duration rows carry no velocity, so this is position-only, checked on retarget; completion is `MotionRow::advance`'s `progress >= 1` arm.
 #[inline]
-pub(super) fn within_duration_snap_eps<T: Animatable>(displacement: T) -> bool {
+pub(super) fn within_snap_eps<T: Animatable>(displacement: T) -> bool {
     displacement.settle_distance_squared() < 1.0
 }

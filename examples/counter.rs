@@ -1,6 +1,7 @@
 use palantir::prelude::*;
 use palantir::{HostHandle, WinitHost, WinitHostError};
 
+#[derive(Debug)]
 struct Counter {
     clicks: u32,
 }

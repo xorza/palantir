@@ -8,8 +8,8 @@ use crate::gpu::raster::raster_atlas::raster_quad::{
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::brush::gradient::Spread;
-use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::lowered_shadow::ShadowGeom;

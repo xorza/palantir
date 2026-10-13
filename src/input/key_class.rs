@@ -139,7 +139,6 @@ impl KeyFilter {
         })
     }
 
-    /// Whether this filter takes `press`'s class.
     /// Whether this filter takes `press`'s class. Readers apply it to the
     /// shared stream so a field that yielded a class does not also act on it.
     #[inline]

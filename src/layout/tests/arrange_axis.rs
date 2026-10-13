@@ -3,7 +3,6 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
 )]
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -12,6 +11,7 @@ use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::grid::Grid;

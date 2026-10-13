@@ -1,7 +1,5 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
-use crate::InternedStr;
-use crate::Ui;
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -9,6 +7,7 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::text::interned_str::InternedStr;
 use crate::renderer::frontend::Frontend;
 use crate::scene::layer::Layer;
 use crate::scene::tree::paint_anims::curves;
@@ -22,9 +21,10 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
-use crate::ui::tests::support::{SURFACE, ui_with_shared};
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::grid::Grid;
@@ -199,8 +199,8 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     }
 
     let shared = UiResources::isolated_text();
-    let mut a = ui_with_shared(&shared);
-    let mut b = ui_with_shared(&shared);
+    let mut a = support::ui_with_shared(&shared);
+    let mut b = support::ui_with_shared(&shared);
     let text_id = WidgetId::from_hash("shared-text");
 
     a.frame(|ui| text_window(ui, "window A", 120.0));
@@ -619,8 +619,8 @@ fn interning_per_pass_records_the_expected_bytes() {
 fn the_text_clock_ticks_once_per_host_frame() {
     let shared = UiResources::isolated_mono();
     let clock = || shared.text().frame();
-    let mut a = ui_with_shared(&shared);
-    let mut b = ui_with_shared(&shared);
+    let mut a = support::ui_with_shared(&shared);
+    let mut b = support::ui_with_shared(&shared);
     let start = clock();
 
     a.frame(|_| {});

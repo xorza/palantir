@@ -1,9 +1,9 @@
 //! The authored animation spec: which motion model a value travels under, and
 //! its parameters.
 
-use crate::animation::duration::{DURATION_ERROR, MAX_DURATION, duration_is_valid};
+use crate::animation::duration::{self, DURATION_ERROR, MAX_DURATION};
 use crate::animation::easing::Easing;
-use crate::animation::spring::{SPRING_ERROR, params_are_valid as spring_params_are_valid};
+use crate::animation::spring::{SPRING_ERROR, Spring};
 use crate::primitives::math::domain::EPS;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -38,7 +38,7 @@ pub struct AnimationSpec {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum AnimMotion {
     Duration { secs: f32, ease: Easing },
-    Spring { stiffness: f32, damping: f32 },
+    Spring(Spring),
 }
 
 impl AnimationSpec {
@@ -62,10 +62,7 @@ impl AnimationSpec {
     pub const SNAP: Self = Self::duration_from_validated(0.0, Easing::Linear);
     /// Near-critically-damped spring tuned as a general-purpose default.
     pub const SPRING: Self = Self {
-        motion: AnimMotion::Spring {
-            stiffness: 170.0,
-            damping: 26.0,
-        },
+        motion: AnimMotion::Spring(Spring::DEFAULT),
     };
 
     /// Construct a duration animation of `length`; under `1e-4` seconds it
@@ -106,12 +103,10 @@ impl AnimationSpec {
     /// 30 Hz or faster. Raise `damping` or lower `stiffness` for the last.
     #[track_caller]
     pub fn spring(stiffness: f32, damping: f32) -> Self {
-        assert!(
-            spring_params_are_valid(stiffness, damping),
-            "{SPRING_ERROR}"
-        );
+        let spring = Spring { stiffness, damping };
+        assert!(spring.is_valid(), "{SPRING_ERROR}");
         Self {
-            motion: AnimMotion::Spring { stiffness, damping },
+            motion: AnimMotion::Spring(spring),
         }
     }
 
@@ -121,7 +116,7 @@ impl AnimationSpec {
     pub const fn is_instant(self) -> bool {
         match self.motion {
             AnimMotion::Duration { secs, .. } => secs == 0.0,
-            AnimMotion::Spring { .. } => false,
+            AnimMotion::Spring(_) => false,
         }
     }
 }
@@ -145,17 +140,17 @@ impl<'de> Deserialize<'de> for AnimationSpec {
     {
         match AnimMotion::deserialize(deserializer)? {
             AnimMotion::Duration { secs, ease } => {
-                if !duration_is_valid(secs) {
+                if !duration::is_valid(secs) {
                     return Err(D::Error::custom(DURATION_ERROR));
                 }
                 Ok(Self::duration_from_validated(secs, ease))
             }
-            AnimMotion::Spring { stiffness, damping } => {
-                if !spring_params_are_valid(stiffness, damping) {
+            AnimMotion::Spring(spring) => {
+                if !spring.is_valid() {
                     return Err(D::Error::custom(SPRING_ERROR));
                 }
                 Ok(Self {
-                    motion: AnimMotion::Spring { stiffness, damping },
+                    motion: AnimMotion::Spring(spring),
                 })
             }
         }

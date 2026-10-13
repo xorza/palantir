@@ -14,7 +14,7 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::encoder::GradientResolver;
+use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
 use crate::renderer::frontend::encoder::tests::support::{
     as_rect, as_shadow, count_draw_rects, quad_rect,
 };
@@ -37,10 +37,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     };
     let gradients = [gradient];
     let atlas = SharedGradientAtlas::default();
-    let mut resolver = GradientResolver {
-        atlas: atlas.clone(),
-        resolved: Vec::new(),
-    };
+    let mut resolver = GradientResolver::new(atlas.clone());
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
         hash: 0,
@@ -61,7 +58,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     }
 
     let mut pass = resolver.begin(&gradients);
-    assert!(pass.resolved[0].is_none());
+    assert!(!pass.is_resolved(GradientId(0)));
     let _ = pass.source(brush);
     assert_eq!(atlas.registrations(), registered + 1);
 }

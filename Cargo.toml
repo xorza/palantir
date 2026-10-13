@@ -158,6 +158,7 @@ harness = false
 required-features = ["internals"]
 
 
+# Warn, not deny: the verification chain runs clippy with `-D warnings`.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 meta_variable_misuse = "warn"
@@ -181,7 +182,6 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 assert_is_empty = "allow"
-# A hit says nothing unless a `usize` passes 2^24, which the code cannot show.
 cast_precision_loss = "allow"
 cast_possible_truncation = "allow"
 similar_names = "allow"
@@ -189,17 +189,13 @@ many_single_char_names = "allow"
 too_many_lines = "allow"
 inline_always = "allow"
 float_cmp = "allow"
-# `cast_possible_truncation`, allowed, already admits the wider `usize -> i32`.
 cast_possible_wrap = "allow"
 doc_markdown = "allow"
 unreadable_literal = "allow"
 struct_excessive_bools = "allow"
 wildcard_imports = "allow"
-# The subtraction already panics on underflow, as `checked_sub(..).unwrap()` would.
 unchecked_time_subtraction = "allow"
-# A shared suffix is usually a unit (`_ns`), and `Window::window` is often the plainest name.
 struct_field_names = "allow"
-# Equal arms stay apart for a guard, a fallback, or bindings no `|` pattern can join.
 match_same_arms = "allow"
 unused_self = "allow"
 absolute_paths = "warn"

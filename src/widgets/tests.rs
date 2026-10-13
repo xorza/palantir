@@ -75,6 +75,7 @@ fn hovered_trigger() -> ResponseSnapshot {
     }
 }
 
+#[derive(Debug)]
 struct Kind {
     name: &'static str,
     record: fn(&mut Ui, Chrome),
@@ -609,5 +610,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
                 .show(ui, |_, _| {});
         });
     });
-    assert!(ratio > 0.99, "Splitter: {ratio}");
+    // End sends the seam past the last free pixel, which clamps to the whole span; the arranged
+    // ratio read back next frame is `first / (first + 0)`.
+    assert_eq!(ratio, 1.0, "Splitter");
 }

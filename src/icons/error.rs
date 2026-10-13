@@ -22,6 +22,12 @@ pub enum IconTableError {
         /// The shared name.
         name: Cow<'static, str>,
     },
+    /// The sources total more than `u32::MAX` bytes, past where an
+    /// [`IconDefinition::svg`](crate::IconDefinition::svg) span can end.
+    TooLarge {
+        /// The sources' total length; `u128` holds any total of up to 65 536 sources.
+        bytes: u128,
+    },
 }
 
 impl Display for IconTableError {
@@ -34,6 +40,11 @@ impl Display for IconTableError {
             Self::DuplicateName { name } => {
                 write!(f, "two icons in one set are named {name:?}")
             }
+            Self::TooLarge { bytes } => write!(
+                f,
+                "an icon set holds at most {} bytes of SVG, got {bytes}",
+                u32::MAX
+            ),
         }
     }
 }

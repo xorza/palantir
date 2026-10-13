@@ -6,9 +6,9 @@ use glam::UVec2;
 use palantir::widget::Shape;
 use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
 
-use crate::fixtures::{SRGB_ROUND_TRIP, assert_px, canvas};
+use crate::fixtures;
+use crate::fixtures::SRGB_ROUND_TRIP;
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_scene_matches_golden;
 use crate::harness::Harness;
 use crate::support;
 
@@ -49,7 +49,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
         .size(VIEWPORT)
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 for i in 0..SWATCHES {
                     let color = swatch_color(i);
                     let rect = Rect::new(
@@ -70,10 +70,9 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
         let want = swatch_color(i).to_srgba_u8();
         // The LUT is `f16`, finer than an sRGB step, so only encode rounding
         // remains; swatches are at least 5 sRGB units apart.
-        assert_px(
+        fixtures::assert_px(
             pixel.0,
             [want.r, want.g, want.b, 255],
-            SRGB_ROUND_TRIP,
             format_args!("swatch {i} at ({x}, {y})"),
         );
     }
@@ -94,7 +93,7 @@ fn a_gradient_samples_its_lut_at_texel_centres() {
         .size(UVec2::new(1024, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
                     LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
                 ));
@@ -115,40 +114,32 @@ mod showcase_page;
 /// The showcase's gradients page as one golden.
 #[test]
 fn showcase_gradients_page_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::ShowcaseGradientsPage,
-        UVec2::new(560, 1180),
-        |ui| {
-            Panel::vstack()
-                .auto_id()
-                .gap(support::PAGE_GAP)
-                .show(ui, showcase_page::build);
-        },
-    );
+    GoldenName::ShowcaseGradientsPage.assert_scene(UVec2::new(560, 1180), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .gap(support::PAGE_GAP)
+            .show(ui, showcase_page::build);
+    });
 }
 
 /// A rounded rect with a linear-gradient fill paints correctly.
 #[test]
 fn add_shape_rounded_rect_linear_gradient_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::AddShapeRoundedRectLinearGradient,
-        UVec2::new(220, 140),
-        |ui| {
-            Panel::vstack()
-                .auto_id()
-                .padding(20.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
-                            .corners(12.0)
-                            .fill(LinearGradient::two_stop(
-                                0.0,
-                                RgbaF32::hex(0xff5e44),
-                                RgbaF32::hex(0xfacc15),
-                            )),
-                    );
-                });
-        },
-    );
+    GoldenName::AddShapeRoundedRectLinearGradient.assert_scene(UVec2::new(220, 140), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
+                        .corners(12.0)
+                        .fill(LinearGradient::two_stop(
+                            0.0,
+                            RgbaF32::hex(0xff5e44),
+                            RgbaF32::hex(0xfacc15),
+                        )),
+                );
+            });
+    });
 }

@@ -158,34 +158,36 @@ pub(crate) mod internals {
         pub(crate) fn kinds(&self) -> Vec<&'static str> {
             self.calls.iter().map(PaintCall::kind).collect()
         }
-    }
 
-    /// Asserts two encodes painted the same sequence, reporting the first divergence.
-    pub(crate) fn assert_same_capture(left: &PaintCapture, right: &PaintCapture) {
-        for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
-            // Compares rendered `Debug`, not `PartialEq`: `NaN != NaN` would fail
-            // identical frames and `-0.0 == 0.0` would hide a sign-of-zero drift.
-            let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
-            assert!(
-                ls == rs,
-                "paint call {i} differs: {} vs {}\n  left:  {ls}\n  right: {rs}",
-                l.kind(),
-                r.kind(),
-            );
-            if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) = (l, r)
-            {
+        /// Asserts `right` painted the same sequence, reporting the first divergence.
+        pub(crate) fn assert_same(&self, right: &Self) {
+            let left = self;
+            for (i, (l, r)) in left.calls.iter().zip(&right.calls).enumerate() {
+                // Compares rendered `Debug`, not `PartialEq`: `NaN != NaN` would fail
+                // identical frames and `-0.0 == 0.0` would hide a sign-of-zero drift.
+                let (ls, rs) = (format!("{l:?}"), format!("{r:?}"));
                 assert!(
-                    lp == rp,
-                    "paint call {i}: the image draws name different view callbacks"
+                    ls == rs,
+                    "paint call {i} differs: {} vs {}\n  left:  {ls}\n  right: {rs}",
+                    l.kind(),
+                    r.kind(),
                 );
+                if let (PaintCall::Image { paint: lp, .. }, PaintCall::Image { paint: rp, .. }) =
+                    (l, r)
+                {
+                    assert!(
+                        lp == rp,
+                        "paint call {i}: the image draws name different view callbacks"
+                    );
+                }
             }
+            assert_eq!(
+                left.calls.len(),
+                right.calls.len(),
+                "paint call counts differ ({} vs {}); the common prefix matched",
+                left.calls.len(),
+                right.calls.len(),
+            );
         }
-        assert_eq!(
-            left.calls.len(),
-            right.calls.len(),
-            "paint call counts differ ({} vs {}); the common prefix matched",
-            left.calls.len(),
-            right.calls.len(),
-        );
     }
 }

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// calls carry the same ids and compare equal. Unlike a node index it survives the re-pack every
 /// structural operation ends with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TabGroupId(pub(crate) u64);
+pub struct TabGroupId(pub(super) u64);
 
 /// One pane's tab strip: the open tabs plus which one is visible.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,7 +35,7 @@ impl<T> TabGroup<T> {
     /// it down a slot, so a held index would switch the pane to a document nobody asked for. Removing the
     /// visible tab is the one case that chooses another: the tab that took the slot, or the one before it
     /// where the slot was last.
-    pub(crate) fn remove_tab(&mut self, index: usize) {
+    pub(super) fn remove_tab(&mut self, index: usize) {
         self.tabs.remove(index);
         if index < self.active {
             self.active -= 1;
@@ -48,7 +48,7 @@ impl<T> TabGroup<T> {
     ///
     /// Counted rather than searched (the active tab moves down one slot per rejected tab ahead of it), so
     /// no tab comparison is needed and one pass covers any number of removals.
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
+    pub(super) fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
         let mut index = 0;
         let mut active = self.active;
         self.tabs.retain(|tab| {

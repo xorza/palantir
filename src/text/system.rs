@@ -47,6 +47,16 @@ pub(crate) struct TextSystem {
     font_epoch: u32,
 }
 
+/// How a run binds to the width layout offers it: what [`TextSystem::measure`] reads
+/// beyond the run itself.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RunBinding {
+    pub(crate) wrap: TextWrap,
+    pub(crate) halign: HAlign,
+    /// The offered width, finite, or `None` for unbounded.
+    pub(crate) available_width: Option<f32>,
+}
+
 /// Per-window reuse-slot address of one text run. A hint, not an identity:
 /// [`TextSystem::measure`] validates the stored key, so a stale slot costs one
 /// refresh.
@@ -148,12 +158,15 @@ impl TextSystem {
         &mut self,
         slot: TextRunSlot,
         request: TextShapeRequest<'_>,
-        wrap_policy: TextWrap,
-        halign: HAlign,
-        available_width_px: Option<f32>,
+        binding: RunBinding,
     ) -> RunMeasure {
         debug_assert!(request.key.max_width().is_none(), "{UNBOUND_REQUEST}");
-        if let Some(width) = available_width_px {
+        let RunBinding {
+            wrap: wrap_policy,
+            halign,
+            available_width,
+        } = binding;
+        if let Some(width) = available_width {
             debug_assert!(width.is_finite());
         }
         // Split the fields so the row stays borrowed across the shaping calls.
@@ -173,7 +186,7 @@ impl TextSystem {
                 stable_from_w: 0.0,
             };
         };
-        let Some(width) = available_width_px else {
+        let Some(width) = available_width else {
             // Unbounded, a truncating fit keeps the root, as under every width it fits.
             entry.release_bound(shaper);
             let stable_from_w = if fit.resolves_to_unbounded(&entry.root, f32::INFINITY) {
@@ -302,7 +315,7 @@ pub(crate) mod internals {
     use crate::text::request::internals::TestShape;
     use crate::text::root::internals::TestMeasure;
     use crate::text::shaper::TextShaper;
-    use crate::text::system::{TextRunSlot, TextSystem};
+    use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
     use crate::text::wrap::TextWrap;
 
     impl TextSystem {
@@ -328,7 +341,15 @@ pub(crate) mod internals {
         ) -> TestMeasure {
             let request = shape.unbounded_request(text);
             let root = self.root(slot, request, wrap_policy);
-            let shaped = self.measure(slot, request, wrap_policy, shape.halign, shape.max_width);
+            let shaped = self.measure(
+                slot,
+                request,
+                RunBinding {
+                    wrap: wrap_policy,
+                    halign: shape.halign,
+                    available_width: shape.max_width,
+                },
+            );
             TestMeasure {
                 size: shaped.shaped.extent.size,
                 key: shaped.shaped.key,

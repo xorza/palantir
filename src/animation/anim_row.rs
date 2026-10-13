@@ -3,9 +3,9 @@
 use crate::animation::anim_map_typed::TickResult;
 use crate::animation::animatable::Animatable;
 use crate::animation::animation_spec::AnimMotion;
-use crate::animation::duration::within_duration_snap_eps;
+use crate::animation::duration;
 use crate::animation::easing::Easing;
-use crate::animation::spring::{self, within_settle_eps};
+use crate::animation::spring::Spring;
 
 /// State carried only by the active motion model; the variant is also the mode
 /// tag. A duration holds the value; a spring holds only its `offset` from the
@@ -22,8 +22,7 @@ pub(super) enum MotionRow<T: Animatable> {
     Spring {
         velocity: T,
         offset: T,
-        stiffness: f32,
-        damping: f32,
+        spring: Spring,
     },
 }
 
@@ -37,11 +36,10 @@ impl<T: Animatable> MotionRow<T> {
                 secs,
                 ease,
             },
-            AnimMotion::Spring { stiffness, damping } => Self::Spring {
+            AnimMotion::Spring(spring) => Self::Spring {
                 velocity: T::zero(),
                 offset: current.clone().sub(target.clone()),
-                stiffness,
-                damping,
+                spring,
             },
         }
     }
@@ -67,17 +65,8 @@ impl<T: Animatable> MotionRow<T> {
                 *ease = new_ease;
                 false
             }
-            (
-                Self::Spring {
-                    stiffness, damping, ..
-                },
-                AnimMotion::Spring {
-                    stiffness: new_stiffness,
-                    damping: new_damping,
-                },
-            ) => {
-                *stiffness = new_stiffness;
-                *damping = new_damping;
+            (Self::Spring { spring, .. }, AnimMotion::Spring(new_spring)) => {
+                *spring = new_spring;
                 false
             }
             (this, motion) => {
@@ -104,11 +93,10 @@ impl<T: Animatable> MotionRow<T> {
             Self::Spring {
                 velocity,
                 offset,
-                stiffness,
-                ..
+                spring,
             } => {
                 *offset = current.clone().sub(target.clone());
-                let reach = spring::velocity_reach(velocity.clone(), *stiffness);
+                let reach = spring.velocity_reach(velocity.clone());
                 if dot(reach, offset.clone()) > 0.0 {
                     *velocity = T::zero();
                 }
@@ -119,12 +107,10 @@ impl<T: Animatable> MotionRow<T> {
     /// Whether `displacement` (and a spring's velocity) is too small to animate.
     pub(super) fn close_enough(&self, displacement: T) -> bool {
         match self {
-            Self::Duration { .. } => within_duration_snap_eps(displacement),
+            Self::Duration { .. } => duration::within_snap_eps(displacement),
             Self::Spring {
-                velocity,
-                stiffness,
-                ..
-            } => within_settle_eps(displacement, velocity.clone(), *stiffness),
+                velocity, spring, ..
+            } => spring.within_settle_eps(displacement, velocity.clone()),
         }
     }
 
@@ -165,10 +151,9 @@ impl<T: Animatable> MotionRow<T> {
             Self::Spring {
                 velocity,
                 offset,
-                stiffness,
-                damping,
+                spring,
             } => {
-                let step = spring::step(*stiffness, *damping, offset.clone(), velocity.clone(), dt);
+                let step = spring.step(offset.clone(), velocity.clone(), dt);
                 *velocity = step.velocity;
                 *offset = step.offset;
                 TickResult {

@@ -9,13 +9,11 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::frontend::encoder::GradientPass;
 use crate::renderer::frontend::encoder::geometry;
+use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
@@ -25,7 +23,9 @@ use crate::renderer::frontend::payload::draw_image_payload::{
 };
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::{
+    DrawQuadPayload, RectQuad, TriangleQuad,
+};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
@@ -37,15 +37,24 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_anims::PaintAnimCursor;
+use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
-use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::{self, ShapeRecord};
+use crate::shape::rect::RectKind;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 use std::time::Duration;
+
+/// One shape of a node's paint stream: its owner, its index in the owner's
+/// shapes, and the record.
+#[derive(Clone, Copy, Debug)]
+struct ShapeItem<'s> {
+    owner: NodeId,
+    index: u32,
+    record: &'s ShapeRecord,
+}
 
 /// The fixed inputs one layer's encode walk reads.
 #[derive(Debug)]
@@ -78,12 +87,15 @@ impl LayerCtx<'_, '_> {
     /// Emits one of a node's shapes; `runs` is that node's [`TextRuns`] cursor, advanced here.
     fn emit_one_shape(
         &mut self,
-        id: NodeId,
-        shape_idx: u32,
-        shape: &ShapeRecord,
+        item: ShapeItem<'_>,
         runs: &mut TextRuns,
         out: &mut impl PaintSink,
     ) {
+        let ShapeItem {
+            owner: id,
+            index: shape_idx,
+            record: shape,
+        } = item;
         // `Shapes::add` is the single NaN gate, so nothing non-finite reaches here; later non-finite checks guard the transform stack only.
         // No "not a no-op" assert: that needs resolved geometry, which first exists in `Draw*Payload::is_noop`.
         debug_assert!(
@@ -109,10 +121,16 @@ impl LayerCtx<'_, '_> {
                     border,
                     ..
                 } => {
-                    let r = geometry::resolve_local_rect(owner_rect, *local_rect);
-                    let src = self.brush_source(*fill);
+                    let rect = geometry::resolve_local_rect(owner_rect, *local_rect);
+                    let fill = self.brush_source(*fill);
                     out.draw_quad(
-                        DrawQuadPayload::rect_of_kind(*kind, r, *corners, src, *border),
+                        DrawQuadPayload::rect(RectQuad {
+                            kind: *kind,
+                            rect,
+                            corners: *corners,
+                            fill,
+                            stroke: *border,
+                        }),
                         alpha,
                     );
                 }
@@ -120,7 +138,13 @@ impl LayerCtx<'_, '_> {
                     local_rect,
                     corners,
                     shadow,
-                } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow, alpha),
+                } => {
+                    // The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
+                    let source = geometry::resolve_local_rect(owner_rect, *local_rect);
+                    if let Some(shadow) = DrawQuadPayload::shadow(source, *corners, *shadow) {
+                        out.draw_quad(shadow, alpha);
+                    }
+                }
                 QuadShape::Triangle {
                     a,
                     b,
@@ -132,13 +156,13 @@ impl LayerCtx<'_, '_> {
                 } => {
                     // Owner-local corner points; the composer folds in `origin` and the transform. Solid fill only: the reused quad lanes have no room for a gradient.
                     out.draw_quad(
-                        DrawQuadPayload::triangle(
-                            owner_rect.min,
-                            [*a, *b, *c],
-                            *fill,
-                            *radius,
-                            *border,
-                        ),
+                        DrawQuadPayload::triangle(TriangleQuad {
+                            origin: owner_rect.min,
+                            points: [*a, *b, *c],
+                            radius: *radius,
+                            fill: *fill,
+                            stroke: *border,
+                        }),
                         alpha,
                     );
                 }
@@ -189,10 +213,8 @@ impl LayerCtx<'_, '_> {
                         bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                         origin: owner_rect.min,
                         width: *width,
-                        points_start: points.start,
-                        points_len: points.len,
-                        colors_start: colors.start,
-                        colors_len: colors.len,
+                        points: *points,
+                        colors: *colors,
                         color_mode: *color_mode,
                         cap: *cap,
                         join: *join,
@@ -215,10 +237,8 @@ impl LayerCtx<'_, '_> {
                         bbox: *bbox,
                         origin,
                         tint: *tint,
-                        v_start: vertices.start,
-                        v_len: vertices.len,
-                        i_start: indices.start,
-                        i_len: indices.len,
+                        vertices: *vertices,
+                        indices: *indices,
                     },
                     alpha,
                 );
@@ -353,8 +373,13 @@ impl LayerCtx<'_, '_> {
 
         if let Some(bg) = chrome {
             // Alpha `1.0`: chrome isn't a shape, so no paint animation. CSS Backgrounds 3 §7.1 order: drop shadow under the fill, inset over it.
-            let src = self.brush_source(bg.fill);
-            let fill = DrawQuadPayload::rect(rect, bg.corners, src, bg.border);
+            let fill = DrawQuadPayload::rect(RectQuad {
+                kind: RectKind::Rounded,
+                rect,
+                corners: bg.corners,
+                fill: self.brush_source(bg.fill),
+                stroke: bg.border,
+            });
             if bg.shadow.inset() {
                 out.draw_quad(fill, 1.0);
                 let width = bg.border.width;
@@ -363,17 +388,27 @@ impl LayerCtx<'_, '_> {
                     size: rect.size,
                 }
                 .deflated(width);
+                let source = geometry::resolve_local_rect(rect, Some(padding_box));
                 let corners = bg.corners.deflated(rect.size, width);
-                emit_shadow(out, rect, Some(padding_box), corners, &bg.shadow, 1.0);
+                if let Some(shadow) = DrawQuadPayload::shadow(source, corners, bg.shadow) {
+                    out.draw_quad(shadow, 1.0);
+                }
             } else {
-                // `local_rect = None`: the owner's rect, as `compute_paint_rect` mirrors.
-                emit_shadow(out, rect, None, bg.corners, &bg.shadow, 1.0);
+                // The owner's rect, as `compute_paint_rect` mirrors.
+                if let Some(shadow) = DrawQuadPayload::shadow(rect, bg.corners, bg.shadow) {
+                    out.draw_quad(shadow, 1.0);
+                }
                 out.draw_quad(fill, 1.0);
             }
             if bg.ring {
-                let clear = self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT));
-                let ring = self.tree.focus_ring;
-                out.draw_quad(DrawQuadPayload::rect(rect, bg.corners, clear, ring), 1.0);
+                let ring = DrawQuadPayload::rect(RectQuad {
+                    kind: RectKind::Rounded,
+                    rect,
+                    corners: bg.corners,
+                    fill: self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT)),
+                    stroke: self.tree.focus_ring,
+                });
+                out.draw_quad(ring, 1.0);
             }
         }
 
@@ -414,8 +449,13 @@ impl LayerCtx<'_, '_> {
         let tree = self.tree;
         for item in tree.tree_items(id) {
             match item {
-                TreeItem::ShapeRecord(shape_idx, shape) => {
-                    self.emit_one_shape(id, shape_idx, shape, &mut runs, out);
+                TreeItem::ShapeRecord(index, record) => {
+                    let item = ShapeItem {
+                        owner: id,
+                        index,
+                        record,
+                    };
+                    self.emit_one_shape(item, &mut runs, out);
                 }
                 TreeItem::Child(child) => {
                     self.encode_node(child.id, out);
@@ -434,36 +474,4 @@ impl LayerCtx<'_, '_> {
             out.pop_clip();
         }
     }
-}
-
-/// Shared shadow emit. The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
-fn emit_shadow(
-    out: &mut impl PaintSink,
-    owner_rect: Rect,
-    local_rect: Option<Rect>,
-    corners: Corners,
-    shadow: &LoweredShadow,
-    alpha: f32,
-) {
-    if shadow.is_noop() {
-        return;
-    }
-    let source = match local_rect {
-        Some(local) => Rect {
-            min: owner_rect.min + local.min,
-            size: local.size,
-        },
-        None => owner_rect,
-    };
-    let kind = if shadow.inset() {
-        FillKind::SHADOW_INSET
-    } else {
-        FillKind::SHADOW_DROP
-    };
-    // The axis travels as the packed word; unpacking would round-trip identical bytes through f16.
-    let fill_axis = FillAxis::from(shadow.geom_f16);
-    out.draw_quad(
-        DrawQuadPayload::shadow(source, corners, shadow.color, kind, fill_axis),
-        alpha,
-    );
 }

@@ -13,9 +13,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::UVec2;
-use palantir::{Configure, GpuFrameContext, GpuPaint, GpuView, Panel, Sizing, TranslateScale};
+use palantir::{
+    Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Panel, Sizing, TranslateScale,
+};
 
-use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
+use crate::fixtures;
 use crate::harness::Harness;
 
 /// A `GpuPaint` with a real pipeline, depth attachment and draw (as the `cube` showcase), so wgpu validation sees what an app's paint does.
@@ -61,7 +63,7 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
-    fn init(&mut self, ctx: &palantir::GpuInitContext<'_>) {
+    fn init(&mut self, ctx: &GpuInitContext<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),
@@ -181,10 +183,9 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
         .image;
     // (63,63) discriminates: a full [0,1] UV would sample blue slack at texel ≈66.
     for &(x, y) in &[(32u32, 32u32), (63, 63), (0, 63), (63, 0)] {
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, y).0,
             [0, 255, 0, 255],
-            SRGB_ROUND_TRIP,
             format_args!("pixel ({x},{y}) is green, not the capacity slack"),
         );
     }
@@ -212,10 +213,9 @@ fn gpu_view_callback_receives_composed_raster_scale() {
     assert_eq!(paint.borrow().last_raster_scale, 3.0);
 
     for &(x, y, expected) in &[(36, 36, [0, 255, 0, 255]), (60, 60, [0, 0, 255, 255])] {
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(x, y).0,
             expected,
-            SRGB_ROUND_TRIP,
             format_args!("pixel ({x},{y})"),
         );
     }

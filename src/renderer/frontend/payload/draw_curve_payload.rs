@@ -40,8 +40,8 @@ impl DrawCurvePayload {
         if is_invisible(self.width) {
             return true;
         }
-        if let CurveBasis::Arc { radius, .. } = self.basis
-            && is_invisible(radius)
+        if let CurveBasis::Arc(arc) = self.basis
+            && is_invisible(arc.radius)
         {
             return true;
         }

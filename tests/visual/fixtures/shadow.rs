@@ -8,8 +8,8 @@ use palantir::{
 };
 use std::f64::consts::SQRT_2;
 
-use crate::fixtures::canvas;
-use crate::goldens::{assert_same, assert_same_in, crop};
+use crate::fixtures;
+use crate::goldens;
 use crate::harness::Harness;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
@@ -24,26 +24,12 @@ fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
     Harness::new()
         .size(VIEWPORT)
         .clear(clear)
-        .frame(|ui| canvas(ui, &mut scene))
+        .frame(|ui| fixtures::canvas(ui, &mut scene))
         .image
 }
 
-/// An [`INK`] shadow of `source` over white.
-fn render_shadow(
-    source: Rect,
-    corners: impl Into<Corners>,
-    offset: Vec2,
-    blur: f32,
-    spread: f32,
-    inset: bool,
-) -> RgbaImage {
-    let shadow = Shadow {
-        color: INK,
-        offset,
-        blur,
-        spread,
-        inset,
-    };
+/// `shadow` of `source` over white.
+fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> RgbaImage {
     let corners = corners.into();
     render(CLEAR, |ui| {
         ui.add_shape(Shape::shadow(shadow).at(source).corners(corners));
@@ -92,11 +78,19 @@ fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
             min: source.min + offset,
             size: source.size,
         };
-        let shifted = render_shadow(source, 11.0, offset, 6.0, 4.0, false);
-        let reference = render_shadow(moved, 11.0, Vec2::ZERO, 6.0, 4.0, false);
+        let shifted = render_shadow(
+            source,
+            11.0,
+            Shadow::drop(INK, offset, 6.0).with_spread(4.0),
+        );
+        let reference = render_shadow(
+            moved,
+            11.0,
+            Shadow::drop(INK, Vec2::ZERO, 6.0).with_spread(4.0),
+        );
         let holes = [source, moved];
         let name = format!("shadow_offset_{}_{}", offset.x, offset.y);
-        assert_same(
+        goldens::assert_same(
             &name,
             &without(&shifted, &holes),
             &without(&reference, &holes),
@@ -108,18 +102,28 @@ fn shifted_drop_bbox_preserves_positive_and_negative_offset_pixels() {
 fn inset_offset_matches_translated_zero_offset_pixels_inside_source() {
     let source = Rect::new(40.0, 35.0, 120.0, 100.0);
     let pixel_offset = IVec2::new(9, -7);
-    let shifted = render_shadow(source, 11.0, pixel_offset.as_vec2(), 6.0, 8.0, true);
-    let reference = render_shadow(source, 11.0, Vec2::ZERO, 6.0, 8.0, true);
+    let shifted = render_shadow(
+        source,
+        11.0,
+        Shadow::drop(INK, pixel_offset.as_vec2(), 6.0)
+            .with_spread(8.0)
+            .inset(),
+    );
+    let reference = render_shadow(
+        source,
+        11.0,
+        Shadow::drop(INK, Vec2::ZERO, 6.0).with_spread(8.0).inset(),
+    );
 
     let region = Rect::new(60.0, 50.0, 85.0, 70.0);
     let unshifted = Rect {
         min: region.min - pixel_offset.as_vec2(),
         size: region.size,
     };
-    assert_same(
+    goldens::assert_same(
         "shadow_inset_translated",
-        &crop(&shifted, region),
-        &crop(&reference, unshifted),
+        &goldens::crop(&shifted, region),
+        &goldens::crop(&reference, unshifted),
     );
 }
 
@@ -132,33 +136,43 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
     let spread = -4.0;
 
     let drop_source = Rect::new(64.0, 60.0, 72.0, 54.0);
-    let drop = render_shadow(drop_source, 11.0, Vec2::ZERO, blur, spread, false);
+    let drop = render_shadow(
+        drop_source,
+        11.0,
+        Shadow::drop(INK, Vec2::ZERO, blur).with_spread(spread),
+    );
     let deflated_source = drop_source.inflated(spread);
-    let drop_reference =
-        render_shadow(deflated_source, 11.0 + spread, Vec2::ZERO, blur, 0.0, false);
+    let drop_reference = render_shadow(
+        deflated_source,
+        11.0 + spread,
+        Shadow::drop(INK, Vec2::ZERO, blur),
+    );
     let holes = [drop_source];
-    assert_same_in(
+    let region = deflated_source.inflated(3.0 * blur);
+    goldens::assert_same(
         "shadow_drop_negative_spread",
-        &without(&drop, &holes),
-        &without(&drop_reference, &holes),
-        deflated_source.inflated(3.0 * blur),
+        &goldens::crop(&without(&drop, &holes), region),
+        &goldens::crop(&without(&drop_reference, &holes), region),
     );
 
     let inset_source = Rect::new(40.0, 35.0, 120.0, 100.0);
-    let inset = render_shadow(inset_source, 11.0, Vec2::ZERO, blur, spread, true);
+    let inset = render_shadow(
+        inset_source,
+        11.0,
+        Shadow::drop(INK, Vec2::ZERO, blur)
+            .with_spread(spread)
+            .inset(),
+    );
     let inset_reference = render_shadow(
         inset_source.inflated(-spread),
         11.0 - spread,
-        Vec2::ZERO,
-        blur,
-        0.0,
-        true,
+        Shadow::drop(INK, Vec2::ZERO, blur).inset(),
     );
-    assert_same_in(
+    let region = inset_source.inflated(-12.0);
+    goldens::assert_same(
         "shadow_inset_negative_spread",
-        &inset,
-        &inset_reference,
-        inset_source.inflated(-12.0),
+        &goldens::crop(&inset, region),
+        &goldens::crop(&inset_reference, region),
     );
 }
 
@@ -186,25 +200,34 @@ fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
     let dark = |img: &RgbaImage, x: u32, y: u32| img.get_pixel(x, y).0[0] < 120;
     let clear = |img: &RgbaImage, x: u32, y: u32| img.get_pixel(x, y).0[0] > 245;
 
-    let grown = render_shadow(circle, 20.0, Vec2::ZERO, 0.0, 6.0, false);
+    let grown = render_shadow(
+        circle,
+        20.0,
+        Shadow::drop(INK, Vec2::ZERO, 0.0).with_spread(6.0),
+    );
     assert!(dark(&grown, 127, 107), "24.7 px out on the diagonal");
     assert!(clear(&grown, 129, 109), "27.6 px out on the diagonal");
 
-    let shrunk = render_shadow(circle, 20.0, Vec2::new(0.0, 45.0), 0.0, -6.0, false);
+    let shrunk = render_shadow(
+        circle,
+        20.0,
+        Shadow::drop(INK, Vec2::new(0.0, 45.0), 0.0).with_spread(-6.0),
+    );
     assert!(dark(&shrunk, 110, 148), "13.5 px below the centre");
     assert!(clear(&shrunk, 110, 150), "15.5 px below the centre");
     assert!(clear(&shrunk, 120, 145), "14.1 px out on the diagonal");
 
-    let sharp = render_shadow(circle, 0.0, Vec2::ZERO, 0.0, 6.0, false);
+    let sharp = render_shadow(
+        circle,
+        0.0,
+        Shadow::drop(INK, Vec2::ZERO, 0.0).with_spread(6.0),
+    );
     assert!(dark(&sharp, 84, 64), "the sharp shadow's corner pixel");
 
     let overlapping = render_shadow(
         Rect::new(80.0, 70.0, 60.0, 40.0),
         Corners::new(60.0, 0.0, 0.0, 0.0),
-        Vec2::ZERO,
-        0.0,
-        6.0,
-        false,
+        Shadow::drop(INK, Vec2::ZERO, 0.0).with_spread(6.0),
     );
     assert!(
         dark(&overlapping, 88, 78),
@@ -255,7 +278,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         })
     };
     let chrome = boxed(true);
-    assert_same("shadow_inset_chrome", &chrome, &boxed(false));
+    goldens::assert_same("shadow_inset_chrome", &chrome, &boxed(false));
     let red = |x: u32, y: u32| chrome.get_pixel(x, y).0[0];
     assert!(red(110, 90) >= 228, "the middle is the bare fill");
     assert!(red(44, 90) < 215, "the padding edge is in shadow");
@@ -295,7 +318,11 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
         let bare = cast(Shadow::NONE, chrome);
         for (i, band) in bands.into_iter().enumerate() {
             let name = format!("shadow_clip_{label}_{i}");
-            assert_same_in(&name, &shadowed, &bare, band);
+            goldens::assert_same(
+                &name,
+                &goldens::crop(&shadowed, band),
+                &goldens::crop(&bare, band),
+            );
         }
         let below = |img: &RgbaImage| img.get_pixel(110, 145).0[0];
         assert!(
@@ -328,34 +355,50 @@ fn pixel_cdf(u: f64, sigma: f64) -> f64 {
         / f64::from(SAMPLES)
 }
 
-/// Coverage at the pixel centred on `p` of `rect` with every corner rounded
-/// by `radius`, blurred by σ. Summed in 1/2000-of-height rows through
-/// `pixel_cdf`, weighted by the kernel's share on each row.
-fn reference_coverage(p: Vec2, rect: Rect, radius: f32, sigma: f64) -> f64 {
-    const ROWS: u32 = 2000;
-    let (px, py) = (f64::from(p.x), f64::from(p.y));
-    let (x0, y0) = (f64::from(rect.min.x), f64::from(rect.min.y));
-    let (w, h, r) = (
-        f64::from(rect.size.w),
-        f64::from(rect.size.h),
-        f64::from(radius),
-    );
-    let row = h / f64::from(ROWS);
-    (0..ROWS)
-        .map(|i| {
-            let top = y0 + f64::from(i) * row;
-            let mid = top + 0.5 * row;
-            let from_edge = (mid - y0).min(y0 + h - mid);
-            let inset = if from_edge < r {
-                r - (r * r - (r - from_edge).powi(2)).sqrt()
-            } else {
-                0.0
-            };
-            let span = pixel_cdf(x0 + w - inset - px, sigma) - pixel_cdf(x0 + inset - px, sigma);
-            let weight = pixel_cdf(top + row - py, sigma) - pixel_cdf(top - py, sigma);
-            span * weight
-        })
-        .sum()
+/// A rect with every corner rounded by `radius`, blurred by σ = `sigma`: the
+/// reference a shadow's pixels are checked against.
+#[derive(Clone, Copy, Debug)]
+struct BlurredBox {
+    rect: Rect,
+    radius: f32,
+    sigma: f64,
+}
+
+impl BlurredBox {
+    /// Coverage at the pixel centred on `p`. Summed in 1/2000-of-height rows
+    /// through `pixel_cdf`, weighted by the kernel's share on each row.
+    fn coverage(self, p: Vec2) -> f64 {
+        const ROWS: u32 = 2000;
+        let Self {
+            rect,
+            radius,
+            sigma,
+        } = self;
+        let (px, py) = (f64::from(p.x), f64::from(p.y));
+        let (x0, y0) = (f64::from(rect.min.x), f64::from(rect.min.y));
+        let (w, h, r) = (
+            f64::from(rect.size.w),
+            f64::from(rect.size.h),
+            f64::from(radius),
+        );
+        let row = h / f64::from(ROWS);
+        (0..ROWS)
+            .map(|i| {
+                let top = y0 + f64::from(i) * row;
+                let mid = top + 0.5 * row;
+                let from_edge = (mid - y0).min(y0 + h - mid);
+                let inset = if from_edge < r {
+                    r - (r * r - (r - from_edge).powi(2)).sqrt()
+                } else {
+                    0.0
+                };
+                let span =
+                    pixel_cdf(x0 + w - inset - px, sigma) - pixel_cdf(x0 + inset - px, sigma);
+                let weight = pixel_cdf(top + row - py, sigma) - pixel_cdf(top - py, sigma);
+                span * weight
+            })
+            .sum()
+    }
 }
 
 /// A blurred shadow is its box convolved with the Gaussian, checked per pixel
@@ -383,39 +426,59 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
     let centre = |x: u32, y: u32| Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
 
     let sharp = Rect::new(40.0, 40.0, 60.0, 40.0);
-    let img = render_shadow(sharp, 0.0, Vec2::ZERO, 6.0, 0.0, false);
+    let img = render_shadow(sharp, 0.0, Shadow::drop(INK, Vec2::ZERO, 6.0));
+    let reference = BlurredBox {
+        rect: sharp,
+        radius: 0.0,
+        sigma: 6.0,
+    };
     for (x, y) in [(39, 39), (33, 33), (30, 30), (70, 37), (36, 60)] {
-        let want = reference_coverage(centre(x, y), sharp, 0.0, 6.0);
-        probe(&img, x, y, want, "sharp box");
+        probe(&img, x, y, reference.coverage(centre(x, y)), "sharp box");
     }
     assert!(
-        (reference_coverage(Vec2::new(40.0, 40.0), sharp, 0.0, 6.0) - 0.25).abs() < 1e-3,
+        (reference.coverage(Vec2::new(40.0, 40.0)) - 0.25).abs() < 1e-3,
         "the reference puts a quarter of the kernel on the corner",
     );
 
-    let img = render_shadow(sharp, 12.0, Vec2::ZERO, 6.0, 0.0, false);
+    let img = render_shadow(sharp, 12.0, Shadow::drop(INK, Vec2::ZERO, 6.0));
+    let reference = BlurredBox {
+        radius: 12.0,
+        ..reference
+    };
     for (x, y) in [(41, 41), (37, 37), (33, 33), (44, 38), (38, 44)] {
-        let want = reference_coverage(centre(x, y), sharp, 12.0, 6.0);
-        probe(&img, x, y, want, "rounded box");
+        probe(&img, x, y, reference.coverage(centre(x, y)), "rounded box");
     }
 
     let small = Rect::new(150.0, 20.0, 4.0, 4.0);
     let moved = Rect::new(150.0, 80.0, 4.0, 4.0);
-    let img = render_shadow(small, 0.0, Vec2::new(0.0, 60.0), 8.0, 0.0, false);
+    let img = render_shadow(small, 0.0, Shadow::drop(INK, Vec2::new(0.0, 60.0), 8.0));
+    let reference = BlurredBox {
+        rect: moved,
+        radius: 0.0,
+        sigma: 8.0,
+    };
     for (x, y) in [(151, 81), (152, 82), (158, 82), (152, 90)] {
-        let want = reference_coverage(centre(x, y), moved, 0.0, 8.0);
+        let want = reference.coverage(centre(x, y));
         assert!(want < 0.04, "the reference spreads the box thin");
         probe(&img, x, y, want, "small box");
     }
 
     let collapsed = Rect::new(150.0, 120.0, 10.0, 10.0);
-    let img = render_shadow(collapsed, 2.0, Vec2::new(0.0, 30.0), 4.0, -8.0, false);
+    let img = render_shadow(
+        collapsed,
+        2.0,
+        Shadow::drop(INK, Vec2::new(0.0, 30.0), 4.0).with_spread(-8.0),
+    );
     for (x, y) in [(154, 154), (155, 155), (150, 150)] {
         probe(&img, x, y, 0.0, "collapsed drop shadow");
     }
 
     let closed = Rect::new(20.0, 110.0, 40.0, 40.0);
-    let img = render_shadow(closed, 6.0, Vec2::ZERO, 4.0, 25.0, true);
+    let img = render_shadow(
+        closed,
+        6.0,
+        Shadow::drop(INK, Vec2::ZERO, 4.0).with_spread(25.0).inset(),
+    );
     for (x, y) in [(39, 129), (40, 130), (30, 140)] {
         probe(&img, x, y, 1.0, "closed inset hole");
     }
@@ -430,9 +493,13 @@ fn an_inset_shadow_shares_its_source_edge_ramp() {
     let filled = render(CLEAR, |ui| {
         ui.add_shape(Shape::rect(source).fill(INK).corners(14.0));
     });
-    assert_same(
+    goldens::assert_same(
         "shadow_inset_edge",
-        &render_shadow(source, 14.0, Vec2::ZERO, 3.0, 60.0, true),
+        &render_shadow(
+            source,
+            14.0,
+            Shadow::drop(INK, Vec2::ZERO, 3.0).with_spread(60.0).inset(),
+        ),
         &filled,
     );
 }
@@ -451,10 +518,7 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
     let img = render_shadow(
         Rect::new(40.0, 20.0, 60.0, 40.0),
         0.0,
-        Vec2::new(0.75, 50.0),
-        0.0,
-        0.0,
-        false,
+        Shadow::drop(INK, Vec2::new(0.75, 50.0), 0.0),
     );
     for (x, coverage) in [(39, 0.0), (40, 0.25), (41, 1.0), (100, 0.75), (101, 0.0)] {
         let got = img.get_pixel(x, 90).0[0];
@@ -470,18 +534,18 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         let glow = Shadow::drop(RgbaF32::WHITE, Vec2::ZERO, 8.0);
         ui.add_shape(Shape::shadow(glow).at(source));
     });
+    let reference = BlurredBox {
+        rect: source,
+        radius: 0.0,
+        sigma: 8.0,
+    };
     assert!(
-        grey(reference_coverage(Vec2::new(184.5, 90.5), source, 0.0, 8.0)) >= 3,
+        grey(reference.coverage(Vec2::new(184.5, 90.5))) >= 3,
         "the tail past 3σ shows",
     );
     for x in 176..196 {
         let got = img.get_pixel(x, 90).0[0];
-        let want = grey(reference_coverage(
-            Vec2::new(x as f32 + 0.5, 90.5),
-            source,
-            0.0,
-            8.0,
-        ));
+        let want = grey(reference.coverage(Vec2::new(x as f32 + 0.5, 90.5)));
         assert!(
             got.abs_diff(want) <= 1,
             "glow at ({x}, 90): got {got}, want {want}",
@@ -500,7 +564,7 @@ fn cutout_grid(ui: &mut Ui) {
     const BLURS: [f32; 4] = [0.5, 2.0, 6.0, 16.0];
     const RADII: [f32; 4] = [0.0, 4.0, 12.0, 30.0];
     const CELL: f32 = 200.0;
-    canvas(ui, |ui| {
+    fixtures::canvas(ui, |ui| {
         for (row, inset) in [false, true].into_iter().enumerate() {
             for (y, blur) in BLURS.into_iter().enumerate() {
                 for (x, radius) in RADII.into_iter().enumerate() {
@@ -677,7 +741,7 @@ fn grid_case_shape(case: GridCase, at: Rect) -> ShadowShape {
 /// edge cells, a rounded (stencil) clip over another.
 fn grid_sweep(ui: &mut Ui) {
     let cases = grid_cases();
-    canvas(ui, |ui| {
+    fixtures::canvas(ui, |ui| {
         for (i, &case) in cases.iter().enumerate() {
             ui.add_shape(grid_case_shape(case, grid_case_rect(i, case)));
         }

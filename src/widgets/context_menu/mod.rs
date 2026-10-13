@@ -51,7 +51,7 @@ struct ContextMenuState {
 /// [`Self::for_id`]`(id).show(...)`.
 ///
 /// Closes on outside-click, Esc, a clicked item, or an item's matching
-/// [`Shortcut`](crate::input::shortcut::Shortcut).
+/// [`Shortcut`](crate::Shortcut).
 ///
 /// [`Self::style`] restyles the panel only; pass sub-themes to the rows.
 #[derive(Debug)]
@@ -185,6 +185,7 @@ impl ContextMenu<'_> {
     /// Paint `background` unless the caller set one, for a wrapper theming
     /// a widget after the caller's setters ran. An explicit
     /// [`Self::background`] wins in either order.
+    ///
     /// # Panics
     ///
     /// Panics unless `background` holds the kinds [`Background`] lists.
@@ -197,6 +198,7 @@ impl ContextMenu<'_> {
 
 /// Forwards to the popup this menu wraps; the menu keeps no node of its own.
 impl Configure for ContextMenu<'_> {
+    #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.popup.configure()
     }

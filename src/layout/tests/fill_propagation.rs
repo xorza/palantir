@@ -4,7 +4,6 @@ use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support;
 use crate::layout::tests::support::two_hug_cols_with_wrap;
@@ -15,6 +14,7 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -157,10 +157,10 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
         });
     });
     let shaped = support::shaped_text(h.ui.layout(Layer::Main), value_node.unwrap());
-    assert!(
-        shaped.extent.size.h > 32.0,
-        "Fill grid + Fill col should wrap text under constrained width; got h={}",
+    assert_eq!(
         shaped.extent.size.h,
+        support::lines_h(2, 14.0),
+        "Fill grid + Fill col should wrap text to two lines under constrained width",
     );
     assert!(
         shaped.extent.size.w <= 200.0,
@@ -214,9 +214,11 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
             });
     });
     let h = h.arranged(WidgetId::from_hash("pg")).size.h;
-    assert!(
-        h > 50.0,
-        "grid must size to wrapped row heights, not single-line × 2; got h={h}"
+    // Single-line rows would total two lines; the wrapped rows hold four between them.
+    assert_eq!(
+        h,
+        4.0 * support::lines_h(1, 14.0),
+        "grid must size to wrapped row heights, not single-line × 2",
     );
 }
 
@@ -258,9 +260,10 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
             });
     });
     let h = h.arranged(WidgetId::from_hash("nested-grid")).size.h;
-    assert!(
-        h > 30.0,
+    assert_eq!(
+        h,
+        support::lines_h(2, 14.0),
         "ZStack must pass `INF` on Hug axes so nested grid measures \
-         under the constrained cross and wraps; got h={h}"
+         under the constrained cross and wraps to two lines",
     );
 }

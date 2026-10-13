@@ -6,7 +6,6 @@
 )]
 
 pub(crate) mod curve;
-pub(crate) mod hash;
 pub(crate) mod icon;
 pub(crate) mod image;
 pub(crate) mod lower;
@@ -23,9 +22,11 @@ pub(crate) mod text;
 pub(crate) mod triangle;
 
 use crate::icons::icon_set::IconHandle;
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::domain::{self, vec2};
+use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -145,23 +146,16 @@ impl Shape {
         shape
     }
 
-    /// A cubic Bézier through control points `p0..=p3` in `stroke` (`Butt` cap).
+    /// A cubic Bézier `bezier` in `stroke` (`Butt` cap).
     ///
     /// # Panics
     ///
     /// As [`Self::line`].
     #[track_caller]
-    pub const fn cubic_bezier(
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
-        p3: Vec2,
-        stroke: Stroke,
-    ) -> CurveShape {
+    pub const fn cubic_bezier(bezier: CubicBezier, stroke: Stroke) -> CurveShape {
         stroke.validate();
-        let (p0, p1) = (vec2::offset(p0), vec2::offset(p1));
-        let (p2, p3) = (vec2::offset(p2), vec2::offset(p3));
-        CurveShape::new(CurveGeometry::CubicBezier { p0, p1, p2, p3 }, stroke)
+        bezier.validate();
+        CurveShape::new(CurveGeometry::CubicBezier(bezier), stroke)
     }
 
     /// A quadratic Bézier through `p0`/`p1`/`p2`.
@@ -176,35 +170,34 @@ impl Shape {
         CurveShape::new(CurveGeometry::QuadraticBezier { p0, p1, p2 }, stroke)
     }
 
-    /// A circular arc sweeping `sweep` radians from `start_angle` in `stroke` (`Butt` cap). `radius`: a *length*; angles in radians.
+    /// A circular `arc` in `stroke` (`Butt` cap). A sweep past a full circle, `±2π`, draws the full circle.
     ///
     /// # Panics
     ///
-    /// Panics unless each value holds its kind.
+    /// Panics unless the stroke holds its kinds as in [`Self::line`], and the arc's centre is an *offset*, its radius a *length* and its angles *angles*.
     #[track_caller]
-    pub const fn arc(
-        center: Vec2,
-        radius: f32,
-        start_angle: f32,
-        sweep: f32,
-        stroke: Stroke,
-    ) -> CurveShape {
+    pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape {
         stroke.validate();
-        CurveShape::new(
-            CurveGeometry::Arc {
-                center: vec2::offset(center),
-                radius: domain::length(radius),
-                start_angle: domain::angle(start_angle),
-                sweep: domain::angle(sweep),
+        arc.validate();
+        CurveShape::new(CurveGeometry::Arc(arc.coerced()), stroke)
+    }
+
+    /// A full circle: [`Self::arc`] with a `2π` sweep from angle 0.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::arc`].
+    #[track_caller]
+    pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
+        Self::arc(
+            CircularArc {
+                center,
+                radius,
+                start_angle: 0.0,
+                sweep: TAU,
             },
             stroke,
         )
-    }
-
-    /// A full circle: [`Self::arc`] with a `2π` sweep.
-    #[track_caller]
-    pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape {
-        Self::arc(center, radius, 0.0, TAU, stroke)
     }
 
     /// A shaped text run in `font`. Starts white, single-line, top-left.

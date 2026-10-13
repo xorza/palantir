@@ -144,6 +144,15 @@ struct CensusShadow {
     uses: [KeyUse; 4],
 }
 
+/// How shadow corners get their cutout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CutoutMode {
+    /// From tables baked where they pay; only where the backend can render to its atlas.
+    Bake,
+    /// Shaded per pixel, which is right on any device.
+    Shade,
+}
+
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Census {
@@ -154,8 +163,7 @@ pub(crate) enum Census {
 
 #[derive(Debug)]
 pub(crate) struct CutoutPlan {
-    /// Whether tables are baked; off where the backend can't render to its atlas.
-    bake: bool,
+    mode: CutoutMode,
     census: Vec<CensusShadow>,
     next: Vec<CensusShadow>,
     keys: Vec<KeyUse>,
@@ -183,9 +191,9 @@ impl CutoutPlan {
     const MAX_SIDE: u32 = 256;
     const CELLS: u32 = Self::ATLAS_SIZE / Self::CELL;
 
-    pub(crate) const fn new(bake: bool) -> Self {
+    pub(crate) const fn new(mode: CutoutMode) -> Self {
         Self {
-            bake,
+            mode,
             census: Vec::new(),
             next: Vec::new(),
             keys: Vec::new(),
@@ -211,7 +219,7 @@ impl CutoutPlan {
         self.tables.clear();
         self.corners.clear();
         self.entries.clear();
-        if !self.bake {
+        if self.mode == CutoutMode::Shade {
             if quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
                 self.corners.resize(quads.len(), CornerTables::NONE);
                 self.entries.resize(quads.len(), ShadowEntry::General);

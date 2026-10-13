@@ -240,11 +240,11 @@ impl CpuGradientAtlas {
     fn claim_row(&mut self, row: u32, key: ColorRamp) -> LutRow {
         debug_assert_ne!(row, 0, "row 0 is the permanent magenta fallback");
         // Evicting: drop the outgoing index entry, or a lookup would resolve to another bake.
-        let displaced = self.slots[row as usize].key.replace(key);
-        if let Some(evicted) = displaced {
+        if let Some(evicted) = self.slots[row as usize].key.replace(key) {
             self.index.remove(&evicted);
+            self.counters.evictions.bump();
         }
-        self.counters.bake(displaced.is_some());
+        self.counters.bakes.bump();
         bake::row(&key, &mut self.baked[row as usize]);
         self.index.insert(key, row);
         self.touch(row);

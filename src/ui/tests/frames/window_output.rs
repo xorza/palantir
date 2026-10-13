@@ -11,7 +11,7 @@ use glam::{IVec2, UVec2};
 /// `open_window` / `close_window` requests must survive the `frame` call that filed them, since the host drains after.
 #[test]
 fn window_requests_queue_and_survive_the_frame() {
-    use crate::WindowConfig;
+    use crate::window::window_config::WindowConfig;
 
     let mut h = UiHarness::new(SURFACE);
     let open = WindowToken(7);

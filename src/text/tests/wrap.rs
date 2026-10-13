@@ -186,11 +186,14 @@ fn text_wrap_policy_resolves_shape_and_layout_sizes_together() {
         let request = params.unbounded_request("aa bbbb");
         let slot = slot_at(widget_id, ordinal as u16);
         let unbounded = text.root(slot, request, case.wrap);
-        let resolved = text.measure(slot, request, case.wrap, HAlign::Auto, Some(24.0));
-        let resolved_stable_from_w = [Some(24.0), Some(64.0), None].map(|width| {
-            text.measure(slot, request, case.wrap, HAlign::Auto, width)
-                .stable_from_w
-        });
+        let binding = |available_width| RunBinding {
+            wrap: case.wrap,
+            halign: HAlign::Auto,
+            available_width,
+        };
+        let resolved = text.measure(slot, request, binding(Some(24.0)));
+        let resolved_stable_from_w = [Some(24.0), Some(64.0), None]
+            .map(|width| text.measure(slot, request, binding(width)).stable_from_w);
         assert_eq!(resolved_stable_from_w, case.stable_from_w, "{case:?}");
         let resolved = resolved.shaped;
         assert_eq!(resolved.extent.size, case.measured, "{case:?}");
@@ -384,9 +387,11 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
             .measure(
                 slot_at(wid, ordinal as u16),
                 request,
-                wrap,
-                HAlign::Auto,
-                Some(width),
+                RunBinding {
+                    wrap,
+                    halign: HAlign::Auto,
+                    available_width: Some(width),
+                },
             )
             .shaped
             .key;

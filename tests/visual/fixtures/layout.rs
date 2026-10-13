@@ -8,13 +8,13 @@ use palantir::{
 };
 
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_scene_matches_golden;
+
 use crate::harness::FIXTURE_PALETTE;
 
 /// `Fill(1)`/`Fill(2)`/`Fill(1)` rows split the height 25/50/25.
 #[test]
 fn vstack_fill_weights_matches_golden() {
-    assert_scene_matches_golden(GoldenName::VstackFillWeights, UVec2::new(160, 200), |ui| {
+    GoldenName::VstackFillWeights.assert_scene(UVec2::new(160, 200), |ui| {
         Panel::vstack()
             .auto_id()
             .padding(8.0)
@@ -43,7 +43,7 @@ fn vstack_fill_weights_matches_golden() {
 /// Grid with fixed and fill tracks, a gap and a spanning header row.
 #[test]
 fn grid_mixed_tracks_matches_golden() {
-    assert_scene_matches_golden(GoldenName::GridMixedTracks, UVec2::new(320, 200), |ui| {
+    GoldenName::GridMixedTracks.assert_scene(UVec2::new(320, 200), |ui| {
         Grid::new()
             .id_salt("g")
             .cols([Track::fixed(80.0), Track::FILL, Track::fixed(60.0)])
@@ -92,76 +92,68 @@ fn grid_mixed_tracks_matches_golden() {
 /// ZStack paint order and `Align::CENTER` arrangement.
 #[test]
 fn zstack_centered_button_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::ZstackCenteredButton,
-        UVec2::new(240, 160),
-        |ui| {
-            Panel::zstack()
-                .auto_id()
-                .padding(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .background(
-                    Background::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
-                        .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
-                )
-                .show(ui, |ui| {
-                    Button::new()
-                        .id_salt("btn")
-                        .align(Align::CENTER)
-                        .label("centered")
-                        .show(ui);
-                });
-        },
-    );
+    GoldenName::ZstackCenteredButton.assert_scene(UVec2::new(240, 160), |ui| {
+        Panel::zstack()
+            .auto_id()
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .background(
+                Background::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
+                    .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
+            )
+            .show(ui, |ui| {
+                Button::new()
+                    .id_salt("btn")
+                    .align(Align::CENTER)
+                    .label("centered")
+                    .show(ui);
+            });
+    });
 }
 
 /// Two `Hug` columns: the default-wrap label keeps its natural width while the paragraph wraps.
 #[test]
 fn grid_two_hug_cols_label_not_clipped_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::GridTwoHugColsLabelNotClipped,
-        UVec2::new(440, 120),
-        |ui| {
-            Panel::vstack()
-                .auto_id()
-                .padding(12.0)
-                .size((Sizing::FILL, Sizing::HUG))
-                .show(ui, |ui| {
-                    Grid::new()
-                        .id_salt("two-hug")
-                        .cols([Track::HUG, Track::HUG])
-                        .rows([Track::HUG])
-                        .line_gap(16.0)
-                        .gap(0.0)
-                        .show(ui, |ui| {
-                            let style = TextStyle::default()
-                                .with_font_size(14.0)
-                                .with_color(FIXTURE_PALETTE.text);
-                            Text::new(
-                                "The quick brown fox jumps over the lazy dog. \
+    GoldenName::GridTwoHugColsLabelNotClipped.assert_scene(UVec2::new(440, 120), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                Grid::new()
+                    .id_salt("two-hug")
+                    .cols([Track::HUG, Track::HUG])
+                    .rows([Track::HUG])
+                    .line_gap(16.0)
+                    .gap(0.0)
+                    .show(ui, |ui| {
+                        let style = TextStyle::default()
+                            .with_font_size(14.0)
+                            .with_color(FIXTURE_PALETTE.text);
+                        Text::new(
+                            "The quick brown fox jumps over the lazy dog. \
                                  Pack my box with five dozen liquor jugs.",
-                            )
-                            .id_salt("paragraph")
+                        )
+                        .id_salt("paragraph")
+                        .style(&style)
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .grid_cell((0, 0))
+                        .show(ui);
+                        Text::new("right column")
+                            .id_salt("label")
                             .style(&style)
-                            .text_wrap(TextWrap::WrapWithOverflow)
-                            .grid_cell((0, 0))
+                            .grid_cell((0, 1))
                             .show(ui);
-                            Text::new("right column")
-                                .id_salt("label")
-                                .style(&style)
-                                .grid_cell((0, 1))
-                                .show(ui);
-                        });
-                });
-        },
-    );
+                    });
+            });
+    });
 }
 
 /// The frame bench's tree at scale 1, which records every public widget.
 #[test]
 fn frame_fixture_matches_golden() {
     let mut state = FrameFixture::default();
-    assert_scene_matches_golden(GoldenName::FrameFixture, UVec2::new(1280, 800), |ui| {
+    GoldenName::FrameFixture.assert_scene(UVec2::new(1280, 800), |ui| {
         state.render(1, ui);
     });
 }

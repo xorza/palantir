@@ -17,6 +17,7 @@
 //! series. The showcase hosts it as a viewer page so restyling the tour
 //! can't change what the benches measure.
 
+mod card;
 mod chrome;
 pub mod dock_fixture;
 mod forms;
@@ -34,7 +35,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 /// Content multiplier the bench arms record at (the showcase page uses a far
 /// smaller one).
@@ -46,7 +47,7 @@ pub const BENCH_DPR: f32 = 2.0;
 /// One 1440p display. `BENCH_SCALE` content is far taller, so the CPU arms
 /// record, measure and arrange everything while paint and the GPU arms see
 /// only the visible part.
-pub const BENCH_SURFACE: glam::UVec2 = glam::UVec2::new(2560, 1440); // 1280x720 @ 2x
+pub const BENCH_SURFACE: UVec2 = UVec2::new(2560, 1440); // 1280x720 @ 2x
 
 /// Persistent state for widgets that mutate user data.
 ///

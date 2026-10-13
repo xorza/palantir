@@ -2,6 +2,7 @@
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
 use crate::animation::animatable::Animatable;
+use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::common::typed_stores::TypedStore;
@@ -24,6 +25,14 @@ impl<T: Animatable> Default for AnimMapTyped<T> {
     }
 }
 
+/// The frame's animation step: the seconds a row advances by, and the render frame spending
+/// them, so a second record pass of one frame does not spend them again.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AnimClock {
+    pub(crate) dt: f32,
+    pub(crate) render_frame_id: u64,
+}
+
 #[derive(Debug)]
 pub(crate) struct TickResult<T: Animatable> {
     pub(crate) current: T,
@@ -38,7 +47,7 @@ impl<T: Animatable> AnimMapTyped<T> {
 
     /// Insert-or-advance. First touch snaps `current = target` and returns settled:
     /// no animation on appearance. Later calls detect retarget vs steady state and
-    /// advance by `dt` seconds.
+    /// advance by `clock.dt` seconds.
     ///
     /// **A motion starting from rest spends nothing on its first frame**, as a CSS
     /// transition shows its start value: the `dt` before it passed while the row
@@ -46,17 +55,19 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// `AnimationSpec::FAST` before anything painted. A row in flight spends `dt`
     /// as usual.
     ///
-    /// `Ui::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
+    /// `AnimMap::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
     /// this assumes a real motion spec.
     pub(crate) fn tick(
         &mut self,
-        id: WidgetId,
-        slot: AnimationSlot,
-        target: T,
+        request: AnimationRequest<T>,
         spec: AnimationSpec,
-        dt: f32,
-        render_frame_id: u64,
+        clock: AnimClock,
     ) -> TickResult<T> {
+        let AnimationRequest { id, slot, target } = request;
+        let AnimClock {
+            dt,
+            render_frame_id,
+        } = clock;
         // A non-finite target is a logic error and would never settle (NaN != NaN
         // retargets every frame). Through `sub` so `inf - inf` is caught too.
         debug_assert!(
@@ -187,11 +198,10 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
 /// the count.
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::animation::anim_map_typed::{AnimMapTyped, TickResult};
+    use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
     use crate::animation::animatable::Animatable;
-    use crate::animation::animation_slot::AnimationSlot;
+    use crate::animation::animation_request::AnimationRequest;
     use crate::animation::animation_spec::AnimationSpec;
-    use crate::primitives::identity::widget_id::WidgetId;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     /// A render frame id no earlier call returned, so the multi-pass guard never
@@ -210,13 +220,15 @@ pub(crate) mod internals {
         /// pass A/B.
         pub(crate) fn step(
             &mut self,
-            id: WidgetId,
-            slot: AnimationSlot,
-            target: T,
+            request: AnimationRequest<T>,
             spec: AnimationSpec,
             dt: f32,
         ) -> TickResult<T> {
-            self.tick(id, slot, target, spec, dt, next_frame())
+            let clock = AnimClock {
+                dt,
+                render_frame_id: next_frame(),
+            };
+            self.tick(request, spec, clock)
         }
     }
 }

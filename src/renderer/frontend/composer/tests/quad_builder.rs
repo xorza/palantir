@@ -8,6 +8,8 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
+use crate::shape::rect::RectKind;
 
 /// A rect quad, opaque white, sharp and strokeless until a setter says otherwise, at full alpha.
 #[derive(Debug)]
@@ -49,7 +51,13 @@ impl QuadBuilder {
 
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw_quad(
-            DrawQuadPayload::rect(self.rect, self.corners, self.fill, self.stroke.into()),
+            DrawQuadPayload::rect(RectQuad {
+                kind: RectKind::Rounded,
+                rect: self.rect,
+                corners: self.corners,
+                fill: self.fill,
+                stroke: self.stroke.into(),
+            }),
             1.0,
         );
     }

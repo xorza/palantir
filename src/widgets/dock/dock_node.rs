@@ -4,13 +4,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_group::TabGroup;
+use crate::widgets::splitter::split_half::SplitHalf;
 
 /// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes (a stale one no-ops), unlike [`TabGroupId`](crate::TabGroupId).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeIndex(pub(crate) u32);
+pub struct NodeIndex(pub(super) u32);
 
 impl NodeIndex {
-    pub(crate) const fn usize(self) -> usize {
+    /// The index of slot `slot`.
+    pub(super) fn at(slot: usize) -> Self {
+        Self(
+            u32::try_from(slot).expect("a dock tree's depth cap keeps it far below u32::MAX nodes"),
+        )
+    }
+
+    pub(super) const fn usize(self) -> usize {
         self.0 as usize
     }
 }
@@ -27,10 +35,10 @@ pub enum DockNode<T> {
 /// A division of one rect between two child nodes; read-only outside the crate.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DockSplit {
-    pub(crate) direction: SplitDirection,
-    pub(crate) ratio: f32,
-    pub(crate) first: NodeIndex,
-    pub(crate) second: NodeIndex,
+    pub(super) direction: SplitDirection,
+    pub(super) ratio: f32,
+    pub(super) first: NodeIndex,
+    pub(super) second: NodeIndex,
 }
 
 impl DockSplit {
@@ -52,5 +60,13 @@ impl DockSplit {
     /// The trailing child.
     pub const fn second(self) -> NodeIndex {
         self.second
+    }
+
+    /// The child on `half`.
+    pub(super) const fn child(self, half: SplitHalf) -> NodeIndex {
+        match half {
+            SplitHalf::First => self.first,
+            SplitHalf::Second => self.second,
+        }
     }
 }

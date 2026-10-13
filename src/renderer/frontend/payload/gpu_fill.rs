@@ -5,7 +5,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 
 /// The three lanes a fill is, whatever tier draws it (both draw payloads embed it). A brush becomes one only in
-/// [`BrushSource::gpu_fill`](super::brush_source::BrushSource::gpu_fill)
+/// [`BrushSource::gpu_fill`](crate::renderer::frontend::payload::brush_source::BrushSource::gpu_fill)
 /// and a curve's stroke only in [`Self::curve`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct GpuFill {

@@ -74,7 +74,7 @@ impl WindowConfig {
         self
     }
 
-    /// Desktop application identity; see [`WindowConfig::with_app_id`].
+    /// Desktop application identity; see [`Self::app_id`].
     pub fn with_app_id(mut self, app_id: impl Into<String>) -> Self {
         self.app_id = Some(app_id.into());
         self

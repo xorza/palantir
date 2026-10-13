@@ -16,7 +16,7 @@ fn each_preferred_side_places_outside_the_rect() {
         (AnchorSide::RightOf, Vec2::new(246.0, 120.0)),
     ];
     for (side, expected) in cases {
-        let anchor = Anchor::new(RECT, side, AnchorAlign::Start, 6.0);
+        let anchor = Anchor::on_side(RECT, side).with_gap(6.0);
         assert_eq!(anchor.resolve(BODY, BOUNDS), expected, "{side:?}");
     }
 }
@@ -25,39 +25,19 @@ fn each_preferred_side_places_outside_the_rect() {
 fn overflowing_preferred_side_flips_across_the_rect() {
     let cases = [
         (
-            Anchor::new(
-                Rect::new(160.0, 4.0, 80.0, 40.0),
-                AnchorSide::Above,
-                AnchorAlign::Start,
-                6.0,
-            ),
+            Anchor::on_side(Rect::new(160.0, 4.0, 80.0, 40.0), AnchorSide::Above).with_gap(6.0),
             Vec2::new(160.0, 50.0),
         ),
         (
-            Anchor::new(
-                Rect::new(160.0, 256.0, 80.0, 40.0),
-                AnchorSide::Below,
-                AnchorAlign::Start,
-                6.0,
-            ),
+            Anchor::on_side(Rect::new(160.0, 256.0, 80.0, 40.0), AnchorSide::Below).with_gap(6.0),
             Vec2::new(160.0, 190.0),
         ),
         (
-            Anchor::new(
-                Rect::new(4.0, 120.0, 80.0, 40.0),
-                AnchorSide::LeftOf,
-                AnchorAlign::Start,
-                6.0,
-            ),
+            Anchor::on_side(Rect::new(4.0, 120.0, 80.0, 40.0), AnchorSide::LeftOf).with_gap(6.0),
             Vec2::new(90.0, 120.0),
         ),
         (
-            Anchor::new(
-                Rect::new(316.0, 120.0, 80.0, 40.0),
-                AnchorSide::RightOf,
-                AnchorAlign::Start,
-                6.0,
-            ),
+            Anchor::on_side(Rect::new(316.0, 120.0, 80.0, 40.0), AnchorSide::RightOf).with_gap(6.0),
             Vec2::new(210.0, 120.0),
         ),
     ];
@@ -85,11 +65,7 @@ fn cross_axis_alignment_uses_the_full_rect() {
 
 #[test]
 fn impossible_fit_clamps_inside_bounds() {
-    let anchor = Anchor::new(
-        Rect::new(390.0, 140.0, 10.0, 20.0),
-        AnchorSide::Below,
-        AnchorAlign::Start,
-        6.0,
-    );
+    let anchor =
+        Anchor::on_side(Rect::new(390.0, 140.0, 10.0, 20.0), AnchorSide::Below).with_gap(6.0);
     assert_eq!(anchor.resolve(Size::new(500.0, 400.0), BOUNDS), Vec2::ZERO,);
 }

@@ -1,10 +1,10 @@
 //! What a cache hit is allowed to reuse: keys, arena snapshots, and
 //! the invalidations that must miss.
 
-use crate::Ui;
 use crate::common::span::Span;
 use crate::internals::ui_harness::UiHarness;
-use crate::layout::cache::{ArenaSnapshot, AvailableKey, MeasureCache};
+use crate::layout::cache::measure_snapshot::ArenaSnapshot;
+use crate::layout::cache::{AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -15,6 +15,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};
@@ -44,8 +45,7 @@ struct SnapView<'a> {
 
 fn snap_for(h: &UiHarness, wid: WidgetId) -> Option<SnapView<'_>> {
     let snapshot = &h.engines.layout.cache.previous;
-    let descriptor = *snapshot.snapshots.get(&wid)? as usize;
-    let snap = snapshot.descriptors[descriptor];
+    let snap = *snapshot.descriptor(wid)?;
     Some(SnapView {
         snap,
         desired: &snapshot.nodes.desired[snap.nodes.range()],
@@ -70,16 +70,26 @@ fn assert_snapshot_is_linear(h: &UiHarness) {
     );
 }
 
-fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: RgbaF32) {
-    Panel::vstack()
-        .id(WidgetId::from_hash(panel_id))
-        .show(ui, |ui| {
-            Block::new()
-                .id(WidgetId::from_hash((panel_id, "leaf")))
-                .size(frame_size)
-                .background(Background::fill(fill))
-                .show(ui);
-        });
+/// A panel keyed by `id` wrapping one `size` square leaf painted `fill`.
+#[derive(Clone, Copy, Debug)]
+struct WrappedLeaf {
+    id: &'static str,
+    size: f32,
+    fill: RgbaF32,
+}
+
+impl WrappedLeaf {
+    fn show(self, ui: &mut Ui) {
+        Panel::vstack()
+            .id(WidgetId::from_hash(self.id))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash((self.id, "leaf")))
+                    .size(self.size)
+                    .background(Background::fill(self.fill))
+                    .show(ui);
+            });
+    }
 }
 
 #[test]
@@ -112,7 +122,14 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
 #[test]
 fn unchanged_subtree_hits_and_replays_exact_output() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
+    let build = |ui: &mut Ui| {
+        WrappedLeaf {
+            id: "a",
+            size: 50.0,
+            fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        }
+        .show(ui);
+    };
 
     run_frame(&mut h, build);
     let first_hash = snap_for(&h, WidgetId::from_hash("a"))
@@ -152,11 +169,21 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
 fn a_recolour_hits_the_measure_cache_at_the_root() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
+        WrappedLeaf {
+            id: "a",
+            size: 50.0,
+            fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        }
+        .show(ui);
     });
     let full_before = h.ui.tree(Layer::Main).rollups.subtree.clone();
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.9, 0.4, 0.8));
+        WrappedLeaf {
+            id: "a",
+            size: 50.0,
+            fill: RgbaF32::srgb(0.9, 0.4, 0.8),
+        }
+        .show(ui);
     });
     assert_ne!(
         full_before,
@@ -174,14 +201,24 @@ fn a_recolour_hits_the_measure_cache_at_the_root() {
 fn changing_descendant_hash_replaces_ancestor_descriptor() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 50.0, RgbaF32::srgb(0.2, 0.4, 0.8));
+        WrappedLeaf {
+            id: "a",
+            size: 50.0,
+            fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        }
+        .show(ui);
     });
     let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
     // A layout change (the leaf's size). A colour change is paint and leaves the layout hash alone, as
     // `a_recolour_hits_the_measure_cache_at_the_root` shows.
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "a", 60.0, RgbaF32::srgb(0.2, 0.4, 0.8));
+        WrappedLeaf {
+            id: "a",
+            size: 60.0,
+            fill: RgbaF32::srgb(0.2, 0.4, 0.8),
+        }
+        .show(ui);
     });
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
@@ -197,8 +234,18 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
 fn removed_widget_is_absent_from_next_snapshot() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "gone", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
-        build_wrapped_frame(ui, "kept", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
+        WrappedLeaf {
+            id: "gone",
+            size: 40.0,
+            fill: RgbaF32::srgb(0.5, 0.5, 0.5),
+        }
+        .show(ui);
+        WrappedLeaf {
+            id: "kept",
+            size: 40.0,
+            fill: RgbaF32::srgb(0.5, 0.5, 0.5),
+        }
+        .show(ui);
     });
     assert!(
         h.engines
@@ -210,7 +257,12 @@ fn removed_widget_is_absent_from_next_snapshot() {
     );
 
     run_frame(&mut h, |ui| {
-        build_wrapped_frame(ui, "kept", 40.0, RgbaF32::srgb(0.5, 0.5, 0.5));
+        WrappedLeaf {
+            id: "kept",
+            size: 40.0,
+            fill: RgbaF32::srgb(0.5, 0.5, 0.5),
+        }
+        .show(ui);
     });
 
     assert!(
@@ -259,7 +311,8 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
 
     let a = snap_for(&h, WidgetId::from_hash("a")).unwrap();
     let b = snap_for(&h, WidgetId::from_hash("b")).unwrap();
-    assert!(b.snap.nodes.start < a.snap.nodes.start);
+    // Below the harness root (0) and the `root` panel (1), reversed records `b` (2, its leaf 3) before `a` (4).
+    assert_eq!([b.snap.nodes.start, a.snap.nodes.start], [2, 4]);
     assert_eq!(a.desired, &[Size::new(10.0, 10.0), Size::new(10.0, 10.0)]);
     assert_eq!(b.desired, &[Size::new(20.0, 20.0), Size::new(20.0, 20.0)]);
     assert_snapshot_is_linear(&h);
@@ -540,8 +593,9 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
                     .show(ui);
             });
     });
-    assert!(
-        h.engines.layout.cache.snapshot_rebuilds.count() > rebuilds_after_warmup,
+    assert_eq!(
+        h.engines.layout.cache.snapshot_rebuilds.count(),
+        rebuilds_after_warmup + 1,
         "an unseen descriptor sequence must rebuild the map",
     );
     assert!(
@@ -587,7 +641,12 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     let kept = |h: &mut UiHarness, color: RgbaF32, popup_at: Vec2| {
         let before = h.engines.layout.scratch.counters.kept_runs();
         h.frame(|ui| {
-            build_wrapped_frame(ui, "a", 50.0, color);
+            WrappedLeaf {
+                id: "a",
+                size: 50.0,
+                fill: color,
+            }
+            .show(ui);
             ui.layer(Layer::Popup).fixed_at(popup_at).show(|ui| {
                 Block::new()
                     .id(WidgetId::from_hash("popup"))

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use image::{Rgba, RgbaImage};
 
-use crate::golden::{Goldens, Tolerance};
+use crate::golden::{Goldens, OnMismatch, Tolerance};
 use crate::internals::panic_probe;
 use std::env;
 use std::fs;
@@ -114,24 +114,24 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     let output = dir.0.join("output").join("g");
     let stored = || image::open(&golden).unwrap().to_rgba8();
 
-    goldens.check("g", &base, true);
+    goldens.check("g", &base, OnMismatch::Rewrite);
     assert_eq!(stored(), base, "a missing golden is written by an update");
 
-    goldens.check("g", &near, true);
+    goldens.check("g", &near, OnMismatch::Rewrite);
     assert_eq!(stored(), base, "a passing golden is left as it is");
 
     fs::create_dir_all(&output).unwrap();
-    goldens.check("g", &near, false);
+    goldens.check("g", &near, OnMismatch::Fail);
     assert!(
         !output.exists(),
         "a pass clears an earlier failure's output"
     );
 
-    goldens.check("g", &far, true);
+    goldens.check("g", &far, OnMismatch::Rewrite);
     assert_eq!(stored(), far, "a failing golden is rewritten by an update");
 
     panic_probe::assert_panics_with("`g` does not match its golden", || {
-        goldens.check("g", &base, false);
+        goldens.check("g", &base, OnMismatch::Fail);
     });
     assert!(
         output.join("actual.png").exists(),
@@ -139,7 +139,9 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
     );
     assert_eq!(stored(), far, "and keeps the golden");
 
-    panic_probe::assert_panics_with("no golden for `h`", || goldens.check("h", &base, false));
+    panic_probe::assert_panics_with("no golden for `h`", || {
+        goldens.check("h", &base, OnMismatch::Fail);
+    });
     assert!(goldens.golden_path("h").exists(), "after it is written");
 
     let pair = dir.0.join("output").join("pair");
@@ -170,28 +172,28 @@ fn goldens_record_and_hold_their_adapter() {
     let image = RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255]));
     let sidecar = dir.0.join("golden").join("adapter.txt");
     let first = Goldens::new(&dir.0).with_adapter("GPU A");
-    first.check("g", &image, true);
+    first.check("g", &image, OnMismatch::Rewrite);
     assert_eq!(fs::read_to_string(&sidecar).unwrap(), "GPU A");
-    first.check("g", &image, false);
+    first.check("g", &image, OnMismatch::Fail);
 
     let other = Goldens::new(&dir.0).with_adapter("GPU B");
     panic_probe::assert_panics_with("written on adapter \"GPU A\"", || {
-        other.check("g", &image, false);
+        other.check("g", &image, OnMismatch::Fail);
     });
-    other.check("g", &image, true);
+    other.check("g", &image, OnMismatch::Rewrite);
     assert_eq!(
         fs::read_to_string(&sidecar).unwrap(),
         "GPU B",
         "an update adopts it"
     );
 
-    Goldens::new(&dir.0).check("g", &image, false);
+    Goldens::new(&dir.0).check("g", &image, OnMismatch::Fail);
 
     // Tests run in parallel: a reader sees the whole adapter or no file, never a partial write.
     let names: Vec<String> = (0..8).map(|i| format!("t{i}")).collect();
     let racing = Goldens::new(&dir.0).with_adapter("GPU C");
     for name in &names {
-        racing.check(name, &image, true);
+        racing.check(name, &image, OnMismatch::Rewrite);
     }
     let sidecar_dir = sidecar.parent().unwrap();
     for _ in 0..200 {
@@ -201,7 +203,7 @@ fn goldens_record_and_hold_their_adapter() {
             for name in &names {
                 scope.spawn(|| {
                     start.wait();
-                    racing.check(name, &image, false);
+                    racing.check(name, &image, OnMismatch::Fail);
                 });
             }
         });
@@ -229,7 +231,7 @@ fn orphans_are_the_goldens_no_name_claims() {
     assert!(goldens.orphans([]).is_empty(), "no directory, no orphans");
     let image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 255]));
     for name in ["kept", "old", "older"] {
-        goldens.check(name, &image, true);
+        goldens.check(name, &image, OnMismatch::Rewrite);
     }
     assert_eq!(
         goldens.orphans(["kept"]),

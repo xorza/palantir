@@ -16,11 +16,17 @@ use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::look_plan::LookPlan;
 use crate::widgets::text::Text;
 
-/// What [`ToggleChrome::record_row`] needs beyond the entry, label and body.
+/// One toggle row as [`ToggleChrome::record_row`] records it, all but the box's body.
 /// The theme arrives planned, not applied: only the caller knows which slot
 /// (`theme.checkbox`/`radio`/`switch`) is its own.
 #[derive(Debug)]
-pub(crate) struct ToggleChrome {
+pub(crate) struct ToggleChrome<'a> {
+    /// The row, from [`row`].
+    pub(crate) row: Widget,
+    /// The row's state, read before the caller decided whether it toggled.
+    pub(crate) response: ResponseState,
+    /// The text right of the box; empty records no text child.
+    pub(crate) label: TextInput<'a>,
     /// The look this row animates toward.
     pub(crate) plan: LookPlan,
     /// Gap between the box and the label.
@@ -31,53 +37,53 @@ pub(crate) struct ToggleChrome {
     pub(crate) pill: Option<f32>,
 }
 
-impl ToggleChrome {
-    /// The row every toggle starts from: a click-sensing horizontal stack, as box and label are one hit target.
-    #[track_caller]
-    pub(crate) fn row() -> Widget {
-        Widget::hstack()
-            .sense(Sense::CLICK)
-            .focusable(true)
-            // Space classifies as `KeyClass::Text`; a focused toggle is not a typing target.
-            .input_scope(KeyFilter::TEXT)
-    }
+/// The row every toggle starts from: a click-sensing horizontal stack, as box and label are one hit target.
+#[track_caller]
+pub(crate) fn row() -> Widget {
+    Widget::hstack()
+        .sense(Sense::CLICK)
+        .focusable(true)
+        // Space classifies as `KeyClass::Text`; a focused toggle is not a typing target.
+        .input_scope(KeyFilter::TEXT)
+}
 
-    /// Whether the row was activated: clicked, or Space while focused.
-    pub(crate) fn activated(ui: &mut Ui, widget: &mut Widget, response: &ResponseState) -> bool {
-        let id = widget.resolve(ui);
-        response.clicked()
-            || (!response.disabled
-                && ui.is_focus_within(id)
-                && widget.key_pressed(ui, Shortcut::key(Key::Char(' '))))
-    }
+/// Whether the row was activated: clicked, or Space while focused.
+pub(crate) fn activated(ui: &mut Ui, widget: &mut Widget, response: &ResponseState) -> bool {
+    let id = widget.resolve(ui);
+    response.clicked()
+        || (!response.disabled
+            && ui.is_focus_within(id)
+            && widget.key_pressed(ui, Shortcut::key(Key::Char(' '))))
+}
 
-    /// Flips `value` when `activated` and returns it, for [`Checkbox`](crate::Checkbox) and
-    /// [`Switch`](crate::Switch); [`RadioButton`](crate::RadioButton) latches instead.
-    pub(crate) const fn toggled(activated: bool, value: &mut bool) -> bool {
-        if activated {
-            *value = !*value;
-        }
-        *value
+/// Flips `value` when `activated` and returns it, for [`Checkbox`](crate::Checkbox) and
+/// [`Switch`](crate::Switch); [`RadioButton`](crate::RadioButton) latches instead.
+pub(crate) const fn toggled(activated: bool, value: &mut bool) -> bool {
+    if activated {
+        *value = !*value;
     }
+    *value
+}
 
+impl ToggleChrome<'_> {
     /// Shared scaffolding behind [`crate::Checkbox`], [`crate::RadioButton`]
     /// and [`crate::Switch`]. `body` receives the box's resolved chrome, as
     /// `Switch` measures its knob inset against the animating stroke width.
-    pub(crate) fn record_row<'ui>(
+    pub(crate) fn record_row(
         self,
-        ui: &'ui mut Ui,
-        mut widget: Widget,
-        response: ResponseState,
-        label: TextInput<'_>,
+        ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &Background),
-    ) -> Response<'ui> {
-        let id = widget.resolve(ui);
+    ) -> Response<'_> {
         let Self {
+            row: mut widget,
+            response,
+            label,
             plan,
             gap,
             boxed,
             pill,
         } = self;
+        let id = widget.resolve(ui);
         let mut look = plan.apply(ui, &mut widget);
         if let Some(radius) = pill {
             look.background.corners = Corners::all(radius);

@@ -8,7 +8,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::support::{SURFACE, fixed_block};
 use glam::Vec2;
 

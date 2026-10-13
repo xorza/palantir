@@ -43,6 +43,7 @@ pub struct ColorButton<'a> {
 
 impl<'a> ColorButton<'a> {
     /// A chip that opens `picker`. The picker's id defaults to `id.with("picker")`; one set on the picker wins.
+    #[track_caller]
     pub fn new(picker: ColorPicker<'a>) -> Self {
         Self {
             widget: Widget::leaf()

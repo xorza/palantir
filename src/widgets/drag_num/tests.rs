@@ -1,6 +1,7 @@
 //! Rounding, clamping, and the string round-trip both numeric variants take.
 
-use crate::widgets::drag_num::{DragNum, Num, round_to_decimals};
+use crate::widgets::drag_num::limits::Limits;
+use crate::widgets::drag_num::{DragNum, Num, StoreRule, round_to_decimals};
 
 const INF: f64 = f64::INFINITY;
 
@@ -37,36 +38,44 @@ fn commit_drag_snaps_rounds_clamps_and_reports_change() {
     // Float: snaps to `decimals`, unbounded is a no-op clamp; the same anchor and offset land on the same value twice.
     let mut f = 0.0;
     let zero = Num::F64(0.0);
-    assert!(DragNum::from(&mut f).commit_drag(zero, 1.984_573_845_634_985_2, 3, -INF, INF));
+    assert!(DragNum::from(&mut f).commit_drag(
+        zero,
+        1.984_573_845_634_985_2,
+        StoreRule::new(-INF, INF, 3)
+    ));
     assert_eq!(f, 1.985);
-    assert!(!DragNum::from(&mut f).commit_drag(zero, 1.984_573_845_634_985_2, 3, -INF, INF));
+    assert!(!DragNum::from(&mut f).commit_drag(
+        zero,
+        1.984_573_845_634_985_2,
+        StoreRule::new(-INF, INF, 3)
+    ));
     let mut f = 0.0;
-    assert!(DragNum::from(&mut f).commit_drag(Num::F64(1.5), 0.25, 2, -INF, INF));
+    assert!(DragNum::from(&mut f).commit_drag(Num::F64(1.5), 0.25, StoreRule::new(-INF, INF, 2)));
     assert_eq!(f, 1.75);
     let mut f = 0.0;
-    assert!(DragNum::from(&mut f).commit_value(50.0, 2, 0.0, 10.0));
+    assert!(DragNum::from(&mut f).commit_value(50.0, StoreRule::new(0.0, 10.0, 2)));
     assert_eq!(f, 10.0);
     // A tiny negative wiggle at a 0.0 bound is stored as +0.0 (bit-exact) with no change report.
     let mut f = 0.0;
-    assert!(!DragNum::from(&mut f).commit_value(-0.004, 2, 0.0, 1.0));
+    assert!(!DragNum::from(&mut f).commit_value(-0.004, StoreRule::new(0.0, 1.0, 2)));
     assert_eq!(f.to_bits(), 0.0_f64.to_bits(), "-0.0 normalized to +0.0");
     let mut i = 0;
-    assert!(DragNum::from(&mut i).commit_value(7.6, 3, -INF, INF));
+    assert!(DragNum::from(&mut i).commit_value(7.6, StoreRule::new(-INF, INF, 3)));
     assert_eq!(i, 8);
-    assert!(!DragNum::from(&mut i).commit_value(7.6, 3, -INF, INF));
+    assert!(!DragNum::from(&mut i).commit_value(7.6, StoreRule::new(-INF, INF, 3)));
     let mut i = 0;
-    assert!(DragNum::from(&mut i).commit_value(500.0, 0, 0.0, 100.0));
+    assert!(DragNum::from(&mut i).commit_value(500.0, StoreRule::new(0.0, 100.0, 0)));
     assert_eq!(i, 100);
     // Int: a fractional bound closes in to the integers inside it (0.5..=10 holds no 0).
     let mut i = 5;
-    assert!(DragNum::from(&mut i).commit_value(-3.0, 0, 0.5, 10.0));
+    assert!(DragNum::from(&mut i).commit_value(-3.0, StoreRule::new(0.5, 10.0, 0)));
     assert_eq!(i, 1);
     let mut i = -5;
-    assert!(DragNum::from(&mut i).commit_value(3.0, 0, -10.0, -0.5));
+    assert!(DragNum::from(&mut i).commit_value(3.0, StoreRule::new(-10.0, -0.5, 0)));
     assert_eq!(i, -1);
     // A range holding no integer clamps between the two either side.
     let mut i = 5;
-    assert!(DragNum::from(&mut i).commit_value(5.0, 0, 0.2, 0.8));
+    assert!(DragNum::from(&mut i).commit_value(5.0, StoreRule::new(0.2, 0.8, 0)));
     assert_eq!(i, 1);
 }
 
@@ -74,10 +83,14 @@ fn commit_drag_snaps_rounds_clamps_and_reports_change() {
 #[test]
 fn a_float_scrub_never_stores_an_infinite_value() {
     let mut f = 1e308_f64;
-    assert!(!DragNum::from(&mut f).commit_drag(Num::F64(1e308), 0.0, 2, -INF, INF));
+    assert!(!DragNum::from(&mut f).commit_drag(Num::F64(1e308), 0.0, StoreRule::new(-INF, INF, 2)));
     assert_eq!(f, 1e308);
     // Moving further stays finite and the sum stands exactly.
-    assert!(DragNum::from(&mut f).commit_drag(Num::F64(1e308), 1e307, 2, -INF, INF));
+    assert!(DragNum::from(&mut f).commit_drag(
+        Num::F64(1e308),
+        1e307,
+        StoreRule::new(-INF, INF, 2)
+    ));
     assert_eq!(f, 1e308 + 1e307);
 }
 
@@ -87,17 +100,21 @@ fn an_integer_scrub_moves_the_exact_anchor() {
     let mut i = 9_007_199_254_740_993_i64;
     let anchor = DragNum::from(&mut i).read();
     assert_eq!(anchor, Num::I64(9_007_199_254_740_993));
-    assert!(!DragNum::from(&mut i).commit_drag(anchor, 0.0, 2, -INF, INF));
+    assert!(!DragNum::from(&mut i).commit_drag(anchor, 0.0, StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, 9_007_199_254_740_993);
-    assert!(!DragNum::from(&mut i).commit_drag(anchor, 0.4, 2, -INF, INF));
+    assert!(!DragNum::from(&mut i).commit_drag(anchor, 0.4, StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, 9_007_199_254_740_993);
-    assert!(DragNum::from(&mut i).commit_drag(anchor, 2.4, 2, -INF, INF));
+    assert!(DragNum::from(&mut i).commit_drag(anchor, 2.4, StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, 9_007_199_254_740_995);
     // Travel the domain cannot hold saturates rather than wrapping.
-    assert!(DragNum::from(&mut i).commit_drag(anchor, INF, 2, -INF, INF));
+    assert!(DragNum::from(&mut i).commit_drag(anchor, INF, StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, i64::MAX);
     let mut edge = i64::MIN;
-    assert!(!DragNum::from(&mut edge).commit_drag(Num::I64(i64::MIN), -3.0, 2, -INF, INF));
+    assert!(!DragNum::from(&mut edge).commit_drag(
+        Num::I64(i64::MIN),
+        -3.0,
+        StoreRule::new(-INF, INF, 2)
+    ));
     assert_eq!(edge, i64::MIN);
 }
 
@@ -126,7 +143,7 @@ fn drag_num_edit_string_and_parse_round_trip() {
     assert_eq!(DragNum::from(&mut f).edit_string(), "3.0");
     let mut f = 2.5_f64;
     let s = DragNum::from(&mut f).edit_string();
-    assert!(!DragNum::from(&mut f).parse_from(&s, -INF, INF));
+    assert!(!DragNum::from(&mut f).parse_from(&s, Limits::of(-INF, INF)));
     assert_eq!(f, 2.5);
 
     let mut i = -42_i64;
@@ -134,26 +151,29 @@ fn drag_num_edit_string_and_parse_round_trip() {
 
     // Unparseable text leaves the value untouched.
     let mut i = 9_i64;
-    assert!(!DragNum::from(&mut i).parse_from("12x", -INF, INF));
+    assert!(!DragNum::from(&mut i).parse_from("12x", Limits::of(-INF, INF)));
     assert_eq!(i, 9);
-    assert!(DragNum::from(&mut i).parse_from("15", -INF, INF));
+    assert!(DragNum::from(&mut i).parse_from("15", Limits::of(-INF, INF)));
     assert_eq!(i, 15);
 
     // Non-finite parses are rejected even unbounded: a committed NaN would poison every scrub.
     let mut f = 7.5_f64;
     for bad in ["nan", "NaN", "inf", "-inf", "infinity"] {
-        assert!(!DragNum::from(&mut f).parse_from(bad, -INF, INF), "{bad}");
+        assert!(
+            !DragNum::from(&mut f).parse_from(bad, Limits::of(-INF, INF)),
+            "{bad}"
+        );
         assert_eq!(f, 7.5, "{bad} must not land");
     }
 
     let mut i = 0_i64;
-    assert!(DragNum::from(&mut i).parse_from("500", 0.0, 100.0));
+    assert!(DragNum::from(&mut i).parse_from("500", Limits::of(0.0, 100.0)));
     assert_eq!(i, 100);
     let mut f = 0.0_f64;
-    assert!(!DragNum::from(&mut f).parse_from("-3.5", 0.0, 1.0));
+    assert!(!DragNum::from(&mut f).parse_from("-3.5", Limits::of(0.0, 1.0)));
     assert_eq!(f, 0.0);
     // A typed "-0.0" stores as +0.0.
     let mut f = 1.0_f64;
-    assert!(DragNum::from(&mut f).parse_from("-0.0", -INF, INF));
+    assert!(DragNum::from(&mut f).parse_from("-0.0", Limits::of(-INF, INF)));
     assert_eq!(f.to_bits(), 0.0_f64.to_bits());
 }

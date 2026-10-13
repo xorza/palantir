@@ -2,10 +2,13 @@
 //! [`GpuView`](crate::GpuView)): where each glyph sits and what it looks like. The
 //! atlas, pipeline and blending are the caller's; the font stack is shared.
 
+pub(crate) mod glyph_line;
+
 use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::raster_image::RasterImage;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::glyphs::glyph_line::GlyphLine;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
 use crate::text::wrap::WrapFloor;
@@ -40,14 +43,19 @@ impl<'a> TextGlyphs<'a> {
         self.cosmic.extract_glyphs(request, placement, out)
     }
 
-    /// Lay `text` out without wrapping at `scale`, rewriting `out` with a
-    /// [`PlacedGlyph`] apiece. A `\n` still breaks lines. Positions are relative to
-    /// the line's origin (left edge, top of the line box), so a run laid out once
-    /// can be placed every frame. Cosmic bins each glyph's own fractional `x *
-    /// scale` into its raster key, so an atlas can hold up to four entries per
-    /// glyph per size. Empty text, or a `font` whose size or leading is not a
-    /// positive finite number, clears `out` and returns.
-    pub fn line(&mut self, text: &str, font: GlyphFont, scale: f32, out: &mut Vec<PlacedGlyph>) {
+    /// Lay `line.text` out without wrapping at `line.raster_scale`, rewriting `out`
+    /// with a [`PlacedGlyph`] apiece. A `\n` still breaks lines. Positions are
+    /// relative to the line's origin (left edge, top of the line box), so a run laid
+    /// out once can be placed every frame. Cosmic bins each glyph's own fractional
+    /// `x * raster_scale` into its raster key, so an atlas can hold up to four
+    /// entries per glyph per size. Empty text, or a `font` whose size or leading is
+    /// not a positive finite number, clears `out` and returns.
+    pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>) {
+        let GlyphLine {
+            text,
+            font,
+            raster_scale,
+        } = line;
         // One of the two crate edges for a run with nothing to shape; see
         // `TextShapeRequest`.
         let Some(request) = TextShapeRequest::unbounded(text, font) else {
@@ -58,7 +66,7 @@ impl<'a> TextGlyphs<'a> {
         // and clips.
         let placement = RunPlacement {
             origin: Vec2::ZERO,
-            scale,
+            scale: raster_scale,
             bounds: None,
         };
         self.extract_glyphs(request, placement, out);

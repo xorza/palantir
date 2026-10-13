@@ -1,10 +1,10 @@
 //! Pass count and replay: what triggers a second record.
 
-use crate::Ui;
 use crate::common::time::MAX_ANIM_DT;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::ui::Ui;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;

@@ -43,6 +43,18 @@ pub(crate) struct OverlayTurn<R> {
     pub(crate) outside: bool,
 }
 
+/// Where an overlay records and what stands under it: everything [`OverlayScope::claim`] takes
+/// past the root.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OverlaySpec {
+    /// Where the body records; held by the scope so scope and body cannot land on different
+    /// layers.
+    pub(crate) layer: Layer,
+    /// `None` takes the layer's default: the surface origin, whole surface available.
+    pub(crate) anchor: Option<Anchor>,
+    pub(crate) backdrop: Backdrop,
+}
+
 /// One overlay's turn on a layer, from stamping its root until it closes.
 /// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
 /// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
@@ -51,39 +63,22 @@ pub(crate) struct OverlayTurn<R> {
 #[derive(Debug)]
 pub(crate) struct OverlayScope {
     owner: WidgetId,
-    /// Where the body records; retained so scope and body cannot land on different
-    /// layers.
-    layer: Layer,
-    /// `None` takes the layer's default: the surface origin, whole surface
-    /// available.
-    anchor: Option<Anchor>,
-    backdrop: Backdrop,
+    spec: OverlaySpec,
 }
 
 impl OverlayScope {
-    /// Claim `layer` for `root`, stamping it as the node taking the layer's key
+    /// Claim `spec.layer` for `root`, stamping it as the node taking the layer's key
     /// scope when there is a backdrop; the owner is the root's resolved id. Every
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
     /// stops.
-    pub(crate) fn claim(
-        ui: &mut Ui,
-        layer: Layer,
-        anchor: Option<Anchor>,
-        backdrop: Backdrop,
-        root: &mut Widget,
-    ) -> Self {
-        if backdrop.owns_input() {
+    pub(crate) fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
+        if spec.backdrop.owns_input() {
             root.configure()
                 .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS));
         }
         let owner = root.resolve(ui);
-        Self {
-            owner,
-            layer,
-            anchor,
-            backdrop,
-        }
+        Self { owner, spec }
     }
 
     /// Lay the backdrop down, record `body` into the claimed layer, and report both
@@ -97,8 +92,13 @@ impl OverlayScope {
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
     /// `Sense::CLICK` dismisses.
     pub(crate) fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
-        if let Backdrop::Eater(id) = self.backdrop {
-            ui.layer(self.layer).show(|ui| {
+        let OverlaySpec {
+            layer,
+            anchor,
+            backdrop,
+        } = self.spec;
+        if let Backdrop::Eater(id) = backdrop {
+            ui.layer(layer).show(|ui| {
                 Block::new()
                     .id(id)
                     .size((Sizing::FILL, Sizing::FILL))
@@ -106,18 +106,17 @@ impl OverlayScope {
                     .show(ui);
             });
         }
-        let owns_input = self.backdrop.owns_input();
-        let scope = ui.layer(self.layer);
-        let scope = match self.anchor {
+        let owns_input = backdrop.owns_input();
+        let scope = ui.layer(layer);
+        let scope = match anchor {
             Some(anchor) => scope.anchor(anchor),
             None => scope,
         };
-        let (inner, escape) = scope.show(|ui| {
+        let mut escape = false;
+        let inner = scope.show(|ui| {
             let inner = body(ui);
-            (
-                inner,
-                owns_input && ui.key_pressed(Shortcut::key(Key::Escape)),
-            )
+            escape = owns_input && ui.key_pressed(Shortcut::key(Key::Escape));
+            inner
         });
         OverlayTurn {
             inner,
@@ -130,7 +129,7 @@ impl OverlayScope {
     /// pointer interactions are absorbed, so a secondary press counts (see
     /// `ResponseState::any_clicked`).
     fn backdrop_clicked(&self, ui: &Ui) -> bool {
-        let id = match self.backdrop {
+        let id = match self.spec.backdrop {
             Backdrop::None => return false,
             Backdrop::Root => self.owner,
             Backdrop::Eater(id) => id,
@@ -138,12 +137,13 @@ impl OverlayScope {
         ui.response_for(id).any_clicked()
     }
 
-    /// Give the scope back once the overlay has resolved that it closed. **The
-    /// current pass is unaffected**: scope paths resolve against a cascade a frame
-    /// old, so merely ceasing to record would keep owning input one more frame and
-    /// swallow the click where it was. Takes `self`, so the claim is spent.
-    pub(crate) fn withdraw(self, ui: &mut Ui, closed: bool) {
-        if closed && self.backdrop.owns_input() {
+    /// Give the scope back once the overlay has resolved that it closed; an overlay
+    /// still open drops its scope instead. **The current pass is unaffected**: scope
+    /// paths resolve against a cascade a frame old, so merely ceasing to record would
+    /// keep owning input one more frame and swallow the click where it was. Takes
+    /// `self`, so the claim is spent.
+    pub(crate) fn withdraw(self, ui: &mut Ui) {
+        if self.spec.backdrop.owns_input() {
             ui.release_input_scope(self.owner);
         }
     }

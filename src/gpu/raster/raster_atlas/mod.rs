@@ -22,7 +22,7 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
-use crate::gpu::raster::raster_atlas::bound_sides::BoundSides;
+use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
 use crate::gpu::raster::raster_atlas::clock_sweep::ClockSweep;
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
@@ -57,6 +57,15 @@ pub(super) struct RasterAtlasConfig {
     pub(super) eager_growth_bytes: u64,
 }
 
+/// A raster ready to file: its packed extents and bearing, which side it reads from, and its rows
+/// of pixels with no slack.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct PackedRaster<'a> {
+    pub(super) metadata: PackedMetadata,
+    pub(super) content: ContentType,
+    pub(super) pixels: &'a [u8],
+}
+
 /// GPU debug labels, built once: a per-frame `format!` would allocate.
 #[derive(Debug)]
 struct AtlasLabels {
@@ -78,6 +87,8 @@ const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 
 #[derive(Debug)]
 pub(super) struct RasterAtlas<K> {
+    /// Grows sides and the staging buffer as inserts demand.
+    device: wgpu::Device,
     sides: [Side; 2],
     labels: AtlasLabels,
     eager_growth_bytes: u64,
@@ -146,23 +157,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         program: &RasterProgram,
         config: RasterAtlasConfig,
     ) -> Self {
-        let max = device.limits().max_texture_dimension_2d;
-
         let sides = [
-            Side::new(
-                device,
-                ContentType::Mask,
-                config.initial_mask_px.min(max),
-                Side::growth_ceiling(max, ContentType::Mask, config.max_bytes),
-                config.label,
-            ),
-            Side::new(
-                device,
-                ContentType::Color,
-                config.initial_color_px.min(max),
-                Side::growth_ceiling(max, ContentType::Color, config.max_bytes),
-                config.label,
-            ),
+            Side::new(device, ContentType::Mask, config),
+            Side::new(device, ContentType::Color, config),
         ];
         let labels = AtlasLabels {
             grow_blit: format!("{} atlas grow blit", config.label),
@@ -170,9 +167,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             staging: format!("{} atlas staging", config.label),
         };
 
-        let bound = BoundSides::new(device, program, &sides, config.label);
+        let bound = BoundSides::new(device, SidesLayout::new(program, config.label), &sides);
 
         Self {
+            device: device.clone(),
             sides,
             labels,
             eager_growth_bytes: config.eager_growth_bytes,
@@ -224,17 +222,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         clippy::cast_sign_loss,
         reason = "etagere allocates inside the atlas, whose coordinates start at zero"
     )]
-    pub(super) fn insert(
-        &mut self,
-        device: &wgpu::Device,
-        key: K,
-        content: ContentType,
-        metadata: PackedMetadata,
-        pixels: &[u8],
-    ) -> Option<u32> {
-        let alloc = self.allocate(device, content, metadata.size)?;
+    pub(super) fn insert(&mut self, key: K, raster: PackedRaster<'_>) -> Option<u32> {
+        let PackedRaster {
+            metadata, content, ..
+        } = raster;
+        let alloc = self.allocate(content, metadata.size)?;
         let origin = UVec2::new(alloc.rectangle.min.x as u32, alloc.rectangle.min.y as u32);
-        self.enqueue_upload(content, origin, metadata.size.as_uvec2(), pixels);
+        self.enqueue_upload(origin, raster);
 
         let slot = AtlasSlot {
             placement: Some(SlotPlacement {
@@ -268,20 +262,20 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         idx
     }
 
-    /// Queue one raster's pixels; `pixels` is exactly `size.x * size.y` texels with no row slack.
-    fn enqueue_upload(&mut self, content: ContentType, origin: UVec2, size: UVec2, pixels: &[u8]) {
+    /// Queue `raster`'s pixels for the rectangle at `origin`.
+    fn enqueue_upload(&mut self, origin: UVec2, raster: PackedRaster<'_>) {
         let copy = PendingCopy {
-            content,
+            content: raster.content,
             origin,
-            size,
+            size: raster.metadata.size.as_uvec2(),
             pixels_start: self.pending_pixels.len(),
         };
         debug_assert_eq!(
-            pixels.len(),
+            raster.pixels.len(),
             copy.pixels().len(),
             "a raster's bytes must be its rows with no slack",
         );
-        self.pending_pixels.extend_from_slice(pixels);
+        self.pending_pixels.extend_from_slice(raster.pixels);
         self.pending_copies.push(copy);
     }
 
@@ -318,7 +312,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if self.pending_copies.is_empty() {
             return;
         }
-        let bytes = self.reserve_staging(ctx.device);
+        let bytes = self.reserve_staging();
         let buf = self.staging_buf.as_ref().unwrap();
         // Every raster covers at least one row, so the view is never the empty one `write_view`
         // declines.
@@ -369,7 +363,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.pending_copies.clear();
     }
 
-    fn reserve_staging(&mut self, device: &wgpu::Device) -> u64 {
+    fn reserve_staging(&mut self) -> u64 {
         let bytes: u64 = self
             .pending_copies
             .iter()
@@ -378,7 +372,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let current_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
         if bytes > current_cap {
             let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
-            self.staging_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            self.staging_buf = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&self.labels.staging),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
@@ -409,14 +403,15 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             "the atlas frame clock ran backwards",
         );
         self.current_frame = frame;
-        let cache = &mut self.cache;
-        let slots = &mut self.slots;
-        let sides = &mut self.sides;
-        let free = &mut self.free;
+        let mut slab = Slab {
+            cache: &mut self.cache,
+            slots: &mut self.slots,
+            sides: &mut self.sides,
+            free: &mut self.free,
+        };
         // No stamp check: deadlines only move out, so every ticket that fires is the live one.
-        self.unallocated_expiry.retire(frame, |key, _| {
-            retire_unallocated(cache, slots, sides, free, key, frame)
-        });
+        self.unallocated_expiry
+            .retire(frame, |key, _| slab.retire_unallocated(key, frame));
     }
 
     /// Allocate a slot in the right packer, evicting then growing as needed.
@@ -425,12 +420,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// cannot widen a texture, so for a wider or taller entry every victim is wasted and
     /// the loop would empty the atlas, every frame it stays on screen (the run is refused
     /// as a template; see `EncodedCache::settle`).
-    fn allocate(
-        &mut self,
-        device: &wgpu::Device,
-        content: ContentType,
-        size: U16Vec2,
-    ) -> Option<etagere::Allocation> {
+    fn allocate(&mut self, content: ContentType, size: U16Vec2) -> Option<etagere::Allocation> {
         if !self.sides[content as usize].fits_ceiling(size) {
             self.counters.oversized.bump();
             return None;
@@ -444,8 +434,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             // eviction scan per waiting glyph. Too wide for the current edge, growing is the
             // only thing that works.
             let must_grow = !self.sides[content as usize].fits_now(size);
-            let grew = (must_grow || self.eager_growth(content)) && self.grow(device, content);
-            if !grew && !self.evict_one(content) && !self.grow(device, content) {
+            let grew = (must_grow || self.eager_growth(content)) && self.grow(content);
+            if !grew && !self.evict_one(content) && !self.grow(content) {
                 return None;
             }
         }
@@ -535,46 +525,50 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         });
     }
 
-    fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
-        if !self.sides[content as usize].grow(device, content) {
+    fn grow(&mut self, content: ContentType) -> bool {
+        if !self.sides[content as usize].grow(&self.device) {
             return false;
         }
         self.counters.grows.bump();
         // Rebind now, not behind a dirty flag: the old texture is gone, so any frame between would
         // sample a destroyed view.
-        self.bound.rebind(device, &self.sides);
+        self.bound.rebind(&self.device, &self.sides);
         true
     }
 }
 
-/// Settle one drained non-drawing ticket: `Some(due)` to re-file, `None` once
-/// reclaimed or no longer this wheel's business. A free function over four fields so
-/// the caller can keep `unallocated_expiry` borrowed to re-file into it.
-fn retire_unallocated<K: Copy + Eq + Hash + Debug>(
-    cache: &mut FxHashMap<K, u32>,
-    slots: &mut [AtlasSlot],
-    sides: &mut [Side],
-    free: &mut FreeSlots,
-    key: K,
-    frame: u64,
-) -> Option<u64> {
-    let Entry::Occupied(entry) = cache.entry(key) else {
-        return None;
-    };
-    let idx = *entry.get();
-    let slot = &slots[idx as usize];
-    // Allocated entries are the clock's to reclaim. Defensive: every path allocating over a slab
-    // index removes the old key first.
-    if slot.placement.is_some() {
-        return None;
+/// The slab and what a released slot returns to, borrowed apart from
+/// [`RasterAtlas::unallocated_expiry`] so its drain can re-file into it.
+#[derive(Debug)]
+struct Slab<'a, K> {
+    cache: &'a mut FxHashMap<K, u32>,
+    slots: &'a mut [AtlasSlot],
+    sides: &'a mut [Side],
+    free: &'a mut FreeSlots,
+}
+
+impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
+    /// Settle one drained non-drawing ticket: `Some(due)` to re-file, `None` once
+    /// reclaimed or no longer this wheel's business.
+    fn retire_unallocated(&mut self, key: K, frame: u64) -> Option<u64> {
+        let Entry::Occupied(entry) = self.cache.entry(key) else {
+            return None;
+        };
+        let idx = *entry.get();
+        let slot = &self.slots[idx as usize];
+        // Allocated entries are the clock's to reclaim. Defensive: every path allocating over a slab
+        // index removes the old key first.
+        if slot.placement.is_some() {
+            return None;
+        }
+        let dies_at = unallocated_dies_at(slot.last_use);
+        if dies_at > frame {
+            return Some(dies_at);
+        }
+        entry.remove();
+        self.free.release(self.slots, self.sides, idx);
+        None
     }
-    let dies_at = unallocated_dies_at(slot.last_use);
-    if dies_at > frame {
-        return Some(dies_at);
-    }
-    entry.remove();
-    free.release(slots, sides, idx);
-    None
 }
 
 /// The frame a non-drawing entry last used on `last_use` is first dead; one expression for both the
