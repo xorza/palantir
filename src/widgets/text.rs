@@ -14,7 +14,8 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Standalone shaped-text leaf for labels, paragraphs and headings. **By default a
 /// single-line label keeps its full natural width** ([`TextWrap::SingleLine`]): its

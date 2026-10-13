@@ -15,6 +15,16 @@ pub(crate) struct StencilVariant {
     test: wgpu::RenderPipeline,
 }
 
+/// Whether a pass carries the rounded-clip stencil attachment, which picks a
+/// [`StencilVariant`]'s pipeline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StencilMode {
+    /// No attachment: the base pipeline.
+    Off,
+    /// The rounded-clip attachment: the stencil-test twin.
+    Test,
+}
+
 /// What one color-pipeline family varies: labels, shader, entry points,
 /// override constants, pipeline layout, vertex buffers, topology.
 /// Everything else (`ColorWrites::ALL`, premultiplied blend) is fixed
@@ -76,9 +86,11 @@ impl StencilVariant {
         }
     }
 
-    /// The pipeline to bind: the stencil-test twin in a rounded-clip
-    /// pass, otherwise the base.
-    pub(crate) const fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
-        if use_stencil { &self.test } else { &self.base }
+    /// The pipeline to bind in a pass of `mode`.
+    pub(crate) const fn select(&self, mode: StencilMode) -> &wgpu::RenderPipeline {
+        match mode {
+            StencilMode::Off => &self.base,
+            StencilMode::Test => &self.test,
+        }
     }
 }

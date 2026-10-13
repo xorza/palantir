@@ -11,7 +11,7 @@ use winit::window::Window as WinitWindow;
 use crate::app::App;
 use crate::common::tracy::{self, FrameSet};
 use crate::display;
-use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::window_surface::{Acquired, WindowSurface};
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
@@ -259,7 +259,6 @@ impl Window {
     /// drain window-host output into `commands`. Stores the schedule on [`Self::next`].
     pub(super) fn frame<T: App>(
         &mut self,
-        gpu: &Gpu,
         core: &mut HostCore,
         app: &mut T,
         commands: &mut WindowCommands,
@@ -303,11 +302,11 @@ impl Window {
                 format: self.surface.format(),
                 vsync: Some(self.surface.vsync()),
             }) {
-                self.surface.configure(gpu);
+                self.surface.configure(core.gpu());
             }
 
             let cpu = core.cpu_frame(&mut self.driver, display, app);
-            self.next = self.present(gpu, core, cpu);
+            self.next = self.present(core, cpu);
         }
 
         self.finish(commands);
@@ -324,7 +323,7 @@ impl Window {
         self.driver.invalidate_target_contents();
     }
 
-    fn present(&mut self, gpu: &Gpu, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
+    fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
         let repaint = if report.plan.is_none() {
             self.acquire_retry = None;
@@ -335,25 +334,25 @@ impl Window {
                 Acquired::Ready(frame) => {
                     core.submit(&mut self.driver, frame.target(), mode);
                     self.window.pre_present_notify();
-                    frame.present(gpu);
+                    frame.present(core.gpu());
                     report.repaint_requested
                 }
                 // Still presentable: present it, then rebuild once per size.
                 Acquired::Suboptimal(frame) => {
                     core.submit(&mut self.driver, frame.target(), mode);
                     self.window.pre_present_notify();
-                    frame.present(gpu);
+                    frame.present(core.gpu());
                     let size = self.surface.size();
                     if self.suboptimal_handled != Some(size) {
                         tracing::warn!("surface acquire: suboptimal");
                         self.suboptimal_handled = Some(size);
-                        self.reconfigure(gpu);
+                        self.reconfigure(core.gpu());
                     }
                     report.repaint_requested
                 }
                 Acquired::Outdated => {
                     tracing::warn!("surface acquire: outdated / lost");
-                    self.reconfigure(gpu);
+                    self.reconfigure(core.gpu());
                     true
                 }
                 Acquired::Timeout => {

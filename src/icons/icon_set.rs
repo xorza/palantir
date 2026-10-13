@@ -95,17 +95,10 @@ impl IconSet {
         }
     }
 
-    /// Look an icon up by baked name (binary search; no allocation).
-    ///
-    /// Prefer the generated `IconId` constant for baked sets; this is for names
-    /// that are data.
+    /// Look an icon up by name (binary search; no allocation). Resolve once and
+    /// keep the id: it stays valid for this set.
     pub fn by_name(&self, name: &str) -> Option<IconId> {
-        self.inner
-            .table()
-            .icons()
-            .binary_search_by(|def| def.name.as_ref().cmp(name))
-            .ok()
-            .map(|i| IconId(i as u16))
+        self.inner.table().by_name(name)
     }
 
     /// The icon as a shape; shorthand for `Shape::icon(set.handle(icon))`.
@@ -130,7 +123,7 @@ pub(crate) mod internals {
         pub(crate) const fn fixture(set: u16, icon: u16) -> Self {
             Self {
                 set: IconSetId::new(set, 0),
-                icon: IconId(icon),
+                icon: IconId::fixture(icon),
             }
         }
     }

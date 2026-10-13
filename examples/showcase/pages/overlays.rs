@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crate::support;
-use crate::support::{api, note, note_style, raised_bg, readout, row, section, tiles, well_bg};
+use crate::support::{Section, api};
 use palantir::{
     Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, Configure, ContextMenu,
     ContextMenuTheme, Justify, Key, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
@@ -53,23 +53,21 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn popup_section(ui: &mut Ui, s: &mut State) {
-    section(
-        ui,
-        "Popup",
-        &[api!(PopupTrigger::on), api!(PopupTrigger::is_open)],
-        |ui| {
-            note(
+    Section::new("Popup")
+        .apis(&[api!(PopupTrigger::on), api!(PopupTrigger::is_open)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "A panel dropped below its trigger on the Popup layer, above and outside the \
                  main tree. A second click, an outside press or Escape closes it.",
             );
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 let trigger = Button::new().label("Edit ▾").show(ui).snapshot();
                 PopupTrigger::on(&trigger)
                     .padding(6.0)
                     .gap(4.0)
                     .min_size((180.0, 0.0))
-                    .background(raised_bg())
+                    .background(support::raised_bg())
                     .show(ui, |ui, close| {
                         for label in ["Copy", "Paste", "Delete"] {
                             if Button::new()
@@ -84,29 +82,26 @@ fn popup_section(ui: &mut Ui, s: &mut State) {
                             }
                         }
                     });
-                readout(ui, "picked", s.choice.unwrap_or("—"));
+                support::readout(ui, "picked", s.choice.unwrap_or("—"));
             });
-        },
-    );
+        });
 }
 
 fn anchor_section(ui: &mut Ui, s: &mut State) {
-    section(
-        ui,
-        "Anchors",
-        &[
+    Section::new("Anchors")
+        .apis(&[
             api!(Anchor::below),
             api!(Anchor::with_align),
             api!(ClickOutside::PassThrough),
-        ],
-        |ui| {
-            note(
+        ])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Where a popup sits against a rect: the side, and how it lines up along that \
                  side. This one lets outside clicks pass through, so it stays open while you \
                  change the controls.",
             );
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 for (value, label) in [
                     (Side::Below, "below"),
                     (Side::Above, "above"),
@@ -119,7 +114,7 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                         .show(ui);
                 }
             });
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 for (value, label) in [
                     (AnchorAlign::Start, "Start"),
                     (AnchorAlign::Center, "Center"),
@@ -137,7 +132,7 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                 .padding(8.0)
                 .justify(Justify::Center)
                 .child_align(Align::CENTER)
-                .background(well_bg())
+                .background(support::well_bg())
                 .show(ui, |ui| {
                     let target = Block::new()
                         .size((Sizing::fixed(140.0), Sizing::fixed(48.0)))
@@ -155,33 +150,30 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                         Popup::new(anchor.with_align(s.align).with_gap(6.0))
                             .click_outside(ClickOutside::PassThrough)
                             .padding((10.0, 6.0))
-                            .background(raised_bg())
+                            .background(support::raised_bg())
                             .show(ui, |ui, _| {
-                                Text::new("popup").style(&note_style()).show(ui);
+                                Text::new("popup").style(&support::note_style()).show(ui);
                             });
                     }
                 });
-        },
-    );
+        });
 }
 
 fn tooltip_section(ui: &mut Ui) {
-    section(
-        ui,
-        "Tooltips",
-        &[
+    Section::new("Tooltips")
+        .apis(&[
             api!(Tooltip::on as fn(&'static ResponseSnapshot, &'static str) -> Tooltip<'static>),
             api!(Tooltip::delay),
             api!(Tooltip::when_disabled),
-        ],
-        |ui| {
-            note(
+        ])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Hover for half a second. The bubble wraps at 280 px unless told otherwise, and \
                  a disabled widget shows none unless it opts in. Once one shows, the next \
                  within a second skips its delay — sweep along the lower row.",
             );
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 let r = Button::new().label("default").show(ui).snapshot();
                 Tooltip::on(&r, "The default 0.5 s delay before this appears.").show(ui);
 
@@ -225,7 +217,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .when_disabled(true)
                     .show(ui);
             });
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 for (label, tip) in [
                     ("one", "Hover, then move to the next item within a second."),
                     ("two", "This one showed at once — the warmup window."),
@@ -241,46 +233,50 @@ fn tooltip_section(ui: &mut Ui) {
                     Tooltip::on(&r, tip).show(ui);
                 }
             });
-        },
-    );
+        });
 }
 
 fn context_menu_section(ui: &mut Ui, s: &mut State) {
-    section(
-        ui,
-        "Context menu",
-        &[api!(ContextMenu::on), api!(MenuItem::shortcut)],
-        |ui| {
-            note(
+    Section::new("Context menu")
+        .apis(&[api!(ContextMenu::on), api!(MenuItem::shortcut)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Right-click the button or either surface. An item click, an outside click or \
                  Escape closes the menu, and ↑ ↓ walk its items. The right surface's menu \
                  has a looser theme.",
             );
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 let trigger = Button::new().label("right-click me").show(ui).snapshot();
-                attach_menu(ui, &trigger, &mut s.action, None);
-                readout(ui, "last action", s.action.unwrap_or("—"));
+                Menu {
+                    trigger: &trigger,
+                    style: None,
+                }
+                .show(ui, &mut s.action);
+                support::readout(ui, "last action", s.action.unwrap_or("—"));
             });
             let roomy = s.roomy.get_or_insert_with(|| roomy_menu_theme(ui));
-            tiles(ui, |ui| {
+            support::tiles(ui, |ui| {
                 for (label, roomy) in [("default theme", None), ("roomy theme", Some(&*roomy))] {
                     let surface = Panel::zstack()
                         .id_salt(label)
                         .size((Sizing::fixed(260.0), Sizing::fixed(90.0)))
                         .child_align(Align::CENTER)
                         .sense(Sense::CLICK)
-                        .background(raised_bg())
+                        .background(support::raised_bg())
                         .show(ui, |ui| {
-                            Text::new(label).style(&note_style()).show(ui);
+                            Text::new(label).style(&support::note_style()).show(ui);
                         })
                         .response
                         .snapshot();
-                    attach_menu(ui, &surface, &mut s.action, roomy);
+                    Menu {
+                        trigger: &surface,
+                        style: roomy,
+                    }
+                    .show(ui, &mut s.action);
                 }
             });
-        },
-    );
+        });
 }
 
 /// The live context menu theme with looser spacing.
@@ -295,50 +291,56 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
     t
 }
 
-/// `style` restyles through the theme bundle every menu widget reads; every `style` setter takes an `Option`, so "styled or default" is a threaded value, not a branch.
-fn attach_menu(
-    ui: &mut Ui,
-    trigger: &ResponseSnapshot,
-    action: &mut Option<&'static str>,
-    style: Option<&ContextMenuTheme>,
-) {
-    let mut menu = ContextMenu::on(trigger)
-        .size((Sizing::HUG, Sizing::HUG))
-        .style(style);
-    if style.is_some() {
-        menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
-    }
-    menu.show(ui, |ui, popup| {
-        let item = style.map(|s| &s.item);
-        let rule = style.map(|s| &s.separator);
-        for (label, shortcut) in [
-            ("Copy", Shortcut::ctrl('C')),
-            ("Cut", Shortcut::ctrl('X')),
-            ("Paste", Shortcut::ctrl('V')),
-        ] {
-            if MenuItem::new(label)
-                .id_salt(label)
-                .shortcut(shortcut)
+/// The demo's context menu on `trigger`.
+#[derive(Debug)]
+struct Menu<'a> {
+    trigger: &'a ResponseSnapshot,
+    /// Restyles through the theme bundle every menu widget reads; every `style` setter takes an `Option`, so "styled or default" is a threaded value, not a branch.
+    style: Option<&'a ContextMenuTheme>,
+}
+
+impl Menu<'_> {
+    /// Records the menu, writing the clicked item's label to `action`.
+    fn show(self, ui: &mut Ui, action: &mut Option<&'static str>) {
+        let Self { trigger, style } = self;
+        let mut menu = ContextMenu::on(trigger)
+            .size((Sizing::HUG, Sizing::HUG))
+            .style(style);
+        if style.is_some() {
+            menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
+        }
+        menu.show(ui, |ui, popup| {
+            let item = style.map(|s| &s.item);
+            let rule = style.map(|s| &s.separator);
+            for (label, shortcut) in [
+                ("Copy", Shortcut::ctrl('C')),
+                ("Cut", Shortcut::ctrl('X')),
+                ("Paste", Shortcut::ctrl('V')),
+            ] {
+                if MenuItem::new(label)
+                    .id_salt(label)
+                    .shortcut(shortcut)
+                    .style(item)
+                    .show(ui, popup)
+                    .clicked()
+                {
+                    *action = Some(label);
+                }
+            }
+            MenuSeparator::new().style(rule).show(ui);
+            MenuItem::new("Disabled")
+                .disabled(true)
+                .style(item)
+                .show(ui, popup);
+            MenuSeparator::new().style(rule).show(ui);
+            if MenuItem::new("Delete")
+                .shortcut(Shortcut::key(Key::Backspace))
                 .style(item)
                 .show(ui, popup)
                 .clicked()
             {
-                *action = Some(label);
+                *action = Some("Delete");
             }
-        }
-        MenuSeparator::new().style(rule).show(ui);
-        MenuItem::new("Disabled")
-            .disabled(true)
-            .style(item)
-            .show(ui, popup);
-        MenuSeparator::new().style(rule).show(ui);
-        if MenuItem::new("Delete")
-            .shortcut(Shortcut::key(Key::Backspace))
-            .style(item)
-            .show(ui, popup)
-            .clicked()
-        {
-            *action = Some("Delete");
-        }
-    });
+        });
+    }
 }

@@ -1,7 +1,5 @@
-//! One row or column of a grid, and the interned definition a node carries
-//! a whole grid by.
+//! One row or column of a grid.
 
-use crate::common::span::Span;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
@@ -32,7 +30,7 @@ impl Track {
         }
     }
 
-    /// The four constructors mirror [`Sizing`]'s name for name.
+    /// [`Sizing::HUG`] as a track; the four constructors mirror [`Sizing`]'s name for name.
     pub const HUG: Self = Self::new(Sizing::HUG);
 
     /// A track taking an equal share of the leftover; [`Self::fill`]
@@ -112,26 +110,6 @@ impl hash::Hash for Track {
     #[inline]
     fn hash<H: hash::Hasher>(&self, h: &mut H) {
         self.hash_eq(h);
-    }
-}
-
-/// Spans into a `Tree`'s retained flat track arena plus the gaps for one Grid.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GridDef {
-    pub(crate) rows: Span,
-    pub(crate) cols: Span,
-}
-
-impl GridDef {
-    pub(crate) fn hash_visual<H: hash::Hasher>(&self, tracks: &[Track], h: &mut H) {
-        h.write_u32(self.rows.len);
-        for t in &tracks[self.rows.range()] {
-            t.hash_visual(h);
-        }
-        h.write_u32(self.cols.len);
-        for t in &tracks[self.cols.range()] {
-            t.hash_visual(h);
-        }
     }
 }
 

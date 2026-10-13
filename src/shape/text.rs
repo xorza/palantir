@@ -52,8 +52,7 @@ impl TextShape {
         self.local_origin = Some(vec2::offset(origin));
         self
     }
-}
-impl TextShape {
+
     /// Ink colour: straight-alpha linear RGB.
     ///
     /// # Panics

@@ -5,17 +5,20 @@
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+pub(crate) mod measure_snapshot;
+mod node_arenas;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::counters::BenchOnly;
 use crate::common::span::Span;
+use crate::layout::cache::measure_snapshot::{ArenaSnapshot, MeasureSnapshot, SubtreeKey};
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::layout::measured::Measured;
 use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::math::num::F32Px;
 use crate::scene::forest::Forest;
@@ -24,26 +27,13 @@ use crate::scene::tree::Tree;
 use glam::{IVec2, Vec2};
 use std::mem;
 
-#[derive(Clone, Copy, Debug)]
-struct ArenaSnapshot {
-    subtree_hash: ContentHash,
-    available_q: AvailableKey,
-    nodes: Span,
-    tracks: Span,
-    text_shapes: Span,
-}
-
+/// An offer quantized to the grid [`MeasureCache::try_lookup`] matches on.
 pub(super) type AvailableKey = IVec2;
 
+/// The `available_q` of a node no measure reached this frame; no subtree is captured under it.
 pub(super) const INVALID_AVAILABLE: AvailableKey = IVec2::splat(i32::MIN);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct RootSnapshotKey {
-    pub(super) wid: WidgetId,
-    pub(super) subtree_hash: ContentHash,
-    pub(super) available_q: AvailableKey,
-}
-
+/// Last frame's measure of one subtree, as a hit restores it.
 #[derive(Debug)]
 pub(super) struct CachedSubtree<'a> {
     pub(super) root: Measured,
@@ -69,6 +59,7 @@ pub(super) struct Arranged<'a> {
     pub(super) locals: &'a [Vec2],
 }
 
+/// The engine's columns for one laid-out tree, as [`MeasureCache::capture_tree`] appends them.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CaptureTreeInput<'a> {
     pub(super) desired: &'a [Size],
@@ -94,128 +85,6 @@ fn union_spans(a: Span, b: Span) -> Span {
     let start = a.start.min(b.start);
     let end = (a.start + a.len).max(b.start + b.len);
     Span::new(start, end - start)
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct NodeArenas {
-    desired: Vec<Size>,
-    floor: Vec<Size>,
-    stable_from: Vec<Size>,
-    /// Arranged rect per node; `LayoutPass::arrange` replays it instead of
-    /// re-running drivers when a subtree's slot is unchanged or translated.
-    rect: Vec<Rect>,
-    /// Slot origin in the parent's inner box; a translated replay rebuilds `rect` from it.
-    local: Vec<Vec2>,
-    scroll_content: Vec<Size>,
-    text_spans: Vec<Span>,
-    intrinsics: Vec<[f32; SLOT_COUNT]>,
-    available_q: Vec<AvailableKey>,
-}
-
-impl NodeArenas {
-    /// Destructured so a new column cannot be forgotten: `node_base` comes
-    /// from `desired.len()`, and a longer leftover arena would offset every
-    /// later slice of that column.
-    fn clear(&mut self) {
-        let Self {
-            desired,
-            floor,
-            stable_from,
-            rect,
-            local,
-            scroll_content,
-            text_spans,
-            intrinsics,
-            available_q,
-        } = self;
-        desired.clear();
-        floor.clear();
-        stable_from.clear();
-        rect.clear();
-        local.clear();
-        scroll_content.clear();
-        text_spans.clear();
-        intrinsics.clear();
-        available_q.clear();
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct MeasureSnapshot {
-    nodes: NodeArenas,
-    tracks: Vec<f32>,
-    text_shapes: Vec<ShapedText>,
-    snapshots: WidgetIdMap<u32>,
-    descriptors: Vec<ArenaSnapshot>,
-    descriptor_wids: Vec<WidgetId>,
-    pub(super) roots: Vec<RootSnapshotKey>,
-    /// Ordered fold over `descriptor_wids`, rebuilt by every capture.
-    descriptor_identity: u64,
-    /// The `descriptor_identity` [`Self::snapshots`] was built for. Held
-    /// beside the map so both travel through `end_frame`'s swap: the map is
-    /// reusable exactly when a capture into this struct yields the same
-    /// identity.
-    snapshots_identity: u64,
-}
-
-impl MeasureSnapshot {
-    /// Empty everything, retained descriptor map included. Resetting
-    /// `snapshots_identity` stops a later capture folding to the same value
-    /// from reusing a map that is gone.
-    fn forget_all(&mut self) {
-        self.clear_capture();
-        self.snapshots.clear();
-        self.snapshots_identity = 0;
-    }
-
-    /// Empty the captured columns, keeping the descriptor map.
-    fn clear_capture(&mut self) {
-        self.nodes.clear();
-        self.tracks.clear();
-        self.text_shapes.clear();
-        self.descriptors.clear();
-        self.descriptor_wids.clear();
-        self.roots.clear();
-        self.descriptor_identity = 0;
-    }
-
-    /// Rebuild `snapshots` unless the capture produced the id sequence the
-    /// retained map was built for. Returns whether it rebuilt.
-    ///
-    /// Equality is approximated by `descriptor_identity`. A collision is
-    /// survivable (the `subtree_hash` check in `try_lookup` rejects it, costing
-    /// a hit) but silent, so [`Self::snapshots_match_descriptors`] checks it in
-    /// debug builds.
-    fn refresh_snapshots(&mut self) -> bool {
-        if self.snapshots_identity == self.descriptor_identity {
-            debug_assert!(
-                self.snapshots_match_descriptors(),
-                "descriptor_identity collided: the retained WidgetId → descriptor map \
-                 disagrees with the descriptors just captured",
-            );
-            return false;
-        }
-        self.snapshots.clear();
-        for (descriptor, wid) in self.descriptor_wids.iter().copied().enumerate() {
-            self.snapshots.insert(wid, descriptor as u32);
-        }
-        self.snapshots_identity = self.descriptor_identity;
-        true
-    }
-
-    /// Every descriptor is reachable through `snapshots` at its own index.
-    /// One probe each, so only for `debug_assert!`.
-    fn snapshots_match_descriptors(&self) -> bool {
-        self.snapshots.len() == self.descriptor_wids.len()
-            && self
-                .descriptor_wids
-                .iter()
-                .copied()
-                .enumerate()
-                .all(|(descriptor, wid)| {
-                    self.snapshots.get(&wid).copied() == Some(descriptor as u32)
-                })
-    }
 }
 
 #[derive(Debug, Default)]
@@ -259,7 +128,7 @@ impl MeasureCache {
             let tree = &forest.trees[layer];
             for slot in &tree.roots {
                 let root = slot.first_node;
-                let current = RootSnapshotKey {
+                let current = SubtreeKey {
                     wid: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.layout_subtree[root.idx()],
                     available_q: Self::available_key(slot.available(layer, surface)),
@@ -283,23 +152,17 @@ impl MeasureCache {
         }
     }
 
-    /// Last frame's measure of `wid`'s subtree, if its authoring is unchanged
-    /// and it holds under `available`: the offer it was measured at (to the
-    /// key's grid), or any finite offer past [`Measured::stable_from`], per
-    /// axis.
+    /// Last frame's measure of the subtree `key` names, if its authoring is
+    /// unchanged and it holds under `available` (which `key.available_q`
+    /// quantizes): the offer it was measured at (to the key's grid), or any
+    /// finite offer past [`Measured::stable_from`], per axis.
     #[inline]
-    pub(super) fn try_lookup(
-        &self,
-        wid: WidgetId,
-        curr_hash: ContentHash,
-        available: Size,
-        available_q: AvailableKey,
-    ) -> Option<CachedSubtree<'_>> {
-        let descriptor = *self.previous.snapshots.get(&wid)? as usize;
-        let snap = &self.previous.descriptors[descriptor];
-        if snap.subtree_hash != curr_hash {
+    pub(super) fn try_lookup(&self, key: SubtreeKey, available: Size) -> Option<CachedSubtree<'_>> {
+        let snap = self.previous.descriptor(key.wid)?;
+        if snap.subtree_hash != key.subtree_hash {
             return None;
         }
+        let available_q = key.available_q;
         let nodes = snap.nodes.range();
         let stable_from = self.previous.nodes.stable_from[nodes.start];
         let holds = |measured_at: i32, key: i32, offer: f32, from: f32| {
@@ -338,6 +201,8 @@ impl MeasureCache {
         })
     }
 
+    /// Last frame's intrinsic `slot` of `wid`'s subtree root, if its authoring
+    /// is unchanged and the slot was computed.
     #[inline]
     pub(super) fn lookup_root_intrinsic(
         &self,
@@ -345,8 +210,7 @@ impl MeasureCache {
         subtree_hash: ContentHash,
         slot: usize,
     ) -> Option<f32> {
-        let descriptor = *self.previous.snapshots.get(&wid)? as usize;
-        let snap = &self.previous.descriptors[descriptor];
+        let snap = self.previous.descriptor(wid)?;
         if snap.subtree_hash != subtree_hash {
             return None;
         }
@@ -452,7 +316,7 @@ impl MeasureCache {
 
         for slot in &tree.roots {
             let index = slot.first_node.idx();
-            self.current.roots.push(RootSnapshotKey {
+            self.current.roots.push(SubtreeKey {
                 wid: tree.records.widget_id()[index],
                 subtree_hash: tree.rollups.layout_subtree[index],
                 available_q: available_q[index],
@@ -575,37 +439,59 @@ pub(crate) mod internals {
     }
 
     pub(crate) fn build_broad_variant(ui: &mut Ui, change: Option<BroadChange>) {
-        build_broad_level(ui, 0, 0, change);
+        BroadLevel {
+            depth: 0,
+            key: 0,
+            change,
+        }
+        .show(ui);
     }
 
-    fn build_broad_level(ui: &mut Ui, depth: usize, key: usize, change: Option<BroadChange>) {
-        Panel::vstack()
-            .id_salt(("broad", depth, key))
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                if depth == BROAD_DEPTH {
-                    let changed = |to| key == 0 && change == Some(to);
-                    let weight = if changed(BroadChange::FillWeight) {
-                        2.0
-                    } else {
-                        1.0
-                    };
-                    let height = if changed(BroadChange::LeafHeight) {
-                        2.0
-                    } else {
-                        1.0
-                    };
-                    Block::new()
-                        .id_salt(("broad-leaf", key))
-                        .size((Sizing::fill(weight), Sizing::fixed(height)))
-                        .show(ui);
-                    return;
-                }
+    /// One panel of the broad tree: `depth` levels below the root, `key` its
+    /// pre-order index among its level's panels.
+    #[derive(Clone, Copy, Debug)]
+    struct BroadLevel {
+        depth: usize,
+        key: usize,
+        change: Option<BroadChange>,
+    }
 
-                for child in 0..BROAD_FANOUT {
-                    build_broad_level(ui, depth + 1, key * BROAD_FANOUT + child, change);
-                }
-            });
+    impl BroadLevel {
+        fn show(self, ui: &mut Ui) {
+            let Self { depth, key, change } = self;
+            Panel::vstack()
+                .id_salt(("broad", depth, key))
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui, |ui| {
+                    if depth == BROAD_DEPTH {
+                        let changed = |to| key == 0 && change == Some(to);
+                        let weight = if changed(BroadChange::FillWeight) {
+                            2.0
+                        } else {
+                            1.0
+                        };
+                        let height = if changed(BroadChange::LeafHeight) {
+                            2.0
+                        } else {
+                            1.0
+                        };
+                        Block::new()
+                            .id_salt(("broad-leaf", key))
+                            .size((Sizing::fill(weight), Sizing::fixed(height)))
+                            .show(ui);
+                        return;
+                    }
+
+                    for child in 0..BROAD_FANOUT {
+                        Self {
+                            depth: depth + 1,
+                            key: key * BROAD_FANOUT + child,
+                            change,
+                        }
+                        .show(ui);
+                    }
+                });
+        }
     }
 
     #[cfg(test)]

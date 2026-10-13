@@ -5,40 +5,44 @@
 //! violators pins an item at its floor before a later cap frees room; freezing one per pass makes
 //! the answer depend on push order.
 
+/// What one item asks of a Fill distribution: its weight, and the extents its share is clamped to.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FillDemand {
+    pub(super) weight: f32,
+    /// Least extent this item accepts; a floor above `cap` resolves to `cap`.
+    pub(super) floor: f32,
+    pub(super) cap: f32,
+}
+
 /// One participant in a Fill distribution; `key` is the caller's handle, carried through untouched.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FillItem<K> {
     pub(super) key: K,
     pub(super) size: f32,
-    weight: f32,
-    /// Least extent this item accepts; a floor above `cap` resolves to `cap`.
-    floor: f32,
-    cap: f32,
+    demand: FillDemand,
     /// How far the last clamp moved `size` off the share: positive at the floor, negative at the cap.
     violation: f32,
     frozen: bool,
 }
 
 impl<K> FillItem<K> {
-    pub(super) const fn new(key: K, weight: f32, floor: f32, cap: f32) -> Self {
+    pub(super) const fn new(key: K, demand: FillDemand) -> Self {
         Self {
             key,
             size: 0.0,
-            weight,
-            floor,
-            cap,
+            demand,
             violation: 0.0,
             frozen: false,
         }
     }
 
     pub(super) const fn floor(&self) -> f32 {
-        self.floor.min(self.cap)
+        self.demand.floor.min(self.demand.cap)
     }
 
     pub(super) fn distribute(items: &mut [Self], budget: f32) {
         let mut remaining = budget;
-        let mut active_weight: f64 = items.iter().map(|item| f64::from(item.weight)).sum();
+        let mut active_weight: f64 = items.iter().map(|item| f64::from(item.demand.weight)).sum();
         loop {
             let mut total_violation = 0.0_f64;
             let mut any_active = false;
@@ -50,11 +54,11 @@ impl<K> FillItem<K> {
                 // f64 because `active_weight` sheds a term per freeze and an f32 total drifts. Zero total weight
                 // gives a zero share, which clamps every item onto its own floor.
                 let share = if active_weight > 0.0 {
-                    (f64::from(remaining) * f64::from(item.weight) / active_weight) as f32
+                    (f64::from(remaining) * f64::from(item.demand.weight) / active_weight) as f32
                 } else {
                     0.0
                 };
-                item.size = share.clamp(item.floor.min(item.cap), item.cap);
+                item.size = share.clamp(item.floor(), item.demand.cap);
                 // An infinite budget gives an uncapped item an infinite share; `INF - INF` would stall the sign test.
                 item.violation = if item.size == share {
                     0.0
@@ -80,7 +84,7 @@ impl<K> FillItem<K> {
                 }
                 item.frozen = true;
                 remaining -= item.size;
-                active_weight -= f64::from(item.weight);
+                active_weight -= f64::from(item.demand.weight);
             }
             remaining = remaining.max(0.0);
         }

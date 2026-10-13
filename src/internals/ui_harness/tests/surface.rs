@@ -1,6 +1,6 @@
 //! Moving the surface between frames, and the physical/logical split.
 
-use crate::internals::ui_harness::tests::support::{SURFACE, button};
+use crate::internals::ui_harness::tests::support::{self, SURFACE};
 use crate::internals::ui_harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::ui::frame_report::FramePaint;
@@ -9,13 +9,13 @@ use crate::ui::frame_report::FramePaint;
 fn resize_and_set_display_move_the_surface_between_frames() {
     // These two are the whole surface-mutation surface; both must read as a display change.
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
+    harness.prime(2, support::button);
     assert_eq!(harness.display.physical, SURFACE);
-    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
+    assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 
     let bigger = UVec2::new(400, 300);
     assert_eq!(
-        harness.resize(bigger).frame(button).paint(),
+        harness.resize(bigger).frame(support::button).paint(),
         FramePaint::Full
     );
     assert_eq!(harness.display.physical, bigger);
@@ -27,9 +27,9 @@ fn resize_and_set_display_move_the_surface_between_frames() {
         system_scale: 2.0,
         ..harness.display
     };
-    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
+    assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
     assert_eq!(
-        harness.set_display(dpi_move).frame(button).paint(),
+        harness.set_display(dpi_move).frame(support::button).paint(),
         FramePaint::Full,
     );
     assert_eq!(harness.ui.display(), dpi_move);
@@ -64,7 +64,7 @@ fn user_scale_multiplies_onto_the_dpr() {
     assert_eq!(display.system_logical_size(), Size::new(100.0, 60.0));
 
     harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5).unwrap()));
-    harness.frame(button);
+    harness.frame(support::button);
     assert_eq!(harness.ui.display().scale_factor(), 3.0);
 
     let swapped = Display {
@@ -79,16 +79,16 @@ fn user_scale_multiplies_onto_the_dpr() {
 #[test]
 fn a_user_scale_move_repaints_in_full() {
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
-    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
+    harness.prime(2, support::button);
+    assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 
     let zoomed = Display {
         user_scale: UserScale::new(1.5).unwrap(),
         ..harness.ui.display()
     };
     assert_eq!(
-        harness.set_display(zoomed).frame(button).paint(),
+        harness.set_display(zoomed).frame(support::button).paint(),
         FramePaint::Full,
     );
-    assert_eq!(harness.frame(button).paint(), FramePaint::Skip);
+    assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 }

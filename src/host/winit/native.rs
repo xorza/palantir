@@ -5,9 +5,10 @@ use std::sync::Arc;
 use glam::{IVec2, UVec2};
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Icon, Window as WinitWindow, WindowAttributes};
+use winit::window::{Icon, Window as WinitWindow};
 
 use crate::host::winit::error::WinitHostError;
+use crate::host::winit::platform;
 use crate::primitives::paint::image::Image;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_config::WindowConfig;
@@ -53,7 +54,7 @@ pub(super) fn create_window(
     if let Some(image) = &cfg.icon {
         attrs = attrs.with_window_icon(Some(icon(image)));
     }
-    attrs = with_app_id(attrs, cfg);
+    attrs = platform::with_app_id(attrs, cfg.app_id.as_deref());
     // Restore a saved position only if it lands on a connected monitor; winit does not clamp.
     if let Some(p) = cfg.placement.position
         && position_on_monitor(event_loop, p)
@@ -64,38 +65,6 @@ pub(super) fn create_window(
         .create_window(attrs)
         .map(Arc::new)
         .map_err(|source| WinitHostError::CreateWindow { token, source })
-}
-
-/// Applies [`WindowConfig::with_app_id`] where supported. Wayland's `app_id` and X11's `WM_CLASS` are one
-/// winit attribute; the instance name repeats the general one. Wayland has no fallback, so an unnamed
-/// window cannot match its `.desktop` entry.
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd",
-))]
-fn with_app_id(attrs: WindowAttributes, cfg: &WindowConfig) -> WindowAttributes {
-    // Inside the fn: the trait is only reachable on these targets.
-    use winit::platform::wayland::WindowAttributesExtWayland as _;
-
-    match &cfg.app_id {
-        Some(app_id) => attrs.with_name(app_id.clone(), app_id.clone()),
-        None => attrs,
-    }
-}
-
-/// Nothing to apply: application identity comes from the `.app` bundle on macOS and the executable on Windows.
-#[cfg(not(any(
-    target_os = "linux",
-    target_os = "dragonfly",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd",
-)))]
-const fn with_app_id(attrs: WindowAttributes, _cfg: &WindowConfig) -> WindowAttributes {
-    attrs
 }
 
 /// Whether `pos` (physical, window top-left) falls inside any connected monitor's bounds.

@@ -11,7 +11,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::click_outside::ClickOutside;
@@ -101,7 +101,12 @@ impl Popup {
         } else {
             Backdrop::Eater(eater_id)
         };
-        let scope = OverlayScope::claim(ui, layer, Some(anchor), backdrop, &mut widget);
+        let spec = OverlaySpec {
+            layer,
+            anchor: Some(anchor),
+            backdrop,
+        };
+        let scope = OverlayScope::claim(ui, spec, &mut widget);
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
@@ -116,7 +121,9 @@ impl Popup {
             close_requested: handle.requested(),
             inner: turn.inner,
         };
-        scope.withdraw(ui, response.closed());
+        if response.closed() {
+            scope.withdraw(ui);
+        }
         response
     }
 }

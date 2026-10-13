@@ -3,7 +3,7 @@
 //! `run` classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameCycle::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last. Per-pass resets live in [`FrameCycle::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
 
 use crate::app::App;
-use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::cascade_source::CascadeSource;
 use crate::common::tracy;
 use crate::damage::engine::DamageInput;
 use crate::damage::frame_baseline::FrameBaseline;
@@ -37,17 +37,13 @@ impl<'a> FrameCycle<'a> {
         Self { ui, engines }
     }
 
-    /// Drives one application frame for `win`: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip both.
-    pub(super) fn run<T: App>(
-        mut self,
-        input: FrameInput,
-        win: WindowToken,
-        app: &mut T,
-    ) -> FrameReport {
+    /// Drives one application frame for `input.window`: runs [`App::update`] once on a fully recorded frame, then replays [`App::record`] for cold-start warmup, action input, or `request_relayout`. Paint-only frames skip both.
+    pub(super) fn run<T: App>(mut self, input: FrameInput, app: &mut T) -> FrameReport {
         tracy::zone!("Ui::frame");
         let FrameInput {
             stamp,
             damage_baseline_valid,
+            window: win,
         } = input;
         // Screened here too, at the hosts' strictness: the `internals` harness stamps a display directly, and pointer coordinates are divided by the product passes later.
         assert!(
@@ -242,26 +238,18 @@ impl<'a> FrameCycle<'a> {
     fn post_record(&mut self) {
         tracy::zone!("Ui::post_record");
         self.ui.forest.post_record();
-        // Through `forest`, not `Ui::record_store`, which borrows all of `self.ui` while `layout.run` writes `&mut self.ui.layout`.
-        let store = &self.ui.forest.record_store;
-        let interned_text = store.interned_text();
         self.engines.layout.run(
             &self.ui.forest,
-            &interned_text,
             self.ui.display.logical_rect(),
             &mut self.ui.layout,
         );
-        let key = CascadeKey::new(
-            &self.ui.forest,
-            &self.ui.layout,
-            self.ui.display,
-            self.ui.resources.text().font_epoch(),
-        );
         self.engines.cascade.run(
-            &self.ui.forest,
-            &self.ui.layout,
-            self.ui.display,
-            &key,
+            CascadeSource {
+                forest: &self.ui.forest,
+                layout: &self.ui.layout,
+                display: self.ui.display,
+                font_epoch: self.ui.resources.text().font_epoch(),
+            },
             &mut self.ui.cascade,
         );
         self.ui.cascade_is_last_frame = false;

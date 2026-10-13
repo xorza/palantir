@@ -8,7 +8,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.

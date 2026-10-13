@@ -13,15 +13,15 @@ use crate::bench::fixture::{Backend, Backends, Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
+use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::raster::raster_program::RasterProgram;
-use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
+use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::surface::viewport::ViewportPush;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::scene::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
@@ -192,8 +192,12 @@ impl Fixture {
             let mut ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
             for (index, batch) in batches.iter().enumerate() {
-                self.backend
-                    .prepare_batch(&ctx, batch.scale, index, batch.runs, &interned_text);
+                self.backend.prepare_batch(TextBatchInput {
+                    index,
+                    runs: batch.runs,
+                    scale: batch.scale,
+                    interned_text,
+                });
             }
             self.backend.flush(&mut ctx);
         }
@@ -215,7 +219,7 @@ impl Fixture {
                 multiview_mask: None,
             });
             // `render_batch` binds neither pipeline nor viewport (the render loop owns both, see `Bound::Raster`), so a standalone pass binds its own.
-            pass.set_pipeline(self.pipelines.select(false));
+            pass.set_pipeline(self.pipelines.select(StencilMode::Off));
             ViewportPush { size: Vec2::ZERO }.push_into(&mut pass);
             for index in 0..batches.len() {
                 self.backend.render_batch(index, &mut pass);
@@ -228,23 +232,14 @@ impl Fixture {
         self.backend.tick_frame();
     }
 
-    /// `prepare` alone at `scale`: no flush, draw or submit. A throwaway encoder and the belt satisfy its signature.
+    /// `prepare` alone at `scale`: no flush, draw or submit.
     fn prepare(&mut self, scale: f32) {
-        let g = gpu();
-        let mut encoder = g
-            .gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.text_atlas.prepare"),
-            });
-        {
-            let ctx = GpuCtx::new(&g.gpu.device, &g.gpu.queue, &mut self.belt, &mut encoder);
-            let interned_text = self.store.interned_text();
-            self.backend
-                .prepare_batch(&ctx, scale, 0, &self.runs, &interned_text);
-        }
-        self.belt.finish();
-        self.belt.recall();
+        self.backend.prepare_batch(TextBatchInput {
+            index: 0,
+            runs: &self.runs,
+            scale,
+            interned_text: self.store.interned_text(),
+        });
         self.backend.tick_frame();
     }
 

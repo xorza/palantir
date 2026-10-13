@@ -16,18 +16,39 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
     let font = GlyphFont::new(16.0);
 
     let mut out = Vec::new();
-    glyphs.line("abc", font, 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "abc",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     assert_eq!(out.len(), 3, "{out:?}");
     // Whole-pixel pen positions; the fraction goes to the raster key's subpixel bin.
     let xs: Vec<_> = out.iter().map(|glyph| glyph.x).collect();
     assert_eq!(xs, [0, 9, 18], "{out:?}");
 
     let first: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
-    glyphs.line("abc", font, 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "abc",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     let again: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
     assert_eq!(first, again);
 
-    glyphs.line("xyz", font, 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "xyz",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     let other: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
     assert_ne!(first, other);
 }
@@ -40,10 +61,24 @@ fn an_empty_line_has_no_glyphs_and_no_extent() {
     let font = GlyphFont::new(16.0);
 
     let mut out = vec![];
-    glyphs.line("a", font, 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "a",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     assert_eq!(out.len(), 1);
 
-    glyphs.line("", font, 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     assert!(out.is_empty(), "an empty run left glyphs behind: {out:?}");
     assert_eq!(glyphs.measure("", font), Size::ZERO);
 }
@@ -56,9 +91,23 @@ fn scale_changes_the_raster_and_not_the_run() {
     let font = GlyphFont::new(16.0);
 
     let mut single = Vec::new();
-    glyphs.line("abc", font, 1.0, &mut single);
+    glyphs.line(
+        GlyphLine {
+            text: "abc",
+            font,
+            raster_scale: 1.0,
+        },
+        &mut single,
+    );
     let mut double = Vec::new();
-    glyphs.line("abc", font, 2.0, &mut double);
+    glyphs.line(
+        GlyphLine {
+            text: "abc",
+            font,
+            raster_scale: 2.0,
+        },
+        &mut double,
+    );
 
     assert_eq!(single.len(), double.len());
     for (one, two) in single.iter().zip(&double) {
@@ -91,7 +140,14 @@ fn a_placed_glyph_rasterizes_to_the_bitmap_it_describes() {
     let mut glyphs = shaper.glyphs();
 
     let mut out = Vec::new();
-    glyphs.line("A", GlyphFont::new(32.0), 1.0, &mut out);
+    glyphs.line(
+        GlyphLine {
+            text: "A",
+            font: GlyphFont::new(32.0),
+            raster_scale: 1.0,
+        },
+        &mut out,
+    );
     let [placed] = out[..] else {
         panic!("one letter laid out as {out:?}");
     };

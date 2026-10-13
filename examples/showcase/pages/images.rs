@@ -6,8 +6,8 @@
 )]
 
 use crate::support;
-use crate::support::{api, demo_cell, demo_cell_at, note, section, tiles};
-use palantir::widget::Shape;
+use crate::support::{DemoCell, Section, api};
+use palantir::widget::{ImageShape, Shape};
 use palantir::{
     Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, UVec2, Ui, Vec2, WidgetId,
 };
@@ -108,133 +108,140 @@ struct Sources {
     starfield: ImageHandle,
 }
 
-fn sources(ui: &mut Ui) -> Sources {
-    ui.with_state::<Option<Sources>, _>(
-        WidgetId::from_hash("showcase::images::sources"),
-        |ui, slot| {
-            slot.get_or_insert_with(|| Sources {
-                checker: ui
-                    .load_image(&checker())
-                    .expect("showcase checker fits every supported GPU"),
-                gradient: ui
-                    .load_image(&gradient())
-                    .expect("showcase gradient fits every supported GPU"),
-                sprite: ui
-                    .load_image(&sprite())
-                    .expect("showcase sprite fits every supported GPU"),
-                starfield: ui
-                    .load_image(&starfield())
-                    .expect("showcase starfield fits every supported GPU"),
-            })
-            .clone()
-        },
-    )
+impl Sources {
+    fn load(ui: &mut Ui) -> Self {
+        ui.with_state::<Option<Self>, _>(
+            WidgetId::from_hash("showcase::images::sources"),
+            |ui, slot| {
+                slot.get_or_insert_with(|| Self {
+                    checker: ui
+                        .load_image(&checker())
+                        .expect("showcase checker fits every supported GPU"),
+                    gradient: ui
+                        .load_image(&gradient())
+                        .expect("showcase gradient fits every supported GPU"),
+                    sprite: ui
+                        .load_image(&sprite())
+                        .expect("showcase sprite fits every supported GPU"),
+                    starfield: ui
+                        .load_image(&starfield())
+                        .expect("showcase starfield fits every supported GPU"),
+                })
+                .clone()
+            },
+        )
+    }
 }
 
 pub(crate) fn build(ui: &mut Ui) {
-    let src = sources(ui);
+    let src = Sources::load(ui);
 
-    section(ui, "Fit", &[api!(type ImageFit)], |ui| {
-        note(ui, "How the source maps onto a rect that is not its shape.");
-        tiles(ui, |ui| {
-            for (label, fit) in [
-                ("Fill — stretch to the rect", ImageFit::Fill),
-                ("Contain — whole image, letterboxed", ImageFit::Contain),
-                ("Cover — fill the rect, crop", ImageFit::Cover),
-                ("None — 1:1, centred", ImageFit::None),
-            ] {
-                demo_cell_at(ui, label, 232.0, 132.0, |ui| {
-                    image(ui, &src.checker, fit, RgbaF32::WHITE);
+    Section::new("Fit")
+        .apis(&[api!(type ImageFit)])
+        .show(ui, |ui| {
+            support::note(ui, "How the source maps onto a rect that is not its shape.");
+            support::tiles(ui, |ui| {
+                for (label, fit) in [
+                    ("Fill — stretch to the rect", ImageFit::Fill),
+                    ("Contain — whole image, letterboxed", ImageFit::Contain),
+                    ("Cover — fill the rect, crop", ImageFit::Cover),
+                    ("None — 1:1, centred", ImageFit::None),
+                ] {
+                    DemoCell::new(label).size(232.0, 132.0).show(ui, |ui| {
+                        ui.add_shape(fitted(&src.checker, fit));
+                    });
+                }
+            });
+        });
+
+    Section::new("Tint")
+        .apis(&[api!(type ImageHandle)])
+        .show(ui, |ui| {
+            support::note(ui, "The tint multiplies each sampled texel.");
+            support::tiles(ui, |ui| {
+                DemoCell::new("no tint").show(ui, |ui| {
+                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill));
                 });
-            }
-        });
-    });
-
-    section(ui, "Tint", &[api!(type ImageHandle)], |ui| {
-        note(ui, "The tint multiplies each sampled texel.");
-        tiles(ui, |ui| {
-            demo_cell(ui, "no tint", |ui| {
-                image(ui, &src.gradient, ImageFit::Fill, RgbaF32::WHITE);
-            });
-            demo_cell(ui, "red tint", |ui| {
-                image(ui, &src.gradient, ImageFit::Fill, support::E);
-            });
-            demo_cell(ui, "half alpha", |ui| {
-                image(
-                    ui,
-                    &src.gradient,
-                    ImageFit::Fill,
-                    RgbaF32::WHITE.with_alpha(0.5),
-                );
+                DemoCell::new("red tint").show(ui, |ui| {
+                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill).tint(support::E));
+                });
+                DemoCell::new("half alpha").show(ui, |ui| {
+                    ui.add_shape(
+                        fitted(&src.gradient, ImageFit::Fill).tint(RgbaF32::WHITE.with_alpha(0.5)),
+                    );
+                });
             });
         });
-    });
 
-    section(ui, "Tiling", &[], |ui| {
-        note(ui, "The UVs wrap, with a scale and an offset.");
-        tiles(ui, |ui| {
-            demo_cell(ui, "tile 3×3", |ui| {
+    Section::new("Tiling").show(ui, |ui| {
+        support::note(ui, "The UVs wrap, with a scale and an offset.");
+        support::tiles(ui, |ui| {
+            DemoCell::new("tile 3×3").show(ui, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::ZERO,
                     scale: Vec2::splat(3.0),
                 };
-                image(ui, &src.checker, fit, RgbaF32::WHITE);
+                ui.add_shape(fitted(&src.checker, fit));
             });
-            demo_cell(ui, "tile 2×4, offset 0.25", |ui| {
+            DemoCell::new("tile 2×4, offset 0.25").show(ui, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::new(0.25, 0.0),
                     scale: Vec2::new(2.0, 4.0),
                 };
-                image(ui, &src.gradient, fit, RgbaF32::WHITE);
+                ui.add_shape(fitted(&src.gradient, fit));
             });
         });
     });
 
-    section(ui, "Filtering", &[api!(type ImageFilter)], |ui| {
-        note(
-            ui,
-            "Magnification on a 4×4 sprite, minification on a 64×64 checker tiled \
+    Section::new("Filtering")
+        .apis(&[api!(type ImageFilter)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "Magnification on a 4×4 sprite, minification on a 64×64 checker tiled \
                  32 times.",
-        );
-        tiles(ui, |ui| {
-            demo_cell(ui, "magnify — Linear", |ui| {
-                magnified(ui, &src.sprite, ImageFilter::Linear);
-            });
-            demo_cell(ui, "magnify — Nearest", |ui| {
-                magnified(ui, &src.sprite, ImageFilter::Nearest);
-            });
-            demo_cell(ui, "minify — Linear", |ui| {
-                minified(ui, &src.checker, ImageFilter::Linear);
-            });
-            demo_cell(ui, "minify — Nearest", |ui| {
-                minified(ui, &src.checker, ImageFilter::Nearest);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("magnify — Linear").show(ui, |ui| {
+                    magnified(ui, &src.sprite, ImageFilter::Linear);
+                });
+                DemoCell::new("magnify — Nearest").show(ui, |ui| {
+                    magnified(ui, &src.sprite, ImageFilter::Nearest);
+                });
+                DemoCell::new("minify — Linear").show(ui, |ui| {
+                    minified(ui, &src.checker, ImageFilter::Linear);
+                });
+                DemoCell::new("minify — Nearest").show(ui, |ui| {
+                    minified(ui, &src.checker, ImageFilter::Nearest);
+                });
             });
         });
-    });
 
-    section(ui, "Downsampling", &[api!(type ImageDownsample)], |ui| {
-        note(
-            ui,
-            "A 512×512 starfield shrunk about 5 times. Single keeps a shifting \
+    Section::new("Downsampling")
+        .apis(&[api!(type ImageDownsample)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "A 512×512 starfield shrunk about 5 times. Single keeps a shifting \
                  subset of the stars, Mean keeps all of them and dims each by its \
                  footprint, and Peak keeps them at their own brightness.",
-        );
-        tiles(ui, |ui| {
-            demo_cell(ui, "Single (default)", |ui| {
-                downsampled(ui, &src.starfield, ImageDownsample::Single);
-            });
-            demo_cell(ui, "Mean", |ui| {
-                downsampled(ui, &src.starfield, ImageDownsample::Mean);
-            });
-            demo_cell(ui, "Peak", |ui| {
-                downsampled(ui, &src.starfield, ImageDownsample::Peak);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("Single (default)").show(ui, |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Single);
+                });
+                DemoCell::new("Mean").show(ui, |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Mean);
+                });
+                DemoCell::new("Peak").show(ui, |ui| {
+                    downsampled(ui, &src.starfield, ImageDownsample::Peak);
+                });
             });
         });
-    });
 }
 
-fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: RgbaF32) {
-    ui.add_shape(Shape::image(handle.clone()).fit(fit).tint(tint));
+fn fitted(handle: &ImageHandle, fit: ImageFit) -> ImageShape {
+    Shape::image(handle.clone()).fit(fit)
 }
 
 fn magnified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {

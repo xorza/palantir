@@ -220,7 +220,7 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
                 advance,
             })
             .collect();
-        let cut = ClusterGlyph::fitting_prefix(&mut glyphs, avail, max_end);
+        let cut = cluster_glyph::fitting_prefix(&mut glyphs, avail, max_end);
         assert_eq!(cut, expected, "avail={avail} max_end={max_end}: {why}");
         // Every bounded cut falls strictly below its bound, so feeding the answer back always progresses and the back-off terminates. Zero is the floor: production stops on an empty cut.
         assert!(

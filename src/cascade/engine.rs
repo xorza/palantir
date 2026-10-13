@@ -3,23 +3,26 @@
 use crate::cascade::Cascade;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
-use crate::cascade::entry::{ArrowGroupRow, EntryRow, HitRow, RootRow, ScopeRow, TabStopRow};
 use crate::cascade::layer_cascade::LayerCascade;
 use crate::cascade::paint::PaintArena;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
+use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
+use crate::cascade::rows::entry_row::EntryRow;
+use crate::cascade::rows::hit_row::HitRow;
+use crate::cascade::rows::root_row::RootRow;
+use crate::cascade::rows::scope_row::ScopeRow;
+use crate::cascade::rows::tab_stop_row::TabStopRow;
 use crate::common::hash::Hasher;
-use crate::common::span::Span;
 use crate::common::tracy;
-use crate::display::Display;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::Layout;
 use crate::layout::layer_layout::LayerLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::math::float_hash::{self, FloatHash};
+use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
@@ -157,7 +160,7 @@ impl RowSink for TreePatch<'_> {
     }
 }
 
-/// The four values a node hands its descendants, the only inputs [`build_cascade_prefix`] hashes; bundled because two adjacent `bool`s swap silently.
+/// The four values a node hands its descendants, the only inputs [`Self::prefix`] hashes; bundled because two adjacent `bool`s swap silently.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CascadeContext {
     pub(super) transform: TranslateScale,
@@ -173,6 +176,39 @@ impl CascadeContext {
         disabled: false,
         invisible: false,
     };
+
+    /// Ancestor-derived portion of the `cascade_input` hash, folded once per frame at push and cloned per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores back across seams that can't be forwarded.
+    #[inline]
+    pub(super) fn prefix(self) -> Hasher {
+        let (clip, clip_present) = match self.clip {
+            Some(rect) => (rect.canon_lanes(), true),
+            None => ([0; 4], false),
+        };
+        let flags = u32::from(clip_present)
+            | (u32::from(self.disabled) << 1)
+            | (u32::from(self.invisible) << 2);
+        let word = |lo: u32, hi: u32| u64::from(lo) | (u64::from(hi) << 32);
+        let mut h = Hasher::new();
+        h.write_u64(word(
+            float_hash::canon_bits(self.transform.translation.x),
+            float_hash::canon_bits(self.transform.translation.y),
+        ));
+        h.write_u64(word(
+            float_hash::canon_bits(self.transform.scale - 1.0),
+            flags,
+        ));
+        h.write_u64(word(clip[0], clip[1]));
+        h.write_u64(word(clip[2], clip[3]));
+        h
+    }
+}
+
+/// One layer's read-only input to [`CascadeEngine::run_tree`].
+#[derive(Clone, Copy, Debug)]
+struct TreeSource<'a> {
+    tree: &'a Tree,
+    layout: &'a LayerLayout,
+    display_scale: f32,
 }
 
 #[derive(Debug)]
@@ -193,91 +229,52 @@ pub(crate) struct CascadeEngine {
 }
 
 impl CascadeEngine {
-    /// Brings the frozen cascade up to `key`: unchanged key skips, unchanged structure refreshes in place, else rebuild.
-    pub(crate) fn run(
-        &mut self,
-        forest: &Forest,
-        layout: &Layout,
-        display: Display,
-        key: &CascadeKey,
-        cascade: &mut Cascade,
-    ) {
+    /// Brings the frozen cascade up to `source`'s key: an unchanged key skips, unchanged structure refreshes in place, else rebuild.
+    pub(crate) fn run(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
         tracy::zone!();
-        let ran = cascade.key.as_ref() != Some(key);
+        let key = CascadeKey::new(source);
+        let ran = cascade.key != Some(key);
         self.counters.note_ran(ran);
         if !ran {
             return;
         }
-        let Some(built) = cascade
-            .key
-            .filter(|built| self.can_update(forest, built, key, cascade))
-        else {
-            self.run_full(forest, layout, display, key, cascade);
+        let Some(built) = cascade.key.filter(|built| built.keeps_structure(&key)) else {
+            self.rebuild(source, key, cascade);
             return;
         };
+        debug_assert_retained_fits(source.forest, cascade);
 
-        for (layer, tree) in forest.trees.iter_paint_order() {
+        for (layer, tree) in source.forest.trees.iter_paint_order() {
             let n = tree.records.len();
             let base = cascade.layers[layer].entries_base as usize;
             self.stack.clear();
             self.paint_scratch.reset_for(n);
             let incremental_complete = self.run_tree(
-                tree,
-                &layout[layer],
+                TreeSource {
+                    tree,
+                    layout: &source.layout[layer],
+                    display_scale: source.display.scale_factor(),
+                },
                 &mut cascade.layers[layer],
                 &mut TreePatch {
                     entries: &mut cascade.entries[base..base + n],
                     hits: &mut cascade.hits,
-                    rects_kept: built.keeps_rects(key, layer),
+                    rects_kept: built.keeps_rects(&key, layer),
                 },
-                display.scale_factor(),
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
-                // Restarts at layer zero: `run_full` assigns per-layer bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
-                self.run_full(forest, layout, display, key, cascade);
+                // Restarts at layer zero: `rebuild` assigns per-layer bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
+                self.rebuild(source, key, cascade);
                 return;
             }
         }
-        cascade.key = Some(*key);
+        cascade.key = Some(key);
     }
 
-    /// Whether every retained structural table remains valid; the incremental walk refreshes the rest.
-    fn can_update(
-        &self,
-        forest: &Forest,
-        built: &CascadeKey,
-        key: &CascadeKey,
-        cascade: &Cascade,
-    ) -> bool {
-        if !built.keeps_structure(key) {
-            return false;
-        }
-        debug_assert_eq!(cascade.entries.len(), forest.total_nodes());
-        let mut entries_base = 0u32;
-        for (layer, tree) in forest.trees.iter_paint_order() {
-            let n = tree.records.len();
-            let lc = &cascade.layers[layer];
-            debug_assert_eq!(lc.entries_base, entries_base);
-            debug_assert_eq!(
-                lc.arena_hashes.len(),
-                n,
-                "retained arena column outlived its layer",
-            );
-            entries_base += n as u32;
-        }
-        true
-    }
-
-    pub(super) fn run_full(
-        &mut self,
-        forest: &Forest,
-        layout: &Layout,
-        display: Display,
-        key: &CascadeKey,
-        cascade: &mut Cascade,
-    ) {
+    fn rebuild(&mut self, source: CascadeSource<'_>, key: CascadeKey, cascade: &mut Cascade) {
         self.counters.full_rebuild();
+        let forest = source.forest;
         let total = forest.total_nodes();
         cascade.entries.clear();
         cascade.entries.reserve_exact(total);
@@ -293,8 +290,11 @@ impl CascadeEngine {
             cascade.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
             let full_complete = self.run_tree(
-                tree,
-                &layout[layer],
+                TreeSource {
+                    tree,
+                    layout: &source.layout[layer],
+                    display_scale: source.display.scale_factor(),
+                },
                 &mut cascade.layers[layer],
                 &mut TreeSink {
                     entries: &mut cascade.entries,
@@ -306,7 +306,6 @@ impl CascadeEngine {
                     layer,
                     root: WidgetId::default(),
                 },
-                display.scale_factor(),
             );
             debug_assert!(full_complete);
             cascade.layers[layer]
@@ -324,7 +323,24 @@ impl CascadeEngine {
         // Refilled, not `clone_from`: `curr` and `prev` swap every frame and hashbrown's `clone_from` reallocates when bucket counts differ.
         cascade.by_id.clear();
         cascade.by_id.extend(forest.ids.recorded());
-        cascade.key = Some(*key);
+        cascade.key = Some(key);
+    }
+}
+
+/// A cascade whose key keeps its structure still has one entry per node and one arena column per layer, in `forest`'s layer order.
+fn debug_assert_retained_fits(forest: &Forest, cascade: &Cascade) {
+    debug_assert_eq!(cascade.entries.len(), forest.total_nodes());
+    let mut entries_base = 0u32;
+    for (layer, tree) in forest.trees.iter_paint_order() {
+        let n = tree.records.len();
+        let lc = &cascade.layers[layer];
+        debug_assert_eq!(lc.entries_base, entries_base);
+        debug_assert_eq!(
+            lc.arena_hashes.len(),
+            n,
+            "retained arena column outlived its layer",
+        );
+        entries_base += n as u32;
     }
 }
 
@@ -343,19 +359,22 @@ impl CascadeEngine {
     /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree while the layer's rects held; once one moved, every node is visited. Movement within `EPS` of zero reads as held.
     fn run_tree<S: RowSink>(
         &mut self,
-        tree: &Tree,
-        layout: &LayerLayout,
+        source: TreeSource<'_>,
         lc: &mut LayerCascade,
         sink: &mut S,
-        display_scale: f32,
     ) -> bool {
+        let TreeSource {
+            tree,
+            layout,
+            display_scale,
+        } = source;
         let n = tree.records.len() as u32;
         let layout_col = tree.records.layout();
         let attrs_col = tree.records.attrs();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
         let skip_clean = sink.skips_clean_subtrees();
-        let root_prefix = build_cascade_prefix(CascadeContext::ROOT);
+        let root_prefix = CascadeContext::ROOT.prefix();
 
         let mut i: u32 = 0;
         while i < n {
@@ -377,7 +396,7 @@ impl CascadeEngine {
             let layout_rect = layout.rect[iu];
             let subtree_end = ends[iu].end();
             let has_children = ends[iu].has_children(iu);
-            let cascade_input = finish_cascade_input(parent_prefix, layout_rect, invisible);
+            let cascade_input = CascadeInputHash::finish(parent_prefix, layout_rect, invisible);
             let clean = S::INCREMENTAL
                 && lc.cascade_inputs[iu] == cascade_input
                 && lc.arena_hashes[iu] == subtree_hashes[iu];
@@ -424,11 +443,12 @@ impl CascadeEngine {
                     display_scale,
                     clips,
                     has_children,
+                    invisible,
                 };
                 let paint_rect = if S::INCREMENTAL {
                     self.counters.refreshed_node();
                     let old_span = lc.paint_arena.node_spans[iu];
-                    let paint_rect = compute_node_paint(ctx, invisible, &mut self.paint_scratch);
+                    let paint_rect = ctx.compute_paint_rect(&mut self.paint_scratch);
                     let new_span = self.paint_scratch.node_spans[iu];
                     if old_span.len != new_span.len {
                         return false;
@@ -437,7 +457,7 @@ impl CascadeEngine {
                         .copy_from_slice(&self.paint_scratch.rows[new_span.range()]);
                     paint_rect
                 } else {
-                    compute_node_paint(ctx, invisible, &mut lc.paint_arena)
+                    ctx.compute_paint_rect(&mut lc.paint_arena)
                 };
                 let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
                 if S::INCREMENTAL {
@@ -475,7 +495,7 @@ impl CascadeEngine {
                     subtree_end,
                     node_idx: iu,
                     subtree_paint_rect: subtree_seed,
-                    cascade_prefix: build_cascade_prefix(cascade),
+                    cascade_prefix: cascade.prefix(),
                 });
             } else if let Some(parent_frame) = self.stack.last_mut() {
                 // Leaf: no frame; its slot holds the seed, folded into the parent. Skips a Frame push/pop and prefix hashing.
@@ -491,50 +511,17 @@ impl CascadeEngine {
     }
 }
 
-/// The node's paint rows and extent, or an empty span when nothing here can reach the surface.
-///
-/// The flag is the cascaded reading: a subtree under a non-`Visible` ancestor paints nothing. Damage reads the emptied span as a rows-to-rowless transition. `Tree::container_text` uses the same reading, which [`TextRuns`](crate::layout::text::text_runs::TextRuns)' text-record pairing depends on.
-#[inline]
-fn compute_node_paint(ctx: PaintRectCtx<'_>, invisible: bool, arena: &mut PaintArena) -> Rect {
-    if invisible {
-        arena.node_spans[ctx.node.idx()] = Span::new(arena.rows.len() as u32, 0);
-        return Rect::ZERO;
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::cascade::Cascade;
+    use crate::cascade::cascade_key::CascadeKey;
+    use crate::cascade::cascade_source::CascadeSource;
+    use crate::cascade::engine::CascadeEngine;
+
+    impl CascadeEngine {
+        /// Rebuilds every row from `source`, whatever the cascade holds.
+        pub(crate) fn run_full(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
+            self.rebuild(source, CascadeKey::new(source), cascade);
+        }
     }
-    paint_rect::compute_paint_rect(ctx, arena)
-}
-
-/// Ancestor-derived portion of the `cascade_input` hash, folded once per frame at push and cloned per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores back across seams that can't be forwarded.
-#[inline]
-pub(super) fn build_cascade_prefix(parent: CascadeContext) -> Hasher {
-    let (clip, clip_present) = match parent.clip {
-        Some(rect) => (rect.canon_lanes(), true),
-        None => ([0; 4], false),
-    };
-    let flags = u32::from(clip_present)
-        | (u32::from(parent.disabled) << 1)
-        | (u32::from(parent.invisible) << 2);
-    let word = |lo: u32, hi: u32| u64::from(lo) | (u64::from(hi) << 32);
-    let mut h = Hasher::new();
-    h.write_u64(word(
-        float_hash::canon_bits(parent.transform.translation.x),
-        float_hash::canon_bits(parent.transform.translation.y),
-    ));
-    h.write_u64(word(
-        float_hash::canon_bits(parent.transform.scale - 1.0),
-        flags,
-    ));
-    h.write_u64(word(clip[0], clip[1]));
-    h.write_u64(word(clip[2], clip[3]));
-    h
-}
-
-#[inline]
-pub(super) fn finish_cascade_input(
-    prefix: &Hasher,
-    layout_rect: Rect,
-    invisible: bool,
-) -> CascadeInputHash {
-    let mut h = prefix.clone();
-    layout_rect.hash_visual(&mut h);
-    CascadeInputHash::pack(h.finish(), invisible)
 }

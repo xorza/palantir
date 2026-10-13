@@ -1,10 +1,10 @@
 //! One frame being composed, and the sink paint calls arrive through.
 
-use std::num::NonZeroI64;
-
 use crate::common::span::Span;
 use crate::icons::icon_raster_key::IconRasterKey;
+use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -13,10 +13,15 @@ use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::packed::half_simd::{self, F16x4};
+use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::composer::clip_stack::ClipFrame;
+use crate::renderer::frontend::composer::geometry;
+use crate::renderer::frontend::composer::phys_map::PhysMap;
+use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
+use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -28,29 +33,27 @@ use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::curve::CurveInstance;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
-use crate::renderer::render_buffer::icon::IconDrawRow;
-use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
-use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
+use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
+use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
+use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
+use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
-use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer, RoundedClip};
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
+use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::scene::record_store::RecordStore;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_shadow::ShadowGeom;
 use crate::shape::record::ColorMode;
 use crate::text::TEXT_SCALE_STEP;
 use glam::{U16Vec2, UVec2, Vec2};
-
-use crate::renderer::frontend::composer::clip_stack::ClipFrame;
-use crate::renderer::frontend::composer::geometry;
-use crate::renderer::frontend::composer::geometry::StrokeBbox;
-use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
+use std::num::NonZeroI64;
 
 /// One compose pass in flight: the [`Composer`]'s scratch bound to the buffer
 /// being filled, the record payloads, and the display. Paint arrives through
@@ -101,6 +104,22 @@ impl ScaledRect {
         Self {
             phys,
             urect: geometry::urect_from_phys(phys.min, phys.max(), viewport),
+        }
+    }
+}
+
+/// The two ends of one polyline segment's colour ramp.
+#[derive(Clone, Copy, Debug)]
+struct SegmentColors {
+    start: RgbaF16,
+    end: RgbaF16,
+}
+
+impl SegmentColors {
+    const fn flat(color: RgbaF16) -> Self {
+        Self {
+            start: color,
+            end: color,
         }
     }
 }
@@ -250,11 +269,11 @@ impl PaintSink for ComposeSession<'_> {
     fn mesh(&mut self, p: DrawMeshPayload) {
         let scale = self.out.display.scale_factor();
         let viewport_phys = self.out.display.physical;
-        // `draw_mesh` already gated empty meshes, so `v_len >= 1`. Inflate by 0.5 phys px
+        // `draw_mesh` already gated empty meshes, so `vertices` is non-empty. Inflate by 0.5 phys px
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
         // skips snapping, so it cannot use `scaled_rect`.
         let xform = self.composer.transform.current();
-        let phys = geometry::phys_bbox(xform, p.bbox, p.origin, scale);
+        let phys = PhysMap::new(xform, p.origin, scale).bbox(p.bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect =
             geometry::urect_from_phys(phys.min - fringe, phys.max() + fringe, viewport_phys);
@@ -269,8 +288,8 @@ impl PaintSink for ComposeSession<'_> {
         let phys_translate = (xform.scale * p.origin + xform.translation) * scale;
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
-                vertices: (p.v_start..p.v_start + p.v_len).into(),
-                indices: (p.i_start..p.i_start + p.i_len).into(),
+                vertices: p.vertices,
+                indices: p.indices,
             },
             instance: MeshInstance {
                 translate: phys_translate,
@@ -403,7 +422,7 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.
-        let to_phys = geometry::phys_point_map(xform, p.origin, scale);
+        let to_phys = PhysMap::new(xform, p.origin, scale);
         let spin = p.bounds.spin();
         let proto = CurveInstance {
             width: width_phys,
@@ -415,7 +434,7 @@ impl PaintSink for ComposeSession<'_> {
             ..bytemuck::Zeroable::zeroed()
         };
         let (proto, n) = match p.basis {
-            CurveBasis::Cubic { p0, p1, p2, p3 } => {
+            CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
                 let mut ctrl = [p0, p1, p2, p3];
                 if let Some(spin) = spin {
                     let rotor = spin.rotor();
@@ -423,11 +442,12 @@ impl PaintSink for ComposeSession<'_> {
                         *q = rotor.apply(*q);
                     }
                 }
-                let [p0, p1, p2, p3] = ctrl.map(to_phys);
+                let ctrl = ctrl.map(|q| to_phys.point(q));
+                let [p0, p1, p2, p3] = ctrl;
                 // Adaptive sub-instance count from the control-polygon length, which bounds arc
                 // length from above (no faceting). Near-straight cubics use one instance: every
                 // chord of a flat curve lies on the segment.
-                let n = if geometry::cubic_is_flat(p0, p1, p2, p3) {
+                let n = if geometry::cubic_is_flat(ctrl) {
                     1
                 } else {
                     let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
@@ -443,13 +463,14 @@ impl PaintSink for ComposeSession<'_> {
                 };
                 (proto, n)
             }
-            CurveBasis::Arc {
-                center,
-                radius,
-                mut a0,
-                mut a1,
-            } => {
-                let mut center = center;
+            CurveBasis::Arc(arc) => {
+                let mut a1 = arc.end_angle();
+                let CircularArc {
+                    mut center,
+                    radius,
+                    start_angle: mut a0,
+                    ..
+                } = arc;
                 if let Some(spin) = spin {
                     center = spin.rotor().apply(center);
                     a0 += spin.angle;
@@ -462,7 +483,7 @@ impl PaintSink for ComposeSession<'_> {
                 // even at r = 1.
                 let n = geometry::sub_instance_count(radius_phys * (a1 - a0).abs());
                 let proto = CurveInstance {
-                    p0: to_phys(center),
+                    p0: to_phys.point(center),
                     p1: Vec2::new(radius_phys, 0.0),
                     p2: Vec2::new(a0, a1),
                     p3: Vec2::ZERO,
@@ -494,7 +515,7 @@ impl PaintSink for ComposeSession<'_> {
                 origin: p.origin,
                 width_phys,
                 cap,
-                join: (p.points_len > 2).then_some(join),
+                join: (p.points.len > 2).then_some(join),
                 display,
             }
             .urect(),
@@ -503,28 +524,24 @@ impl PaintSink for ComposeSession<'_> {
             return;
         }
 
-        let pts_start = p.points_start as usize;
-        let pts_end = pts_start + p.points_len as usize;
-        let cs_start = p.colors_start as usize;
-        let cs_end = cs_start + p.colors_len as usize;
-        let src_points = &self.store.polyline_points[pts_start..pts_end];
-        let src_colors = &self.store.polyline_colors[cs_start..cs_end];
+        let src_points = &self.store.polyline_points[p.points.range()];
+        let src_colors = &self.store.polyline_colors[p.colors.range()];
 
         // Transform points to physical px with owner origin folded in. No snapping: it would shift
         // thin lines off-axis.
         self.composer.polyline.points.clear();
-        let to_phys = geometry::phys_point_map(xform, p.origin, scale);
+        let to_phys = PhysMap::new(xform, p.origin, scale);
         if let Some(spin) = p.bounds.spin() {
             let rotor = spin.rotor();
             self.composer
                 .polyline
                 .points
-                .extend(src_points.iter().map(|&q| to_phys(rotor.apply(q))));
+                .extend(src_points.iter().map(|&q| to_phys.point(rotor.apply(q))));
         } else {
             self.composer
                 .polyline
                 .points
-                .extend(src_points.iter().map(|&q| to_phys(q)));
+                .extend(src_points.iter().map(|&q| to_phys.point(q)));
         }
 
         // Keep only points beyond the coincidence threshold from their predecessor; dropped points
@@ -562,22 +579,22 @@ impl PaintSink for ComposeSession<'_> {
         let pt = |k: usize| pts[kept[k] as usize];
         // Segment colors for `k -> k+1`, indexed through `kept`. A paint animation's
         // alpha is folded in here, where each colour is read once, so fading costs no copy.
-        let seg_colors = |k: usize| -> (RgbaF16, RgbaF16) {
-            let (a, b) = match mode {
-                ColorMode::Single => (src_colors[0], src_colors[0]),
-                ColorMode::PerPoint => (
-                    src_colors[kept[k] as usize],
-                    src_colors[kept[k + 1] as usize],
-                ),
-                ColorMode::PerSegment => {
-                    let c = src_colors[kept[k + 1] as usize - 1];
-                    (c, c)
-                }
+        let seg_colors = |k: usize| -> SegmentColors {
+            let colors = match mode {
+                ColorMode::Single => SegmentColors::flat(src_colors[0]),
+                ColorMode::PerPoint => SegmentColors {
+                    start: src_colors[kept[k] as usize],
+                    end: src_colors[kept[k + 1] as usize],
+                },
+                ColorMode::PerSegment => SegmentColors::flat(src_colors[kept[k + 1] as usize - 1]),
             };
             if p.alpha == 1.0 {
-                (a, b)
+                colors
             } else {
-                (a.faded(p.alpha), b.faded(p.alpha))
+                SegmentColors {
+                    start: colors.start.faded(p.alpha),
+                    end: colors.end.faded(p.alpha),
+                }
             }
         };
         let n_segs = directions.len();
@@ -593,7 +610,7 @@ impl PaintSink for ComposeSession<'_> {
             } else {
                 Vec2::ZERO
             };
-            let (color, color1) = seg_colors(k);
+            let colors = seg_colors(k);
             self.out.curves.push(CurveInstance {
                 p0: pt(k),
                 p1: n_start,
@@ -602,8 +619,8 @@ impl PaintSink for ComposeSession<'_> {
                 t0: 0.0,
                 t1: 1.0,
                 width: width_phys,
-                color0: color,
-                color1,
+                color0: colors.start,
+                color1: colors.end,
                 caps: CurveCaps::new(cap, k == 0, k + 1 == n_segs),
                 kind: CurveKind::SEGMENT,
                 ..bytemuck::Zeroable::zeroed()
@@ -614,8 +631,8 @@ impl PaintSink for ComposeSession<'_> {
         for k in 1..n_segs {
             let d_a = directions[k - 1];
             let d_b = directions[k];
-            let (_, ca) = seg_colors(k - 1);
-            let (cb, _) = seg_colors(k);
+            let ca = seg_colors(k - 1).end;
+            let cb = seg_colors(k).start;
             let color = if ca == cb {
                 ca
             } else {
@@ -735,8 +752,8 @@ impl ComposeSession<'_> {
             } => {
                 let scale = self.out.display.scale_factor();
                 // No snapping: the SDF handles sub-pixel placement.
-                let xf = geometry::phys_point_map(xform, origin, scale);
-                let (a, b, c) = (xf(a), xf(b), xf(c));
+                let to_phys = PhysMap::new(xform, origin, scale);
+                let (a, b, c) = (to_phys.point(a), to_phys.point(b), to_phys.point(c));
                 let radius_phys = (radius * scale_phys).max(0.0);
                 // Covering AABB of the rounded shape; the stroke sits on the inner edge, so it adds
                 // no outward reach.
@@ -750,8 +767,7 @@ impl ComposeSession<'_> {
                     [unorm16(at.x), unorm16(at.y)]
                 };
                 let ([ax, ay], [bx, by], [cx, cy]) = (share(a), share(b), share(c));
-                let [_, _, radius_f16, _] =
-                    half_simd::f16x4_from_f32x4([0.0, 0.0, radius_phys, 0.0]);
+                let radius_f16 = F16x4::from_lanes([0.0, 0.0, radius_phys, 0.0]).lane_bits(2);
                 PackedQuad {
                     rect: ScaledRect::from_phys(phys_rect, self.out.display.physical),
                     corners: Corners::from_bits([ax, ay, bx, by]),
@@ -919,7 +935,7 @@ impl ComposeSession<'_> {
     /// culled. Polyline calls it only once its kept-point walk proves it emits geometry.
     ///
     /// [`HigherKindRects::conflicts`]:
-    /// crate::renderer::frontend::composer::higher_kind::HigherKindRects::conflicts
+    /// crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects::conflicts
     fn admit_higher_kind(&mut self, tier: PaintTier, bounds: URect) -> bool {
         // Clipped first, so the registered rect is what is painted.
         let bounds = self.composer.clip.clamped(bounds);

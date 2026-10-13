@@ -197,8 +197,11 @@ pub mod prelude {
 /// `examples/showcase/pages/custom_widget.rs`).
 pub mod widget {
     pub use crate::animation::animatable::Animatable;
+    pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::common::span::Span;
+    pub use crate::primitives::geometry::circular_arc::CircularArc;
+    pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
@@ -224,6 +227,7 @@ pub mod widget {
     pub use crate::shape::triangle::TriangleShape;
     pub use crate::text::glyph_font::GlyphFont;
     pub use crate::text::glyphs::TextGlyphs;
+    pub use crate::text::glyphs::glyph_line::GlyphLine;
     pub use crate::text::probe::Caret;
     pub use crate::text::probe::TextProbe;
     pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
@@ -246,13 +250,17 @@ pub use display::Display;
 /// The application's scale factor, multiplied onto the platform's. Written through
 /// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
+pub use gpu::device::device_features::DeviceFeatures;
 pub use gpu::device::device_requirements::DeviceRequirements;
+pub use gpu::device::gpu::Gpu;
 pub use gpu::device::power_preference::PowerPreference;
-pub use gpu::device::requested_gpu::{Gpu, RequestedGpu};
+pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
 pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
+#[cfg(feature = "winit")]
+pub use gpu::surface::surface_usages::SurfaceUsages;
 pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host: renders a `Ui` to a caller-supplied
 /// `wgpu::Texture` (screenshots, thumbnails). Also backs the visual harness.
@@ -362,6 +370,7 @@ pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 pub use widget_core::value_response::ValueResponse;
 pub use widget_core::widget_look::WidgetLook;
 pub use widget_core::widget_look::animated_look::AnimatedLook;
+pub use widget_core::widget_look::engagement::Engagement;
 pub use widget_core::widget_look::stateful_look::StatefulLook;
 pub use widget_core::widget_look::theme_slot::SlotDefaults;
 pub use widgets::block::Block;
@@ -417,6 +426,7 @@ pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
+pub use widgets::theme::check_state::CheckState;
 pub use widgets::theme::color_picker::ColorPickerTheme;
 pub use widgets::theme::combo_box::ComboBoxTheme;
 pub use widgets::theme::context_menu::ContextMenuTheme;
@@ -433,9 +443,12 @@ pub use widgets::theme::separator::SeparatorTheme;
 pub use widgets::theme::slider::SliderTheme;
 pub use widgets::theme::spinner::SpinnerTheme;
 pub use widgets::theme::splitter::SplitterTheme;
+pub use widgets::theme::tab_selection::TabSelection;
+pub use widgets::theme::tab_strip_focus::TabStripFocus;
 pub use widgets::theme::tabs::TabsTheme;
 pub use widgets::theme::text_edit::TextEditTheme;
-pub use widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+pub use widgets::theme::text_style::TextStyle;
+pub use widgets::theme::text_style_overrides::TextStyleOverrides;
 pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::tooltip::Tooltip;

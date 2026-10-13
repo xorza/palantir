@@ -41,7 +41,7 @@ fn width_drag_stays_flat() {
     );
 }
 
-/// The same drag against a truncating policy: `measure_truncated` re-cuts
+/// The same drag against a truncating policy: `CosmicMeasure::shape_truncated` re-cuts
 /// against the cached unbounded probe and reshapes only the prefix.
 #[test]
 fn ellipsis_width_drag_stays_flat() {
@@ -85,7 +85,12 @@ fn scrolling_row_window_alloc_free() {
     let mut first = 0u32;
     Audit::new().run(move |ui| {
         first += 1;
-        rows(ui, Sizing::FILL, first..first + ROWS, 20.0);
+        Rows {
+            width: Sizing::FILL,
+            ids: first..first + ROWS,
+            height: 20.0,
+        }
+        .show(ui);
     });
 }
 
@@ -96,30 +101,39 @@ fn widget_add_remove_stays_flat() {
     let mut step = 0u32;
     // Explicit warmup: the row count has period ROWS and the probe can stop
     // within one cycle, before the widest frame is recorded. Four cycles.
-    // Budget 4, not 0: `PaintSnapArena::maybe_compact` / `diff_changed_leg`
-    // allocate when the damage snapshot arena compacts, periodically.
-    Audit::new()
-        .warmup(4 * ROWS as usize)
-        .budget(4)
-        .run(move |ui| {
-            step += 1;
-            rows(ui, Sizing::FILL, 0..1 + step % ROWS, 20.0);
-        });
+    Audit::new().warmup(4 * ROWS as usize).run(move |ui| {
+        step += 1;
+        Rows {
+            width: Sizing::FILL,
+            ids: 0..1 + step % ROWS,
+            height: 20.0,
+        }
+        .show(ui);
+    });
 }
 
 /// Empty rows `height` tall, one per id, in a column `width` wide.
-fn rows(ui: &mut Ui, width: Sizing, ids: Range<u32>, height: f32) {
-    Panel::vstack()
-        .id_salt("rows")
-        .size((width, Sizing::FILL))
-        .show(ui, |ui| {
-            for row in ids {
-                Panel::hstack()
-                    .id_salt(row)
-                    .size((Sizing::FILL, Sizing::fixed(height)))
-                    .show(ui, |_ui| {});
-            }
-        });
+#[derive(Debug)]
+struct Rows {
+    width: Sizing,
+    ids: Range<u32>,
+    height: f32,
+}
+
+impl Rows {
+    fn show(self, ui: &mut Ui) {
+        Panel::vstack()
+            .id_salt("rows")
+            .size((self.width, Sizing::FILL))
+            .show(ui, |ui| {
+                for row in self.ids {
+                    Panel::hstack()
+                        .id_salt(row)
+                        .size((Sizing::FILL, Sizing::fixed(self.height)))
+                        .show(ui, |_ui| {});
+                }
+            });
+    }
 }
 
 /// Text whose content changes every frame (a clock, an FPS readout). Each
@@ -176,6 +190,11 @@ fn a_widget_count_spike_leaves_full_rebuilds_alloc_free() {
         step += 1;
         let count = if step == 1 { 256 } else { ROWS };
         let width = Sizing::fixed(200.0 + (step % 32) as f32);
-        rows(ui, width, 0..count, 4.0);
+        Rows {
+            width,
+            ids: 0..count,
+            height: 4.0,
+        }
+        .show(ui);
     });
 }

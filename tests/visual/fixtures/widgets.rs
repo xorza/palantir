@@ -9,9 +9,10 @@ use palantir::{
     Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
 };
 
-use crate::fixtures::{DARK_BG, SRGB_ROUND_TRIP, assert_px, canvas};
+use crate::fixtures;
+use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
-use crate::goldens::{assert_matches_golden, assert_scene_matches_golden};
+
 use crate::harness::{FIXTURE_PALETTE, Harness};
 
 /// A well padded by `p` and filling the surface around `body`.
@@ -23,28 +24,28 @@ fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-/// `panel` with a transparent fill and a green border, clipping its black child to `corners`.
-fn rounded_clip(ui: &mut Ui, panel: Panel, border: f32, corners: Corners) {
-    panel
-        .background(
-            Background::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
-                RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)),
-                border,
-            )),
-        )
-        .clip_rounded()
-        .show(ui, |ui| {
-            Block::new()
-                .id_salt("inner")
-                .size((Sizing::FILL, Sizing::FILL))
-                .background(Background::fill(RgbaF32::BLACK))
-                .show(ui);
-        });
+/// A transparent fill rounded by `corners` under a green border `width` wide.
+fn green_rim(width: f32, corners: Corners) -> Background {
+    Background::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
+        RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)),
+        width,
+    ))
+}
+
+/// `panel` clipping a black child that fills it to its own rounded background.
+fn rounded_clip(ui: &mut Ui, panel: Panel) {
+    panel.clip_rounded().show(ui, |ui| {
+        Block::new()
+            .id_salt("inner")
+            .size((Sizing::FILL, Sizing::FILL))
+            .background(Background::fill(RgbaF32::BLACK))
+            .show(ui);
+    });
 }
 
 #[test]
 fn button_hello_matches_golden() {
-    assert_scene_matches_golden(GoldenName::ButtonHello, UVec2::new(256, 96), |ui| {
+    GoldenName::ButtonHello.assert_scene(UVec2::new(256, 96), |ui| {
         Button::new()
             .auto_id()
             .label("hello")
@@ -56,22 +57,18 @@ fn button_hello_matches_golden() {
 /// Rounded-rect SDF AA: solid fill, border, corner radius, in a darker scene.
 #[test]
 fn frame_filled_with_border_matches_golden() {
-    assert_scene_matches_golden(
-        GoldenName::FrameFilledWithBorder,
-        UVec2::new(220, 140),
-        |ui| {
-            padded(ui, 20.0, |ui| {
-                Block::new()
-                    .id_salt("card")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .background(
-                        Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
-                            .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
-                    )
-                    .show(ui);
-            });
-        },
-    );
+    GoldenName::FrameFilledWithBorder.assert_scene(UVec2::new(220, 140), |ui| {
+        padded(ui, 20.0, |ui| {
+            Block::new()
+                .id_salt("card")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(
+                    Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
+                        .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
+                )
+                .show(ui);
+        });
+    });
 }
 
 /// A border paints inside its rect. On a pixel-aligned rect SDF coverage is
@@ -82,7 +79,7 @@ fn a_border_paints_inside_the_rect() {
         .size(UVec2::new(20, 20))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 ui.add_shape(
                     Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0))
                         .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
@@ -110,23 +107,20 @@ fn a_border_paints_inside_the_rect() {
 /// stencil must trim. Distinct radii catch corner-mixing bugs.
 #[test]
 fn surface_rounded_clips_full_fill_child() {
-    assert_scene_matches_golden(
-        GoldenName::SurfaceRoundedClipsFullFillChild,
-        UVec2::new(220, 220),
-        |ui| {
-            Panel::vstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .padding(20.0)
-                .background(Background::fill(RgbaF32::srgb(1.0, 0.42, 0.72)))
-                .show(ui, |ui| {
-                    let panel = Panel::zstack()
-                        .id_salt("rounded")
-                        .size((Sizing::FILL, Sizing::FILL));
-                    rounded_clip(ui, panel, 5.0, Corners::new(4.0, 12.0, 20.0, 28.0));
-                });
-        },
-    );
+    GoldenName::SurfaceRoundedClipsFullFillChild.assert_scene(UVec2::new(220, 220), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(20.0)
+            .background(Background::fill(RgbaF32::srgb(1.0, 0.42, 0.72)))
+            .show(ui, |ui| {
+                let panel = Panel::zstack()
+                    .id_salt("rounded")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(green_rim(5.0, Corners::new(4.0, 12.0, 20.0, 28.0)));
+                rounded_clip(ui, panel);
+            });
+    });
 }
 
 /// Regression: a rounded clip extending off-screen on every side. The mask
@@ -140,12 +134,13 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     let img = Harness::new()
         .size(UVec2::new(120, 90))
         .frame(|ui| {
-            canvas(ui, |ui| {
+            fixtures::canvas(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
                     .position(Vec2::new(-6.0, -6.0))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(150.0)));
-                rounded_clip(ui, panel, 4.0, Corners::all(24.0));
+                    .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
+                    .background(green_rim(4.0, Corners::all(24.0)));
+                rounded_clip(ui, panel);
             });
         })
         .image;
@@ -182,7 +177,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         centre.0,
     );
 
-    assert_matches_golden(GoldenName::RoundedClipPartiallyOffscreen, &img);
+    GoldenName::RoundedClipPartiallyOffscreen.assert_matches(&img);
 }
 
 /// The backbuffer rebuild on a size change must reset the stencil attachment,
@@ -211,16 +206,14 @@ fn rounded_clip_survives_surface_resize() {
     let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba_u8();
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
         let img = h.size(size).frame(scene).image;
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(10, 10).0,
             [clear.r, clear.g, clear.b, 255],
-            SRGB_ROUND_TRIP,
             format_args!("{size}: the corner outside the arc"),
         );
-        assert_px(
+        fixtures::assert_px(
             img.get_pixel(size.x / 2, size.y / 2).0,
             [fill.r, fill.g, fill.b, 255],
-            SRGB_ROUND_TRIP,
             format_args!("{size}: the panel's centre"),
         );
     }
@@ -229,7 +222,7 @@ fn rounded_clip_survives_surface_resize() {
 /// ProgressBar at 50%: half-width accent fill over the pill track.
 #[test]
 fn progress_bar_half_matches_golden() {
-    assert_scene_matches_golden(GoldenName::ProgressBarHalf, UVec2::new(220, 60), |ui| {
+    GoldenName::ProgressBarHalf.assert_scene(UVec2::new(220, 60), |ui| {
         padded(ui, 20.0, |ui| {
             ProgressBar::new(0.5).id_salt("pb").show(ui);
         });
@@ -243,7 +236,7 @@ fn toggle_switch_states_matches_golden() {
     let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
     // At the rest position, with no first-frame transient.
     style.defaults.animation = None;
-    assert_scene_matches_golden(GoldenName::ToggleSwitchStates, UVec2::new(220, 110), |ui| {
+    GoldenName::ToggleSwitchStates.assert_scene(UVec2::new(220, 110), |ui| {
         Panel::vstack()
             .auto_id()
             .padding(20.0)
@@ -264,7 +257,7 @@ fn toggle_switch_states_matches_golden() {
 /// Spinner at phase 0: a round-capped arc fading from transparent tail to head.
 #[test]
 fn spinner_matches_golden() {
-    assert_scene_matches_golden(GoldenName::Spinner, UVec2::new(80, 80), |ui| {
+    GoldenName::Spinner.assert_scene(UVec2::new(80, 80), |ui| {
         padded(ui, 16.0, |ui| {
             Spinner::new().diameter(48.0).id_salt("sp").show(ui);
         });
@@ -274,7 +267,7 @@ fn spinner_matches_golden() {
 /// Slider at 30%: two-tone track split at the knob via `Fill` weights.
 #[test]
 fn slider_thirty_percent_matches_golden() {
-    assert_scene_matches_golden(GoldenName::SliderThirtyPercent, UVec2::new(240, 60), |ui| {
+    GoldenName::SliderThirtyPercent.assert_scene(UVec2::new(240, 60), |ui| {
         padded(ui, 20.0, |ui| {
             Slider::new(&mut 0.3, 0.0..=1.0).id_salt("sl").show(ui);
         });
@@ -283,7 +276,7 @@ fn slider_thirty_percent_matches_golden() {
 
 #[test]
 fn drag_value_matches_golden() {
-    assert_scene_matches_golden(GoldenName::DragValue, UVec2::new(140, 64), |ui| {
+    GoldenName::DragValue.assert_scene(UVec2::new(140, 64), |ui| {
         padded(ui, 16.0, |ui| {
             DragValue::new(&mut 42.5)
                 .decimals(1)
@@ -300,7 +293,7 @@ fn drag_value_matches_golden() {
 #[test]
 fn combo_box_closed_matches_golden() {
     let opts = ["Apple", "Banana", "Cherry"];
-    assert_scene_matches_golden(GoldenName::ComboBoxClosed, UVec2::new(220, 70), |ui| {
+    GoldenName::ComboBoxClosed.assert_scene(UVec2::new(220, 70), |ui| {
         padded(ui, 16.0, |ui| {
             ComboBox::new(&mut 1, &opts)
                 .size((Sizing::fixed(160.0), Sizing::HUG))
@@ -313,7 +306,7 @@ fn combo_box_closed_matches_golden() {
 /// Modal: a centered card over the dim backdrop in `Layer::Modal`.
 #[test]
 fn modal_dialog_matches_golden() {
-    assert_scene_matches_golden(GoldenName::ModalDialog, UVec2::new(300, 200), |ui| {
+    GoldenName::ModalDialog.assert_scene(UVec2::new(300, 200), |ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -329,7 +322,7 @@ fn modal_dialog_matches_golden() {
 /// end-to-end check that the CPU texture reaches the screen.
 #[test]
 fn color_field_and_bars_match_golden() {
-    assert_scene_matches_golden(GoldenName::ColorFieldAndBars, UVec2::new(480, 220), |ui| {
+    GoldenName::ColorFieldAndBars.assert_scene(UVec2::new(480, 220), |ui| {
         Panel::hstack()
             .auto_id()
             .padding(12.0)
@@ -359,7 +352,7 @@ fn color_field_and_bars_match_golden() {
 /// preset row.
 #[test]
 fn color_picker_panel_matches_golden() {
-    assert_scene_matches_golden(GoldenName::ColorPickerPanel, UVec2::new(280, 500), |ui| {
+    GoldenName::ColorPickerPanel.assert_scene(UVec2::new(280, 500), |ui| {
         let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.75);
         padded(ui, 12.0, |ui| {
             ColorPicker::new(&mut color)
@@ -408,5 +401,5 @@ fn focus_ring_matches_golden() {
         text: KeyText::EMPTY,
     });
     let img = h.frame(scene).image;
-    assert_matches_golden(GoldenName::FocusRing, &img);
+    GoldenName::FocusRing.assert_matches(&img);
 }

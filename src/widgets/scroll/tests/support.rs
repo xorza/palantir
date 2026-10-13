@@ -10,7 +10,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use glam::{UVec2, Vec2};
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 600);

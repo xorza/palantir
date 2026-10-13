@@ -36,9 +36,7 @@ impl ImageShape {
             tint: RgbaF32::WHITE,
         }
     }
-}
 
-impl ImageShape {
     /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
     ///
     /// # Panics

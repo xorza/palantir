@@ -12,7 +12,7 @@ use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
-use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
+use crate::widgets::splitter::{Seam, Splitter, sanitize_ratio};
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::cursor_icon::CursorIcon;
 use glam::{UVec2, Vec2};
@@ -420,7 +420,7 @@ fn divider_requests_the_resize_cursor() {
 }
 
 #[test]
-fn pointer_to_ratio_maps_center_edges_and_floors() {
+fn ratio_at_maps_center_edges_and_floors() {
     // extent 406, reserved 6 → span 400; pointer 203 → first = 200 → ratio 0.5.
     let cases = [
         (203.0, 406.0, 6.0, 0.0, 0.5),
@@ -435,7 +435,12 @@ fn pointer_to_ratio_maps_center_edges_and_floors() {
         (10.0, 4.0, 6.0, 0.0, 0.5),       // degenerate extent
     ];
     for (pos, extent, thickness, min_pane, want) in cases {
-        let got = pointer_to_ratio(pos, extent, thickness, min_pane);
+        let seam = Seam {
+            extent,
+            reserved: thickness,
+            min_pane,
+        };
+        let got = seam.ratio_at(pos);
         assert_eq!(
             got, want,
             "p2r({pos},{extent},{thickness},{min_pane})={got} want {want}"

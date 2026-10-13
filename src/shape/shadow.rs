@@ -26,9 +26,7 @@ impl ShadowShape {
             shadow,
         }
     }
-}
 
-impl ShadowShape {
     /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
     ///
     /// # Panics
@@ -65,7 +63,7 @@ impl sealed::LowerShape for ShadowShape {
         self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 
-    /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeom::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree. Nothing is staged, so nothing goes through `lower::`.
+    /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeom::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_rect,

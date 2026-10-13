@@ -4,6 +4,7 @@
 //! [`WinitHost`]: super::WinitHost
 
 use crate::gpu::device::power_preference::PowerPreference;
+use crate::gpu::surface::surface_manager::HostGpuConfig;
 use crate::text::font_scope::FontScope;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
@@ -28,6 +29,17 @@ impl Default for WinitHostConfig {
             collect_gpu_stats: false,
             fonts: FontScope::System,
             pixel_snap: true,
+        }
+    }
+}
+
+impl WinitHostConfig {
+    /// The device and swapchain half, which the surface manager opens with.
+    pub(super) const fn gpu_config(&self) -> HostGpuConfig {
+        HostGpuConfig {
+            power_preference: self.power_preference,
+            vsync: self.vsync,
+            collect_gpu_stats: self.collect_gpu_stats,
         }
     }
 }

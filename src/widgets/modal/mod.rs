@@ -13,7 +13,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::theme::modal::ModalTheme;
@@ -88,7 +88,12 @@ impl<'a> Modal<'a> {
             .size((Sizing::FILL, Sizing::FILL))
             .child_align(Align::CENTER)
             .sense(Sense::ABSORB_POINTER);
-        let scope = OverlayScope::claim(ui, Layer::Modal, None, Backdrop::Root, &mut root);
+        let spec = OverlaySpec {
+            layer: Layer::Modal,
+            anchor: None,
+            backdrop: Backdrop::Root,
+        };
+        let scope = OverlayScope::claim(ui, spec, &mut root);
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
@@ -101,7 +106,9 @@ impl<'a> Modal<'a> {
             close_requested: handle.requested(),
             inner: turn.inner,
         };
-        scope.withdraw(ui, response.closed());
+        if response.closed() {
+            scope.withdraw(ui);
+        }
 
         response
     }

@@ -10,7 +10,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
@@ -21,8 +20,8 @@ use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
-use crate::widgets::drag_num::DragNum;
-use crate::widgets::drag_num::Num;
+use crate::widgets::drag_num::limits::Limits;
+use crate::widgets::drag_num::{DragNum, Num, StoreRule};
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use std::mem;
@@ -184,6 +183,7 @@ impl<'a> DragValue<'a> {
             }
         }
 
+        let rule = StoreRule::new(self.min, self.max, self.decimals);
         let mut changed = false;
         let mut committed = false;
 
@@ -195,7 +195,7 @@ impl<'a> DragValue<'a> {
             ui.with_state::<DragValueState, _>(id, |_, state| {
                 if let DragValueState::Editing { buffer, .. } = state {
                     if self.editable && !response.disabled {
-                        changed = self.value.parse_from(buffer, self.min, self.max);
+                        changed = self.value.parse_from(buffer, rule.limits);
                         committed = true;
                     }
                     *state = DragValueState::Idle;
@@ -215,13 +215,7 @@ impl<'a> DragValue<'a> {
                         && let Some(delta) = drag_delta
                     {
                         scrub.travel = delta.x;
-                        changed |= self.value.commit_drag(
-                            scrub.anchor,
-                            scrub.offset(),
-                            self.decimals,
-                            self.min,
-                            self.max,
-                        );
+                        changed |= self.value.commit_drag(scrub.anchor, scrub.offset(), rule);
                     }
                     if drag_stopped {
                         stopped = Some(*scrub);
@@ -231,13 +225,7 @@ impl<'a> DragValue<'a> {
                 if let Some(scrub) = stopped {
                     *state = DragValueState::Idle;
                     if !response.disabled {
-                        changed |= self.value.commit_drag(
-                            scrub.anchor,
-                            scrub.offset(),
-                            self.decimals,
-                            self.min,
-                            self.max,
-                        );
+                        changed |= self.value.commit_drag(scrub.anchor, scrub.offset(), rule);
                         committed = true;
                     }
                 }
@@ -245,10 +233,7 @@ impl<'a> DragValue<'a> {
         }
 
         if focused && !response.disabled {
-            let step = match self.value.read() {
-                Num::I64(_) => 1.0,
-                Num::F64(_) => 1.0 / 10f64.powi(self.decimals.min(15) as i32),
-            };
+            let step = self.value.unit(self.decimals);
             let mut moved = 0.0;
             for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
                 let coarse = self
@@ -263,9 +248,7 @@ impl<'a> DragValue<'a> {
             }
             if moved != 0.0 {
                 let to = self.value.read().widen() + moved;
-                changed |= self
-                    .value
-                    .commit_value(to, self.decimals, self.min, self.max);
+                changed |= self.value.commit_value(to, rule);
                 committed = true;
             }
         }
@@ -283,14 +266,14 @@ impl<'a> DragValue<'a> {
         }
 
         let text = match &self.suffix {
-            TextInput::Borrowed(suffix) => label(ui, &self.value, self.decimals, suffix),
-            TextInput::Owned(suffix) => label(ui, &self.value, self.decimals, suffix),
+            TextInput::Borrowed(suffix) => self.value.label(ui, self.decimals, suffix),
+            TextInput::Owned(suffix) => self.value.label(ui, self.decimals, suffix),
             TextInput::Interned(suffix) => {
                 let (suffix, value, decimals) = (*suffix, &self.value, self.decimals);
                 ui.with_state::<SuffixScratch, _>(id, |ui, scratch| {
                     scratch.0.clear();
                     scratch.0.push_str(ui.text(suffix));
-                    label(ui, value, decimals, &scratch.0)
+                    value.label(ui, decimals, &scratch.0)
                 })
             }
         };
@@ -359,7 +342,8 @@ impl<'a> DragValue<'a> {
         let changed = if ended.canceled {
             self.value.restore(original)
         } else {
-            self.value.parse_from(&buffer, self.min, self.max)
+            self.value
+                .parse_from(&buffer, Limits::of(self.min, self.max))
         };
         ui.with_state::<DragValueState, _>(id, |_, s| {
             *s = if ended.submitted || ended.canceled {
@@ -393,14 +377,6 @@ fn typed(ui: &Ui) -> bool {
             && !press.text.is_empty()
             && press.text.as_str() != " "
     })
-}
-
-/// The chip's text: `value` at `decimals` places, then `suffix`.
-fn label(ui: &mut Ui, value: &DragNum<'_>, decimals: usize, suffix: &str) -> InternedStr {
-    match value {
-        DragNum::I64(v) => ui.fmt(format_args!("{}{suffix}", **v)),
-        DragNum::F64(v) => ui.fmt(format_args!("{:.*}{suffix}", decimals, **v)),
-    }
 }
 
 /// An interned suffix's characters copied out of the arena for formatting; retained, so a steady suffix allocates once.

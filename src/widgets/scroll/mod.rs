@@ -1,11 +1,11 @@
-//! The scrolling viewport: the widget, its retained offset and zoom ([`state`]),
+//! The scrolling viewport: the widget, its retained offset and zoom ([`scroll_state`]),
 //! bar geometry and drag handling ([`bars`]), and zoom policy ([`zoom_config`]).
 //!
 //! Every frame resolves against the previous frame's arranged geometry
 //! ([`ScrollGeometry`]).
 
 pub(crate) mod bars;
-pub(crate) mod state;
+pub(crate) mod scroll_state;
 pub(crate) mod zoom_config;
 
 use crate::input::interaction::response_state::ResponseState;
@@ -27,7 +27,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::bars::{BarMode, Bars};
-use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
+use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::scroll::zoom_config::{ZoomConfig, ZoomModifier, ZoomPivot};
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::Vec2;
@@ -336,21 +336,21 @@ impl<'a> Scroll<'a> {
         self.style.unwrap_or(&ui.theme().scrollbar)
     }
 
-    fn measure(
-        &self,
-        ui: &Ui,
-        id: WidgetId,
-        scroll_id: WidgetId,
-        response: &ResponseState,
-    ) -> ScrollGeometry {
+    /// The inner viewport's id, derived from the caller's node `id`.
+    fn viewport_id(id: WidgetId) -> WidgetId {
+        id.with("viewport")
+    }
+
+    fn measure(&self, ui: &Ui, id: WidgetId, response: &ResponseState) -> ScrollGeometry {
         let theme = self.bars_theme(ui);
         let start = ui.state::<ScrollState>(id).copied().unwrap_or_default();
+        let viewport_id = Self::viewport_id(id);
         ScrollGeometry {
             outer: response.layout_rect.map_or(Size::ZERO, |r| r.size),
-            content: ui.scroll_content(scroll_id),
+            content: ui.scroll_content(viewport_id),
             content_margin: self.content_margin,
             bars: ScrollbarsDef {
-                content: scroll_id,
+                content: viewport_id,
                 offset: start.offset,
                 zoom: start.zoom,
                 axes: self.axes,
@@ -367,22 +367,20 @@ impl<'a> Scroll<'a> {
     /// and the settled clamp applies only to a non-zoomable scroll.
     fn apply_input(&self, state: &mut ScrollState, input: ScrollInput, geom: ScrollGeometry) {
         if let (Some(cfg), Some(pivot)) = (self.zoom.as_ref(), input.pivot) {
-            state.apply_zoom(
-                *cfg.range.start(),
-                *cfg.range.end(),
-                pivot - geom.content_origin(),
-                input.zoom_delta,
-            );
+            state.apply_zoom(&cfg.range, pivot - geom.content_origin(), input.zoom_delta);
         }
-        let preserve_zoom_underflow = self.zoom.is_some();
-        state.apply_wheel_pan(
-            geom.bounds(),
-            self.axes.pans(Axis::X),
-            self.axes.pans(Axis::Y),
-            input.pan_delta,
-            preserve_zoom_underflow,
-        );
-        if !preserve_zoom_underflow {
+        let band = if self.zoom.is_some() {
+            PanBand::ZoomRubberBand
+        } else {
+            PanBand::Natural
+        };
+        state.apply_wheel_pan(WheelPan {
+            bounds: geom.bounds(),
+            axes: self.axes,
+            delta: input.pan_delta,
+            band,
+        });
+        if band == PanBand::Natural {
             state.clamp_to_natural(geom.bounds());
         }
     }
@@ -421,10 +419,10 @@ impl<'a> Scroll<'a> {
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         let id = self.widget.resolve(ui);
         // Input routes by `Sense::SCROLL` on the outer ZStack, so wheel over the gutter pans.
-        let scroll_id = id.with("viewport");
+        let scroll_id = Self::viewport_id(id);
 
         let response = ui.response_for(id);
-        let geom = self.measure(ui, id, scroll_id, &response);
+        let geom = self.measure(ui, id, &response);
         let input = self.read_input(ui, &response);
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
@@ -438,17 +436,15 @@ impl<'a> Scroll<'a> {
         });
         // The wheel senses only pannable axes; a zoomable viewport, or one with no
         // arranged box yet, keeps both.
-        let pan_x = self.axes.pans(Axis::X);
-        let pan_y = self.axes.pans(Axis::Y);
         let pans = if self.zoom.is_some() {
             Sense::SCROLL
         } else if response.layout_rect.is_none() {
             let mut declared = Sense::NONE;
-            declared.set(Sense::SCROLL_X, pan_x);
-            declared.set(Sense::SCROLL_Y, pan_y);
+            declared.set(Sense::SCROLL_X, self.axes.pans(Axis::X));
+            declared.set(Sense::SCROLL_Y, self.axes.pans(Axis::Y));
             declared
         } else {
-            state.wheel_sense(geom.bounds(), pan_x, pan_y)
+            state.wheel_sense(geom.bounds(), self.axes)
         };
         let sense = self.widget.authored_sense();
         self.widget

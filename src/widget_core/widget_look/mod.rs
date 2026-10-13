@@ -1,7 +1,8 @@
 //! The per-state look a themed widget paints with:
 //!
 //! - [`WidgetLook`]: one state, as authored in a theme file.
-//! - [`stateful_look::StatefulLook`]: the four-state pack a theme bundle stores.
+//! - [`stateful_look::StatefulLook`]: the four-state pack a theme bundle stores,
+//!   with [`engagement::Engagement`] naming the state that wears `active`.
 //! - [`animated_look::AnimatedLook`]: one state with text overrides folded onto
 //!   the ambient style, which `Ui::animate` interpolates.
 //! - [`look_plan::LookPlan`]: that target plus box defaults, owned so the theme
@@ -10,6 +11,7 @@
 //! [`theme_slot::ThemeSlot`] names a bundle's pick and defaults once.
 
 pub(crate) mod animated_look;
+pub(crate) mod engagement;
 pub(crate) mod look_plan;
 pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
@@ -18,7 +20,8 @@ use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::paint::background::Background;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
 use crate::widgets::theme::ThemeText;
-use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Paint settings for one widget state, four to a
 /// [`StatefulLook`](stateful_look::StatefulLook); the engaged state is `active`

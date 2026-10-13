@@ -6,13 +6,14 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
+use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Shape;
+use crate::text::probe::Caret;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
-use crate::widgets::scroll::state::ScrollState;
-use crate::widgets::text_edit::caret_paint::CaretPaint;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use glam::Vec2;
@@ -33,6 +34,15 @@ pub(super) struct PaintInput<'a> {
     pub(super) placeholder_color: RgbaF32,
     pub(super) scroll: ScrollState,
     pub(super) caret: Option<CaretPaint>,
+}
+
+/// The caret as the painter draws it.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CaretPaint {
+    pub(super) pos: Caret,
+    pub(super) width: f32,
+    pub(super) color: RgbaF32,
+    pub(super) anim: Option<PaintAnimation>,
 }
 
 impl PaintInput<'_> {

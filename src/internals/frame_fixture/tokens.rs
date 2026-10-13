@@ -1,19 +1,15 @@
-//! The fixture's design tokens and the scaffolding every section builds from.
+//! The fixture's design tokens: colours, chrome and text styles every section builds from.
 //!
-//! The colours' only load-bearing property is that the chrome they feed stays non-noop: [`card_bg`] must keep a real drop shadow (the sole driver of `emit_shadow`'s chrome branch) and a hairline border, or the workload loses coverage.
+//! The colours' only load-bearing property is that the chrome they feed stays non-noop: [`card_bg`] must keep a real drop shadow (the sole driver of the encoder's chrome-shadow branch) and a hairline border, or the workload loses coverage.
 
 use crate::internals::demo_swatches;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::ui::Ui;
-use crate::widget_core::configure::Configure;
-use crate::widgets::panel::Panel;
-use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
+use glam::Vec2;
 
 // Surface ladder and ink: the fixture's own; the showcase runs a different dark one deliberately.
 pub(super) const APP_BG: RgbaF32 = RgbaF32::hex(0x0f1116);
@@ -28,17 +24,13 @@ pub(super) const WARN: RgbaF32 = demo_swatches::ORANGE;
 pub(super) const OK: RgbaF32 = demo_swatches::LIME;
 pub(super) const VIOLET: RgbaF32 = demo_swatches::VIOLET;
 
-/// Raised card: fill, hairline border and a real chrome drop shadow, the only driver of `emit_shadow`'s chrome branch; keep it non-noop.
+/// Raised card: fill, hairline border and a real chrome drop shadow, the only driver of the encoder's chrome-shadow branch; keep it non-noop.
 pub(super) fn card_bg() -> Background {
     Background {
         fill: CARD_BG.into(),
         border: Stroke::new(BORDER, 1.0),
         corners: Corners::all(8.0),
-        shadow: Shadow::drop(
-            RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
-            glam::Vec2::new(0.0, 2.0),
-            9.0,
-        ),
+        shadow: Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 9.0),
     }
 }
 
@@ -66,27 +58,4 @@ pub(super) fn caption_style() -> TextStyle {
 
 pub(super) fn body_style() -> TextStyle {
     TextStyle::default().with_font_size(13.0)
-}
-
-/// Titled card: caption over `body` on [`card_bg`]. `h` is the card's height: `HUG` for most, `Fixed` for the two that must not grow with content.
-pub(super) fn card(
-    ui: &mut Ui,
-    id: &'static str,
-    title: &'static str,
-    h: Sizing,
-    body: impl FnOnce(&mut Ui),
-) {
-    Panel::vstack()
-        .id_salt(id)
-        .gap(8.0)
-        .padding(10.0)
-        .size((Sizing::FILL, h))
-        .background(card_bg())
-        .show(ui, |ui| {
-            Text::new(title)
-                .id_salt((id, "section"))
-                .style(&section_style())
-                .show(ui);
-            body(ui);
-        });
 }

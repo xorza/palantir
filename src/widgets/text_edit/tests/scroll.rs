@@ -6,7 +6,7 @@
 use crate::input::scroll_targets::ScrollTargets;
 use crate::widgets::block::Block;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::text_edit::tests::*;
 use std::fmt::Write;
 

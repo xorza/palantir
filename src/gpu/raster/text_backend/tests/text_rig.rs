@@ -2,12 +2,12 @@
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::raster::raster_program::RasterProgram;
-use crate::gpu::raster::text_backend::TextBackend;
+use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::render_buffer::text::TextDrawRow;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::scene::record_store::RecordStore;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -89,9 +89,13 @@ impl TextRig {
         {
             let mut ctx = GpuCtx::new(device, &self.lease.queue, &mut belt, &mut encoder);
             let interned_text = self.store.interned_text();
-            for (index, rows) in batches.iter().enumerate() {
-                self.backend
-                    .prepare_batch(&ctx, scale, index, rows, &interned_text);
+            for (index, runs) in batches.iter().enumerate() {
+                self.backend.prepare_batch(TextBatchInput {
+                    index,
+                    runs,
+                    scale,
+                    interned_text,
+                });
             }
             self.backend.pass.flush(&mut ctx);
         }

@@ -1,10 +1,10 @@
 //! The surface a tree test records against, and the hashes it asserts on.
 
-use crate::Ui;
 use crate::common::content_hash::ContentHash;
 use crate::internals::ui_harness::UiHarness;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use glam::UVec2;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);

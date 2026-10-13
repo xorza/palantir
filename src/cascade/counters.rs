@@ -6,7 +6,7 @@
 
 use crate::common::counters::TestOnly;
 
-/// What the cascade did, for tests. Both paths end in the same cascade, so the pair is what separates "`can_update` said no" from "the incremental walk gave up halfway".
+/// What the cascade did, for tests. Both paths end in the same cascade, so the pair is what separates "`CascadeKey::keeps_structure` said no" from "the incremental walk gave up halfway".
 #[derive(Debug, Default)]
 pub(crate) struct CascadeCounters {
     /// Full rebuilds performed.
@@ -41,22 +41,26 @@ impl CascadeCounters {
     }
 }
 
-/// Reads are test-only; gating them lets the counters be absent from shipping builds.
+/// The probe's reads, for the crate's tests; gating them lets the counters be absent from shipping builds.
 #[cfg(test)]
-impl CascadeCounters {
-    pub(crate) fn full_rebuilds(&self) -> u32 {
-        self.full_rebuilds.count()
-    }
+pub(crate) mod internals {
+    use crate::cascade::counters::CascadeCounters;
 
-    pub(crate) fn abandoned_incrementals(&self) -> u32 {
-        self.abandoned_incrementals.count()
-    }
+    impl CascadeCounters {
+        pub(crate) fn full_rebuilds(&self) -> u32 {
+            self.full_rebuilds.count()
+        }
 
-    pub(crate) fn refreshed_nodes(&self) -> u32 {
-        self.refreshed_nodes.count()
-    }
+        pub(crate) fn abandoned_incrementals(&self) -> u32 {
+            self.abandoned_incrementals.count()
+        }
 
-    pub(crate) fn ran(&self) -> bool {
-        *self.ran.get()
+        pub(crate) fn refreshed_nodes(&self) -> u32 {
+            self.refreshed_nodes.count()
+        }
+
+        pub(crate) fn ran(&self) -> bool {
+            *self.ran.get()
+        }
     }
 }

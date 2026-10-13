@@ -18,7 +18,7 @@ use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::text::Text;
 use crate::widgets::theme::context_menu::menu_item::MenuItemTheme;
 
-/// One row inside a [`ContextMenu`](crate::widgets::context_menu::ContextMenu): label left, optional right-aligned shortcut hint. Clicking calls [`CloseHandle::close`]. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
+/// One row inside a [`ContextMenu`](crate::ContextMenu): label left, optional right-aligned shortcut hint. Clicking calls [`CloseHandle::close`]. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct MenuItem<'a> {

@@ -22,7 +22,6 @@ use criterion::Criterion;
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
 
-// Constructs via `Ui::new` over isolated mono resources.
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const OVERLAP_LAYERS: usize = 64;

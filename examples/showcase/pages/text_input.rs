@@ -2,9 +2,8 @@
 //!
 //! Buffers live in one [`Page`] row lent by `Ui::with_state`, so they survive page switches.
 
-use crate::support::{
-    INK, api, checklist, mono_style, note, note_style, readout, row, section, well,
-};
+use crate::support;
+use crate::support::{INK, Section, api};
 use palantir::widget::Span;
 use palantir::{
     Align, Configure, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
@@ -109,98 +108,104 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut Page) {
-    section(ui, "Single line", &[api!(TextEdit::new)], |ui| {
-        row(ui, |ui| {
-            for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
-                TextEdit::new(buf)
-                    .id_salt(hint)
-                    .placeholder(hint)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .max_size((320.0, f32::INFINITY))
-                    .show(ui);
-            }
+    Section::new("Single line")
+        .apis(&[api!(TextEdit::new)])
+        .show(ui, |ui| {
+            support::row(ui, |ui| {
+                for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
+                    TextEdit::new(buf)
+                        .id_salt(hint)
+                        .placeholder(hint)
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .max_size((320.0, f32::INFINITY))
+                        .show(ui);
+                }
+            });
+            let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
+            support::readout(ui, "first", a);
+            let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
+            support::readout(ui, "second", b);
         });
-        let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
-        readout(ui, "first", a);
-        let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
-        readout(ui, "second", b);
-    });
 
-    section(ui, "Edit events", &[api!(TextEdit::show)], |ui| {
-        note(
-            ui,
-            "The edges one focus session reports. Enter submits and commits, Escape \
+    Section::new("Edit events")
+        .apis(&[api!(TextEdit::show)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "The edges one focus session reports. Enter submits and commits, Escape \
                  cancels and blurs without a commit, and a blur after an edit commits.",
-        );
-        row(ui, |ui| {
-            let r = TextEdit::new(&mut s.events_field)
-                .size((Sizing::fixed(240.0), Sizing::HUG))
-                .show(ui);
-            s.events.record(&r);
-        });
-        well(ui, |ui| {
-            let mut any = false;
-            for (seq, edge) in s.events.iter() {
-                any = true;
-                let line = fmt!(ui, "#{seq:<4} {}", edge.name());
-                Text::new(line)
-                    .id_salt(seq)
-                    .style(&mono_style(12.0, INK))
+            );
+            support::row(ui, |ui| {
+                let r = TextEdit::new(&mut s.events_field)
+                    .size((Sizing::fixed(240.0), Sizing::HUG))
                     .show(ui);
-            }
-            if !any {
-                Text::new("no edges yet — click the field")
-                    .style(&note_style())
-                    .show(ui);
-            }
+                s.events.record(&r);
+            });
+            support::well(ui, |ui| {
+                let mut any = false;
+                for (seq, edge) in s.events.iter() {
+                    any = true;
+                    let line = fmt!(ui, "#{seq:<4} {}", edge.name());
+                    Text::new(line)
+                        .id_salt(seq)
+                        .style(&support::mono_style(12.0, INK))
+                        .show(ui);
+                }
+                if !any {
+                    Text::new("no edges yet — click the field")
+                        .style(&support::note_style())
+                        .show(ui);
+                }
+            });
         });
-    });
 
-    section(ui, "Multi-line", &[api!(TextEdit::multiline)], |ui| {
-        note(
-            ui,
-            "Enter inserts a newline, ↑ and ↓ move by visual line, and a selection spans \
+    Section::new("Multi-line")
+        .apis(&[api!(TextEdit::multiline)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "Enter inserts a newline, ↑ and ↓ move by visual line, and a selection spans \
                  lines. A multi-line clipboard pastes as it is.",
-        );
-        TextEdit::new(&mut s.multiline)
-            .multiline(true)
-            .placeholder("paste a paragraph here")
-            .size((Sizing::FILL, Sizing::fixed(110.0)))
-            .show(ui);
-    });
-
-    section(ui, "Alignment", &[api!(TextEdit::text_align)], |ui| {
-        note(
-            ui,
-            "The text, and the caret with it, sit where text_align puts them in an editor \
-                 taller and wider than its line.",
-        );
-        row(ui, |ui| {
-            for (i, (buf, h)) in s
-                .aligned
-                .iter_mut()
-                .zip([HAlign::Left, HAlign::Center, HAlign::Right])
-                .enumerate()
-            {
-                TextEdit::new(buf)
-                    .id_salt(i)
-                    .text_align(Align::new(h, VAlign::Center))
-                    .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
-                    .show(ui);
-            }
+            );
+            TextEdit::new(&mut s.multiline)
+                .multiline(true)
+                .placeholder("paste a paragraph here")
+                .size((Sizing::FILL, Sizing::fixed(110.0)))
+                .show(ui);
         });
-    });
+
+    Section::new("Alignment")
+        .apis(&[api!(TextEdit::text_align)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "The text, and the caret with it, sit where text_align puts them in an editor \
+                 taller and wider than its line.",
+            );
+            support::row(ui, |ui| {
+                for (i, (buf, h)) in s
+                    .aligned
+                    .iter_mut()
+                    .zip([HAlign::Left, HAlign::Center, HAlign::Right])
+                    .enumerate()
+                {
+                    TextEdit::new(buf)
+                        .id_salt(i)
+                        .text_align(Align::new(h, VAlign::Center))
+                        .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
+                        .show(ui);
+                }
+            });
+        });
 
     ime(ui, s);
 }
 
 fn ime(ui: &mut Ui, s: &mut Page) {
-    section(
-        ui,
-        "IME composition",
-        &[api!(Ui::request_ime), api!(Ui::ime_preedit)],
-        |ui| {
-            note(
+    Section::new("IME composition")
+        .apis(&[api!(Ui::request_ime), api!(Ui::ime_preedit)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "An input method composes in place: the text so far is drawn underlined at \
                  the caret, the candidate window opens beside the caret, and the bound \
@@ -219,22 +224,22 @@ fn ime(ui: &mut Ui, s: &mut Page) {
                 s.preedit.push_str(p.text);
                 s.preedit_cursor = p.cursor;
             }
-            well(ui, |ui| {
+            support::well(ui, |ui| {
                 let preedit = if s.preedit.is_empty() {
                     ui.intern("none")
                 } else {
                     fmt!(ui, "{:?}", s.preedit)
                 };
-                readout(ui, "preedit", preedit);
+                support::readout(ui, "preedit", preedit);
                 let cursor = match s.preedit_cursor {
                     Some(cursor) => fmt!(ui, "bytes {:?}", cursor.range()),
                     None => ui.intern("none"),
                 };
-                readout(ui, "cursor", cursor);
+                support::readout(ui, "cursor", cursor);
                 let bound = fmt!(ui, "{:?}", s.ime);
-                readout(ui, "bound value", bound);
+                support::readout(ui, "bound value", bound);
             });
-            checklist(
+            support::checklist(
                 ui,
                 &[
                     "While composing, the preedit shows underlined at the caret",
@@ -244,16 +249,15 @@ fn ime(ui: &mut Ui, s: &mut Page) {
                     "Escape while composing cancels the composition and keeps focus",
                 ],
             );
-        },
-    );
+        });
 
-    section(ui, "Plain keys with an input method on", &[], |ui| {
-        note(
+    Section::new("Plain keys with an input method on").show(ui, |ui| {
+        support::note(
             ui,
             "On Windows and X11 an input method can pass a plain key through as a \
                  commit and as a key press both. Each key must type one character.",
         );
-        row(ui, |ui| {
+        support::row(ui, |ui| {
             let r = TextEdit::new(&mut s.plain)
                 .placeholder("type abc")
                 .size((Sizing::fixed(240.0), Sizing::HUG))
@@ -268,8 +272,8 @@ fn ime(ui: &mut Ui, s: &mut Page) {
             s.plain.chars().count(),
             s.plain_edits
         );
-        readout(ui, "typed", count);
-        checklist(
+        support::readout(ui, "typed", count);
+        support::checklist(
             ui,
             &["With an input method on in its Latin mode, typing abc shows abc, once"],
         );

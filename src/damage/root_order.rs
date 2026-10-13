@@ -1,11 +1,10 @@
 //! The paint order of a layer's roots between frames.
 
-use crate::cascade::layer_cascade::LayerCascade;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
+use crate::damage::layer_frame::LayerFrame;
 use crate::damage::row_matcher::ROW_UNMATCHED;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::scene::layer::Layer;
 use crate::scene::per_layer::PerLayer;
 use crate::scene::tree::Tree;
 
@@ -13,7 +12,7 @@ use crate::scene::tree::Tree;
 ///
 /// A node's children are paint rows, so swapped children flip the row order and the walk damages their overlap. A root has no parent row and no hash includes its position, so two overlapping roots raised past each other with the same content and rects would read as unchanged. Matched by id, so adding or removing a root shifts no other; only the order of roots both frames hold is compared.
 #[derive(Debug, Default)]
-pub(crate) struct RootOrder {
+pub(super) struct RootOrder {
     prev: PerLayer<Vec<WidgetId>>,
     /// Scratch: last frame's roots of the layer being diffed with their positions, sorted by id.
     positions: Vec<(WidgetId, u32)>,
@@ -25,22 +24,19 @@ pub(crate) struct RootOrder {
 }
 
 impl RootOrder {
-    /// Damage the overlap of every two roots of `layer` whose order flipped, into `out` unless `force_full` makes it moot, and remember this frame's order.
-    pub(crate) fn diff(
-        &mut self,
-        layer: Layer,
-        tree: &Tree,
-        cascade: &LayerCascade,
-        force_full: bool,
-        out: &mut Vec<Rect>,
-    ) {
+    /// Damage into `out` the overlap of every two roots of `frame`'s layer whose order flipped, and remember this frame's order.
+    pub(super) fn diff(&mut self, frame: LayerFrame<'_>, out: &mut Vec<Rect>) {
+        let LayerFrame {
+            layer,
+            tree,
+            cascade,
+        } = frame;
         let ids = tree.records.widget_id();
-        let prev = &mut self.prev[layer];
-        let curr = tree.roots.iter().map(|slot| ids[slot.first_node.idx()]);
-        if prev.iter().copied().eq(curr.clone()) {
+        let prev = &self.prev[layer];
+        if prev.iter().copied().eq(roots(tree)) {
             return;
         }
-        if !force_full && !prev.is_empty() {
+        if !prev.is_empty() {
             self.positions.clear();
             self.positions
                 .extend(prev.iter().enumerate().map(|(at, id)| (*id, at as u32)));
@@ -59,7 +55,21 @@ impl RootOrder {
             }
             self.inversions.push(out, &self.matched, &self.extents);
         }
-        prev.clear();
-        prev.extend(curr);
+        self.remember(frame);
     }
+
+    /// Remember `frame`'s root order and damage nothing, for a frame that repaints every root anyway.
+    pub(super) fn remember(&mut self, frame: LayerFrame<'_>) {
+        let prev = &mut self.prev[frame.layer];
+        prev.clear();
+        prev.extend(roots(frame.tree));
+    }
+}
+
+/// `tree`'s roots in paint order.
+fn roots(tree: &Tree) -> impl Iterator<Item = WidgetId> + '_ {
+    let ids = tree.records.widget_id();
+    tree.roots
+        .iter()
+        .map(move |slot| ids[slot.first_node.idx()])
 }

@@ -1,7 +1,7 @@
 //! Differential oracles: each retained result (measure cache, incremental cascade, damage diff) checked against one computed from scratch, since a gate that misses an input paints stale pixels silently. [`Oracle::check_frame`] runs them after a frame.
 
 use crate::cascade::Cascade;
-use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
 use crate::cascade::internals::OwnedPaint;
 use crate::damage::Damage;
@@ -101,14 +101,7 @@ impl Oracle {
 fn assert_layout_matches_cold(h: &UiHarness) {
     let mut engine = LayoutEngine::new(h.ui.shaper().clone());
     let mut cold = Layout::default();
-    let store = &h.ui.forest().record_store;
-    let interned_text = store.interned_text();
-    engine.run(
-        h.ui.forest(),
-        &interned_text,
-        h.ui.display().logical_rect(),
-        &mut cold,
-    );
+    engine.run(h.ui.forest(), h.ui.display().logical_rect(), &mut cold);
     for (layer, tree) in h.ui.forest().trees.iter_paint_order() {
         let (warm, cold) = (h.ui.layout(layer), &cold[layer]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
@@ -133,18 +126,14 @@ fn assert_layout_matches_cold(h: &UiHarness) {
 
 /// Rebuild the cascade in full over the frame's layout and assert the retained one equals it; the layout oracle reports layout disagreements.
 fn assert_cascade_matches_cold(h: &UiHarness) {
-    let key = CascadeKey::new(
-        h.ui.forest(),
-        h.ui.layout_tables(),
-        h.ui.display(),
-        h.ui.font_epoch(),
-    );
     let mut cold = Cascade::default();
     CascadeEngine::default().run(
-        h.ui.forest(),
-        h.ui.layout_tables(),
-        h.ui.display(),
-        &key,
+        CascadeSource {
+            forest: h.ui.forest(),
+            layout: h.ui.layout_tables(),
+            display: h.ui.display(),
+            font_epoch: h.ui.font_epoch(),
+        },
         &mut cold,
     );
     assert_eq!(
@@ -269,8 +258,7 @@ fn covered(rect: Rect, cover: &[Rect]) -> bool {
 }
 
 mod tests {
-    use super::covered;
-    use crate::primitives::geometry::rect::Rect;
+    use super::*;
 
     #[test]
     fn coverage_is_exact_over_a_union() {

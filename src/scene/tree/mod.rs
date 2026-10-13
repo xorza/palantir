@@ -26,14 +26,14 @@ use crate::layout::drivers::scrollbars::scrollbars_def::ResolvedScrollbarsDef;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
-use crate::primitives::layout::track::{GridDef, Track};
+use crate::primitives::layout::track::Track;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::node::Node;
 use crate::scene::node::bounds_extras::BoundsExtras;
+use crate::scene::node::node_columns::NodeColumns;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::record_store::RecordStore;
@@ -375,8 +375,9 @@ impl Tree {
         id
     }
 
-    /// Push a node under the open node (or as a new root if none is open) and make
-    /// it the tip. Roots stamp `scratch.pending_placement` onto the new `RootSlot`.
+    /// Push a node's columns under the open node (or as a new root if none is open)
+    /// and make it the tip. Roots stamp `scratch.pending_placement` onto the new
+    /// `RootSlot`.
     ///
     /// `chrome` is `None` for nodes without a background; `ClipMode::Rounded` then
     /// downgrades to `Rect`. With chrome, `Rounded` keeps the row even if
@@ -385,8 +386,7 @@ impl Tree {
     pub(super) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
-        widget_id: WidgetId,
-        node: &Node,
+        mut cols: NodeColumns,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
@@ -401,7 +401,6 @@ impl Tree {
                 placement: pending,
             });
         }
-        let mut cols = node.columns(widget_id);
         // A root raised from a disabled scope is disabled, so the cascade disables the
         // whole overlay.
         if parent_frame.is_none() && scratch.owner_disabled {

@@ -1,5 +1,5 @@
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, Census, CornerTables, CutoutPlan, ShadowEntry, fit_radii, spread_radius,
+    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowEntry, fit_radii, spread_radius,
 };
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::corners::Corners;
@@ -26,7 +26,7 @@ const WIDE: UVec2 = UVec2::new(8192, 8192);
 
 /// `quads` planned as a full repaint of a `viewport`, with baking on.
 fn plan_in(quads: &[Quad], viewport: UVec2) -> CutoutPlan {
-    let mut plan = CutoutPlan::new(true);
+    let mut plan = CutoutPlan::new(CutoutMode::Bake);
     full(&mut plan, quads, viewport);
     plan
 }
@@ -178,7 +178,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
         assert_eq!(plan.corners(), [none], "{label}");
         assert_eq!(plan.entries(), [entry], "{label}");
     }
-    let mut off = CutoutPlan::new(false);
+    let mut off = CutoutPlan::new(CutoutMode::Shade);
     let census = off.build(
         &[shadow(FillKind::SHADOW_DROP, 400.0, 300.0, 8.0, 16.0)],
         &RepaintScissors::Full,

@@ -20,10 +20,10 @@ impl Index16 {
     /// Panics if `index` is above [`Self::LAST`].
     #[inline]
     pub(crate) fn new(index: usize, table: &'static str) -> Self {
-        if index > Self::LAST {
-            index16_overflow(index, table);
+        match index.checked_add(1).and_then(|raw| u16::try_from(raw).ok()) {
+            Some(raw) => Self(NonZeroU16::new(raw).unwrap()),
+            None => index16_overflow(index, table),
         }
-        Self(NonZeroU16::new(index as u16 + 1).unwrap())
     }
 
     #[inline]

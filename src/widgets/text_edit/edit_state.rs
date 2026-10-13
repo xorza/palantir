@@ -41,7 +41,7 @@ pub(super) struct EditParts<'a> {
     pub(super) after: SelectionState,
 }
 
-/// One undoable buffer edit, replayed by [`Editor`](super::editor::Editor).
+/// One undoable buffer edit, replayed by [`Editor`](crate::widgets::text_edit::editor::Editor).
 #[derive(Clone, Debug)]
 pub(super) struct EditDelta {
     pub(super) start: usize,
@@ -51,7 +51,7 @@ pub(super) struct EditDelta {
     pub(super) after: SelectionState,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum EditKind {
     Typing,
     Delete,
@@ -215,11 +215,11 @@ mod tests {
 
     /// Both entry points must mint a buffer's identity alike; a mismatch reads as a
     /// host replacement and wipes undo. `content_hash` maps a raw zero to one, so a
-    /// bare `hash_str` would differ only for content hashing to zero.
+    /// bare `hash::str` would differ only for content hashing to zero.
     #[test]
     fn both_entry_points_mint_one_buffers_identity_alike() {
         for text in ["", "a", "hello world", "\u{1f600} multi\nline"] {
-            let probe = TextShapeKey::unbounded(hash::hash_str(text), GlyphFont::new(16.0));
+            let probe = TextShapeKey::unbounded(hash::str(text), GlyphFont::new(16.0));
             assert_eq!(
                 EditState::text_hash(text),
                 probe.text_hash,

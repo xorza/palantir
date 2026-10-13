@@ -44,7 +44,7 @@ pub struct ResponseState {
 impl ResponseState {
     /// Folds one source of "disabled" in, dropping the interaction half once any says so.
     ///
-    /// Three sources arrive at different times (cascade flag, this frame's ancestor scratch, the widget's own flag, visible only to `Widget::response`); folding by hand let a widget disabled this frame report `disabled` beside `hovered` and `left.clicked()`. Idempotent: a later `false` re-enables nothing.
+    /// Three sources arrive at different times (cascade flag, this frame's ancestor scratch, the widget's own flag, visible only to `Widget::response`); each goes through here, so a widget disabled this frame never reports `disabled` beside `hovered` or `left.clicked()`. Idempotent: a later `false` re-enables nothing.
     ///
     /// **This is the whole of what disabling does:** the cascade keeps a disabled widget in the hit index, so input still routes to it, and emptying what it reads makes that nothing happen. `pointer_over` stays; `hovered` goes by reading `disabled`.
     #[inline]
@@ -55,7 +55,7 @@ impl ResponseState {
         }
     }
 
-    /// Everything the pointer and wheel contributed this frame, back to default. `pointer_local` is geometry and stays (a literal listing what to *keep* once dropped it, so [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local) disagreed), as do `rect`, `transform` and `pointer_over`.
+    /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, so it agrees with [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local).
     #[inline]
     fn clear_interaction(&mut self) {
         self.left = ButtonState::default();

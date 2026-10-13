@@ -1,4 +1,4 @@
-//! The per-window, per-frame hook a host calls, and the closure shorthand for record-only apps.
+//! The per-window, per-frame hook a host calls.
 
 use crate::ui::Ui;
 use crate::window::window_token::WindowToken;

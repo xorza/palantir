@@ -1,8 +1,9 @@
 //! The live input state machine: what survives across input events.
 
 use crate::cascade::Cascade;
-use crate::cascade::entry::{TabDirection, TabDomain, WidgetLocation};
+use crate::cascade::{TabDirection, TabDomain, WidgetLocation};
 use crate::common::span::Span;
+use crate::input::arranged_frame::ArrangedFrame;
 use crate::input::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
 use crate::input::event_outcome::EventOutcome;
 use crate::input::ime_preedit::ImePreedit;
@@ -17,6 +18,7 @@ use crate::input::interaction::pointer_edge::PointerEdge;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::key_class::KeyClass;
+use crate::input::key_reader::KeyReader;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::key_text::KeyText;
@@ -29,7 +31,6 @@ use crate::input::shortcut::Shortcut;
 use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::watch::{KeyboardWake, PointerWake, Watches};
 use crate::input::zoom_factor::ZoomFactor;
-use crate::layout::Layout;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
@@ -312,19 +313,18 @@ impl InputState {
         &self.frame_pointer_events
     }
 
-    /// Whether `shortcut` was pressed and granted to the scope `parent` sits in.
+    /// Whether `shortcut` was pressed and granted to the scope `reader`'s parent sits in.
     pub(crate) fn key_pressed(
         &mut self,
-        reader: Layer,
-        parent: Option<WidgetId>,
+        reader: KeyReader,
         cascade: &Cascade,
         shortcut: Shortcut,
     ) -> bool {
         self.subs.watch_key(shortcut);
-        if self.frame_keyboard_events.is_empty() || self.silenced(reader) {
+        if self.frame_keyboard_events.is_empty() || self.silenced(reader.layer) {
             return false;
         }
-        let scope = self.scopes.reader(parent, cascade);
+        let scope = self.scopes.reader(reader.parent, cascade);
         self.frame_keyboard_events.iter().any(|press| {
             shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope
         })
@@ -350,10 +350,10 @@ impl InputState {
         &mut self.frame_target_deltas.last_mut().unwrap().delta
     }
 
-    #[inline]
     /// Every edge the pointer produced this frame, widget by widget, from the same
     /// capture state as [`Self::response_for`]. Three slots per button, at most two
     /// filled (`InputQueue` admits one press-or-release per button per frame).
+    #[inline]
     pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
         PointerButton::ALL.into_iter().flat_map(move |button| {
             let cap = self.capture(button);
@@ -863,16 +863,11 @@ impl InputState {
 
     /// The pointer in `id`'s local space, the cheap path; shares `pointer_in_widget_space` with
     /// [`Self::response_for`].
-    pub(crate) fn pointer_local_for(
-        &self,
-        id: WidgetId,
-        cascade: &Cascade,
-        layout: &Layout,
-    ) -> Option<Vec2> {
+    pub(crate) fn pointer_local_for(&self, id: WidgetId, frame: ArrangedFrame<'_>) -> Option<Vec2> {
         let pointer = self.pointer_pos?;
-        let loc = cascade.locate(id)?;
-        let layout_rect = layout.arranged_rect(loc.endpoint);
-        let transform = cascade.entries[loc.entry_idx as usize].transform;
+        let loc = frame.cascade.locate(id)?;
+        let layout_rect = frame.layout.arranged_rect(loc.endpoint);
+        let transform = frame.cascade.entries[loc.entry_idx as usize].transform;
         Some(pointer_in_widget_space(pointer, layout_rect.min, transform))
     }
 
@@ -880,13 +875,12 @@ impl InputState {
         &self,
         id: WidgetId,
         loc: Option<WidgetLocation>,
-        cascade: &Cascade,
-        layout: &Layout,
+        frame: ArrangedFrame<'_>,
     ) -> ResponseState {
         // Geometry half, needed every frame. `entries` is AoS so the fields share a cache line.
-        let entry = loc.map(|l| cascade.entries[l.entry_idx as usize]);
+        let entry = loc.map(|l| frame.cascade.entries[l.entry_idx as usize]);
         let rect = entry.map(|e| e.rect);
-        let layout_rect = loc.map(|l| layout.arranged_rect(l.endpoint));
+        let layout_rect = loc.map(|l| frame.layout.arranged_rect(l.endpoint));
         let transform = entry.map_or(TranslateScale::IDENTITY, |e| e.transform);
         // Cascade flattens parent-disabled into each entry: effective ancestor-or-self disabled,
         // one frame stale.

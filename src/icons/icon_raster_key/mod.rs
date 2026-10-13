@@ -5,13 +5,13 @@ use crate::primitives::math::num::F32Px;
 use glam::{U16Vec2, Vec2};
 
 /// Physical sizes at or below this rasterize at exactly the pixel box asked for: size error shows here, and rasters are cheap.
-const EXACT_MAX_PX: u32 = 64;
+const EXACT_MAX_PX: u16 = 64;
 
 /// Above [`EXACT_MAX_PX`], sizes round to a multiple of this, so a continuous zoom does not pay a fresh raster per icon per pixel crossed (at most 3% size error at 64 px).
-const COARSE_STEP_PX: u32 = 4;
+const COARSE_STEP_PX: u16 = 4;
 
 /// Hard ceiling on either axis of a raster (4096 px would cost 64 MB of atlas); past it the largest cached raster is magnified. Divisible by [`COARSE_STEP_PX`], so the clamp lands on a rung.
-const MAX_RASTER_PX: u32 = 512;
+const MAX_RASTER_PX: u16 = 512;
 
 /// What one cached icon raster is keyed by: icon and physical pixel size. Ten bytes against cosmic's 24, since an icon snaps to whole pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -27,7 +27,7 @@ impl IconRasterKey {
     }
 
     pub(crate) fn is_exact(self) -> bool {
-        u32::from(self.size.max_element()) <= EXACT_MAX_PX
+        self.size.max_element() <= EXACT_MAX_PX
     }
 
     /// The key for drawing `icon` into a physical-pixel box of `box_px`: the longer axis picks the rung and the shorter follows, preserving aspect.
@@ -43,31 +43,28 @@ impl IconRasterKey {
         let long = box_px.x.max(box_px.y).max(1.0);
         let target = snap_px(long.fast_round() as u32);
         // Scale from the unrounded long axis, so the short one tracks the true aspect.
-        let k = target as f32 / long;
+        let k = f32::from(target) / long;
         let short = (box_px.x.min(box_px.y) * k)
             .fast_round()
-            .clamp(1.0, MAX_RASTER_PX as f32) as u32;
+            .clamp(1.0, f32::from(MAX_RASTER_PX)) as u16;
         let size = if box_px.x >= box_px.y {
-            U16Vec2::new(target as u16, short as u16)
+            U16Vec2::new(target, short)
         } else {
-            U16Vec2::new(short as u16, target as u16)
+            U16Vec2::new(short, target)
         };
         Self { icon, size }
     }
 }
 
-/// One axis through the ladder; never zero.
-const fn snap_px(px: u32) -> u32 {
-    if px <= EXACT_MAX_PX {
-        if px == 0 { 1 } else { px }
+/// One axis through the ladder; never zero. A box past `u32::MAX` px arrives saturated, so the rounding add saturates too and the rung clamps to the ceiling.
+fn snap_px(px: u32) -> u16 {
+    let step = u32::from(COARSE_STEP_PX);
+    let rung = if px <= u32::from(EXACT_MAX_PX) {
+        px.max(1)
     } else {
-        let stepped = ((px + COARSE_STEP_PX / 2) / COARSE_STEP_PX) * COARSE_STEP_PX;
-        if stepped > MAX_RASTER_PX {
-            MAX_RASTER_PX
-        } else {
-            stepped
-        }
-    }
+        (px.saturating_add(step / 2) / step * step).min(u32::from(MAX_RASTER_PX))
+    };
+    u16::try_from(rung).expect("the ladder tops out at MAX_RASTER_PX")
 }
 
 #[cfg(test)]

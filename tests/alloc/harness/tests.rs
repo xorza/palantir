@@ -1,9 +1,10 @@
 //! The audit driver and its report: the worst and the mode, the
 //! failures that name themselves, and the `user_frames` filter.
 
-use crate::allocator::with_audit;
+use crate::allocator;
 use crate::harness;
-use crate::harness::{Audit, user_frames};
+use crate::harness::Audit;
+use crate::harness::format;
 use palantir::widget::Mesh;
 use palantir::{Block, Configure, Panel, Spinner, Ui};
 use std::hint::black_box;
@@ -96,12 +97,12 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     };
     let mut ui = harness::new_ui();
     ui.prime(4, scene);
-    let r = with_audit(|| {
+    let r = allocator::with_audit(|| {
         let _ = ui.frame(scene);
     });
     assert_eq!(r.allocs, 2, "the mesh's vertex and index buffers");
     let mut bt = r.traces.into_iter().next().expect("two traces");
-    let rendered = user_frames(&mut bt);
+    let rendered = format::user_frames(&mut bt);
 
     let first_at = rendered
         .lines()
@@ -116,7 +117,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
         "the frame path above the scene is kept too:\n{rendered}",
     );
     for plumbing in [
-        "tests/alloc/allocator.rs",
+        "tests/alloc/allocator/",
         "tests/alloc/harness/mod.rs",
         "tests/alloc/harness/format.rs",
         "tests/alloc/harness/tests.rs",

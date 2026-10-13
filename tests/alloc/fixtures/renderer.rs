@@ -10,13 +10,14 @@
 //! No device, so the budget is strict zero; real-adapter cost is
 //! `gates::on_gpu`'s.
 
-use crate::harness::{Audit, new_ui};
-use palantir::Stroke;
+use crate::harness;
+use crate::harness::Audit;
+use glam::Vec2;
 use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Background, Block, Configure, FramePaint, Grid, IconId, IconSet, IconTable, Panel, RgbaF32,
-    Sizing, Track, TranslateScale, Ui,
+    Background, Block, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing,
+    Stroke, Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
 
@@ -37,7 +38,7 @@ const WARMUP_CYCLES: u32 = 4;
 /// measure cache misses and layout re-runs. These are whole-frame numbers.
 #[track_caller]
 fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
-    let mut frontend = FrontendHarness::new(new_ui());
+    let mut frontend = FrontendHarness::new(harness::new_ui());
     let mut step = 0u32;
     Audit::new()
         .warmup((WARMUP_CYCLES * NUDGE_POSITIONS) as usize)
@@ -47,7 +48,7 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
                 Panel::zstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))
-                    .transform(TranslateScale::from_translation(glam::Vec2::new(
+                    .transform(TranslateScale::from_translation(Vec2::new(
                         step as f32,
                         0.0,
                     )))
@@ -58,8 +59,8 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
         });
 }
 
-/// 16x16 grid of `Block`s: 256 quads re-encoded every frame, stressing
-/// `RenderCmdBuffer` and `RenderBuffer.quads` capacity reuse.
+/// 16x16 grid of `Block`s: 256 quads re-encoded every frame, stressing the
+/// encoder's and `RenderBuffer.quads`' capacity reuse.
 #[test]
 fn many_rects_compose_alloc_free() {
     frontend_audit(|ui| {
@@ -87,8 +88,8 @@ fn many_rects_compose_alloc_free() {
 /// Pins the composer's polyline point / index / direction scratch reuse.
 #[test]
 fn polyline_static_alloc_free() {
-    let points: Vec<glam::Vec2> = (0..32)
-        .map(|i| glam::Vec2::new(i as f32 * 20.0, 100.0 + (i as f32).sin() * 30.0))
+    let points: Vec<Vec2> = (0..32)
+        .map(|i| Vec2::new(i as f32 * 20.0, 100.0 + (i as f32).sin() * 30.0))
         .collect();
     frontend_audit(move |ui| {
         Panel::vstack()
@@ -107,9 +108,9 @@ fn polyline_static_alloc_free() {
 fn mesh_static_alloc_free() {
     let mesh = {
         let mut m = Mesh::with_capacity(3, 3);
-        let a = m.vertex(glam::Vec2::new(0.0, 0.0), RgbaF32::WHITE);
-        let b = m.vertex(glam::Vec2::new(100.0, 0.0), RgbaF32::WHITE);
-        let c = m.vertex(glam::Vec2::new(50.0, 100.0), RgbaF32::WHITE);
+        let a = m.vertex(Vec2::new(0.0, 0.0), RgbaF32::WHITE);
+        let b = m.vertex(Vec2::new(100.0, 0.0), RgbaF32::WHITE);
+        let c = m.vertex(Vec2::new(50.0, 100.0), RgbaF32::WHITE);
         m.triangle(a, b, c);
         m
     };
@@ -139,13 +140,13 @@ fn mesh_static_alloc_free() {
 fn many_icons_compose_alloc_free() {
     const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
     let atlas = Rc::new(IconTable::from_svgs([("chip", SVG)]).unwrap());
-    let chip = IconId(0);
     let mut held: Option<IconSet> = None;
 
     frontend_audit(move |ui| {
         // `insert` drops last frame's clone *after* this frame's exists, so the shared
         // owner never reaches zero.
         let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
+        let chip = icons.by_name("chip").expect("the one icon of the set");
         Grid::new()
             .auto_id()
             .cols([Track::FILL; 20])

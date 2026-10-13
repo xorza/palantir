@@ -22,12 +22,15 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::text::Text;
+use crate::widgets::theme::tab_selection::TabSelection;
+use crate::widgets::theme::tab_strip_focus::TabStripFocus;
 use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::Vec2;
@@ -83,7 +86,7 @@ pub struct TabStrip<'a> {
     widget: Widget,
     items: &'a [TabItem],
     selected: Option<usize>,
-    focused: bool,
+    focus: TabStripFocus,
     overflow: TabOverflow,
     style: Option<&'a TabsTheme>,
 }
@@ -107,7 +110,7 @@ impl<'a> TabStrip<'a> {
                 .input_scope(KeyFilter::CARET | KeyFilter::CYCLE),
             items,
             selected: None,
-            focused: true,
+            focus: TabStripFocus::Focused,
             overflow: TabOverflow::default(),
             style: None,
         }
@@ -121,7 +124,11 @@ impl<'a> TabStrip<'a> {
 
     /// Whether this strip's view holds focus; `false` dims the cap to [`TabsTheme::accent_idle`]. Default `true`.
     pub const fn focused(mut self, focused: bool) -> Self {
-        self.focused = focused;
+        self.focus = if focused {
+            TabStripFocus::Focused
+        } else {
+            TabStripFocus::Unfocused
+        };
         self
     }
 
@@ -152,11 +159,6 @@ impl<'a> TabStrip<'a> {
         strip.with("band")
     }
 
-    /// The slot an insertion at `x` addresses: the count of chips whose centre it has passed; `chips.len()` appends.
-    pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
-        chips.into_iter().filter(|c| c.center().x < x).count()
-    }
-
     /// Records the strip, and its overflow menu when open.
     pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
@@ -166,7 +168,7 @@ impl<'a> TabStrip<'a> {
             mut widget,
             items,
             selected,
-            focused,
+            focus,
             overflow,
             style: _,
         } = self;
@@ -177,14 +179,22 @@ impl<'a> TabStrip<'a> {
         let rule = Background::fill(t.rule);
         let rule_thickness = t.rule_thickness;
 
-        let mut hits = StripHits::default();
+        let mut pass = StripPass {
+            theme: t,
+            ambient,
+            strip: id,
+            items,
+            selected,
+            focus,
+            hits: StripHits::default(),
+        };
         widget.record(ui, Some(&strip_bg), |ui| {
             let row = Widget::hstack()
                 .id(id.with("row"))
                 .size((Sizing::FILL, Sizing::HUG))
                 .gap(t.gap)
                 .child_align(Align::v(VAlign::Bottom));
-            let reveal = reveal_delta(ui, id, t);
+            let reveal = pass.reveal_delta(ui);
             row.record(ui, None, |ui| {
                 Scroll::horizontal()
                     .id(Self::band_id(id))
@@ -195,18 +205,12 @@ impl<'a> TabStrip<'a> {
                     .gap(t.gap)
                     .child_align(Align::v(VAlign::Bottom))
                     .show(ui, |ui| {
-                        let chip = ChipCtx {
-                            theme: t,
-                            ambient,
-                            strip: id,
-                            focused,
-                        };
-                        for (i, item) in items.iter().enumerate() {
-                            chip.record(ui, item, Some(i) == selected, i, &mut hits);
+                        for slot in 0..items.len() {
+                            pass.chip(ui, slot);
                         }
                     });
                 if overflow == TabOverflow::Menu {
-                    overflow_menu(ui, id, items, t, ambient, &mut hits);
+                    pass.overflow_menu(ui);
                 }
             });
             if rule_thickness > 0.0 {
@@ -215,8 +219,9 @@ impl<'a> TabStrip<'a> {
                     .size((Sizing::FILL, Sizing::fixed(rule_thickness)));
                 rule_leaf.record(ui, Some(&rule), |_| {});
             }
-            keyboard_travel(ui, id, items.len(), selected, &mut hits);
+            pass.keyboard_travel(ui);
         });
+        let hits = pass.hits;
         if let Some(slot) = hits.keyed.or(hits.menu_picked) {
             ui.with_state::<StripState, _>(id, |_, s| s.reveal = Some(items[slot].key));
         }
@@ -254,34 +259,9 @@ struct StripState {
     reveal: Option<u64>,
 }
 
-/// The part of the band a chip can be seen in: its rect clipped by ancestors and deflated by the band's padding.
-fn band_clip(ui: &Ui, strip: WidgetId, t: &TabsTheme) -> Option<Rect> {
-    let band = ui.response_for(TabStrip::band_id(strip)).rect?;
-    Some(band.deflated_by(t.strip_padding))
-}
-
-/// Where a chip would be uncut: its arranged rect under its transform.
-fn chip_extent(ui: &Ui, strip: WidgetId, key: u64) -> Option<Rect> {
-    let chip = ui.response_for(TabStrip::chip_id(strip, key));
-    chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
-}
-
-/// The pan bringing the selected chip into the band's clip, from last frame's rects; forgets the request.
-fn reveal_delta(ui: &mut Ui, strip: WidgetId, t: &TabsTheme) -> Vec2 {
-    let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
-        return Vec2::ZERO;
-    };
-    ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
-    let (Some(clip), Some(chip)) = (band_clip(ui, strip, t), chip_extent(ui, strip, key)) else {
-        return Vec2::ZERO;
-    };
-    if chip.min.x < clip.min.x {
-        Vec2::new(chip.min.x - clip.min.x, 0.0)
-    } else if chip.max().x > clip.max().x {
-        Vec2::new(chip.max().x - clip.max().x, 0.0)
-    } else {
-        Vec2::ZERO
-    }
+/// The slot an insertion at `x` addresses: the count of chips whose centre it has passed; `chips.len()` appends.
+pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
+    chips.into_iter().filter(|c| c.center().x < x).count()
 }
 
 #[derive(Debug, Default)]
@@ -294,25 +274,69 @@ struct StripHits {
     drag_stopped: Option<usize>,
 }
 
+/// One record of a strip: what every chip reads, and what the chips and keys did.
 #[derive(Debug)]
-struct ChipCtx<'a> {
+struct StripPass<'a> {
     theme: &'a TabsTheme,
     ambient: TextStyle,
     strip: WidgetId,
-    focused: bool,
+    items: &'a [TabItem],
+    selected: Option<usize>,
+    focus: TabStripFocus,
+    hits: StripHits,
 }
 
-impl ChipCtx<'_> {
-    /// One chip: cap-bearing outer box, filled inner box, and icon, label, badge, close button inside.
-    fn record(
-        &self,
-        ui: &mut Ui,
-        item: &TabItem,
-        selected: bool,
-        slot: usize,
-        hits: &mut StripHits,
-    ) {
+impl StripPass<'_> {
+    /// The part of the band a chip can be seen in: its rect clipped by ancestors and deflated by the band's padding.
+    fn band_clip(&self, ui: &Ui) -> Option<Rect> {
+        let band = ui.response_for(TabStrip::band_id(self.strip)).rect?;
+        Some(band.deflated_by(self.theme.strip_padding))
+    }
+
+    /// Where a chip would be uncut: its arranged rect under its transform.
+    fn chip_extent(&self, ui: &Ui, key: u64) -> Option<Rect> {
+        let chip = ui.response_for(TabStrip::chip_id(self.strip, key));
+        chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
+    }
+
+    /// The pan bringing the selected chip into the band's clip, from last frame's rects; forgets the request.
+    fn reveal_delta(&self, ui: &mut Ui) -> Vec2 {
+        let strip = self.strip;
+        let Some(key) = ui.state::<StripState>(strip).and_then(|state| state.reveal) else {
+            return Vec2::ZERO;
+        };
+        ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
+        let (Some(clip), Some(chip)) = (self.band_clip(ui), self.chip_extent(ui, key)) else {
+            return Vec2::ZERO;
+        };
+        if chip.min.x < clip.min.x {
+            Vec2::new(chip.min.x - clip.min.x, 0.0)
+        } else if chip.max().x > clip.max().x {
+            Vec2::new(chip.max().x - clip.max().x, 0.0)
+        } else {
+            Vec2::ZERO
+        }
+    }
+
+    /// A small glyph button wearing [`TabsTheme::close`], from its last frame's state.
+    fn glyph_button(&self, ui: &Ui, id: WidgetId) -> GlyphButton {
+        let state = ui.response_for(id);
+        let look = self.theme.close.pick(&state, Engagement::Pressed);
+        GlyphButton {
+            background: look.background.clone(),
+            text: TextStyle {
+                line_height_factor: 1.0,
+                ..look.text.apply(&self.ambient)
+            },
+            state,
+        }
+    }
+
+    /// The chip at `slot`: cap-bearing outer box, filled inner box, and icon, label, badge, close button inside.
+    fn chip(&mut self, ui: &mut Ui, slot: usize) {
         let t = self.theme;
+        let item = self.items[slot];
+        let selected = self.selected == Some(slot);
         let chip_id = TabStrip::chip_id(self.strip, item.key);
         let close_id = TabStrip::close_id(self.strip, item.key);
         let sense = if item.draggable {
@@ -331,10 +355,10 @@ impl ChipCtx<'_> {
         let state = widget.response(ui);
         // The look paints the inner box, so the plan applies for spacing and animation while the background goes a level down (the `ToggleChrome` shape).
         let look = t
-            .plan(&state, selected, self.ambient)
+            .plan(&state, TabSelection::from(selected), self.ambient)
             .apply(ui, &mut widget);
         let cap_bg = if selected {
-            Background::rounded(t.cap(self.focused), Corners::top(t.radius))
+            Background::rounded(t.cap(self.focus), Corners::top(t.radius))
         } else {
             Background::NONE
         };
@@ -358,8 +382,8 @@ impl ChipCtx<'_> {
             label,
             closable,
             ..
-        } = *item;
-        let close = closable.then(|| GlyphButton::resolve(ui, t, close_id, self.ambient));
+        } = item;
+        let close = closable.then(|| self.glyph_button(ui, close_id));
 
         let inner = Widget::hstack()
             .id(chip_id.with("fill"))
@@ -409,6 +433,7 @@ impl ChipCtx<'_> {
             });
         });
 
+        let hits = &mut self.hits;
         if close.is_some_and(|c| c.state.clicked()) {
             hits.closed.get_or_insert(slot);
         } else if state.clicked() {
@@ -419,6 +444,101 @@ impl ChipCtx<'_> {
         }
         if state.left.drag.stopped() {
             hits.drag_stopped.get_or_insert(slot);
+        }
+    }
+
+    /// The trailing chevron and its menu, recorded only while a chip is scrolled out of the band. The menu lists every chip: visibility comes from last frame's rects, so listing only hidden ones would add and drop rows under the open menu.
+    fn overflow_menu(&mut self, ui: &mut Ui) {
+        let strip = self.strip;
+        let items = self.items;
+        // Compared at `EPS` so an exact fit can't flicker the chevron.
+        let Some(clip) = self.band_clip(ui) else {
+            return;
+        };
+        let hidden = |item: &TabItem| {
+            self.chip_extent(ui, item.key).is_some_and(|full| {
+                full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS
+            })
+        };
+        let button_id = strip.with("overflow");
+        if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
+            return;
+        }
+        let chevron = self.glyph_button(ui, button_id);
+        let t = self.theme;
+        let [_, _, band_r, band_b] = t.strip_padding.as_array();
+        let button = Widget::zstack()
+            .id(button_id)
+            .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
+            .margin(Spacing::new(0.0, 0.0, band_r, band_b))
+            .sense(Sense::CLICK)
+            .align(Align::v(VAlign::Bottom))
+            .child_align(Align::CENTER);
+        button.record(ui, Some(&chevron.background), |ui| {
+            chevron.glyph(ui, button_id, "\u{22ef}");
+        });
+        if chevron.state.clicked()
+            && let Some(rect) = chevron.state.rect
+        {
+            ContextMenu::open(ui, button_id, Vec2::new(rect.min.x, rect.max().y));
+        }
+        let picked = ContextMenu::for_id(button_id)
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui, popup| {
+                let mut picked = None;
+                for (i, item) in items.iter().enumerate() {
+                    if MenuItem::new(item.label)
+                        .id(button_id.with(item.key))
+                        .show(ui, popup)
+                        .left
+                        .clicked()
+                    {
+                        picked = Some(i);
+                    }
+                }
+                picked
+            });
+        if let Some(slot) = picked.inner.flatten() {
+            self.hits.menu_picked = Some(slot);
+            ContextMenu::close(ui, button_id);
+        }
+    }
+
+    /// Keyboard travel on the WAI-ARIA tab pattern: arrows step, `Home`/`End` jump, `Ctrl+Tab` cycles; each activates what it lands on. Only while focus is in the strip, read in its own record so its scope grants the press.
+    fn keyboard_travel(&mut self, ui: &mut Ui) {
+        let len = self.items.len();
+        let selected = self.selected;
+        if len == 0 || !ui.is_focus_within(self.strip) {
+            return;
+        }
+        let step = |forward: bool| match selected.map(|here| here.min(len - 1)) {
+            Some(here) if forward => (here + 1) % len,
+            Some(here) => (here + len - 1) % len,
+            None if forward => 0,
+            None => len - 1,
+        };
+        // Every chord is sampled, not short-circuited, so `key_pressed` keeps each subscribed for the wake gate. Modifier sets match exactly: `Ctrl+Tab` never fires on `Ctrl+Shift+Tab`.
+        let back = ui.key_pressed(Shortcut::key(Key::ArrowLeft));
+        let forward = ui.key_pressed(Shortcut::key(Key::ArrowRight));
+        let first = ui.key_pressed(Shortcut::key(Key::Home));
+        let last = ui.key_pressed(Shortcut::key(Key::End));
+        let cycle = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
+        let cycle_back = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
+        let target = if back || cycle_back {
+            Some(step(false))
+        } else if forward || cycle {
+            Some(step(true))
+        } else if first {
+            Some(0)
+        } else if last {
+            Some(len - 1)
+        } else {
+            None
+        };
+        if let Some(target) = target
+            && Some(target) != selected
+        {
+            self.hits.keyed = Some(target);
         }
     }
 }
@@ -433,126 +553,11 @@ struct GlyphButton {
 }
 
 impl GlyphButton {
-    fn resolve(ui: &Ui, t: &TabsTheme, id: WidgetId, ambient: TextStyle) -> Self {
-        let state = ui.response_for(id);
-        let look = t.close.pick(&state, state.pressed());
-        Self {
-            background: look.background.clone(),
-            text: TextStyle {
-                line_height_factor: 1.0,
-                ..look.text.apply(&ambient)
-            },
-            state,
-        }
-    }
-
     fn glyph(&self, ui: &mut Ui, id: WidgetId, glyph: &'static str) {
         Text::new(glyph)
             .id(id.with("glyph"))
             .style(&self.text)
             .text_align(Align::CENTER)
             .show(ui);
-    }
-}
-
-/// The trailing chevron and its menu, recorded only while a chip is scrolled out of the band. The menu lists every chip: visibility comes from last frame's rects, so listing only hidden ones would add and drop rows under the open menu.
-fn overflow_menu(
-    ui: &mut Ui,
-    strip: WidgetId,
-    items: &[TabItem],
-    t: &TabsTheme,
-    ambient: TextStyle,
-    hits: &mut StripHits,
-) {
-    // The window a chip shows through: the band clipped by ancestors and deflated by its padding, compared at `EPS` so an exact fit can't flicker the chevron.
-    let Some(clip) = band_clip(ui, strip, t) else {
-        return;
-    };
-    let hidden = |item: &TabItem| {
-        chip_extent(ui, strip, item.key)
-            .is_some_and(|full| full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS)
-    };
-    let button_id = strip.with("overflow");
-    if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
-        return;
-    }
-    let chevron = GlyphButton::resolve(ui, t, button_id, ambient);
-    let [_, _, band_r, band_b] = t.strip_padding.as_array();
-    let button = Widget::zstack()
-        .id(button_id)
-        .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
-        .margin(Spacing::new(0.0, 0.0, band_r, band_b))
-        .sense(Sense::CLICK)
-        .align(Align::v(VAlign::Bottom))
-        .child_align(Align::CENTER);
-    button.record(ui, Some(&chevron.background), |ui| {
-        chevron.glyph(ui, button_id, "\u{22ef}");
-    });
-    if chevron.state.clicked()
-        && let Some(rect) = chevron.state.rect
-    {
-        ContextMenu::open(ui, button_id, Vec2::new(rect.min.x, rect.max().y));
-    }
-    let picked = ContextMenu::for_id(button_id)
-        .size((Sizing::HUG, Sizing::HUG))
-        .show(ui, |ui, popup| {
-            let mut picked = None;
-            for (i, item) in items.iter().enumerate() {
-                if MenuItem::new(item.label)
-                    .id(button_id.with(item.key))
-                    .show(ui, popup)
-                    .left
-                    .clicked()
-                {
-                    picked = Some(i);
-                }
-            }
-            picked
-        });
-    if let Some(slot) = picked.inner.flatten() {
-        hits.menu_picked = Some(slot);
-        ContextMenu::close(ui, button_id);
-    }
-}
-
-/// Keyboard travel on the WAI-ARIA tab pattern: arrows step, `Home`/`End` jump, `Ctrl+Tab` cycles; each activates what it lands on. Only while focus is in the strip, read in its own record so its scope grants the press.
-fn keyboard_travel(
-    ui: &mut Ui,
-    strip: WidgetId,
-    len: usize,
-    selected: Option<usize>,
-    hits: &mut StripHits,
-) {
-    if len == 0 || !ui.is_focus_within(strip) {
-        return;
-    }
-    let step = |forward: bool| match selected.map(|here| here.min(len - 1)) {
-        Some(here) if forward => (here + 1) % len,
-        Some(here) => (here + len - 1) % len,
-        None if forward => 0,
-        None => len - 1,
-    };
-    // Every chord is sampled, not short-circuited, so `key_pressed` keeps each subscribed for the wake gate. Modifier sets match exactly: `Ctrl+Tab` never fires on `Ctrl+Shift+Tab`.
-    let back = ui.key_pressed(Shortcut::key(Key::ArrowLeft));
-    let forward = ui.key_pressed(Shortcut::key(Key::ArrowRight));
-    let first = ui.key_pressed(Shortcut::key(Key::Home));
-    let last = ui.key_pressed(Shortcut::key(Key::End));
-    let cycle = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
-    let cycle_back = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
-    let target = if back || cycle_back {
-        Some(step(false))
-    } else if forward || cycle {
-        Some(step(true))
-    } else if first {
-        Some(0)
-    } else if last {
-        Some(len - 1)
-    } else {
-        None
-    };
-    if let Some(target) = target
-        && Some(target) != selected
-    {
-        hits.keyed = Some(target);
     }
 }

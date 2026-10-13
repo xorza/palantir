@@ -62,9 +62,7 @@ impl IconShape {
             desaturate: false,
         }
     }
-}
 
-impl IconShape {
     /// Paints into `rect`, in owner-relative coords, instead of the owner's arranged rect.
     ///
     /// # Panics

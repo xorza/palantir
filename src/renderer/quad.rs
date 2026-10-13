@@ -70,6 +70,6 @@ mod tests {
         let off_grid = Rect::new(10.25, 3.0, 10.25, 5.0);
         assert_eq!(shaded(aligned, FillKind::SOLID), aligned);
         assert_eq!(shaded(off_grid, FillKind::SOLID), aligned);
-        assert_eq!(shaded(off_grid, FillKind::SOLID.with_window()), off_grid,);
+        assert_eq!(shaded(off_grid, FillKind::SOLID.with_window()), off_grid);
     }
 }

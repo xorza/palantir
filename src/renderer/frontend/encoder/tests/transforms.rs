@@ -1,6 +1,7 @@
 //! Shapes under a transformed ancestor, and the bounds they claim.
 
 use crate::internals::ui_harness::UiHarness;
+use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -33,11 +34,11 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
         Polyline,
         Arc,
     }
-    let arc_basis = CurveBasis::Arc {
+    let arc = CircularArc {
         center: Vec2::new(50.0, 20.0),
         radius: 10.0,
-        a0: 0.0,
-        a1: PI,
+        start_angle: 0.0,
+        sweep: PI,
     };
     let c = Vec2::new(40.0, 20.0);
     for (spun, half_extent) in [
@@ -67,13 +68,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
                                 turn,
                             ),
                             Spun::Arc => ui.add_shape_animated(
-                                Shape::arc(
-                                    Vec2::new(50.0, 20.0),
-                                    10.0,
-                                    0.0,
-                                    PI,
-                                    Stroke::new(RgbaF32::WHITE, 2.0),
-                                ),
+                                Shape::arc(arc, Stroke::new(RgbaF32::WHITE, 2.0)),
                                 turn,
                             ),
                         }
@@ -84,7 +79,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
         let bounds = match (spun, cmds.calls.as_slice()) {
             (Spun::Polyline, [PaintCall::Polyline(p)]) => p.bounds,
             (Spun::Arc, [PaintCall::Curve(p)]) => {
-                assert_eq!(p.basis, arc_basis, "the lanes stay owner-local");
+                assert_eq!(p.basis, CurveBasis::Arc(arc), "the lanes stay owner-local");
                 p.bounds
             }
             _ => panic!("{spun:?}: expected one draw, got {:?}", cmds.kinds()),

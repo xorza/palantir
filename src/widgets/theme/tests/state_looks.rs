@@ -8,11 +8,17 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widget_core::widget_look::animated_look::AnimatedLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::theme::check_state::CheckState;
 use crate::widgets::theme::palette::Palette;
+use crate::widgets::theme::tab_selection::TabSelection;
+use crate::widgets::theme::tab_strip_focus::TabStripFocus;
+use crate::widgets::theme::tabs::TabsTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
-use crate::widgets::theme::text_style::{TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use crate::widgets::theme::toggle::ToggleTheme;
 use std::ptr;
 
@@ -94,9 +100,27 @@ fn text_edit_theme_pick_precedence() {
             "{label}: look should return the matching slot",
         );
     }
+
+    // The engagement names the active state: a hovered press engages a button's pack, not a field's.
+    let pressed = ResponseState {
+        pointer_over: true,
+        left: ButtonState {
+            phase: ButtonPhase::Held,
+            ..Default::default()
+        },
+        ..ResponseState::default()
+    };
+    assert!(ptr::eq(
+        theme.looks.pick(&pressed, Engagement::Focused),
+        &raw const theme.looks.hovered,
+    ));
+    assert!(ptr::eq(
+        theme.looks.pick(&pressed, Engagement::Pressed),
+        &raw const theme.looks.active,
+    ));
 }
 
-/// [`ToggleTheme`] is the one `WidgetTheme` whose pick needs an input the response can't supply: `Mode = bool` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on `checked`, the precedence within each, and that the packs never resolve to the same slot (so `Mode` is load-bearing).
+/// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
     let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
@@ -113,40 +137,40 @@ fn toggle_theme_pick_selects_pack_then_state() {
         disabled,
         ..ResponseState::default()
     };
-    let cases: &[(ResponseState, bool, &WidgetLook, &str)] = &[
+    let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
             state(false, false, false),
-            false,
+            CheckState::Unchecked,
             &theme.unchecked.normal,
             "unchecked normal",
         ),
         (
             state(true, false, false),
-            false,
+            CheckState::Unchecked,
             &theme.unchecked.hovered,
             "unchecked hovered",
         ),
         (
             state(false, false, false),
-            true,
+            CheckState::Checked,
             &theme.checked.normal,
             "checked normal",
         ),
         (
             state(true, false, false),
-            true,
+            CheckState::Checked,
             &theme.checked.hovered,
             "checked hovered",
         ),
         (
             state(true, true, false),
-            true,
+            CheckState::Checked,
             &theme.checked.active,
             "checked: pressed > hovered",
         ),
         (
             state(true, true, true),
-            true,
+            CheckState::Checked,
             &theme.checked.disabled,
             "checked: disabled wins all",
         ),
@@ -158,12 +182,68 @@ fn toggle_theme_pick_selects_pack_then_state() {
         );
     }
 
-    // `checked` alone decides: one state, two packs.
+    // The check state alone decides: one state, two packs.
     let idle = state(false, false, false);
     assert!(
-        !ptr::eq(theme.look(&idle, false), theme.look(&idle, true)),
+        !ptr::eq(
+            theme.look(&idle, CheckState::Unchecked),
+            theme.look(&idle, CheckState::Checked)
+        ),
         "checked and unchecked must not resolve to the same look",
     );
+    assert_eq!(CheckState::from(true), CheckState::Checked);
+    assert_eq!(CheckState::from(false), CheckState::Unchecked);
+}
+
+/// [`TabsTheme`] picks the selected chip's pack, then the pressed precedence inside it; the
+/// strip's focus picks the cap colour.
+#[test]
+fn tabs_theme_pick_selects_pack_then_state_and_cap() {
+    let theme = TabsTheme::default();
+    let idle = ResponseState::default();
+    let pressed = ResponseState {
+        pointer_over: true,
+        left: ButtonState {
+            phase: ButtonPhase::Held,
+            ..Default::default()
+        },
+        ..ResponseState::default()
+    };
+    let cases: &[(&ResponseState, TabSelection, &WidgetLook, &str)] = &[
+        (
+            &idle,
+            TabSelection::Selected,
+            &theme.active.normal,
+            "selected",
+        ),
+        (
+            &idle,
+            TabSelection::Unselected,
+            &theme.inactive.normal,
+            "unselected",
+        ),
+        (
+            &pressed,
+            TabSelection::Unselected,
+            &theme.inactive.active,
+            "unselected: pressed",
+        ),
+    ];
+    for (state, selection, expected, label) in cases {
+        assert!(
+            ptr::eq(theme.look(state, *selection), *expected),
+            "{label}: look should return the matching slot",
+        );
+    }
+    assert_eq!(TabSelection::from(true), TabSelection::Selected);
+    assert_eq!(TabSelection::from(false), TabSelection::Unselected);
+
+    assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DEFAULT.accent);
+    assert_eq!(
+        theme.cap(TabStripFocus::Unfocused),
+        Palette::DEFAULT.element_strong
+    );
+    assert_ne!(Palette::DEFAULT.accent, Palette::DEFAULT.element_strong);
 }
 
 #[test]

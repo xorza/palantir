@@ -7,6 +7,8 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::lower;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 
@@ -40,9 +42,7 @@ impl RectShape {
             border: Stroke::NONE,
         }
     }
-}
 
-impl RectShape {
     /// Interior paint.
     ///
     /// # Panics
@@ -98,6 +98,7 @@ impl sealed::LowerShape for RectShape {
             || self.border.has_nan()
     }
 
+    /// Geometry is already in storage form; the fill interns through [`lower::brush`], the pool chrome shares.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             kind,
@@ -106,6 +107,12 @@ impl sealed::LowerShape for RectShape {
             fill,
             border,
         } = self;
-        lower::rect(store, kind, local_rect, corners, &fill, border)
+        ShapeRecord::Quad(QuadShape::Rect {
+            kind,
+            local_rect,
+            corners,
+            fill: lower::brush(store, &fill),
+            border: ShapeStroke::from(border),
+        })
     }
 }

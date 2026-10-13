@@ -11,7 +11,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::state::ScrollState;
+use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::support::{
     SURFACE, build, driven, fixed_block, read_state, scroll_content, scroll_viewport,
 };

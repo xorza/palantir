@@ -1,5 +1,7 @@
 //! The line, Bézier and arc builder: every geometry lowers to one `ShapeRecord::Curve`, with stroke properties travelling beside it.
 
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
@@ -7,50 +9,66 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::shape::lower;
+use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 use crate::shape::style::LineCap;
 use glam::Vec2;
+use std::f32::consts::TAU;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CurveGeometry {
-    Line {
-        a: Vec2,
-        b: Vec2,
-    },
-    CubicBezier {
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
-        p3: Vec2,
-    },
-    QuadraticBezier {
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
-    },
-    Arc {
-        center: Vec2,
-        radius: f32,
-        start_angle: f32,
-        sweep: f32,
-    },
+    Line { a: Vec2, b: Vec2 },
+    CubicBezier(CubicBezier),
+    QuadraticBezier { p0: Vec2, p1: Vec2, p2: Vec2 },
+    Arc(CircularArc),
+}
+
+impl CurveGeometry {
+    /// The basis the curve pipeline traces. Lines and quadratics become cubics (exact promotion; a line's inner control points sit on the segment's thirds so `t` runs linearly and the composer keeps it one GPU instance). An arc keeps its own basis: the shader evaluates the exact circle.
+    fn basis(self) -> CurveBasis {
+        match self {
+            Self::Line { a, b } => {
+                let third = (b - a) / 3.0;
+                CurveBasis::Cubic(CubicBezier {
+                    p0: a,
+                    p1: a + third,
+                    p2: b - third,
+                    p3: b,
+                })
+            }
+            Self::CubicBezier(bezier) => CurveBasis::Cubic(bezier),
+            Self::QuadraticBezier { p0, p1, p2 } => {
+                CurveBasis::Cubic(CubicBezier::from_quadratic(p0, p1, p2))
+            }
+            Self::Arc(arc) => {
+                debug_assert!(
+                    arc.sweep.abs() <= TAU,
+                    "Shape::arc coerces its sweep to ±2π, not {}",
+                    arc.sweep,
+                );
+                CurveBasis::Arc(arc)
+            }
+        }
+    }
 }
 
 /// The stroke properties every geometry carries into lowering, so only the geometry varies between entry points.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct CurveStyle {
-    pub(crate) stroke: Stroke,
-    pub(crate) ramp: Option<ColorRamp>,
-    pub(crate) cap: LineCap,
+struct CurveStyle {
+    stroke: Stroke,
+    ramp: Option<ColorRamp>,
+    cap: LineCap,
 }
 
 /// Stroked line, Bézier, or circular arc, centred on the curve like every path shape.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct CurveShape {
-    pub(crate) geometry: CurveGeometry,
-    pub(crate) style: CurveStyle,
+    geometry: CurveGeometry,
+    style: CurveStyle,
 }
 
 impl CurveShape {
@@ -64,9 +82,7 @@ impl CurveShape {
             },
         }
     }
-}
 
-impl CurveShape {
     /// Vary the colour along the curve: at parameter `t` it is the stroke colour times `ramp` at `t`, per channel (as a mesh tint). `t` runs 0 to 1 (`p0` → `p3` on a Bézier, across the sweep on an arc); it is not arc length, so colour changes fastest where the curve moves least per step.
     pub const fn ramp(mut self, ramp: ColorRamp) -> Self {
         self.style.ramp = Some(ramp);
@@ -87,13 +103,13 @@ impl sealed::LowerShape for CurveShape {
         }
         match &self.geometry {
             CurveGeometry::Line { a, b } => vec2::approx_eq(*a, *b),
-            CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
+            CurveGeometry::CubicBezier(CubicBezier { p0, p1, p2, p3 }) => {
                 vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2) && vec2::approx_eq(*p0, *p3)
             }
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
                 vec2::approx_eq(*p0, *p1) && vec2::approx_eq(*p0, *p2)
             }
-            CurveGeometry::Arc { radius, sweep, .. } => {
+            CurveGeometry::Arc(CircularArc { radius, sweep, .. }) => {
                 is_invisible(*radius) || is_invisible(sweep.abs())
             }
         }
@@ -103,23 +119,35 @@ impl sealed::LowerShape for CurveShape {
     fn has_nan(&self) -> bool {
         let geometry = match &self.geometry {
             CurveGeometry::Line { a, b } => a.has_nan() || b.has_nan(),
-            CurveGeometry::CubicBezier { p0, p1, p2, p3 } => {
+            CurveGeometry::CubicBezier(CubicBezier { p0, p1, p2, p3 }) => {
                 p0.has_nan() || p1.has_nan() || p2.has_nan() || p3.has_nan()
             }
             CurveGeometry::QuadraticBezier { p0, p1, p2 } => {
                 p0.has_nan() || p1.has_nan() || p2.has_nan()
             }
-            CurveGeometry::Arc {
+            CurveGeometry::Arc(CircularArc {
                 center,
                 radius,
                 start_angle,
                 sweep,
-            } => center.has_nan() || radius.is_nan() || start_angle.is_nan() || sweep.is_nan(),
+            }) => center.has_nan() || radius.is_nan() || start_angle.is_nan() || sweep.is_nan(),
         };
         geometry || self.style.stroke.has_nan()
     }
 
+    /// The geometry's [`CurveBasis`] plus its tight bbox; tessellation is GPU-side at draw time.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
-        lower::curve(store, self.geometry, self.style)
+        let Self {
+            geometry,
+            style: CurveStyle { stroke, ramp, cap },
+        } = self;
+        let basis = geometry.basis();
+        ShapeRecord::Curve {
+            cap,
+            basis,
+            stroke: ShapeStroke::from(stroke),
+            bbox: basis.bbox(),
+            ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
+        }
     }
 }

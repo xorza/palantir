@@ -220,18 +220,18 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
 
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
-    use crate::primitives::packed::fill_axis::FillAxis;
-    use crate::primitives::packed::fill_kind::FillKind;
+    use crate::primitives::paint::shadow::Shadow;
+    use glam::Vec2;
+    let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::ZERO, 4.0);
     let buf = run(
         |b, _| {
             b.draw_quad(
                 DrawQuadPayload::shadow(
                     Rect::new(20.0, 20.0, 60.0, 60.0),
                     Corners::default(),
-                    RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).into(),
-                    FillKind::SHADOW_DROP,
-                    FillAxis::from_lanes(0.0, 0.0, 4.0, 0.0),
-                ),
+                    shadow.into(),
+                )
+                .expect("a half-black shadow paints"),
                 1.0,
             );
             draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // opaque cover on top

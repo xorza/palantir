@@ -8,11 +8,12 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -99,7 +100,7 @@ impl ThemeSlot for ButtonTheme {
     /// `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.looks.pick(response, response.pressed())
+        self.looks.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

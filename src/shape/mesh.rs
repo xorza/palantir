@@ -6,7 +6,6 @@ use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::record_store::RecordStore;
-use crate::shape::lower;
 use crate::shape::record::ShapeRecord;
 use crate::shape::sealed;
 
@@ -27,9 +26,7 @@ impl<'a> MeshShape<'a> {
             tint: RgbaF32::WHITE,
         }
     }
-}
 
-impl MeshShape<'_> {
     /// Paint into `rect` in owner-relative coords instead of the owner's rect.
     ///
     /// # Panics
@@ -65,12 +62,21 @@ impl sealed::LowerShape for MeshShape<'_> {
         self.local_rect.has_nan() || self.tint.has_nan() || self.mesh.bbox().has_nan()
     }
 
+    /// Copies vertices and indices into the store and freezes the bbox and content hash.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             mesh,
             local_rect,
             tint,
         } = self;
-        lower::mesh(store, mesh, local_rect, tint)
+        let staged = store.stage_mesh(mesh);
+        ShapeRecord::Mesh {
+            local_rect,
+            tint: tint.into(),
+            vertices: staged.vertices,
+            indices: staged.indices,
+            bbox: mesh.bbox(),
+            content_hash: mesh.content_hash(),
+        }
     }
 }

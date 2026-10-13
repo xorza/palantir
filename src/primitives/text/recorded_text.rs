@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RecordedText {
     pub(crate) span: Span,
-    /// `hash_str` of the recorded bytes, computed once at record time and reused by scene identity and [`crate::text::key::TextShapeKey`].
+    /// `hash::str` of the recorded bytes, computed once at record time and reused by scene identity and [`crate::text::key::TextShapeKey`].
     pub(crate) hash: u64,
 }
 

@@ -170,8 +170,8 @@ impl ReleaseKind {
     }
 
     /// Whether this release ended a latched drag, read by both collations.
-    pub(super) fn ended_drag(self) -> bool {
-        self == Self::DragStopped
+    pub(super) const fn ended_drag(self) -> bool {
+        matches!(self, Self::DragStopped)
     }
 }
 

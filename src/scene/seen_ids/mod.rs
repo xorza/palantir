@@ -27,7 +27,7 @@
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::ident::{IdKind, Ident};
 use std::collections::hash_map::Entry;
 use std::mem;
 use std::ptr;
@@ -98,7 +98,7 @@ pub(crate) struct IdEntry {
 #[derive(Clone, Copy, Debug)]
 struct Origin {
     raw: WidgetId,
-    is_explicit: bool,
+    kind: IdKind,
     occurrence: u32,
     recipe: Option<Recipe>,
 }
@@ -299,14 +299,14 @@ impl SeenIds {
     fn in_step(
         &mut self,
         raw: WidgetId,
-        is_explicit: bool,
+        kind: IdKind,
         recipe: Option<Recipe>,
     ) -> Option<ResolvedId> {
         if self.split.is_some() {
             return None;
         }
         let at = self.curr.entries.len();
-        if is_explicit
+        if kind == IdKind::Explicit
             && self
                 .curr
                 .entries
@@ -317,8 +317,8 @@ impl SeenIds {
         }
         if let Some(last) = self.prev.entries.get(at)
             && last.origin.raw == raw
-            && last.origin.is_explicit == is_explicit
-            && (!is_explicit || last.origin.occurrence == 0)
+            && last.origin.kind == kind
+            && (kind == IdKind::Auto || last.origin.occurrence == 0)
         {
             let id = last.id;
             let occurrence = last.origin.occurrence;
@@ -326,13 +326,13 @@ impl SeenIds {
                 id,
                 Origin {
                     raw,
-                    is_explicit,
+                    kind,
                     occurrence,
                     recipe,
                 },
             ));
         }
-        if !is_explicit {
+        if kind == IdKind::Auto {
             return None;
         }
         let holder = *self.prev.index.get(&raw)? as usize;
@@ -356,8 +356,8 @@ impl SeenIds {
     /// `raw_id.with(count)` is neither recorded nor reserved. Explicit collisions queue
     /// a [`PendingExplicitCollision`], whichever order the two record.
     #[inline]
-    pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> ResolvedId {
-        self.resolve_raw(raw_id, is_explicit, None)
+    pub(crate) fn resolve(&mut self, raw_id: WidgetId, kind: IdKind) -> ResolvedId {
+        self.resolve_raw(raw_id, kind, None)
     }
 
     /// [`Self::resolve`] for a parent-scoped ident. In step, last frame's entry at this
@@ -367,11 +367,11 @@ impl SeenIds {
     pub(crate) fn resolve_scoped(&mut self, ident: Ident, parent: Option<WidgetId>) -> ResolvedId {
         debug_assert!(matches!(ident, Ident::Auto(_) | Ident::Hash(_)));
         let recipe = Recipe { ident, parent };
-        let is_explicit = ident.is_explicit();
+        let kind = ident.kind();
         if self.split.is_none()
             && let Some(last) = self.prev.entries.get(self.curr.entries.len())
             && last.origin.recipe.is_some_and(|last| last.is(recipe))
-            && (!is_explicit || last.origin.occurrence == 0)
+            && (kind == IdKind::Auto || last.origin.occurrence == 0)
         {
             let (id, origin) = (last.id, last.origin);
             return self.reserve(
@@ -382,17 +382,17 @@ impl SeenIds {
                 },
             );
         }
-        self.resolve_raw(ident.raw_id(parent), is_explicit, Some(recipe))
+        self.resolve_raw(ident.raw_id(parent), kind, Some(recipe))
     }
 
     #[inline]
     fn resolve_raw(
         &mut self,
         raw_id: WidgetId,
-        is_explicit: bool,
+        kind: IdKind,
         recipe: Option<Recipe>,
     ) -> ResolvedId {
-        if let Some(resolved) = self.in_step(raw_id, is_explicit, recipe) {
+        if let Some(resolved) = self.in_step(raw_id, kind, recipe) {
             return resolved;
         }
         if self.split.is_none() {
@@ -407,7 +407,7 @@ impl SeenIds {
                     raw_id,
                     Origin {
                         raw: raw_id,
-                        is_explicit,
+                        kind,
                         occurrence: 0,
                         recipe,
                     },
@@ -417,7 +417,7 @@ impl SeenIds {
             // wrapper under `.id(resolved)`). Only an auto id, which call-site twins share,
             // disambiguates against a reservation.
             Entry::Occupied(slot)
-                if is_explicit
+                if kind == IdKind::Explicit
                     && self.curr.entries[*slot.get() as usize].slot == IdSlot::Reserved =>
             {
                 return ResolvedId {
@@ -439,7 +439,7 @@ impl SeenIds {
             }
         };
         self.counters.insert(raw_id, count);
-        if is_explicit {
+        if kind == IdKind::Explicit {
             self.pending.push(PendingExplicitCollision {
                 first_raw_id: raw_id,
                 second_final_id: final_id,
@@ -449,7 +449,7 @@ impl SeenIds {
             final_id,
             Origin {
                 raw: raw_id,
-                is_explicit,
+                kind,
                 occurrence: count,
                 recipe,
             },
@@ -551,14 +551,28 @@ fn stale_resolved_id(id: WidgetId) -> ! {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::primitives::identity::widget_id::WidgetIdMap;
+    use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
     use crate::scene::endpoint::Endpoint;
+    use crate::scene::node::ident::IdKind;
     use crate::scene::seen_ids::SeenIds;
 
     impl SeenIds {
         /// The ids the last finished frame recorded, with their endpoints.
         pub(crate) fn last_frame(&self) -> WidgetIdMap<Endpoint> {
             self.prev.recorded_entries().collect()
+        }
+
+        /// [`Self::resolve`] then [`Self::record_endpoint`], as a widget's resolve and open
+        /// pair them; the in-step fast path needs `curr` filled between resolves.
+        pub(crate) fn open(
+            &mut self,
+            raw_id: WidgetId,
+            kind: IdKind,
+            endpoint: Endpoint,
+        ) -> WidgetId {
+            let resolved = self.resolve(raw_id, kind);
+            self.record_endpoint(resolved, endpoint);
+            resolved.id()
         }
     }
 }

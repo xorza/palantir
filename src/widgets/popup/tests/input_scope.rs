@@ -2,16 +2,17 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
+use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::click_outside::ClickOutside;
 use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
-use crate::{Sense, Ui};
 use glam::Vec2;
 
 /// Pointer gestures outside the popup body must be absorbed by the eater, not
@@ -189,8 +190,15 @@ fn text_edit_inside_a_popup_receives_typing() {
 /// field. Both directions are pinned since the failure is a swap.
 #[test]
 fn a_field_decides_whether_escape_closes_the_popup_around_it() {
-    /// One popup with one focused field; returns whether it dismissed. `falls_through` picks the archetype.
-    fn open(falls_through: bool) -> (bool, Option<WidgetId>) {
+    /// What one Escape did to the popup and the field.
+    #[derive(Debug)]
+    struct Escaped {
+        dismissed: bool,
+        focus: Option<WidgetId>,
+    }
+
+    /// One popup with one focused field, sent Escape. `falls_through` picks the archetype.
+    fn open(falls_through: bool) -> Escaped {
         let field = WidgetId::from_hash("filter-field");
         let mut buf = String::new();
         let scene = |ui: &mut Ui, buf: &mut String| {
@@ -228,7 +236,10 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
 
         h.key(Key::Escape);
         let dismissed = h.frame_value(|ui| scene(ui, &mut buf));
-        (dismissed, h.focus())
+        Escaped {
+            dismissed,
+            focus: h.focus(),
+        }
     }
 
     use crate::input::keyboard::key::Key;
@@ -236,17 +247,17 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
 
     let field = WidgetId::from_hash("filter-field");
 
-    let (dismissed, focused) = open(false);
+    let editing = open(false);
     assert!(
-        !dismissed,
+        !editing.dismissed,
         "an editing field's Esc must not close the popup"
     );
-    assert_eq!(focused, None, "…it blurs the field instead");
+    assert_eq!(editing.focus, None, "…it blurs the field instead");
 
-    let (dismissed, focused) = open(true);
-    assert!(dismissed, "a filter field's Esc closes the popup");
+    let filter = open(true);
+    assert!(filter.dismissed, "a filter field's Esc closes the popup");
     assert_eq!(
-        focused,
+        filter.focus,
         Some(field),
         "…and the field never saw it, so focus is untouched",
     );

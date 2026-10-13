@@ -170,6 +170,7 @@ impl Mesh {
     /// Append another mesh, offsetting its indices into this mesh's vertex
     /// space. Public because `vertices` and `indices` are private, so a
     /// consumer cannot compose meshes otherwise.
+    ///
     /// # Panics
     ///
     /// Panics if the combined vertex indices cannot be represented by `u32`.
@@ -208,23 +209,15 @@ impl Mesh {
         b
     }
 
-    /// Filled triangle in a single colour, with its bbox pre-cached.
+    /// Filled triangle over `corners` in a single colour, with its bbox
+    /// pre-cached: [`Self::filled_polygon`] over three points.
     ///
     /// # Panics
     ///
     /// As [`Self::vertex`].
     #[track_caller]
-    pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self {
-        let color = color.into();
-        let mut m = Self::with_capacity(3, 3);
-        let i0 = m.vertex(a, color);
-        let i1 = m.vertex(b, color);
-        let i2 = m.vertex(c, color);
-        m.triangle(i0, i1, i2);
-        // Through `Aabb`, not a bare `min`/`max` fold: those drop a NaN
-        // operand and would hand `is_noop` a finite box for a NaN vertex.
-        m.cached_bbox.set(Some(Aabb::of_iter([a, b, c])));
-        m
+    pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<SrgbaU8>) -> Self {
+        Self::filled_polygon(&corners, color)
     }
 
     /// Filled convex polygon (fan around the first vertex), bbox pre-cached.

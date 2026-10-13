@@ -11,6 +11,7 @@ use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::texture_id::TextureId;
@@ -68,12 +69,12 @@ impl ComposeBench {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(16.0, 64.0),
                         p1: Vec2::new(48.0, 64.0),
                         p2: Vec2::new(80.0, 64.0),
                         p3: Vec2::new(112.0, 64.0),
-                    },
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -217,10 +218,8 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
             bbox,
             origin: Vec2::ZERO,
             tint: RgbaF32::WHITE.into(),
-            v_start: 0,
-            v_len: 3,
-            i_start: 0,
-            i_len: 3,
+            vertices: Span::new(0, 3),
+            indices: Span::new(0, 3),
         },
         1.0,
     );

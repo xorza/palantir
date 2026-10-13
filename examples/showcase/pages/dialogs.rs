@@ -1,6 +1,7 @@
 //! Modal flows: a confirm Modal and close-request interception (`Ui::close_requested` / `Ui::keep_open`) behind an unsaved-changes toggle.
 
-use crate::support::{api, checklist, note, readout, row, section};
+use crate::support;
+use crate::support::{Section, api};
 use palantir::{
     Button, Checkbox, CloseHandle, Configure, Modal, OverlayResponse, Panel, Text, Ui, WidgetId,
     WindowToken,
@@ -44,39 +45,32 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
-    section(
-        ui,
-        "Modal",
-        &[api!(Modal::new), api!(CloseHandle::close)],
-        |ui| {
-            note(
+    Section::new("Modal").apis(&[api!(Modal::new), api!(CloseHandle::close)]).show(ui, |ui| {
+            support::note(
                 ui,
                 "A modal dims the window and takes every pointer. Escape or a click on the \
              backdrop closes it, and Tab stays inside it — see the focus & keyboard page \
              for the focus side.",
             );
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 if Button::new().label("Delete all…").show(ui).clicked() {
                     state.modal_open = true;
                 }
-                readout(ui, "last answer", state.last.unwrap_or("—"));
+                support::readout(ui, "last answer", state.last.unwrap_or("—"));
             });
-            checklist(
+            support::checklist(
                 ui,
                 &[
                     "The backdrop dims the page, and nothing under it reacts to the pointer",
                     "Escape and a backdrop click close the dialog, and leave the last answer as it was",
                 ],
             );
-        },
-    );
+        });
 
-    section(
-        ui,
-        "Close interception",
-        &[api!(Ui::close_requested), api!(Ui::keep_open)],
-        |ui| {
-            note(
+    Section::new("Close interception")
+        .apis(&[api!(Ui::close_requested), api!(Ui::keep_open)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Turn on the unsaved changes, then close the window: the app vetoes the OS \
                  request and asks first.",
@@ -84,7 +78,7 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
             Checkbox::new(&mut exit.pretend_dirty)
                 .label("simulate unsaved changes")
                 .show(ui);
-            checklist(
+            support::checklist(
                 ui,
                 &[
                     "With no unsaved changes, closing the window closes it",
@@ -92,8 +86,7 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
                     "Cancel keeps the window open, and Discard closes it",
                 ],
             );
-        },
-    );
+        });
 
     if state.modal_open {
         let resp = dialog(ui, "Delete all the things?", |ui, close| {

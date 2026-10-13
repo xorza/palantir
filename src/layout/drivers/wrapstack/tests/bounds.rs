@@ -1,11 +1,11 @@
 //! The main bound a wrap inherits from its parent, and never overflowing it.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -70,7 +70,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
             let r = h.arranged(WidgetId::from_hash(label));
             let right = r.min.x + r.size.w;
             assert!(
-                right <= wrap_right + 0.5,
+                right <= wrap_right,
                 "button overflows wrapstack at surface_w={surface_w}: \
                wrap_right={wrap_right} button_right={right} (rect={r:?})",
             );

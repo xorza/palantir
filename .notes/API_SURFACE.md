@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 build with no features and one build per public feature; a tag names the features an
 item needs. `internals` is the crate's own test surface and is left out.
 
-Generated on top of `00efb6b4` (plus the working tree).
+Generated on top of `92af171c` (plus the working tree).
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Background`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -264,6 +264,17 @@ ButtonTheme
         impl Serialize
         impl ThemeSlot
         impl<'de> Deserialize<'de> for ButtonTheme
+
+CheckState
+    enum CheckState
+        Unchecked
+        Checked
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Eq
+        impl From<bool>
+        impl PartialEq
 
 Checkbox
     struct Checkbox<'a>
@@ -652,6 +663,31 @@ DebugOverlayConfig
         impl Eq
         impl PartialEq
 
+DeviceFeatures
+    struct DeviceFeatures
+        (_)
+        pub const IMMEDIATES: Self
+        pub const NONE: Self
+        pub const ALL: Self
+        pub const fn is_empty(self) -> bool
+        pub const fn contains(self, other: Self) -> bool
+        pub const fn intersects(self, other: Self) -> bool
+        pub const fn union(self, other: Self) -> Self
+        pub const fn difference(self, other: Self) -> Self
+        pub const fn insert(&mut self, other: Self)
+        pub const fn remove(&mut self, other: Self)
+        pub const fn set(&mut self, other: Self, on: bool)
+        impl BitOr
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Default
+        impl Display
+        impl DockTab  (blanket)
+        impl Eq
+        impl Hash
+        impl PartialEq
+
 DeviceRequirements
     struct DeviceRequirements
         pub features: Features
@@ -938,6 +974,16 @@ Easing
         impl PartialEq
         impl Serialize
         impl<'de> Deserialize<'de> for Easing
+
+Engagement
+    enum Engagement
+        Pressed
+        Focused
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Eq
+        impl PartialEq
 
 Expander
     struct Expander<'a>
@@ -1371,7 +1417,7 @@ IconHandle
 
 IconId
     struct IconId
-        (pub u16)
+        (_)
         impl Clone
         impl Copy
         impl Debug
@@ -1401,6 +1447,7 @@ IconTableError
         Unreadable { name: Cow<'static, str> }
         TooMany { count: usize }
         DuplicateName { name: Cow<'static, str> }
+        TooLarge { bytes: u128 }
         impl Clone
         impl Debug
         impl Display
@@ -2727,7 +2774,7 @@ StatefulLook
         pub hovered: WidgetLook
         pub active: WidgetLook
         pub disabled: WidgetLook
-        pub const fn pick(&self, state: &ResponseState, active: bool) -> &WidgetLook
+        pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook
         impl Clone
         impl Debug
         impl Default
@@ -2773,11 +2820,36 @@ SurfaceError  [feature: winit]
         Device { source: GpuRequestError }
         Incompatible
         MissingSrgb
-        MissingUsages { missing: String }
+        MissingUsages { missing: SurfaceUsages }
         impl Debug
         impl Display
         impl Error
         impl From<GpuRequestError>
+
+SurfaceUsages  [feature: winit]
+    struct SurfaceUsages
+        (_)
+        pub const RENDER_ATTACHMENT: Self
+        pub const NONE: Self
+        pub const ALL: Self
+        pub const fn is_empty(self) -> bool
+        pub const fn contains(self, other: Self) -> bool
+        pub const fn intersects(self, other: Self) -> bool
+        pub const fn union(self, other: Self) -> Self
+        pub const fn difference(self, other: Self) -> Self
+        pub const fn insert(&mut self, other: Self)
+        pub const fn remove(&mut self, other: Self)
+        pub const fn set(&mut self, other: Self, on: bool)
+        impl BitOr
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Default
+        impl Display
+        impl DockTab  (blanket)
+        impl Eq
+        impl Hash
+        impl PartialEq
 
 Switch
     struct Switch<'a>
@@ -2865,6 +2937,17 @@ TabOverflow
         impl Eq
         impl PartialEq
 
+TabSelection
+    enum TabSelection
+        Unselected
+        Selected
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Eq
+        impl From<bool>
+        impl PartialEq
+
 TabStrip
     struct TabStrip<'a>
         // and private fields
@@ -2879,6 +2962,16 @@ TabStrip
         impl Configure
         impl ThemeDefaults  (blanket)
         impl<'a> Debug for TabStrip<'a>
+
+TabStripFocus
+    enum TabStripFocus
+        Focused
+        Unfocused
+        impl Clone
+        impl Copy
+        impl Debug
+        impl Eq
+        impl PartialEq
 
 TabStripResponse
     struct TabStripResponse<'a>
@@ -2950,7 +3043,7 @@ TabsTheme
         pub badge_size: f32
         pub label_gap: f32
         pub defaults: SlotDefaults
-        pub const fn cap(&self, focused: bool) -> RgbaF32
+        pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
         pub fn from_palette(p: &Palette) -> Self
         impl Clone
         impl Debug
@@ -3314,7 +3407,7 @@ Ui
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn singleton<S: 'static>(&self) -> Option<&S>
         pub fn with_singleton<S: Default + 'static, R>(&mut self, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
-        pub fn animate<V: Animatable>(&mut self, id: WidgetId, slot: impl Into<AnimationSlot>, target: V, spec: impl Into<Option<AnimationSpec>>) -> V
+        pub fn animate<V: Animatable>(&mut self, request: AnimationRequest<V>, spec: impl Into<Option<AnimationSpec>>) -> V
         pub const fn focus(&self) -> Option<WidgetId>
         pub fn is_focus_within(&self, ancestor: WidgetId) -> bool
         pub fn is_hover_within(&self, ancestor: WidgetId) -> bool
@@ -3345,7 +3438,7 @@ Ui
 
 UnmetRequirements
     enum UnmetRequirements
-        Features { missing: String }
+        Features { missing: DeviceFeatures }
         Limit { name: &'static str, required: u64, available: u64 }
         impl Clone
         impl Debug
@@ -3647,6 +3740,15 @@ widget::Animatable
         fn zero() -> Self
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
+widget::AnimationRequest
+    struct AnimationRequest<T: Animatable>
+        pub id: WidgetId
+        pub slot: AnimationSlot
+        pub target: T
+        pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
+        impl<T: Clone + Animatable> Clone for AnimationRequest<T>
+        impl<T: Debug + Animatable> Debug for AnimationRequest<T>
+
 widget::AnimationSlot
     struct AnimationSlot
         // and private fields
@@ -3665,6 +3767,17 @@ widget::Caret
         pub x: f32
         pub y_top: f32
         pub line_height: f32
+        impl Clone
+        impl Copy
+        impl Debug
+        impl PartialEq
+
+widget::CircularArc
+    struct CircularArc
+        pub center: Vec2
+        pub radius: f32
+        pub start_angle: f32
+        pub sweep: f32
         impl Clone
         impl Copy
         impl Debug
@@ -3725,6 +3838,17 @@ widget::ContentType
         impl Eq
         impl PartialEq
 
+widget::CubicBezier
+    struct CubicBezier
+        pub p0: Vec2
+        pub p1: Vec2
+        pub p2: Vec2
+        pub p3: Vec2
+        impl Clone
+        impl Copy
+        impl Debug
+        impl PartialEq
+
 widget::CurveShape
     struct CurveShape
         // and private fields
@@ -3746,6 +3870,15 @@ widget::GlyphFont
         impl Copy
         impl Debug
         impl PartialEq
+
+widget::GlyphLine
+    struct GlyphLine<'a>
+        pub text: &'a str
+        pub font: GlyphFont
+        pub raster_scale: f32
+        impl<'a> Clone for GlyphLine<'a>
+        impl<'a> Copy for GlyphLine<'a>
+        impl<'a> Debug for GlyphLine<'a>
 
 widget::GlyphRasterKey
     struct GlyphRasterKey
@@ -3845,7 +3978,7 @@ widget::Mesh
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)
         pub fn bbox(&self) -> Rect
-        pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<SrgbaU8>) -> Self
+        pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<SrgbaU8>) -> Self
         pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self
         impl Clone
         impl Debug
@@ -3994,9 +4127,9 @@ widget::Shape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
         pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape
         pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_>
-        pub const fn cubic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, stroke: Stroke) -> CurveShape
+        pub const fn cubic_bezier(bezier: CubicBezier, stroke: Stroke) -> CurveShape
         pub const fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, stroke: Stroke) -> CurveShape
-        pub const fn arc(center: Vec2, radius: f32, start_angle: f32, sweep: f32, stroke: Stroke) -> CurveShape
+        pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape
         pub const fn circle(center: Vec2, radius: f32, stroke: Stroke) -> CurveShape
         pub const fn text(text: InternedStr, font: GlyphFont) -> TextShape
         pub const fn shadow(shadow: Shadow) -> ShadowShape
@@ -4029,7 +4162,7 @@ widget::Span
 widget::TextGlyphs
     struct TextGlyphs<'a>
         // and private fields
-        pub fn line(&mut self, text: &str, font: GlyphFont, scale: f32, out: &mut Vec<PlacedGlyph>)
+        pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>)
         pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size
         pub fn rasterize(&mut self, glyph: GlyphRasterKey) -> Option<RasterImage<'_>>
         impl<'a> Debug for TextGlyphs<'a>

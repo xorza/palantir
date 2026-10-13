@@ -1,12 +1,12 @@
 //! How a stack shares its main axis between children that do not all fit: each gives way from what it wants toward its floor.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
 use glam::UVec2;

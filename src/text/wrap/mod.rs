@@ -14,11 +14,10 @@ use crate::text::root::TextRoot;
 /// The one statement of where a line may break: both metrics measure the wrap
 /// floor behind [`TextRoot::intrinsic_min`] over these segments. Whitespace is
 /// not trimmed; the opportunity falls after a space, so it ends its segment.
-pub(super) fn break_offsets(text: &str) -> impl Iterator<Item = u32> + '_ {
+pub(super) fn break_offsets(text: &str) -> impl Iterator<Item = usize> + '_ {
     unicode_linebreak::linebreaks(text)
         .map(|(offset, _)| offset)
         .filter(|&offset| offset < text.len())
-        .map(|offset| offset as u32)
 }
 
 /// Whether a shape pays for the segment scan behind

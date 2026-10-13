@@ -1,6 +1,7 @@
 //! The repeating-content cards: both `Scroll` axes and both `WrapStack` orientations; what `scale` grows.
 
 use crate::fmt;
+use crate::internals::frame_fixture::card::Card;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::Align;
@@ -22,7 +23,7 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
 pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
-    tokens::card(ui, "recent", "RECENT CAPTURES", Sizing::HUG, |ui| {
+    Card::new("recent", "RECENT CAPTURES").show(ui, |ui| {
         Scroll::horizontal()
             .id_salt("film-scroll")
             .gap(8.0)
@@ -61,76 +62,78 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
 
 /// Fixed height, not `Fill`: the page scroll's main axis is unbounded, so `Fill` would resolve against nothing.
 pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
-    tokens::card(ui, "activity", "ACTIVITY", Sizing::fixed(268.0), |ui| {
-        Scroll::vertical()
-            .id_salt("chat-scroll")
-            .gap(8.0)
-            .padding(4.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                for i in 0..messages {
-                    Panel::hstack()
-                        .id_salt(("chat-row", i))
-                        .gap(8.0)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui, |ui| {
-                            Block::new()
-                                .id_salt(("avatar", i))
-                                .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
-                                .background(Background {
-                                    fill: Brush::Radial(RadialGradient::two_stop(
-                                        RgbaF32::hex(0xfacc15),
-                                        RgbaF32::hex(0x4c5cdb),
-                                    )),
-                                    corners: Corners::all(17.0),
-                                    ..Default::default()
-                                })
-                                .show(ui);
-                            Panel::vstack()
-                                .id_salt(("chat-text", i))
-                                .gap(2.0)
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .show(ui, |ui| {
-                                    Panel::hstack()
-                                        .id_salt(("chat-meta", i))
-                                        .gap(6.0)
-                                        .child_align(Align::CENTER)
-                                        .size((Sizing::FILL, Sizing::HUG))
-                                        .show(ui, |ui| {
-                                            let name = fmt!(ui, "user_{i}");
-                                            Text::new(name)
-                                                .id_salt(("from", i))
-                                                .style(
-                                                    &TextStyle::default()
-                                                        .with_font_size(12.0)
-                                                        .bold(),
-                                                )
-                                                .show(ui);
-                                            let at = fmt!(ui, "{:02}:{:02}", i % 24, i);
-                                            Text::new(at)
-                                                .id_salt(("at", i))
-                                                .style(&tokens::caption_style())
-                                                .show(ui);
-                                        });
-                                    Text::new(
-                                        "Longer body that should wrap inside the Fill \
+    Card::new("activity", "ACTIVITY")
+        .height(Sizing::fixed(268.0))
+        .show(ui, |ui| {
+            Scroll::vertical()
+                .id_salt("chat-scroll")
+                .gap(8.0)
+                .padding(4.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for i in 0..messages {
+                        Panel::hstack()
+                            .id_salt(("chat-row", i))
+                            .gap(8.0)
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .show(ui, |ui| {
+                                Block::new()
+                                    .id_salt(("avatar", i))
+                                    .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
+                                    .background(Background {
+                                        fill: Brush::Radial(RadialGradient::two_stop(
+                                            RgbaF32::hex(0xfacc15),
+                                            RgbaF32::hex(0x4c5cdb),
+                                        )),
+                                        corners: Corners::all(17.0),
+                                        ..Default::default()
+                                    })
+                                    .show(ui);
+                                Panel::vstack()
+                                    .id_salt(("chat-text", i))
+                                    .gap(2.0)
+                                    .size((Sizing::FILL, Sizing::HUG))
+                                    .show(ui, |ui| {
+                                        Panel::hstack()
+                                            .id_salt(("chat-meta", i))
+                                            .gap(6.0)
+                                            .child_align(Align::CENTER)
+                                            .size((Sizing::FILL, Sizing::HUG))
+                                            .show(ui, |ui| {
+                                                let name = fmt!(ui, "user_{i}");
+                                                Text::new(name)
+                                                    .id_salt(("from", i))
+                                                    .style(
+                                                        &TextStyle::default()
+                                                            .with_font_size(12.0)
+                                                            .bold(),
+                                                    )
+                                                    .show(ui);
+                                                let at = fmt!(ui, "{:02}:{:02}", i % 24, i);
+                                                Text::new(at)
+                                                    .id_salt(("at", i))
+                                                    .style(&tokens::caption_style())
+                                                    .show(ui);
+                                            });
+                                        Text::new(
+                                            "Longer body that should wrap inside the Fill \
                                          column without breaking words inside any single \
                                          token.",
-                                    )
-                                    .id_salt(("msg", i))
-                                    .style(&tokens::body_style())
-                                    .text_wrap(TextWrap::Wrap)
-                                    .size((Sizing::FILL, Sizing::HUG))
-                                    .show(ui);
-                                });
-                        });
-                }
-            });
-    });
+                                        )
+                                        .id_salt(("msg", i))
+                                        .style(&tokens::body_style())
+                                        .text_wrap(TextWrap::Wrap)
+                                        .size((Sizing::FILL, Sizing::HUG))
+                                        .show(ui);
+                                    });
+                            });
+                    }
+                });
+        });
 }
 
 pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
-    tokens::card(ui, "tags", "LABELS", Sizing::HUG, |ui| {
+    Card::new("tags", "LABELS").show(ui, |ui| {
         Panel::hstack()
             .id_salt("tag-row")
             .gap(10.0)

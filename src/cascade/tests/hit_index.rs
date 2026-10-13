@@ -14,7 +14,7 @@ use glam::{UVec2, Vec2};
 /// Tab stop rows: a focusable node that kept its stop and is neither disabled nor hidden, in record order with its root and index; plus one root row per tree root, the popup's included.
 #[test]
 fn tab_stops_are_live_focusable_stops_in_record_order() {
-    use crate::cascade::entry::TabStopRow;
+    use crate::cascade::rows::tab_stop_row::TabStopRow;
     use crate::widgets::block::Block;
 
     let first = WidgetId::from_hash("first");

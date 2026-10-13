@@ -1,6 +1,7 @@
 //! One per-content-type atlas texture: its allocator, growth by doubling, and
 //! the old texture preserved across a grow.
 
+use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::primitives::paint::content_type::ContentType;
 use etagere::{BucketedAtlasAllocator, size2};
 use glam::U16Vec2;
@@ -30,13 +31,41 @@ pub(super) struct Side {
     /// On grow, the previous-frame texture is moved here so the shared-encoder
     /// flush can record the copy. `None` when no grow blit is pending.
     pub(super) pending_grow: Option<PendingGrow>,
-    /// GPU debug name for this side's texture, built once so a grow reuses it.
+    texture_spec: TextureSpec,
+}
+
+/// What every texture of one side shares through its doublings.
+#[derive(Debug)]
+struct TextureSpec {
+    format: wgpu::TextureFormat,
+    /// GPU debug name, built once so a grow reuses it.
     label: String,
+}
+
+impl TextureSpec {
+    fn create(&self, device: &wgpu::Device, size: u32) -> wgpu::Texture {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&self.label),
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
 }
 
 /// Old texture and its size (square edge length) preserved across the grow
 /// point; consumed by
-/// [`RasterAtlas::flush_pending_uploads`](super::RasterAtlas).
+/// [`RasterAtlas::flush_pending_uploads`](crate::gpu::raster::raster_atlas::RasterAtlas::flush_pending_uploads).
 #[derive(Debug)]
 pub(super) struct PendingGrow {
     pub(super) old_texture: wgpu::Texture,
@@ -53,25 +82,33 @@ impl fmt::Debug for Side {
 }
 
 impl Side {
+    /// The `content` side of an atlas configured by `config`, at its initial size within the device's cap.
     pub(super) fn new(
         device: &wgpu::Device,
         content: ContentType,
-        size: u32,
-        ceiling: u32,
-        stem: &str,
+        config: RasterAtlasConfig,
     ) -> Self {
-        let label = format!("{stem} {} atlas", content.side_name());
-        let texture = make_texture(device, texture_format(content), size, &label);
+        let max = device.limits().max_texture_dimension_2d;
+        let initial = match content {
+            ContentType::Mask => config.initial_mask_px,
+            ContentType::Color => config.initial_color_px,
+        };
+        let size = initial.min(max);
+        let texture_spec = TextureSpec {
+            format: texture_format(content),
+            label: format!("{} {} atlas", config.label, content.side_name()),
+        };
+        let texture = texture_spec.create(device, size);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
             view,
             size,
-            ceiling,
+            ceiling: Self::growth_ceiling(max, content, config.max_bytes),
             dry_frame: None,
             packer: BucketedAtlasAllocator::new(size2(size as i32, size as i32)),
             pending_grow: None,
-            label,
+            texture_spec,
         }
     }
 
@@ -103,12 +140,12 @@ impl Side {
     /// Double this side's texture, stashing the old one for the grow blit. `false`
     /// at the ceiling, where the atlas recycles rectangles. etagere preserves
     /// rects on `packer.grow`, so no re-rasterization or uv invalidation.
-    pub(super) fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
+    pub(super) fn grow(&mut self, device: &wgpu::Device) -> bool {
         if self.size >= self.ceiling {
             return false;
         }
         let new_size = (self.size * ATLAS_GROWTH_FACTOR).min(self.ceiling);
-        let new_texture = make_texture(device, texture_format(content), new_size, &self.label);
+        let new_texture = self.texture_spec.create(device, new_size);
         let old_size = self.size;
         let old_texture = mem::replace(&mut self.texture, new_texture);
 
@@ -132,30 +169,6 @@ impl Side {
 /// Whether a rect of `size` fits inside a square side of `edge` texels.
 const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
     size.x as u32 <= edge && size.y as u32 <= edge
-}
-
-fn make_texture(
-    device: &wgpu::Device,
-    format: wgpu::TextureFormat,
-    size: u32,
-    label: &str,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: size,
-            height: size,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING
-            | wgpu::TextureUsages::COPY_DST
-            | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    })
 }
 
 /// The texture format an atlas side stores `content` in. Here rather than on

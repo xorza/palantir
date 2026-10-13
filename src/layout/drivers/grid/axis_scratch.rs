@@ -4,11 +4,9 @@
 
 use crate::common::span::Span;
 use crate::layout::axis_share;
-use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
-use crate::layout::fill_item::FillItem;
+use crate::layout::drivers::grid::grid_track_store::{GridAxisId, GridTrackStore};
+use crate::layout::fill_item::{FillDemand, FillItem};
 use crate::layout::hug_item::HugItem;
-use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::layout_mode::GridDefId;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
 use fixedbitset::FixedBitSet;
@@ -31,6 +29,15 @@ pub(super) struct AxisScratch {
     pub(super) stable_from: f32,
     flexible: Vec<FillItem<usize>>,
     hugs: Vec<HugItem<usize>>,
+}
+
+/// One grid axis as the solve reads it: which grid and axis, its tracks, and
+/// the gap between them.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct GridAxis<'a> {
+    pub(super) id: GridAxisId,
+    pub(super) tracks: &'a [Track],
+    pub(super) gap: f32,
 }
 
 /// The per-track content range one axis solves against: `min[i]` is track
@@ -97,30 +104,26 @@ impl AxisScratch {
     }
 
     /// Either copy persisted resolved sizes from the last measure or re-run
-    /// [`Self::resolve_axis`], whichever is sound for arrange's
-    /// `(grid, axis, slot)`.
+    /// [`Self::resolve_axis`], whichever is sound for arrange's slot `total` on
+    /// `axis`. Arrange reads only sizes and offsets, so Fill stays uncommitted.
     pub(super) fn resolve_or_reuse(
         &mut self,
-        tracks: &[Track],
+        axis: GridAxis<'_>,
         track_state: &GridTrackStore,
-        idx: GridDefId,
-        axis: Axis,
         total: f32,
-        gap: f32,
     ) {
         // `Some(total)` covers both conditions: `None` means measure never ran,
         // any other extent means the slot moved since. An infinite measure-time
         // total (a Hug grid) never equals arrange's finite slot, so it re-resolves.
-        if track_state.total_used(idx, axis) == Some(total) {
-            self.sizes
-                .copy_from_slice(track_state.sizes_slice(idx, axis));
+        if track_state.total_used(axis.id) == Some(total) {
+            self.sizes.copy_from_slice(track_state.sizes_slice(axis.id));
             return;
         }
-        self.resolve_axis(tracks, track_state.ranges(idx, axis), total, gap, false);
+        self.resolve_axis(axis, track_state.ranges(axis.id), total);
     }
 
     /// Phase 1 of [`Self::resolve_axis`], also run standalone by
-    /// `measure_inner` before the per-cell loop so `known_span_size` reads
+    /// grid measure before the per-cell loop so `known_span_size` reads
     /// Fixed rows as resolved while Hug and Fill are unknown. Returns the
     /// extent the Fixed tracks consumed. Callers reset first.
     pub(super) fn resolve_fixed(&mut self, tracks: &[Track]) -> f32 {
@@ -135,11 +138,10 @@ impl AxisScratch {
         consumed
     }
 
-    /// Resolve track sizes on one axis into [`Self::sizes`] for a grid with
-    /// `total` available length and `gap` between tracks. `commit_fill` marks
-    /// Fill tracks resolved when measure's available extent is arrange's.
+    /// Resolve `axis`'s track sizes into [`Self::sizes`] for a grid with
+    /// `total` available length.
     ///
-    /// Four phases:
+    /// Three phases, and a fourth [`Self::commit_fill`] adds:
     /// 1. **Fixed:** clamp `Sizing::fixed(v)` to `[Track.min, Track.max]` and
     ///    consume from available.
     /// 2. **Hug:** solve each track's content range, min-content floor and
@@ -151,20 +153,8 @@ impl AxisScratch {
     ///    - else each starts at min, slack split in proportion to `(max - min)`.
     /// 3. **Fill:** [`FillItem::distribute`] shares the leftover by weight,
     ///    each clamped to its capped floor and `Track.max`.
-    /// 4. **Commit:** Fill tracks stay unresolved by default, so cells in Fill
-    ///    columns see `INF` during measure and Fill is finalized at arrange.
-    ///    When the grid is non-Hug on this axis with a finite slot, measure's
-    ///    `total` matches arrange's, so Fill can commit up front and wrap text
-    ///    shapes correctly. Hug grids keep Fill unresolved (their arrange slot
-    ///    is unknown). Arrange passes `false`: it reads only sizes and offsets.
-    pub(super) fn resolve_axis(
-        &mut self,
-        tracks: &[Track],
-        hugs: HugRanges<'_>,
-        total: f32,
-        gap: f32,
-        commit_fill: bool,
-    ) {
+    pub(super) fn resolve_axis(&mut self, axis: GridAxis<'_>, hugs: HugRanges<'_>, total: f32) {
+        let GridAxis { tracks, gap, .. } = axis;
         let n = tracks.len();
         self.sizes.fill(0.0);
         // Fixed and Hug get marked resolved as computed. Fill stays unresolved
@@ -174,7 +164,6 @@ impl AxisScratch {
         self.resolved.clear();
         let total_gap = gap.gaps_between(n);
 
-        // Phase 1: Fixed.
         let consumed = total_gap + self.resolve_fixed(tracks);
 
         // Phases 2 and 3: Hug tracks share what Fixed leaves after the Fill
@@ -190,9 +179,11 @@ impl AxisScratch {
             } else if let Some(weight) = t.size.fill_weight() {
                 self.flexible.push(FillItem::new(
                     i,
-                    weight,
-                    t.content_floor(hugs.min[i]),
-                    t.max,
+                    FillDemand {
+                        weight,
+                        floor: t.content_floor(hugs.min[i]),
+                        cap: t.max,
+                    },
                 ));
             }
         }
@@ -211,14 +202,18 @@ impl AxisScratch {
         for item in &self.flexible {
             self.sizes[item.key] = item.size;
         }
+    }
 
-        // Phase 4: commit Fill tracks when the grid's axis sizing guarantees
-        // measure's `total` matches arrange's slot.
-        if commit_fill && total.is_finite() {
-            for (i, t) in tracks.iter().enumerate() {
-                if t.size.fill_weight().is_some() {
-                    self.resolved.insert(i);
-                }
+    /// Phase 4 of [`Self::resolve_axis`], **Commit:** Fill tracks stay
+    /// unresolved by default, so cells in Fill columns see `INF` during measure
+    /// and Fill is finalized at arrange. When the grid is non-Hug on this axis
+    /// with a finite slot, measure's `total` matches arrange's, so Fill can
+    /// commit up front and wrap text shapes correctly. Hug grids keep Fill
+    /// unresolved (their arrange slot is unknown).
+    pub(super) fn commit_fill(&mut self, tracks: &[Track]) {
+        for (i, t) in tracks.iter().enumerate() {
+            if t.size.fill_weight().is_some() {
+                self.resolved.insert(i);
             }
         }
     }

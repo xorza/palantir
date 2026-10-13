@@ -131,7 +131,7 @@ fn frame_classification_covers_external_entry_facts() {
     }
 }
 
-/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `spring::step` takes `MAX_ANIM_DT` as a contract.
+/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `Spring::step` takes `MAX_ANIM_DT` as a contract.
 ///
 /// One short frame, then a stall: 1 ms carries, 100 ms clamps, 101 ms is the unbounded sum.
 #[test]

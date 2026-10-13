@@ -11,7 +11,8 @@ use glam::{UVec2, Vec2};
 use palantir::widget::{IconFit, Mesh, Shape};
 use palantir::{Background, Block, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
 
-use crate::fixtures::{canvas, icon};
+use crate::fixtures;
+use crate::fixtures::icon;
 use crate::harness::Harness;
 use palantir::Stroke;
 
@@ -31,7 +32,7 @@ fn grey(v: u8) -> RgbaF32 {
 fn ramp(ui: &mut Ui) {
     let icons = ui.load_icons(icon::atlas());
     let solid = icons.by_name("solid").expect("fixture icon");
-    canvas(ui, |ui| {
+    fixtures::canvas(ui, |ui| {
         for (i, v) in RAMP.into_iter().enumerate() {
             let x = i as f32 * COLUMN;
             Block::new()

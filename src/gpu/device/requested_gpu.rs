@@ -1,46 +1,10 @@
-//! The device Palantir draws with, and the one place it asks a driver for one.
-
-use std::num::NonZeroU32;
-
-use pollster::FutureExt;
+//! The one place Palantir asks a driver for a device.
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
-use crate::gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
-
-/// A graphics device and its queue.
-///
-/// An application that opened its own wraps the pair here for
-/// [`OffscreenHost::builder`](crate::OffscreenHost::builder); a host that
-/// used [`RequestedGpu`] finds it in [`gpu`](RequestedGpu::gpu). Cloning
-/// clones the handles, not the device.
-#[derive(Clone, Debug)]
-pub struct Gpu {
-    pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
-}
-
-impl Gpu {
-    /// Draw through a device the caller owns. It must have been requested with
-    /// [`DeviceRequirements`]; the host builders check that.
-    pub const fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
-        Self { device, queue }
-    }
-
-    pub(crate) fn requirements_met(&self) -> Result<(), UnmetRequirements> {
-        DeviceRequirements::met_by(&self.device)
-    }
-
-    /// The device's `max_texture_dimension_2d`: the ceiling on registered
-    /// images, `GpuView` targets, and the glyph and gradient atlases.
-    ///
-    /// A zero limit panics rather than joining [`DeviceRequirements::met_by`]'s
-    /// `Result`: no adapter reports one.
-    pub(crate) fn max_texture_dim(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
-            .expect("device texture dimension limit is zero")
-    }
-}
+use crate::gpu::error::{DriverError, GpuRequestError};
+use pollster::FutureExt;
 
 /// An adapter and the device opened on it, meeting [`DeviceRequirements`].
 ///
@@ -58,8 +22,7 @@ pub struct RequestedGpu {
 
 impl RequestedGpu {
     /// Open one with no surface attached, taking the `optional` features that
-    /// are available. Blocks.
-    /// caller's executor to interleave with.
+    /// are available. Blocks the calling thread until the driver answers.
     pub fn headless(
         power_preference: PowerPreference,
         optional: wgpu::Features,
@@ -189,8 +152,8 @@ impl GpuRequest<'_> {
     }
 }
 
-/// [`PowerPreference`] in the driver's own vocabulary. Not a `From` impl:
-/// the target type is foreign.
+/// [`PowerPreference`] in the driver's own vocabulary. Not a `From` impl, which
+/// would publish a conversion into a wgpu type beside the public enum.
 const fn adapter_policy(preference: PowerPreference) -> wgpu::PowerPreference {
     match preference {
         PowerPreference::Any => wgpu::PowerPreference::None,

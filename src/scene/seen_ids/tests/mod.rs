@@ -13,18 +13,11 @@ fn ep(node: u32) -> Endpoint {
     }
 }
 
-/// Stand-in for the production `resolve` then `record_endpoint` pairing; the lazy-counter fast path needs `curr` populated between resolves.
-fn open(ids: &mut SeenIds, raw_id: WidgetId, is_explicit: bool, node: u32) -> WidgetId {
-    let resolved = ids.resolve(raw_id, is_explicit);
-    ids.record_endpoint(resolved, ep(node));
-    resolved.id()
-}
-
 #[test]
 fn resolve_returns_raw_id_on_first_call() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    assert_eq!(open(&mut ids, x, false, 1), x);
+    assert_eq!(ids.open(x, IdKind::Auto, ep(1)), x);
     assert!(ids.counters.is_empty());
 }
 
@@ -32,9 +25,9 @@ fn resolve_returns_raw_id_on_first_call() {
 fn resolve_disambiguates_collisions_by_occurrence() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    assert_eq!(open(&mut ids, x, false, 1), x);
-    assert_eq!(open(&mut ids, x, false, 2), x.with(1));
-    assert_eq!(open(&mut ids, x, false, 3), x.with(2));
+    assert_eq!(ids.open(x, IdKind::Auto, ep(1)), x);
+    assert_eq!(ids.open(x, IdKind::Auto, ep(2)), x.with(1));
+    assert_eq!(ids.open(x, IdKind::Auto, ep(3)), x.with(2));
 }
 
 #[test]
@@ -43,15 +36,15 @@ fn resolve_skips_occupied_occurrence_ids() {
 
     for occupied_slots in [1_u32, 2] {
         let mut ids = SeenIds::default();
-        assert_eq!(open(&mut ids, x, true, 0), x);
+        assert_eq!(ids.open(x, IdKind::Explicit, ep(0)), x);
 
         for slot in 1..=occupied_slots {
             let occupied = x.with(slot);
-            assert_eq!(open(&mut ids, occupied, true, slot), occupied);
+            assert_eq!(ids.open(occupied, IdKind::Explicit, ep(slot)), occupied);
         }
 
         let node = occupied_slots + 1;
-        let final_id = open(&mut ids, x, true, node);
+        let final_id = ids.open(x, IdKind::Explicit, ep(node));
         assert_eq!(final_id, x.with(occupied_slots + 1));
         assert_eq!(ids.curr.entries.len(), (occupied_slots + 2) as usize);
         assert_eq!(ids.endpoint(x), Some(ep(0)));
@@ -67,14 +60,14 @@ fn resolve_skips_occupied_occurrence_ids() {
 fn resolve_queues_pending_only_for_explicit_collisions() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    open(&mut ids, x, false, 1);
-    open(&mut ids, x, false, 2); // auto collision — silent
+    ids.open(x, IdKind::Auto, ep(1));
+    ids.open(x, IdKind::Auto, ep(2)); // auto collision — silent
     assert!(ids.pending.is_empty());
 
     let y = WidgetId::from_hash("y");
-    let first = ids.resolve(y, true);
+    let first = ids.resolve(y, IdKind::Explicit);
     ids.record_endpoint(first, ep(3));
-    let second = ids.resolve(y, true);
+    let second = ids.resolve(y, IdKind::Explicit);
     assert_eq!(ids.pending.len(), 1);
     assert_eq!(ids.pending[0].first_raw_id, y);
     assert_eq!(ids.pending[0].second_final_id, second.id());
@@ -84,9 +77,9 @@ fn resolve_queues_pending_only_for_explicit_collisions() {
 fn record_endpoint_emits_collision_pair_for_explicit_only() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    let first = ids.resolve(x, true);
+    let first = ids.resolve(x, IdKind::Explicit);
     assert!(ids.record_endpoint(first, ep(1)).is_none());
-    let second = ids.resolve(x, true);
+    let second = ids.resolve(x, IdKind::Explicit);
     let pair = ids
         .record_endpoint(second, ep(2))
         .expect("expected collision pair");
@@ -99,9 +92,9 @@ fn record_endpoint_emits_collision_pair_for_explicit_only() {
 fn record_endpoint_no_pair_for_auto_collisions() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    let first = ids.resolve(x, false);
+    let first = ids.resolve(x, IdKind::Auto);
     ids.record_endpoint(first, ep(1));
-    let second = ids.resolve(x, false);
+    let second = ids.resolve(x, IdKind::Auto);
     assert!(ids.record_endpoint(second, ep(2)).is_none());
 }
 
@@ -109,7 +102,7 @@ fn record_endpoint_no_pair_for_auto_collisions() {
 fn record_endpoint_rejects_duplicate_without_overwriting() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    let resolved = ids.resolve(x, false);
+    let resolved = ids.resolve(x, IdKind::Auto);
     ids.record_endpoint(resolved, ep(1));
 
     panic_probe::assert_panics_with("record_endpoint called twice", || {
@@ -119,10 +112,10 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
 
     // An earlier pass's id may name an entry this pass gave away: recording is refused.
     let mut ids = SeenIds::default();
-    let stale = ids.resolve(x, false);
+    let stale = ids.resolve(x, IdKind::Auto);
     ids.pre_record();
     let y = WidgetId::from_hash("y");
-    let fresh = ids.resolve(y, false);
+    let fresh = ids.resolve(y, IdKind::Auto);
     panic_probe::assert_panics_with("which was not resolved this pass", || {
         ids.record_endpoint(stale, ep(1))
     });
@@ -139,36 +132,36 @@ fn record_endpoint_rejects_duplicate_without_overwriting() {
 fn resolving_twice_before_recording_disambiguates() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    let first = ids.resolve(x, false);
-    let second = ids.resolve(x, false);
+    let first = ids.resolve(x, IdKind::Auto);
+    let second = ids.resolve(x, IdKind::Auto);
     assert_eq!(first.id(), x);
     assert_eq!(second.id(), x.with(1));
     assert!(ids.record_endpoint(second, ep(2)).is_none());
     assert!(ids.record_endpoint(first, ep(1)).is_none());
 
     let mut ids = SeenIds::default();
-    let owner = ids.resolve(x, false);
+    let owner = ids.resolve(x, IdKind::Auto);
     assert_eq!(owner.id(), x);
     assert_eq!(
-        ids.resolve(x, true),
+        ids.resolve(x, IdKind::Explicit),
         owner,
         "the reservation's owner claims it, entry and all"
     );
     assert!(ids.record_endpoint(owner, ep(1)).is_none());
-    assert_eq!(ids.resolve(x, true).id(), x.with(1));
+    assert_eq!(ids.resolve(x, IdKind::Explicit).id(), x.with(1));
 
     ids.pre_record();
-    assert_eq!(ids.resolve(x, false).id(), x);
+    assert_eq!(ids.resolve(x, IdKind::Auto).id(), x);
 
     let mut ids = SeenIds::default();
     let y = WidgetId::from_hash("y");
-    open(&mut ids, x, false, 1);
-    assert_eq!(ids.resolve(y, false).id(), y);
+    ids.open(x, IdKind::Auto, ep(1));
+    assert_eq!(ids.resolve(y, IdKind::Auto).id(), y);
     assert_eq!(ids.endpoint(y), None);
     assert!(ids.rollover().is_empty());
     assert_eq!(ids.last_frame().keys().copied().collect::<Vec<_>>(), [x]);
     ids.pre_record();
-    open(&mut ids, x, false, 1);
+    ids.open(x, IdKind::Auto, ep(1));
     assert!(ids.rollover().is_empty(), "y was never recorded");
 }
 
@@ -178,10 +171,10 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
     // Pass A records a + b, then is discarded (double-layout/warmup).
-    open(&mut ids, a, false, 1);
-    open(&mut ids, b, false, 2);
+    ids.open(a, IdKind::Auto, ep(1));
+    ids.open(b, IdKind::Auto, ep(2));
     ids.pre_record();
-    open(&mut ids, a, false, 1);
+    ids.open(a, IdKind::Auto, ep(1));
     let removed = ids.rollover();
     assert!(
         removed.contains(&b),
@@ -192,24 +185,24 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
         "id re-recorded in the final pass survives"
     );
     ids.pre_record();
-    open(&mut ids, a, false, 1);
+    ids.open(a, IdKind::Auto, ep(1));
     let removed = ids.rollover();
     assert!(removed.is_empty(), "got {removed:?}");
 
     // An id dropped by the settling pass is reported by the prev-minus-curr diff.
     let c = WidgetId::from_hash("c");
-    open(&mut ids, a, false, 1);
-    open(&mut ids, c, false, 2);
+    ids.open(a, IdKind::Auto, ep(1));
+    ids.open(c, IdKind::Auto, ep(2));
     ids.rollover();
-    open(&mut ids, a, false, 1);
-    open(&mut ids, c, false, 2);
+    ids.open(a, IdKind::Auto, ep(1));
+    ids.open(c, IdKind::Auto, ep(2));
     ids.pre_record();
     assert!(
         ids.discarded.is_empty(),
         "ids `prev` already holds must cost no entry, got {:?}",
         ids.discarded
     );
-    open(&mut ids, a, false, 1);
+    ids.open(a, IdKind::Auto, ep(1));
     let removed = ids.rollover();
     assert!(
         removed.contains(&c) && !removed.contains(&a),
@@ -221,8 +214,8 @@ fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
 fn pre_record_clears_per_frame_state_but_keeps_prev() {
     let mut ids = SeenIds::default();
     let x = WidgetId::from_hash("x");
-    open(&mut ids, x, false, 1);
-    open(&mut ids, x, false, 2);
+    ids.open(x, IdKind::Auto, ep(1));
+    ids.open(x, IdKind::Auto, ep(2));
     assert!(!ids.counters.is_empty());
 
     ids.rollover();
@@ -244,7 +237,7 @@ enum Resolve {
     /// [`SeenIds::resolve_scoped`] of a salt under `parents[parent]`.
     Salt { salt: usize, parent: usize },
     /// [`SeenIds::resolve`] of a raw id.
-    Raw { raw: WidgetId, explicit: bool },
+    Raw { raw: WidgetId, kind: IdKind },
 }
 
 /// The tracker against plain per-pass hash tables ([`reference`]) over random
@@ -300,7 +293,11 @@ fn matches_the_per_pass_tables_over_random_frames() {
                 } else {
                     Resolve::Raw {
                         raw: universe[next(universe.len())],
-                        explicit: next(4) == 0,
+                        kind: if next(4) == 0 {
+                            IdKind::Explicit
+                        } else {
+                            IdKind::Auto
+                        },
                     }
                 }
             };
@@ -328,14 +325,14 @@ fn matches_the_per_pass_tables_over_random_frames() {
                     let (got, want) = match step {
                         Resolve::Auto { site, parent } => (
                             ids.resolve_scoped(Ident::Auto(sites[site]), parents[parent]),
-                            model.resolve(auto_raw(site, parent), false),
+                            model.resolve(auto_raw(site, parent), IdKind::Auto),
                         ),
                         Resolve::Salt { salt, parent } => (
                             ids.resolve_scoped(Ident::Hash(salts[salt]), parents[parent]),
-                            model.resolve(salts[salt].scoped(parents[parent]), true),
+                            model.resolve(salts[salt].scoped(parents[parent]), IdKind::Explicit),
                         ),
-                        Resolve::Raw { raw, explicit } => {
-                            (ids.resolve(raw, explicit), model.resolve(raw, explicit))
+                        Resolve::Raw { raw, kind } => {
+                            (ids.resolve(raw, kind), model.resolve(raw, kind))
                         }
                     };
                     assert_eq!(got, want, "resolve, {at}");

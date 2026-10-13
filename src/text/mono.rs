@@ -17,13 +17,14 @@ pub(super) fn single_line_caret_x(text: &str, byte_offset: usize, font_size: f32
     text[..clamped].chars().count() as f32 * glyph_width(font_size)
 }
 
-/// Inverse of [`single_line_caret_x`]: the char boundary whose prefix-x is closest to `target_x`.
+/// Inverse of [`single_line_caret_x`]: the char boundary whose prefix-x is closest to `target_x`; the earliest on a tie.
 pub(super) fn nearest_byte(text: &str, target_x: f32, font_size: f32) -> usize {
+    let glyph_w = glyph_width(font_size);
     let mut best_off = 0usize;
     let mut best_dist = target_x.abs();
-    for (i, ch) in text.char_indices() {
+    for (chars, (i, ch)) in (1usize..).zip(text.char_indices()) {
         let next = i + ch.len_utf8();
-        let x = single_line_caret_x(text, next, font_size);
+        let x = chars as f32 * glyph_w;
         let d = (x - target_x).abs();
         if d < best_dist {
             best_dist = d;
@@ -69,12 +70,11 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     })
 }
 
-/// Widest unbreakable segment of `text` under a uniform `glyph_w`; twin of `cosmic::geometry::intrinsic_min_width`. Segments come from [`wrap::break_offsets`] with trailing whitespace dropped (the break sits after a space). Ceil'd like its twin: `WrapWithOverflow` floors a committed width at this.
+/// Widest unbreakable segment of `text` under a uniform `glyph_w`; twin of `cosmic::geometry::SegmentScratch::intrinsic_min_width`. Segments come from [`wrap::break_offsets`] with trailing whitespace dropped (the break sits after a space). Ceil'd like its twin: `WrapWithOverflow` floors a committed width at this.
 fn intrinsic_min_width(text: &str, glyph_w: f32) -> f32 {
     let mut widest = 0usize;
     let mut start = 0usize;
     for next in wrap::break_offsets(text) {
-        let next = next as usize;
         widest = widest.max(text[start..next].trim_end().chars().count());
         start = next;
     }

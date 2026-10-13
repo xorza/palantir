@@ -10,7 +10,7 @@ use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
-use crate::widgets::spinner::{ArcGeometry, arc_geometry, comet};
+use crate::widgets::spinner::{ArcGeometry, comet};
 use crate::widgets::theme::spinner::SpinnerTheme;
 use glam::UVec2;
 use glam::Vec2;
@@ -19,13 +19,13 @@ use glam::Vec2;
 #[test]
 fn arc_geometry_insets_by_half_width() {
     assert_eq!(
-        arc_geometry(24.0, 2.0),
+        ArcGeometry::new(24.0, 2.0),
         ArcGeometry {
             center: Vec2::splat(12.0),
             radius: 11.0,
         }
     );
-    assert_eq!(arc_geometry(4.0, 8.0).radius, 0.0);
+    assert_eq!(ArcGeometry::new(4.0, 8.0).radius, 0.0);
     // The default sweep leaves a gap; a full turn would read as a static ring.
     assert!(SpinnerTheme::default().sweep < TAU);
 }
@@ -33,6 +33,7 @@ fn arc_geometry_insets_by_half_width() {
 /// Sweep, spin rate and stroke come from `Theme::spinner`. Stroke is `diameter * thickness_ratio` floored at `min_thickness`.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
+    use crate::primitives::geometry::circular_arc::CircularArc;
     use crate::shape::paint::curve_basis::CurveBasis;
     use crate::shape::record::ShapeRecord;
 
@@ -65,10 +66,10 @@ fn arc_and_spin_follow_the_spinner_theme() {
             .iter()
             .find_map(|s| match s {
                 ShapeRecord::Curve {
-                    basis: CurveBasis::Arc { a1, .. },
+                    basis: CurveBasis::Arc(CircularArc { sweep, .. }),
                     stroke,
                     ..
-                } => Some((*a1, stroke.width)),
+                } => Some((*sweep, stroke.width)),
                 _ => None,
             })
             .expect("spinner records one arc");

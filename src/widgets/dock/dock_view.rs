@@ -350,14 +350,9 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         match state.node(idx) {
             DockNode::Group(group) => self.group(ui, group),
             DockNode::Split(split) => {
-                let (dir, ratio, first, second) = (
-                    split.direction(),
-                    split.ratio(),
-                    split.first(),
-                    split.second(),
-                );
-                let mut live = ratio;
-                let splitter = match dir {
+                let split = *split;
+                let mut live = split.ratio();
+                let splitter = match split.direction() {
                     SplitDirection::Row => Splitter::row(&mut live),
                     SplitDirection::Column => Splitter::column(&mut live),
                 };
@@ -365,11 +360,11 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     .id(DockView::splitter_id(state, path))
                     .min_pane(self.min_pane)
                     .show(ui, |ui, half| {
-                        let (child, child_path) = match half {
-                            SplitHalf::First => (first, path.first()),
-                            SplitHalf::Second => (second, path.second()),
+                        let child_path = match half {
+                            SplitHalf::First => path.first(),
+                            SplitHalf::Second => path.second(),
                         };
-                        self.node(ui, child, child_path);
+                        self.node(ui, split.child(half), child_path);
                     });
                 if hit.changed {
                     self.operations.push(DockOperation::SetRatio {

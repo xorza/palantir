@@ -6,6 +6,8 @@ pub(crate) mod render_target;
 pub(crate) mod stencil;
 #[cfg(feature = "winit")]
 pub(crate) mod surface_manager;
+#[cfg(feature = "winit")]
+pub(crate) mod surface_usages;
 pub(crate) mod viewport;
 #[cfg(feature = "winit")]
 pub(crate) mod window_surface;

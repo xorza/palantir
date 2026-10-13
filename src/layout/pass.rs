@@ -3,13 +3,13 @@
 //! below, so one driver can't grow a dependency on another's.
 //!
 //! The intrinsic query deliberately does not live here: it is pure and must not
-//! write the frame's text shapes, which staying on [`LayoutEngine`] (no
-//! `LayerLayout` in reach) enforces by construction. [`LayoutPass::intrinsic`] and
+//! write the frame's text shapes, which [`IntrinsicPass`] (no `LayerLayout` in
+//! reach) enforces by construction. [`LayoutPass::intrinsic`] and
 //! [`LayoutPass::intrinsic_range`] just forward.
 
 use crate::common::span::Span;
-use crate::layout::axis_placement::Placed;
-use crate::layout::axis_slot::AxisSlot;
+use crate::layout::axis_slot::NodeSlot;
+use crate::layout::cache::measure_snapshot::SubtreeKey;
 use crate::layout::cache::{Arranged, MeasureCache};
 use crate::layout::drivers::grid::grid_context::GridContext;
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
@@ -17,11 +17,14 @@ use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::drivers::{DriverOp, LayoutDriver, ReplayOp};
 use crate::layout::engine::LayoutEngine;
+use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::layer_input::LayerInput;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::layout_scratch::NO_ARRANGE_SRC;
+use crate::layout::layout_scratch::{NO_ARRANGE_SRC, RestoreTarget};
 use crate::layout::measured::Measured;
+use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -33,7 +36,7 @@ use crate::primitives::text::interned_text::InternedText;
 use crate::scene::node::layout_core::LayoutCore;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use crate::text::system::{RunMeasure, TextRunSlot};
+use crate::text::system::{RunBinding, RunMeasure, TextRunSlot};
 use glam::Vec2;
 use std::mem;
 
@@ -78,7 +81,7 @@ impl<'a> LayoutPass<'a> {
     /// unbreakable word). The lower bound `AxisSlot::resolve` clamps Hug/Fill down to,
     /// cached per (node, axis, slot). Zero on a Fixed axis, which ignores it; skipping
     /// the query keeps a Fixed leaf from triggering a subtree walk each frame.
-    fn intrinsic_min(&mut self, node: NodeId, layout: LayoutCore, axis: Axis) -> f32 {
+    fn intrinsic_min(&mut self, node: NodeId, layout: &LayoutCore, axis: Axis) -> f32 {
         if axis.main_sizing(layout.size).fixed_value().is_some() {
             return 0.0;
         }
@@ -123,16 +126,26 @@ impl<'a> LayoutPass<'a> {
 
     pub(super) const fn new(
         engine: &'a mut LayoutEngine,
-        tree: &'a Tree,
-        interned_text: &'a InternedText<'a>,
+        input: LayerInput<'a>,
         out: &'a mut LayerLayout,
     ) -> Self {
         Self {
             engine,
-            tree,
-            interned_text,
+            tree: input.tree,
+            interned_text: input.interned_text,
             out,
             origin: Vec2::ZERO,
+        }
+    }
+
+    /// `node`'s box and what it measured to, as a parent places it ([`Placed::of`]).
+    #[inline]
+    pub(super) fn placed(&self, node: NodeId) -> PlacedChild<'a> {
+        let tree = self.tree;
+        PlacedChild {
+            layout: &tree.records.layout()[node.idx()],
+            bounds: tree.bounds(node),
+            measured: Placed::of(self.desired(node), self.engine.scratch.floor[node.idx()]),
         }
     }
 }
@@ -142,12 +155,6 @@ impl LayoutPass<'_> {
     #[inline]
     pub(super) fn desired(&self, node: NodeId) -> Size {
         self.engine.scratch.desired[node.idx()]
-    }
-
-    /// What this node measured to, as a parent places it ([`Placed::of`]).
-    #[inline]
-    pub(super) fn placed(&self, node: NodeId) -> Placed {
-        Placed::of(self.desired(node), self.engine.scratch.floor[node.idx()])
     }
 
     /// Grid's per-depth track scratch and durable hug pool, handed back whole because
@@ -204,17 +211,27 @@ impl LayoutPass<'_> {
     }
 
     /// Outer intrinsic on `axis` under content-sizing `req`; forwards to
-    /// [`LayoutEngine::intrinsic`].
+    /// [`IntrinsicPass::single`].
     #[inline]
     pub(super) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
-        self.engine
-            .intrinsic(self.tree, node, axis, req, self.interned_text)
+        self.intrinsic_pass().single(node, axis, req)
+    }
+
+    /// Both content sizes on `axis`; forwards to [`IntrinsicPass::range`].
+    #[inline]
+    pub(super) fn intrinsic_range(&mut self, node: NodeId, axis: Axis) -> IntrinsicRange {
+        self.intrinsic_pass().range(node, axis)
     }
 
     #[inline]
-    pub(super) fn intrinsic_range(&mut self, node: NodeId, axis: Axis) -> IntrinsicRange {
-        self.engine
-            .intrinsic_range(self.tree, node, axis, self.interned_text)
+    const fn intrinsic_pass(&mut self) -> IntrinsicPass<'_> {
+        IntrinsicPass::new(
+            self.engine,
+            LayerInput {
+                tree: self.tree,
+                interned_text: self.interned_text,
+            },
+        )
     }
 }
 
@@ -241,33 +258,25 @@ impl LayoutPass<'_> {
         // subtree's `desired` and text shapes from last frame's snapshot. The offer check
         // guards a parent resize, since `Hug` and `Fill` can read their offer.
         if LayoutMode::from(layout.meta) != LayoutMode::Leaf {
-            let cache_wid = tree.records.widget_id()[node.idx()];
-            let cache_hash = tree.rollups.layout_subtree[node.idx()];
-            if let Some(hit) =
-                self.engine
-                    .cache
-                    .try_lookup(cache_wid, cache_hash, available, available_q)
-            {
-                self.engine.scratch.counters.cache_hit(cache_wid);
+            let key = SubtreeKey {
+                wid: tree.records.widget_id()[node.idx()],
+                subtree_hash: tree.rollups.layout_subtree[node.idx()],
+                available_q,
+            };
+            if let Some(hit) = self.engine.cache.try_lookup(key, available) {
+                self.engine.scratch.counters.cache_hit(key.wid);
                 let curr_start = node.idx();
                 let curr_end = curr_start + hit.desired.len();
                 // The subtree hash includes child count, so a length mismatch means the rollup
                 // is broken.
                 debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start));
-                self.engine.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
-                // Every node of the subtree, so a descendant arranged at its cached size replays
-                // even when the root, at a new size, must dispatch.
-                for (src, offset) in self.engine.scratch.arrange_src[curr_start..curr_end]
-                    .iter_mut()
-                    .zip(0..)
-                {
-                    *src = hit.nodes_base + offset;
-                }
                 self.engine.scratch.restore_after_cache_hit(
-                    tree,
-                    curr_start..curr_end,
                     &hit,
-                    self.out,
+                    RestoreTarget {
+                        tree,
+                        subtree: curr_start..curr_end,
+                        layer: self.out,
+                    },
                 );
                 // The root is recorded under this offer, not the one restored with its subtree: a
                 // root slot keyed on a stale offer fails `MeasureCache::matches_forest` and
@@ -277,24 +286,20 @@ impl LayoutPass<'_> {
             }
         }
 
-        let bounds = tree.bounds(node);
-        let (min_size, max_size) = (bounds.min_size, bounds.max_size);
-
         let intrinsic_min = Size::new(
-            self.intrinsic_min(node, layout, Axis::X),
-            self.intrinsic_min(node, layout, Axis::Y),
+            self.intrinsic_min(node, &layout, Axis::X),
+            self.intrinsic_min(node, &layout, Axis::Y),
         );
 
         // Derive `inner_avail`, dispatch to the driver, and fold content and floor into a
-        // margin-inclusive `desired`; see `AxisSlot::resolve_node`.
-        let measured = AxisSlot::resolve_node(
+        // margin-inclusive `desired`; see `NodeSlot::resolve`.
+        let measured = NodeSlot {
             layout,
+            bounds: tree.bounds(node),
             available,
             intrinsic_min,
-            min_size,
-            max_size,
-            |inner_avail| self.measure_dispatch(node, layout, inner_avail),
-        );
+        }
+        .resolve(|inner_avail| self.measure_dispatch(node, layout, inner_avail));
 
         self.engine.scratch.desired[node.idx()] = measured.size;
         self.engine.scratch.floor[node.idx()] = measured.floor;
@@ -304,9 +309,9 @@ impl LayoutPass<'_> {
     }
 
     /// Dispatch one driver measure against the derived `inner_avail`, returning raw
-    /// content size and floor. Called once per `measure` (`AxisSlot::resolve_node` says
+    /// content size and floor. Called once per `measure` (`NodeSlot::resolve` says
     /// why a Fill axis growing past `available` needs no re-measure). The match is
-    /// `DriverOp::dispatch`, shared with [`Self::arrange`] and `IntrinsicQuery::walk`.
+    /// `DriverOp::dispatch`, shared with [`Self::arrange`] and `IntrinsicPass::walk`.
     fn measure_dispatch(
         &mut self,
         node: NodeId,
@@ -315,10 +320,9 @@ impl LayoutPass<'_> {
     ) -> Measured {
         MeasureOp {
             pass: self,
-            node,
             inner_avail,
         }
-        .dispatch(LayoutMode::from(layout.meta))
+        .dispatch(node, LayoutMode::from(layout.meta))
     }
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
@@ -335,7 +339,7 @@ impl LayoutPass<'_> {
         self.engine.scratch.local[node.idx()] = slot.min;
         let rendered = place(self.origin, slot, layout.margin);
         let mode = LayoutMode::from(layout.meta);
-        if ReplayOp.dispatch(mode) && self.replay_arranged(node, rendered) {
+        if ReplayOp.dispatch(node, mode) && self.replay_arranged(node, rendered) {
             return;
         }
         self.out.rect[node.idx()] = rendered;
@@ -343,10 +347,9 @@ impl LayoutPass<'_> {
         let parent = mem::replace(&mut self.origin, inner.min);
         ArrangeOp {
             pass: self,
-            node,
             inner: inner.size,
         }
-        .dispatch(mode);
+        .dispatch(node, mode);
         self.origin = parent;
     }
 
@@ -488,9 +491,11 @@ impl LayoutPass<'_> {
         let run = self.engine.text.measure(
             slot,
             ts.shape_request(),
-            ts.wrap,
-            ts.halign,
-            available_w.is_finite().then_some(available_w),
+            RunBinding {
+                wrap: ts.wrap,
+                halign: ts.halign,
+                available_width: available_w.is_finite().then_some(available_w),
+            },
         );
         self.out.text_shapes.push(run.shaped);
         run
@@ -500,24 +505,19 @@ impl LayoutPass<'_> {
 #[derive(Debug)]
 struct MeasureOp<'op, 'pass> {
     pass: &'op mut LayoutPass<'pass>,
-    node: NodeId,
     inner_avail: Size,
 }
 
 impl DriverOp for MeasureOp<'_, '_> {
     type Output = Measured;
 
-    fn run<D: LayoutDriver>(self, payload: D::Payload) -> Measured {
-        D::measure(self.pass, self.node, payload, self.inner_avail)
+    fn run<D: LayoutDriver>(self, driver: D) -> Measured {
+        driver.measure(self.pass, self.inner_avail)
     }
 
     /// A leaf's content is its shaped text, wrapped against the offered width.
-    fn leaf(self) -> Measured {
-        let Self {
-            pass,
-            node,
-            inner_avail,
-        } = self;
+    fn leaf(self, node: NodeId) -> Measured {
+        let Self { pass, inner_avail } = self;
         let (tree, interned_text) = (pass.tree, pass.interned_text);
         let runs = TextShapeInput::on_leaf(tree, interned_text, node);
         pass.shape_text_runs(node, inner_avail.w, runs)
@@ -527,16 +527,15 @@ impl DriverOp for MeasureOp<'_, '_> {
 #[derive(Debug)]
 struct ArrangeOp<'op, 'pass> {
     pass: &'op mut LayoutPass<'pass>,
-    node: NodeId,
     inner: Size,
 }
 
 impl DriverOp for ArrangeOp<'_, '_> {
     type Output = ();
 
-    fn run<D: LayoutDriver>(self, payload: D::Payload) {
-        D::arrange(self.pass, self.node, payload, self.inner);
+    fn run<D: LayoutDriver>(self, driver: D) {
+        driver.arrange(self.pass, self.inner);
     }
 
-    fn leaf(self) {}
+    fn leaf(self, _node: NodeId) {}
 }

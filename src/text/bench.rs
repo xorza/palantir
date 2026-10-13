@@ -11,7 +11,7 @@ use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
 use crate::text::request::internals::TestShape;
 use crate::text::shaper::TextShaper;
-use crate::text::system::{TextRunSlot, TextSystem};
+use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
@@ -41,13 +41,30 @@ const DRAG_RESIDENCY_LIMIT: usize = shaped_buffer_cache::PROBATION_KEEP_FRAMES a
 const REUSE_LAYER_LABELS: usize = 64;
 
 /// Leading as a multiple of the font size, shared by [`UI_FACE`] and
-/// [`measure_truncated`].
+/// [`TruncatedRun::new`].
 const LEADING_RATIO: f32 = 1.2;
 
-/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture.
 /// The body text size, which every arm but `two_faces`' heading shapes at.
 const BODY_PX: f32 = 14.0;
 
+/// The width the wrapping arms bind to.
+const WRAP_W: f32 = 150.0;
+
+/// A single-line run: no width binds it.
+const SINGLE_LINE: RunBinding = RunBinding {
+    wrap: TextWrap::SingleLine,
+    halign: HAlign::Left,
+    available_width: None,
+};
+
+/// A wrapping run bound to [`WRAP_W`].
+const WRAPPED: RunBinding = RunBinding {
+    wrap: TextWrap::Wrap,
+    halign: HAlign::Left,
+    available_width: Some(WRAP_W),
+};
+
+/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture.
 const UI_FACE: TestShape = TestShape::new(GlyphFont {
     size: BODY_PX,
     line_height: BODY_PX * LEADING_RATIO,
@@ -56,25 +73,61 @@ const UI_FACE: TestShape = TestShape::new(GlyphFont {
     slant: FontSlant::Normal,
 });
 
-/// `text` truncated to `width` at [`UI_FACE`] resized to `font_size` and `weight`.
-fn measure_truncated(
-    text_system: &mut TextSystem,
+/// [`TEXT`] as one ellipsized label: the reuse slot it is measured through and its face.
+#[derive(Clone, Copy, Debug)]
+struct TruncatedRun {
     slot: TextRunSlot,
-    text: &str,
-    width: f32,
-    font_size: f32,
-    weight: FontWeight,
-) -> ShapedText {
-    // Set field by field: outside `cfg(test)` the fixture is `font` alone, so
-    // `..UI_FACE` would update nothing.
-    let mut shape = UI_FACE;
-    shape.font.size = font_size;
-    shape.font.line_height = font_size * LEADING_RATIO;
-    shape.font.weight = weight;
-    let request = shape.unbounded_request(text);
-    text_system
-        .measure(slot, request, TextWrap::Ellipsis, HAlign::Left, Some(width))
-        .shaped
+    shape: TestShape,
+}
+
+impl TruncatedRun {
+    /// The label at `slot` in [`UI_FACE`] resized to `font_size` and `weight`.
+    fn new(slot: &str, font_size: f32, weight: FontWeight) -> Self {
+        // Set field by field: outside `cfg(test)` the fixture is `font` alone, so
+        // `..UI_FACE` would update nothing.
+        let mut shape = UI_FACE;
+        shape.font.size = font_size;
+        shape.font.line_height = font_size * LEADING_RATIO;
+        shape.font.weight = weight;
+        Self {
+            slot: TextRunSlot {
+                widget_id: WidgetId::from_hash(slot),
+                ordinal: 0,
+            },
+            shape,
+        }
+    }
+
+    /// The label truncated to `width`.
+    fn measure(self, text_system: &mut TextSystem, width: f32) -> ShapedText {
+        let binding = RunBinding {
+            wrap: TextWrap::Ellipsis,
+            halign: HAlign::Left,
+            available_width: Some(width),
+        };
+        text_system
+            .measure(self.slot, self.shape.unbounded_request(TEXT), binding)
+            .shaped
+    }
+
+    /// One drag frame end to end: layout commits a fresh width, the encoder
+    /// restores the buffer it will replay, and the frame boundary ages the cache.
+    /// Dropping the render leaves everything probationary; dropping the boundary
+    /// makes the drag an unbounded fill.
+    fn drag_frame(self, text: &mut TextSystem, shaper: &TextShaper, step: u32) -> ShapedText {
+        let measured = self.measure(text, drag_width(step));
+        shaper.render_ensure(
+            TextShapeRequest::for_key(TEXT, measured.key.expect("the bench shapes through cosmic"))
+                .expect("the bench fixture has text"),
+        );
+        frame_end(text, shaper);
+        measured
+    }
+}
+
+/// The committed width of drag step `step`: a quarter pixel apart, cycling every [`DRAG_WIDTHS`].
+fn drag_width(step: u32) -> f32 {
+    40.0 + (step % DRAG_WIDTHS) as f32 * 0.25
 }
 
 /// One frame boundary as `FrameCycle::run` drives it: the reuse-row sweep,
@@ -97,8 +150,6 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// so it is the layer's alone; the clock tick ages the shaped-buffer cache in
 /// both designs, so it is charged to both.
 fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
-    const WRAP_W: f32 = 150.0;
-
     fn request_for(text: &str) -> TextShapeRequest<'_> {
         UI_FACE.unbounded_request(text)
     }
@@ -120,23 +171,11 @@ fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
-            text_system.measure(
-                *slot,
-                request_for(text),
-                TextWrap::SingleLine,
-                HAlign::Left,
-                None,
-            );
+            text_system.measure(*slot, request_for(text), SINGLE_LINE);
         }
         b.iter(|| {
             for (slot, text) in slots.iter().zip(&labels) {
-                black_box(text_system.measure(
-                    *slot,
-                    request_for(text),
-                    TextWrap::SingleLine,
-                    HAlign::Left,
-                    None,
-                ));
+                black_box(text_system.measure(*slot, request_for(text), SINGLE_LINE));
             }
             frame_end(&mut text_system, &shaper);
         });
@@ -159,23 +198,11 @@ fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for (slot, text) in slots.iter().zip(&labels) {
-            text_system.measure(
-                *slot,
-                request_for(text),
-                TextWrap::Wrap,
-                HAlign::Left,
-                Some(WRAP_W),
-            );
+            text_system.measure(*slot, request_for(text), WRAPPED);
         }
         b.iter(|| {
             for (slot, text) in slots.iter().zip(&labels) {
-                black_box(text_system.measure(
-                    *slot,
-                    request_for(text),
-                    TextWrap::Wrap,
-                    HAlign::Left,
-                    Some(WRAP_W),
-                ));
+                black_box(text_system.measure(*slot, request_for(text), WRAPPED));
             }
             frame_end(&mut text_system, &shaper);
         });
@@ -219,7 +246,6 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 
     const REPEATED: &str = "Enabled";
-    const WRAP_W: f32 = 150.0;
     let slots: Vec<TextRunSlot> = (0..REUSE_LAYER_LABELS)
         .map(|i| TextRunSlot {
             widget_id: WidgetId::from_hash("shared-content-bench"),
@@ -231,17 +257,11 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
         let shaper = TextShaper::new();
         let mut text_system = TextSystem::new(shaper.clone());
         for slot in &slots {
-            text_system.measure(*slot, request(), TextWrap::Wrap, HAlign::Left, Some(WRAP_W));
+            text_system.measure(*slot, request(), WRAPPED);
         }
         b.iter(|| {
             for slot in &slots {
-                black_box(text_system.measure(
-                    *slot,
-                    request(),
-                    TextWrap::Wrap,
-                    HAlign::Left,
-                    Some(WRAP_W),
-                ));
+                black_box(text_system.measure(*slot, request(), WRAPPED));
             }
             frame_end(&mut text_system, &shaper);
         });
@@ -252,23 +272,19 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
         let mut text_system = TextSystem::new(shaper.clone());
         let widths = [WRAP_W, WRAP_W - 40.0];
         for (i, slot) in slots.iter().enumerate() {
-            text_system.measure(
-                *slot,
-                request(),
-                TextWrap::Wrap,
-                HAlign::Left,
-                Some(widths[i % 2]),
-            );
+            let binding = RunBinding {
+                available_width: Some(widths[i % 2]),
+                ..WRAPPED
+            };
+            text_system.measure(*slot, request(), binding);
         }
         b.iter(|| {
             for (i, slot) in slots.iter().enumerate() {
-                black_box(text_system.measure(
-                    *slot,
-                    request(),
-                    TextWrap::Wrap,
-                    HAlign::Left,
-                    Some(widths[i % 2]),
-                ));
+                let binding = RunBinding {
+                    available_width: Some(widths[i % 2]),
+                    ..WRAPPED
+                };
+                black_box(text_system.measure(*slot, request(), binding));
             }
             frame_end(&mut text_system, &shaper);
         });
@@ -294,17 +310,14 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
 fn bench_resize_drag(group: &mut BenchmarkGroup<'_, WallTime>) {
     group.throughput(Throughput::Elements(1));
     group.bench_function(Backend::Cpu.case("resize_drag_frame"), |b| {
-        let slot = TextRunSlot {
-            widget_id: WidgetId::from_hash("text-shape-resize-drag"),
-            ordinal: 0,
-        };
+        let run = TruncatedRun::new("text-shape-resize-drag", BODY_PX, FontWeight::REGULAR);
         let shaper = TextShaper::new();
         let mut text = TextSystem::new(shaper.clone());
 
         // Prime a fixed-length drag and judge residency on that, not on criterion's
         // iteration count.
         for step in 0..DRAG_PRIME_FRAMES {
-            black_box(drag_frame(&mut text, &shaper, slot, step));
+            black_box(run.drag_frame(&mut text, &shaper, step));
         }
         let resident = shaper.cosmic_cache_len();
         assert!(
@@ -317,31 +330,11 @@ fn bench_resize_drag(group: &mut BenchmarkGroup<'_, WallTime>) {
 
         let mut step = DRAG_PRIME_FRAMES;
         b.iter(|| {
-            let measured = drag_frame(&mut text, &shaper, slot, step);
+            let measured = run.drag_frame(&mut text, &shaper, step);
             step = step.wrapping_add(1);
             black_box(measured.extent.size)
         });
     });
-}
-
-/// One drag frame end to end: layout commits a fresh width, the encoder
-/// restores the buffer it will replay, and the frame boundary ages the cache.
-/// Dropping the render leaves everything probationary; dropping the boundary
-/// makes the drag an unbounded fill.
-fn drag_frame(
-    text: &mut TextSystem,
-    shaper: &TextShaper,
-    slot: TextRunSlot,
-    step: u32,
-) -> ShapedText {
-    let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
-    let measured = measure_truncated(text, slot, TEXT, width, BODY_PX, FontWeight::REGULAR);
-    shaper.render_ensure(
-        TextShapeRequest::for_key(TEXT, measured.key.expect("the bench shapes through cosmic"))
-            .expect("the bench fixture has text"),
-    );
-    frame_end(text, shaper);
-    measured
 }
 
 /// The truncation miss path, where the ellipsis-advance memo is consulted:
@@ -362,16 +355,12 @@ fn bench_ellipsis_churn(group: &mut BenchmarkGroup<'_, WallTime>) {
     group.bench_function(Backend::Cpu.case("ellipsis_width_churn/one_face"), |b| {
         let shaper = TextShaper::new();
         let mut text = TextSystem::new(shaper.clone());
-        let slot = TextRunSlot {
-            widget_id: WidgetId::from_hash("text-shape-ellipsis-churn"),
-            ordinal: 0,
-        };
+        let run = TruncatedRun::new("text-shape-ellipsis-churn", BODY_PX, FontWeight::REGULAR);
         let mut step = 0u32;
         b.iter(|| {
-            let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
+            let width = drag_width(step);
             step = step.wrapping_add(1);
-            let measured =
-                measure_truncated(&mut text, slot, TEXT, width, BODY_PX, FontWeight::REGULAR);
+            let measured = run.measure(&mut text, width);
             frame_end(&mut text, &shaper);
             black_box(measured.extent.size)
         });
@@ -380,37 +369,23 @@ fn bench_ellipsis_churn(group: &mut BenchmarkGroup<'_, WallTime>) {
     group.bench_function(Backend::Cpu.case("ellipsis_width_churn/two_faces"), |b| {
         let shaper = TextShaper::new();
         let mut text = TextSystem::new(shaper.clone());
-        let slots = [
-            TextRunSlot {
-                widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-body"),
-                ordinal: 0,
-            },
-            TextRunSlot {
-                widget_id: WidgetId::from_hash("text-shape-ellipsis-churn-head"),
-                ordinal: 0,
-            },
-        ];
+        let body_run = TruncatedRun::new(
+            "text-shape-ellipsis-churn-body",
+            BODY_PX,
+            FontWeight::REGULAR,
+        );
+        let head_run = TruncatedRun::new(
+            "text-shape-ellipsis-churn-head",
+            HEADING_PX,
+            FontWeight::BOLD,
+        );
         let mut step = 0u32;
         b.iter(|| {
-            let width = 40.0 + (step % DRAG_WIDTHS) as f32 * 0.25;
+            let width = drag_width(step);
             step = step.wrapping_add(1);
             // Body then heading, as a row records: one memo slot evicts the other's face.
-            let body = measure_truncated(
-                &mut text,
-                slots[0],
-                TEXT,
-                width,
-                BODY_PX,
-                FontWeight::REGULAR,
-            );
-            let head = measure_truncated(
-                &mut text,
-                slots[1],
-                TEXT,
-                width,
-                HEADING_PX,
-                FontWeight::BOLD,
-            );
+            let body = body_run.measure(&mut text, width);
+            let head = head_run.measure(&mut text, width);
             frame_end(&mut text, &shaper);
             black_box((body.extent.size, head.extent.size))
         });

@@ -1,7 +1,8 @@
 //! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, spinner sizing, and echoes the live form state.
 
 use crate::support;
-use crate::support::{Column, api, columns, note, note_style, readout, row, section, well};
+use crate::support::{Column, Section, api};
+use palantir::widget::AnimationRequest;
 use palantir::{
     Align, AnimationSpec, Background, Button, ButtonTheme, Checkbox, ComboBox, Configure, Corners,
     DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator,
@@ -63,37 +64,27 @@ impl Default for State {
 
 pub(crate) fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
-    let outlined = outlined_style();
-    let danger = danger_style();
+    let themes = Themes {
+        outlined: outlined_style(),
+        danger: danger_style(),
+    };
 
     ui.with_state::<State, _>(state_id, |ui, s| {
-        columns(ui, |ui, column| match column {
-            Column::Left => section(
-                ui,
-                "Settings form",
-                &[
+        support::columns(ui, |ui, column| match column {
+            Column::Left => Section::new("Settings form")
+                .apis(&[
                     api!(Panel::disabled),
                     api!(
                         Ui::animate
-                            as fn(
-                                &mut Ui,
-                                WidgetId,
-                                &'static str,
-                                f32,
-                                Option<AnimationSpec>,
-                            ) -> f32
+                            as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32
                     ),
-                ],
-                |ui| form(ui, s, &outlined, &danger),
-            ),
-            Column::Right => side(ui, s, &outlined, &danger),
+                ])
+                .show(ui, |ui| form(ui, s, &themes)),
+            Column::Right => side(ui, s, &themes),
         });
-        section(
-            ui,
-            "Disclosure",
-            &[api!(Expander::start_open), api!(Expander::keep_body)],
-            |ui| disclosure(ui, s),
-        );
+        Section::new("Disclosure")
+            .apis(&[api!(Expander::start_open), api!(Expander::keep_body)])
+            .show(ui, |ui| disclosure(ui, s));
     });
 }
 
@@ -107,12 +98,12 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
         },
         ..base
     };
-    columns(ui, |ui, column| match column {
+    support::columns(ui, |ui, column| match column {
         Column::Left => {
             Expander::new("Open by default")
                 .start_open(true)
                 .show(ui, |ui| {
-                    note(
+                    support::note(
                         ui,
                         "A plain section. The reveal snaps, because the library leaves \
                          animation opt-in.",
@@ -121,7 +112,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
             Expander::new("Animated reveal")
                 .style(&animated)
                 .show(ui, |ui| {
-                    note(
+                    support::note(
                         ui,
                         "The same widget with an animation on its theme. The first open \
                          snaps — there is no measured height to tween against yet — and every \
@@ -145,7 +136,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
                 });
-            note(
+            support::note(
                 ui,
                 "Click into both fields, collapse both, then reopen: the upper field's caret \
                  and selection are gone with its state row, and the lower one's are not.",
@@ -154,7 +145,14 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
     });
 }
 
-fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme) {
+/// The two button themes both columns show beside the default.
+#[derive(Debug)]
+struct Themes {
+    outlined: ButtonTheme,
+    danger: ButtonTheme,
+}
+
+fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
     Panel::vstack()
         .size((Sizing::fixed(360.0), Sizing::HUG))
         .padding(16.0)
@@ -173,8 +171,8 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     Checkbox::new(&mut s.metered)
                         .label("Treat as metered")
                         .show(ui);
-                    row(ui, |ui| {
-                        Text::new("Region").style(&note_style()).show(ui);
+                    support::row(ui, |ui| {
+                        Text::new("Region").style(&support::note_style()).show(ui);
                         ComboBox::new(&mut s.region, &REGIONS)
                             .size((Sizing::fixed(170.0), Sizing::HUG))
                             .show(ui);
@@ -205,17 +203,17 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                 .color(support::A)
                 .show(ui);
             group(ui, "AUDIO & VIDEO");
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 Slider::new(&mut s.volume, 0.0..=1.0)
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
                 let vol = fmt!(ui, "{:.0}%", s.volume * 100.0);
                 Text::new(vol)
-                    .style(&note_style())
+                    .style(&support::note_style())
                     .min_size((36.0, 0.0))
                     .show(ui);
             });
-            row(ui, |ui| {
+            support::row(ui, |ui| {
                 DragValue::new(&mut s.fps)
                     .editable(true)
                     .speed(0.25)
@@ -225,7 +223,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     .size((Sizing::fixed(110.0), Sizing::HUG))
                     .show(ui);
                 Text::new("drag to scrub, click to type")
-                    .style(&note_style())
+                    .style(&support::note_style())
                     .show(ui);
             });
 
@@ -235,7 +233,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     s.syncing = true;
                 }
                 if Button::new()
-                    .style(outlined)
+                    .style(&themes.outlined)
                     .label("Reset")
                     .show(ui)
                     .clicked()
@@ -243,7 +241,7 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
                     *s = State::default();
                 }
                 let del = Button::new()
-                    .style(danger)
+                    .style(&themes.danger)
                     .label("Delete profile")
                     .show(ui)
                     .snapshot();
@@ -256,9 +254,11 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
 
             let target = if s.syncing { 1.0 } else { 0.0 };
             let frac = ui.animate(
-                WidgetId::from_hash("showcase::controls::sync"),
-                "frac",
-                target,
+                AnimationRequest::new(
+                    WidgetId::from_hash("showcase::controls::sync"),
+                    "frac",
+                    target,
+                ),
                 Some(AnimationSpec::SPRING),
             );
             if s.syncing && frac > 0.995 {
@@ -266,78 +266,87 @@ fn form(ui: &mut Ui, s: &mut State, outlined: &ButtonTheme, danger: &ButtonTheme
             }
             ProgressBar::new(frac).show(ui);
             if s.syncing {
-                row(ui, |ui| {
+                support::row(ui, |ui| {
                     Spinner::new().diameter(16.0).show(ui);
                     let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
-                    Text::new(pct).style(&note_style()).show(ui);
+                    Text::new(pct).style(&support::note_style()).show(ui);
                 });
             }
         });
 }
 
-fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
-    section(ui, "Button themes", &[api!(type ButtonTheme)], |ui| {
-        note(
-            ui,
-            "The default, an outlined and a danger ButtonTheme, each beside its disabled look.",
-        );
-        row(ui, |ui| {
-            Button::new().label("default").show(ui);
-            Button::new().label("disabled").disabled(true).show(ui);
-        });
-        row(ui, |ui| {
-            Button::new().style(outlined).label("outlined").show(ui);
-            Button::new()
-                .style(outlined)
-                .label("disabled")
-                .disabled(true)
-                .show(ui);
-        });
-        row(ui, |ui| {
-            Button::new().style(danger).label("danger").show(ui);
-            Button::new()
-                .style(danger)
-                .label("disabled")
-                .disabled(true)
-                .show(ui);
-        });
-    });
-
-    section(ui, "Label overflow", &[api!(Button::text_wrap)], |ui| {
-        note(
-            ui,
-            "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
-             label run past the box; a Hug-width button grows to fit.",
-        );
-        row(ui, |ui| {
-            Button::new()
-                .size((Sizing::fixed(140.0), Sizing::HUG))
-                .label("Screenshot 2026-05-28 at 01.21.25.png")
-                .show(ui);
-            Button::new().label("fits its content").show(ui);
-        });
-        row(ui, |ui| {
-            Button::new()
-                .size((Sizing::fixed(140.0), Sizing::HUG))
-                .text_wrap(TextWrap::SingleLine)
-                .label("Screenshot 2026-05-28 at 01.21.25.png")
-                .show(ui);
-        });
-    });
-
-    section(ui, "Spinners", &[api!(Spinner::diameter)], |ui| {
-        Panel::hstack()
-            .gap(20.0)
-            .child_align(Align::v(VAlign::Center))
-            .show(ui, |ui| {
-                Spinner::new().diameter(20.0).show(ui);
-                Spinner::new().diameter(32.0).show(ui);
-                Spinner::new().diameter(48.0).color(support::B).show(ui);
+fn side(ui: &mut Ui, s: &State, themes: &Themes) {
+    Section::new("Button themes")
+        .apis(&[api!(type ButtonTheme)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "The default, an outlined and a danger ButtonTheme, each beside its disabled look.",
+            );
+            support::row(ui, |ui| {
+                Button::new().label("default").show(ui);
+                Button::new().label("disabled").disabled(true).show(ui);
             });
-    });
+            support::row(ui, |ui| {
+                Button::new()
+                    .style(&themes.outlined)
+                    .label("outlined")
+                    .show(ui);
+                Button::new()
+                    .style(&themes.outlined)
+                    .label("disabled")
+                    .disabled(true)
+                    .show(ui);
+            });
+            support::row(ui, |ui| {
+                Button::new().style(&themes.danger).label("danger").show(ui);
+                Button::new()
+                    .style(&themes.danger)
+                    .label("disabled")
+                    .disabled(true)
+                    .show(ui);
+            });
+        });
 
-    section(ui, "Live state", &[], |ui| {
-        well(ui, |ui| {
+    Section::new("Label overflow")
+        .apis(&[api!(Button::text_wrap)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
+             label run past the box; a Hug-width button grows to fit.",
+            );
+            support::row(ui, |ui| {
+                Button::new()
+                    .size((Sizing::fixed(140.0), Sizing::HUG))
+                    .label("Screenshot 2026-05-28 at 01.21.25.png")
+                    .show(ui);
+                Button::new().label("fits its content").show(ui);
+            });
+            support::row(ui, |ui| {
+                Button::new()
+                    .size((Sizing::fixed(140.0), Sizing::HUG))
+                    .text_wrap(TextWrap::SingleLine)
+                    .label("Screenshot 2026-05-28 at 01.21.25.png")
+                    .show(ui);
+            });
+        });
+
+    Section::new("Spinners")
+        .apis(&[api!(Spinner::diameter)])
+        .show(ui, |ui| {
+            Panel::hstack()
+                .gap(20.0)
+                .child_align(Align::v(VAlign::Center))
+                .show(ui, |ui| {
+                    Spinner::new().diameter(20.0).show(ui);
+                    Spinner::new().diameter(32.0).show(ui);
+                    Spinner::new().diameter(48.0).color(support::B).show(ui);
+                });
+        });
+
+    Section::new("Live state").show(ui, |ui| {
+        support::well(ui, |ui| {
             let net = fmt!(
                 ui,
                 "airplane={} wifi={} bluetooth={} metered={}",
@@ -346,12 +355,12 @@ fn side(ui: &mut Ui, s: &State, outlined: &ButtonTheme, danger: &ButtonTheme) {
                 s.bluetooth,
                 s.metered
             );
-            readout(ui, "network", net);
-            readout(ui, "region", REGIONS[s.region]);
+            support::readout(ui, "network", net);
+            support::readout(ui, "region", REGIONS[s.region]);
             let look = fmt!(ui, "{:?}, reduce_motion={}", s.appearance, s.reduce_motion);
-            readout(ui, "appearance", look);
+            support::readout(ui, "appearance", look);
             let av = fmt!(ui, "volume={:.2} fps={}", s.volume, s.fps);
-            readout(ui, "audio & video", av);
+            support::readout(ui, "audio & video", av);
         });
     });
 }

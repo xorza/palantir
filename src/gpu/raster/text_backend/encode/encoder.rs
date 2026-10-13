@@ -1,16 +1,23 @@
 //! The miss half of the hit/miss split in [the module doc](super): turns a
 //! laid-out text row into glyph instances. The hit half is [`EncodedCache::emit_cached`].
 
-use crate::text::glyphs::TextGlyphs;
-use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
-use crate::text::request::TextShapeRequest;
-
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::cache::{EncodedCache, EncodedGlyph};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::text::glyphs::TextGlyphs;
+use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
+use crate::text::request::TextShapeRequest;
 use glam::IVec2;
+
+/// One run that missed the cache: what to shape, where it lands, and the key its template files under.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MissedRun<'a> {
+    pub(crate) request: TextShapeRequest<'a>,
+    pub(crate) placement: RunPlacement,
+    pub(crate) key: EncodedRunKey,
+}
 
 /// The glyph half of the text pass: the encoded-run cache and per-miss scratch.
 #[derive(Debug, Default)]
@@ -54,12 +61,14 @@ impl TextEncoder {
     pub(crate) fn encode_run(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
-        device: &wgpu::Device,
         glyphs: &mut TextGlyphs<'_>,
-        request: TextShapeRequest<'_>,
-        placement: RunPlacement,
-        run_key: EncodedRunKey,
+        run: MissedRun<'_>,
     ) {
+        let MissedRun {
+            request,
+            placement,
+            key: run_key,
+        } = run;
         let current_frame = pass.atlas.current_frame;
         let Self {
             cache,
@@ -82,7 +91,7 @@ impl TextEncoder {
                 let Some(image) = glyphs.rasterize(g.raster_key) else {
                     continue;
                 };
-                match pass.insert_raster(device, g.raster_key, image) {
+                match pass.insert_raster(g.raster_key, image) {
                     Rasterized::Slot(i) => i,
                     Rasterized::AtlasFull => {
                         starved = true;

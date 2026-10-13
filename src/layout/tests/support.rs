@@ -2,14 +2,14 @@
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::TextStyle;
-use crate::Ui;
 use crate::layout::layer_layout::LayerLayout;
 use crate::layout::text::shaped_text::ShapedText;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{block::Block, grid::Grid, panel::Panel, text::Text};
 
 /// The paragraph the wrapping cases shape: nine words, so every narrow width breaks it.
@@ -57,28 +57,43 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
     text_node.unwrap()
 }
 
-/// VStack holding a `(Fill × Hug)` HStack of a Fixed avatar and a wrapping `Fill` text (the chat-message pattern). Returns the text node.
-pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
-    let mut message_node = None;
-    Panel::vstack().auto_id().show(ui, |ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("avatar"))
-                    .size((Sizing::fixed(avatar_w), Sizing::fixed(40.0)))
-                    .show(ui);
-                message_node = Some(
-                    Text::new(text)
-                        .auto_id()
-                        .font_size(text_px)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .show(ui)
-                        .node(),
-                );
-            });
-    });
-    message_node.unwrap()
+/// A VStack holding a `(Fill × Hug)` HStack of a Fixed `avatar_w` avatar and a wrapping `Fill` text of `text_px` font size (the chat-message pattern).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ChatMessage {
+    pub(super) avatar_w: f32,
+    pub(super) text: &'static str,
+    pub(super) text_px: f32,
+}
+
+impl ChatMessage {
+    /// Records the message; returns the text node.
+    pub(super) fn show(self, ui: &mut Ui) -> NodeId {
+        let Self {
+            avatar_w,
+            text,
+            text_px,
+        } = self;
+        let mut message_node = None;
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("avatar"))
+                        .size((Sizing::fixed(avatar_w), Sizing::fixed(40.0)))
+                        .show(ui);
+                    message_node = Some(
+                        Text::new(text)
+                            .auto_id()
+                            .font_size(text_px)
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .text_wrap(TextWrap::WrapWithOverflow)
+                            .show(ui)
+                            .node(),
+                    );
+                });
+        });
+        message_node.unwrap()
+    }
 }

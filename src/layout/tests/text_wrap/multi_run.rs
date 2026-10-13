@@ -1,13 +1,15 @@
 //! Several runs on one leaf: shaped apart, emitted apart, and cached apart.
 
-use crate::Ui;
-use crate::WidgetId;
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::ui_harness::UiHarness;
+use crate::layout::tests::support::ChatMessage;
 use crate::layout::tests::support::PARAGRAPH;
-use crate::layout::tests::support::chat_message;
+use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -15,6 +17,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
@@ -122,11 +125,25 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     let mut h = UiHarness::with_text(UVec2::new(200, 400));
     // Frame 0 shapes the unbounded root and the first bounded resolve.
-    h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
+    h.frame_value(|ui| {
+        ChatMessage {
+            avatar_w: 40.0,
+            text: PARAGRAPH,
+            text_px: 14.0,
+        }
+        .show(ui)
+    });
 
     // Redrawing at the same width reshapes nothing: the measure cache short-circuits the subtree.
     let before = h.ui.shaper().cache_counts();
-    h.frame_value(|ui| chat_message(ui, 40.0, PARAGRAPH, 14.0));
+    h.frame_value(|ui| {
+        ChatMessage {
+            avatar_w: 40.0,
+            text: PARAGRAPH,
+            text_px: 14.0,
+        }
+        .show(ui)
+    });
     let steady = h.ui.shaper().cache_counts() - before;
     assert_eq!(steady.shapes, 0, "a steady frame must not reshape");
     assert_eq!(steady.supersedes, 0, "nor demote the buffer still in use");
@@ -136,7 +153,14 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     let mut supersedes = 0;
     for frame in 0..12 {
         let before = h.ui.shaper().cache_counts();
-        h.frame_value(|ui| chat_message(ui, 40.0 + frame as f32 * 3.0, PARAGRAPH, 14.0));
+        h.frame_value(|ui| {
+            ChatMessage {
+                avatar_w: 40.0 + frame as f32 * 3.0,
+                text: PARAGRAPH,
+                text_px: 14.0,
+            }
+            .show(ui)
+        });
         let d = h.ui.shaper().cache_counts() - before;
         // The unbounded root is shaped once for the whole drag; more than one means a driver measured this node at two widths in a frame.
         assert!(
@@ -190,10 +214,10 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 .weight(FontWeight::REGULAR),
             );
             ui.add_shape(
-                Shape::rect(crate::Rect::new(0.0, 20.0, 4.0, 2.0))
-                    .corners(crate::Corners::ZERO)
+                Shape::rect(Rect::new(0.0, 20.0, 4.0, 2.0))
+                    .corners(Corners::ZERO)
                     .fill(RgbaF32::WHITE)
-                    .border(crate::Stroke::NONE),
+                    .border(Stroke::NONE),
             );
             let second = ui.intern("second-with-different-text");
             ui.add_shape(

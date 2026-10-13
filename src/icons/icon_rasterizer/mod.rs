@@ -109,20 +109,27 @@ impl IconRasterizer {
         entry.last_use = *uses;
         let tree = entry.tree.as_ref()?;
 
-        let w = u32::from(key.size().x);
-        let h = u32::from(key.size().y);
-        let bytes = (w as usize).checked_mul(h as usize)?.checked_mul(4)?;
+        let px = key.size();
+        let bytes = usize::from(px.x)
+            .checked_mul(usize::from(px.y))?
+            .checked_mul(4)?;
         // `clear` then `resize`: resvg composites over what it is given, and
         // `resize` zeroes only the new tail.
         rgba.clear();
         rgba.resize(bytes, 0);
-        let mut pixmap = tiny_skia::PixmapMut::from_bytes(rgba.as_mut_slice(), w, h)?;
+        let mut pixmap = tiny_skia::PixmapMut::from_bytes(
+            rgba.as_mut_slice(),
+            u32::from(px.x),
+            u32::from(px.y),
+        )?;
 
         // The tree's own size, not the def's viewBox: it is the space resvg renders
         // in.
-        let size = tree.size();
-        let transform =
-            tiny_skia::Transform::from_scale(w as f32 / size.width(), h as f32 / size.height());
+        let tree_size = tree.size();
+        let transform = tiny_skia::Transform::from_scale(
+            f32::from(px.x) / tree_size.width(),
+            f32::from(px.y) / tree_size.height(),
+        );
         resvg::render(tree, transform, &mut pixmap);
 
         out.clear();
@@ -149,7 +156,7 @@ impl IconRasterizer {
         };
         Some(RasterImage {
             content,
-            size: key.size().as_uvec2(),
+            size: px.as_uvec2(),
             bearing: IVec2::ZERO,
             data: out,
         })
@@ -176,10 +183,16 @@ impl IconRasterizer {
     pub(crate) fn forget_sets(&mut self, sets: &[IconSetId]) {
         self.trees.retain(|icon, _| !sets.contains(&icon.set));
     }
+}
 
-    #[cfg(test)]
-    pub(crate) fn parsed_count(&self) -> usize {
-        self.trees.len()
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::icons::icon_rasterizer::IconRasterizer;
+
+    impl IconRasterizer {
+        pub(crate) fn parsed_count(&self) -> usize {
+            self.trees.len()
+        }
     }
 }
 

@@ -2,8 +2,10 @@
 
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -34,7 +36,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                 .line_gap(8.0)
                 .show(ui, |ui| {
                     for i in 0..*count {
-                        cell(ui, ["a", "b", "c", "d"][i], 60.0, 20.0);
+                        cell(ui, ["a", "b", "c", "d"][i], Size::new(60.0, 20.0));
                     }
                 });
         });
@@ -60,9 +62,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
             .gap(10.0)
             .line_gap(8.0)
             .show(ui, |ui| {
-                cell(ui, "small", 50.0, 20.0);
-                cell(ui, "wide", 200.0, 20.0);
-                cell(ui, "tail", 50.0, 20.0);
+                cell(ui, "small", Size::new(50.0, 20.0));
+                cell(ui, "wide", Size::new(200.0, 20.0));
+                cell(ui, "tail", Size::new(50.0, 20.0));
             });
     });
     let small = h.arranged(WidgetId::from_hash("small"));
@@ -85,10 +87,10 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
             .gap(10.0)
             .line_gap(8.0)
             .show(ui, |ui| {
-                cell(ui, "a", 20.0, 40.0);
-                cell(ui, "b", 20.0, 40.0);
+                cell(ui, "a", Size::new(20.0, 40.0));
+                cell(ui, "b", Size::new(20.0, 40.0));
                 // 40+10+40+10+40 = 140 > 100 → c wraps
-                cell(ui, "c", 20.0, 40.0);
+                cell(ui, "c", Size::new(20.0, 40.0));
             });
     });
     let a = h.arranged(WidgetId::from_hash("a"));
@@ -112,10 +114,10 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
                 .gap(10.0)
                 .line_gap(8.0)
                 .show(ui, |ui| {
-                    cell(ui, "a", 60.0, 20.0);
-                    cell(ui, "b", 60.0, 20.0);
-                    cell(ui, "c", 60.0, 20.0);
-                    cell(ui, "d", 60.0, 20.0);
+                    cell(ui, "a", Size::new(60.0, 20.0));
+                    cell(ui, "b", Size::new(60.0, 20.0));
+                    cell(ui, "c", Size::new(60.0, 20.0));
+                    cell(ui, "d", Size::new(60.0, 20.0));
                 })
                 .response
                 .node(),
@@ -143,10 +145,10 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
                     .size((Sizing::fixed(120.0), Sizing::HUG))
                     .gap(5.0)
                     .show(ui, |ui| {
-                        cell(ui, "ia", 50.0, 20.0);
-                        cell(ui, "ib", 50.0, 20.0);
+                        cell(ui, "ia", Size::new(50.0, 20.0));
+                        cell(ui, "ib", Size::new(50.0, 20.0));
                     });
-                cell(ui, "ob", 100.0, 20.0);
+                cell(ui, "ob", Size::new(100.0, 20.0));
             });
     });
     let ia = h.arranged(WidgetId::from_hash("ia"));
@@ -163,13 +165,13 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
 /// A subpixel resize must not move where a line breaks, since the measure cache key cannot see it: the cold frame and a warm restore from a quarter-pixel earlier must agree. Two 50.0625-wide cells total 100.125; at scale 4 a 400 px surface is 100.0 and a 401 px one 100.25, both rounding to a 100 px budget, so the pair fits one line. A Hug stack arranged at its own width keeps its lines too (two 100.2 px cells: 200.4 rounds to 200).
 #[test]
 fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
-    fn build(ui: &mut crate::Ui) {
+    fn build(ui: &mut Ui) {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                cell(ui, "a", 50.0625, 20.0);
-                cell(ui, "b", 50.0625, 20.0);
+                cell(ui, "a", Size::new(50.0625, 20.0));
+                cell(ui, "b", Size::new(50.0625, 20.0));
             });
     }
     let height = |h: &UiHarness| h.arranged(WidgetId::from_hash("w")).size.h;
@@ -199,8 +201,8 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
             .id(WidgetId::from_hash("w"))
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
-                cell(ui, "a", 100.2, 20.0);
-                cell(ui, "b", 100.2, 20.0);
+                cell(ui, "a", Size::new(100.2, 20.0));
+                cell(ui, "b", Size::new(100.2, 20.0));
             });
     });
     assert_eq!(

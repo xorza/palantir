@@ -3,22 +3,16 @@
 
 use crate::common::tracy;
 use crate::layout::Layout;
-use crate::layout::axis_placement::{AxisPlacement, Placed};
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
-use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
-use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-use crate::layout::intrinsic::len_req::LenReq;
+use crate::layout::layer_input::LayerInput;
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
+use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::text::interned_text::InternedText;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
-use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::shaper::TextShaper;
 use crate::text::system::TextSystem;
@@ -89,145 +83,12 @@ impl LayoutEngine {
         last.next().is_none()
     }
 
-    /// Grid's per-track intrinsic aggregator: a bump stack `Grid::intrinsic`
-    /// extends, recurses through and truncates back. Reached by name like
-    /// [`LayoutPass`]'s accessors; the intrinsic query stays off the pass.
-    #[inline]
-    pub(super) const fn grid_track_aggregator(&mut self) -> &mut Vec<f32> {
-        &mut self.scratch.grid.track_aggregator
-    }
-
-    /// Cross-frame intrinsic for one `(node, axis, req)` slot, or `None` when
-    /// the node is ineligible or the snapshot has no value. Only non-leaf nodes
-    /// are cacheable (a leaf's is cheap and owns no descriptor). Intrinsics are
-    /// independent of `available`, so this checks `subtree_hash` alone and hits
-    /// even on a resize frame where `try_lookup` misses.
-    #[inline]
-    fn cached_intrinsic(&self, tree: &Tree, idx: usize, slot: usize) -> Option<f32> {
-        if LayoutMode::from(tree.records.layout()[idx].meta) == LayoutMode::Leaf {
-            return None;
-        }
-        self.cache.lookup_root_intrinsic(
-            tree.records.widget_id()[idx],
-            tree.rollups.layout_subtree[idx],
-            slot,
-        )
-    }
-
-    /// On-demand intrinsic-size query: outer (margin-inclusive) size on `axis`
-    /// for the halves `query` asks for.
-    ///
-    /// A pure function of the subtree at `node`, independent of the parent's
-    /// available width and the arranged rect. Three layers answer, cheapest
-    /// first: the intra-frame slot array, last frame's snapshot, then a real
-    /// subtree walk. Only halves still missing reach the walk.
-    ///
-    /// A walk that also covered the other axis (see
-    /// [`IntrinsicWalk`](crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk))
-    /// is recorded there too, keeping `measure`'s pair of min-content queries
-    /// to one pass over a leaf's text runs.
-    ///
-    /// Consumed by `Grid::measure` and `Stack::measure` via the thin
-    /// [`Self::intrinsic`] / [`Self::intrinsic_range`] wrappers.
-    pub(super) fn intrinsic_query(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        axis: Axis,
-        query: IntrinsicQuery,
-        interned_text: &InternedText<'_>,
-    ) -> IntrinsicRange {
-        let idx = node.idx();
-        let mut range = IntrinsicRange::ZERO;
-        let (mut missing_min, mut missing_max) = (false, false);
-        for (req, slot) in range.requested(query) {
-            let cached = self.scratch.intrinsics[idx][req.slot(axis)];
-            if !cached.is_nan() {
-                *slot = cached;
-                continue;
-            }
-            // Cross-frame reuse from last frame's snapshot, which hits even
-            // on a resize frame. It fires at the query site because a parent
-            // computes `intrinsic_min` before measuring its children, so their
-            // own cache-hit restore comes too late to stop the ancestor
-            // recursing through every unchanged sibling subtree.
-            if let Some(value) = self.cached_intrinsic(tree, idx, req.slot(axis)) {
-                self.scratch.intrinsics[idx][req.slot(axis)] = value;
-                *slot = value;
-                continue;
-            }
-            match req {
-                LenReq::MinContent => missing_min = true,
-                LenReq::MaxContent => missing_max = true,
-            }
-        }
-
-        let Some(walk) = IntrinsicQuery::of(missing_min, missing_max) else {
-            return range;
-        };
-        self.scratch.counters.intrinsic_computed();
-        let computed = walk.walk(self, tree, node, axis, interned_text);
-        if let Some(sibling) = computed.sibling {
-            self.record_intrinsic(idx, axis.other(), walk, sibling);
-        }
-        self.record_intrinsic(idx, axis, walk, computed.answered);
-        for (req, slot) in range.requested(walk) {
-            *slot = computed.answered.get(req);
-        }
-        range
-    }
-
-    /// Store the halves `query` names of `found` in this frame's slot array.
-    #[inline]
-    fn record_intrinsic(
-        &mut self,
-        idx: usize,
-        axis: Axis,
-        query: IntrinsicQuery,
-        mut found: IntrinsicRange,
-    ) {
-        for (req, value) in found.requested(query) {
-            self.scratch.intrinsics[idx][req.slot(axis)] = *value;
-        }
-    }
-
-    /// One half of [`Self::intrinsic_query`].
-    #[inline]
-    pub(super) fn intrinsic(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        axis: Axis,
-        req: LenReq,
-        interned_text: &InternedText<'_>,
-    ) -> f32 {
-        self.intrinsic_query(tree, node, axis, IntrinsicQuery::single(req), interned_text)
-            .get(req)
-    }
-
-    /// Both halves, as Grid's Hug tracks need the content range.
-    #[inline]
-    pub(super) fn intrinsic_range(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        axis: Axis,
-        interned_text: &InternedText<'_>,
-    ) -> IntrinsicRange {
-        self.intrinsic_query(tree, node, axis, IntrinsicQuery::range(), interned_text)
-    }
-
     /// Run measure and arrange for every root in every layer's tree against
     /// `surface`, in `Layer::PAINT_ORDER`; each tree's recursive work gets a
     /// [`LayoutPass`] bound to that layer's output slot.
-    pub(crate) fn run(
-        &mut self,
-        forest: &Forest,
-        interned_text: &InternedText<'_>,
-        surface: Rect,
-        out: &mut Layout,
-    ) {
+    pub(crate) fn run(&mut self, forest: &Forest, surface: Rect, out: &mut Layout) {
         tracy::zone!();
+        let interned_text = forest.record_store.interned_text();
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
@@ -251,6 +112,10 @@ impl LayoutEngine {
         self.last_roots.clear();
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
+            let input = LayerInput {
+                tree,
+                interned_text: &interned_text,
+            };
             let layer_out = &mut out[layer];
             layer_out.resize_for(tree);
             if tree.records.is_empty() {
@@ -259,7 +124,7 @@ impl LayoutEngine {
             }
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
-                let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
+                let mut pass = LayoutPass::new(&mut *self, input, &mut *layer_out);
                 let root = slot.first_node;
                 let available = slot.available(layer, surface);
                 // Two of the five passes that a Tracy capture couldn't tell
@@ -268,13 +133,12 @@ impl LayoutEngine {
                     tracy::zone!("Layout::measure");
                     pass.measure(root, available)
                 };
-                let root_layout = tree.records.layout()[root.idx()];
-                let size = AxisPlacement::arrange_size(
-                    &root_layout,
-                    tree.bounds(root),
-                    Placed::of(measured.size, measured.floor),
-                    available,
-                );
+                let size = PlacedChild {
+                    layout: &tree.records.layout()[root.idx()],
+                    bounds: tree.bounds(root),
+                    measured: Placed::of(measured.size, measured.floor),
+                }
+                .arrange_size(available);
                 // Overlay policies need the current measured body, not a retained response rect.
                 let arranged = Rect {
                     min: slot.origin(layer, size, surface),
@@ -311,13 +175,13 @@ impl LayoutEngine {
             // Container text is paint-only and its wrap width exists only after
             // arrange, so it gets its own pass over the identified owners.
             let layouts = tree.records.layout();
-            let mut pass = LayoutPass::new(&mut *self, tree, interned_text, &mut *layer_out);
+            let mut pass = LayoutPass::new(&mut *self, input, &mut *layer_out);
             for index in tree.container_text.ones() {
                 let layout = layouts[index];
                 let node = NodeId(index as u32);
                 // The inner box `arrange` places children in.
                 let available_w = layout.inner_rect(pass.rect(node)).size.w;
-                let runs = TextShapeInput::on_container(tree, interned_text, node);
+                let runs = TextShapeInput::on_container(tree, &interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
             }
             out[layer].hash_rects();
@@ -336,9 +200,15 @@ impl LayoutEngine {
 pub(crate) mod internals {
     use crate::layout::engine::LayoutEngine;
     #[cfg(test)]
-    use crate::layout::intrinsic::len_req::{LenReq, SLOT_COUNT};
+    use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
     #[cfg(test)]
-    use crate::primitives::layout::axis::Axis;
+    use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+    #[cfg(test)]
+    use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+    #[cfg(test)]
+    use crate::layout::intrinsic::len_req::SLOT_COUNT;
+    #[cfg(test)]
+    use crate::layout::layer_input::LayerInput;
     #[cfg(test)]
     use crate::scene::forest::Forest;
     #[cfg(test)]
@@ -347,17 +217,20 @@ pub(crate) mod internals {
     use crate::scene::tree::node_id::NodeId;
 
     impl LayoutEngine {
-        /// [`Self::intrinsic`] on `forest`'s main tree, interning its text.
+        /// [`IntrinsicPass::query`] on `forest`'s main tree, interning its text.
         #[cfg(test)]
         pub(crate) fn main_intrinsic(
             &mut self,
             forest: &Forest,
             node: NodeId,
-            axis: Axis,
-            req: LenReq,
-        ) -> f32 {
+            query: IntrinsicQuery,
+        ) -> IntrinsicRange {
             let interned_text = forest.record_store.interned_text();
-            self.intrinsic(&forest.trees[Layer::Main], node, axis, req, &interned_text)
+            let input = LayerInput {
+                tree: &forest.trees[Layer::Main],
+                interned_text: &interned_text,
+            };
+            IntrinsicPass::new(self, input).query(node, query)
         }
 
         /// Make the next run lay the forest out again, to drive the snapshot

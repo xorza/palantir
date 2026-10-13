@@ -11,7 +11,7 @@ use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::edit_state::EditKind;
-use crate::widgets::text_edit::editor::Editor;
+use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
 
@@ -32,8 +32,7 @@ pub(super) struct InputResult {
 /// rendering it. Unrelated to [`crate::InputPolicy`], which gates re-recording.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AcceptPolicy {
-    /// Cap on buffer length; `None` is unbounded.
-    pub(super) max_chars: Option<usize>,
+    pub(super) rules: EditRules,
     /// Select everything when focus lands without a same-frame press.
     pub(super) select_all_on_focus: bool,
     /// The key classes this field consumes: the value its scope declares, so
@@ -70,7 +69,7 @@ impl InputPass<'_> {
         } = self;
         let ctx = &layout.ctx;
         let AcceptPolicy {
-            max_chars,
+            rules,
             select_all_on_focus,
             filter,
         } = policy;
@@ -94,7 +93,7 @@ impl InputPass<'_> {
         // Repair persisted byte offsets: application code may have replaced
         // `*text` with a string whose UTF-8 boundaries differ.
         edit.normalize(text);
-        let mut ed = Editor::new(text, edit, ctx.multiline, max_chars);
+        let mut ed = Editor::new(text, edit, rules);
         ed.enforce_single_line();
 
         // Select all on the frame focus lands, unless a press places the caret.
@@ -120,7 +119,7 @@ impl InputPass<'_> {
                 .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
             let clicks = resp_state.left.press_count();
             if clicks > 0 {
-                ed.press(hit, clicks, ui.peek_modifiers().shift);
+                ed.press(hit, clicks, CaretMove::from(ui.peek_modifiers()));
             } else {
                 ed.drag_to(hit);
             }
@@ -160,12 +159,7 @@ impl InputPass<'_> {
                     assert_only_repeats_after(ui.keyboard_events(), i);
                     break;
                 }
-                KeyOutcome::Vertical { up, extend } => {
-                    resolve_vertical(&mut ed, ui, ctx, up, extend);
-                }
-                KeyOutcome::LineEdge { end, extend } => {
-                    resolve_line_edge(&mut ed, ui, ctx, end, extend);
-                }
+                KeyOutcome::Probe(probe) => probe.apply(&mut ed, ui, ctx),
                 KeyOutcome::None => {}
             }
         }
@@ -194,41 +188,34 @@ fn assert_only_repeats_after(events: &[KeyPress], terminal: usize) {
 }
 
 pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutcome {
-    let extend = keypress.mods.shift;
+    let motion = CaretMove::from(keypress.mods);
+    let probe = |target| KeyOutcome::Probe(ProbeMotion { target, motion });
     let line_nav = is_line_nav(keypress.mods);
     match keypress.key {
         Key::Backspace if line_nav => editor.delete_to_line_start(),
         Key::Backspace => editor.delete_backward(),
         Key::Delete => editor.delete_forward(),
-        Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(extend),
-        Key::ArrowRight if is_word_nav(keypress.mods) => editor.move_word_right(extend),
-        Key::ArrowLeft if line_nav && editor.multiline() => {
-            return KeyOutcome::LineEdge { end: false, extend };
-        }
-        Key::ArrowRight if line_nav && editor.multiline() => {
-            return KeyOutcome::LineEdge { end: true, extend };
-        }
-        Key::ArrowLeft if line_nav => editor.move_caret(0, extend),
-        Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), extend),
+        Key::ArrowLeft if is_word_nav(keypress.mods) => editor.move_word_left(motion),
+        Key::ArrowRight if is_word_nav(keypress.mods) => editor.move_word_right(motion),
+        Key::ArrowLeft if line_nav && editor.multiline() => return probe(ProbeTarget::RowStart),
+        Key::ArrowRight if line_nav && editor.multiline() => return probe(ProbeTarget::RowEnd),
+        Key::ArrowLeft if line_nav => editor.move_caret(0, motion),
+        Key::ArrowRight if line_nav => editor.move_caret(editor.text().len(), motion),
         // Document ends: Ctrl+Home/End, and Cmd+Up/Down on macOS.
-        Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, extend),
+        Key::Home | Key::ArrowUp if is_document_nav(keypress) => editor.move_caret(0, motion),
         Key::End | Key::ArrowDown if is_document_nav(keypress) => {
-            editor.move_caret(editor.text().len(), extend);
+            editor.move_caret(editor.text().len(), motion);
         }
-        Key::ArrowLeft => editor.move_grapheme_left(extend),
-        Key::ArrowRight => editor.move_grapheme_right(extend),
-        Key::ArrowUp if editor.multiline() => {
-            return KeyOutcome::Vertical { up: true, extend };
-        }
-        Key::ArrowDown if editor.multiline() => {
-            return KeyOutcome::Vertical { up: false, extend };
-        }
+        Key::ArrowLeft => editor.move_grapheme_left(motion),
+        Key::ArrowRight => editor.move_grapheme_right(motion),
+        Key::ArrowUp if editor.multiline() => return probe(ProbeTarget::Above),
+        Key::ArrowDown if editor.multiline() => return probe(ProbeTarget::Below),
         Key::Enter if editor.multiline() => editor.replace_selection("\n", EditKind::Other),
         // Multi-line Home / End mean the visual line.
-        Key::Home if editor.multiline() => return KeyOutcome::LineEdge { end: false, extend },
-        Key::End if editor.multiline() => return KeyOutcome::LineEdge { end: true, extend },
-        Key::Home => editor.move_caret(0, extend),
-        Key::End => editor.move_caret(editor.text().len(), extend),
+        Key::Home if editor.multiline() => return probe(ProbeTarget::RowStart),
+        Key::End if editor.multiline() => return probe(ProbeTarget::RowEnd),
+        Key::Home => editor.move_caret(0, motion),
+        Key::End => editor.move_caret(editor.text().len(), motion),
         // Escape peels one layer: selection first, then focus.
         Key::Escape => {
             let had_selection = editor.collapse_selection();
@@ -246,54 +233,6 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress) -> KeyOutco
         _ => {}
     }
     KeyOutcome::None
-}
-
-/// Move the caret to the offset `target` picks from the caret's current
-/// position. Both queries share one `probe_text` borrow and cache dispatch.
-fn move_caret_by_probe(
-    editor: &mut Editor<'_>,
-    ui: &mut Ui,
-    ctx: &ShapeCtx,
-    extend: bool,
-    target: impl FnOnce(&TextProbe<'_>, Caret) -> usize,
-) {
-    let byte = {
-        let probe = ui.probe_text(ctx.run(editor.text()));
-        let pos = probe.caret_at(editor.caret());
-        target(&probe, pos)
-    };
-    editor.move_caret(byte, extend);
-}
-
-fn resolve_vertical(editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx, up: bool, extend: bool) {
-    move_caret_by_probe(editor, ui, ctx, extend, |probe, pos| {
-        if up && pos.y_top <= 0.5 {
-            return 0;
-        }
-        let probe_y = if up {
-            pos.y_top - 1.0
-        } else {
-            pos.y_top + pos.line_height + 1.0
-        };
-        probe.byte_at(pos.x, probe_y)
-    });
-}
-
-/// Home / End on the visual line: a soft-wrapped line has no `\n` to scan for,
-/// so hit-test past each end of the caret's row, which `byte_at` clamps.
-fn resolve_line_edge(
-    editor: &mut Editor<'_>,
-    ui: &mut Ui,
-    ctx: &ShapeCtx,
-    end: bool,
-    extend: bool,
-) {
-    move_caret_by_probe(editor, ui, ctx, extend, |probe, pos| {
-        // Mid-row, so the hit cannot fall to a neighbouring line.
-        let y = pos.y_top + pos.line_height * 0.5;
-        let x = if end { probe.size().w + 1.0 } else { -1.0 };
-        probe.byte_at(x, y)
-    });
 }
 
 /// macOS line chords: Cmd+Left / Right and Cmd+Backspace (`Modifiers::ctrl`
@@ -326,19 +265,60 @@ const fn is_word_nav(modifiers: Modifiers) -> bool {
     modifiers.ctrl == WORD_NAV.ctrl && modifiers.alt == WORD_NAV.alt
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum KeyOutcome {
     None,
     Blur,
-    Vertical {
-        up: bool,
-        extend: bool,
-    },
-    /// Home / End in a multi-line editor: the visual line's edge.
-    LineEdge {
-        end: bool,
-        extend: bool,
-    },
+    /// A caret move only the shaped layout can answer, run once the press loop
+    /// can hand it `ui`.
+    Probe(ProbeMotion),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ProbeMotion {
+    pub(super) target: ProbeTarget,
+    pub(super) motion: CaretMove,
+}
+
+/// Where on the shaped layout a multi-line caret move lands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ProbeTarget {
+    /// The visual line above, at the caret's x; the first line goes to the start.
+    Above,
+    /// The visual line below, at the caret's x.
+    Below,
+    /// Home in a multi-line editor: the visual line's leading edge.
+    RowStart,
+    /// End in a multi-line editor: the visual line's trailing edge.
+    RowEnd,
+}
+
+impl ProbeMotion {
+    /// Move the caret to the byte [`ProbeTarget::byte`] picks from its current
+    /// position. Both queries share one `probe_text` borrow and cache dispatch.
+    fn apply(self, editor: &mut Editor<'_>, ui: &mut Ui, ctx: &ShapeCtx) {
+        let byte = {
+            let probe = ui.probe_text(ctx.run(editor.text()));
+            let pos = probe.caret_at(editor.caret());
+            self.target.byte(&probe, pos)
+        };
+        editor.move_caret(byte, self.motion);
+    }
+}
+
+impl ProbeTarget {
+    fn byte(self, probe: &TextProbe<'_>, pos: Caret) -> usize {
+        match self {
+            Self::Above if pos.y_top <= 0.5 => 0,
+            Self::Above => probe.byte_at(pos.x, pos.y_top - 1.0),
+            Self::Below => probe.byte_at(pos.x, pos.y_top + pos.line_height + 1.0),
+            // A soft-wrapped line has no `\n` to scan for, so hit-test past each end
+            // of the caret's row, which `byte_at` clamps. Mid-row, so the hit cannot
+            // fall to a neighbouring line.
+            Self::RowStart => probe.byte_at(-1.0, pos.y_top + pos.line_height * 0.5),
+            Self::RowEnd => probe.byte_at(probe.size().w + 1.0, pos.y_top + pos.line_height * 0.5),
+        }
+    }
 }
 
 #[cfg(test)]

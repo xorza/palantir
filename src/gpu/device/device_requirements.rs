@@ -1,6 +1,7 @@
 //! What Palantir needs from the device it draws on.
 
-use crate::gpu::error::{self, UnmetRequirements};
+use crate::gpu::device::device_features::DeviceFeatures;
+use crate::gpu::error::UnmetRequirements;
 use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
 /// The features and limits to ask an adapter for so the returned device can run
@@ -22,8 +23,8 @@ pub struct DeviceRequirements {
 }
 
 impl DeviceRequirements {
-    /// Features no configuration runs without.
-    pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
+    /// Features no configuration runs without: [`DeviceFeatures::ALL`].
+    pub const FEATURES: wgpu::Features = DeviceFeatures::ALL.to_wgpu();
 
     /// The four features `collect_gpu_stats` asks for, as the one set that
     /// instruments the GPU timeline.
@@ -54,10 +55,9 @@ impl DeviceRequirements {
     /// Shared by [`Self::against`] and [`Self::met_by`] so a failure reports under
     /// one name.
     fn check(available: wgpu::Features, limits: &wgpu::Limits) -> Result<(), UnmetRequirements> {
-        if !available.contains(Self::FEATURES) {
-            return Err(UnmetRequirements::Features {
-                missing: error::flag_names((Self::FEATURES - available).iter_names()),
-            });
+        let missing = DeviceFeatures::ALL.difference(DeviceFeatures::from_wgpu_truncate(available));
+        if !missing.is_empty() {
+            return Err(UnmetRequirements::Features { missing });
         }
         if limits.max_immediate_size < IMMEDIATES_BYTES {
             return Err(UnmetRequirements::Limit {
@@ -125,6 +125,7 @@ const IMMEDIATE_SIZE_LIMIT: &str = "max_immediate_size";
 mod tests {
     use wgpu::{Features, Limits};
 
+    use crate::gpu::device::device_features::DeviceFeatures;
     use crate::gpu::device::device_requirements::DeviceRequirements;
     use crate::gpu::error::UnmetRequirements;
     use crate::gpu::pipeline::IMMEDIATES_BYTES;
@@ -147,13 +148,17 @@ mod tests {
         assert_eq!(requirements.limits.max_immediate_size, IMMEDIATES_BYTES);
 
         let missing =
-            DeviceRequirements::against(Features::empty(), &ceiling, optional).unwrap_err();
-        let UnmetRequirements::Features { missing } = &missing else {
-            panic!("{missing:?}");
-        };
-        assert!(
-            missing.contains("IMMEDIATES"),
-            "the message must name the feature that is absent, got {missing}"
+            DeviceRequirements::against(Features::TIMESTAMP_QUERY, &ceiling, optional).unwrap_err();
+        assert_eq!(
+            missing,
+            UnmetRequirements::Features {
+                missing: DeviceFeatures::IMMEDIATES
+            },
+            "the feature that is absent, not the one the adapter has"
+        );
+        assert_eq!(
+            missing.to_string(),
+            "graphics device is missing IMMEDIATES, which Palantir requires"
         );
 
         let mut short = ceiling;

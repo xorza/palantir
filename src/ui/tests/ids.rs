@@ -1,12 +1,12 @@
 //! How a widget is named, and what happens when two ask for one name.
 
-use crate::Ui;
 use crate::common::span::Span;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::ui::Ui;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -38,8 +38,16 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
         .collect()
 }
 
+/// What [`record_duplicate_ids`] recorded: the id both buttons claimed, and the first button's node.
+#[derive(Debug)]
+struct DuplicateIds {
+    id: WidgetId,
+    #[cfg(debug_assertions)]
+    first_node: NodeId,
+}
+
 /// Two buttons in one frame both claiming `"dup"`; the second is disambiguated.
-fn record_duplicate_ids(h: &mut UiHarness) -> (WidgetId, NodeId) {
+fn record_duplicate_ids(h: &mut UiHarness) -> DuplicateIds {
     let button_node = Cell::new(NodeId(0));
     let duplicate_id = WidgetId::from_hash("dup");
     h.frame(|ui| {
@@ -49,7 +57,11 @@ fn record_duplicate_ids(h: &mut UiHarness) -> (WidgetId, NodeId) {
             button_node.set(a_node);
         });
     });
-    (duplicate_id, button_node.get())
+    DuplicateIds {
+        id: duplicate_id,
+        #[cfg(debug_assertions)]
+        first_node: button_node.get(),
+    }
 }
 
 /// One `"dup"` in `Main` and one in `Popup`.
@@ -68,7 +80,7 @@ fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
-    let (duplicate_id, _) = record_duplicate_ids(&mut h);
+    let duplicate_id = record_duplicate_ids(&mut h).id;
     // One collision pair is recorded and survives until the next `pre_record`.
     assert_eq!(
         h.ui.forest.collisions.len(),
@@ -87,7 +99,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 #[test]
 fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
-    let (_, button_node) = record_duplicate_ids(&mut h);
+    let button_node = record_duplicate_ids(&mut h).first_node;
     let button_rect = h.ui.layout[Layer::Main].rect[button_node.idx()];
     let outlines = collision_outlines(&h.ui);
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");

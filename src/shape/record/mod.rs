@@ -1,7 +1,11 @@
 //! The lowered form of one paint primitive, and the only shape vocabulary the encoder reads.
 
+use crate::common::content_hash::ContentHash;
+use crate::common::hash::Hasher;
 use crate::common::span::Span;
 use crate::icons::icon_set::IconHandle;
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -13,16 +17,18 @@ use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::shape::icon::IconFit;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::quad_shape::QuadShape;
-use crate::shape::paint::shape_brush::CurveRamp;
+use crate::shape::paint::shape_brush::{BrushHash, ShapeBrush};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
 use std::hash;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher as _};
+use std::mem;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -94,7 +100,7 @@ pub(crate) enum ShapeRecord {
         /// Draws a colour icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
         desaturate: bool,
     },
-    /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `shapes::lower`). Owner-local, no joins. `bbox` is the tight centerline AABB.
+    /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `CurveShape`'s lowering). Owner-local, no joins. `bbox` is the tight centerline AABB.
     ///
     /// Field order is the layout: this variant fills `ShapeRecord`'s 88 B with the byte-wide `cap` beside the tag and the 8-aligned `ramp` last.
     Curve {
@@ -119,7 +125,7 @@ pub(crate) fn mesh_paint_bbox_local(bbox: Rect, local_rect: Option<Rect>) -> Rec
 
 /// Tight owner-local paint bbox of a [`ShapeRecord::Text`] from the shaped extent (`LayerLayout::text_shapes`); the encoder uses the same [`Align::place_in`] formula in screen space, so damage and draw rects can't drift.
 ///
-/// **Damage inflation lives in cascade**, not here: the ladder-snap overshoot is `measured × STEP/2` in absolute screen pixels, so it applies after `lift_to_screen`; locally it would scale by `cascade_scale`.
+/// **Damage inflation lives in cascade**, not here: the ladder-snap overshoot is `measured × STEP/2` in absolute screen pixels, so it applies after the cascade lifts the rect to screen; locally it would scale by `cascade_scale`.
 ///
 /// - `local_origin: Some(origin)`: rect is `origin + measured`.
 /// - `local_origin: None`: placed by [`Align::place_in`] in the owner's padded inner rect.
@@ -145,6 +151,210 @@ pub(crate) fn text_paint_bbox_local(
 }
 
 impl ShapeRecord {
+    /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::add`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
+    ///
+    /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. `Polyline` and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
+    pub(crate) fn content_hash(&self) -> ContentHash {
+        let mut h = Hasher::new();
+        mem::discriminant(self).hash(&mut h);
+        match self {
+            // All three shapes share this record's discriminant, so `QuadShape`'s goes
+            // in first to keep a rectangle, shadow and triangle apart.
+            Self::Quad(shape) => {
+                mem::discriminant(shape).hash(&mut h);
+                match shape {
+                    QuadShape::Rect {
+                        kind,
+                        local_rect,
+                        corners,
+                        fill,
+                        border,
+                    } => {
+                        h.write_u8(*kind as u8);
+                        hash_optional_rect(*local_rect, &mut h);
+                        corners.hash(&mut h);
+                        hash_brush(*fill, &mut h);
+                        border.hash_into(&mut h);
+                    }
+                    QuadShape::Shadow {
+                        local_rect,
+                        corners,
+                        shadow,
+                    } => {
+                        hash_optional_rect(*local_rect, &mut h);
+                        corners.hash(&mut h);
+                        shadow.hash(&mut h);
+                    }
+                    // `bbox` derives from `a`/`b`/`c` + `radius`, so it is excluded.
+                    QuadShape::Triangle {
+                        a,
+                        b,
+                        c,
+                        radius,
+                        fill,
+                        border,
+                        bbox: _,
+                    } => {
+                        a.hash_visual(&mut h);
+                        b.hash_visual(&mut h);
+                        c.hash_visual(&mut h);
+                        radius.hash_visual(&mut h);
+                        fill.hash(&mut h);
+                        border.hash_into(&mut h);
+                    }
+                }
+            }
+            // `content_hash` already folds width, color_mode, cap, join, points and
+            // colors; bbox/spans are frame-local. Fields are named rather than `..` so
+            // the compiler rejects a *new* one until someone decides if it belongs in
+            // the hash: a missing field makes two records share a hash, which damage
+            // diff reads as "unchanged".
+            Self::Polyline {
+                content_hash,
+                width: _,
+                color_mode: _,
+                cap: _,
+                join: _,
+                points: _,
+                colors: _,
+                bbox: _,
+            } => h.write_u64(*content_hash),
+            // The shaping inputs are layout's as well as paint's, so one method feeds
+            // both hashes.
+            Self::Text {
+                local_origin,
+                color,
+                text: _,
+                font: _,
+                wrap: _,
+                align: _,
+            } => {
+                match local_origin {
+                    None => h.write_u8(0),
+                    Some(origin) => {
+                        h.write_u8(1);
+                        origin.hash_visual(&mut h);
+                    }
+                }
+                color.hash(&mut h);
+                self.hash_layout_inputs(&mut h);
+            }
+            Self::Mesh {
+                local_rect,
+                tint,
+                content_hash,
+                vertices: _,
+                indices: _,
+                bbox: _,
+            } => {
+                hash_optional_rect(*local_rect, &mut h);
+                tint.hash(&mut h);
+                h.write_u64(*content_hash);
+            }
+            // `ImageSource`'s discriminant goes in first to keep a texture draw and a
+            // view composite apart; the shared placement fields are hashed once, around
+            // the split.
+            Self::Image {
+                local_rect,
+                tint,
+                source,
+                fit,
+                min_filter,
+                mag_filter,
+                downsample,
+            } => {
+                hash_optional_rect(*local_rect, &mut h);
+                tint.hash(&mut h);
+                mem::discriminant(source).hash(&mut h);
+                match source {
+                    // The registration `id`, the intrinsic `size`, and the write count
+                    // that moves the hash when texels change under an unchanged id.
+                    ImageSource::Texture {
+                        id,
+                        size,
+                        generation,
+                    } => {
+                        h.write_u64(id.0);
+                        h.write_u64(u64::from(size.x) | (u64::from(size.y) << 32));
+                        h.write_u32(*generation);
+                    }
+                    // `epoch` is the view's damage version: `Ui::gpu_view` bumps it to
+                    // the frame id on `repaint(true)` (hash changes, the rect repaints)
+                    // and holds it on `repaint(false)` (hash matches, the view culls).
+                    // The view's paint lives in `Ui::gpu_views`, which the hash cannot
+                    // see.
+                    ImageSource::GpuView { epoch } => h.write_u64(*epoch),
+                }
+                // The fit (including `Tile`'s UV transform, which changes every
+                // pan/zoom frame), both sampling filters and the minification tap mode:
+                // two 1-bit filters in the low bits, the 3-variant `downsample` above.
+                hash_fit(fit, &mut h);
+                h.write_u8(
+                    (*min_filter as u8) | ((*mag_filter as u8) << 1) | ((*downsample as u8) << 2),
+                );
+            }
+            // The handle's `view_box` is baked and constant per `(set, icon)`, so
+            // identity plus rect, fit and tint is all that can change; `IconSetId`
+            // carries a generation, so a reused slot never names two artworks. The
+            // raster size is *not* hashed: it follows from the resolved screen rect and
+            // needs a display scale the record lacks.
+            Self::Icon {
+                local_rect,
+                handle,
+                fit,
+                tint,
+                desaturate,
+            } => {
+                hash_optional_rect(*local_rect, &mut h);
+                tint.hash(&mut h);
+                h.write_u32(handle.icon.set.bits());
+                h.write_u16(handle.icon.icon.index());
+                h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
+            }
+            // Geometry + style are hashed inline (every input lives on the record).
+            // `bbox` is excluded. The ramp goes in by content hash so equal geometry
+            // with different ramps differs. `CurveBasis`'s discriminant goes in first
+            // to keep a cubic and an arc apart; the shared stroke fields are hashed
+            // after the split.
+            Self::Curve {
+                cap,
+                basis,
+                stroke,
+                bbox: _,
+                ramp,
+            } => {
+                mem::discriminant(basis).hash(&mut h);
+                match basis {
+                    CurveBasis::Cubic(CubicBezier { p0, p1, p2, p3 }) => {
+                        for point in [p0, p1, p2, p3] {
+                            point.hash_visual(&mut h);
+                        }
+                    }
+                    CurveBasis::Arc(CircularArc {
+                        center,
+                        radius,
+                        start_angle,
+                        sweep,
+                    }) => {
+                        center.hash_visual(&mut h);
+                        radius.hash_visual(&mut h);
+                        start_angle.hash_visual(&mut h);
+                        sweep.hash_visual(&mut h);
+                    }
+                }
+                stroke.hash_into(&mut h);
+                match ramp {
+                    CurveRamp::None => h.write_u8(*cap as u8),
+                    CurveRamp::Interned { id: _, hash } => {
+                        h.write_u8(*cap as u8 | 0x80);
+                        h.write_u64(*hash);
+                    }
+                }
+            }
+        }
+        ContentHash(h.finish())
+    }
+
     /// Feeds what layout reads from this record into `h`, answering whether there was anything. Only text is read by layout (text, face, wrap, alignment); colour and origin are paint, so a recoloured label still hits the measure cache.
     pub(crate) fn hash_layout_inputs(&self, h: &mut impl hash::Hasher) -> bool {
         let Self::Text {
@@ -168,6 +378,34 @@ impl ShapeRecord {
             | (*wrap as u64);
         h.write_u64(face);
         true
+    }
+}
+
+fn hash_optional_rect(rect: Option<Rect>, h: &mut Hasher) {
+    match rect {
+        None => h.write_u8(0),
+        Some(rect) => {
+            h.write_u8(1);
+            rect.hash_visual(h);
+        }
+    }
+}
+
+/// Fold a lowered fill into the shape hash via [`ShapeBrush::hash_parts`], which
+/// the chrome hash reads too.
+fn hash_brush(fill: ShapeBrush, h: &mut Hasher) {
+    let BrushHash { tag, payload } = fill.hash_parts();
+    h.write_u8(tag);
+    h.write_u64(payload);
+}
+
+/// Fold an [`ImageFit`] into the shape hash: the discriminant plus, for `Tile`, the
+/// UV transform bits.
+fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
+    mem::discriminant(fit).hash(h);
+    if let ImageFit::Tile { offset, scale } = fit {
+        offset.hash_visual(h);
+        scale.hash_visual(h);
     }
 }
 

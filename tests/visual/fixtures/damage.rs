@@ -4,16 +4,17 @@
 //! frames, so a pixel reads magenta only if the scene left it uncovered. A failing
 //! test writes its second frame under `tests/visual/output/damage_<name>/`.
 
-use glam::{UVec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::{
     Background, Block, Button, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32,
     Sizing, Ui,
 };
 
-use crate::fixtures::{SRGB_ROUND_TRIP, assert_px};
-use crate::goldens::{KeptOnFailure, assert_same, crop};
+use crate::fixtures;
+use crate::goldens;
 use crate::harness::Harness;
+use crate::kept_on_failure::KeptOnFailure;
 
 const VIS_CLEAR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 1.0);
 
@@ -47,26 +48,26 @@ fn magenta_pixels(img: &RgbaImage) -> usize {
 const STROKE: i32 = 2;
 const GAP: i32 = 1;
 
+/// A damage rect in physical pixels, `max` exclusive.
 #[derive(Clone, Copy, Debug)]
 struct PxRect {
-    min: (i32, i32),
-    max: (i32, i32),
+    min: IVec2,
+    max: IVec2,
 }
 
 impl PxRect {
-    const fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+    fn new(min: IVec2, size: IVec2) -> Self {
         Self {
-            min: (x, y),
-            max: (x + w, y + h),
+            min,
+            max: min + size,
         }
     }
 
-    fn outline_covers(self, x: i32, y: i32) -> bool {
-        let (x0, y0) = (self.min.0 - GAP, self.min.1 - GAP);
-        let (x1, y1) = (self.max.0 + GAP, self.max.1 + GAP);
-        let inside = (x0..x1).contains(&x) && (y0..y1).contains(&y);
-        let interior =
-            (x0 + STROKE..x1 - STROKE).contains(&x) && (y0 + STROKE..y1 - STROKE).contains(&y);
+    fn outline_covers(self, p: IVec2) -> bool {
+        let outer_min = self.min - GAP;
+        let outer_max = self.max + GAP;
+        let inside = p.cmpge(outer_min).all() && p.cmplt(outer_max).all();
+        let interior = p.cmpge(outer_min + STROKE).all() && p.cmplt(outer_max - STROKE).all();
         inside && !interior
     }
 }
@@ -74,7 +75,9 @@ impl PxRect {
 fn assert_outlines_exactly(img: &RgbaImage, damage: &[PxRect]) {
     for (x, y, p) in img.enumerate_pixels() {
         let (x, y) = (x as i32, y as i32);
-        let expected = damage.iter().any(|rect| rect.outline_covers(x, y));
+        let expected = damage
+            .iter()
+            .any(|rect| rect.outline_covers(IVec2::new(x, y)));
         assert_eq!(
             is_red(*p),
             expected,
@@ -95,8 +98,8 @@ fn outlined_rect(img: &RgbaImage) -> PxRect {
     }
     assert!(x0 <= x1, "no red pixel at all: the overlay drew nothing");
     PxRect {
-        min: (x0 + GAP, y0 + GAP),
-        max: (x1 + 1 - GAP, y1 + 1 - GAP),
+        min: IVec2::new(x0, y0) + GAP,
+        max: IVec2::new(x1, y1) + 1 - GAP,
     }
 }
 
@@ -161,7 +164,7 @@ fn static_scene_repeats_clean() {
         0,
         "the scene covers the surface, so no pixel may read as the clear colour",
     );
-    assert_same("damage_static_repeat", &f2, &f1);
+    goldens::assert_same("damage_static_repeat", &f2, &f1);
 }
 
 /// A button label flips from "a" to "b": the damage stays the button's rect, so the
@@ -197,7 +200,11 @@ fn damage_rect_overlay_strokes_dirty_region() {
     // The label width sets the damage rect's size, so read it back; its corner is
     // the 12 px padding.
     let damage = outlined_rect(&f2);
-    assert_eq!(damage.min, (12, 12), "the button sits at the padding");
+    assert_eq!(
+        damage.min,
+        IVec2::splat(12),
+        "the button sits at the padding"
+    );
     assert_outlines_exactly(&f2, &[damage]);
 }
 
@@ -218,7 +225,7 @@ fn corner_pair_change_keeps_center_unpainted() {
     let _kept = KeptOnFailure::new("damage_corner_pair_change_keeps_center_unpainted", &f2);
 
     let centre = Rect::new(50.0, 50.0, 100.0, 100.0);
-    let (before, after) = (crop(&f1, centre), crop(&f2, centre));
+    let (before, after) = (goldens::crop(&f1, centre), goldens::crop(&f2, centre));
     let lum = |img: &RgbaImage| -> u64 {
         img.pixels()
             .map(|Rgba([r, g, b, _])| u64::from(*r) + u64::from(*g) + u64::from(*b))
@@ -239,10 +246,9 @@ fn corner_pair_change_keeps_center_unpainted() {
     // pass's clear would wipe the other's paint.
     for (x, y, fill) in [(5, 5, TOP_LEFT), (195, 195, BOTTOM_RIGHT)] {
         let fill = fill.to_srgba_u8();
-        assert_px(
+        fixtures::assert_px(
             f2.get_pixel(x, y).0,
             [fill.r, fill.g, fill.b, 255],
-            SRGB_ROUND_TRIP,
             format_args!("({x}, {y}) is its corner block's fill"),
         );
     }
@@ -261,7 +267,10 @@ fn corner_pair_overlay_strokes_each_rect() {
     // pixel off the surface.
     assert_outlines_exactly(
         &f2,
-        &[PxRect::new(0, 0, 20, 20), PxRect::new(180, 180, 20, 20)],
+        &[
+            PxRect::new(IVec2::ZERO, IVec2::splat(20)),
+            PxRect::new(IVec2::splat(180), IVec2::splat(20)),
+        ],
     );
 }
 
@@ -296,5 +305,5 @@ fn damage_rect_overlay_outlines_thin_sliver() {
     let f2 = h.overlay(DAMAGE_RECT).frame(sliver(true)).image;
     let _kept = KeptOnFailure::new("damage_rect_overlay_outlines_thin_sliver", &f2);
 
-    assert_outlines_exactly(&f2, &[PxRect::new(60, 20, 2, 40)]);
+    assert_outlines_exactly(&f2, &[PxRect::new(IVec2::new(60, 20), IVec2::new(2, 40))]);
 }

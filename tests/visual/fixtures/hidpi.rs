@@ -7,7 +7,6 @@ use palantir::{
 };
 
 use crate::golden_name::GoldenName;
-use crate::goldens::assert_matches_golden;
 use crate::harness::Harness;
 
 /// Complex multi-region scene at scale 2.0 (physical 800×600 = logical 400×300): header/sidebar/content/footer grid, nested stacks with mixed sizing, text at several sizes, rounded-rect AA and strokes on physical half-pixels, and the renderer's pixel_snap path.
@@ -154,5 +153,5 @@ fn dashboard_matches_golden() {
                 });
         })
         .image;
-    assert_matches_golden(GoldenName::DashboardHidpi, &img);
+    GoldenName::DashboardHidpi.assert_matches(&img);
 }

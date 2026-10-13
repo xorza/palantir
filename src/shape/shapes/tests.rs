@@ -1,3 +1,4 @@
+use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
@@ -50,7 +51,7 @@ impl ColorSource {
     }
 }
 
-/// The colour-cardinality contract is checked at `lower::polyline`: a polyline
+/// The colour-cardinality contract is checked at `PolylineShape`'s lowering: a polyline
 /// under two points is dropped whatever its colour slice, and a wrong-length
 /// slice is never a no-op, so it lowers and is checked.
 #[test]
@@ -243,12 +244,12 @@ fn the_nan_gate_drops_every_shape_kind() {
     let line = |b| CurveShape::new(CurveGeometry::Line { a: Vec2::ZERO, b }, stroke);
     let arc = |center| {
         CurveShape::new(
-            CurveGeometry::Arc {
+            CurveGeometry::Arc(CircularArc {
                 center,
                 radius: 4.0,
                 start_angle: 0.0,
                 sweep: 1.0,
-            },
+            }),
             stroke,
         )
     };
@@ -309,6 +310,7 @@ fn builders_refuse_what_they_check() {
     use crate::internals::panic_probe;
     use crate::internals::ui_harness::UiHarness;
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::geometry::cubic_bezier::CubicBezier;
     use crate::primitives::geometry::mesh::Mesh;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
@@ -340,15 +342,65 @@ fn builders_refuse_what_they_check() {
             ..Shadow::default()
         })
     });
-    panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
-        Shape::arc(Vec2::ZERO, 4.0, 0.0, f32::INFINITY, Stroke::new(white, 1.0))
-    });
+    let arc = CircularArc {
+        center: Vec2::ZERO,
+        radius: 4.0,
+        start_angle: 0.0,
+        sweep: 1.0,
+    };
+    for (rule, bad) in [
+        (
+            domain::OFFSET_RULE,
+            CircularArc {
+                center: Vec2::new(0.0, N),
+                ..arc
+            },
+        ),
+        (
+            domain::LENGTH_RULE,
+            CircularArc {
+                radius: -1.0,
+                ..arc
+            },
+        ),
+        (
+            domain::ANGLE_RULE,
+            CircularArc {
+                start_angle: N,
+                ..arc
+            },
+        ),
+        (
+            domain::ANGLE_RULE,
+            CircularArc {
+                sweep: f32::INFINITY,
+                ..arc
+            },
+        ),
+    ] {
+        panic_probe::assert_panics_with(rule, || Shape::arc(bad, thin()));
+    }
+    let bezier = CubicBezier {
+        p0: Vec2::ZERO,
+        p1: Vec2::X,
+        p2: Vec2::Y,
+        p3: Vec2::ONE,
+    };
+    let off = Vec2::new(N, 0.0);
+    for bad in [
+        CubicBezier { p0: off, ..bezier },
+        CubicBezier { p1: off, ..bezier },
+        CubicBezier { p2: off, ..bezier },
+        CubicBezier { p3: off, ..bezier },
+    ] {
+        panic_probe::assert_panics_with(domain::OFFSET_RULE, || Shape::cubic_bezier(bad, thin()));
+    }
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
         Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
     });
 
     // Geometry is checked as offsets at every door; a varying polyline colour as a colour.
-    let geometry: [fn(); 11] = [
+    let geometry: [fn(); 10] = [
         || drop(Shape::rect(Rect::new(0.0, N, 8.0, 8.0))),
         || {
             drop(Shape::windowed_rect(Rect::new(
@@ -361,15 +413,6 @@ fn builders_refuse_what_they_check() {
         || drop(Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::new(N, 0.0))),
         || drop(Shape::line(Vec2::ZERO, Vec2::new(0.0, N), thin())),
         || {
-            drop(Shape::cubic_bezier(
-                Vec2::ZERO,
-                Vec2::new(N, 0.0),
-                Vec2::X,
-                Vec2::Y,
-                thin(),
-            ));
-        },
-        || {
             drop(Shape::quadratic_bezier(
                 Vec2::ZERO,
                 Vec2::X,
@@ -381,9 +424,7 @@ fn builders_refuse_what_they_check() {
         || drop(Shape::polyline(&[Vec2::ZERO, Vec2::new(N, 1.0)], thin())),
         || {
             drop(Mesh::filled_triangle(
-                Vec2::new(N, 0.0),
-                Vec2::X,
-                Vec2::Y,
+                [Vec2::new(N, 0.0), Vec2::X, Vec2::Y],
                 RgbaF32::WHITE,
             ));
         },

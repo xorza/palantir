@@ -77,7 +77,7 @@ impl Shadow {
         self
     }
 
-    /// `&self` because `Background` names this in a `skip_serializing_if`.
+    /// True when this shadow paints nothing: its colour paints nothing or a scalar is NaN. Takes `&self` because `Background` names it in a `skip_serializing_if`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         self.color.is_noop() || self.has_nan()

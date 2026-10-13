@@ -77,24 +77,23 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     }
     let mut free = FreeSlots::default();
     // No side: every entry here is non-drawing, so `FreeSlots::release` never needs a packer.
-    let refile = |cache: &mut FxHashMap<TestKey, u32>,
-                  slots: &mut [AtlasSlot],
-                  free: &mut FreeSlots,
-                  k| { retire_unallocated(cache, slots, &mut [], free, k, 1024) };
+    let mut slab = Slab {
+        cache: &mut cache,
+        slots: &mut slots,
+        sides: &mut [],
+        free: &mut free,
+    };
 
-    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(1)), None);
-    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(2)), None);
+    assert_eq!(slab.retire_unallocated(key(1), 1024), None);
+    assert_eq!(slab.retire_unallocated(key(2), 1024), None);
     assert_eq!(
-        refile(&mut cache, &mut slots, &mut free, key(3)),
+        slab.retire_unallocated(key(3), 1024),
         Some(1025),
         "an entry still inside its window is re-filed for its own deadline",
     );
+    assert_eq!(slab.retire_unallocated(key(4), 1024), Some(1145));
     assert_eq!(
-        refile(&mut cache, &mut slots, &mut free, key(4)),
-        Some(1145)
-    );
-    assert_eq!(
-        refile(&mut cache, &mut slots, &mut free, key(5)),
+        slab.retire_unallocated(key(5), 1024),
         None,
         "an allocated entry is not this wheel's business",
     );
@@ -112,7 +111,13 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
 
     // A second ticket for a reclaimed key is a no-op, making an early or
     // duplicate fire safe.
-    assert_eq!(refile(&mut cache, &mut slots, &mut free, key(1)), None);
+    let mut slab = Slab {
+        cache: &mut cache,
+        slots: &mut slots,
+        sides: &mut [],
+        free: &mut free,
+    };
+    assert_eq!(slab.retire_unallocated(key(1), 1024), None);
     assert_eq!(free.as_slice(), [0, 1]);
 }
 
@@ -267,13 +272,20 @@ mod gpu {
     }
 
     /// Insert `count` 16² mask entries, all stamped with the current frame.
-    fn fill(atlas: &mut RasterAtlas<TestKey>, device: &wgpu::Device, count: u16) {
+    fn fill(atlas: &mut RasterAtlas<TestKey>, count: u16) {
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
         for i in 0..count {
             assert!(
                 atlas
-                    .insert(device, key(i), ContentType::Mask, metadata, &pixels)
+                    .insert(
+                        key(i),
+                        PackedRaster {
+                            metadata,
+                            content: ContentType::Mask,
+                            pixels: &pixels,
+                        },
+                    )
                     .is_some(),
                 "16² entry {i} must fit a 128² side",
             );
@@ -287,7 +299,7 @@ mod gpu {
     fn an_entry_past_the_ceiling_is_refused_without_evicting_anything() {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
-        fill(&mut atlas, &gpu.device, 16);
+        fill(&mut atlas, 16);
         // Age every entry out of the current frame so all 16 are eligible
         // victims; otherwise the clock protects them and the test passes
         // for the wrong reason.
@@ -295,7 +307,14 @@ mod gpu {
 
         let metadata = PackedMetadata::new(UVec2::new(300, 300), IVec2::new(0, 0)).unwrap();
         assert_eq!(
-            atlas.insert(&gpu.device, key(999), ContentType::Mask, metadata, &[]),
+            atlas.insert(
+                key(999),
+                PackedRaster {
+                    metadata,
+                    content: ContentType::Mask,
+                    pixels: &[],
+                },
+            ),
             None,
             "300² cannot fit a side whose ceiling is 256²",
         );
@@ -323,11 +342,12 @@ mod gpu {
         let mut placed = 0u16;
         while atlas
             .insert(
-                &gpu.device,
                 key(placed),
-                ContentType::Mask,
-                metadata,
-                &pixels,
+                PackedRaster {
+                    metadata,
+                    content: ContentType::Mask,
+                    pixels: &pixels,
+                },
             )
             .is_some()
         {
@@ -347,11 +367,12 @@ mod gpu {
         for extra in 0..8 {
             assert_eq!(
                 atlas.insert(
-                    &gpu.device,
                     key(1000 + extra),
-                    ContentType::Mask,
-                    metadata,
-                    &pixels,
+                    PackedRaster {
+                        metadata,
+                        content: ContentType::Mask,
+                        pixels: &pixels,
+                    },
                 ),
                 None,
                 "the side is full of entries drawn this frame",
@@ -369,7 +390,14 @@ mod gpu {
         let evicted_before = atlas.counters.evictions.count();
         assert!(
             atlas
-                .insert(&gpu.device, key(2000), ContentType::Mask, metadata, &pixels)
+                .insert(
+                    key(2000),
+                    PackedRaster {
+                        metadata,
+                        content: ContentType::Mask,
+                        pixels: &pixels,
+                    },
+                )
                 .is_some(),
             "an aged-out tile is evictable again",
         );
@@ -400,7 +428,14 @@ mod gpu {
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
         for i in 0..8 {
             atlas
-                .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
+                .insert(
+                    key(i),
+                    PackedRaster {
+                        metadata,
+                        content: ContentType::Mask,
+                        pixels: &pixels,
+                    },
+                )
                 .expect("eight 16² tiles fit a 128² side");
         }
         // A non-drawing entry too: only its expiry ticket would retire it.
@@ -443,7 +478,14 @@ mod gpu {
         for i in 200..204u16 {
             assert!(
                 atlas
-                    .insert(&gpu.device, key(i), ContentType::Mask, metadata, &pixels)
+                    .insert(
+                        key(i),
+                        PackedRaster {
+                            metadata,
+                            content: ContentType::Mask,
+                            pixels: &pixels,
+                        },
+                    )
                     .is_some(),
                 "forget must have handed the rectangles back",
             );
@@ -463,7 +505,7 @@ mod gpu {
     fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
         let gpu = headless_test_gpu();
         let mut atlas = small_atlas(&gpu.device);
-        fill(&mut atlas, &gpu.device, 16);
+        fill(&mut atlas, 16);
         atlas.advance_to(1);
 
         assert_eq!(
@@ -479,7 +521,14 @@ mod gpu {
         let metadata = PackedMetadata::new(UVec2::new(200, 200), IVec2::new(0, 0)).unwrap();
         assert!(
             atlas
-                .insert(&gpu.device, key(999), ContentType::Mask, metadata, &pixels)
+                .insert(
+                    key(999),
+                    PackedRaster {
+                        metadata,
+                        content: ContentType::Mask,
+                        pixels: &pixels,
+                    },
+                )
                 .is_some(),
             "200² fits once the 128² side has grown to its 256² ceiling",
         );

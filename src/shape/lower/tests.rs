@@ -1,21 +1,20 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::background::Background;
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::shadow::Shadow;
-use crate::primitives::paint::stroke::Stroke;
-use crate::shape::lower::background;
-
-use super::brush;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
-
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
 use crate::scene::record_store::recorded_gradients::GradientId;
+use crate::shape::lower::{background, brush, ramp};
+use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use std::collections::HashSet;
 use std::panic;
@@ -66,9 +65,9 @@ fn nan_backgrounds() -> [(&'static str, Background); 4] {
     ]
 }
 
-/// The three gradient kinds hash apart on identical stops: [`gradient_brush`] folds in a discriminant byte.
+/// The three gradient kinds and a curve ramp hash apart on identical stops: each content hash starts with its fill kind's word.
 #[test]
-fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
+fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     let mut store = RecordStore::default();
     let stops = [
         Stop::new(0.0, RgbaF32::BLACK),
@@ -91,9 +90,13 @@ fn the_three_gradient_kinds_hash_apart_on_identical_stops() {
         )
         .hash_parts()
         .payload,
+        match ramp(&mut store, &ColorRamp::new(stops)) {
+            CurveRamp::Interned { hash, .. } => hash,
+            CurveRamp::None => panic!("a ramp always interns"),
+        },
     ];
     let distinct: HashSet<u64> = hashes.iter().copied().collect();
-    assert_eq!(distinct.len(), 3, "{hashes:?}");
+    assert_eq!(distinct.len(), 4, "{hashes:?}");
 }
 
 /// A sane background reaches the row unchanged and every field reaches the hash.

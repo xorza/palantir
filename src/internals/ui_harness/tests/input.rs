@@ -1,7 +1,7 @@
 //! The gestures the harness synthesises, and the routing each depends on.
 
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
 use crate::internals::ui_harness::*;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -11,7 +11,7 @@ use crate::widgets::panel::Panel;
 #[test]
 fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
+    harness.prime(2, support::button);
 
     harness.press_at(INSIDE);
     let latch = harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
@@ -22,7 +22,11 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
         "the latching move must report a repaint, same as on_input would",
     );
     assert!(
-        harness.response_in(target(), button).left.drag.started(),
+        harness
+            .response_in(support::target(), support::button)
+            .left
+            .drag
+            .started(),
         "travel past DRAG_THRESHOLD latches a drag",
     );
     harness.release();
@@ -43,7 +47,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     // Sub-threshold travel must panic, not quietly fail to latch.
     panic_probe::assert_panics_with("DRAG_THRESHOLD — no drag would latch", || {
         let mut harness = UiHarness::new(SURFACE);
-        harness.prime(2, button);
+        harness.prime(2, support::button);
         harness.press_at(INSIDE);
         harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
     });
@@ -54,7 +58,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     // `press` latches the same origin as `press_at` (it reads the pointer back out of `InputState`), so a
     // press separated from its move still arms the threshold check.
     let mut split = UiHarness::new(SURFACE);
-    split.prime(2, button);
+    split.prime(2, support::button);
     split.move_to(INSIDE);
     assert!(
         split.press().repaint_requested,
@@ -62,7 +66,11 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     );
     split.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     assert!(
-        split.response_in(target(), button).left.drag.started(),
+        split
+            .response_in(support::target(), support::button)
+            .left
+            .drag
+            .started(),
         "move-then-press arms drag_to exactly as press_at does",
     );
 
@@ -70,7 +78,7 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
     // the threshold check must refuse rather than invent one.
     panic_probe::assert_panics_with("drag_to needs a press on the surface", || {
         let mut harness = UiHarness::new(SURFACE);
-        harness.prime(2, button);
+        harness.prime(2, support::button);
         harness.press();
         harness.drag_to(INSIDE);
     });
@@ -119,7 +127,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     let mut harness = UiHarness::new(SURFACE);
     // Keyboard events are dropped at *ingress* when nothing holds focus and no subscriber matches, so a
     // keyboard test has to establish focus before it drives anything.
-    harness.ui().set_focus(target());
+    harness.ui().set_focus(support::target());
 
     harness.type_text("hi");
 

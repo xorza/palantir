@@ -1,36 +1,19 @@
-# `println!` in a test is the test's output, not a stray print in the library.
 allow-print-in-tests = true
-# SIMD intrinsics modules export hundreds of functions; listing them by hand only rots.
 allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
-# The house rule bans inline `crate::` paths. A standard-library path may stay inline, which is
-# what a gated field or statement uses instead of a cfg'd import.
 absolute-paths-allowed-crates = ["std", "core", "alloc"]
-
-# wgpu belongs to `crate::gpu`, and nothing else may name one of its types.
-#
-# The module opts out with a single `#![allow(clippy::disallowed_types)]` at
-# the top of `src/gpu/mod.rs`, which covers every file under it. Everywhere
-# else a device, a texture or a format travels as one of Palantir's own
-# handles — `Gpu`, `RenderTarget`, `TargetFormat` — so the host, the window
-# driver and the widgets name no graphics-API type at all.
-#
-# There is no wildcard: `wgpu::*` and a bare `wgpu` are both rejected with
-# "does not refer to a reachable type", because clippy resolves each entry to
-# one `DefId` by exact lookup. So the list is generated from the tree:
-#
-#     grep -rhoE 'wgpu::[A-Za-z_][A-Za-z0-9_]*' --include='*.rs' src/ | sort -u
-#
-# Regenerate it after a wgpu upgrade that introduces a type Palantir starts
-# using. A type missing from the list is simply unguarded, not an error.
-#
-# State lives on an owner. A `thread_local!` that the outside world forces gets an `expect`
-# saying so. The ban names the `LocalKey` the macro makes: clippy reads a lint level for an
-# item-position macro at the crate root alone, so an `expect` on its module would not apply.
 disallowed-types = [
     { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
+    # wgpu belongs to `crate::gpu`, whose `mod.rs` expects `clippy::disallowed_types` for every file
+    # under it; everywhere else a device, a texture or a format travels as one of Palantir's own
+    # handles (`Gpu`, `RenderTarget`, `TargetFormat`). Clippy resolves each entry to one type by exact
+    # path, with no wildcard, so the list follows the tree and a type missing from it is unguarded:
+    #
+    #     grep -rhoE 'wgpu::[A-Za-z_][A-Za-z0-9_]*' --include='*.rs' src/ | sort -u
     { path = "wgpu::Adapter", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AdapterInfo", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AddressMode", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::Backend", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::Backends", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroup", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroupDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroupEntry", reason = "wgpu belongs to crate::gpu" },
@@ -75,6 +58,7 @@ disallowed-types = [
     { path = "wgpu::MultisampleState", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Operations", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Origin3d", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::PipelineCompilationOptions", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::PipelineLayout", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::PipelineLayoutDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::PipelineStatisticsTypes", reason = "wgpu belongs to crate::gpu" },

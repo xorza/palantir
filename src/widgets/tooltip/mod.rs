@@ -11,7 +11,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::overlay_scope::{Backdrop, OverlayScope};
+use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
@@ -168,13 +168,12 @@ impl<'a> Tooltip<'a> {
                 .default_max_size(theme.max_size);
             // `Backdrop::None`: a tooltip annotates, and a scope recorded every
             // frame would cut off every layer below.
-            let scope = OverlayScope::claim(
-                ui,
-                Layer::Tooltip,
-                Some(anchor),
-                Backdrop::None,
-                &mut bubble,
-            );
+            let spec = OverlaySpec {
+                layer: Layer::Tooltip,
+                anchor: Some(anchor),
+                backdrop: Backdrop::None,
+            };
+            let scope = OverlayScope::claim(ui, spec, &mut bubble);
             let _ = scope.record(ui, |ui| {
                 bubble.record(ui, Some(chrome), |ui| {
                     Text::new(label)

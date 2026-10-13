@@ -7,6 +7,7 @@ pub(crate) mod anchor;
 pub(crate) mod axis;
 pub(crate) mod clip_mode;
 pub(crate) mod grid_cell;
+pub(crate) mod grid_def;
 pub(crate) mod justify;
 pub(crate) mod layout_mode;
 pub(crate) mod packed_layout_meta;

@@ -1,16 +1,15 @@
-//! Shared hashing primitive: `FxHasher` wrapped to add a whole-value `pod()`
-//! write beside the `Hasher` trait; use it instead of `FxHasher::default()`.
+//! Shared hashing primitive: `FxHasher` wrapped to add a whole-slice
+//! [`Hasher::pod_slice`] write beside the `Hasher` trait; use it instead of
+//! `FxHasher::default()`.
 //! FxHasher beat foldhash and ahash in the per-frame micro-shootout (~2.4-3.3x
 //! on the node+shape mix) because our writes are many and small.
 
 use rustc_hash::FxHasher;
 use std::fmt;
-use std::hash;
-use std::hash::Hasher as _;
+use std::hash::{self, Hash as _, Hasher as _};
 
 /// Canonical FxHash of a `str`'s bytes, the content hash stored by `RecordedText`.
-pub(crate) fn hash_str(s: &str) -> u64 {
-    use std::hash::Hash;
+pub(crate) fn str(s: &str) -> u64 {
     let mut h = Hasher::new();
     s.hash(&mut h);
     h.finish()
@@ -23,7 +22,6 @@ pub(crate) struct Hasher(FxHasher);
 // Manual: `FxHasher` has no `Debug`.
 impl fmt::Debug for Hasher {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::hash::Hasher as _;
         f.debug_tuple("Hasher").field(&self.0.finish()).finish()
     }
 }

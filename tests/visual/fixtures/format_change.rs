@@ -16,7 +16,7 @@ use palantir::{
 };
 use wgpu::TextureFormat;
 
-use crate::goldens::assert_same;
+use crate::goldens;
 use crate::harness::Harness;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labelled button.
@@ -60,9 +60,9 @@ fn format_changes_render_identically() {
 
     // `Harness::frame` swizzles the BGRA readback to RGBA.
     let swapped = h.format(TextureFormat::Bgra8UnormSrgb).frame(scene).image;
-    assert_same("format_change_scene", &swapped, &before);
+    goldens::assert_same("format_change_scene", &swapped, &before);
     let restored = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
-    assert_same("format_change_round_trip", &restored, &before);
+    goldens::assert_same("format_change_round_trip", &restored, &before);
 }
 
 /// A 64×64 four-quadrant image; distinct channels expose BGRA-vs-RGBA mishandling.
@@ -132,7 +132,7 @@ fn images_survive_format_change_without_reupload() {
         "the new format must have built its own pipeline set",
     );
 
-    assert_same("format_change_image", &after, &before);
+    goldens::assert_same("format_change_image", &after, &before);
 }
 
 /// A unorm target would draw linear light too dark without error, so it is refused.

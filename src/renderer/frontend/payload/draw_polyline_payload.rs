@@ -1,5 +1,6 @@
 //! One stroked-polyline draw.
 
+use crate::common::span::Span;
 use crate::primitives::math::domain::is_invisible;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::record::ColorMode;
@@ -7,7 +8,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
 
 /// Stroked polyline payload; `width` is logical px. Points and colors live in the window's
-/// [`RecordStore`]; `colors_len` is 1 (broadcast), `points_len` (per-point) or `points_len - 1`
+/// [`RecordStore`]; `colors` holds 1 (broadcast), `points.len` (per-point) or `points.len - 1`
 /// (per-segment), per `color_mode`. Points are owner-local; the composer applies `origin` and inflates
 /// `bounds` for stroke, cap, join and AA once in physical space.
 ///
@@ -17,10 +18,8 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
     pub(crate) width: f32,
-    pub(crate) points_start: u32,
-    pub(crate) points_len: u32,
-    pub(crate) colors_start: u32,
-    pub(crate) colors_len: u32,
+    pub(crate) points: Span,
+    pub(crate) colors: Span,
     pub(crate) color_mode: ColorMode,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
@@ -51,6 +50,6 @@ impl DrawPolylinePayload {
     /// asserts it), not a filter.
     #[inline]
     pub(crate) const fn is_degenerate(&self) -> bool {
-        self.points_len < 2 || is_invisible(self.width)
+        self.points.len < 2 || is_invisible(self.width)
     }
 }

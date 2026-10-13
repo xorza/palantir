@@ -1,6 +1,7 @@
 //! A self-transform's effect on composed rects, stroke fringe and anchoring.
 
 use crate::damage::Damage;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -10,11 +11,11 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -107,10 +108,12 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
             }
             panel.show(ui, |ui| {
                 ui.add_shape(Shape::cubic_bezier(
-                    Vec2::new(10.0, 20.0),
-                    Vec2::new(20.0, 20.0),
-                    Vec2::new(30.0, 20.0),
-                    Vec2::new(40.0, 20.0),
+                    CubicBezier {
+                        p0: Vec2::new(10.0, 20.0),
+                        p1: Vec2::new(20.0, 20.0),
+                        p2: Vec2::new(30.0, 20.0),
+                        p3: Vec2::new(40.0, 20.0),
+                    },
                     Stroke::new(RgbaF32::WHITE, 4.0),
                 ));
             });

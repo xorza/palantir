@@ -198,7 +198,7 @@ fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
             });
     };
 
-    let mut h = UiHarness::new(glam::UVec2::new(1280, 800));
+    let mut h = UiHarness::new(UVec2::new(1280, 800));
     h.prime(2, scene);
 
     h.click_on(nav);
@@ -215,9 +215,9 @@ fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
 #[test]
 fn footer_counter_alone_yields_partial_damage() {
     for (px, scale) in [
-        (glam::UVec2::new(1280, 800), 6usize),
-        (glam::UVec2::new(2560, 1600), 6),
-        (glam::UVec2::new(3840, 4800), 32),
+        (UVec2::new(1280, 800), 6usize),
+        (UVec2::new(2560, 1600), 6),
+        (UVec2::new(3840, 4800), 32),
     ] {
         let mut h = UiHarness::with_text(px).scale(2.0);
         let mut state = FrameFixture::default();

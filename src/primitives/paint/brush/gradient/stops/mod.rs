@@ -135,7 +135,7 @@ impl GradientStops {
         let mut stops = [Stop::default(); MAX_STOPS];
         stops[..values.len()].copy_from_slice(&values);
         Self {
-            len: values.len() as u8,
+            len: u8::try_from(values.len()).expect("MAX_STOPS fits a u8"),
             stops,
         }
     }
@@ -181,7 +181,7 @@ impl hash::Hash for GradientStops {
     /// `tests::hash_spreads_across_buckets_for_structured_palettes`.
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        state.write_u8(self.len() as u8);
+        state.write_u8(self.len);
         for stop in self.iter() {
             state.write_u64((u64::from(stop.offset_u8) << 32) | u64::from(stop.color.to_u32()));
         }

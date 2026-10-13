@@ -1,6 +1,5 @@
 //! Row pitch, the shortcut gutter, separators, radius, and per-instance overrides of each.
 
-use crate::Ui;
 use crate::input::shortcut::Shortcut;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
@@ -11,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget_look::theme_slot::SlotDefaults;
 use crate::widgets::context_menu::ContextMenu;

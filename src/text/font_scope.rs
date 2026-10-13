@@ -53,11 +53,13 @@ impl FontScope {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::text::font_scope::BUNDLED;
+
     /// The bundled Inter as shipped, so a load case registers those bytes rather than a second `include_bytes!`.
-    pub(crate) const INTER: &[u8] = super::BUNDLED[0];
+    pub(crate) const INTER: &[u8] = BUNDLED[0];
 
     /// The bundled JetBrains Mono, beside [`INTER`]: a family that resolves to the fallback and then to itself needs one registered face and one still missing.
-    pub(crate) const MONO: &[u8] = super::BUNDLED[2];
+    pub(crate) const MONO: &[u8] = BUNDLED[2];
 
     /// Noto Sans Hebrew for right-to-left cases; a test asset, so cases shape the same glyphs on any host.
     pub(crate) const HEBREW: &[u8] =

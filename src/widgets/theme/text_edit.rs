@@ -9,11 +9,12 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` is **focused**,
@@ -136,7 +137,7 @@ impl ThemeSlot for TextEditTheme {
     /// `active` = focused. Disabled beats focused, focused beats hovered.
     #[inline(always)]
     fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.looks.pick(response, response.focused)
+        self.looks.pick(response, Engagement::Focused)
     }
 
     fn defaults(&self) -> SlotDefaults {

@@ -1,4 +1,4 @@
-use crate::primitives::packed::half_simd::*;
+use crate::primitives::packed::half_simd::F16x4;
 use half::f16;
 
 /// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighbouring lane would show only for specific patterns.
@@ -62,18 +62,19 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     );
 }
 
-/// [`f16x4_scaled`] replaced `from_lanes(lanes().map(* k))` and must be bit-identical, swept over every f16 pattern in a rotating lane arrangement against scale classes that could round differently (identity, zero, sign flip, halving, overflow, non-terminating fraction).
+/// [`F16x4::scaled`] must be bit-identical to `from_lanes(lanes().map(* k))`, swept over every f16 pattern in a rotating lane arrangement against scale classes that could round differently (identity, zero, sign flip, halving, overflow, non-terminating fraction).
 #[test]
 fn scaled_is_bit_identical_to_the_composed_round_trip() {
-    let composed = |bits: [u16; 4], k: f32| f16x4_from_f32x4(f16x4_to_f32x4(bits).map(|v| v * k));
+    let composed = |bits: F16x4, k: f32| F16x4::from_lanes(bits.lanes().map(|v| v * k));
     for hi in 0..=u16::MAX {
         // Rotate the pattern across lanes so a lane-index mistake cannot hide.
-        let bits = [hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi];
+        let bits = F16x4::from_bits([hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi]);
         for k in [1.0f32, 0.0, -3.0, 0.5, 1.0e4, 1.0 / 3.0] {
             assert_eq!(
-                f16x4_scaled(bits, k),
+                bits.scaled(k),
                 composed(bits, k),
-                "bits={bits:#06x?} k={k}",
+                "bits={:#06x?} k={k}",
+                bits.0,
             );
         }
     }
@@ -86,14 +87,13 @@ fn packing_matches_scalar_quantization() {
         ([0.0f32, 1.0, -2.5, 0.125], true),
         ([1.1, 1.2, 1.3, 1.4], false),
     ] {
-        let packed = f16x4_from_f32x4(src);
+        let packed = F16x4::from_lanes(src);
         let expected = src.map(|x| f16::from_f32(x).to_bits());
-        assert_eq!(packed, expected, "{src:?}");
-        assert_eq!(f16x4_to_f32x4(packed) == src, exact, "{src:?} round trip");
+        assert_eq!(packed.0, expected, "{src:?}");
+        assert_eq!(packed.lanes() == src, exact, "{src:?} round trip");
         // The `u64` word is the four lanes' bytes in lane order.
-        let lanes = F16x4::from_lanes(src);
         assert_eq!(
-            lanes.as_u64(),
+            packed.as_u64(),
             u64::from_ne_bytes(bytemuck::cast(expected)),
             "{src:?}"
         );
@@ -104,7 +104,7 @@ fn packing_matches_scalar_quantization() {
 fn to_f32_matches_scalar_reference_exhaustively() {
     // Every f16 bit pattern (including subnormals, ±inf, NaNs) decodes like `half`'s scalar path.
     for b in 0..=u16::MAX {
-        let got = f16x4_to_f32x4([b; 4]).map(f32::to_bits);
+        let got = F16x4::from_bits([b; 4]).lanes().map(f32::to_bits);
         let want = f16::from_bits(b).to_f32().to_bits();
         assert_eq!(got, [want; 4], "bits = {b:#06x}");
     }
@@ -117,41 +117,14 @@ fn from_f32_matches_scalar_reference_on_sweep() {
         let x = (i as f32 - 10_000.0) * 7.3;
         let tiny = (i as f32 - 10_000.0) * 1.0e-8;
         for v in [x, tiny] {
-            let got = f16x4_from_f32x4([v; 4]);
+            let got = F16x4::from_lanes([v; 4]).0;
             let want = f16::from_f32(v).to_bits();
             assert_eq!(got[0], want, "v = {v}");
         }
     }
-    let inf = f16x4_from_f32x4([1.0e6, -1.0e6, f32::INFINITY, 0.0]);
+    let inf = F16x4::from_lanes([1.0e6, -1.0e6, f32::INFINITY, 0.0]).0;
     assert_eq!(inf[0], f16::INFINITY.to_bits());
     assert_eq!(inf[1], f16::NEG_INFINITY.to_bits());
     assert_eq!(inf[2], f16::INFINITY.to_bits());
     assert_eq!(inf[3], 0);
-}
-
-/// The pre-F16C scalar fallbacks, called directly: on an F16C machine the runtime detect in `f16x4_from_f32x4` takes the intrinsic branch, so the sweeps above never reach them. Checked against the intrinsic: both must encode identically.
-#[cfg(all(target_arch = "x86_64", not(target_feature = "f16c")))]
-#[test]
-fn scalar_fallbacks_match_the_intrinsic() {
-    use crate::primitives::packed::half_simd::{f16x4_from_f32x4_scalar, f16x4_to_f32x4_scalar};
-
-    for sign in [1.0f32, -1.0] {
-        for exp in -20i32..20 {
-            let m = sign * 1.37 * 2.0f32.powi(exp);
-            let lanes = [m, m * 0.5, m * 255.0, 0.0];
-            assert_eq!(
-                f16x4_from_f32x4_scalar(lanes),
-                f16x4_from_f32x4(lanes),
-                "encode {lanes:?}",
-            );
-        }
-    }
-    for bits in 0..=u16::MAX {
-        let packed = [bits, bits ^ 0x3C00, !bits, 0];
-        assert_eq!(
-            f16x4_to_f32x4_scalar(packed).map(f32::to_bits),
-            f16x4_to_f32x4(packed).map(f32::to_bits),
-            "decode {packed:#06x?}",
-        );
-    }
 }

@@ -19,6 +19,13 @@ pub struct ScrollDelta {
 }
 
 impl ScrollDelta {
+    /// Nothing routed: no pan and a pinch at [`ZoomFactor::ONE`].
+    pub(crate) const NONE: Self = Self {
+        pixels: Vec2::ZERO,
+        lines: Vec2::ZERO,
+        zoom: ZoomFactor::ONE,
+    };
+
     /// This frame's pan in logical pixels: the precision source plus the notched one at `line_height`; each widget
     /// picks its own line height (`Scroll` the theme's, `TextEdit` its font's).
     #[inline]
@@ -30,10 +37,6 @@ impl ScrollDelta {
 /// Hand-rolled because `zoom`'s identity is [`ZoomFactor::ONE`], not the derived zero.
 impl Default for ScrollDelta {
     fn default() -> Self {
-        Self {
-            pixels: Vec2::ZERO,
-            lines: Vec2::ZERO,
-            zoom: ZoomFactor::ONE,
-        }
+        Self::NONE
     }
 }

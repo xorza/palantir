@@ -2,10 +2,9 @@
 //!
 //! Surfaces, darkest to lightest: [`WINDOW`], [`SIDEBAR`], [`CARD`]; demos recess into [`WELL`] ([`LIGHT_WELL`] when bright), raised chrome sits on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
 //!
-//! Pages never paint their own root or header; they emit [`section`]s, with fixed [`TILE`]-square [`demo_cell`]s for paint demos.
+//! Pages never paint their own root or header; they emit [`Section`]s, with fixed [`TILE`]-square [`DemoCell`]s for paint demos.
 
 use palantir::internals::demo_swatches;
-use std::hash::Hash;
 use std::panic::Location;
 
 use palantir::{
@@ -59,7 +58,7 @@ pub(crate) const PAGE_GAP: f32 = 28.0;
 const TITLE_GAP: f32 = 10.0;
 pub(crate) const ROW_GAP: f32 = 8.0;
 pub(crate) const TILE_GAP: f32 = 12.0;
-/// Edge of a square paint demo; every [`demo_cell`] is this size so tiles line up across pages.
+/// Edge of a square paint demo, a [`DemoCell`]'s default size.
 pub(crate) const TILE: f32 = 168.0;
 /// Height reserved for a tile caption; fixed so a two-line label doesn't misalign its tile.
 const CAPTION_H: f32 = 30.0;
@@ -168,41 +167,49 @@ pub(crate) fn raised_bg() -> Background {
 }
 
 /// A titled block of demo content: a title, a chip per demonstrated API, then the body. A [`note`] may name an API only when one of the section's [`api!`] chips checks it.
-///
-/// Identity comes from the call site (`#[track_caller]` plus `.auto_id()`), so editing a title doesn't re-key the contents.
-#[track_caller]
-pub(crate) fn section(
-    ui: &mut Ui,
+#[derive(Debug)]
+#[must_use]
+pub(crate) struct Section<'a> {
     title: &'static str,
-    apis: &[&'static str],
-    body: impl FnOnce(&mut Ui),
-) {
-    Panel::vstack()
-        .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
-        .gap(TITLE_GAP)
-        .show(ui, |ui| {
-            Panel::wrap_hstack()
-                .size((Sizing::FILL, Sizing::HUG))
-                .gap(6.0)
-                .line_gap(6.0)
-                .child_align(Align::v(VAlign::Center))
-                .show(ui, |ui| {
-                    Text::new(title)
-                        .style(&section_style())
-                        .margin((0.0, 0.0, 6.0, 0.0))
-                        .show(ui);
-                    for &api in apis {
-                        chip(
-                            ui,
-                            api,
-                            INK_DIM,
-                            Background::rounded(RAISED, Corners::all(4.0)),
-                        );
-                    }
-                });
-            body(ui);
-        });
+    apis: &'a [&'static str],
+}
+
+impl<'a> Section<'a> {
+    pub(crate) const fn new(title: &'static str) -> Self {
+        Self { title, apis: &[] }
+    }
+
+    /// The APIs the section demonstrates, each spelled by [`api!`].
+    pub(crate) const fn apis(mut self, apis: &'a [&'static str]) -> Self {
+        self.apis = apis;
+        self
+    }
+
+    /// Identity comes from the call site (`#[track_caller]` plus `.auto_id()`), so editing a title doesn't re-key the contents.
+    #[track_caller]
+    pub(crate) fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::HUG))
+            .gap(TITLE_GAP)
+            .show(ui, |ui| {
+                Panel::wrap_hstack()
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .gap(6.0)
+                    .line_gap(6.0)
+                    .child_align(Align::v(VAlign::Center))
+                    .show(ui, |ui| {
+                        Text::new(self.title)
+                            .style(&section_style())
+                            .margin((0.0, 0.0, 6.0, 0.0))
+                            .show(ui);
+                        for &api in self.apis {
+                            chip(ui, api, Chip::Api);
+                        }
+                    });
+                body(ui);
+            });
+    }
 }
 
 /// Wrapping prose for demos whose rules can't be read off them, capped at a readable measure.
@@ -290,24 +297,46 @@ pub(crate) fn keys(ui: &mut Ui, keys: &[&'static str]) {
         .line_gap(4.0)
         .show(ui, |ui| {
             for &key in keys {
-                chip(
-                    ui,
-                    key,
-                    INK,
-                    Background::rounded(ELEMENT, Corners::all(4.0))
-                        .with_border(Stroke::new(ELEM_STRONG, 1.0)),
-                );
+                chip(ui, key, Chip::Key);
             }
         });
 }
 
-fn chip(ui: &mut Ui, text: &'static str, ink: RgbaF32, bg: Background) {
+/// What a [`chip`] names.
+#[derive(Clone, Copy, Debug)]
+enum Chip {
+    /// An API a [`Section`] demonstrates.
+    Api,
+    /// A key or gesture a page answers to.
+    Key,
+}
+
+impl Chip {
+    const fn ink(self) -> RgbaF32 {
+        match self {
+            Self::Api => INK_DIM,
+            Self::Key => INK,
+        }
+    }
+
+    fn background(self) -> Background {
+        match self {
+            Self::Api => Background::rounded(RAISED, Corners::all(4.0)),
+            Self::Key => Background::rounded(ELEMENT, Corners::all(4.0))
+                .with_border(Stroke::new(ELEM_STRONG, 1.0)),
+        }
+    }
+}
+
+fn chip(ui: &mut Ui, text: &'static str, kind: Chip) {
     Panel::hstack()
         .id_salt(text)
         .padding((6.0, 2.0))
-        .background(bg)
+        .background(kind.background())
         .show(ui, |ui| {
-            Text::new(text).style(&mono_style(11.0, ink)).show(ui);
+            Text::new(text)
+                .style(&mono_style(11.0, kind.ink()))
+                .show(ui);
         });
 }
 
@@ -348,13 +377,9 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 #[derive(Default, Debug)]
 struct Ticks(u32);
 
-/// A plain colour swatch: a sized `Block` over [`swatch_bg`].
-pub(crate) fn swatch<H: Hash>(ui: &mut Ui, id: H, size: (Sizing, Sizing), c: RgbaF32) {
-    Block::new()
-        .id_salt(id)
-        .size(size)
-        .background(swatch_bg(c))
-        .show(ui);
+/// A plain colour swatch: a `Block` over [`swatch_bg`], for the caller to key and size.
+pub(crate) fn swatch(c: RgbaF32) -> Block {
+    Block::new().background(swatch_bg(c))
 }
 
 #[track_caller]
@@ -367,63 +392,67 @@ pub(crate) fn tiles(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-#[track_caller]
-pub(crate) fn demo_cell(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
-    demo_cell_on(ui, label, TILE, TILE, Some(well_bg()), body);
+/// What a [`DemoCell`]'s body sits on.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Surface {
+    /// A padded [`WELL`].
+    Well,
+    /// A padded [`LIGHT_WELL`], for drop shadows and dark strokes.
+    LightWell,
+    /// Nothing: the body fills the cell edge to edge.
+    Bare,
 }
 
-#[track_caller]
-pub(crate) fn demo_cell_light(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
-    demo_cell_on(ui, label, TILE, TILE, Some(light_well_bg()), body);
-}
-
-/// [`demo_cell`] at a custom size, for demos that don't fit a [`TILE`] square.
-#[track_caller]
-pub(crate) fn demo_cell_at(
-    ui: &mut Ui,
+/// A captioned paint demo, [`TILE`] square on a [`Surface::Well`] unless set otherwise, so tiles line up across pages. Keyed by its label, so a page can draw cells in a loop; cells in one row need distinct labels.
+#[derive(Debug)]
+#[must_use]
+pub(crate) struct DemoCell {
     label: &'static str,
     w: f32,
     h: f32,
-    body: impl FnOnce(&mut Ui),
-) {
-    demo_cell_on(ui, label, w, h, Some(well_bg()), body);
+    surface: Surface,
 }
 
-#[track_caller]
-pub(crate) fn captioned_cell(
-    ui: &mut Ui,
-    label: &'static str,
-    w: f32,
-    h: f32,
-    body: impl FnOnce(&mut Ui),
-) {
-    demo_cell_on(ui, label, w, h, None, body);
-}
+impl DemoCell {
+    pub(crate) const fn new(label: &'static str) -> Self {
+        Self {
+            label,
+            w: TILE,
+            h: TILE,
+            surface: Surface::Well,
+        }
+    }
 
-/// `#[track_caller]` all the way down so the outer panel's `.auto_id()` reads the page's call site.
-#[track_caller]
-fn demo_cell_on(
-    ui: &mut Ui,
-    label: &'static str,
-    w: f32,
-    h: f32,
-    bg: Option<Background>,
-    body: impl FnOnce(&mut Ui),
-) {
-    Panel::vstack()
-        .auto_id()
-        .size((Sizing::fixed(w), Sizing::HUG))
-        .gap(6.0)
-        .show(ui, |ui| {
-            Text::new(label)
-                .style(&caption_style())
-                .size((Sizing::FILL, Sizing::fixed(CAPTION_H)))
-                .text_wrap(TextWrap::WrapWithOverflow)
-                .show(ui);
-            let mut cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(h)));
-            if let Some(bg) = bg {
-                cell = cell.padding(CELL_PADDING).background(bg);
-            }
-            cell.show(ui, body);
-        });
+    /// The cell's width and body height, for demos that don't fit a [`TILE`] square.
+    pub(crate) const fn size(mut self, w: f32, h: f32) -> Self {
+        self.w = w;
+        self.h = h;
+        self
+    }
+
+    pub(crate) const fn surface(mut self, surface: Surface) -> Self {
+        self.surface = surface;
+        self
+    }
+
+    pub(crate) fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+        Panel::vstack()
+            .id_salt(self.label)
+            .size((Sizing::fixed(self.w), Sizing::HUG))
+            .gap(6.0)
+            .show(ui, |ui| {
+                Text::new(self.label)
+                    .style(&caption_style())
+                    .size((Sizing::FILL, Sizing::fixed(CAPTION_H)))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .show(ui);
+                let cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(self.h)));
+                let cell = match self.surface {
+                    Surface::Well => cell.padding(CELL_PADDING).background(well_bg()),
+                    Surface::LightWell => cell.padding(CELL_PADDING).background(light_well_bg()),
+                    Surface::Bare => cell,
+                };
+                cell.show(ui, body);
+            });
+    }
 }

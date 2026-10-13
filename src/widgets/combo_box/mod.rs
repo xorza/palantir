@@ -30,7 +30,7 @@ use crate::widgets::theme::combo_box::ComboBoxTheme;
 use std::rc::Rc;
 
 /// A dropdown selector: a button-styled trigger showing the current choice,
-/// opening a [`crate::widgets::popup::Popup`] list on click. Picking a row sets
+/// opening a [`crate::Popup`] list on click. Picking a row sets
 /// the `&mut usize` selection and closes; clicking outside or Esc dismisses.
 /// Open state lives in the response map keyed off the trigger id.
 ///

@@ -30,11 +30,11 @@ mod gpu {
     }
 
     /// Draw `set`'s only icon at 16², putting a parse in the rasterizer and a raster in the atlas.
-    fn draw(backend: &mut IconBackend, device: &wgpu::Device, set: &IconSet) {
-        let icon = set.handle(IconId(0)).icon;
+    fn draw(backend: &mut IconBackend, set: &IconSet) {
+        let icon = set.handle(IconId::fixture(0)).icon;
         let key = IconRasterKey::for_box(icon, Vec2::splat(16.0));
         assert!(
-            backend.slot(device, key).is_some(),
+            backend.slot(key).is_some(),
             "the fixture icon must rasterize",
         );
     }
@@ -48,7 +48,7 @@ mod gpu {
         let mut frame = 0u64;
 
         let set = load(&icons);
-        draw(&mut backend, &gpu.device, &set);
+        draw(&mut backend, &set);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(backend.pass.atlas.cache.len(), 1);
 
@@ -87,20 +87,23 @@ mod gpu {
         let mut frame = 0u64;
 
         let first = load(&icons);
-        assert_eq!(first.handle(IconId(0)).icon.set, IconSetId::new(0, 0));
-        draw(&mut backend, &gpu.device, &first);
+        assert_eq!(
+            first.handle(IconId::fixture(0)).icon.set,
+            IconSetId::new(0, 0)
+        );
+        draw(&mut backend, &first);
         drop(first);
         tick(&mut backend, &mut frame);
 
         let second = load(&icons);
         assert_eq!(
-            second.handle(IconId(0)).icon.set,
+            second.handle(IconId::fixture(0)).icon.set,
             IconSetId::new(0, 1),
             "the fixture only proves anything if the slot was reused",
         );
         assert_eq!(backend.pass.atlas.cache.len(), 0, "nothing carried over");
 
-        draw(&mut backend, &gpu.device, &second);
+        draw(&mut backend, &second);
         assert_eq!(backend.rasterizer.parsed_count(), 1);
         assert_eq!(
             backend.pass.atlas.cache.len(),
@@ -120,7 +123,7 @@ mod gpu {
         let mut held: Option<IconSet> = None;
         for _ in 0..32 {
             let next = load(&icons);
-            draw(&mut backend, &gpu.device, &next);
+            draw(&mut backend, &next);
             // Assigning drops the previous frame's set.
             held = Some(next);
             tick(&mut backend, &mut frame);

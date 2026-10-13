@@ -1,6 +1,5 @@
 //! The per-node rows the walk fills, and what each covers.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -8,6 +7,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -51,9 +51,13 @@ fn node_spans_rows_mirror_chrome_and_children() {
     let bare_span = arena.node_spans[bare_idx];
     let parent_span = arena.node_spans[parent_idx];
 
-    assert!(
-        chrome_span.len > 0 && arena.rows[chrome_span.start as usize].screen.area() > 0.0,
-        "chromed panel must have a non-empty paint span with non-zero chrome rect",
+    assert_eq!(
+        [
+            chrome_span.len as f32,
+            arena.rows[chrome_span.start as usize].screen.area()
+        ],
+        [1.0, 50.0 * 50.0],
+        "the chromed panel paints one chrome row over its whole 50×50 rect",
     );
     let chrome_entry = cascade
         .locate(WidgetId::from_hash("chrome"))

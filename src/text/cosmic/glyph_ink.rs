@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::text::cosmic::geometry::ShapedGeometry;
-use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, glyph_scaler};
+use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, Hinting, ScalerSpec};
 use crate::text::extent::TextExtent;
 use cosmic_text::{Buffer, CacheKeyFlags, FontSystem, LayoutGlyph, fontdb};
 use glam::Vec2;
@@ -112,13 +112,12 @@ impl GlyphInk {
             return EmBox::default();
         }
         let units_per_em = f32::from(units_per_em);
-        let mut scaler = glyph_scaler(
-            &mut self.context,
-            &font,
-            0.0,
-            false,
-            fontdb::Weight(key.weight),
-        );
+        let mut scaler = ScalerSpec {
+            size: 0.0,
+            hinting: Hinting::Off,
+            weight: fontdb::Weight(key.weight),
+        }
+        .scaler(&mut self.context, &font);
         let outlined = scaler.scale_color_outline_into(key.glyph_id, &mut self.outline)
             || (!scaler.has_color_bitmaps()
                 && scaler.scale_outline_into(key.glyph_id, &mut self.outline));

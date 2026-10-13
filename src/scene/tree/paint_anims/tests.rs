@@ -1,5 +1,5 @@
 use crate::common::hash::Hasher;
-use crate::primitives::math::domain::internals::assert_close;
+use crate::primitives::math::domain;
 use crate::scene::tree::paint_anims::paint_animation::{PaintChannel, PaintCurve, PaintRepeat};
 use crate::scene::tree::paint_anims::*;
 use std::f32::consts::TAU;
@@ -127,6 +127,27 @@ fn next_wake_aligns_with_next_boundary() {
         a.next_wake(START + HP + HP + Duration::from_millis(50)),
         Some(START + HP + HP + HP),
     );
+
+    // Past 2^32 boundaries the wake is still the next one, never one long gone. A 2 ns
+    // period in two steps has a boundary every 1 ns, so 5 s in is boundary 5e9, past
+    // `u32::MAX` (4 294 967 295); at 4 ns a step is 2 ns, and 1 ns into one leaves 1 ns.
+    let fine = |period| {
+        PaintAnimation::alpha(0.0, 1.0)
+            .with_started_at(START)
+            .with_period(Duration::from_nanos(period))
+            .with_steps(2)
+            .with_repeat(PaintRepeat::Forever)
+    };
+    let late = START + Duration::from_secs(5);
+    assert_eq!(
+        fine(2).next_wake(late),
+        Some(late + Duration::from_nanos(1))
+    );
+    let mid_step = late + Duration::from_nanos(1);
+    assert_eq!(
+        fine(4).next_wake(mid_step),
+        Some(late + Duration::from_nanos(2))
+    );
 }
 
 #[test]
@@ -193,7 +214,7 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
     // 2 s in → 8.0 rad, wrapped into [0, TAU): 8 - TAU ≈ 1.7168.
     let wrapped = a.sample(START + Duration::from_secs(2)).rotation;
     let expect = 8.0_f32.rem_euclid(TAU);
-    assert_close(
+    domain::internals::assert_close(
         wrapped,
         expect,
         1e-6,
@@ -324,7 +345,11 @@ fn a_settled_animation_stops_modifying_the_shape() {
         .with_period(Duration::from_millis(100))
         .with_repeat(PaintRepeat::Settle(Duration::from_millis(250)));
 
-    assert!(a.sample(START + Duration::from_millis(200)).alpha < 0.25);
+    assert_eq!(
+        a.sample(START + Duration::from_millis(200)).alpha,
+        0.0,
+        "two whole passes in, the third starts again from `from`",
+    );
     let settled = a.sample(START + Duration::from_millis(250));
     assert_eq!(settled.alpha, 1.0, "a settled animation multiplies by one");
     assert_eq!(settled.rotation, 0.0);

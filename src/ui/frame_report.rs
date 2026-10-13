@@ -1,6 +1,5 @@
-//! One frame's plain-data report from [`Ui::frame`]: the post-record
+//! One frame's plain-data report from [`Ui::frame`].
 //!
-//! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
 use crate::damage::Damage;

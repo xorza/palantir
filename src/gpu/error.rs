@@ -4,6 +4,10 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
+use crate::gpu::device::device_features::DeviceFeatures;
+#[cfg(feature = "winit")]
+use crate::gpu::surface::surface_usages::SurfaceUsages;
+
 /// A driver failure kept whole but unnamed, so no graphics-API type reaches the published surface.
 #[derive(Debug)]
 pub struct DriverError(Box<dyn Error + Send + Sync + 'static>);
@@ -33,7 +37,7 @@ pub enum UnmetRequirements {
     /// A required feature is absent.
     Features {
         /// The features needed and missing.
-        missing: String,
+        missing: DeviceFeatures,
     },
     /// A limit sits below the floor Palantir needs.
     Limit {
@@ -141,7 +145,7 @@ pub enum SurfaceError {
     /// The surface lacks texture usages Palantir's compositor needs.
     MissingUsages {
         /// The usages the compositor needs and the surface lacks.
-        missing: String,
+        missing: SurfaceUsages,
     },
 }
 
@@ -152,7 +156,6 @@ impl From<GpuRequestError> for SurfaceError {
     }
 }
 
-#[cfg(feature = "winit")]
 #[cfg(feature = "winit")]
 impl Display for SurfaceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -180,30 +183,5 @@ impl Error for SurfaceError {
             Self::Device { source } => source.source(),
             Self::Incompatible | Self::MissingSrgb | Self::MissingUsages { .. } => None,
         }
-    }
-}
-
-/// The set flags of a graphics-API bitfield, by name; takes an iterator as the callers' flag types are unrelated.
-pub(crate) fn flag_names<T>(names: impl Iterator<Item = (&'static str, T)>) -> String {
-    names.map(|(name, _)| name).collect::<Vec<_>>().join(", ")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn flag_names_reports_the_names_alone() {
-        let missing = flag_names(wgpu::Features::IMMEDIATES.iter_names());
-        assert_eq!(missing, "IMMEDIATES");
-
-        let usages = wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC;
-        assert_eq!(flag_names(usages.iter_names()), "COPY_SRC, COPY_DST");
-
-        assert_eq!(
-            flag_names(wgpu::TextureUsages::empty().iter_names()),
-            "",
-            "nothing missing reads as nothing, not as a bare wrapper"
-        );
     }
 }

@@ -14,7 +14,7 @@
 
 use crate::bench::fixture::{Backends, Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::host::offscreen::{OffscreenHost, internals as offscreen_support};
+use crate::host::offscreen::OffscreenHost;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -233,7 +233,7 @@ impl Fixture {
 
     /// The composed frame's draw-list shape.
     const fn counts(&self) -> Counts {
-        let buffer = offscreen_support::last_render_buffer(&self.host);
+        let buffer = self.host.last_render_buffer();
         Counts {
             groups: buffer.groups.len(),
             text_batches: buffer.text_batches.len(),

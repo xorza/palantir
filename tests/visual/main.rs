@@ -13,6 +13,7 @@ mod fixtures;
 mod golden_name;
 mod goldens;
 mod harness;
+mod kept_on_failure;
 /// The showcase's support module, compiled in so a golden renders a showcase page itself.
 #[expect(
     dead_code,
@@ -23,7 +24,7 @@ mod harness;
 mod support;
 
 use glam::UVec2;
-use palantir::{FramePaint, RgbaF32, WindowConfig, WindowToken};
+use palantir::{FramePaint, RgbaF32, Ui, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 
@@ -34,7 +35,7 @@ fn readback_returns_clear_color_for_empty_scene() {
     let size = UVec2::new(16, 16);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = RgbaF32::srgb(sr, sg, sb);
-    let scene = |ui: &mut palantir::Ui| {
+    let scene = |ui: &mut Ui| {
         // Vetoing a close the offscreen host never requests is a no-op; opening a window is not serviceable.
         ui.keep_open();
         ui.request_relayout();
@@ -58,12 +59,7 @@ fn readback_returns_clear_color_for_empty_scene() {
         255,
     ];
     for (x, y, p) in img.enumerate_pixels() {
-        fixtures::assert_px(
-            p.0,
-            expected,
-            fixtures::SRGB_ROUND_TRIP,
-            format_args!("clear pixel ({x}, {y})"),
-        );
+        fixtures::assert_px(p.0, expected, format_args!("clear pixel ({x}, {y})"));
     }
 }
 

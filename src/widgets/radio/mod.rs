@@ -11,7 +11,9 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widget_core::widget_look::theme_slot::ThemeSlot;
+use crate::widgets::theme::check_state::CheckState;
 use crate::widgets::theme::toggle::ToggleTheme;
+use crate::widgets::toggle_chrome;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// One option in a radio group: selected when `*current == value`, and clicking assigns `value` into
@@ -32,7 +34,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
         Self {
-            widget: ToggleChrome::row(),
+            widget: toggle_chrome::row(),
             current,
             value,
             label: TextInput::default(),
@@ -56,7 +58,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     /// `changed` is not. A pick commits at once, so `committed == changed`.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
-        let activated = ToggleChrome::activated(ui, &mut self.widget, &response);
+        let activated = toggle_chrome::activated(ui, &mut self.widget, &response);
 
         // Read ahead of the latch below, which moves `self.value`.
         let theme = ui.theme();
@@ -75,13 +77,16 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
 
         let chrome = ToggleChrome {
-            plan: slot.plan(&response, selected, theme.text),
+            row: self.widget,
+            response,
+            label: self.label,
+            plan: slot.plan(&response, CheckState::from(selected), theme.text),
             gap: slot.gap,
             boxed: Widget::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
             // Forces the pip to a circle whatever `radio.checked.normal.background.radius` a theme sets.
             pill: Some(pip_size * 0.5),
         };
-        let response = chrome.record_row(ui, self.widget, response, self.label, |ui, _| {
+        let response = chrome.record_row(ui, |ui, _| {
             if selected {
                 let dot_size = domain::length_at_least(pip_size - 2.0 * dot_inset, 0.0);
                 let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

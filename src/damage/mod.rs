@@ -41,12 +41,13 @@ pub(crate) mod bench;
 pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod frame_baseline;
-pub(crate) mod inverted_overlaps;
+mod inverted_overlaps;
+mod layer_frame;
+mod layer_walk;
 pub(crate) mod node_snapshot;
 pub(crate) mod region;
-pub(crate) mod root_order;
-pub(crate) mod row_matcher;
-mod walk;
+mod root_order;
+mod row_matcher;
 
 /// Coverage fraction above which [`Damage::new`] collapses straight to
 /// [`Damage::Full`]: past this, per-node filter, per-pass scissor, `Load` and
@@ -77,7 +78,6 @@ impl Damage {
     /// ([`region::DamageRegion::collapse_from`] checks the degenerate surface).
     /// Absence rather than a variant keeps a no-op out of
     /// [`RenderPlan`](crate::renderer::render_plan::RenderPlan).
-    ///
     pub(crate) fn new(damage: CollapsedDamage) -> Option<Self> {
         if damage.region.is_empty() {
             return None;
@@ -91,7 +91,7 @@ impl Damage {
     /// Whether the frame paints inside damage rects rather than over the whole
     /// surface.
     pub(crate) const fn is_partial(self) -> bool {
-        matches!(self, Self::Partial { .. })
+        matches!(self, Self::Partial(_))
     }
 }
 

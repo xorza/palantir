@@ -11,10 +11,10 @@ pub(crate) struct TargetScrollDelta {
 }
 
 impl TargetScrollDelta {
-    pub(crate) fn new(target: WidgetId) -> Self {
+    pub(crate) const fn new(target: WidgetId) -> Self {
         Self {
             target,
-            delta: ScrollDelta::default(),
+            delta: ScrollDelta::NONE,
         }
     }
 }

@@ -41,9 +41,23 @@ impl Ident {
         }
     }
 
-    /// `true` for every identity but [`Ident::Auto`]; `SeenIds::resolve` flags explicit collisions as caller bugs.
+    /// [`IdKind::Auto`] for [`Ident::Auto`], [`IdKind::Explicit`] for every other identity.
     #[inline]
-    pub(crate) const fn is_explicit(self) -> bool {
-        !matches!(self, Self::Auto(_))
+    pub(crate) const fn kind(self) -> IdKind {
+        match self {
+            Self::Auto(_) => IdKind::Auto,
+            Self::Hash(_) | Self::Verbatim(_) | Self::Resolved(_) => IdKind::Explicit,
+        }
     }
+}
+
+/// Where a raw id came from, which decides what its collision means: two call sites
+/// sharing one id is a loop or helper and is disambiguated quietly, two ids the caller
+/// named alike is a caller bug `SeenIds::resolve` reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IdKind {
+    /// A `#[track_caller]` call site.
+    Auto,
+    /// Named by `.id(..)` or `.id_salt(..)`.
+    Explicit,
 }

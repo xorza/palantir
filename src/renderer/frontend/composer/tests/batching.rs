@@ -8,9 +8,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::primitives::packed::fill_axis::FillAxis;
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
@@ -159,10 +158,9 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
                 DrawQuadPayload::shadow(
                     source,
                     Corners::ZERO,
-                    RgbaF32::BLACK.into(),
-                    FillKind::SHADOW_DROP,
-                    FillAxis::from_lanes(0.0, 0.0, sigma, 0.0),
-                ),
+                    Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma).into(),
+                )
+                .expect("a black shadow paints"),
                 1.0,
             );
         },
@@ -321,10 +319,8 @@ fn compose_spins_polyline_about_bbox_center() {
                 },
                 origin: Vec2::ZERO,
                 width: 2.0,
-                points_start: p_start,
-                points_len: 2,
-                colors_start: c_start,
-                colors_len: 1,
+                points: Span::new(p_start, 2),
+                colors: Span::new(c_start, 1),
                 color_mode: ColorMode::Single,
                 cap: LineCap::Butt,
                 join: LineJoin::Miter,

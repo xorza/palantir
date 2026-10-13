@@ -1,6 +1,6 @@
 //! Per-frame render schedule: the ordered GPU steps painting every group of a
 //! `RenderBuffer`. Production and tests share this step stream via
-//! [`for_each_step`], so asserted order can't drift from issued order.
+//! [`Schedule::for_each_step`], so asserted order can't drift from issued order.
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -126,50 +126,59 @@ pub(crate) enum RenderStep {
     },
 }
 
-/// Walk `buffer.groups` and emit one [`RenderStep`] at a time via `emit`.
-/// `masks` is the frame's [`MaskPlan`] when the pass has a stencil, else `None`.
-///
-/// Ordering invariants:
-///
-/// 1. With `damage_scissor` `Some`, the first steps are
-///    `SetScissor(damage_scissor)` then [`PreClear`].
-/// 2. Each group narrows the scissor to its `effective` rect before its draws.
-/// 3. Stencil-path groups establish their mask chain first: level `k` stamps at
-///    `stencil_ref = k`, content draws at `depth`. A stale chain clears with one
-///    draw of its outermost quad at ref 0 under the stamp-time scissor (a clear
-///    under another scissor misses stamped pixels). Groups sharing the stamped
-///    chain elide the clear and re-stamp. A walk never ends with a chain stamped:
-///    the pass clears the stencil once, and AA padding can make disjoint damage
-///    scissors overlap, so residue would leak into the next walk.
-/// 4. Text renders after its group's quads. A batch drained past damage-skipped
-///    groups establishes its own chain.
-/// 5. Groups with an empty effective scissor, or one missing `damage_scissor`,
-///    emit nothing.
-/// 6. `SetScissor` and `SetStencilRef` are transitions: [`PassState`] emits one
-///    only when the value changes. The first scissor of each walk always emits.
-///
-/// [`PreClear`]: RenderStep::PreClear
-pub(crate) fn for_each_step(
-    buffer: &RenderBuffer,
-    damage_scissor: Option<URect>,
-    masks: Option<&MaskPlan>,
-    // `&mut dyn`: [`PassState`] holds the callback for the whole walk, so a generic
-    // would be erased there anyway.
-    emit: &mut dyn FnMut(RenderStep),
-) {
-    ScheduleWalk {
-        buffer,
-        damage_scissor,
-        cursors: ScheduleCursors::default(),
-        state: PassState {
-            emit,
-            masks,
-            cur_scissor: None,
-            cur_ref: 0,
-            active: None,
-        },
+/// One walk of a frame's schedule: what [`Self::for_each_step`] reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Schedule<'a> {
+    pub(crate) buffer: &'a RenderBuffer,
+    /// The damage rect this walk repaints; `None` on a full repaint.
+    pub(crate) damage_scissor: Option<URect>,
+    /// The frame's [`MaskPlan`] when the pass has a stencil, else `None`.
+    pub(crate) masks: Option<&'a MaskPlan>,
+}
+
+impl Schedule<'_> {
+    /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via `emit`.
+    ///
+    /// Ordering invariants:
+    ///
+    /// 1. With `damage_scissor` `Some`, the first steps are
+    ///    `SetScissor(damage_scissor)` then [`PreClear`].
+    /// 2. Each group narrows the scissor to its `effective` rect before its draws.
+    /// 3. Stencil-path groups establish their mask chain first: level `k` stamps at
+    ///    `stencil_ref = k`, content draws at `depth`. A stale chain clears with one
+    ///    draw of its outermost quad at ref 0 under the stamp-time scissor (a clear
+    ///    under another scissor misses stamped pixels). Groups sharing the stamped
+    ///    chain elide the clear and re-stamp. A walk never ends with a chain stamped:
+    ///    the pass clears the stencil once, and AA padding can make disjoint damage
+    ///    scissors overlap, so residue would leak into the next walk.
+    /// 4. Text renders after its group's quads. A batch drained past damage-skipped
+    ///    groups establishes its own chain.
+    /// 5. Groups with an empty effective scissor, or one missing `damage_scissor`,
+    ///    emit nothing.
+    /// 6. `SetScissor` and `SetStencilRef` are transitions: [`PassState`] emits one
+    ///    only when the value changes. The first scissor of each walk always emits.
+    ///
+    /// [`PreClear`]: RenderStep::PreClear
+    pub(crate) fn for_each_step(
+        self,
+        // `&mut dyn`: [`PassState`] holds the callback for the whole walk, so a generic
+        // would be erased there anyway.
+        emit: &mut dyn FnMut(RenderStep),
+    ) {
+        ScheduleWalk {
+            buffer: self.buffer,
+            damage_scissor: self.damage_scissor,
+            cursors: ScheduleCursors::default(),
+            state: PassState {
+                emit,
+                masks: self.masks,
+                cur_scissor: None,
+                cur_ref: 0,
+                active: None,
+            },
+        }
+        .run();
     }
-    .run();
 }
 
 #[derive(Debug)]
@@ -295,13 +304,20 @@ impl ScheduleWalk<'_> {
         // Paint order is `PaintTier::ALL`'s, which is `Ord`'s; the composer's flush
         // arbitration rests on it.
         for tier in PaintTier::ALL {
-            drain_group_batches(
-                self.buffer.batches(tier),
-                &mut self.cursors.higher[tier.idx()],
-                i,
-                |batch| RenderStep::TierBatch { tier, batch },
-                &mut self.state,
-            );
+            self.drain_tier_batches(tier, i);
+        }
+    }
+
+    /// Emit every `tier` batch anchored to `group`.
+    fn drain_tier_batches(&mut self, tier: PaintTier, group: usize) {
+        let batches = self.buffer.batches(tier);
+        let cursor = &mut self.cursors.higher[tier.idx()];
+        while pending_at(batches, *cursor, group) {
+            self.state.push(RenderStep::TierBatch {
+                tier,
+                batch: *cursor,
+            });
+            *cursor += 1;
         }
     }
 }
@@ -430,26 +446,15 @@ fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> b
     cursor < batches.len() && batches[cursor].last_group() == group
 }
 
-/// Drain every batch anchored to group `group`, emitting `step(idx)`.
-fn drain_group_batches(
-    batches: &[GroupBatch],
-    cursor: &mut usize,
-    group: usize,
-    mut step: impl FnMut(usize) -> RenderStep,
-    state: &mut PassState<'_>,
-) {
-    while pending_at(batches, *cursor, group) {
-        state.push(step(*cursor));
-        *cursor += 1;
-    }
-}
-
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use super::*;
+    use crate::gpu::frame::schedule::{MaskPlan, RenderStep, Schedule};
+    use crate::gpu::pipeline::stencil_variant::StencilMode;
+    use crate::primitives::geometry::urect::URect;
+    use crate::renderer::render_buffer::RenderBuffer;
 
     /// What one schedule walk emitted: the step total and the transition counts
-    /// [`PassState`] deduplicates.
+    /// [`PassState`](crate::gpu::frame::schedule::PassState) deduplicates.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct WalkCounts {
         pub(crate) steps: usize,
@@ -474,11 +479,19 @@ pub(crate) mod internals {
             &self,
             buffer: &RenderBuffer,
             damage: Option<URect>,
-            use_stencil: bool,
+            stencil: StencilMode,
         ) -> WalkCounts {
             let mut counts = WalkCounts::default();
-            let masks = use_stencil.then_some(&self.plan);
-            for_each_step(buffer, damage, masks, &mut |step| {
+            let masks = match stencil {
+                StencilMode::Off => None,
+                StencilMode::Test => Some(&self.plan),
+            };
+            let schedule = Schedule {
+                buffer,
+                damage_scissor: damage,
+                masks,
+            };
+            schedule.for_each_step(&mut |step| {
                 counts.steps += 1;
                 match step {
                     RenderStep::SetScissor(_) => counts.scissors += 1,

@@ -12,15 +12,23 @@ use crate::gpu::frame::debug_marker;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::render_buffer::image::FrameViews;
+use crate::renderer::render_buffer::render_target_draw::{FrameViews, RenderTargetDraw};
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::text::shaper::TextShaper;
-use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
 const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+/// The render stream painting views this submit, its frame time, and the shaper a view's init
+/// receives so its text agrees with the UI around it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ViewSubmitter<'a> {
+    pub(crate) owner: RenderOwnerId,
+    pub(crate) now: Duration,
+    pub(crate) text: &'a TextShaper,
+}
 
 #[derive(Debug)]
 pub(crate) struct GpuViewTargets {
@@ -45,11 +53,10 @@ impl GpuViewTargets {
         &mut self,
         ctx: &mut GpuCtx<'_>,
         views: FrameViews<'_>,
-        owner: RenderOwnerId,
-        now: Duration,
-        text: &TextShaper,
+        submitter: ViewSubmitter<'_>,
     ) {
         tracy::zone!();
+        let ViewSubmitter { owner, now, text } = submitter;
         let FrameViews {
             draws,
             live,
@@ -63,7 +70,7 @@ impl GpuViewTargets {
             "a painted GpuView target is missing from the frame's live roster",
         );
         for draw in draws {
-            let target = self.ensure(ctx.device, draw.id, draw.used, owner);
+            let target = self.ensure(ctx.device, draw, owner);
             // A view composited again without a repaint (damage crossing a `repaint(false)` view) keeps its painted pixels.
             let stamp = draw.stamp(display_scale);
             if target.painted == Some(stamp) {
@@ -116,14 +123,15 @@ impl GpuViewTargets {
         self.targets.retain(|_, target| target.owner != owner);
     }
 
+    /// `draw`'s target, owned by `owner` and sized to what it shows, allocated or resized as needed.
     fn ensure(
         &mut self,
         device: &wgpu::Device,
-        id: TextureId,
-        size: UVec2,
+        draw: &RenderTargetDraw,
         owner: RenderOwnerId,
     ) -> &mut ViewTarget {
-        match self.targets.entry(id) {
+        let size = draw.used;
+        match self.targets.entry(draw.id) {
             Entry::Occupied(entry) => {
                 let target = entry.into_mut();
                 target.owner = owner;
@@ -152,109 +160,4 @@ impl GpuViewTargets {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::gpu::device::gpu_ctx::GpuCtx;
-    use crate::gpu::device::gpu_frame_context::GpuFrameContext;
-    use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
-    use crate::gpu::resource::texture_binding::TextureBinding;
-    use crate::gpu::test_gpu::headless_test_gpu;
-    use crate::primitives::identity::texture_id::TextureId;
-    use crate::renderer::gpu_paint::GpuPaint;
-    use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-    use crate::renderer::render_buffer::image::{FrameViews, RenderTargetDraw};
-    use crate::renderer::render_owner_id::RenderOwnerId;
-    use crate::text::shaper::TextShaper;
-    use glam::UVec2;
-    use std::cell::{Cell, RefCell};
-    use std::rc::Rc;
-    use std::slice;
-    use std::time::Duration;
-    use wgpu::util::StagingBelt;
-
-    #[derive(Debug)]
-    struct CountingPaint(Rc<Cell<u32>>);
-
-    impl GpuPaint for CountingPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameContext<'_>) {
-            self.0.set(self.0.get() + 1);
-        }
-    }
-
-    /// A target painted for a draw's stamp is composited again without a paint; a moved epoch, size, offset or scale paints. Each row is one submit and whether it ran the callback.
-    #[test]
-    fn an_unchanged_stamp_skips_the_paint() {
-        let gpu = headless_test_gpu();
-        let device = &gpu.device;
-        let mut targets = GpuViewTargets::new(TextureBinding::new(device));
-        let paints = Rc::new(Cell::new(0));
-        let paint = GpuPaintRef(Rc::new(RefCell::new(CountingPaint(Rc::clone(&paints)))));
-        let id = TextureId::reserve();
-        let owner = RenderOwnerId::reserve();
-        let shaper = TextShaper::new();
-        let draw = RenderTargetDraw {
-            id,
-            used: UVec2::new(32, 24),
-            full: UVec2::new(32, 24),
-            offset: UVec2::ZERO,
-            raster_scale: 1.0,
-            paint,
-            epoch: 1,
-        };
-        let submits = [
-            (draw.clone(), true),
-            (draw.clone(), false),
-            (
-                RenderTargetDraw {
-                    epoch: 2,
-                    ..draw.clone()
-                },
-                true,
-            ),
-            (
-                RenderTargetDraw {
-                    epoch: 2,
-                    ..draw.clone()
-                },
-                false,
-            ),
-            (
-                RenderTargetDraw {
-                    epoch: 2,
-                    used: UVec2::new(16, 24),
-                    offset: UVec2::new(16, 0),
-                    ..draw.clone()
-                },
-                true,
-            ),
-            (
-                RenderTargetDraw {
-                    epoch: 2,
-                    used: UVec2::new(16, 24),
-                    offset: UVec2::new(16, 0),
-                    raster_scale: 2.0,
-                    ..draw
-                },
-                true,
-            ),
-        ];
-        let mut belt = StagingBelt::new(device.clone(), 1 << 12);
-        for (at, (draw, painted)) in submits.into_iter().enumerate() {
-            let before = paints.get();
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let mut ctx = GpuCtx::new(device, &gpu.queue, &mut belt, &mut encoder);
-            targets.paint_gpu_views(
-                &mut ctx,
-                FrameViews {
-                    draws: slice::from_ref(&draw),
-                    live: &[id],
-                    display_scale: 1.0,
-                },
-                owner,
-                Duration::from_millis(16 * at as u64),
-                &shaper,
-            );
-            assert_eq!(paints.get() - before, u32::from(painted), "submit {at}");
-        }
-    }
-}
+mod tests;

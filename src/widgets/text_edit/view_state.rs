@@ -4,10 +4,11 @@
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::scene::tree::paint_anims::curves;
 use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
-use crate::widgets::scroll::state::{ScrollBounds, ScrollState};
+use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
 use crate::widgets::text_edit::text_geometry::TextGeometry;
 use glam::Vec2;
 use std::mem;
@@ -64,6 +65,11 @@ impl ViewState {
     fn update_scroll(&mut self, input: ViewUpdateInput) {
         let layout = input.geometry.layout;
         let ctx = layout.ctx;
+        let axes = if ctx.multiline {
+            ScrollAxes::VERTICAL
+        } else {
+            ScrollAxes::HORIZONTAL
+        };
         let Some(viewport) = layout.inner.map(|rect| rect.size) else {
             self.scroll = ScrollState::default();
             // No box yet, so no overflow to read: claim the axis the field pans.
@@ -91,8 +97,12 @@ impl ViewState {
         };
         // A plain vertical wheel over a single-line field arrives on x already:
         // routing moves it there while nothing under the pointer pans vertically.
-        self.scroll
-            .apply_wheel_pan(bounds, !ctx.multiline, ctx.multiline, input.wheel, false);
+        self.scroll.apply_wheel_pan(WheelPan {
+            bounds,
+            axes,
+            delta: input.wheel,
+            band: PanBand::Natural,
+        });
         if follow_caret {
             let offset = &mut self.scroll.offset;
             if ctx.multiline {
@@ -118,9 +128,7 @@ impl ViewState {
             }
         }
         self.scroll.clamp_to_natural(bounds);
-        self.wheel_axes = self
-            .scroll
-            .wheel_sense(bounds, !ctx.multiline, ctx.multiline);
+        self.wheel_axes = self.scroll.wheel_sense(bounds, axes);
     }
 
     /// Returns the caret's blink animation, if the field has focus. The new scroll

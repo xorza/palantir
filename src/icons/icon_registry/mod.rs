@@ -60,7 +60,7 @@ impl Drop for IconSetToken {
     }
 }
 
-/// One row of the table. `atlas` is `None` from the drain that freed it until the next load.
+/// One row of the table. `table` is `None` from the drain that freed it until the next load.
 #[derive(Debug)]
 struct Slot {
     generation: u16,
@@ -125,13 +125,13 @@ impl IconRegistry {
             });
             slot
         };
-        let id = IconSetId::new(slot, inner.slots[slot as usize].generation);
+        let id = IconSetId::new(slot, inner.slots[usize::from(slot)].generation);
         let token = Rc::new(IconSetToken {
             id,
             table: Rc::clone(&table),
             shared: Rc::clone(&self.inner),
         });
-        let row = &mut inner.slots[slot as usize];
+        let row = &mut inner.slots[usize::from(slot)];
         row.table = Some(table);
         row.token = Rc::downgrade(&token);
         inner.epoch += 1;
@@ -147,7 +147,7 @@ impl IconRegistry {
         let inner = self.inner.borrow();
         let table = inner
             .slots
-            .get(id.slot as usize)
+            .get(usize::from(id.slot))
             .filter(|slot| slot.generation == id.generation)
             .and_then(|slot| slot.table.as_ref());
         Rc::clone(table.unwrap_or_else(|| {
@@ -172,7 +172,7 @@ impl IconRegistry {
             return;
         }
         for &id in released.iter() {
-            let slot = &mut slots[id.slot as usize];
+            let slot = &mut slots[usize::from(id.slot)];
             debug_assert_eq!(slot.generation, id.generation, "double release");
             slot.table = None;
             slot.generation = slot.generation.wrapping_add(1);
@@ -195,7 +195,10 @@ impl IconRegistry {
             return None;
         }
         Some(ResidentIconSet {
-            id: IconSetId::new(slot as u16, row.generation),
+            id: IconSetId::new(
+                u16::try_from(slot).expect("`register` keeps every slot index inside u16"),
+                row.generation,
+            ),
             table: Rc::clone(row.table.as_ref()?),
         })
     }

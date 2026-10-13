@@ -4,9 +4,10 @@
 
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::cascade::Cascade;
-use crate::cascade::cascade_key::CascadeKey;
+use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
-use crate::cascade::entry::{EntryRow, HitRow};
+use crate::cascade::rows::entry_row::EntryRow;
+use crate::cascade::rows::hit_row::HitRow;
 use crate::display::Display;
 use crate::input::sense::Sense;
 use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
@@ -112,13 +113,7 @@ impl CascadeRunFixture {
         let second = record_fixture(second_state);
         let mut engine = CascadeEngine::default();
         let mut cascade = Cascade::default();
-        engine.run(
-            first.ui.forest(),
-            first.ui.layout_tables(),
-            display,
-            &key_of(&first, display),
-            &mut cascade,
-        );
+        engine.run(source_of(&first, display), &mut cascade);
         Self {
             first,
             second,
@@ -135,13 +130,8 @@ impl CascadeRunFixture {
         } else {
             &self.first
         };
-        self.engine.run(
-            source.ui.forest(),
-            source.ui.layout_tables(),
-            self.display,
-            &key_of(source, self.display),
-            &mut self.cascade,
-        );
+        self.engine
+            .run(source_of(source, self.display), &mut self.cascade);
         self.use_second = !self.use_second;
     }
 
@@ -151,25 +141,20 @@ impl CascadeRunFixture {
         } else {
             &self.first
         };
-        self.engine.run_full(
-            source.ui.forest(),
-            source.ui.layout_tables(),
-            self.display,
-            &key_of(source, self.display),
-            &mut self.cascade,
-        );
+        self.engine
+            .run_full(source_of(source, self.display), &mut self.cascade);
         self.use_second = !self.use_second;
     }
 }
 
-/// The key the frame builds before each run, built per run so the cost is what a frame pays.
-fn key_of(h: &UiHarness, display: Display) -> CascadeKey {
-    CascadeKey::new(
-        h.ui.forest(),
-        h.ui.layout_tables(),
+/// What the frame hands each run; the run builds its key from it, so the cost is what a frame pays.
+fn source_of(h: &UiHarness, display: Display) -> CascadeSource<'_> {
+    CascadeSource {
+        forest: h.ui.forest(),
+        layout: h.ui.layout_tables(),
         display,
-        h.ui.font_epoch(),
-    )
+        font_epoch: h.ui.font_epoch(),
+    }
 }
 
 fn record_fixture(mut state: FrameFixture) -> UiHarness {

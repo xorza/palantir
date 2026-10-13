@@ -9,7 +9,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::widget_core::widget_look::WidgetLook;
 use crate::widgets::theme::Theme;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 use super::pretty;
 

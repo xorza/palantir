@@ -2,6 +2,7 @@
 
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
@@ -27,8 +28,8 @@ fn wrap_hstack_justify_per_line() {
                 .line_gap(0.0)
                 .justify(*justify)
                 .show(ui, |ui| {
-                    cell(ui, "a", 60.0, 20.0);
-                    cell(ui, "b", 60.0, 20.0);
+                    cell(ui, "a", Size::new(60.0, 20.0));
+                    cell(ui, "b", Size::new(60.0, 20.0));
                 });
         });
         // 130 used, 70 to place; every x is a multiple of 0.5, exact in f32.
@@ -50,7 +51,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             .size((Sizing::fixed(300.0), Sizing::HUG))
             .gap(10.0)
             .show(ui, |ui| {
-                cell(ui, "fixed-a", 60.0, 20.0);
+                cell(ui, "fixed-a", Size::new(60.0, 20.0));
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))

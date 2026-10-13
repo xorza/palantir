@@ -1,9 +1,18 @@
+//! The per-grid track state measure leaves for arrange and the measure cache.
+
 use crate::common::span::Span;
 use crate::layout::drivers::grid::axis_scratch::{HugRanges, HugRangesMut};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
 use crate::scene::tree::Tree;
 use std::ops::Range;
+
+/// One axis of one recorded grid: the key [`GridTrackStore`] slices its pools by.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct GridAxisId {
+    pub(super) def: GridDefId,
+    pub(super) axis: Axis,
+}
 
 /// Which content range a hug array holds: preferred extent or min-content floor.
 #[derive(Clone, Copy, Debug)]
@@ -89,42 +98,42 @@ impl GridTrackStore {
         Span::new(start, n as u32)
     }
 
-    fn axis_slice(&self, idx: GridDefId, axis: Axis) -> Range<usize> {
-        let slot = self.slots[usize::from(idx)];
-        let s = match axis {
+    fn axis_slice(&self, id: GridAxisId) -> Range<usize> {
+        let slot = self.slots[usize::from(id.def)];
+        let s = match id.axis {
             Axis::X => slot.cols,
             Axis::Y => slot.rows,
         };
         s.range()
     }
 
-    pub(super) fn slice(&self, idx: GridDefId, axis: Axis, kind: HugKind) -> &[f32] {
-        let r = self.axis_slice(idx, axis);
+    pub(super) fn slice(&self, id: GridAxisId, kind: HugKind) -> &[f32] {
+        let r = self.axis_slice(id);
         match kind {
             HugKind::Max => &self.max_pool[r],
             HugKind::Min => &self.min_pool[r],
         }
     }
 
-    pub(super) fn slice_mut(&mut self, idx: GridDefId, axis: Axis, kind: HugKind) -> &mut [f32] {
-        let r = self.axis_slice(idx, axis);
+    pub(super) fn slice_mut(&mut self, id: GridAxisId, kind: HugKind) -> &mut [f32] {
+        let r = self.axis_slice(id);
         match kind {
             HugKind::Max => &mut self.max_pool[r],
             HugKind::Min => &mut self.min_pool[r],
         }
     }
 
-    /// Both content-range pools for `(idx, axis)`.
-    pub(super) fn ranges(&self, idx: GridDefId, axis: Axis) -> HugRanges<'_> {
+    /// Both content-range pools for `id`.
+    pub(super) fn ranges(&self, id: GridAxisId) -> HugRanges<'_> {
         HugRanges {
-            min: self.slice(idx, axis, HugKind::Min),
-            max: self.slice(idx, axis, HugKind::Max),
+            min: self.slice(id, HugKind::Min),
+            max: self.slice(id, HugKind::Max),
         }
     }
 
     /// [`Self::ranges`] for measure to write through.
-    pub(super) fn ranges_mut(&mut self, idx: GridDefId, axis: Axis) -> HugRangesMut<'_> {
-        let r = self.axis_slice(idx, axis);
+    pub(super) fn ranges_mut(&mut self, id: GridAxisId) -> HugRangesMut<'_> {
+        let r = self.axis_slice(id);
         HugRangesMut {
             min: &mut self.min_pool[r.clone()],
             max: &mut self.max_pool[r],
@@ -138,37 +147,31 @@ impl GridTrackStore {
         }
     }
 
-    /// Resolved track sizes for `(idx, axis)` from the last measure.
-    pub(super) fn sizes_slice(&self, idx: GridDefId, axis: Axis) -> &[f32] {
-        let r = self.axis_slice(idx, axis);
+    /// Resolved track sizes for `id` from the last measure.
+    pub(super) fn sizes_slice(&self, id: GridAxisId) -> &[f32] {
+        let r = self.axis_slice(id);
         &self.sizes_pool[r]
     }
 
-    /// The `total` measure resolved `(idx, axis)` against, or `None` if measure
+    /// The `total` measure resolved `id` against, or `None` if measure
     /// hasn't reached the grid this frame; arrange then re-resolves.
-    pub(super) fn total_used(&self, idx: GridDefId, axis: Axis) -> Option<f32> {
-        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)]
+    pub(super) fn total_used(&self, id: GridAxisId) -> Option<f32> {
+        self.totals_pool[usize::from(id.def)][Self::axis_total_idx(id.axis)]
     }
 
-    /// Persist the just-resolved `(sizes, total)` for `(idx, axis)` so arrange
-    /// can read them back without re-resolving.
-    pub(super) fn record_resolution(
-        &mut self,
-        idx: GridDefId,
-        axis: Axis,
-        total: f32,
-        sizes: &[f32],
-    ) {
-        let r = self.axis_slice(idx, axis);
+    /// Persist the just-resolved `(sizes, total)` for `id` so arrange can read
+    /// them back without re-resolving.
+    pub(super) fn record_resolution(&mut self, id: GridAxisId, total: f32, sizes: &[f32]) {
+        let r = self.axis_slice(id);
         self.sizes_pool[r].copy_from_slice(sizes);
-        self.totals_pool[usize::from(idx)][Self::axis_total_idx(axis)] = Some(total);
+        self.totals_pool[usize::from(id.def)][Self::axis_total_idx(id.axis)] = Some(total);
     }
 
     /// Append one Grid's four hug arrays to `out`, in [`HUG_ORDER`], so a
     /// measure-cache hit can restore them via [`Self::restore_subtree`].
     pub(crate) fn snapshot_grid(&self, idx: GridDefId, out: &mut Vec<f32>) {
         for (axis, kind) in HUG_ORDER {
-            out.extend_from_slice(self.slice(idx, axis, kind));
+            out.extend_from_slice(self.slice(GridAxisId { def: idx, axis }, kind));
         }
     }
 
@@ -181,7 +184,7 @@ impl GridTrackStore {
             let core = layouts[i];
             if let LayoutMode::Grid(idx) = LayoutMode::from(core.meta) {
                 for (axis, kind) in HUG_ORDER {
-                    let dst = self.slice_mut(idx, axis, kind);
+                    let dst = self.slice_mut(GridAxisId { def: idx, axis }, kind);
                     let n = dst.len();
                     dst.copy_from_slice(&tracks[pos..pos + n]);
                     pos += n;

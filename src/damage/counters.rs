@@ -34,17 +34,20 @@ impl DamageCounters {
     }
 }
 
-/// Reads are gated with their callers: tests assert `dirty`, `subtree_skips` is also the bench's metric.
-#[cfg(test)]
-impl DamageCounters {
-    pub(crate) fn dirty(&self) -> &[NodeId] {
-        self.dirty.as_slice()
-    }
-}
-
 #[cfg(feature = "internals")]
-impl DamageCounters {
-    pub(crate) const fn subtree_skips(&self) -> u32 {
-        self.subtree_skips.count()
+pub(crate) mod internals {
+    use crate::damage::counters::DamageCounters;
+    #[cfg(test)]
+    use crate::scene::tree::node_id::NodeId;
+
+    impl DamageCounters {
+        #[cfg(test)]
+        pub(crate) fn dirty(&self) -> &[NodeId] {
+            self.dirty.as_slice()
+        }
+
+        pub(crate) const fn subtree_skips(&self) -> u32 {
+            self.subtree_skips.count()
+        }
     }
 }

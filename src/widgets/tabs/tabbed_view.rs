@@ -10,6 +10,7 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
+use crate::widgets::tabs::tab_strip;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::theme::tabs::TabsTheme;
 use std::hash::Hash;
@@ -223,7 +224,14 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             }
             if let Some(from) = hit.drag_stopped
                 && reorderable
-                && let Some(to) = dropped_slot(ui, strip_id, options, &key)
+                && let Some(to) = dropped_slot(
+                    ui,
+                    strip_id,
+                    options
+                        .iter()
+                        .enumerate()
+                        .map(|(slot, page)| key(slot, page)),
+                )
                 && to != from
                 && to != from + 1
                 && let Some(page) = shown
@@ -262,24 +270,21 @@ struct StripHit {
     drag_stopped: Option<usize>,
 }
 
-/// The slot the pointer released over, from last frame's chip rects; `None` unless
-/// over the strip.
-fn dropped_slot<S>(
+/// The slot the pointer released over, from last frame's rects of the chips keyed
+/// `keys`; `None` unless over the strip.
+fn dropped_slot(
     ui: &mut Ui,
     strip: WidgetId,
-    options: &[S],
-    key: impl Fn(usize, &S) -> u64,
+    keys: impl IntoIterator<Item = u64>,
 ) -> Option<usize> {
     let pointer = ui.pointer_pos()?;
     if !ui.response_for(strip).rect?.contains(pointer) {
         return None;
     }
-    let x = pointer.x;
-    let chips = options.iter().enumerate().filter_map(|(slot, page)| {
-        ui.response_for(TabStrip::chip_id(strip, key(slot, page)))
-            .rect
-    });
-    Some(TabStrip::insertion_slot(chips, x))
+    let chips = keys
+        .into_iter()
+        .filter_map(|key| ui.response_for(TabStrip::chip_id(strip, key)).rect);
+    Some(tab_strip::insertion_slot(chips, pointer.x))
 }
 
 const fn index_key<S>(index: usize, _: &S) -> u64 {

@@ -1,6 +1,7 @@
 //! The data-entry cards: request form, settings grid, property table and notes field. They carry every value-bound widget and both `Grid` flavours: static ([`settings_card`]) and row-count-driven ([`properties_card`]). The notes field sits behind the tree's one [`Expander`], held open.
 
 use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::card::Card;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::Align;
@@ -30,7 +31,7 @@ use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 
 pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
-    tokens::card(ui, "request", "REQUEST", Sizing::HUG, |ui| {
+    Card::new("request", "REQUEST").show(ui, |ui| {
         Panel::hstack()
             .id_salt("form-row")
             .gap(8.0)
@@ -64,7 +65,7 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
 
 /// Settings as a two-column `Grid` (label | control), aligning controls on a real track edge and giving the fixture a static Grid beside the dynamic [`properties_card`].
 pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
-    tokens::card(ui, "settings", "SETTINGS", Sizing::HUG, |ui| {
+    Card::new("settings", "SETTINGS").show(ui, |ui| {
         let rows = [Track::HUG; 6];
         Grid::new()
             .id_salt("settings-grid")
@@ -156,7 +157,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
 }
 
 pub(super) fn properties_card(state: &FrameFixture, ui: &mut Ui, rows: usize) {
-    tokens::card(ui, "props", "PROPERTIES", Sizing::HUG, |ui| {
+    Card::new("props", "PROPERTIES").show(ui, |ui| {
         Grid::new()
             .id_salt("props-grid")
             .cols([Track::HUG.with_min(92.0), Track::FILL, Track::fixed(60.0)])
@@ -221,7 +222,7 @@ pub(super) fn properties_card(state: &FrameFixture, ui: &mut Ui, rows: usize) {
 
 /// The notes field, behind the tree's only [`Expander`]. Held open like every backing value, so the body records the same tree each iteration; the default un-animated reveal lets `frame/cached_*` settle to no damage.
 pub(super) fn notes_card(state: &mut FrameFixture, ui: &mut Ui) {
-    tokens::card(ui, "notes", "NOTES", Sizing::HUG, |ui| {
+    Card::new("notes", "NOTES").show(ui, |ui| {
         Expander::new("scratch")
             .id_salt("notes-expander")
             .start_open(true)

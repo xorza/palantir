@@ -49,7 +49,7 @@ pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
     out
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum FrameKind {
     /// Library code under `src/...` — interesting; the bug usually lives here.
     Src,

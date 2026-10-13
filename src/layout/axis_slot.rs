@@ -1,8 +1,12 @@
 //! The per-axis inputs the measure pass resolves an outer extent from.
 
+use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::measured::Measured;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
+use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
 
 /// What a parent grants one axis of one node: `Sizing` plus the numbers that
@@ -18,17 +22,49 @@ pub(super) struct AxisSlot {
     pub(super) available: f32,
     pub(super) intrinsic_min: f32,
     pub(super) margin: f32,
+    pub(super) padding: f32,
     pub(super) min: f32,
     pub(super) max: f32,
 }
 
 impl AxisSlot {
+    /// `axis` of `layout`'s box under an unbounded offer, the one an intrinsic query asks about.
+    pub(super) fn unbounded(layout: &LayoutCore, bounds: &BoundsExtras, axis: Axis) -> Self {
+        Self {
+            sizing: axis.main_sizing(layout.size),
+            available: f32::INFINITY,
+            intrinsic_min: 0.0,
+            margin: axis.spacing(layout.margin),
+            padding: axis.spacing(layout.padding),
+            min: axis.main(bounds.min_size),
+            max: axis.main(bounds.max_size),
+        }
+    }
+
+    /// Wrap the raw content range a walk answered in this axis' box: padding,
+    /// the `Sizing` override, margin, and the `min_size` / `max_size` clamps, on
+    /// the halves `query` asks for.
+    ///
+    /// Padding is added unconditionally: a Fixed axis arrives with a zero content
+    /// range, and [`Self::resolve`] returns the declared value without reading
+    /// either, so the add cannot reach the result.
+    pub(super) fn outer(
+        self,
+        query: IntrinsicQuery,
+        mut content: IntrinsicRange,
+    ) -> IntrinsicRange {
+        for (_, value) in content.requested(query) {
+            *value = self.resolve(*value + self.padding, 0.0);
+        }
+        content
+    }
+
     /// The extent of this node's own box before padding (a Fixed axis' value,
     /// else the parent's grant less margin), clamped to `[min, max]`. The clamp
     /// matches [`Self::resolve`]'s so a `max_size`-capped parent does not grant
     /// children more room than it can arrange.
     #[inline]
-    const fn outer(self, dispatch_avail: f32) -> f32 {
+    const fn outer_extent(self, dispatch_avail: f32) -> f32 {
         match self.sizing.fixed_value() {
             Some(value) => value,
             None => (dispatch_avail - self.margin).max(0.0),
@@ -37,14 +73,14 @@ impl AxisSlot {
     }
 
     /// What the driver measures its children against on this axis: the outer
-    /// extent less `padding`. `available` is floored by `intrinsic_min` first,
+    /// extent less padding. `available` is floored by `intrinsic_min` first,
     /// so children measure against the parent's actual outer size (a Hug grid
     /// in a FILL panel pinned by a long sibling would otherwise shape against
     /// the smaller surface width). INFINITY on a Hug axis survives; a Fixed axis
     /// reads neither input.
     #[inline]
-    const fn inner_avail(self, padding: f32) -> f32 {
-        (self.outer(self.available.max(self.intrinsic_min)) - padding).max(0.0)
+    const fn inner_avail(self) -> f32 {
+        (self.outer_extent(self.available.max(self.intrinsic_min)) - self.padding).max(0.0)
     }
     /// **Contains-content rule:** Hug aims for content size, Fill for
     /// `available`. Fill floors at `max(content, intrinsic_min)`. Hug under a
@@ -118,7 +154,6 @@ impl AxisSlot {
         content_plus_padding: f32,
         floor_plus_padding: f32,
         inner_stable_from: f32,
-        padding: f32,
     ) -> f32 {
         if self.sizing.fixed_value().is_some() {
             return 0.0;
@@ -139,7 +174,7 @@ impl AxisSlot {
         } else {
             0.0
         };
-        let handed = inner_stable_from + padding;
+        let handed = inner_stable_from + self.padding;
         let handed_floor = (self.intrinsic_min - self.margin)
             .max(0.0)
             .clamp(self.min, self.max);
@@ -150,24 +185,36 @@ impl AxisSlot {
         };
         own.max(inner)
     }
+}
 
-    /// Full per-node sizing pipeline: build a slot per axis, hand the driver
-    /// what each says its children measure against, and fold its raw content,
-    /// floor and range back into a margin-inclusive `desired`, floor and range.
+/// What a parent grants one node on both axes: its box, the offer, and the
+/// floor its rigid descendants set. [`Self::resolve`] runs the sizing pipeline.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NodeSlot<'a> {
+    pub(super) layout: LayoutCore,
+    pub(super) bounds: &'a BoundsExtras,
+    pub(super) available: Size,
+    pub(super) intrinsic_min: Size,
+}
+
+impl NodeSlot<'_> {
+    /// Full per-node sizing pipeline: build an [`AxisSlot`] per axis, hand the
+    /// driver what each says its children measure against, and fold its raw
+    /// content, floor and range back into a margin-inclusive `desired`, floor
+    /// and range.
     ///
     /// Single dispatch: when `desired` exceeds `available` on a non-Fixed axis
     /// a rigid descendant pinned the floor, and a re-dispatch would converge
     /// to the same value since every driver's content size is monotone in
     /// `available`. Pinned by `layout::tests::convergence`.
     #[inline]
-    pub(super) fn resolve_node(
-        layout: LayoutCore,
-        available: Size,
-        intrinsic_min: Size,
-        min_size: Size,
-        max_size: Size,
-        dispatch: impl FnOnce(Size) -> Measured,
-    ) -> Measured {
+    pub(super) fn resolve(self, dispatch: impl FnOnce(Size) -> Measured) -> Measured {
+        let Self {
+            layout,
+            bounds,
+            available,
+            intrinsic_min,
+        } = self;
         let Size {
             w: p_horiz,
             h: p_vert,
@@ -177,24 +224,26 @@ impl AxisSlot {
             h: m_vert,
         } = layout.margin.sums();
 
-        let w = Self {
+        let w = AxisSlot {
             sizing: layout.size.w(),
             available: available.w,
             intrinsic_min: intrinsic_min.w,
             margin: m_horiz,
-            min: min_size.w,
-            max: max_size.w,
+            padding: p_horiz,
+            min: bounds.min_size.w,
+            max: bounds.max_size.w,
         };
-        let h = Self {
+        let h = AxisSlot {
             sizing: layout.size.h(),
             available: available.h,
             intrinsic_min: intrinsic_min.h,
             margin: m_vert,
-            min: min_size.h,
-            max: max_size.h,
+            padding: p_vert,
+            min: bounds.min_size.h,
+            max: bounds.max_size.h,
         };
 
-        let inner_avail = Size::new(w.inner_avail(p_horiz), h.inner_avail(p_vert));
+        let inner_avail = Size::new(w.inner_avail(), h.inner_avail());
         let Measured {
             size,
             floor,
@@ -216,8 +265,8 @@ impl AxisSlot {
             h.resolve(size.h + p_vert, floor.h + p_vert),
         );
         let stable_from = Size::new(
-            w.stable_from(size.w + p_horiz, floor.w + p_horiz, stable_from.w, p_horiz),
-            h.stable_from(size.h + p_vert, floor.h + p_vert, stable_from.h, p_vert),
+            w.stable_from(size.w + p_horiz, floor.w + p_horiz, stable_from.w),
+            h.stable_from(size.h + p_vert, floor.h + p_vert, stable_from.h),
         );
         debug_assert!(
             (stable_from.w <= available.w || stable_from.w == Measured::AT_OFFER_ONLY)
@@ -241,21 +290,21 @@ mod tests {
 
     const AT: f32 = Measured::AT_OFFER_ONLY;
 
-    /// A slot with a 2 px margin and no `min`/`max` clamp.
+    /// A slot with a 2 px margin, 4 px padding and no `min`/`max` clamp.
     const fn slot(sizing: Sizing, available: f32, intrinsic_min: f32) -> AxisSlot {
         AxisSlot {
             sizing,
             available,
             intrinsic_min,
             margin: 2.0,
+            padding: 4.0,
             min: 0.0,
             max: f32::INFINITY,
         }
     }
 
-    /// Every branch of [`AxisSlot::stable_from`], with a 2 px margin and
-    /// 4 px padding: `content` and `floor` are padding-inclusive, as the
-    /// pipeline hands them over.
+    /// Every branch of [`AxisSlot::stable_from`]: `content` and `floor` are
+    /// padding-inclusive, as the pipeline hands them over.
     #[test]
     fn stable_from_covers_each_way_an_axis_reads_its_offer() {
         let min_40 = AxisSlot {
@@ -370,11 +419,7 @@ mod tests {
             ),
         ];
         for (label, slot, content, floor, inner, expected) in cases {
-            assert_eq!(
-                slot.stable_from(content, floor, inner, 4.0),
-                expected,
-                "{label}"
-            );
+            assert_eq!(slot.stable_from(content, floor, inner), expected, "{label}");
         }
     }
 }

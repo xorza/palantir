@@ -1,8 +1,10 @@
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::edit_state::EditState;
-use crate::widgets::text_edit::editor::Editor;
-use crate::widgets::text_edit::input_pass::{KeyOutcome, apply_key as apply_editor_key};
+use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
+use crate::widgets::text_edit::input_pass::{
+    KeyOutcome, ProbeMotion, ProbeTarget, apply_key as apply_editor_key,
+};
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
     word_range_at,
@@ -38,7 +40,14 @@ fn apply_key_with_clipboard(
     kp: KeyPress,
     clipboard: &Clipboard,
 ) -> bool {
-    let mut ed = Editor::new(text, state, false, None);
+    let mut ed = Editor::new(
+        text,
+        state,
+        EditRules {
+            multiline: false,
+            max_chars: None,
+        },
+    );
     let blur = match EditAction::from_keypress(kp) {
         Some(action) => {
             action.execute(&mut ed, clipboard);

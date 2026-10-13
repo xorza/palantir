@@ -1,9 +1,9 @@
 //! The live windows a running host drives, and how an event finds one.
 
-use winit::window::WindowId;
-
 use crate::host::winit::window::Window;
 use crate::window::window_token::WindowToken;
+use std::slice;
+use winit::window::WindowId;
 
 /// The host's live windows, in registration order, addressed by winit [`WindowId`] on the event path and by
 /// [`WindowToken`] on the app path (linear scans; counts are tiny). Resolution hands back a [`WindowSlot`]
@@ -63,11 +63,29 @@ impl WindowSet {
         self.windows.is_empty()
     }
 
-    pub(super) fn iter(&self) -> impl Iterator<Item = &Window> {
+    pub(super) fn iter(&self) -> slice::Iter<'_, Window> {
         self.windows.iter()
     }
 
-    pub(super) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Window> {
+    pub(super) fn iter_mut(&mut self) -> slice::IterMut<'_, Window> {
         self.windows.iter_mut()
+    }
+}
+
+impl<'a> IntoIterator for &'a WindowSet {
+    type Item = &'a Window;
+    type IntoIter = slice::Iter<'a, Window>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut WindowSet {
+    type Item = &'a mut Window;
+    type IntoIter = slice::IterMut<'a, Window>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }

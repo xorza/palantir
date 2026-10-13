@@ -40,7 +40,7 @@ pub(crate) struct RecordStore {
     /// lane form) so packing happens once at lowering.
     pub(crate) polyline_colors: Vec<RgbaF16>,
     /// Interned record-scoped gradient payloads, indexed by `ShapeBrush::Gradient`
-    /// (set by `shapes::lower::brush`). Cross-tree, so chrome and shape lowering
+    /// (set by `shape::lower::brush`). Cross-tree, so chrome and shape lowering
     /// share one pool and the encoder needs only this store.
     pub(crate) gradients: RecordedGradients,
     text: TextStore,

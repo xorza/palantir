@@ -1,7 +1,8 @@
 //! Motion over time: `Ui::animate` value interpolation (easing bars) and the drag lifecycle driving position (cards).
 
 use crate::support;
-use crate::support::{api, note, section};
+use crate::support::{Section, api};
+use palantir::widget::AnimationRequest;
 use palantir::{
     AnimationSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense,
     Sizing, Stroke, Text, Ui, Vec2, WidgetId,
@@ -17,10 +18,22 @@ const CANVAS_H: f32 = 300.0;
 const CARD_W: f32 = 140.0;
 const CARD_H: f32 = 80.0;
 
-const CARDS: [(&str, Vec2, RgbaF32); 3] = [
-    ("motion.card.a", Vec2::new(40.0, 32.0), support::A),
-    ("motion.card.b", Vec2::new(230.0, 112.0), support::B),
-    ("motion.card.c", Vec2::new(120.0, 192.0), support::D),
+const CARDS: [Card; 3] = [
+    Card {
+        key: "motion.card.a",
+        initial: Vec2::new(40.0, 32.0),
+        accent: support::A,
+    },
+    Card {
+        key: "motion.card.b",
+        initial: Vec2::new(230.0, 112.0),
+        accent: support::B,
+    },
+    Card {
+        key: "motion.card.c",
+        initial: Vec2::new(120.0, 192.0),
+        accent: support::D,
+    },
 ];
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -30,18 +43,13 @@ pub(crate) fn build(ui: &mut Ui) {
 
 fn easing(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("motion::bars");
-    section(
-        ui,
-        "Easing",
-        &[
-            api!(
-                Ui::animate
-                    as fn(&mut Ui, WidgetId, &'static str, f32, Option<AnimationSpec>) -> f32
-            ),
+    Section::new("Easing")
+        .apis(&[
+            api!(Ui::animate as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32),
             api!(AnimationSpec::duration),
-        ],
-        |ui| {
-            note(
+        ])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Each bar retargets on the same frame through Ui::animate, with an \
                  AnimationSpec of its own. Click the button to send them all the \
@@ -55,62 +63,72 @@ fn easing(ui: &mut Ui) {
             } else {
                 80.0
             };
-            for (key, label, spec) in [
-                (
-                    "linear-200",
-                    "linear 200 ms",
-                    AnimationSpec::duration(Duration::from_millis(200), Easing::Linear),
-                ),
-                (
-                    "out-cubic-200",
-                    "out-cubic 200 ms",
-                    AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
-                ),
-                (
-                    "out-back-300",
-                    "out-back 300 ms — overshoots",
-                    AnimationSpec::duration(Duration::from_millis(300), Easing::OutBack),
-                ),
-                ("spring-soft", "soft spring", AnimationSpec::SPRING),
+            for bar in [
+                Bar {
+                    key: "linear-200",
+                    label: "linear 200 ms",
+                    spec: AnimationSpec::duration(Duration::from_millis(200), Easing::Linear),
+                },
+                Bar {
+                    key: "out-cubic-200",
+                    label: "out-cubic 200 ms",
+                    spec: AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
+                },
+                Bar {
+                    key: "out-back-300",
+                    label: "out-back 300 ms — overshoots",
+                    spec: AnimationSpec::duration(Duration::from_millis(300), Easing::OutBack),
+                },
+                Bar {
+                    key: "spring-soft",
+                    label: "soft spring",
+                    spec: AnimationSpec::SPRING,
+                },
             ] {
-                bar(ui, key, label, spec, target);
+                bar.show(ui, target);
             }
-        },
-    );
+        });
 }
 
-fn bar(
-    ui: &mut Ui,
+/// One easing bar: its width tweens to the target under its own spec.
+#[derive(Debug)]
+struct Bar {
     key: &'static str,
     label: &'static str,
     spec: AnimationSpec,
-    target_width: f32,
-) {
-    let id = WidgetId::from_hash(("motion::bar", key));
-    let width = ui.animate(id, "width", target_width, Some(spec));
-    Panel::hstack()
-        .id_salt(key)
-        .size((Sizing::FILL, Sizing::HUG))
-        .gap(10.0)
-        .show(ui, |ui| {
-            Block::new()
-                .id(id)
-                .size((Sizing::fixed(width), Sizing::fixed(18.0)))
-                .background(support::swatch_bg(support::A))
-                .show(ui);
-            Text::new(label).style(&support::note_style()).show(ui);
-        });
+}
+
+impl Bar {
+    fn show(self, ui: &mut Ui, target_width: f32) {
+        let id = WidgetId::from_hash(("motion::bar", self.key));
+        let width = ui.animate(
+            AnimationRequest::new(id, "width", target_width),
+            Some(self.spec),
+        );
+        Panel::hstack()
+            .id_salt(self.key)
+            .size((Sizing::FILL, Sizing::HUG))
+            .gap(10.0)
+            .show(ui, |ui| {
+                Block::new()
+                    .id(id)
+                    .size((Sizing::fixed(width), Sizing::fixed(18.0)))
+                    .background(support::swatch_bg(support::A))
+                    .show(ui);
+                Text::new(self.label).style(&support::note_style()).show(ui);
+            });
+    }
 }
 
 /// Three draggable cards on a Canvas; `drag.delta()` applies to the position latched at drag start, and the dragged card records last to paint on top.
 fn drag(ui: &mut Ui) {
-    let dragging = CARDS.iter().position(|(k, _, _)| {
-        ui.state::<CardState>(WidgetId::from_hash(*k))
+    let dragging = CARDS.iter().position(|card| {
+        ui.state::<CardState>(WidgetId::from_hash(card.key))
             .is_some_and(|st| st.dragging)
     });
 
-    section(ui, "Drag", &[], |ui| {
-        note(
+    Section::new("Drag").show(ui, |ui| {
+        support::note(
             ui,
             "Grab a card. Each card adds the drag delta to the position it had \
                  when the drag started, so the page tracks no pointer of its own. The \
@@ -121,14 +139,13 @@ fn drag(ui: &mut Ui) {
             .background(support::well_bg())
             .clip_rounded()
             .show(ui, |ui| {
-                for (i, (key, initial, accent)) in CARDS.iter().enumerate() {
+                for (i, card) in CARDS.iter().enumerate() {
                     if Some(i) != dragging {
-                        card(ui, key, *initial, *accent);
+                        card.show(ui);
                     }
                 }
                 if let Some(i) = dragging {
-                    let (key, initial, accent) = CARDS[i];
-                    card(ui, key, initial, accent);
+                    CARDS[i].show(ui);
                 }
             });
     });
@@ -142,28 +159,38 @@ struct CardState {
     dragging: bool,
 }
 
-fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: RgbaF32) {
-    let id = WidgetId::from_hash(key);
-    ui.with_state::<CardState, _>(id, |ui, st| {
-        let pos = st.pos.get_or_insert(initial);
-        let r = Block::new()
-            .id(id)
-            .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
-            .position(*pos)
-            .sense(Sense::DRAG)
-            .background(
-                Background::rounded(accent, Corners::all(6.0))
-                    .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
-            )
-            .show(ui);
-        if r.left.drag.started() {
-            st.anchor = *pos;
-            st.dragging = true;
-        }
-        if let Some(delta) = r.left.drag.delta() {
-            *pos = st.anchor + delta;
-        } else if st.dragging {
-            st.dragging = false;
-        }
-    });
+/// A draggable card, keyed by `key` and placed at `initial` until first dragged.
+#[derive(Debug)]
+struct Card {
+    key: &'static str,
+    initial: Vec2,
+    accent: RgbaF32,
+}
+
+impl Card {
+    fn show(&self, ui: &mut Ui) {
+        let id = WidgetId::from_hash(self.key);
+        ui.with_state::<CardState, _>(id, |ui, st| {
+            let pos = st.pos.get_or_insert(self.initial);
+            let r = Block::new()
+                .id(id)
+                .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
+                .position(*pos)
+                .sense(Sense::DRAG)
+                .background(
+                    Background::rounded(self.accent, Corners::all(6.0))
+                        .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
+                )
+                .show(ui);
+            if r.left.drag.started() {
+                st.anchor = *pos;
+                st.dragging = true;
+            }
+            if let Some(delta) = r.left.drag.delta() {
+                *pos = st.anchor + delta;
+            } else if st.dragging {
+                st.dragging = false;
+            }
+        });
+    }
 }

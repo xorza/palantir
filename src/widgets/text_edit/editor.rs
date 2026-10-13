@@ -1,6 +1,7 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
 use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
@@ -18,12 +19,46 @@ use crate::widgets::text_edit::unicode::{
 use std::borrow::Cow;
 use std::ops;
 
+/// What the builder configured about the buffer an [`Editor`] edits.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct EditRules {
+    /// Newlines are kept; a single-line buffer has them scrubbed to spaces.
+    pub(super) multiline: bool,
+    /// Cap on the buffer's characters (Unicode scalar values); `None` is unbounded.
+    pub(super) max_chars: Option<usize>,
+}
+
+/// Whether a caret move drags the selection anchor along or leaves it behind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CaretMove {
+    /// Drop the selection; the caret lands alone.
+    Collapse,
+    /// Keep (or latch, on the first move) the anchor, so the selection grows to the caret.
+    Extend,
+}
+
+impl From<Modifiers> for CaretMove {
+    /// Shift extends, as every platform's text fields do.
+    fn from(mods: Modifiers) -> Self {
+        if mods.shift {
+            Self::Extend
+        } else {
+            Self::Collapse
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HistoryStep {
+    Undo,
+    Redo,
+}
+
 #[derive(Debug)]
 pub(super) struct Editor<'a> {
     text: &'a mut String,
     state: &'a mut EditState,
-    multiline: bool,
-    max_chars: Option<usize>,
+    rules: EditRules,
     history_checked: bool,
     /// The buffer was mutated this session, set at the mutation choke points so a
     /// same-length overwrite still reports.
@@ -34,14 +69,12 @@ impl<'a> Editor<'a> {
     pub(super) const fn new(
         text: &'a mut String,
         state: &'a mut EditState,
-        multiline: bool,
-        max_chars: Option<usize>,
+        rules: EditRules,
     ) -> Self {
         Self {
             text,
             state,
-            multiline,
-            max_chars,
+            rules,
             history_checked: false,
             edited: false,
         }
@@ -105,7 +138,7 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) const fn multiline(&self) -> bool {
-        self.multiline
+        self.rules.multiline
     }
 
     pub(super) const fn edited(&self) -> bool {
@@ -130,11 +163,11 @@ impl<'a> Editor<'a> {
 
     /// Place the caret for a pointer press: one click places it and arms the drag,
     /// two take the word, three or more everything. A multi-click leaves the drag
-    /// disarmed. With `extend` (Shift) a single press keeps the anchor, so the drag
+    /// disarmed. An extending (Shift) single press keeps the anchor, so the drag
     /// grows the selection from where it began.
-    pub(super) fn press(&mut self, at: usize, clicks: u8, extend: bool) {
+    pub(super) fn press(&mut self, at: usize, clicks: u8, motion: CaretMove) {
         self.state.drag_anchor = None;
-        if extend && clicks <= 1 {
+        if motion == CaretMove::Extend && clicks <= 1 {
             let anchor = self.state.selection.unwrap_or(self.state.caret);
             self.select_range(anchor, at);
             self.state.drag_anchor = Some(anchor);
@@ -158,7 +191,7 @@ impl<'a> Editor<'a> {
     /// after a multi-click.
     pub(super) fn drag_to(&mut self, at: usize) {
         if self.state.drag_anchor.is_some() {
-            self.move_caret(at, true);
+            self.move_caret(at, CaretMove::Extend);
         }
     }
 
@@ -236,11 +269,10 @@ impl<'a> Editor<'a> {
         self.edited = true;
     }
 
-    fn apply_history(&mut self, delta: &EditDelta, undo: bool) {
-        let (remove_len, replacement, selection) = if undo {
-            (delta.inserted.len(), delta.removed.as_str(), delta.before)
-        } else {
-            (delta.removed.len(), delta.inserted.as_str(), delta.after)
+    fn apply_history(&mut self, delta: &EditDelta, step: HistoryStep) {
+        let (remove_len, replacement, selection) = match step {
+            HistoryStep::Undo => (delta.inserted.len(), delta.removed.as_str(), delta.before),
+            HistoryStep::Redo => (delta.removed.len(), delta.inserted.as_str(), delta.after),
         };
         let end = delta.start + remove_len;
         debug_assert!(end <= self.text.len());
@@ -258,7 +290,7 @@ impl<'a> Editor<'a> {
     }
 
     fn capped_prefix<'s>(&mut self, s: &'s str) -> &'s str {
-        match self.max_chars {
+        match self.rules.max_chars {
             Some(max) => {
                 let selected_chars = self
                     .state
@@ -298,7 +330,7 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) fn sanitized<'s>(&self, raw: &'s str) -> Cow<'s, str> {
-        if self.multiline {
+        if self.rules.multiline {
             Cow::Borrowed(raw)
         } else {
             sanitize_single_line(raw)
@@ -330,7 +362,7 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) fn enforce_single_line(&mut self) {
-        if self.multiline {
+        if self.rules.multiline {
             return;
         }
         let Cow::Owned(cleaned) = sanitize_single_line(self.text) else {
@@ -364,13 +396,13 @@ impl<'a> Editor<'a> {
 
     /// Move the caret to `new_caret`, extending the selection (latching the anchor
     /// on the first extending move) or collapsing it; ends the edit-coalesce group.
-    pub(super) fn move_caret(&mut self, new_caret: usize, extend: bool) {
-        let anchor = match self.state.selection {
-            Some(anchor) if extend => anchor,
+    pub(super) fn move_caret(&mut self, new_caret: usize, motion: CaretMove) {
+        let anchor = match (motion, self.state.selection) {
+            (CaretMove::Extend, Some(anchor)) => anchor,
             // With nothing selected an extending move latches the anchor at the
             // caret; a collapsing one anchors on the destination (empty).
-            _ if extend => self.state.caret,
-            _ => new_caret,
+            (CaretMove::Extend, None) => self.state.caret,
+            (CaretMove::Collapse, _) => new_caret,
         };
         self.select_range(anchor, new_caret);
     }
@@ -378,7 +410,7 @@ impl<'a> Editor<'a> {
     pub(super) fn undo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.undo.pop_back() {
-            self.apply_history(&delta, true);
+            self.apply_history(&delta, HistoryStep::Undo);
             self.state.redo.push(delta);
         }
     }
@@ -386,7 +418,7 @@ impl<'a> Editor<'a> {
     pub(super) fn redo(&mut self) {
         self.ensure_history_matches();
         if let Some(delta) = self.state.redo.pop() {
-            self.apply_history(&delta, false);
+            self.apply_history(&delta, HistoryStep::Redo);
             self.state.undo.push_back(delta);
         }
     }
@@ -437,32 +469,36 @@ impl<'a> Editor<'a> {
         self.replace_range(range, "", EditKind::Delete);
     }
 
-    pub(super) fn move_grapheme_left(&mut self, extend: bool) {
-        let target = if !extend && let Some(range) = self.state.sel_range() {
+    pub(super) fn move_grapheme_left(&mut self, motion: CaretMove) {
+        let target = if motion == CaretMove::Collapse
+            && let Some(range) = self.state.sel_range()
+        {
             range.start
         } else {
             prev_grapheme_boundary(self.text, self.state.caret)
         };
-        self.move_caret(target, extend);
+        self.move_caret(target, motion);
     }
 
-    pub(super) fn move_grapheme_right(&mut self, extend: bool) {
-        let target = if !extend && let Some(range) = self.state.sel_range() {
+    pub(super) fn move_grapheme_right(&mut self, motion: CaretMove) {
+        let target = if motion == CaretMove::Collapse
+            && let Some(range) = self.state.sel_range()
+        {
             range.end
         } else {
             next_grapheme_boundary(self.text, self.state.caret)
         };
-        self.move_caret(target, extend);
+        self.move_caret(target, motion);
     }
 
-    pub(super) fn move_word_left(&mut self, extend: bool) {
+    pub(super) fn move_word_left(&mut self, motion: CaretMove) {
         let target = prev_word_boundary(self.text, self.state.caret);
-        self.move_caret(target, extend);
+        self.move_caret(target, motion);
     }
 
-    pub(super) fn move_word_right(&mut self, extend: bool) {
+    pub(super) fn move_word_right(&mut self, motion: CaretMove) {
         let target = next_word_boundary(self.text, self.state.caret);
-        self.move_caret(target, extend);
+        self.move_caret(target, motion);
     }
 
     pub(super) const fn collapse_selection(&mut self) -> bool {

@@ -34,7 +34,7 @@ impl SplitSide {
     }
 
     /// Whether the new pane is the split's first child (left or top).
-    pub(crate) const fn new_pane_first(self) -> bool {
+    pub(super) const fn new_pane_first(self) -> bool {
         matches!(self, Self::Left | Self::Top)
     }
 }

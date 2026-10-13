@@ -3,7 +3,7 @@
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, CornerTables, CutoutPlan, ShadowEntry,
+    BakeTable, CornerTables, CutoutMode, CutoutPlan, ShadowEntry,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use std::slice;
@@ -11,8 +11,8 @@ use std::slice;
 /// The atlas, the bake pipeline and this frame's tables.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    /// Whether tables can be baked. Not on GL, where `R32Float` renders only with `EXT_color_buffer_float`: corners keep the shaded cutout and the atlas is a 1×1 stand-in.
-    bake: bool,
+    /// [`CutoutMode::Shade`] on GL, where `R32Float` renders only with `EXT_color_buffer_float`: corners keep the shaded cutout and the atlas is a 1×1 stand-in.
+    mode: CutoutMode,
     atlas: wgpu::TextureView,
     layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
@@ -29,12 +29,17 @@ impl CutoutTables {
 
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(device: &wgpu::Device, shader: &wgpu::ShaderModule) -> Self {
-        let bake = device.adapter_info().backend != wgpu::Backend::Gl;
-        let side = if bake { CutoutPlan::ATLAS_SIZE } else { 1 };
-        let usage = if bake {
-            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT
+        let mode = if device.adapter_info().backend == wgpu::Backend::Gl {
+            CutoutMode::Shade
         } else {
-            wgpu::TextureUsages::TEXTURE_BINDING
+            CutoutMode::Bake
+        };
+        let (side, usage) = match mode {
+            CutoutMode::Bake => (
+                CutoutPlan::ATLAS_SIZE,
+                wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            ),
+            CutoutMode::Shade => (1, wgpu::TextureUsages::TEXTURE_BINDING),
         };
         let atlas = device
             .create_texture(&wgpu::TextureDescriptor {
@@ -95,7 +100,7 @@ impl CutoutTables {
         }
         .build(device);
         Self {
-            bake,
+            mode,
             atlas,
             layout,
             bind_group,
@@ -106,9 +111,9 @@ impl CutoutTables {
         }
     }
 
-    /// Whether this device can bake tables; what every window's [`CutoutPlan`] is built with.
-    pub(crate) const fn bakes(&self) -> bool {
-        self.bake
+    /// How this device cuts shadow corners; what every window's [`CutoutPlan`] is built with.
+    pub(crate) const fn mode(&self) -> CutoutMode {
+        self.mode
     }
 
     /// Group 1 of the shadow pipeline: the atlas.

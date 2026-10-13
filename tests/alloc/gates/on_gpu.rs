@@ -14,12 +14,11 @@ use std::rc::Rc;
 use glam::UVec2;
 use palantir::internals::frame_fixture::{BENCH_DPR, FrameFixture};
 use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
-use palantir::{
-    Configure, Grid, IconId, IconSet, IconTable, Panel, Sizing, Track, TranslateScale, Ui,
-};
+use palantir::{Configure, Grid, IconSet, IconTable, Panel, Sizing, Track, TranslateScale, Ui};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
-use crate::harness::{Audit, OffscreenTarget, Report};
+use crate::harness::offscreen::OffscreenTarget;
+use crate::harness::{Audit, Report};
 
 /// Surface and tree for both GPU gates, smaller than the CPU one: the first
 /// pins the driver's per-frame floor, which scales with submissions, not node
@@ -131,7 +130,7 @@ const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 510;
 /// frame, so every glyph and icon resolves to a key neither atlas holds.
 ///
 /// Other audits paint at a fixed scale, hitting after warmup, which leaves
-/// `rasterize_and_insert`, the SVG rasterizer, both atlas insert paths and the
+/// glyph rasterization, the SVG rasterizer, both atlas insert paths and the
 /// encoded-run cache's miss path unmeasured. A moving scale also damages the
 /// whole surface, so this is the one audit that encodes and composes a full
 /// tree. The warmup ramps too, or the window would measure the steady state.
@@ -145,7 +144,6 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     );
 
     let atlas = Rc::new(IconTable::from_svgs([("chip", RAMP_ICON_SVG)]).unwrap());
-    let chip = IconId(0);
     let mut held: Option<IconSet> = None;
     let mut state = FrameFixture::default();
     let mut zoom = 1.0f32;
@@ -160,6 +158,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
             target.frame(&gpu, BENCH_DPR, |ui| {
                 // Parked across frames: re-loading is a refcount bump.
                 let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
+                let chip = icons.by_name("chip").expect("the one icon of the set");
                 Panel::vstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))

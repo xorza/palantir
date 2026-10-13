@@ -9,7 +9,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::support::{api, note, section};
+use crate::support;
+use crate::support::{Section, api};
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
 use palantir::{
@@ -300,19 +301,16 @@ pub(crate) fn build(ui: &mut Ui) {
 fn view(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
     // A GpuView re-renders on every painted frame, so keep frames coming to animate the spin.
     ui.request_repaint();
-    section(
-        ui,
-        "Cube",
-        &[api!(type GpuView), api!(type GpuPaint)],
-        |ui| {
-            note(
+    Section::new("Cube")
+        .apis(&[api!(type GpuView), api!(type GpuPaint)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Drawn with raw wgpu into an off-screen texture the framework owns, then \
              composited as an ordinary image — so clipping, rounded corners, z-order and \
              partial repaint all come for free. Drag inside the view to orbit it.",
             );
-        },
-    );
+        });
 
     // GpuView doesn't sense by default: opt into drag so `Response` reports the orbit delta.
     let resp = GpuView::new(cube)

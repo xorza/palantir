@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::input::keyboard::key::Key;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -11,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;

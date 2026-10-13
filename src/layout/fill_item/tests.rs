@@ -1,10 +1,12 @@
-use crate::layout::fill_item::FillItem;
+use crate::layout::fill_item::{FillDemand, FillItem};
 
 fn distribute(items: &[(f32, f32, f32)], budget: f32) -> Vec<f32> {
     let mut pool: Vec<FillItem<usize>> = items
         .iter()
         .enumerate()
-        .map(|(index, &(weight, floor, cap))| FillItem::new(index, weight, floor, cap))
+        .map(|(index, &(weight, floor, cap))| {
+            FillItem::new(index, FillDemand { weight, floor, cap })
+        })
         .collect();
     FillItem::distribute(&mut pool, budget);
     pool.iter().map(|item| item.size).collect()

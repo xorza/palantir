@@ -1,7 +1,7 @@
 //! Showcase regressions where two Grid cells (or back-to-back grids in a vstack) painted over each other, pinned by arranged-rect order and `DrawText` x positions.
-use crate::Ui;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 
 use crate::internals::paint_capture::PaintCall;
 use crate::internals::ui_harness::UiHarness;
@@ -252,19 +252,20 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
     });
 
     let cmds = h.encode_paint();
-    let mut text_xs: Vec<f32> = Vec::new();
+    let mut texts = Vec::new();
     for command in &cmds.calls {
         if let PaintCall::Text(payload) = command {
-            text_xs.push(payload.rect.min.x);
+            texts.push(payload.rect);
         }
     }
-    assert!(
-        text_xs.len() >= 2,
-        "expected at least two DrawText cmds; got {text_xs:?}",
-    );
-    assert!(
-        text_xs[0] != text_xs[1],
-        "Title and Lorem texts must paint at different x; got {text_xs:?}",
+    let [title, lorem, description] = texts[..] else {
+        panic!("expected the three DrawText cmds; got {texts:?}");
+    };
+    // The labels sit in the Hug column at 0; the value starts past the wider label and the 16 px gap.
+    assert_eq!(
+        [title.min.x, description.min.x, lorem.min.x],
+        [0.0, 0.0, title.size.w.max(description.size.w) + 16.0],
+        "Title and Lorem texts must paint at different x",
     );
 }
 

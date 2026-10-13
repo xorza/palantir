@@ -26,7 +26,7 @@ use crate::widgets::theme::text_style::TextStyle;
 ///
 /// A new box default goes in [`SlotDefaults`]; the compiler names every implementor.
 pub trait ThemeSlot {
-    /// What the state pick needs past the response: `()` normally, the checked flag for toggles.
+    /// What the state pick needs past the response: `()` normally, which look pack applies for toggles ([`CheckState`](crate::CheckState)) and tab chips ([`TabSelection`](crate::TabSelection)).
     type Pick: Copy;
 
     /// The look for the response state and pick.

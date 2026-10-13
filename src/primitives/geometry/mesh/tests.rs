@@ -83,8 +83,8 @@ fn triangle_validates_each_index_before_mutating() {
 
 #[test]
 fn triangle_indices_offset_in_append() {
-    let mut a = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, RgbaF32::default());
-    let b = Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, RgbaF32::default());
+    let mut a = Mesh::filled_triangle([Vec2::ZERO, Vec2::X, Vec2::Y], RgbaF32::default());
+    let b = Mesh::filled_triangle([Vec2::ZERO, Vec2::X, Vec2::Y], RgbaF32::default());
     a.append(&b);
     assert_eq!(a.vertices.len(), 6);
     assert_eq!(a.indices, vec![0, 1, 2, 3, 4, 5]);
@@ -137,7 +137,7 @@ fn red_tri() -> Mesh {
         b: 0.0,
         a: 1.0,
     };
-    Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, red)
+    Mesh::filled_triangle([Vec2::ZERO, Vec2::X, Vec2::Y], red)
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn content_hash_stable_for_identical_input() {
     let b = red_tri();
     assert_eq!(a.content_hash(), b.content_hash());
 
-    let make = |first| Mesh::filled_triangle(first, Vec2::X, Vec2::Y, RgbaF32::WHITE);
+    let make = |first| Mesh::filled_triangle([first, Vec2::X, Vec2::Y], RgbaF32::WHITE);
     assert_eq!(
         make(Vec2::ZERO).content_hash(),
         make(Vec2::new(domain::EPS * 0.5, -domain::EPS * 0.5)).content_hash(),
@@ -171,9 +171,11 @@ fn content_hash_changes_on_reordered_indices() {
 #[test]
 fn filled_triangle_precaches_bbox() {
     let m = Mesh::filled_triangle(
-        Vec2::new(-1.0, 2.0),
-        Vec2::new(4.0, 2.0),
-        Vec2::new(0.0, 7.0),
+        [
+            Vec2::new(-1.0, 2.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 7.0),
+        ],
         RgbaF32::default(),
     );
     let cached = m
@@ -211,9 +213,11 @@ fn bbox_empty_mesh_is_zero() {
 #[test]
 fn bbox_spans_vertex_extent() {
     let m = Mesh::filled_triangle(
-        Vec2::new(-1.0, 2.0),
-        Vec2::new(4.0, 2.0),
-        Vec2::new(0.0, 7.0),
+        [
+            Vec2::new(-1.0, 2.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 7.0),
+        ],
         RgbaF32::default(),
     );
     let b = m.bbox();
@@ -227,9 +231,11 @@ fn bbox_spans_vertex_extent() {
 fn mutations_drop_exactly_the_caches_they_stale() {
     type Mutate = fn(&mut Mesh, &Mesh);
     let far = Mesh::filled_triangle(
-        Vec2::new(10.0, 10.0),
-        Vec2::new(11.0, 10.0),
-        Vec2::new(10.0, 11.0),
+        [
+            Vec2::new(10.0, 10.0),
+            Vec2::new(11.0, 10.0),
+            Vec2::new(10.0, 11.0),
+        ],
         RgbaF32::default(),
     );
     let unit = Rect::new(0.0, 0.0, 1.0, 1.0);

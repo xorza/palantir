@@ -1,10 +1,10 @@
 //! Click-to-edit: the draft buffer, and every way it can end.
 
-use crate::Ui;
 use crate::input::keyboard::key::Key;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::drag_value::tests::support::deferred_frame;
 use crate::widgets::drag_value::{DragValue, DragValueState};

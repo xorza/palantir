@@ -8,11 +8,13 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::widget_core::widget_look::WidgetLook;
+use crate::widget_core::widget_look::engagement::Engagement;
 use crate::widget_core::widget_look::stateful_look::StatefulLook;
 use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::widgets::theme::ThemeText;
+use crate::widgets::theme::check_state::CheckState;
 use crate::widgets::theme::palette::Palette;
-use crate::widgets::theme::text_style::TextStyleOverrides;
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
@@ -195,16 +197,15 @@ struct ToggleGeometry {
 }
 
 impl ThemeSlot for ToggleTheme {
-    type Pick = bool;
+    type Pick = CheckState;
 
     /// The checked or unchecked pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, checked: bool) -> &WidgetLook {
-        let pack = if checked {
-            &self.checked
-        } else {
-            &self.unchecked
+    fn look(&self, response: &ResponseState, check: CheckState) -> &WidgetLook {
+        let pack = match check {
+            CheckState::Checked => &self.checked,
+            CheckState::Unchecked => &self.unchecked,
         };
-        pack.pick(response, response.pressed())
+        pack.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

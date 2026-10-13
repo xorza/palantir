@@ -3,7 +3,10 @@
 use std::f32::consts::PI;
 
 use crate::internals::demo_swatches;
+use crate::internals::frame_fixture::card::Card;
 use crate::internals::frame_fixture::tokens;
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -23,39 +26,72 @@ use crate::widgets::text::Text;
 
 /// One captioned canvas per shape family, tiled through a `WrapHStack` so the sheet reflows to the column width.
 pub(super) fn sheet(ui: &mut Ui) {
-    tokens::card(ui, "specimens", "SHAPES", Sizing::HUG, |ui| {
+    Card::new("specimens", "SHAPES").show(ui, |ui| {
         Panel::wrap_hstack()
             .id_salt("specimen-wrap")
             .gap(8.0)
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                cell(ui, "brushes", "brushes", add_brush_swatches);
-                cell(ui, "curves", "curves", add_curves);
-                cell(ui, "polyline", "polyline", add_polyline);
-                cell(ui, "arcs", "arc / circle", add_arcs);
-                cell(ui, "solids", "triangle / mesh", add_solids);
-                cell(ui, "shadow", "shadow", add_shadow);
+                SpecimenCell {
+                    id: "brushes",
+                    label: "brushes",
+                }
+                .show(ui, add_brush_swatches);
+                SpecimenCell {
+                    id: "curves",
+                    label: "curves",
+                }
+                .show(ui, add_curves);
+                SpecimenCell {
+                    id: "polyline",
+                    label: "polyline",
+                }
+                .show(ui, add_polyline);
+                SpecimenCell {
+                    id: "arcs",
+                    label: "arc / circle",
+                }
+                .show(ui, add_arcs);
+                SpecimenCell {
+                    id: "solids",
+                    label: "triangle / mesh",
+                }
+                .show(ui, add_solids);
+                SpecimenCell {
+                    id: "shadow",
+                    label: "shadow",
+                }
+                .show(ui, add_shadow);
             });
     });
 }
 
 /// One 168x96 cell: caption over a recessed canvas. Shapes are canvas-local, so every cell shares one coordinate box.
-fn cell(ui: &mut Ui, id: &'static str, label: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(("spec", id))
-        .gap(4.0)
-        .size((Sizing::fixed(168.0), Sizing::HUG))
-        .show(ui, |ui| {
-            Text::new(label)
-                .id_salt(("spec-cap", id))
-                .style(&tokens::caption_style())
-                .show(ui);
-            Panel::canvas()
-                .id_salt(("spec-canvas", id))
-                .size((Sizing::FILL, Sizing::fixed(96.0)))
-                .background(tokens::well_bg())
-                .show(ui, body);
-        });
+#[derive(Debug)]
+struct SpecimenCell {
+    id: &'static str,
+    label: &'static str,
+}
+
+impl SpecimenCell {
+    fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+        let Self { id, label } = self;
+        Panel::vstack()
+            .id_salt(("spec", id))
+            .gap(4.0)
+            .size((Sizing::fixed(168.0), Sizing::HUG))
+            .show(ui, |ui| {
+                Text::new(label)
+                    .id_salt(("spec-cap", id))
+                    .style(&tokens::caption_style())
+                    .show(ui);
+                Panel::canvas()
+                    .id_salt(("spec-canvas", id))
+                    .size((Sizing::FILL, Sizing::fixed(96.0)))
+                    .background(tokens::well_bg())
+                    .show(ui, body);
+            });
+    }
 }
 
 /// Shape-level (not chrome-level) Solid / Linear / Radial / Conic fills.
@@ -118,10 +154,12 @@ fn add_curves(ui: &mut Ui) {
     );
     ui.add_shape(
         Shape::cubic_bezier(
-            glam::Vec2::new(12.0, 86.0),
-            glam::Vec2::new(56.0, 56.0),
-            glam::Vec2::new(112.0, 96.0),
-            glam::Vec2::new(156.0, 68.0),
+            CubicBezier {
+                p0: glam::Vec2::new(12.0, 86.0),
+                p1: glam::Vec2::new(56.0, 56.0),
+                p2: glam::Vec2::new(112.0, 96.0),
+                p3: glam::Vec2::new(156.0, 68.0),
+            },
             Stroke::new(tokens::OK, 4.0),
         )
         .cap(LineCap::Round),
@@ -156,10 +194,12 @@ fn add_polyline(ui: &mut Ui) {
 fn add_arcs(ui: &mut Ui) {
     ui.add_shape(
         Shape::arc(
-            glam::Vec2::new(84.0, 78.0),
-            40.0,
-            PI,
-            PI,
+            CircularArc {
+                center: glam::Vec2::new(84.0, 78.0),
+                radius: 40.0,
+                start_angle: PI,
+                sweep: PI,
+            },
             Stroke::new(tokens::ACCENT, 5.0),
         )
         .cap(LineCap::Round),

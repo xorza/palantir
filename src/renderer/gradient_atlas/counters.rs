@@ -35,14 +35,3 @@ counter_snapshot! {
     /// [`LutRow::FALLBACK`](crate::primitives::paint::lut_row::LutRow): table full and capped.
     fallbacks: u32,
 }
-
-impl GradientAtlasCounters {
-    /// Records one baked row; `evicted` says whether it displaced a gradient.
-    #[inline]
-    pub(super) fn bake(&mut self, evicted: bool) {
-        self.bakes.bump();
-        if evicted {
-            self.evictions.bump();
-        }
-    }
-}

@@ -14,7 +14,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::drag_num::DragNum;
+use crate::widgets::drag_num::{DragNum, StoreRule};
 use crate::widgets::theme::slider::SliderTheme;
 use std::ops::RangeInclusive;
 
@@ -28,9 +28,7 @@ use std::ops::RangeInclusive;
 pub struct Slider<'a> {
     widget: Widget,
     value: DragNum<'a>,
-    min: f64,
-    max: f64,
-    step: Option<f64>,
+    range: SliderRange,
     decimals: usize,
     style: Option<&'a SliderTheme>,
 }
@@ -51,9 +49,11 @@ impl<'a> Slider<'a> {
                 .sense(Sense::CLICK | Sense::DRAG)
                 .focusable(true),
             value: value.into(),
-            min: *range.start(),
-            max: *range.end(),
-            step: None,
+            range: SliderRange {
+                min: *range.start(),
+                max: *range.end(),
+                step: None,
+            },
             decimals: 2,
             style: None,
         }
@@ -67,7 +67,7 @@ impl<'a> Slider<'a> {
     /// Panics unless `step` is finite and greater than zero.
     #[track_caller]
     pub const fn step(mut self, step: f64) -> Self {
-        self.step = Some(domain::f64::positive(step));
+        self.range.step = Some(domain::f64::positive(step));
         self
     }
 
@@ -98,33 +98,24 @@ impl<'a> Slider<'a> {
         let track_color = theme.track;
         let knob_color = theme.knob;
 
+        let range = self.range;
+        let rule = StoreRule::new(range.min, range.max, self.decimals);
         // The pointer drives the value on every gesture frame, release included; no
         // anchor is retained.
         let pressed = response.press_fraction(knob).is_some_and(|at| {
-            let v = snap_to_step(
-                fraction_to_value(at.x, self.min, self.max),
-                self.min,
-                self.step,
-            );
             self.value
-                .commit_value(v, self.decimals, self.min, self.max)
+                .commit_value(range.snapped(range.value_at(at.x)), rule)
         });
         let keyed = !response.disabled
             && ui.is_focus_within(id)
-            && key_target(ui, self.value.read().widen(), self.min, self.max, self.step)
-                .is_some_and(|to| {
-                    self.value.commit_value(
-                        snap_to_step(to, self.min, self.step),
-                        self.decimals,
-                        self.min,
-                        self.max,
-                    )
-                });
+            && range
+                .key_target(ui, self.value.read().widen())
+                .is_some_and(|to| self.value.commit_value(range.snapped(to), rule));
         let changed = pressed | keyed;
         // Edge, not level: a press and release on the track writes a value without
         // latching a drag, so read `left.released()`, not `drag.stopped()`.
         let committed = !response.disabled && (response.left.released() || keyed);
-        let fraction = value_to_fraction(self.value.read().widen(), self.min, self.max);
+        let fraction = range.fraction_of(self.value.read().widen());
 
         let pill = Corners::all(track_h * 0.5);
         let fill_bg = Background::rounded(fill_color, pill);
@@ -168,74 +159,84 @@ impl Configure for Slider<'_> {
     }
 }
 
-/// Fraction (0..1) of the way from `min` to `max` that `value` sits. Division and
-/// clamp stay in `f64`, as narrowing first would pin whole classes of ranges to one
-/// end. A non-finite share (coincident ends, unbounded range) reads as the low end,
-/// per [`domain::fraction_or`]. A reversed
-/// range runs `min` at the left, so values descend; this is the exact inverse of
-/// [`fraction_to_value`].
-fn value_to_fraction(value: f64, min: f64, max: f64) -> f32 {
-    let share = (value - min) / (max - min);
-    if share.is_finite() {
-        share.clamp(0.0, 1.0) as f32
-    } else {
-        0.0
-    }
+/// The values a slider's track spans, `min` at the left even when it is above `max`,
+/// and the grid its values snap to.
+#[derive(Clone, Copy, Debug)]
+struct SliderRange {
+    min: f64,
+    max: f64,
+    step: Option<f64>,
 }
 
-/// Inverse of [`value_to_fraction`], in `f64` to keep the bound value's precision.
-fn fraction_to_value(fraction: f32, min: f64, max: f64) -> f64 {
-    min + f64::from(fraction.clamp(0.0, 1.0)) * (max - min)
-}
-
-/// Where this frame's keys send a slider now at `at`, or `None` when no key fired.
-/// Arrows step toward `max` (right, up) or `min` (left, down) by `step`, or a
-/// hundredth of the range; Shift makes it ten steps; Page Up/Down move a tenth;
-/// Home/End jump to the ends. Direction comes from `max - min`, so a reversed range
-/// steps the same way along the track. Every chord is sampled, not short-circuited,
-/// as `key_pressed` also keeps it subscribed for the wake gate.
-fn key_target(ui: &mut Ui, at: f64, min: f64, max: f64, step: Option<f64>) -> Option<f64> {
-    let span = max - min;
-    let unit = step.map_or(span / 100.0, |s| s.copysign(span));
-    let mut to = at;
-    let mut moved = false;
-    for (key, sign) in [
-        (Key::ArrowLeft, -1.0),
-        (Key::ArrowDown, -1.0),
-        (Key::ArrowRight, 1.0),
-        (Key::ArrowUp, 1.0),
-    ] {
-        let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
-        let plain = ui.key_pressed(Shortcut::key(key));
-        if coarse {
-            to += sign * unit * 10.0;
-            moved = true;
-        } else if plain {
-            to += sign * unit;
-            moved = true;
+impl SliderRange {
+    /// Fraction (0..1) of the way from `min` to `max` that `value` sits. Division and
+    /// clamp stay in `f64`, as narrowing first would pin whole classes of ranges to one
+    /// end. A non-finite share (coincident ends, unbounded range) reads as the low end,
+    /// per [`domain::fraction_or`]. A reversed range runs `min` at the left, so values
+    /// descend; this is the exact inverse of [`Self::value_at`].
+    fn fraction_of(self, value: f64) -> f32 {
+        let share = (value - self.min) / (self.max - self.min);
+        if share.is_finite() {
+            share.clamp(0.0, 1.0) as f32
+        } else {
+            0.0
         }
     }
-    for (key, sign) in [(Key::PageDown, -1.0), (Key::PageUp, 1.0)] {
-        if ui.key_pressed(Shortcut::key(key)) {
-            to += sign * span / 10.0;
-            moved = true;
+
+    /// Inverse of [`Self::fraction_of`], in `f64` to keep the bound value's precision.
+    fn value_at(self, fraction: f32) -> f64 {
+        self.min + f64::from(fraction.clamp(0.0, 1.0)) * (self.max - self.min)
+    }
+
+    /// Snap to the nearest multiple of `step` from `min`; no step passes the value
+    /// through.
+    fn snapped(self, value: f64) -> f64 {
+        match self.step {
+            Some(s) => self.min + ((value - self.min) / s).round() * s,
+            None => value,
         }
     }
-    let home = ui.key_pressed(Shortcut::key(Key::Home));
-    let end = ui.key_pressed(Shortcut::key(Key::End));
-    if home || end {
-        to = if end { max } else { min };
-        moved = true;
-    }
-    moved.then_some(to)
-}
 
-/// Snap to the nearest multiple of `step` from `min`; no step passes the value
-/// through.
-fn snap_to_step(value: f64, min: f64, step: Option<f64>) -> f64 {
-    match step {
-        Some(s) => min + ((value - min) / s).round() * s,
-        None => value,
+    /// Where this frame's keys send a slider now at `at`, or `None` when no key fired.
+    /// Arrows step toward `max` (right, up) or `min` (left, down) by `step`, or a
+    /// hundredth of the range; Shift makes it ten steps; Page Up/Down move a tenth;
+    /// Home/End jump to the ends. Direction comes from `max - min`, so a reversed range
+    /// steps the same way along the track. Every chord is sampled, not short-circuited,
+    /// as `key_pressed` also keeps it subscribed for the wake gate.
+    fn key_target(self, ui: &mut Ui, at: f64) -> Option<f64> {
+        let span = self.max - self.min;
+        let unit = self.step.map_or(span / 100.0, |s| s.copysign(span));
+        let mut to = at;
+        let mut moved = false;
+        for (key, sign) in [
+            (Key::ArrowLeft, -1.0),
+            (Key::ArrowDown, -1.0),
+            (Key::ArrowRight, 1.0),
+            (Key::ArrowUp, 1.0),
+        ] {
+            let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
+            let plain = ui.key_pressed(Shortcut::key(key));
+            if coarse {
+                to += sign * unit * 10.0;
+                moved = true;
+            } else if plain {
+                to += sign * unit;
+                moved = true;
+            }
+        }
+        for (key, sign) in [(Key::PageDown, -1.0), (Key::PageUp, 1.0)] {
+            if ui.key_pressed(Shortcut::key(key)) {
+                to += sign * span / 10.0;
+                moved = true;
+            }
+        }
+        let home = ui.key_pressed(Shortcut::key(Key::Home));
+        let end = ui.key_pressed(Shortcut::key(Key::End));
+        if home || end {
+            to = if end { self.max } else { self.min };
+            moved = true;
+        }
+        moved.then_some(to)
     }
 }
 

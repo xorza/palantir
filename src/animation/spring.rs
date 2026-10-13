@@ -19,34 +19,97 @@ const MIN_DISPLAY_HZ: f64 = 60.0;
 /// slower wobble the spring does not make.
 const MAX_SWING_RATE: f64 = PI * MIN_DISPLAY_HZ;
 
-/// `(displacement, velocity)` can never again carry the value a settle
-/// tolerance away from its target, so the caller can snap and clear residual
-/// motion. The one threshold, used by [`step`] and the spring arm of
-/// `AnimMapTyped::tick`'s snap-if-close path.
-///
-/// An energy bound, not two floors. With the target held still the energy
-/// `½v² + ½k·x²` only falls, so no later `|x|` exceeds `√(x² + v²/k)` in any
-/// damping regime; that is the quantity held under the tolerance, measured by
-/// [`Animatable::settle_distance_squared`]. No fixed velocity-to-position
-/// floor suits both slow and bouncy springs, since a swing of amplitude `A`
-/// crosses the target at `A·ω`; the bound uses the spring's own `ω² = k`.
-#[inline]
-pub(super) fn within_settle_eps<T: Animatable>(
-    displacement: T,
-    velocity: T,
-    stiffness: f32,
-) -> bool {
-    displacement.settle_distance_squared()
-        + velocity_reach(velocity, stiffness).settle_distance_squared()
-        < 1.0
+/// A damped spring's stiffness `k` and damping `c`, as an [`AnimationSpec`](crate::AnimationSpec) authors them and every step reads them.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) struct Spring {
+    pub(super) stiffness: f32,
+    pub(super) damping: f32,
 }
 
-/// `velocity` in the offset's unit: `v/√k`, the farthest it alone could carry
-/// the value (see [`within_settle_eps`]). Scaled before squaring so a stiff
-/// spring cannot overflow.
-#[inline]
-pub(super) fn velocity_reach<T: Animatable>(velocity: T, stiffness: f32) -> T {
-    velocity.scale(stiffness.sqrt().recip())
+impl Spring {
+    /// [`AnimationSpec::SPRING`](crate::AnimationSpec::SPRING)'s parameters.
+    pub(super) const DEFAULT: Self = Self {
+        stiffness: 170.0,
+        damping: 26.0,
+    };
+
+    /// `(displacement, velocity)` can never again carry the value a settle
+    /// tolerance away from its target, so the caller can snap and clear residual
+    /// motion. The one threshold, used by [`Self::step`] and the spring arm of
+    /// `AnimMapTyped::tick`'s snap-if-close path.
+    ///
+    /// An energy bound, not two floors. With the target held still the energy
+    /// `½v² + ½k·x²` only falls, so no later `|x|` exceeds `√(x² + v²/k)` in any
+    /// damping regime; that is the quantity held under the tolerance, measured by
+    /// [`Animatable::settle_distance_squared`]. No fixed velocity-to-position
+    /// floor suits both slow and bouncy springs, since a swing of amplitude `A`
+    /// crosses the target at `A·ω`; the bound uses the spring's own `ω² = k`.
+    #[inline]
+    pub(super) fn within_settle_eps<T: Animatable>(self, displacement: T, velocity: T) -> bool {
+        displacement.settle_distance_squared()
+            + self.velocity_reach(velocity).settle_distance_squared()
+            < 1.0
+    }
+
+    /// `velocity` in the offset's unit: `v/√k`, the farthest it alone could carry
+    /// the value (see [`Self::within_settle_eps`]). Scaled before squaring so a stiff
+    /// spring cannot overflow.
+    #[inline]
+    pub(super) fn velocity_reach<T: Animatable>(self, velocity: T) -> T {
+        velocity.scale(self.stiffness.sqrt().recip())
+    }
+
+    /// Whether the spring arrives and a display can show it getting there.
+    ///
+    /// Its slowest mode must decay at [`MIN_DECAY_RATE`] or faster, or the motion
+    /// never visibly ends. An underdamped one must also swing slower than
+    /// [`MAX_SWING_RATE`], where the swing is `ψ = √(k − h²)` with `h = c/2`; a
+    /// critically damped or overdamped spring does not swing.
+    ///
+    /// Not a stability bound: the step is exact at any parameters and `dt`, and no
+    /// stiffness is too stiff to settle, since [`Self::within_settle_eps`]'s energy
+    /// bound falls at the decay rate.
+    pub(super) fn is_valid(self) -> bool {
+        let Self { stiffness, damping } = self;
+        if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
+            return false;
+        }
+        let stiffness = f64::from(stiffness);
+        let half_damping = f64::from(damping) * 0.5;
+        decay_rate(stiffness, half_damping) >= MIN_DECAY_RATE
+            && -discriminant(stiffness, half_damping) < MAX_SWING_RATE * MAX_SWING_RATE
+    }
+
+    /// One step of `dt` from `(offset, velocity)`, where `offset` is measured from
+    /// the target. Stepped in offset space, where small numbers keep their
+    /// precision: the caller paints `target + offset`, rounded once and never fed
+    /// back, so the decay reaches the settle tolerance however large the value is.
+    /// A settled step is at rest, with zero offset and velocity.
+    pub(super) fn step<T: Animatable>(self, offset: T, velocity: T, dt: f32) -> SpringStep<T> {
+        debug_assert!(dt.is_finite() && (0.0..=MAX_ANIM_DT).contains(&dt));
+        let transition = SpringTransition::new(self, dt);
+        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Background`
+        // are only `Copy` when their fields are; scalar clones compile to noops.
+        let moved = offset
+            .clone()
+            .scale(transition.pos_from_pos)
+            .add(velocity.clone().scale(transition.pos_from_vel));
+        let velocity = velocity
+            .scale(transition.vel_from_vel)
+            .add(offset.scale(transition.vel_from_pos));
+        if self.within_settle_eps(moved.clone(), velocity.clone()) {
+            return SpringStep {
+                offset: T::zero(),
+                velocity: T::zero(),
+                settled: true,
+            };
+        }
+        SpringStep {
+            offset: moved,
+            velocity,
+            settled: false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -93,9 +156,9 @@ struct SpringTransition {
 }
 
 impl SpringTransition {
-    fn new(stiffness: f32, damping: f32, dt: f32) -> Self {
-        let stiffness = f64::from(stiffness);
-        let half_damping = f64::from(damping) * 0.5;
+    fn new(spring: Spring, dt: f32) -> Self {
+        let stiffness = f64::from(spring.stiffness);
+        let half_damping = f64::from(spring.damping) * 0.5;
         let dt = f64::from(dt);
         let discriminant = discriminant(stiffness, half_damping);
         // `ec` and `es` are `e^(-h·t)·C(t)` and `e^(-h·t)·S(t)`.
@@ -145,64 +208,8 @@ fn decay_rate(stiffness: f64, half_damping: f64) -> f64 {
     }
 }
 
-/// Whether a spring arrives and a display can show it getting there.
-///
-/// Its slowest mode must decay at [`MIN_DECAY_RATE`] or faster, or the motion
-/// never visibly ends. An underdamped one must also swing slower than
-/// [`MAX_SWING_RATE`], where the swing is `ψ = √(k − h²)` with `h = c/2`; a
-/// critically damped or overdamped spring does not swing.
-///
-/// Not a stability bound: the step is exact at any parameters and `dt`, and no
-/// stiffness is too stiff to settle, since [`within_settle_eps`]'s energy
-/// bound falls at the decay rate.
-pub(super) fn params_are_valid(stiffness: f32, damping: f32) -> bool {
-    if !(stiffness.is_finite() && stiffness > 0.0 && damping.is_finite() && damping > 0.0) {
-        return false;
-    }
-    let (stiffness, half_damping) = (f64::from(stiffness), f64::from(damping) * 0.5);
-    decay_rate(stiffness, half_damping) >= MIN_DECAY_RATE
-        && -discriminant(stiffness, half_damping) < MAX_SWING_RATE * MAX_SWING_RATE
-}
-
 /// `d = h² − k`, which sorts the regime: below zero a spring swings at
 /// `ψ = √(−d)`, at zero it is critically damped, above zero overdamped.
 const fn discriminant(stiffness: f64, half_damping: f64) -> f64 {
     half_damping * half_damping - stiffness
-}
-
-/// One step of `dt` from `(offset, velocity)`, where `offset` is measured from
-/// the target. Stepped in offset space, where small numbers keep their
-/// precision: the caller paints `target + offset`, rounded once and never fed
-/// back, so the decay reaches the settle tolerance however large the value is.
-/// A settled step is at rest, with zero offset and velocity.
-pub(super) fn step<T: Animatable>(
-    stiffness: f32,
-    damping: f32,
-    offset: T,
-    velocity: T,
-    dt: f32,
-) -> SpringStep<T> {
-    debug_assert!(dt.is_finite() && (0.0..=MAX_ANIM_DT).contains(&dt));
-    let transition = SpringTransition::new(stiffness, damping, dt);
-    // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Background`
-    // are only `Copy` when their fields are; scalar clones compile to noops.
-    let moved = offset
-        .clone()
-        .scale(transition.pos_from_pos)
-        .add(velocity.clone().scale(transition.pos_from_vel));
-    let velocity = velocity
-        .scale(transition.vel_from_vel)
-        .add(offset.scale(transition.vel_from_pos));
-    if within_settle_eps(moved.clone(), velocity.clone(), stiffness) {
-        return SpringStep {
-            offset: T::zero(),
-            velocity: T::zero(),
-            settled: true,
-        };
-    }
-    SpringStep {
-        offset: moved,
-        velocity,
-        settled: false,
-    }
 }

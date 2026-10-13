@@ -3,7 +3,7 @@
 //! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
 
 use crate::support;
-use crate::support::{Column, api, columns, section, well};
+use crate::support::{Column, Section, api};
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
     Align, Background, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense,
@@ -50,24 +50,22 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut State) {
-    columns(ui, |ui, column| match column {
+    support::columns(ui, |ui, column| match column {
         Column::Left => demo(ui, s),
         Column::Right => surface(ui),
     });
 }
 
 fn demo(ui: &mut Ui, s: &mut State) {
-    section(
-        ui,
-        "Stepper",
-        &[api!(Widget::hstack), api!(Widget::key_pressed)],
-        |ui| {
+    Section::new("Stepper")
+        .apis(&[api!(Widget::hstack), api!(Widget::key_pressed)])
+        .show(ui, |ui| {
             support::note(
                 ui,
                 "Two instances over separate values. Click a sign, or Tab to a stepper and \
                  use ↑ ↓ Home End.",
             );
-            well(ui, |ui| {
+            support::well(ui, |ui| {
                 labelled(ui, "volume", |ui| {
                     Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
                 });
@@ -75,11 +73,10 @@ fn demo(ui: &mut Ui, s: &mut State) {
                     Stepper::new(&mut s.count).range(-10, 10).show(ui);
                 });
             });
-        },
-    );
+        });
 
-    section(ui, "The call site", &[], |ui| {
-        well(ui, |ui| {
+    Section::new("The call site").show(ui, |ui| {
+        support::well(ui, |ui| {
             for (i, line) in CALL_SITE.iter().enumerate() {
                 Text::new(*line)
                     .id_salt(i)
@@ -128,8 +125,8 @@ fn surface(ui: &mut Ui) {
         ),
         (api!(type Response), "the value a caller chains on"),
     ];
-    section(ui, "The authoring surface it uses", &[], |ui| {
-        well(ui, |ui| {
+    Section::new("The authoring surface it uses").show(ui, |ui| {
+        support::well(ui, |ui| {
             for (i, (item, what)) in surface.into_iter().enumerate() {
                 Panel::hstack()
                     .id_salt(i)
@@ -245,14 +242,24 @@ impl<'a> Stepper<'a> {
         );
         widget
             .show(ui, Some(&chrome), |ui| {
-                step_button(ui, minus_id, minus, Glyph::Minus);
+                StepButton {
+                    id: minus_id,
+                    state: minus,
+                    glyph: Glyph::Minus,
+                }
+                .show(ui);
                 Text::new(label)
                     .id(id.with("value"))
                     .style(&support::body_style())
                     .text_align(Align::CENTER)
                     .min_size((VALUE_W, 0.0))
                     .show(ui);
-                step_button(ui, plus_id, plus, Glyph::Plus);
+                StepButton {
+                    id: plus_id,
+                    state: plus,
+                    glyph: Glyph::Plus,
+                }
+                .show(ui);
             })
             .response
     }
@@ -265,39 +272,50 @@ impl Configure for Stepper<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Glyph {
     Minus,
     Plus,
 }
 
-/// `id` is explicit so the node resolves to what [`Stepper::show`] read a response for.
-fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
-    let fill = if state.pressed() {
-        support::ELEM_STRONG
-    } else if state.hovered() {
-        support::ELEM_MID
-    } else {
-        support::ELEMENT
-    };
-    let chrome = Background {
-        fill: fill.into(),
-        border: Stroke::NONE,
-        corners: Corners::all(support::RADIUS),
-        shadow: Shadow::NONE,
-    };
-    let widget = Widget::leaf()
-        .id(id)
-        .size((Sizing::fixed(BUTTON), Sizing::fixed(BUTTON)))
-        .sense(Sense::CLICK);
-    widget.record(ui, Some(&chrome), |ui| {
-        let mid = BUTTON / 2.0;
-        let far = BUTTON - GLYPH_INSET;
-        paint_bar(ui, &[Vec2::new(GLYPH_INSET, mid), Vec2::new(far, mid)]);
-        if matches!(glyph, Glyph::Plus) {
-            paint_bar(ui, &[Vec2::new(mid, GLYPH_INSET), Vec2::new(mid, far)]);
-        }
-    });
+/// One of the stepper's two buttons.
+#[derive(Debug)]
+struct StepButton {
+    /// Explicit, so the node resolves to what [`Stepper::show`] read a response for.
+    id: WidgetId,
+    state: ResponseState,
+    glyph: Glyph,
+}
+
+impl StepButton {
+    fn show(self, ui: &mut Ui) {
+        let Self { id, state, glyph } = self;
+        let fill = if state.pressed() {
+            support::ELEM_STRONG
+        } else if state.hovered() {
+            support::ELEM_MID
+        } else {
+            support::ELEMENT
+        };
+        let chrome = Background {
+            fill: fill.into(),
+            border: Stroke::NONE,
+            corners: Corners::all(support::RADIUS),
+            shadow: Shadow::NONE,
+        };
+        let widget = Widget::leaf()
+            .id(id)
+            .size((Sizing::fixed(BUTTON), Sizing::fixed(BUTTON)))
+            .sense(Sense::CLICK);
+        widget.record(ui, Some(&chrome), |ui| {
+            let mid = BUTTON / 2.0;
+            let far = BUTTON - GLYPH_INSET;
+            paint_bar(ui, &[Vec2::new(GLYPH_INSET, mid), Vec2::new(far, mid)]);
+            if matches!(glyph, Glyph::Plus) {
+                paint_bar(ui, &[Vec2::new(mid, GLYPH_INSET), Vec2::new(mid, far)]);
+            }
+        });
+    }
 }
 
 fn paint_bar(ui: &mut Ui, points: &[Vec2]) {

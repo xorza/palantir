@@ -220,3 +220,15 @@ fn the_popup_takes_the_picker_theme() {
     let padding = custom.popup_padding.sums().h - stock.popup_padding.sums().h;
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }
+
+/// The constructor mints its id at the caller's line, so two chips keep two open states; one minted inside the constructor would make every chip a twin of the others.
+#[test]
+fn each_call_site_mints_its_own_id() {
+    fn id_of(mut chip: ColorButton<'_>) -> WidgetId {
+        chip.configure().widget.ident.raw_id(None)
+    }
+    let mut color = RgbaF32::WHITE;
+    let first = id_of(ColorButton::new(ColorPicker::new(&mut color)));
+    let second = id_of(ColorButton::new(ColorPicker::new(&mut color)));
+    assert_ne!(first, second);
+}

@@ -112,3 +112,47 @@ impl LayerCascade {
         self.entries_base = entries_base;
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::cascade::internals::OwnedPaint;
+    use crate::cascade::layer_cascade::LayerCascade;
+    use crate::scene::tree::Tree;
+    use crate::scene::tree::iter::TreeItem;
+    use crate::scene::tree::node_id::NodeId;
+
+    impl LayerCascade {
+        /// Append `node`'s painting rows and its descendants' with their widgets, in encoder draw order.
+        pub(crate) fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
+            let arena = &self.paint_arena;
+            let span = arena.node_spans[node.idx()];
+            // An invisible node's span is empty, and so is every one under it.
+            if span.len == 0 {
+                return;
+            }
+            let owner = tree.records.widget_id()[node.idx()];
+            let mut row = span.start as usize;
+            let push = |row: usize, out: &mut Vec<OwnedPaint>| {
+                let paint = arena.rows[row];
+                out.push(OwnedPaint {
+                    owner,
+                    screen: paint.screen,
+                    hash: paint.hash,
+                    rank: out.len() as u32,
+                });
+            };
+            if tree.chrome(node).is_some() {
+                push(row, out);
+                row += 1;
+            }
+            for item in tree.tree_items(node) {
+                match item {
+                    TreeItem::ShapeRecord(..) => push(row, out),
+                    TreeItem::Child(child) => self.owned_paints_of(tree, child.id, out),
+                }
+                row += 1;
+            }
+            debug_assert_eq!(row, span.range().end, "rows out of sync with the span");
+        }
+    }
+}

@@ -1,17 +1,20 @@
 //! The polyline builder and its per-vertex or per-segment color source.
 
+use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
+use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::record_store::RecordStore;
-use crate::shape::lower;
-use crate::shape::record::ShapeRecord;
+use crate::shape::record::{ColorMode, ShapeRecord};
 use crate::shape::sealed;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::Vec2;
+use std::hash::Hasher as _;
+use std::slice;
 
 /// Stroked polyline, centred on its points, in one colour or varied per point or segment.
 #[derive(Clone, Debug)]
@@ -143,6 +146,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
             || self.colors.colors().iter().any(NanCheck::has_nan)
     }
 
+    /// Points into the store, colours multiplied by the stroke colour, then the content hash. A single stroke lowers to `ShapeRecord::Curve` instead.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             points,
@@ -152,6 +156,47 @@ impl sealed::LowerShape for PolylineShape<'_> {
             join,
             bbox,
         } = self;
-        lower::polyline(store, points, stroke, colors, cap, join, bbox)
+        let (mode, color_slice): (ColorMode, &[RgbaF32]) = match &colors {
+            PolylineColors::Single => (ColorMode::Single, slice::from_ref(&RgbaF32::WHITE)),
+            PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
+            PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
+        };
+
+        // `Shapes::add` drops < 2-point polylines via `is_noop`, so a degenerate slice is a caller bug; colour cardinality is checked here since a query answers, it does not validate.
+        debug_assert!(
+            points.len() >= 2,
+            "polyline with < 2 points reached lowering"
+        );
+        colors.assert_matches(points.len());
+        // `bbox` was folded by `PolylineShape::new` so `Shapes::add` can screen before staging. Two passes beat one interleaved: the fold vectorizes alone and the copy becomes one `memcpy`.
+        debug_assert!(
+            !bbox.has_nan(),
+            "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
+        );
+        let staged = store.stage_polyline(points, color_slice, stroke.color);
+        let lowered_colors = &store.polyline_colors[staged.colors.range()];
+
+        let mut h = Hasher::new();
+        for &point in points {
+            point.hash_visual(&mut h);
+        }
+        h.pod_slice(lowered_colors);
+        let style = (u64::from(float_hash::canon_bits(stroke.width)) << 24)
+            | ((mode as u64) << 16)
+            | ((cap as u64) << 8)
+            | (join as u64);
+        h.write_u64(style);
+        let content_hash = h.finish();
+
+        ShapeRecord::Polyline {
+            width: stroke.width,
+            color_mode: mode,
+            cap,
+            join,
+            points: staged.points,
+            colors: staged.colors,
+            bbox,
+            content_hash,
+        }
     }
 }

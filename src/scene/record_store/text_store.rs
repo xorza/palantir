@@ -74,6 +74,6 @@ impl TextStore {
 
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {
         self.assert_current(text);
-        RecordedText::new(text.span, hash::hash_str(&self.bytes[text.span.range()]))
+        RecordedText::new(text.span, hash::str(&self.bytes[text.span.range()]))
     }
 }

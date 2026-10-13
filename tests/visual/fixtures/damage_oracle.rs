@@ -11,7 +11,7 @@ use palantir::{
     RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
 };
 
-use crate::goldens::assert_same;
+use crate::goldens;
 use crate::harness::Harness;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
@@ -205,7 +205,7 @@ fn run(name: &str, script: &[Knobs]) {
         full.host.invalidate_target_contents();
         let painted = full.frame(|ui| scene(ui, *k, &full_picture)).image;
         // Frame `n` is script entry `n - 2`, after two base frames.
-        assert_same(&format!("{name}_frame_{frame}"), &repainted, &painted);
+        goldens::assert_same(&format!("{name}_frame_{frame}"), &repainted, &painted);
     }
 }
 

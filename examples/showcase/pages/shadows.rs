@@ -2,7 +2,8 @@
 //! (`Background { shadow }`), side by side. Tiles sit on a bright surface;
 //! black-on-dark shadows don't read.
 
-use crate::support::{CELL_PADDING, api, demo_cell_light, note, section, tiles};
+use crate::support;
+use crate::support::{CELL_PADDING, DemoCell, Section, Surface, api};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
     Background, Block, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, Vec2,
@@ -16,63 +17,81 @@ fn card_corners() -> Corners {
 }
 
 pub(crate) fn build(ui: &mut Ui) {
-    section(ui, "Elevation", &[api!(Shadow::drop)], |ui| {
-        note(
-            ui,
-            "A drop shadow pushed as a shape under a rounded card, from a button at rest up \
+    Section::new("Elevation")
+        .apis(&[api!(Shadow::drop)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "A drop shadow pushed as a shape under a rounded card, from a button at rest up \
              to a floating panel, and the zero-blur case.",
-        );
-        tiles(ui, |ui| {
-            demo_cell_light(ui, "tight — a button at rest", tight);
-            demo_cell_light(ui, "soft — elevation 2", soft);
-            demo_cell_light(ui, "elevated — offset 12, blur 20", elevated);
-            demo_cell_light(ui, "sharp — blur near 0", sharp);
+            );
+            support::tiles(ui, |ui| {
+                DemoCell::new("tight — a button at rest")
+                    .surface(Surface::LightWell)
+                    .show(ui, tight);
+                DemoCell::new("soft — elevation 2")
+                    .surface(Surface::LightWell)
+                    .show(ui, soft);
+                DemoCell::new("elevated — offset 12, blur 20")
+                    .surface(Surface::LightWell)
+                    .show(ui, elevated);
+                DemoCell::new("sharp — blur near 0")
+                    .surface(Surface::LightWell)
+                    .show(ui, sharp);
+            });
         });
-    });
 
-    section(
-        ui,
-        "Colour and stacking",
-        &[api!(Shadow::with_spread)],
-        |ui| {
-            note(
+    Section::new("Colour and stacking")
+        .apis(&[api!(Shadow::with_spread)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "A coloured glow with no offset, and three shadows stacked in record order, \
                  as a CSS box-shadow list stacks them.",
             );
-            tiles(ui, |ui| {
-                demo_cell_light(ui, "glow — coloured, spread 2", glow);
-                demo_cell_light(ui, "stacked — three layers", stacked);
+            support::tiles(ui, |ui| {
+                DemoCell::new("glow — coloured, spread 2")
+                    .surface(Surface::LightWell)
+                    .show(ui, glow);
+                DemoCell::new("stacked — three layers")
+                    .surface(Surface::LightWell)
+                    .show(ui, stacked);
             });
-        },
-    );
+        });
 
-    section(
-        ui,
-        "Shape or chrome",
-        &[api!(Background::with_shadow), api!(Shadow::inset)],
-        |ui| {
-            note(
+    Section::new("Shape or chrome")
+        .apis(&[api!(Background::with_shadow), api!(Shadow::inset)])
+        .show(ui, |ui| {
+            support::note(
                 ui,
                 "Each pair paints one shadow two ways: pushed as a shape with the card, and \
                  set on a widget's Background, which paints a drop shadow under its fill and \
                  an inset one over it, as CSS does. The two should match.",
             );
-            tiles(ui, |ui| {
-                demo_cell_light(ui, "soft — shape", soft);
-                demo_cell_light(ui, "soft — chrome", |ui| {
-                    chrome_card(ui, chrome(soft_shadow()));
-                });
-                demo_cell_light(ui, "inset — shape", inset);
-                demo_cell_light(ui, "inset — chrome", |ui| {
-                    chrome_card(ui, chrome(inset_shadow()));
-                });
-                demo_cell_light(ui, "translucent fill — chrome", |ui| {
-                    chrome_card(ui, chrome_translucent());
-                });
+            support::tiles(ui, |ui| {
+                DemoCell::new("soft — shape")
+                    .surface(Surface::LightWell)
+                    .show(ui, soft);
+                DemoCell::new("soft — chrome")
+                    .surface(Surface::LightWell)
+                    .show(ui, |ui| {
+                        chrome_card(ui, chrome(soft_shadow()));
+                    });
+                DemoCell::new("inset — shape")
+                    .surface(Surface::LightWell)
+                    .show(ui, inset);
+                DemoCell::new("inset — chrome")
+                    .surface(Surface::LightWell)
+                    .show(ui, |ui| {
+                        chrome_card(ui, chrome(inset_shadow()));
+                    });
+                DemoCell::new("translucent fill — chrome")
+                    .surface(Surface::LightWell)
+                    .show(ui, |ui| {
+                        chrome_card(ui, chrome_translucent());
+                    });
             });
-        },
-    );
+        });
 }
 
 fn shadow_shape(s: Shadow) -> ShadowShape {

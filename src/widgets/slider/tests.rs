@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::UiHarness;
 use crate::internals::ui_harness::passes::Passes;
@@ -7,11 +6,20 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::panel::Panel;
-use crate::widgets::slider::{Slider, fraction_to_value, snap_to_step, value_to_fraction};
+use crate::widgets::slider::{Slider, SliderRange};
 use glam::{UVec2, Vec2};
+
+const fn range(min: f64, max: f64) -> SliderRange {
+    SliderRange {
+        min,
+        max,
+        step: None,
+    }
+}
 
 /// One frame for a commit-deferring caller: the draft re-seeds from `canonical` and is adopted only on `committed`.
 fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
@@ -155,7 +163,7 @@ fn endpoint_rails_collapse_without_invalid_fill_weights() {
 }
 
 #[test]
-fn value_to_fraction_maps_and_clamps() {
+fn fraction_of_maps_and_clamps() {
     let cases = [
         (50.0, 0.0, 100.0, 0.5),
         (0.0, 0.0, 100.0, 0.0),
@@ -175,7 +183,7 @@ fn value_to_fraction_maps_and_clamps() {
         (0.0, 100.0, 0.0, 1.0),
     ];
     for (v, min, max, want) in cases {
-        let got = value_to_fraction(v, min, max);
+        let got = range(min, max).fraction_of(v);
         assert_eq!(got, want, "v2f({v},{min},{max})={got} want {want}");
     }
     for (v, min, max) in [
@@ -184,7 +192,7 @@ fn value_to_fraction_maps_and_clamps() {
         (50.0, 0.0, f64::NAN),
     ] {
         assert_eq!(
-            value_to_fraction(v, min, max),
+            range(min, max).fraction_of(v),
             0.0,
             "v2f({v},{min},{max}) must read as the low end",
         );
@@ -192,17 +200,17 @@ fn value_to_fraction_maps_and_clamps() {
 }
 
 #[test]
-fn fraction_to_value_inverts_value_to_fraction() {
+fn value_at_inverts_fraction_of() {
     for &v in &[10.0_f64, 12.5, 15.0, 17.5, 20.0] {
-        let f = value_to_fraction(v, 10.0, 20.0);
-        let back = fraction_to_value(f, 10.0, 20.0);
+        let f = range(10.0, 20.0).fraction_of(v);
+        let back = range(10.0, 20.0).value_at(f);
         assert_eq!(back, v, "roundtrip {v} -> {f} -> {back}");
     }
-    assert_eq!(fraction_to_value(0.25, 10.0, 20.0), 12.5);
-    let f = value_to_fraction(75.0, 100.0, 0.0);
+    assert_eq!(range(10.0, 20.0).value_at(0.25), 12.5);
+    let f = range(100.0, 0.0).fraction_of(75.0);
     assert_eq!(f, 0.25, "reversed fraction {f}");
-    assert_eq!(fraction_to_value(f, 100.0, 0.0), 75.0);
-    assert_eq!(fraction_to_value(1.5, 0.0, 100.0), 100.0);
+    assert_eq!(range(100.0, 0.0).value_at(f), 75.0);
+    assert_eq!(range(0.0, 100.0).value_at(1.5), 100.0);
 }
 
 #[test]
@@ -238,13 +246,17 @@ fn pointer_mapping_is_scale_invariant() {
 }
 
 #[test]
-fn snap_to_step_rounds_to_grid() {
-    assert_eq!(snap_to_step(53.0, 0.0, Some(10.0)), 50.0);
-    assert_eq!(snap_to_step(57.0, 0.0, Some(10.0)), 60.0);
-    assert_eq!(snap_to_step(12.0, 0.0, Some(5.0)), 10.0);
-    assert_eq!(snap_to_step(13.0, 0.0, Some(5.0)), 15.0);
-    assert_eq!(snap_to_step(2.2, 1.0, Some(0.5)), 2.0);
-    assert_eq!(snap_to_step(53.0, 0.0, None), 53.0);
+fn snapped_rounds_to_the_step_grid_from_min() {
+    let stepped = |min: f64, step: Option<f64>| SliderRange {
+        step,
+        ..range(min, 100.0)
+    };
+    assert_eq!(stepped(0.0, Some(10.0)).snapped(53.0), 50.0);
+    assert_eq!(stepped(0.0, Some(10.0)).snapped(57.0), 60.0);
+    assert_eq!(stepped(0.0, Some(5.0)).snapped(12.0), 10.0);
+    assert_eq!(stepped(0.0, Some(5.0)).snapped(13.0), 15.0);
+    assert_eq!(stepped(1.0, Some(0.5)).snapped(2.2), 2.0);
+    assert_eq!(stepped(0.0, None).snapped(53.0), 53.0);
 }
 
 /// `None` is the only "off"; a step that cannot snap is refused.

@@ -1,7 +1,10 @@
 //! Polylines, arcs and cubics: the instances they emit and the chrome at their
 //! joins.
 
+use crate::common::span::Span;
 use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -339,12 +342,12 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
                     DrawCurvePayload {
                         bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                         origin: Vec2::ZERO,
-                        basis: CurveBasis::Cubic {
+                        basis: CurveBasis::Cubic(CubicBezier {
                             p0: Vec2::new(offset, 0.0),
                             p1: Vec2::new(offset + 10.0, 50.0),
                             p2: Vec2::new(offset + 90.0, 50.0),
                             p3: Vec2::new(offset + 100.0, 0.0),
-                        },
+                        }),
                         fill: GpuFill {
                             color: RgbaF32::WHITE.into(),
                             ..Default::default()
@@ -387,12 +390,12 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(0.0, 0.0),
                         p1: Vec2::new(10.0, 50.0),
                         p2: Vec2::new(90.0, 50.0),
                         p3: Vec2::new(100.0, 0.0),
-                    },
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -407,12 +410,12 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 50.0, 50.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(0.0, 0.0),
                         p1: Vec2::new(5.0, 25.0),
                         p2: Vec2::new(45.0, 25.0),
                         p3: Vec2::new(50.0, 0.0),
-                    },
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -452,12 +455,12 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(0.0, 0.0),
                         p1: Vec2::new(10.0, 50.0),
                         p2: Vec2::new(90.0, 50.0),
                         p3: Vec2::new(100.0, 0.0),
-                    },
+                    }),
                     fill: GpuFill::curve(tint, Some(LutRow(7))),
                     width: 4.0,
                     ..Default::default()
@@ -505,12 +508,12 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc {
+                    basis: CurveBasis::Arc(CircularArc {
                         center: Vec2::new(50.0, 50.0),
                         radius: 20.0,
-                        a0: 0.0,
-                        a1: sweep,
-                    },
+                        start_angle: 0.0,
+                        sweep,
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -561,12 +564,12 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                         radius: Vec2::splat(50.0).length(),
                     },
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc {
+                    basis: CurveBasis::Arc(CircularArc {
                         center: Vec2::new(70.0, 50.0),
                         radius: 10.0,
-                        a0: 0.0,
-                        a1: PI,
-                    },
+                        start_angle: 0.0,
+                        sweep: PI,
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -603,12 +606,12 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
             DrawCurvePayload {
                 bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 10.0)),
                 origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
+                basis: CurveBasis::Cubic(CubicBezier {
                     p0: Vec2::new(0.0, 5.0),
                     p1: Vec2::new(800.0 / 3.0, 5.0),
                     p2: Vec2::new(1600.0 / 3.0, 5.0),
                     p3: Vec2::new(800.0, 5.0),
-                },
+                }),
                 fill: GpuFill {
                     color: RgbaF32::WHITE.into(),
                     ..Default::default()
@@ -624,12 +627,12 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
             DrawCurvePayload {
                 bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 400.0)),
                 origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic {
+                basis: CurveBasis::Cubic(CubicBezier {
                     p0: Vec2::new(0.0, 5.0),
                     p1: Vec2::new(266.0, 400.0),
                     p2: Vec2::new(533.0, 400.0),
                     p3: Vec2::new(800.0, 5.0),
-                },
+                }),
                 fill: GpuFill {
                     color: RgbaF32::WHITE.into(),
                     ..Default::default()
@@ -672,12 +675,12 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
                         radius: Vec2::splat(50.0).length(),
                     },
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(70.0, 50.0),
                         p1: Vec2::new(70.0, 40.0),
                         p2: Vec2::new(60.0, 30.0),
                         p3: Vec2::new(50.0, 30.0),
-                    },
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -709,12 +712,12 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 40.0, 40.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc {
+                    basis: CurveBasis::Arc(CircularArc {
                         center: Vec2::new(20.0, 20.0),
                         radius: 10.0,
-                        a0: 0.0,
-                        a1: 1.0,
-                    },
+                        start_angle: 0.0,
+                        sweep: 1.0,
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -728,12 +731,12 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(100.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic {
+                    basis: CurveBasis::Cubic(CubicBezier {
                         p0: Vec2::new(100.0, 0.0),
                         p1: Vec2::new(110.0, 50.0),
                         p2: Vec2::new(190.0, 50.0),
                         p3: Vec2::new(200.0, 0.0),
-                    },
+                    }),
                     fill: GpuFill {
                         color: RgbaF32::WHITE.into(),
                         ..Default::default()
@@ -842,8 +845,8 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,
                     width: 2.0,
-                    points_len,
-                    colors_len: 1,
+                    points: Span::new(0, points_len),
+                    colors: Span::new(0, 1),
                     ..Default::default()
                 });
             },

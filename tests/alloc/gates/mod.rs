@@ -10,7 +10,7 @@
 //!
 //! Each measured frame is audited on its own, so a grow-on-Nth-frame allocation fails on its frame with backtraces.
 
-pub(crate) mod on_gpu;
+mod on_gpu;
 
 use palantir::FramePaint;
 use palantir::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
@@ -20,9 +20,9 @@ use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::harness::Audit;
 
 /// The fixture stabilizes by frame 4 (at 1 it leaks ~10 blocks); too short is the safe direction.
-pub(crate) const WARMUP_FRAMES: usize = 16;
+const WARMUP_FRAMES: usize = 16;
 /// Long enough for a once-every-N-frames allocation to land inside the window.
-pub(crate) const MEASURE_FRAMES: usize = 256;
+const MEASURE_FRAMES: usize = 256;
 
 /// Pins the `AGENTS.md` claim that steady state is heap-alloc-free after warmup; strict zero, since everything on this path is ours.
 ///

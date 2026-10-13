@@ -3,7 +3,12 @@
 use std::env;
 use std::fs;
 
+use glam::UVec2;
+use palantir::Ui;
+use palantir::golden::image::RgbaImage;
+
 use crate::goldens;
+use crate::harness::Harness;
 
 /// Declares [`GoldenName`] from one `Variant => "file_stem"` list, so the variants, [`GoldenName::ALL`] and [`GoldenName::name`] cannot drift apart.
 macro_rules! golden_names {
@@ -26,6 +31,27 @@ macro_rules! golden_names {
             }
         }
     };
+}
+
+impl GoldenName {
+    /// `actual` matches this golden.
+    #[track_caller]
+    pub(crate) fn assert_matches(self, actual: &RgbaImage) {
+        goldens::suite().assert_matches(self.name(), actual);
+    }
+
+    /// One frame of `scene` at `size` on a fresh [`Harness`] matches this golden.
+    #[track_caller]
+    pub(crate) fn assert_scene(self, size: UVec2, scene: impl FnMut(&mut Ui)) {
+        self.assert_settled_scene(size, 0, scene);
+    }
+
+    /// [`Self::assert_scene`] on the frame after `settle` discarded ones, for state that builds over frames.
+    #[track_caller]
+    pub(crate) fn assert_settled_scene(self, size: UVec2, settle: u32, scene: impl FnMut(&mut Ui)) {
+        let img = Harness::new().size(size).settled_frame(settle, scene).image;
+        self.assert_matches(&img);
+    }
 }
 
 golden_names! {
@@ -78,7 +104,7 @@ golden_names! {
 /// No golden file lies in the directory without a fixture that draws it. Under `UPDATE_GOLDEN`, orphans are deleted.
 #[test]
 fn every_golden_file_belongs_to_a_fixture() {
-    let orphans = goldens::goldens().orphans(GoldenName::ALL.iter().map(|golden| golden.name()));
+    let orphans = goldens::suite().orphans(GoldenName::ALL.iter().map(|golden| golden.name()));
     if env::var_os("UPDATE_GOLDEN").is_some_and(|value| !value.is_empty()) {
         for orphan in &orphans {
             fs::remove_file(orphan).expect("delete an orphaned golden");

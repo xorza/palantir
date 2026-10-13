@@ -6,6 +6,7 @@ use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::theme::color_picker::ColorPickerTheme;
 use glam::{UVec2, Vec2};
@@ -14,11 +15,8 @@ fn harness() -> UiHarness {
     UiHarness::with_text(UVec2::new(320, 460))
 }
 
-fn frame(h: &mut UiHarness, id: WidgetId, color: &mut RgbaF32) -> (bool, bool) {
-    h.frame_value(|ui| {
-        let r = ColorPicker::new(color).alpha(true).id(id).show(ui);
-        (r.changed, r.committed)
-    })
+fn frame(h: &mut UiHarness, id: WidgetId, color: &mut RgbaF32) -> ValueEdges {
+    h.frame_value(|ui| ColorPicker::new(color).alpha(true).id(id).show(ui).edges())
 }
 
 /// Black has no hue; dragging the value to the bottom and back must return to the starting hue.
@@ -59,8 +57,11 @@ fn an_outside_edit_re_seeds_the_axes() {
     frame(&mut h, id, &mut color);
 
     color = RgbaF32::hex(0xff8800);
-    let (changed, _) = frame(&mut h, id, &mut color);
-    assert!(!changed, "the picker does not rewrite what it was handed");
+    let edges = frame(&mut h, id, &mut color);
+    assert!(
+        !edges.changed,
+        "the picker does not rewrite what it was handed"
+    );
     assert_eq!(
         color.to_srgba_u8().r,
         0xff,
@@ -284,9 +285,11 @@ fn an_unchanged_hex_field_commits_nothing_on_blur() {
     h.set_focus(id.with("hex"));
     frame(&mut h, id, &mut color);
     h.clear_focus();
-    let (changed, committed) = frame(&mut h, id, &mut color);
-    assert!(
-        !changed && !committed,
-        "changed {changed}, committed {committed}"
+    assert_eq!(
+        frame(&mut h, id, &mut color),
+        ValueEdges {
+            changed: false,
+            committed: false,
+        }
     );
 }

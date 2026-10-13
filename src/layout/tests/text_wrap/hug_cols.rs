@@ -1,26 +1,32 @@
 //! Non-wrapping labels in hug columns, which must never shrink below their
 //! full width.
 
-use crate::TextStyle;
-use crate::Ui;
-use crate::WidgetId;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support::PARAGRAPH;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
 /// Repro for the showcase "text layouts" section: a Hug+Hug grid with a wrapping paragraph in col 0 and a non-wrapping label in col 1, under FILL panels. As the surface narrows, the grid must clamp at its intrinsic floor, never shrinking col 1 below the label's natural width.
 #[test]
 fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
-    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
+    #[derive(Debug)]
+    struct Section<T> {
+        grid: T,
+        section: T,
+    }
+
+    fn build(ui: &mut Ui) -> Section<NodeId> {
         let mut grid_node = None;
         let mut section_node = None;
         Panel::vstack()
@@ -83,25 +89,29 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                             });
                     });
             });
-        (grid_node.unwrap(), section_node.unwrap())
+        Section {
+            grid: grid_node.unwrap(),
+            section: section_node.unwrap(),
+        }
     }
 
-    fn measure_at(surface_w: u32) -> (f32, f32) {
+    fn widths_at(surface_w: u32) -> Section<f32> {
         let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
         let nodes = h.frame_value(build);
-        let (grid, section) = nodes;
-        let grid_w = h.ui.arranged_rect(Layer::Main, grid).size.w;
-        let section_w = h.ui.arranged_rect(Layer::Main, section).size.w;
-        (grid_w, section_w)
+        let width = |node| h.ui.arranged_rect(Layer::Main, node).size.w;
+        Section {
+            grid: width(nodes.grid),
+            section: width(nodes.section),
+        }
     }
 
     // Once the section panel stops shrinking (floored by its title text), the Hug grid inside must fill the section's committed cross extent, not the smaller surface-derived `available`.
     let widths: [u32; 5] = [400, 300, 250, 200, 150];
     let (mut section_widths, mut grid_widths) = (Vec::new(), Vec::new());
     for w in widths {
-        let (g, s) = measure_at(w);
-        section_widths.push(s);
-        grid_widths.push(g);
+        let at = widths_at(w);
+        section_widths.push(at.section);
+        grid_widths.push(at.grid);
     }
     // At 400 the section fills 400 − 2·12 − 2·16 = 344; below that it floors at its 341 px single-line title (12 px Inter).
     assert_eq!(section_widths, [344.0, 341.0, 341.0, 341.0, 341.0]);
@@ -131,8 +141,8 @@ fn nonwrapping_text_minconent_equals_full_width() {
 /// Pin: in a Hug+Hug grid too narrow for both max-content widths, the wrapping paragraph absorbs the squeeze and the label cell stays at least its natural width.
 #[test]
 fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
-    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
-        let mut paragraph_node = None;
+    /// Records the grid; returns the label's node.
+    fn build(ui: &mut Ui) -> NodeId {
         let mut label_node = None;
         Grid::new()
             .id(WidgetId::from_hash("grid"))
@@ -140,15 +150,12 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
             .rows([Track::HUG])
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                paragraph_node = Some(
-                    Text::new(PARAGRAPH)
-                        .auto_id()
-                        .font_size(14.0)
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .grid_cell((0, 0))
-                        .show(ui)
-                        .node(),
-                );
+                Text::new(PARAGRAPH)
+                    .auto_id()
+                    .font_size(14.0)
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .grid_cell((0, 0))
+                    .show(ui);
                 label_node = Some(
                     Text::new("right column")
                         .auto_id()
@@ -159,24 +166,24 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                         .node(),
                 );
             });
-        (paragraph_node.unwrap(), label_node.unwrap())
+        label_node.unwrap()
     }
 
     let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
-    let probe_label = probe.frame_value(|ui| build(ui).1);
+    let probe_label = probe.frame_value(build);
     let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // Between the grid's floor and the paragraph's max-content, slack distribution applies; the label cell still gets its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
         let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
-        let label = h.frame_value(|ui| build(ui).1);
+        let label = h.frame_value(build);
         let label_rect_w = h.ui.arranged_rect(Layer::Main, label).size.w;
-        assert!(
-            label_rect_w >= label_full - 0.5,
+        assert_eq!(
+            label_rect_w, label_full,
             "label cell shrank below the label's natural width — \
          non-wrapping text would visually overflow its column. \
-         surface_w={surface_w} label_full={label_full} label_rect_w={label_rect_w}",
+         surface_w={surface_w}",
         );
     }
 }
@@ -217,10 +224,10 @@ fn two_hug_cols_default_label_hugs_full_width() {
         let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
         let label = h.frame_value(build);
         let label_rect_w = h.ui.arranged_rect(Layer::Main, label).size.w;
-        assert!(
-            label_rect_w >= label_full - 0.5,
+        assert_eq!(
+            label_rect_w, label_full,
             "default-wrap label shrank below its natural width — it would clip. \
-           surface_w={surface_w} label_full={label_full} label_rect_w={label_rect_w}",
+           surface_w={surface_w}",
         );
     }
 }

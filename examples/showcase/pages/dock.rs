@@ -1,7 +1,6 @@
 //! A live dock: drag a chip to another pane's edge to split, into its strip to join, onto a divider to resize.
 
 use crate::support;
-use crate::support::{body_style, note_style, well_bg};
 use palantir::{
     Button, Configure, DockDrop, DockOperation, DockState, DockTabMenu, DockTabs, DockView,
     InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
@@ -82,15 +81,19 @@ impl DockTabs for Panes {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(14.0)
             .gap(6.0)
-            .background(well_bg())
+            .background(support::well_bg())
             .show(ui, |ui| {
-                Text::new(tab.label()).style(&body_style()).show(ui);
-                Text::new(tab.blurb()).style(&note_style()).show(ui);
+                Text::new(tab.label())
+                    .style(&support::body_style())
+                    .show(ui);
+                Text::new(tab.blurb())
+                    .style(&support::note_style())
+                    .show(ui);
                 let measured = match size {
                     Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.w, s.h),
                     None => ui.intern("content area not laid out yet"),
                 };
-                Text::new(measured).style(&note_style()).show(ui);
+                Text::new(measured).style(&support::note_style()).show(ui);
             });
     }
 
@@ -158,7 +161,7 @@ fn reopen_row(ui: &mut Ui, s: &mut State) {
         "closed tabs reopen in the focused pane:"
     };
     support::row(ui, |ui| {
-        Text::new(line).style(&note_style()).show(ui);
+        Text::new(line).style(&support::note_style()).show(ui);
         for tab in OPENABLE {
             if s.dock.find_tab(tab).is_some() {
                 continue;

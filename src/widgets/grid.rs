@@ -106,9 +106,9 @@ impl<Rows, Cols> Configure for Grid<Rows, Cols> {
 
 #[cfg(test)]
 mod tests {
-    use super::Grid;
     use crate::primitives::math::domain::MAX_GAP;
     use crate::widget_core::configure::Configure;
+    use crate::widgets::grid::Grid;
 
     /// Spacing goes through the node column's shared setters.
     #[test]

@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::gpu::device::requested_gpu::Gpu;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::render_target;

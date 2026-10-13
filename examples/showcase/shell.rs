@@ -2,12 +2,12 @@
 //! driven by [`PAGES`], the single source of truth for each page's label,
 //! group, blurb, key hints, scrolling and builder.
 
-use palantir::SlotDefaults;
 use palantir::{
     Align, AnimationSpec, App, Axis, Background, Block, Button, ButtonTheme, Checkbox, Configure,
     Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll,
-    Shortcut, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides, TextWrap,
-    Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken, fmt,
+    Shortcut, Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle,
+    TextStyleOverrides, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook,
+    WindowConfig, WindowToken, fmt,
 };
 
 use crate::pages;
@@ -291,12 +291,12 @@ const PAGES: &[Page] = &[
 ];
 
 #[derive(Debug)]
-pub(crate) struct State {
+pub(crate) struct Shell {
     active: usize,
     app: AppState,
 }
 
-impl State {
+impl Shell {
     pub(crate) fn new(ui: &mut Ui) -> Self {
         let mut theme = Theme::from_palette(&showcase_palette());
         // The library default is no button animation; the showcase demos it.
@@ -348,7 +348,8 @@ impl State {
                     .show(ui, |ui| {
                         for (i, page) in PAGES.iter().enumerate() {
                             if i == 0 || PAGES[i - 1].group != page.group {
-                                group_heading(ui, page.group, i == 0);
+                                let top = if i == 0 { 2.0 } else { 16.0 };
+                                group_heading(ui, page.group, top);
                             }
                             let style = if i == self.active {
                                 &selected
@@ -417,7 +418,7 @@ impl State {
     }
 }
 
-impl App for State {
+impl App for Shell {
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
         match win {
             INSPECTOR_WINDOW => {
@@ -455,7 +456,8 @@ fn brand(ui: &mut Ui) {
         });
 }
 
-fn group_heading(ui: &mut Ui, group: Group, first: bool) {
+/// `top`: the margin above the heading.
+fn group_heading(ui: &mut Ui, group: Group, top: f32) {
     let ink = if group.is_quiet() {
         support::INK_DISABLED
     } else {
@@ -469,7 +471,7 @@ fn group_heading(ui: &mut Ui, group: Group, first: bool) {
                 .with_weight(FontWeight::BOLD)
                 .with_color(ink),
         )
-        .margin((10.0, if first { 2.0 } else { 16.0 }, 0.0, 4.0))
+        .margin((10.0, top, 0.0, 4.0))
         .show(ui);
 }
 

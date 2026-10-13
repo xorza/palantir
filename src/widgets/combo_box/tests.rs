@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -7,6 +6,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::ComboBox;
@@ -149,10 +149,16 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
 /// The trigger's shape comes from `Theme::combo_box`: the chevron from `arrow_size`, the gutter from `gap`. Hug-sized so `Justify::SpaceBetween` leaves no slack hiding `gap`.
 #[test]
 fn trigger_geometry_follows_the_combo_box_theme() {
+    #[derive(Debug, PartialEq)]
+    struct Trigger {
+        arrow: Vec2,
+        gap: f32,
+    }
+
     let options = ["One"];
     let id = WidgetId::from_hash("geom-combo");
 
-    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>| -> (Vec2, f32) {
+    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>| -> Trigger {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().combo_box.arrow_size = arrow;
         h.ui.theme_mut().combo_box.gap = gap;
@@ -170,21 +176,21 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         });
         let label = h.rect(id.with("label")).expect("label arranged");
         let arrow_rect = h.rect(id.with("arrow")).expect("arrow arranged");
-        (
-            Vec2::new(arrow_rect.size.w, arrow_rect.size.h),
-            arrow_rect.min.x - label.max().x,
-        )
+        Trigger {
+            arrow: Vec2::new(arrow_rect.size.w, arrow_rect.size.h),
+            gap: arrow_rect.min.x - label.max().x,
+        }
     };
 
-    let (size_a, gap_a) = measure(Vec2::new(10.0, 6.0), 12.0, None);
-    assert_eq!(size_a, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
-    assert_eq!(gap_a, 12.0, "gutter is gap, got {gap_a}");
+    let a = measure(Vec2::new(10.0, 6.0), 12.0, None);
+    assert_eq!(a.arrow, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
+    assert_eq!(a.gap, 12.0, "gutter is gap");
 
-    let (size_b, gap_b) = measure(Vec2::new(20.0, 14.0), 30.0, None);
-    assert_eq!(size_b, Vec2::new(20.0, 14.0));
-    assert_eq!(gap_b, 30.0, "gutter is gap, got {gap_b}");
-    assert_ne!(size_a, size_b);
-    assert_ne!(gap_a, gap_b);
+    let b = measure(Vec2::new(20.0, 14.0), 30.0, None);
+    assert_eq!(b.arrow, Vec2::new(20.0, 14.0));
+    assert_eq!(b.gap, 30.0, "gutter is gap");
+    assert_ne!(a.arrow, b.arrow);
+    assert_ne!(a.gap, b.gap);
 
     // The same knobs through `style`: the instance wins.
     let instance = ComboBoxTheme {
@@ -192,9 +198,8 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         gap: 30.0,
         ..ComboBoxTheme::default()
     };
-    let (size_c, gap_c) = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
-    assert_eq!(size_c, size_b, "`style` overrides the slot's arrow_size");
-    assert_eq!(gap_c, gap_b, "`style` overrides the slot's gap");
+    let c = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
+    assert_eq!(c, b, "`style` overrides the slot's arrow_size and gap");
 }
 
 /// The trigger paints in `button_style`'s button theme, else `Theme::button`, read off its chrome on the first-record frame (rest state).

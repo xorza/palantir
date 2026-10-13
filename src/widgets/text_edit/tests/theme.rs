@@ -1,7 +1,8 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
 use crate::widgets::text_edit::tests::*;
-use crate::widgets::theme::text_style::{LINE_HEIGHT_MULT, TextStyle, TextStyleOverrides};
+use crate::widgets::theme::text_style::{LINE_HEIGHT_MULT, TextStyle};
+use crate::widgets::theme::text_style_overrides::TextStyleOverrides;
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {

@@ -1,11 +1,13 @@
 //! Everything the shaper is asked for when laying out an editor's text.
 
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::align::HAlign;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
+use crate::widgets::text_edit::text_layout::LayoutInput;
 
 /// What the shaper needs to lay out this editor's text, plus the padding turning a shaped position widget-local.
 ///
@@ -20,19 +22,13 @@ pub(super) struct ShapeCtx {
 }
 
 impl ShapeCtx {
-    /// The parameters this editor shapes with. `wrap_target` is the raw inner width of a multi-line field (`WrapBound::new` rounds) and `None` for single-line; both it and per-line alignment are private since only [`Self::run`] reads them.
-    pub(super) const fn new(
-        font: GlyphFont,
-        padding: Spacing,
-        wrap_target: Option<f32>,
-        multiline: bool,
-        halign: HAlign,
-    ) -> Self {
+    /// The parameters this editor shapes with, inside the text box `inner`. The wrap target is the raw inner width of a multi-line field (`WrapBound::new` rounds) and `None` for single-line; both it and per-line alignment are private since only [`Self::run`] reads them.
+    pub(super) fn new(input: &LayoutInput, inner: Option<Rect>, halign: HAlign) -> Self {
         Self {
-            font,
-            padding,
-            wrap_target,
-            multiline,
+            font: input.font,
+            padding: input.padding,
+            wrap_target: inner.filter(|_| input.multiline).map(|rect| rect.size.w),
+            multiline: input.multiline,
             halign,
         }
     }

@@ -1,13 +1,13 @@
 //! The snapshot a frame leaves for the next one to diff against.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
-use crate::ui::tests::support::{SURFACE, blue_frame};
+use crate::ui::Ui;
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 
@@ -26,7 +26,7 @@ fn prev_frame_captures_nodes_with_rows() {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
-                frame_node = Some(blue_frame(ui, "a"));
+                frame_node = Some(support::blue_frame(ui, "a"));
                 Panel::hstack()
                     .id(WidgetId::from_hash("empty"))
                     .show(ui, |_| {});

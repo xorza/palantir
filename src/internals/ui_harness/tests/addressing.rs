@@ -1,7 +1,7 @@
 //! Reaching a widget by id: the rect that answers and the occlusion that refuses.
 
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::tests::support::{INSIDE, OUTSIDE, SURFACE, button, target};
+use crate::internals::ui_harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
 use crate::internals::ui_harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,19 +13,24 @@ use crate::widgets::panel::Panel;
 #[test]
 fn a_press_outside_the_widget_does_not_click_it() {
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
+    harness.prime(2, support::button);
     harness.click_at(OUTSIDE);
-    assert!(!harness.response_in(target(), button).left.clicked());
+    assert!(
+        !harness
+            .response_in(support::target(), support::button)
+            .left
+            .clicked()
+    );
 }
 
 #[test]
 fn hit_at_reports_what_the_pointer_would_reach() {
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
+    harness.prime(2, support::button);
 
     assert_eq!(
         harness.hit_at(INSIDE),
-        Some(target()),
+        Some(support::target()),
         "the button senses hover at its own center",
     );
     assert_eq!(
@@ -38,18 +43,28 @@ fn hit_at_reports_what_the_pointer_would_reach() {
 #[test]
 fn center_of_matches_the_arranged_rect() {
     let mut harness = UiHarness::new(SURFACE);
-    harness.prime(2, button);
+    harness.prime(2, support::button);
 
-    let rect = harness.rect(target()).expect("the button arranged");
+    let rect = harness
+        .rect(support::target())
+        .expect("the button arranged");
     // A 100×40 button, first child of an origin-anchored hstack.
     assert_eq!(rect.size.w, 100.0);
     assert_eq!(rect.size.h, 40.0);
-    assert_eq!(harness.center_of(target()), rect.center());
-    assert_eq!(harness.hit_at(harness.center_of(target())), Some(target()));
+    assert_eq!(harness.center_of(support::target()), rect.center());
+    assert_eq!(
+        harness.hit_at(harness.center_of(support::target())),
+        Some(support::target())
+    );
 
     // Addressing the widget lands the same click as the hand-computed `INSIDE`.
-    harness.click_on(target());
-    assert!(harness.response_in(target(), button).left.clicked());
+    harness.click_on(support::target());
+    assert!(
+        harness
+            .response_in(support::target(), support::button)
+            .left
+            .clicked()
+    );
 }
 
 #[test]
@@ -137,6 +152,9 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
 
     // Untransformed, the distinction vanishes, hiding a wrong pick in most of the suite.
     let mut plain = UiHarness::new(SURFACE);
-    plain.prime(2, button);
-    assert_eq!(plain.layout_rect(target()), plain.rect(target()));
+    plain.prime(2, support::button);
+    assert_eq!(
+        plain.layout_rect(support::target()),
+        plain.rect(support::target())
+    );
 }

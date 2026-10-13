@@ -149,7 +149,7 @@ impl LaneCodec for Corners {
     const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
 
     fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self::new(lanes[0], lanes[1], lanes[2], lanes[3])
+        Self(F16x4::from_lanes(lanes))
     }
 
     fn to_lane_array(&self) -> [f32; 4] {

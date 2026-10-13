@@ -1,12 +1,12 @@
 //! The `CascadeKey` that lets a frame reuse the previous cascade, and what moves it.
 
-use crate::Ui;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::text::font_scope::internals::INTER;
+use crate::ui::Ui;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;

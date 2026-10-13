@@ -33,6 +33,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
+use glam::UVec2;
 use std::slice;
 use std::time::Instant;
 
@@ -40,11 +41,11 @@ use std::time::Instant;
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 /// The surfaces the `resizing` scenario rotates through, proportioned against `BENCH_SURFACE`;
 /// multiples of 16 keep each tile-aligned.
-const RESIZE_POOL: [glam::UVec2; 4] = [
-    glam::UVec2::new(2144, 1344),
-    glam::UVec2::new(2560, 1440),
-    glam::UVec2::new(2352, 1392),
-    glam::UVec2::new(2768, 1488),
+const RESIZE_POOL: [UVec2; 4] = [
+    UVec2::new(2144, 1344),
+    UVec2::new(2560, 1440),
+    UVec2::new(2352, 1392),
+    UVec2::new(2768, 1488),
 ];
 
 fn gpu() -> &'static BenchGpu {
@@ -134,7 +135,7 @@ impl Arm {
     }
 
     /// The surfaces the arm renders at, frame `n` at `[n % len]`.
-    const fn sizes(self) -> &'static [glam::UVec2] {
+    const fn sizes(self) -> &'static [UVec2] {
         match self {
             Self::Resizing => &RESIZE_POOL,
             Self::Alternating | Self::Cached | Self::Partial | Self::Scrolling => {
@@ -154,6 +155,53 @@ impl Arm {
             Self::Alternating => state.tick = state.tick.wrapping_add(1),
         }
     }
+
+    /// One target per surface the arm renders at.
+    fn targets(self) -> Vec<BenchTarget> {
+        self.sizes()
+            .iter()
+            .enumerate()
+            .map(|(i, size)| {
+                gpu().target(&format!("palantir.frame_bench.{}.{i}", self.label()), *size)
+            })
+            .collect()
+    }
+
+    /// Measure this arm on `backend`: build its frame with `build` in the case, run it through
+    /// [`SETTLE_FRAMES`], pin one cycle of [`Self::paints`], then time frames.
+    fn measure<F>(
+        self,
+        group: &mut BenchmarkGroup<'_, WallTime>,
+        backend: Backend,
+        build: impl Fn() -> F,
+    ) where
+        F: FnMut(&mut FrameFixture, u32) -> FramePaint,
+    {
+        group.bench_function(backend.case(self.label()), |b| {
+            let mut frame = build();
+            let mut state = FrameFixture::default();
+            let mut n = 0u32;
+            let mut step = || {
+                self.advance(&mut state, n);
+                let paint = frame(&mut state, n);
+                n = n.wrapping_add(1);
+                paint
+            };
+            for _ in 0..SETTLE_FRAMES {
+                step();
+            }
+            for &want in self.paints() {
+                assert_eq!(
+                    step(),
+                    want,
+                    "the {}/{} frames plan another paint",
+                    backend.id(),
+                    self.label()
+                );
+            }
+            b.iter(&mut step);
+        });
+    }
 }
 
 /// Shift the fixture's transform, so only the cascade walk sees change.
@@ -166,60 +214,14 @@ fn scroll(state: &mut FrameFixture) {
 /// starts its check on a scroll step.
 const SETTLE_FRAMES: u32 = 4;
 
-/// Measure `arm` on `backend`: build its frame with `build` in the case, run it through
-/// [`SETTLE_FRAMES`], pin one cycle of [`Arm::paints`], then time frames.
-fn measure_arm<F>(
-    group: &mut BenchmarkGroup<'_, WallTime>,
-    arm: Arm,
-    backend: Backend,
-    build: impl Fn() -> F,
-) where
-    F: FnMut(&mut FrameFixture, u32) -> FramePaint,
-{
-    group.bench_function(backend.case(arm.label()), |b| {
-        let mut frame = build();
-        let mut state = FrameFixture::default();
-        let mut n = 0u32;
-        let mut step = || {
-            arm.advance(&mut state, n);
-            let paint = frame(&mut state, n);
-            n = n.wrapping_add(1);
-            paint
-        };
-        for _ in 0..SETTLE_FRAMES {
-            step();
-        }
-        for &want in arm.paints() {
-            assert_eq!(
-                step(),
-                want,
-                "the {}/{} frames plan another paint",
-                backend.id(),
-                arm.label()
-            );
-        }
-        b.iter(&mut step);
-    });
-}
-
-/// One target per surface the arm renders at.
-fn targets(arm: Arm) -> Vec<BenchTarget> {
-    arm.sizes()
-        .iter()
-        .enumerate()
-        .map(|(i, size)| gpu().target(&format!("palantir.frame_bench.{}.{i}", arm.label()), *size))
-        .collect()
-}
-
+/// One frame of the fixture on `target`, at the bench's device pixel ratio.
 fn gpu_frame(
     host: &mut OffscreenHost,
     target: &BenchTarget,
-    system_scale: f32,
     state: &mut FrameFixture,
 ) -> FramePaint {
     let mut app = RecordApp::new(|ui| state.render(BENCH_SCALE, ui));
-    host.frame(target.as_target(), system_scale, &mut app)
-        .paint()
+    host.frame(target.as_target(), BENCH_DPR, &mut app).paint()
 }
 
 /// `integration/frame/<backend>/<scenario>`: one whole frame of the frame fixture.
@@ -228,7 +230,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
     for backend in backends.all() {
         for arm in Arm::ALL {
             match backend {
-                Backend::Cpu => measure_arm(&mut group, arm, backend, || {
+                Backend::Cpu => arm.measure(&mut group, backend, || {
                     let mut h = CpuHarness::new();
                     let sizes = arm.sizes();
                     move |state: &mut FrameFixture, n: u32| {
@@ -238,13 +240,13 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                         h.frame(|ui| state.render(BENCH_SCALE, ui))
                     }
                 }),
-                Backend::Gpu => measure_arm(&mut group, arm, backend, || {
+                Backend::Gpu => arm.measure(&mut group, backend, || {
                     let g = gpu();
-                    let targets = targets(arm);
+                    let targets = arm.targets();
                     let mut host = bench_host(g);
                     move |state: &mut FrameFixture, n: u32| {
                         let target = &targets[n as usize % targets.len()];
-                        let paint = gpu_frame(&mut host, target, BENCH_DPR, state);
+                        let paint = gpu_frame(&mut host, target, state);
                         g.wait();
                         paint
                     }

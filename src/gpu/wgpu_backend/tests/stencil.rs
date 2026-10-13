@@ -10,9 +10,10 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
+use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
-use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use glam::Vec2;
 
 /// A stencil-clipped group stamps its mask before its draws, and the walk ends with a tail `MaskClear` (the pass clears stencil once and padded damage scissors can overlap). Raw steps pin the depth-1 grammar: stamp at ref 0, content at ref 1, one shared `SetScissor`.

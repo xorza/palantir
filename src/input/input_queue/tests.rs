@@ -1,6 +1,6 @@
-use super::InputQueue;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
+use crate::input::input_queue::InputQueue;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::pointer::PointerButton;

@@ -1,8 +1,9 @@
 //! How a track resolves: fixed, fill weights, hug, and the floors under each.
 
-use crate::layout::drivers::grid::axis_scratch::AxisScratch;
-use crate::layout::drivers::grid::axis_scratch::HugRanges;
+use crate::layout::drivers::grid::axis_scratch::{AxisScratch, GridAxis, HugRanges};
+use crate::layout::drivers::grid::grid_track_store::GridAxisId;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::layout_mode::GridDefId;
 
 use crate::common::span::Span;
 use crate::internals::ui_harness::UiHarness;
@@ -369,7 +370,15 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
         max: &[0.0, 30.0, 0.0],
     };
 
-    a.resolve_axis(&tracks, hugs, 200.0, 0.0, false);
+    let axis = GridAxis {
+        id: GridAxisId {
+            def: GridDefId::from_index(0),
+            axis: Axis::X,
+        },
+        tracks: &tracks,
+        gap: 0.0,
+    };
+    a.resolve_axis(axis, hugs, 200.0);
 
     assert!(
         a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),

@@ -136,14 +136,17 @@ impl<'a> Splitter<'a> {
             .sense(Sense::DRAG)
             .focusable(true)
             .input_scope(KeyFilter::CARET);
-        let first_id = id.with("first");
-        let second_id = id.with("second");
         let axis = self.axis;
+        let panes = Panes {
+            first: id.with("first"),
+            second: id.with("second"),
+            axis,
+        };
 
         let state = ui.state::<SplitterState>(id).copied().unwrap_or_default();
         let sync_pending = state.sync_ratio_next_record;
         let synced_ratio = if sync_pending {
-            arranged_pane_ratio(ui, first_id, second_id, axis)
+            panes.arranged_ratio(ui)
         } else {
             None
         };
@@ -155,12 +158,12 @@ impl<'a> Splitter<'a> {
             if divider.left.drag.is_live()
                 && let (Some(local), Some(rect)) = (response.pointer_local, response.layout_rect)
             {
-                layout_ratio = pointer_to_ratio(
-                    axis.main_v(local),
-                    axis.main(rect.size),
-                    rule_thickness,
-                    self.min_pane,
-                );
+                let seam = Seam {
+                    extent: axis.main(rect.size),
+                    reserved: rule_thickness,
+                    min_pane: self.min_pane,
+                };
+                layout_ratio = seam.ratio_at(axis.main_v(local));
                 resizing = true;
             }
             if divider.double_clicked() {
@@ -175,14 +178,14 @@ impl<'a> Splitter<'a> {
                 && let Some(rect) = response.layout_rect
             {
                 let extent = axis.main(rect.size);
-                let seam = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
+                let at = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
                 let (less, more) = match axis {
                     Axis::X => (Key::ArrowLeft, Key::ArrowRight),
                     Axis::Y => (Key::ArrowUp, Key::ArrowDown),
                 };
                 let target = [
-                    (less, seam - KEY_STEP),
-                    (more, seam + KEY_STEP),
+                    (less, at - KEY_STEP),
+                    (more, at + KEY_STEP),
                     (Key::Home, 0.0),
                     (Key::End, extent),
                 ]
@@ -194,7 +197,12 @@ impl<'a> Splitter<'a> {
                     if pressed { Some(pos) } else { target }
                 });
                 if let Some(pos) = target {
-                    layout_ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                    let seam = Seam {
+                        extent,
+                        reserved: rule_thickness,
+                        min_pane: self.min_pane,
+                    };
+                    layout_ratio = seam.ratio_at(pos);
                     resizing = true;
                     reset = true;
                 }
@@ -243,7 +251,7 @@ impl<'a> Splitter<'a> {
         // `gap` would push the panes off the rule.
         self.widget.configure().gap(0.0).line_gap(0.0);
         self.widget.record(ui, None, |ui| {
-            pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
+            panes.record(ui, SplitHalf::First, |ui| body(ui, SplitHalf::First));
 
             Widget::leaf()
                 .id(id.with("rule"))
@@ -251,7 +259,7 @@ impl<'a> Splitter<'a> {
                 .grid_cell(GridCell::along(axis, 1))
                 .record(ui, Some(&rule_bg), |_| {});
 
-            pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
+            panes.record(ui, SplitHalf::Second, |ui| body(ui, SplitHalf::Second));
 
             let inset = (rule_thickness - grab_thickness) * 0.5;
             divider_widget
@@ -276,29 +284,39 @@ impl Configure for Splitter<'_> {
     }
 }
 
-fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
-    Widget::zstack()
-        .id(id)
-        .size((Sizing::FILL, Sizing::FILL))
-        .clip_rect()
-        .grid_cell(GridCell::along(axis, main_cell))
-        .record(ui, None, body);
+/// The two panes and the axis they split along.
+#[derive(Clone, Copy, Debug)]
+struct Panes {
+    first: WidgetId,
+    second: WidgetId,
+    axis: Axis,
 }
 
-/// Recover the first pane's effective share after layout applied both panes'
-/// content floors.
-fn arranged_pane_ratio(
-    ui: &Ui,
-    first_id: WidgetId,
-    second_id: WidgetId,
-    axis: Axis,
-) -> Option<f32> {
-    let first = ui.response_for(first_id).layout_rect?;
-    let second = ui.response_for(second_id).layout_rect?;
-    let first_extent = axis.main(first.size);
-    let second_extent = axis.main(second.size);
-    let span = first_extent + second_extent;
-    (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
+impl Panes {
+    /// Record the `half` pane in its grid cell, either side of the rule's.
+    fn record(self, ui: &mut Ui, half: SplitHalf, body: impl FnOnce(&mut Ui)) {
+        let (id, main_cell) = match half {
+            SplitHalf::First => (self.first, 0),
+            SplitHalf::Second => (self.second, 2),
+        };
+        Widget::zstack()
+            .id(id)
+            .size((Sizing::FILL, Sizing::FILL))
+            .clip_rect()
+            .grid_cell(GridCell::along(self.axis, main_cell))
+            .record(ui, None, body);
+    }
+
+    /// Recover the first pane's effective share after layout applied both panes'
+    /// content floors.
+    fn arranged_ratio(self, ui: &Ui) -> Option<f32> {
+        let first = ui.response_for(self.first).layout_rect?;
+        let second = ui.response_for(self.second).layout_rect?;
+        let first_extent = self.axis.main(first.size);
+        let second_extent = self.axis.main(second.size);
+        let span = first_extent + second_extent;
+        (!domain::is_invisible(span)).then(|| sanitize_ratio(first_extent / span))
+    }
 }
 
 /// A caller-supplied ratio made safe as a `Fill` weight; unlike a progress bar, an
@@ -309,17 +327,28 @@ const fn sanitize_ratio(r: f32) -> f32 {
 
 const KEY_STEP: f32 = 10.0;
 
-/// Map a container-local pointer coordinate on the split axis to the first pane's
-/// share of the free space (`extent − reserved`); the seam center follows the
-/// pointer and `min_pane` floors both panes, collapsing to a centered clamp when
-/// two floors do not fit. Degenerate extents pin to `0.5`.
-fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
-    let span = extent - reserved;
-    if domain::is_invisible(span) {
-        return 0.5;
+/// The split axis as the divider maps it: the container's `extent`, the rule's
+/// `reserved` share of it, and the floor both panes keep while dragging.
+#[derive(Clone, Copy, Debug)]
+struct Seam {
+    extent: f32,
+    reserved: f32,
+    min_pane: f32,
+}
+
+impl Seam {
+    /// Map a container-local coordinate `pos` to the first pane's share of the free
+    /// space (`extent − reserved`); the seam center follows `pos` and `min_pane`
+    /// floors both panes, collapsing to a centered clamp when two floors do not fit.
+    /// Degenerate extents pin to `0.5`.
+    fn ratio_at(self, pos: f32) -> f32 {
+        let span = self.extent - self.reserved;
+        if domain::is_invisible(span) {
+            return 0.5;
+        }
+        let floor = (self.min_pane / span).min(0.5);
+        domain::band_fraction(pos, self.extent, self.reserved).clamp(floor, 1.0 - floor)
     }
-    let floor = (min_pane / span).min(0.5);
-    domain::band_fraction(pos, extent, reserved).clamp(floor, 1.0 - floor)
 }
 
 #[cfg(test)]

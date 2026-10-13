@@ -12,7 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
-use crate::ui::tests::support::{SURFACE, cold_ui};
+use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -82,7 +82,7 @@ fn display_logical_rect_scales() {
 /// The first frame runs the user closure twice (warmup, real pass).
 #[test]
 fn cold_start_runs_record_closure_twice_on_first_frame() {
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     let mut calls = 0_u32;
     h.frame(|_| calls += 1);
     assert_eq!(calls, 2, "first frame: warmup pass + real pass");
@@ -99,7 +99,7 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
 /// Warmup sees an empty `InputState`; a pre-frame `PointerMoved` appears only in the real pass.
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     h.move_to(Vec2::new(40.0, 40.0));
 
     let observed: RefCell<Vec<Option<Vec2>>> = RefCell::default();
@@ -122,7 +122,7 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
 /// Pointer over a widget at window open: `hovered` is set on frame 1.
 #[test]
 fn cold_start_routes_held_pointer_against_warmup_cascade() {
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     h.move_to(Vec2::new(20.0, 10.0));
     assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
 
@@ -146,7 +146,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
 /// First frame, no input: `Damage::Full`.
 #[test]
 fn cold_start_first_frame_damage_is_full() {
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     let report = h.frame(|ui| {
         Block::new()
             .auto_id()
@@ -169,7 +169,7 @@ fn cold_start_first_frame_damage_is_full() {
 /// Requests during the blackout pass must not bias the real pass's `double_layout` gate.
 #[test]
 fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     let mut calls = 0_u32;
     h.frame(|ui| {
         calls += 1;
@@ -202,7 +202,7 @@ fn warmup_keeps_focus_requests() {
     let target = WidgetId::from_hash("warmup-focus");
     let cases = [(None, Some(target)), (Some(target), None)];
     for (before, request) in cases {
-        let mut h = cold_ui();
+        let mut h = support::cold_ui();
         if let Some(id) = before {
             h.set_focus(id);
         }
@@ -235,7 +235,7 @@ fn warmup_keeps_scope_releases() {
     let root = WidgetId::from_hash("warmup-root");
     let inner = WidgetId::from_hash("warmup-inner");
     let editor = WidgetId::from_hash("warmup-editor");
-    let mut h = cold_ui();
+    let mut h = support::cold_ui();
     h.set_focus(editor);
     h.key(Key::Escape);
 

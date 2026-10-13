@@ -33,7 +33,7 @@ impl<'a> TextShapeRequest<'a> {
     pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Option<Self> {
         debug_assert_eq!(
             key.text_hash,
-            TextShapeKey::content_hash(hash::hash_str(text)),
+            TextShapeKey::content_hash(hash::str(text)),
             "text paired with a key minted from different bytes",
         );
         (!text.is_empty()).then_some(Self { text, key })

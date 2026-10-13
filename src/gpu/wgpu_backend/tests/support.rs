@@ -2,7 +2,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::gpu::frame::schedule::{MaskPlan, RenderStep, for_each_step};
+use crate::gpu::frame::schedule::{MaskPlan, RenderStep, Schedule};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -13,8 +13,8 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::text::TextDrawRow;
 use crate::renderer::render_buffer::text_batch::TextBatch;
+use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::UVec2;
@@ -41,9 +41,12 @@ pub(super) fn collect(
     masks: Option<&MaskPlan>,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
-    for_each_step(buffer, damage_scissor, masks, &mut |s| {
-        steps.push(s);
-    });
+    let schedule = Schedule {
+        buffer,
+        damage_scissor,
+        masks,
+    };
+    schedule.for_each_step(&mut |s| steps.push(s));
     steps
 }
 

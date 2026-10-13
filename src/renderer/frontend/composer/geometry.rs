@@ -1,18 +1,16 @@
 //! Arithmetic a composed frame is cut with: curve subdivision, join choice, and
 //! how a logical rect lands on physical pixels.
 
-use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
-use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
-use crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE;
+use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
-use crate::shape::stroke_bounds::{self, MITER_LIMIT};
-use crate::shape::style::{LineCap, LineJoin};
+use crate::shape::stroke_bounds::MITER_LIMIT;
+use crate::shape::style::LineJoin;
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
 
@@ -73,11 +71,12 @@ pub(super) fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> CurveK
 /// `3/4 * max(d1, d2)`, so ~0.075 px: invisible under the AA fringe.
 const FLAT_EPS_PX: f32 = 0.1;
 
-/// True when the cubic is indistinguishable from the straight segment
-/// `p0 -> p3` ([`FLAT_EPS_PX`]): both inner CPs within the threshold of the
-/// *infinite* chord line. A degenerate chord (closed curve) is never flat.
+/// True when the cubic with control points `[p0, p1, p2, p3]` is
+/// indistinguishable from the straight segment `p0 -> p3` ([`FLAT_EPS_PX`]):
+/// both inner CPs within the threshold of the *infinite* chord line. A
+/// degenerate chord (closed curve) is never flat.
 #[inline]
-pub(super) fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
+pub(super) fn cubic_is_flat([p0, p1, p2, p3]: [Vec2; 4]) -> bool {
     let chord = p3 - p0;
     let len = chord.length();
     if len <= FLAT_EPS_PX {
@@ -110,74 +109,8 @@ pub(super) const fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32
     xform.scale * display_scale
 }
 
-/// The map from owner-local logical px to physical px: owner origin, active
-/// transform, display factor. A closure so the transform read sits outside
-/// callers' per-point loops.
-#[inline]
-pub(super) fn phys_point_map(
-    xform: TranslateScale,
-    origin: Vec2,
-    display_scale: f32,
-) -> impl Fn(Vec2) -> Vec2 {
-    move |q| xform.apply_point(q + origin) * display_scale
-}
-
-/// [`phys_point_map`]'s rect: an owner-local bbox in physical px. Unsnapped,
-/// since mesh and stroked tiers place sub-pixel geometry and let shaders
-/// resolve the fringe (see [`StrokeBbox::urect`]).
-#[inline]
-pub(super) fn phys_bbox(
-    xform: TranslateScale,
-    bbox: Rect,
-    origin: Vec2,
-    display_scale: f32,
-) -> Rect {
-    xform
-        .apply_rect(Rect {
-            min: bbox.min + origin,
-            size: bbox.size,
-        })
-        .scaled_by(display_scale, false)
-}
-
 #[cold]
 #[inline(never)]
 pub(super) fn rounded_clip_depth_overflow(depth: u32) -> ! {
     panic!("rounded clip chain depth {depth} exceeds stencil capacity {MAX_ROUNDED_CLIP_DEPTH}");
-}
-
-/// One stroked shape's owner-local centerline and the style laid over it.
-/// Named fields because the curve and polyline paths differ in two and agree
-/// on the rest.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct StrokeBbox {
-    pub(super) xform: TranslateScale,
-    /// Owner-local centerline bounds, before `origin` and `xform`.
-    pub(super) bbox: Rect,
-    pub(super) origin: Vec2,
-    pub(super) width_phys: f32,
-    pub(super) cap: LineCap,
-    /// `None` for a single-segment stroke, which has no joint.
-    pub(super) join: Option<LineJoin>,
-    pub(super) display: Display,
-}
-
-impl StrokeBbox {
-    /// Physical-px painted bounds: folds in `origin` and the active transform,
-    /// applies the shared stroke/cap/join/AA bound, clamps to the viewport. Shared
-    /// by curve and polyline paths so their cull and overlap bounds agree.
-    pub(super) fn urect(self) -> URect {
-        let Self {
-            xform,
-            bbox,
-            origin,
-            width_phys,
-            cap,
-            join,
-            display,
-        } = self;
-        let centerline_phys = phys_bbox(xform, bbox, origin, display.scale_factor());
-        let painted = stroke_bounds::bbox(centerline_phys, width_phys, AA_HALF_WIDTH, cap, join);
-        urect_from_phys(painted.min, painted.max(), display.physical)
-    }
 }

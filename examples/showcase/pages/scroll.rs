@@ -1,7 +1,6 @@
 //! Scroll viewports in splitter panes. The outer horizontal splitter holds a vertical scroll list; its right half splits vertically into a horizontal strip and a two-axis grid.
 
 use crate::support;
-use crate::support::{on_swatch_style, readout, swatch_bg, well_bg};
 use palantir::{
     Configure, Panel, RgbaF32, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
 };
@@ -61,7 +60,7 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
         });
 
     let line = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
-    readout(ui, "split ratios", line);
+    support::readout(ui, "split ratios", line);
 }
 
 #[track_caller]
@@ -71,7 +70,7 @@ fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
-        .background(well_bg())
+        .background(support::well_bg())
         .show(ui, |ui| {
             Text::new(label).style(&support::caption_style()).show(ui);
             body(ui);
@@ -83,10 +82,10 @@ fn row(ui: &mut Ui, i: u32) {
         .id_salt(i)
         .size((Sizing::FILL, Sizing::fixed(28.0)))
         .padding((10.0, 6.0))
-        .background(swatch_bg(ramp(i)))
+        .background(support::swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "row {i:02}");
-            Text::new(label).style(&on_swatch_style()).show(ui);
+            Text::new(label).style(&support::on_swatch_style()).show(ui);
         });
 }
 
@@ -95,10 +94,10 @@ fn col(ui: &mut Ui, i: u32) {
         .id_salt(i)
         .size((Sizing::fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
-        .background(swatch_bg(ramp(i)))
+        .background(support::swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "col {i:02}");
-            Text::new(label).style(&on_swatch_style()).show(ui);
+            Text::new(label).style(&support::on_swatch_style()).show(ui);
         });
 }
 
@@ -112,11 +111,11 @@ fn grid(ui: &mut Ui) {
                         .id_salt(c)
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .padding((6.0, 4.0))
-                        .background(swatch_bg(ramp(r * 12 + c)))
+                        .background(support::swatch_bg(ramp(r * 12 + c)))
                         .show(ui, |ui| {
                             let label = fmt!(ui, "{r},{c}");
                             Text::new(label)
-                                .style(&on_swatch_style().with_font_size(11.0))
+                                .style(&support::on_swatch_style().with_font_size(11.0))
                                 .show(ui);
                         });
                 }

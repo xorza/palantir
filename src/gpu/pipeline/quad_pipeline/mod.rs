@@ -8,7 +8,7 @@ pub(crate) mod runs;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutPlan, ShadowEntry};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::runs::Runs;
@@ -61,6 +61,23 @@ impl QuadVariants {
     }
 }
 
+/// A quad pipeline and the gradient group it reads at group 0, bound together
+/// with the instance stream before any quad draw.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct QuadBinding<'a> {
+    pub(crate) pipeline: &'a wgpu::RenderPipeline,
+    pub(crate) gradient_bg: &'a wgpu::BindGroup,
+}
+
+impl<'a> QuadBinding<'a> {
+    /// Bind the pipeline, the gradient group and `buffer` as the instance stream.
+    pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
+        pass.set_pipeline(self.pipeline);
+        pass.set_bind_group(0, self.gradient_bg, &[]);
+        pass.set_vertex_buffer(0, buffer.slice(..));
+    }
+}
+
 /// Format-independent quad resources; per-format pipelines are [`QuadVariants`].
 #[derive(Debug)]
 pub(crate) struct QuadPipeline {
@@ -83,18 +100,6 @@ pub(crate) struct QuadPipeline {
 }
 
 impl QuadPipeline {
-    /// Bind a pipeline, the shared gradient group and the instance buffer.
-    pub(crate) fn bind_buffer<'a>(
-        pass: &mut wgpu::RenderPass<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
-        gradient_bg: &'a wgpu::BindGroup,
-        buffer: &'a wgpu::Buffer,
-    ) {
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, gradient_bg, &[]);
-        pass.set_vertex_buffer(0, buffer.slice(..));
-    }
-
     /// Upload the pre-clear quad: full-viewport, opaque `color`, no stroke or rounding, so AA fringes blend over the clear color.
     pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF16) {
         debug_assert!(
@@ -110,13 +115,11 @@ impl QuadPipeline {
         self.clear.upload(ctx, q);
     }
 
-    /// Bind the pipeline and clear buffer for the pre-clear quad. Under `stencil`, `stencil_test` at reference 0 matches every pixel and leaves the stencil intact.
+    /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`](crate::gpu::pipeline::stencil_variant::StencilMode::Test), the test at reference 0 matches every pixel and leaves the stencil intact.
     pub(crate) fn bind_clear<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a StencilVariant,
-        use_stencil: bool,
-        gradient_bg: &'a wgpu::BindGroup,
+        binding: QuadBinding<'a>,
     ) {
         debug_assert!(
             self.clear.is_uploaded(),
@@ -124,12 +127,7 @@ impl QuadPipeline {
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
         // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
-        Self::bind_buffer(
-            pass,
-            pipelines.select(use_stencil),
-            gradient_bg,
-            self.clear.buffer(),
-        );
+        binding.bind(pass, self.clear.buffer());
     }
 
     pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
@@ -142,15 +140,14 @@ impl QuadPipeline {
         buf.upload_instances(ctx, masks);
     }
 
-    /// Bind a mask pipeline (stamp or clear) and the mask buffer; the caller sets `stencil_reference` per draw.
+    /// Bind a mask pipeline (stamp or clear) over the mask buffer; the caller sets `stencil_reference` per draw.
     pub(crate) fn bind_mask<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        mask_pipeline: &'a wgpu::RenderPipeline,
-        gradient_bg: &'a wgpu::BindGroup,
+        binding: QuadBinding<'a>,
     ) {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        Self::bind_buffer(pass, mask_pipeline, gradient_bg, &buf.buffer);
+        binding.bind(pass, &buf.buffer);
     }
 
     pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
@@ -306,35 +303,22 @@ impl QuadPipeline {
         self.cutouts.prepare(ctx, cutouts);
     }
 
-    pub(crate) const fn bakes_cutouts(&self) -> bool {
-        self.cutouts.bakes()
+    pub(crate) const fn cutout_mode(&self) -> CutoutMode {
+        self.cutouts.mode()
     }
 
-    /// Bind pipeline, gradient group and instance buffer once per pass. `use_stencil` selects the stencil-test variant.
-    pub(crate) fn bind<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        variant: &'a StencilVariant,
-        use_stencil: bool,
-        gradient_bg: &'a wgpu::BindGroup,
-    ) {
-        Self::bind_buffer(
-            pass,
-            variant.select(use_stencil),
-            gradient_bg,
-            &self.instance_buffer.buffer,
-        );
+    /// Bind `binding` over the instance buffer, once per run of one pipeline.
+    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, binding: QuadBinding<'a>) {
+        binding.bind(pass, &self.instance_buffer.buffer);
     }
 
     /// [`Self::bind`] for the shadow variant, which also reads the cutout atlas and corner tables.
     pub(crate) fn bind_shadows<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        variant: &'a StencilVariant,
-        use_stencil: bool,
-        gradient_bg: &'a wgpu::BindGroup,
+        binding: QuadBinding<'a>,
     ) {
-        self.bind(pass, variant, use_stencil, gradient_bg);
+        self.bind(pass, binding);
         self.cutouts.bind(pass);
     }
 

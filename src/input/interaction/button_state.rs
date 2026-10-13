@@ -30,8 +30,8 @@ impl ButtonState {
         Self { phase, drag }
     }
 
-    #[inline]
     /// Whether the button is down.
+    #[inline]
     pub const fn held(self) -> bool {
         matches!(self.phase, ButtonPhase::Down { .. } | ButtonPhase::Held)
     }
@@ -48,8 +48,8 @@ impl ButtonState {
         matches!(self.phase, ButtonPhase::Up { .. })
     }
 
-    #[inline]
     /// Consecutive presses while down; `0` otherwise.
+    #[inline]
     pub const fn press_count(self) -> u8 {
         match self.phase {
             ButtonPhase::Down { count } => count,
