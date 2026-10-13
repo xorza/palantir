@@ -1,0 +1,13 @@
+[package]
+name = "api-surface"
+version = "0.0.0"
+edition = "2024"
+description = "Writes palantir's public API surface, rendered from rustdoc JSON, into .notes/API_SURFACE.md."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rustdoc-types = { workspace = true }
+serde_json = { workspace = true }
