@@ -312,6 +312,7 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::cubic_bezier::CubicBezier;
     use crate::primitives::geometry::mesh::Mesh;
+    use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -414,9 +415,11 @@ fn builders_refuse_what_they_check() {
         || drop(Shape::line(Vec2::ZERO, Vec2::new(0.0, N), thin())),
         || {
             drop(Shape::quadratic_bezier(
-                Vec2::ZERO,
-                Vec2::X,
-                Vec2::new(0.0, f32::INFINITY),
+                QuadraticBezier {
+                    p0: Vec2::ZERO,
+                    p1: Vec2::X,
+                    p2: Vec2::new(0.0, f32::INFINITY),
+                },
                 thin(),
             ));
         },

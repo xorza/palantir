@@ -8,6 +8,7 @@ use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
@@ -145,9 +146,11 @@ fn add_curves(ui: &mut Ui) {
     );
     ui.add_shape(
         Shape::quadratic_bezier(
-            glam::Vec2::new(12.0, 50.0),
-            glam::Vec2::new(84.0, 22.0),
-            glam::Vec2::new(156.0, 50.0),
+            QuadraticBezier {
+                p0: glam::Vec2::new(12.0, 50.0),
+                p1: glam::Vec2::new(84.0, 22.0),
+                p2: glam::Vec2::new(156.0, 50.0),
+            },
             Stroke::new(tokens::WARN, 3.0),
         )
         .cap(LineCap::Square),

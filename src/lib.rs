@@ -203,6 +203,7 @@ pub mod widget {
     pub use crate::primitives::geometry::circular_arc::CircularArc;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
+    pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
@@ -234,6 +235,7 @@ pub mod widget {
     pub use crate::text::run::TextRun;
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
+    pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec, OverlayTurn};
     pub use crate::widget_core::widget::Widget;
     pub use crate::widget_core::widget_look::look_plan::LookPlan;
     pub use crate::widget_core::widget_look::theme_slot::ThemeSlot;

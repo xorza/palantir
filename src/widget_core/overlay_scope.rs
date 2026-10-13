@@ -16,7 +16,7 @@ use crate::widgets::block::Block;
 /// What stands between an overlay's body and the layers below it. Pointer and keys
 /// are one decision: an overlay takes both or neither.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Backdrop {
+pub enum Backdrop {
     /// Nothing. The overlay annotates rather than interrupts: it wants the layer
     /// for paint order and flip-to-fit placement; the host underneath stays live.
     None,
@@ -35,24 +35,29 @@ impl Backdrop {
     }
 }
 
+/// What one [`OverlayScope::record`] saw: the body's result and the two dismissal edges.
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct OverlayTurn<R> {
-    pub(crate) inner: R,
-    pub(crate) escape: bool,
-    pub(crate) outside: bool,
+pub struct OverlayTurn<R> {
+    /// What the body returned.
+    pub inner: R,
+    /// Escape was pressed while the overlay held the keys; always `false` without a backdrop.
+    pub escape: bool,
+    /// A press landed on the backdrop rather than the body; always `false` without one.
+    pub outside: bool,
 }
 
 /// Where an overlay records and what stands under it: everything [`OverlayScope::claim`] takes
 /// past the root.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct OverlaySpec {
+pub struct OverlaySpec {
     /// Where the body records; held by the scope so scope and body cannot land on different
     /// layers.
-    pub(crate) layer: Layer,
+    pub layer: Layer,
     /// `None` takes the layer's default: the surface origin, whole surface available.
-    pub(crate) anchor: Option<Anchor>,
-    pub(crate) backdrop: Backdrop,
+    pub anchor: Option<Anchor>,
+    /// What stands between the body and the layers below it.
+    pub backdrop: Backdrop,
 }
 
 /// One overlay's turn on a layer, from stamping its root until it closes.
@@ -60,8 +65,12 @@ pub(crate) struct OverlaySpec {
 /// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
 /// [`Self::withdraw`]). A scope silences the layers strictly *below* its own, never
 /// its own body, so a `TextEdit` in a popup keeps the keyboard.
+///
+/// A custom overlay follows the same order: [`Self::claim`] with the root before
+/// recording, [`Self::record`] the body, then [`Self::withdraw`] on the frame it
+/// closes.
 #[derive(Debug)]
-pub(crate) struct OverlayScope {
+pub struct OverlayScope {
     owner: WidgetId,
     spec: OverlaySpec,
 }
@@ -72,7 +81,7 @@ impl OverlayScope {
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
     /// stops.
-    pub(crate) fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
+    pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self {
         if spec.backdrop.owns_input() {
             root.configure()
                 .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS));
@@ -91,7 +100,7 @@ impl OverlayScope {
     /// runs in reverse, so the body still wins); it senses all four pointer
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
     /// `Sense::CLICK` dismisses.
-    pub(crate) fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
+    pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R> {
         let OverlaySpec {
             layer,
             anchor,
@@ -142,7 +151,7 @@ impl OverlayScope {
     /// paths resolve against a cascade a frame old, so merely ceasing to record would
     /// keep owning input one more frame and swallow the click where it was. Takes
     /// `self`, so the claim is spent.
-    pub(crate) fn withdraw(self, ui: &mut Ui) {
+    pub fn withdraw(self, ui: &mut Ui) {
         if self.spec.backdrop.owns_input() {
             ui.release_input_scope(self.owner);
         }

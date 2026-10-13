@@ -1,6 +1,7 @@
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::brush::Brush;
@@ -300,9 +301,11 @@ fn curves_lower_to_their_basis_and_tight_bbox() {
         (
             "quadratic",
             Shape::quadratic_bezier(
-                Vec2::ZERO,
-                Vec2::new(6.0, 6.0),
-                Vec2::new(12.0, 0.0),
+                QuadraticBezier {
+                    p0: Vec2::ZERO,
+                    p1: Vec2::new(6.0, 6.0),
+                    p2: Vec2::new(12.0, 0.0),
+                },
                 stroke,
             ),
             CurveBasis::Cubic(CubicBezier {

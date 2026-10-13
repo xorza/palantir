@@ -1,9 +1,14 @@
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
+use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
 use crate::primitives::math::domain::internals::assert_close;
 use glam::Vec2;
 
+fn quadratic(p0: Vec2, p1: Vec2, p2: Vec2) -> QuadraticBezier {
+    QuadraticBezier { p0, p1, p2 }
+}
+
 #[test]
-fn from_quadratic_promotes_inner_cps() {
+fn quadratic_promotion_moves_the_inner_cps() {
     let p0 = Vec2::new(0.0, 0.0);
     let c = Vec2::new(50.0, 100.0);
     let p2 = Vec2::new(100.0, 0.0);
@@ -12,7 +17,7 @@ fn from_quadratic_promotes_inner_cps() {
         p1: q1,
         p2: q2,
         p3: e3,
-    } = CubicBezier::from_quadratic(p0, c, p2);
+    } = CubicBezier::from(quadratic(p0, c, p2));
     assert_eq!((e0, e3), (p0, p2), "the ends stay put");
     // q1 = p0 + 2/3·(c − p0) = (100/3, 200/3), q2 = p2 + 2/3·(c − p2) = (200/3, 200/3), each rounded once through the f32 2/3.
     let two_thirds = 2.0 / 3.0;
@@ -83,14 +88,14 @@ fn bbox_contains_sampled_curve() {
 }
 
 #[test]
-fn from_quadratic_matches_midpoint() {
+fn quadratic_promotion_matches_the_midpoint() {
     // Quadratic Q(t) at t=0.5: 0.25·p0 + 0.5·c + 0.25·p2.
     // Cubic C(t) at t=0.5: 0.125·p0 + 0.375·q1 + 0.375·q2 + 0.125·p2.
     // For the promoted (q1, q2), C(0.5) == Q(0.5).
     let p0 = Vec2::new(1.0, 2.0);
     let c = Vec2::new(10.0, 30.0);
     let p2 = Vec2::new(-5.0, 7.0);
-    let CubicBezier { p1: q1, p2: q2, .. } = CubicBezier::from_quadratic(p0, c, p2);
+    let CubicBezier { p1: q1, p2: q2, .. } = CubicBezier::from(quadratic(p0, c, p2));
     let q_mid = 0.25 * p0 + 0.5 * c + 0.25 * p2;
     let c_mid = 0.125 * p0 + 0.375 * q1 + 0.375 * q2 + 0.125 * p2;
     assert_eq!(q_mid, c_mid);
@@ -105,8 +110,12 @@ fn promoted_quadratics_keep_their_extremum_in_the_bbox() {
         u * u * p0 + 2.0 * t * u * c + t * t * p2
     };
     let worked = |p0: f32, c: f32, p2: f32| {
-        CubicBezier::from_quadratic(Vec2::new(0.0, p0), Vec2::new(0.5, c), Vec2::new(1.0, p2))
-            .bbox()
+        CubicBezier::from(quadratic(
+            Vec2::new(0.0, p0),
+            Vec2::new(0.5, c),
+            Vec2::new(1.0, p2),
+        ))
+        .bbox()
     };
     let bbox = worked(7.0, 49.0, 8.0);
     assert_close(

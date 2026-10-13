@@ -5,6 +5,7 @@ pub(crate) mod circular_arc;
 pub(crate) mod corners;
 pub(crate) mod cubic_bezier;
 pub(crate) mod mesh;
+pub(crate) mod quadratic_bezier;
 pub(crate) mod rect;
 pub(crate) mod size;
 pub(crate) mod spacing;

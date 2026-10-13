@@ -2,7 +2,7 @@
 //! arcs and triangles, and the order they paint in.
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, Shape};
+use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
 use palantir::{
     Background, Block, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke,
 };
@@ -287,9 +287,11 @@ fn curve_caps_match_golden() {
             }
             ui.add_shape(
                 Shape::quadratic_bezier(
-                    Vec2::new(30.0, 215.0),
-                    Vec2::new(100.0, 170.0),
-                    Vec2::new(170.0, 215.0),
+                    QuadraticBezier {
+                        p0: Vec2::new(30.0, 215.0),
+                        p1: Vec2::new(100.0, 170.0),
+                        p2: Vec2::new(170.0, 215.0),
+                    },
                     Stroke::new(RgbaF32::srgb(1.0, 0.85, 0.2), 4.0),
                 )
                 .cap(LineCap::Round),
