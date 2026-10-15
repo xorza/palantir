@@ -51,7 +51,7 @@ workspace = true
 
 [dependencies]
 palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.0" }
-arboard = { version = "3.6", default-features = false, optional = true }
+arboard = { version = "3.7", default-features = false, optional = true }
 bytemuck = { version = "1.25", features = ["derive"] }
 cosmic-text = "0.19"
 fixedbitset = "0.5"
