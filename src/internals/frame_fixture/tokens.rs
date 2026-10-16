@@ -1,6 +1,6 @@
-//! The fixture's design tokens: colours, chrome and text styles every section builds from.
+//! The fixture's design tokens: colors, chrome and text styles every section builds from.
 //!
-//! The colours' only load-bearing property is that the chrome they feed stays non-noop: [`card_bg`] must keep a real drop shadow (the sole driver of the encoder's chrome-shadow branch) and a hairline border, or the workload loses coverage.
+//! The colors' only load-bearing property is that the chrome they feed stays non-noop: [`card_bg`] must keep a real drop shadow (the sole driver of the encoder's chrome-shadow branch) and a hairline border, or the workload loses coverage.
 
 use crate::internals::demo_swatches;
 use crate::primitives::geometry::corners::Corners;

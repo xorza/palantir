@@ -8,7 +8,7 @@ use palantir::{
     WidgetId, fmt,
 };
 
-const PAGES: [&str; 3] = ["Colour", "Geometry", "Metadata"];
+const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
 
 const MANY: [&str; 9] = [
     "curves", "levels", "sharpen", "denoise", "rotate", "crop", "vignette", "grain", "export",

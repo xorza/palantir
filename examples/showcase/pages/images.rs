@@ -2,7 +2,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "the showcase casts non-negative sizes, ids and colour channels"
+    reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
 use crate::support;
@@ -42,7 +42,7 @@ fn gradient() -> Image {
     Image::from_srgba8(UVec2::new(W, H), pixels).expect("the demo pixels match their size")
 }
 
-/// 4×4 primary-colour sprite: any tile-sized draw is a heavy upscale, making linear vs nearest obvious.
+/// 4×4 primary-color sprite: any tile-sized draw is a heavy upscale, making linear vs nearest obvious.
 fn sprite() -> Image {
     let px: [[u8; 4]; 16] = [
         [230, 60, 60, 255],
@@ -85,7 +85,7 @@ fn starfield() -> Image {
         let r = next();
         let x = (r % u64::from(N)) as u32;
         let y = ((r >> 20) % u64::from(N)) as u32;
-        // Varied magnitudes and a warm/cool split, so `Peak` picking a whole tap (not a per-channel max) shows as kept colour.
+        // Varied magnitudes and a warm/cool split, so `Peak` picking a whole tap (not a per-channel max) shows as kept color.
         let mag = 90 + ((r >> 40) % 166) as u8;
         let warm = (r >> 48) & 1 == 0;
         let (rr, gg, bb) = if warm {

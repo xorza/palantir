@@ -199,7 +199,7 @@ const fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 // Tint is straight-alpha linear; the shader multiplies it by the decoded
-// vertex colour.
+// vertex color.
 const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
     2 => Float32x2,
     3 => Float32,

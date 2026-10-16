@@ -84,11 +84,11 @@ pub struct Theme {
     pub drag_value: DragValueTheme,
     /// Panel and rows of every [`crate::ContextMenu`] and [`crate::ComboBox`] dropdown.
     pub context_menu: ContextMenuTheme,
-    /// [`crate::ComboBox`] geometry; colours come from [`Self::button`] and [`Self::context_menu`].
+    /// [`crate::ComboBox`] geometry; colors come from [`Self::button`] and [`Self::context_menu`].
     pub combo_box: ComboBoxTheme,
     /// Panel and backdrop of every [`crate::Modal`].
     pub modal: ModalTheme,
-    /// What the colour picker and its parts wear.
+    /// What the color picker and its parts wear.
     pub color_picker: ColorPickerTheme,
     /// Bubble and delay of every [`crate::Tooltip`].
     pub tooltip: TooltipTheme,

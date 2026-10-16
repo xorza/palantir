@@ -59,14 +59,14 @@ pub struct TabbedViewResponse<'a> {
 ///
 /// ```
 /// # use palantir::{Configure, TabbedView, Ui};
-/// # fn colour(_: &mut Ui) {}
+/// # fn color(_: &mut Ui) {}
 /// # fn geometry(_: &mut Ui) {}
 /// # fn metadata(_: &mut Ui) {}
 /// # fn demo(ui: &mut Ui, page: &mut usize) {
-/// TabbedView::new(page, &["Colour", "Geometry", "Metadata"])
+/// TabbedView::new(page, &["Color", "Geometry", "Metadata"])
 ///     .closable(false)
 ///     .show(ui, |ui, page| match page {
-///         0 => colour(ui),
+///         0 => color(ui),
 ///         1 => geometry(ui),
 ///         _ => metadata(ui),
 ///     });

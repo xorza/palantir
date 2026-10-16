@@ -496,11 +496,11 @@ impl CosmicMeasure {
             }
             let line_y_px = (run.line_y * scale).fast_round() as i32;
             for glyph in run.glyphs {
-                // The renderer caches encoded runs on one uniform area colour, valid only while
-                // cosmic produces no per-glyph override ([`attrs_named`] sets no per-span colour).
+                // The renderer caches encoded runs on one uniform area color, valid only while
+                // cosmic produces no per-glyph override ([`attrs_named`] sets no per-span color).
                 debug_assert!(
                     glyph.color_opt.is_none(),
-                    "per-glyph colour override requires folding colour into EncodedKey",
+                    "per-glyph color override requires folding color into EncodedKey",
                 );
                 let physical = glyph.physical((origin_x, origin.y), scale);
                 out.push(PlacedGlyph {

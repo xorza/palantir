@@ -1,4 +1,4 @@
-//! How a lowered shape fills: a colour or an interned gradient.
+//! How a lowered shape fills: a color or an interned gradient.
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

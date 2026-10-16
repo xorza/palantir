@@ -36,7 +36,7 @@ struct Scaled {
 /// Two fields, each settling in its own unit.
 #[derive(Clone, Copy, Debug, PartialEq, Animatable)]
 struct Mixed {
-    colour: RgbaF32,
+    color: RgbaF32,
     scaled: Scaled,
     #[animate(snap)]
     label: u8,
@@ -136,7 +136,7 @@ fn derived_settle_distance_measures_each_field_in_its_own_unit() {
     let scaled = Scaled { a: 3.0, b: 4.0 };
     assert_eq!(scaled.settle_distance_squared(), 100.0);
     let mixed = Mixed {
-        colour: RgbaF32::new(1.0 / 4096.0, 0.0, 0.0, 0.0),
+        color: RgbaF32::new(1.0 / 4096.0, 0.0, 0.0, 0.0),
         scaled,
         label: 7,
     };

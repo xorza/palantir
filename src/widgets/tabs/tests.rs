@@ -454,7 +454,7 @@ fn the_insertion_slot_counts_the_centres_passed() {
     );
 }
 
-const PAGES: [&str; 3] = ["Colour", "Geometry", "Metadata"];
+const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
 
 /// Clicking a chip writes the bound index and records the page the same frame.
 #[test]
@@ -631,7 +631,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
         record(ui, &mut page, &PAGES);
     });
     let geometry_before = h.rect(chip("Geometry")).expect("Geometry's chip");
-    let colour = h.rect(chip("Colour")).expect("Colour's chip");
+    let color = h.rect(chip("Color")).expect("Color's chip");
     assert!(
         h.rect(TabStrip::chip_id(strip, 1)).is_none(),
         "no index keys"
@@ -641,7 +641,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     });
     let geometry_after = h.rect(chip("Geometry")).expect("Geometry's chip survives");
     assert_eq!(
-        geometry_after.min.x, colour.min.x,
+        geometry_after.min.x, color.min.x,
         "it moved to the left edge"
     );
     assert!(geometry_after.min.x < geometry_before.min.x);
@@ -651,7 +651,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     h.prime(2, |ui| {
         record(ui, &mut page, &PAGES);
     });
-    h.press_on(chip("Colour"));
+    h.press_on(chip("Color"));
     let onto = h.center_of(chip("Metadata"));
     h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
     h.frame(|ui| {
@@ -660,7 +660,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     h.release();
     let action = h.frame_value(|ui| record(ui, &mut page, &PAGES));
     assert_eq!(action, Some(TabsAction::Reordered { from: 0, to: 3 }));
-    assert_eq!(page, 2, "the bound page followed Colour to the end");
+    assert_eq!(page, 2, "the bound page followed Color to the end");
 }
 
 /// Where an index lands when `from` moves into gap `to`, for pages [A, B, C, D].

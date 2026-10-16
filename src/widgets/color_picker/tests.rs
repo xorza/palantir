@@ -62,11 +62,7 @@ fn an_outside_edit_re_seeds_the_axes() {
         !edges.changed,
         "the picker does not rewrite what it was handed"
     );
-    assert_eq!(
-        color.to_srgba_u8().r,
-        0xff,
-        "and it keeps the colour intact"
-    );
+    assert_eq!(color.to_srgba_u8().r, 0xff, "and it keeps the color intact");
 
     h.press_at(Vec2::new(206.0, 1.0));
     frame(&mut h, id, &mut color);
@@ -77,9 +73,9 @@ fn an_outside_edit_re_seeds_the_axes() {
     );
 }
 
-/// Opacity leaves the colour channels untouched (pure blue is outside the Okhsv cube).
+/// Opacity leaves the color channels untouched (pure blue is outside the Okhsv cube).
 #[test]
-fn opacity_leaves_the_colour_alone() {
+fn opacity_leaves_the_color_alone() {
     let id = WidgetId::from_hash("picker-alpha-only");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x0000ff);
@@ -97,7 +93,7 @@ fn opacity_leaves_the_colour_alone() {
 }
 
 #[test]
-fn the_model_switch_keeps_the_colour() {
+fn the_model_switch_keeps_the_color() {
     let id = WidgetId::from_hash("picker-model-switch");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
@@ -193,9 +189,9 @@ fn the_style_reaches_the_field_and_the_swatches() {
     assert_ne!(styled.swatch, plain.swatch);
 }
 
-/// Readouts show the bound colour, not the axes' clamped reading, and a channel edit keeps the others.
+/// Readouts show the bound color, not the axes' clamped reading, and a channel edit keeps the others.
 #[test]
-fn the_readouts_and_channel_edits_start_from_the_bound_colour() {
+fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     use crate::widgets::color_picker::PickerState;
 
     let id = WidgetId::from_hash("picker-bound-readout");

@@ -41,7 +41,7 @@ impl TriangleShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `fill` is a [colour](crate::widget::domain::color).
+    /// Panics unless `fill` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn fill(mut self, fill: RgbaF32) -> Self {
         self.fill = domain::color(fill);
@@ -53,7 +53,7 @@ impl TriangleShape {
     /// # Panics
     ///
     /// Panics unless the width is a [length](crate::widget::domain::length) and
-    /// the colour a [colour](crate::widget::domain::color).
+    /// the color a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn border(mut self, border: Stroke) -> Self {
         border.validate();

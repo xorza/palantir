@@ -41,7 +41,7 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// that knows its unit says so: `RgbaF32` settles at `1/4096`, under one 8-bit
     /// sRGB step near black.
     ///
-    /// The derive sums its fields' own distances, so pixel and colour fields keep
+    /// The derive sums its fields' own distances, so pixel and color fields keep
     /// their own tolerances. A derive with one unit of its own uses
     /// `#[animate(settle_eps = ...)]`.
     #[inline]

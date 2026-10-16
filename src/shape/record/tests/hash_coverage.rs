@@ -825,7 +825,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &curve(LineCap::Butt, cubic, stroke2, Rect::ZERO, none),
     );
     moves(
-        "Curve.stroke colour",
+        "Curve.stroke color",
         &base,
         &curve(LineCap::Butt, cubic, red_stroke, Rect::ZERO, none),
     );

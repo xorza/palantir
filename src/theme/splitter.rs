@@ -9,7 +9,7 @@ pub struct SplitterTheme {
     /// Grab-bar breadth in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub grab_thickness: f32,
-    /// Resting rule colour.
+    /// Resting rule color.
     pub rule: RgbaF32,
     /// Rule breadth in logical px; the layout space reserved.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

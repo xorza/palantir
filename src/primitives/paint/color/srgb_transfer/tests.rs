@@ -38,7 +38,7 @@ fn a_dense_float_sweep_decodes_exactly() {
     }
 }
 
-/// NaN and infinities are not colours; they pass through.
+/// NaN and infinities are not colors; they pass through.
 #[test]
 fn non_finite_input_passes_through() {
     assert!(decode(f64::NAN).is_nan());

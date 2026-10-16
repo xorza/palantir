@@ -1,4 +1,4 @@
-//! The colour family in one composition: the whole panel, the parts alone, and the chip that opens its own panel.
+//! The color family in one composition: the whole panel, the parts alone, and the chip that opens its own panel.
 //!
 //! The field and both bars are exact per texel, so the Okhsv square keeps one brightness across the hue circle where HSV does not; switch the model under the panel to compare.
 
@@ -36,7 +36,7 @@ impl Default for State {
     }
 }
 
-/// How many colours the app-owned swatch row keeps.
+/// How many colors the app-owned swatch row keeps.
 const RECENT: usize = 12;
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -74,7 +74,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 support::note(
                     ui,
                     "The same widgets on their own, for a layout of your own. The field and the \
-                     bar share one set of colour coordinates, so the bar's hue is the field's. The lower \
+                     bar share one set of color coordinates, so the bar's hue is the field's. The lower \
                      field has a texel size of 16, for the difference it makes.",
                 );
                 support::row(ui, |ui| {

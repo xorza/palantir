@@ -145,7 +145,7 @@ impl DamageEngine {
         self.note_presented(baseline, damage)
     }
 
-    /// Stamps the baseline a frame presents under and hands its damage back. Only a painted frame presents; stamping a skipped one would adopt a clear colour no pixel was painted under.
+    /// Stamps the baseline a frame presents under and hands its damage back. Only a painted frame presents; stamping a skipped one would adopt a clear color no pixel was painted under.
     const fn note_presented(
         &mut self,
         baseline: FrameBaseline,

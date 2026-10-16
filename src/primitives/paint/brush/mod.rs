@@ -1,7 +1,7 @@
-//! What fills a shape: a solid colour or a gradient.
+//! What fills a shape: a solid color or a gradient.
 //!
-//! Colours blend premultiplied wherever they interpolate (gradient stops, mesh vertices,
-//! polyline per-point colours, join averages), per CSS Color 4 §12.3: opaque white fading to
+//! Colors blend premultiplied wherever they interpolate (gradient stops, mesh vertices,
+//! polyline per-point colors, join averages), per CSS Color 4 §12.3: opaque white fading to
 //! transparent black is white at half alpha midway, not darkened.
 
 pub(crate) mod gradient;
@@ -26,7 +26,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 // through several functions per widget; see `Animatable`.
 #[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub enum Brush {
-    /// One colour.
+    /// One color.
     Solid(RgbaF32),
     /// Linear gradient.
     Linear(LinearGradient),
@@ -37,7 +37,7 @@ pub enum Brush {
 }
 
 impl Brush {
-    /// Panics unless the colour or gradient geometry holds its kinds ([`domain`]); stops are checked when made.
+    /// Panics unless the color or gradient geometry holds its kinds ([`domain`]); stops are checked when made.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -74,7 +74,7 @@ impl Brush {
     }
 
     #[inline]
-    /// The colour, if solid.
+    /// The color, if solid.
     pub const fn as_solid(&self) -> Option<RgbaF32> {
         match self {
             Self::Solid(c) => Some(*c),

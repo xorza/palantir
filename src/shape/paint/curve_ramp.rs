@@ -1,8 +1,8 @@
-//! What a lowered curve's colour multiplies by.
+//! What a lowered curve's color multiplies by.
 
 use crate::scene::record_store::recorded_gradients::GradientId;
 
-/// What a curve's stroke colour multiplies: nothing, or an interned ramp.
+/// What a curve's stroke color multiplies: nothing, or an interned ramp.
 ///
 /// Inline pair, not a struct, so the value is 16 B and `ShapeRecord::Curve` fits its 88 B.
 #[derive(Clone, Copy, Debug)]

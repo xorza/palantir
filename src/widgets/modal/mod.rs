@@ -49,11 +49,11 @@ impl<'a> Modal<'a> {
         self
     }
 
-    /// Backdrop scrim colour, defaulting to [`crate::Theme::modal`]'s.
+    /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
     ///
     /// # Panics
     ///
-    /// Panics unless `c` is a [colour](crate::widget::domain::color).
+    /// Panics unless `c` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn backdrop(mut self, c: RgbaF32) -> Self {
         self.backdrop = Some(domain::color(c));

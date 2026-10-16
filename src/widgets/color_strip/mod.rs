@@ -1,4 +1,4 @@
-//! The one-axis bars of a colour picker: hue, and alpha over its checker.
+//! The one-axis bars of a color picker: hue, and alpha over its checker.
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -27,7 +27,7 @@ use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use glam::Vec2;
 
-/// A one-axis bar of a colour picker: the hue ramp, or one colour's alpha ramp over its checker.
+/// A one-axis bar of a color picker: the hue ramp, or one color's alpha ramp over its checker.
 ///
 /// Exact per texel, as [`ColorField`](crate::ColorField) explains; the alpha bar writes real alpha and
 /// lets the GPU composite it over the checker.

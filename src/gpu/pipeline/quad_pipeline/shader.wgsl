@@ -144,7 +144,7 @@ const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
 // rect path (solid and the gradients).
 const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
-// `fill` is the shadow colour, `radius` is the source rect's corner
+// `fill` is the shadow color, `radius` is the source rect's corner
 // radii, `size` is the paint bbox, and
 // `fill_axis = (offset.x, offset.y, sigma, spread)` for both.
 //   - Drop:  paint bbox = (source + offset).inflated(SHADOW_REACH_SIGMAS·σ + max(spread, 0)).
@@ -362,7 +362,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     let fa_lo = unpack2x16float(fill_axis_packed.x);
     let fa_hi = unpack2x16float(fill_axis_packed.y);
     let fill_axis = vec4<f32>(fa_lo.x, fa_lo.y, fa_hi.x, fa_hi.y);
-    // Same pattern again for the two fill colours (linear-RGB).
+    // Same pattern again for the two fill colors (linear-RGB).
     let f_lo = unpack2x16float(fill_packed.x);
     let f_hi = unpack2x16float(fill_packed.y);
     let fill = vec4<f32>(f_lo.x, f_lo.y, f_hi.x, f_hi.y);
@@ -500,7 +500,7 @@ fn apply_spread(t: f32, mode: u32) -> f32 {
     return clamp(t, 0.0, 1.0);
 }
 
-// Resolve the fill colour at a given fragment. Solid path returns
+// Resolve the fill color at a given fragment. Solid path returns
 // `in.fill` verbatim.
 // Linear path projects `in.local` onto `fill_axis.xy` (object-local
 // 0..1 axis), maps to 0..1 via `(t0, t1)`, applies spread, samples
@@ -1071,7 +1071,7 @@ fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
     return px;
 }
 
-// A shadow pixel's colour at `cov`, the coverage of its box: a drop shadow
+// A shadow pixel's color at `cov`, the coverage of its box: a drop shadow
 // paints it, an inset one its complement, both as far as the source lets.
 fn shadow_paint(in: ShadowOut, px: ShadowPixel, cov: f32) -> vec4<f32> {
     let inset = in.kind == BRUSH_KIND_SHADOW_INSET;

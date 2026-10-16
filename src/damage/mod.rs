@@ -72,7 +72,7 @@ pub(crate) enum DamageBase {
 }
 
 /// What the GPU should do with this frame. "Nothing changed" is `None`, not a
-/// variant; see [`Damage::new`]. Clear colour is a presentation concern
+/// variant; see [`Damage::new`]. Clear color is a presentation concern
 /// stamped in by [`crate::renderer::render_plan::RenderPlan`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {

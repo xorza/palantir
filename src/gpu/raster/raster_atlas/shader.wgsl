@@ -41,8 +41,8 @@ const U_MASK: u32 = (1u << U_BITS) - 1u;
 const V_SHIFT: u32 = /*{V_SHIFT}*/;
 // The carried flags, already shifted down past `u`.
 const FLAG_MASK: u32 = /*{FLAG_MASK}*/;
-const FLAG_DESATURATE: u32 = /*{FLAG_DESATURATE}*/;  // colour icons only; see `fs`
-const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample colour, not mask
+const FLAG_DESATURATE: u32 = /*{FLAG_DESATURATE}*/;  // color icons only; see `fs`
+const FLAG_COLOR: u32 = /*{FLAG_COLOR}*/;            // sample color, not mask
 // Set by `vs`, not carried in: the quad is drawn at a size other than its
 // raster's, so `fs` filters instead of reading texel for texel. The bit
 // just above the carried ones.
@@ -104,13 +104,13 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let cov = textureLoad(mask_atlas, vec2<i32>(in.texel), 0).x;
         return premultiply(in.color.rgb, in.color.a * cov);
     }
-    // Colour emoji or colour icon: the sRGB texture decodes to linear
+    // Color emoji or color icon: the sRGB texture decodes to linear
     // straight RGBA on load. Premultiply at output; the run alpha modulates
     // the whole premultiplied result, so faded text fades its emoji too and a
     // faded icon fades whole.
     let s = textureLoad(color_atlas, vec2<i32>(in.texel), 0);
     // DESATURATE collapses the artwork to its luminance — the disabled look
-    // for an icon whose own colours the tint cannot replace. Alpha is
+    // for an icon whose own colors the tint cannot replace. Alpha is
     // untouched, so the shape is unchanged and only the hue goes.
     let grey = vec3<f32>(dot(s.rgb, LUMA));
     let rgb = select(s.rgb, grey, (in.flags & FLAG_DESATURATE) != 0u);
@@ -118,8 +118,8 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 }
 
 // An icon drawn at a size other than its raster's: the four nearest texels,
-// filtered by hand, clamped to the raster's own slot. Colour taps are
-// premultiplied before they blend, like every colour interpolation.
+// filtered by hand, clamped to the raster's own slot. Color taps are
+// premultiplied before they blend, like every color interpolation.
 fn resampled(in: VertexOut) -> vec4<f32> {
     let t = taps(in.texel, in.texel_rect);
     if ((in.flags & FLAG_COLOR) == 0u) {
@@ -136,7 +136,7 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     let d = premultiplied_texel(vec2<i32>(t.hi.x, t.hi.y));
     let s = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
     // Luminance is linear, so the premultiplied grey is the grey of the
-    // straight colour times its alpha — the same look as `fs`'s.
+    // straight color times its alpha — the same look as `fs`'s.
     let grey = vec3<f32>(dot(s.rgb, LUMA));
     let rgb = select(s.rgb, grey, (in.flags & FLAG_DESATURATE) != 0u);
     return vec4<f32>(rgb, s.a) * in.color.a;

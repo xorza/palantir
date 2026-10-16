@@ -109,7 +109,7 @@ impl ScaledRect {
     }
 }
 
-/// The two ends of one polyline segment's colour ramp.
+/// The two ends of one polyline segment's color ramp.
 #[derive(Clone, Copy, Debug)]
 struct SegmentColors {
     start: RgbaF16,
@@ -582,7 +582,7 @@ impl PaintSink for ComposeSession<'_> {
         let directions = directions.as_slice();
         let pt = |k: usize| pts[kept[k] as usize];
         // Segment colors for `k -> k+1`, indexed through `kept`. A paint animation's
-        // alpha is folded in here, where each colour is read once, so fading costs no copy.
+        // alpha is folded in here, where each color is read once, so fading costs no copy.
         let seg_colors = |k: usize| -> SegmentColors {
             let colors = match mode {
                 ColorMode::Single => SegmentColors::flat(src_colors[0]),
@@ -1028,7 +1028,7 @@ impl ComposeSession<'_> {
     }
 }
 
-/// The straight colour halfway between `a` and `b`, interpolated premultiplied. A midpoint with no
+/// The straight color halfway between `a` and `b`, interpolated premultiplied. A midpoint with no
 /// alpha is transparent black.
 fn premultiplied_midpoint(a: RgbaF32, b: RgbaF32) -> RgbaF32 {
     let (a, b) = (a.premultiplied(), b.premultiplied());

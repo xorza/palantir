@@ -19,8 +19,8 @@ pub(crate) struct RasterQuad {
 }
 
 impl RasterQuad {
-    /// Collapses a colour raster to luminance when OR-ed into [`Self::pack_uv`]'s
-    /// value: the disabled look for a colour icon. No effect on the mask path.
+    /// Collapses a color raster to luminance when OR-ed into [`Self::pack_uv`]'s
+    /// value: the disabled look for a color icon. No effect on the mask path.
     pub(crate) const DESATURATE: u32 = 1 << U_BITS;
 
     /// Packs an atlas slot's origin and content type into the `u32` the vertex

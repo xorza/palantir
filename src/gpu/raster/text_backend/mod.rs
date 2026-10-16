@@ -3,7 +3,7 @@
 //! - Linear premultiplied end to end: the shader writes `vec4(rgb*a, a)`
 //!   with `PREMULTIPLIED_ALPHA_BLENDING`; no sRGB round-trip.
 //! - Scissor clips; no per-glyph CPU clip, only a y-range pre-cull.
-//! - One bind group: a colour texture and a mask texture side by side.
+//! - One bind group: a color texture and a mask texture side by side.
 //! - Atlas grow blits GPU-side; rects are preserved, so no re-rasterization.
 //! - Glyph uploads are staged and flushed after any grow blit, because
 //!   `queue.write_texture` runs before encoder commands and the blit could
@@ -59,12 +59,12 @@ impl TextBackend {
                         label: "palantir.text",
                         // Skips the 256->512->1024 grow chain on the first text-heavy frame.
                         initial_mask_px: 1024,
-                        // Colour glyphs are rare: 256^2 RGBA holds dozens, vs 4 MB at mask size.
+                        // Color glyphs are rare: 256^2 RGBA holds dozens, vs 4 MB at mask size.
                         initial_color_px: 256,
                         // 16 MiB lands on an exact power-of-two side: a 4096^2 mask or 2048^2
-                        // colour atlas, ~4x the largest `text_atlas/cache_churn` set.
+                        // color atlas, ~4x the largest `text_atlas/cache_churn` set.
                         max_bytes: 16 << 20,
-                        // 4 MiB is a 2048^2 mask or 1024^2 colour atlas; see `eager_growth_bytes`.
+                        // 4 MiB is a 2048^2 mask or 1024^2 color atlas; see `eager_growth_bytes`.
                         eager_growth_bytes: 4 << 20,
                     },
                     initial_instances: 4096,

@@ -145,10 +145,10 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(joins[1].p2, d2);
 }
 
-/// A joint between two differently coloured segments paints their premultiplied
+/// A joint between two differently colored segments paints their premultiplied
 /// average: opaque red beside transparent black is red at half alpha.
 #[test]
-fn a_join_between_colours_averages_them_premultiplied() {
+fn a_join_between_colors_averages_them_premultiplied() {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::render_buffer::curve_kind::CurveKind;
 
@@ -407,7 +407,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 }
 
 /// A ramp curve's fill reaches every sub-instance whole: ramp tag, atlas row, and
-/// the stroke colour in both colour lanes. A solid curve carries the solid tag and
+/// the stroke color in both color lanes. A solid curve carries the solid tag and
 /// the fallback row.
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {

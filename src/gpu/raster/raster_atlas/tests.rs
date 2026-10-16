@@ -214,7 +214,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
             examined: 1,
         },
     );
-    // Now it walks over unallocated slot 2, colour slot 3 and current-frame
+    // Now it walks over unallocated slot 2, color slot 3 and current-frame
     // slot 4 to reach 5.
     let third = ClockSweep::over(&slots, second.hand, evictable(ContentType::Mask, 10));
     assert_eq!(
@@ -225,7 +225,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
             examined: 4,
         },
     );
-    // The colour side sees only its own slot, wherever the hand is.
+    // The color side sees only its own slot, wherever the hand is.
     assert_eq!(
         ClockSweep::over(&slots, 5, evictable(ContentType::Color, 10)).victim,
         Some(3),
@@ -271,7 +271,7 @@ mod gpu {
                 label: "palantir.test",
                 initial_mask_px: 128,
                 initial_color_px: 128,
-                // 64 KiB is 256² of 1-byte mask and 128² of 4-byte colour.
+                // 64 KiB is 256² of 1-byte mask and 128² of 4-byte color.
                 max_bytes: 256 * 256,
                 eager_growth_bytes: 0,
             },

@@ -1,4 +1,4 @@
-//! A gradient's colour stops: the quantized stop, the inline run, and its builder.
+//! A gradient's color stops: the quantized stop, the inline run, and its builder.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::num;
@@ -14,8 +14,8 @@ use tinyvec::ArrayVec;
 /// Hard cap on stops in a single gradient.
 pub(crate) const MAX_STOPS: usize = 8;
 
-/// One colour stop: a 0..1 offset quantized to 8 bits and an 8-bit **sRGB-encoded**
-/// colour, so a hex-authored stop keeps its exact bytes. 5 B per stop;
+/// One color stop: a 0..1 offset quantized to 8 bits and an 8-bit **sRGB-encoded**
+/// color, so a hex-authored stop keeps its exact bytes. 5 B per stop;
 /// storage-only, never animated. The quantization is private; serde carries the
 /// decoded forms (`offset: 0.5`, `color: "#22ccdd"`).
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -26,11 +26,11 @@ pub struct Stop {
 
 impl Stop {
     /// Construct a stop. `offset` is a *fraction*, coerced (clamped to 0..=1,
-    /// non-finite read as 0). `color` is a *colour*.
+    /// non-finite read as 0). `color` is a *color*.
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[inline]
     #[track_caller]
     pub fn new(offset: f32, color: RgbaF32) -> Self {
@@ -46,7 +46,7 @@ impl Stop {
         self.offset_u8 as f32 / 255.0
     }
 
-    /// The colour decoded to linear f32.
+    /// The color decoded to linear f32.
     #[inline]
     pub const fn color(self) -> RgbaF32 {
         RgbaF32::from_srgba(self.color)
@@ -174,7 +174,7 @@ impl ops::Deref for GradientStops {
 }
 
 impl hash::Hash for GradientStops {
-    /// **Colour goes in the low half.** `SrgbaU8::to_u32` puts red on top and
+    /// **Color goes in the low half.** `SrgbaU8::to_u32` puts red on top and
     /// `FxHasher` spreads entropy upward only, so red in the high half never
     /// reaches the bucket-selecting low bits (200 gradients once collapsed to one
     /// bucket). Pinned by

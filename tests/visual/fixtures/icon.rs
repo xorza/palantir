@@ -1,11 +1,11 @@
 //! Baked-icon fixtures with exact-pixel assertions (no goldens). Every icon is a
-//! solid rectangle whose colour is written in the SVG, so the result is
+//! solid rectangle whose color is written in the SVG, so the result is
 //! hand-derivable and the tests pin the *semantics*: the raster lands at the exact
 //! physical size, on whole pixels, tinted as the icon's kind says.
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use glam::{UVec2, Vec2};
@@ -18,11 +18,11 @@ use std::rc::Rc;
 use crate::fixtures;
 use crate::harness::Harness;
 
-/// Fills its 8x8 viewBox with one colour, so every covered pixel is opaque. Marked
+/// Fills its 8x8 viewBox with one color, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.
 const SOLID_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#fff"/></svg>"##;
 
-/// Two opaque halves, as a colour icon whose own colours must survive.
+/// Two opaque halves, as a color icon whose own colors must survive.
 const HALVES_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#e63c3c"/><rect x="4" width="4" height="8" fill="#3c78e6"/></svg>"##;
 
 const LEFT: [u8; 4] = [0xe6, 0x3c, 0x3c, 255];
@@ -65,7 +65,7 @@ fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
             img.get_pixel(x, y).0,
             [0, 0, 0, 255],
             format_args!(
-                "({x},{y}) = {:?} must still be the clear colour",
+                "({x},{y}) = {:?} must still be the clear color",
                 img.get_pixel(x, y).0
             ),
         );
@@ -118,10 +118,10 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     assert_solid_pane(&img, Vec2::new(6.0, 6.0), [0.2, 0.8, 0.4]);
 }
 
-/// A colour icon keeps the artwork's colours; the tint's RGB is ignored and only
+/// A color icon keeps the artwork's colors; the tint's RGB is ignored and only
 /// its alpha applies, so a saturated red tint must leave the halves red and blue.
 #[test]
-fn colour_icon_keeps_its_own_colours_under_a_tint() {
+fn color_icon_keeps_its_own_colors_under_a_tint() {
     let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
         pane(
             ui,
@@ -136,7 +136,7 @@ fn colour_icon_keeps_its_own_colours_under_a_tint() {
             img.get_pixel(x, 16).0,
             half,
             format_args!(
-                "({x}, 16) is the authored colour: a colour icon must not take the tint's RGB"
+                "({x}, 16) is the authored color: a color icon must not take the tint's RGB"
             ),
         );
     }
@@ -168,17 +168,17 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
     assert!(dark(20, 36), "pixel 36 is outside the 30 px box");
 }
 
-/// `desaturate` collapses a colour icon to its own luminance (the disabled look).
+/// `desaturate` collapses a color icon to its own luminance (the disabled look).
 /// The greys are hand-computed to pin the *coefficients*: sRGB to linear, dot with
 /// Rec. 709 (0.2126, 0.7152, 0.0722), then sRGB-encode.
 ///
 /// - `#e63c3c` → linear (0.7913, 0.0452, 0.0452) → luma 0.2038 → **125**
 /// - `#3c78e6` → linear (0.0452, 0.1878, 0.7913) → luma 0.2011 → **124**
 ///
-/// They land a byte apart as the colours are nearly isoluminant, so the test
+/// They land a byte apart as the colors are nearly isoluminant, so the test
 /// asserts values, not an ordering.
 #[test]
-fn desaturate_greys_a_colour_icon_by_its_luminance() {
+fn desaturate_greys_a_color_icon_by_its_luminance() {
     let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
         pane(
             ui,
@@ -288,14 +288,14 @@ fn an_icon_past_the_raster_cap_fills_its_box() {
     assert!(lit(340, 41) && lit(340, 638), "the top and bottom edges");
     assert!(dark(38, 340) && dark(642, 340), "nothing past the box");
 
-    // A colour icon takes the same path through the colour atlas; each half keeps
-    // its colour, filtered only along the seam.
+    // A color icon takes the same path through the color atlas; each half keeps
+    // its color, filtered only along the seam.
     let img = capped("halves");
     for (x, half) in [(60, LEFT), (620, RIGHT)] {
         fixtures::assert_px(
             img.get_pixel(x, 340).0,
             half,
-            format_args!("({x}, 340) is its half's colour"),
+            format_args!("({x}, 340) is its half's color"),
         );
     }
 }

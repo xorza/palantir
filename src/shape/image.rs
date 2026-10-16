@@ -77,7 +77,7 @@ impl ImageShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
+    /// Panics unless `tint` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn tint(mut self, tint: RgbaF32) -> Self {
         self.tint = domain::color(tint);

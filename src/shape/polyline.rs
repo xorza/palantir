@@ -16,7 +16,7 @@ use glam::Vec2;
 use std::hash::Hasher as _;
 use std::slice;
 
-/// Stroked polyline, centred on its points, in one colour or varied per point or segment.
+/// Stroked polyline, centred on its points, in one color or varied per point or segment.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct PolylineShape<'a> {
@@ -42,11 +42,11 @@ impl<'a> PolylineShape<'a> {
         }
     }
 
-    /// One colour per point, lerped between points; multiplies the stroke colour per channel. `colors.len()` must equal the point count.
+    /// One color per point, lerped between points; multiplies the stroke color per channel. `colors.len()` must equal the point count.
     ///
     /// # Panics
     ///
-    /// Panics unless every colour is a [colour](crate::widget::domain::color).
+    /// Panics unless every color is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
         check_colors(colors);
@@ -54,7 +54,7 @@ impl<'a> PolylineShape<'a> {
         self
     }
 
-    /// One colour per segment, each a solid block; multiplies the stroke colour. `colors.len()` must be one less than the point count.
+    /// One color per segment, each a solid block; multiplies the stroke color. `colors.len()` must be one less than the point count.
     ///
     /// # Panics
     ///
@@ -79,13 +79,13 @@ impl<'a> PolylineShape<'a> {
     }
 }
 
-/// Where a polyline's colour varies, on top of its stroke colour.
+/// Where a polyline's color varies, on top of its stroke color.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum PolylineColors<'a> {
     Single,
     /// One multiplier per input point; the GPU lerps between them.
     PerPoint(&'a [RgbaF32]),
-    /// One multiplier per segment; no colour bleeds across a joint.
+    /// One multiplier per segment; no color bleeds across a joint.
     PerSegment(&'a [RgbaF32]),
 }
 
@@ -107,12 +107,12 @@ impl PolylineColors<'_> {
         }
     }
 
-    /// Check the per-point / per-segment cardinality contract; release-checked because the composer would read a short colour slice past its end.
+    /// Check the per-point / per-segment cardinality contract; release-checked because the composer would read a short color slice past its end.
     pub(crate) fn assert_matches(&self, points_len: usize) {
         assert!(
             self.matches(points_len),
-            "Shape::Polyline {self:?} does not fit {points_len} points: per-point colours \
-             number the points, per-segment colours one fewer",
+            "Shape::Polyline {self:?} does not fit {points_len} points: per-point colors \
+             number the points, per-segment colors one fewer",
         );
     }
 
@@ -125,7 +125,7 @@ impl PolylineColors<'_> {
 }
 
 impl sealed::LowerShape for PolylineShape<'_> {
-    /// A wrong-length colour slice is never a no-op, however transparent; lowering's cardinality assert names the bug.
+    /// A wrong-length color slice is never a no-op, however transparent; lowering's cardinality assert names the bug.
     fn is_noop(&self) -> bool {
         if self.stroke.is_noop() || self.points.len() < 2 {
             return true;
@@ -139,14 +139,14 @@ impl sealed::LowerShape for PolylineShape<'_> {
         }
     }
 
-    /// Colours are scanned, since `bbox` does not cover them: a NaN channel would reach the shader.
+    /// Colors are scanned, since `bbox` does not cover them: a NaN channel would reach the shader.
     fn has_nan(&self) -> bool {
         self.stroke.has_nan()
             || self.bbox.has_nan()
             || self.colors.colors().iter().any(NanCheck::has_nan)
     }
 
-    /// Points into the store, colours multiplied by the stroke colour, then the content hash. A single stroke lowers to `ShapeRecord::Curve` instead.
+    /// Points into the store, colors multiplied by the stroke color, then the content hash. A single stroke lowers to `ShapeRecord::Curve` instead.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             points,
@@ -162,7 +162,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
             PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
         };
 
-        // `Shapes::add` drops < 2-point polylines via `is_noop`, so a degenerate slice is a caller bug; colour cardinality is checked here since a query answers, it does not validate.
+        // `Shapes::add` drops < 2-point polylines via `is_noop`, so a degenerate slice is a caller bug; color cardinality is checked here since a query answers, it does not validate.
         debug_assert!(
             points.len() >= 2,
             "polyline with < 2 points reached lowering"

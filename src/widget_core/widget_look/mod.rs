@@ -42,8 +42,8 @@ impl WidgetLook {
     pub(crate) const SLOT_LOOK: AnimationSlot = AnimationSlot::new("look");
 
     /// Resolves the look into the target `Ui::animate` interpolates toward,
-    /// folding overrides onto `ambient_text` first so a colour-only look
-    /// cross-fades against the ambient colour. Separate from `Ui::animate`
+    /// folding overrides onto `ambient_text` first so a color-only look
+    /// cross-fades against the ambient color. Separate from `Ui::animate`
     /// because the `ui.theme` borrow must end before `ui` is reborrowed.
     #[inline(always)]
     pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook {

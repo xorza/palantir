@@ -163,10 +163,10 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
     assert_snapshot_is_linear(&h);
 }
 
-/// A recolour is paint, not layout: the measure cache keys on the layout half of the rollup, so a
+/// A recolor is paint, not layout: the measure cache keys on the layout half of the rollup, so a
 /// fill-only change hits at the root even though the full subtree hash changed.
 #[test]
-fn a_recolour_hits_the_measure_cache_at_the_root() {
+fn a_recolor_hits_the_measure_cache_at_the_root() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
         WrappedLeaf {
@@ -210,8 +210,8 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
     });
     let first = snap_for(&h, WidgetId::from_hash("a")).unwrap().snap;
 
-    // A layout change (the leaf's size). A colour change is paint and leaves the layout hash alone, as
-    // `a_recolour_hits_the_measure_cache_at_the_root` shows.
+    // A layout change (the leaf's size). A color change is paint and leaves the layout hash alone, as
+    // `a_recolor_hits_the_measure_cache_at_the_root` shows.
     run_frame(&mut h, |ui| {
         WrappedLeaf {
             id: "a",
@@ -627,7 +627,7 @@ fn available_key_axis_invariants() {
     assert_eq!(MeasureCache::available_key(Size::ZERO), glam::IVec2::ZERO);
 }
 
-/// A frame whose layout inputs all match the last run keeps that run's output whole: a recolour
+/// A frame whose layout inputs all match the last run keeps that run's output whole: a recolor
 /// keeps it, and so does the frame after a change once it has run. A resize offers the root another
 /// extent and a moved overlay another origin, so each runs again, and the kept output is the one a
 /// run would have written. The popup's margin of 5 puts its rect at `(20, 30) + 5 = (25, 35)`, so
@@ -662,7 +662,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     let popup = h.ui.layout(Layer::Popup).rect.clone();
     assert_eq!(kept(&mut h, color, popup_at), 1, "an unchanged frame keeps");
     color = RgbaF32::srgb(0.9, 0.4, 0.8);
-    assert_eq!(kept(&mut h, color, popup_at), 1, "a recolour keeps");
+    assert_eq!(kept(&mut h, color, popup_at), 1, "a recolor keeps");
     assert!(h.engines.layout.scratch.counters.cache_hits().is_empty());
     assert_eq!(h.ui.layout(Layer::Main).rect, rects);
     assert_eq!(h.ui.layout(Layer::Popup).rect, popup);

@@ -136,7 +136,7 @@ impl IconRasterizer {
         let rendered = pixmap.as_ref();
         let pixels = rendered.pixels();
         let content = if def.tintable {
-            // Coverage only: a tintable icon has a single paint colour, which the
+            // Coverage only: a tintable icon has a single paint color, which the
             // draw supplies.
             out.reserve_exact(pixels.len());
             out.extend(pixels.iter().map(|texel| texel.alpha()));

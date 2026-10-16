@@ -1,4 +1,4 @@
-//! Colour in the forms one value takes on its way to the GPU: straight-alpha
+//! Color in the forms one value takes on its way to the GPU: straight-alpha
 //! linear f32 for authoring and blending, four f16 lanes for lowered records,
 //! and four sRGB-encoded bytes for hex codes, gradient stops, mesh vertices and
 //! image texels.
@@ -42,13 +42,13 @@ use std::str;
 // One 8-bit sRGB step is narrowest near black at `1 / 255 / 12.92 ≈ 3.0e-4`
 // linear; `1/4096 ≈ 2.4e-4` stays under it on every channel.
 #[animate(settle_eps = 1.0 / 4096.0)]
-/// An RGBA colour in straight-alpha linear RGB, the space every blend,
+/// An RGBA color in straight-alpha linear RGB, the space every blend,
 /// anti-aliasing step and tween operates in. The sRGB encode happens on the
 /// GPU at swapchain write.
 ///
 /// - [`Self::srgb`] / [`Self::srgba`] / [`Self::hex`] / [`Self::from_srgba`]
 ///   read their argument as sRGB-encoded (the numbers CSS and Figma show) and
-///   linearise it. Use these for colours a human picked.
+///   linearise it. Use these for colors a human picked.
 /// - [`Self::new`] takes already-linear values.
 ///
 /// Writing an sRGB value straight into the fields renders too bright.
@@ -57,7 +57,7 @@ use std::str;
 ///
 /// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends per channel,
 /// unclamped, which is correct for linear straight-alpha storage; alpha
-/// travels with the colour, so keep your own opacity with [`Self::with_alpha`].
+/// travels with the color, so keep your own opacity with [`Self::with_alpha`].
 /// [`Interpolation::Oklab`](crate::Interpolation) blends perceptually, for
 /// gradients.
 #[must_use]
@@ -79,7 +79,7 @@ impl hash::Hash for RgbaF32 {
     }
 }
 
-/// A colour under both of the crate's float tolerances. [`Hash`](std::hash::Hash)
+/// A color under both of the crate's float tolerances. [`Hash`](std::hash::Hash)
 /// is the equality-compatible half; the visual half is what a content cache
 /// keys on. They must not meet in one key, or a difference the eye cannot see
 /// would split it on one field and not another.
@@ -127,7 +127,7 @@ impl RgbaF32 {
     /// Alpha is non-positive, NaN, or within `EPS` of zero: paints nothing.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        // Alpha decides visibility; colour channels are screened for NaN only
+        // Alpha decides visibility; color channels are screened for NaN only
         // (see `RgbaF16::is_noop`).
         domain::is_invisible(self.a) || self.has_nan()
     }
@@ -142,7 +142,7 @@ impl RgbaF32 {
     }
 
     /// Linear channels and a straight alpha, stored as given, with no
-    /// encoding. A colour a human picked arrives through [`Self::srgb`] or
+    /// encoding. A color a human picked arrives through [`Self::srgb`] or
     /// [`Self::hex`].
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
@@ -162,7 +162,7 @@ impl RgbaF32 {
         }
     }
 
-    /// The colour channels multiplied by alpha, the form colour blends
+    /// The color channels multiplied by alpha, the form color blends
     /// interpolate in (see `primitives::paint::brush`). Still an `RgbaF32`;
     /// dividing alpha back out is the caller's.
     #[inline]
@@ -185,7 +185,7 @@ impl RgbaF32 {
         }
     }
 
-    /// This colour times `tint`, channel by channel with alpha: the rule for
+    /// This color times `tint`, channel by channel with alpha: the rule for
     /// mesh, image and stroke tints.
     #[inline]
     pub(crate) const fn tinted(self, tint: Self) -> Self {

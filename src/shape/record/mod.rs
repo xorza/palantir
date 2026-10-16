@@ -91,13 +91,13 @@ pub(crate) enum ShapeRecord {
         mag_filter: ImageFilter,
         downsample: ImageDownsample,
     },
-    /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a colour icon's alpha only, see [`IconShape`](crate::widget::IconShape).
+    /// A baked SVG icon, rasterized at the exact physical size into the icon atlas. The [`IconHandle`] carries the viewBox, so `fit` needs no registry lookup. `tint` multiplies a tintable icon whole and a color icon's alpha only, see [`IconShape`](crate::widget::IconShape).
     Icon {
         local_rect: Option<Rect>,
         handle: IconHandle,
         fit: IconFit,
         tint: RgbaF16,
-        /// Draws a colour icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
+        /// Draws a color icon as its own luminance, see [`IconShape::desaturate`](crate::widget::IconShape::desaturate).
         desaturate: bool,
     },
     /// Native GPU stroke: a cubic Bézier or exact circular arc, per [`CurveBasis`] (quadratics promote to cubic, lines degenerate; see `CurveShape`'s lowering). Owner-local, no joins. `bbox` is the tight centerline AABB.
@@ -109,7 +109,7 @@ pub(crate) enum ShapeRecord {
         basis: CurveBasis,
         stroke: ShapeStroke,
         bbox: Rect,
-        /// The ramp the stroke colour multiplies, sampled along `t` (p0 to p3 for a cubic, a0 to a1 for an arc).
+        /// The ramp the stroke color multiplies, sampled along `t` (p0 to p3 for a cubic, a0 to a1 for an arc).
         ramp: CurveRamp,
     },
 }
@@ -359,7 +359,7 @@ impl ShapeRecord {
         ContentHash(h.finish())
     }
 
-    /// Feeds what layout reads from this record into `h`, answering whether there was anything. Only text is read by layout (text, face, wrap, alignment); colour and origin are paint, so a recoloured label still hits the measure cache.
+    /// Feeds what layout reads from this record into `h`, answering whether there was anything. Only text is read by layout (text, face, wrap, alignment); color and origin are paint, so a recolored label still hits the measure cache.
     pub(crate) fn hash_layout_inputs(&self, h: &mut impl hash::Hasher) -> bool {
         let Self::Text {
             text,

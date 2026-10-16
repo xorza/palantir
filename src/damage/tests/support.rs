@@ -1,4 +1,4 @@
-//! The frame a damage test drives, and the colours it paints with.
+//! The frame a damage test drives, and the colors it paints with.
 
 use crate::damage::Damage;
 use crate::display::Display;

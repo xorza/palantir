@@ -4,7 +4,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::hsv::Hsv;
 use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
 
-/// The colour model a picker's field and hue bar work in. [`Okhsv`] is the default for its perceptual axes; [`Hsv`] matches numbers from other tools. Serialized so a host can persist the pick.
+/// The color model a picker's field and hue bar work in. [`Okhsv`] is the default for its perceptual axes; [`Hsv`] matches numbers from other tools. Serialized so a host can persist the pick.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -51,7 +51,7 @@ enum HueSliceKind {
 }
 
 impl HueSlice {
-    /// The opaque colour at `s` and `v` on this hue. Both clamp to `0..1`.
+    /// The opaque color at `s` and `v` on this hue. Both clamp to `0..1`.
     pub fn color(self, s: f32, v: f32) -> RgbaF32 {
         match self.0 {
             HueSliceKind::Okhsv(slice) => slice.color(s, v),

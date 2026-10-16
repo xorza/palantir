@@ -35,7 +35,7 @@ pub(crate) struct RecordStore {
     pub(crate) meshes: Mesh,
     /// Point storage for `ShapeRecord::Polyline`, indexed by the record's `points`.
     pub(crate) polyline_points: Vec<Vec2>,
-    /// Colour storage for `ShapeRecord::Polyline`: 1, `points.len()` or
+    /// Color storage for `ShapeRecord::Polyline`: 1, `points.len()` or
     /// `points.len() - 1` per `ColorMode`, stored as `RgbaF16` (the `CurveInstance`
     /// lane form) so packing happens once at lowering.
     pub(crate) polyline_colors: Vec<RgbaF16>,
@@ -144,7 +144,7 @@ impl RecordStore {
         MeshSpans { vertices, indices }
     }
 
-    /// Copy one polyline's points and colours in, each colour multiplied by `tint`
+    /// Copy one polyline's points and colors in, each color multiplied by `tint`
     /// and packed once here. Returns the spans a `ShapeRecord::Polyline` carries.
     pub(crate) fn stage_polyline(
         &mut self,

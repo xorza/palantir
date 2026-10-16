@@ -53,11 +53,11 @@ impl TextShape {
         self
     }
 
-    /// Ink colour: straight-alpha linear RGB.
+    /// Ink color: straight-alpha linear RGB.
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.color = domain::color(color);

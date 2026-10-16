@@ -1,10 +1,10 @@
-//! A combo box's geometry; colours come from the button and popup themes it is built from.
+//! A combo box's geometry; colors come from the button and popup themes it is built from.
 
 use crate::primitives::geometry::arrow::Arrow;
 use crate::theme::palette::Palette;
 use glam::Vec2;
 
-/// Geometry for [`crate::ComboBox`]. Colours and chrome read `Theme::button` and `Theme::context_menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
+/// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::context_menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
@@ -19,7 +19,7 @@ pub struct ComboBoxTheme {
 }
 
 impl ComboBoxTheme {
-    /// Geometry only; colours come from [`ButtonTheme`](crate::ButtonTheme) and [`ContextMenuTheme`](crate::ContextMenuTheme), so the palette goes unread.
+    /// Geometry only; colors come from [`ButtonTheme`](crate::ButtonTheme) and [`ContextMenuTheme`](crate::ContextMenuTheme), so the palette goes unread.
     pub const fn from_palette(_p: &Palette) -> Self {
         Self {
             gap: 12.0,

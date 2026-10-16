@@ -46,8 +46,8 @@ pub(crate) enum QuadGeom {
 /// (inset) in logical px, scaled to physical by the composer. A triangle's
 /// is overwritten by the composer.
 ///
-/// `fill` is the solid colour (the tint for a shadow); for a gradient it
-/// multiplies the atlas row's colour. `RgbaF16` saves 8 B per payload over
+/// `fill` is the solid color (the tint for a shadow); for a gradient it
+/// multiplies the atlas row's color. `RgbaF16` saves 8 B per payload over
 /// `RgbaF32`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
@@ -186,7 +186,7 @@ impl DrawQuadPayload {
     /// hard shifted rect, and `Shape::Shadow::is_noop` catches no-effect cases.
     ///
     /// A gradient fill is never a no-op here: [`BrushSource::gpu_fill`] sets
-    /// its colour lane to white (the atlas row supplies the colour), and
+    /// its color lane to white (the atlas row supplies the color), and
     /// `Brush::is_noop` filters all-transparent stops before lowering.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {

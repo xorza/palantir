@@ -160,7 +160,7 @@ fn run(script: &[Knobs]) {
 }
 
 #[test]
-fn colour_change() {
+fn color_change() {
     run(&[Knobs {
         fill: RgbaF32::srgb(0.9, 0.9, 0.1),
         ..Knobs::BASE

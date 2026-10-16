@@ -124,7 +124,7 @@ fn grid(ui: &mut Ui) {
     });
 }
 
-/// Teal → purple → orange sweep so panning shows progress; these colours are demo content, not theme, in the swatch palette's hues.
+/// Teal → purple → orange sweep so panning shows progress; these colors are demo content, not theme, in the swatch palette's hues.
 fn ramp(i: u32) -> RgbaF32 {
     let t = (i % 40) as f32 / 40.0;
     let (from, to, u) = if t < 0.5 {

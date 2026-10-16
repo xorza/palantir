@@ -39,7 +39,7 @@ impl FillKind {
         self.0 & Self::TAG_MASK
     }
 
-    /// Solid-fill marker; `Quad.fill` carries the colour.
+    /// Solid-fill marker; `Quad.fill` carries the color.
     pub(crate) const SOLID: Self = Self(Self::TAG_SOLID);
 
     /// Linear-gradient marker with the spread in bits 8..16; the atlas row and axis
@@ -66,7 +66,7 @@ impl FillKind {
         Self(tag | ((spread as u32) << Self::SPREAD_SHIFT))
     }
 
-    /// Drop-shadow marker: `fill` is the shadow colour, `fill_axis = (offset.x,
+    /// Drop-shadow marker: `fill` is the shadow color, `fill_axis = (offset.x,
     /// offset.y, sigma, spread)`, `corners` the *source* shape's radii. The quad is
     /// the source moved by the offset and grown by the halo; the shader recovers
     /// the source from the quad's centre.

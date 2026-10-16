@@ -246,7 +246,7 @@ fn trigger_chrome_follows_button_style() {
     }
 }
 
-/// The list takes the context menu's padding and row gap as well as its colour, so a combo and a right-click menu from one theme read as one control. Its height grows by the padding on two edges plus one row gap.
+/// The list takes the context menu's padding and row gap as well as its color, so a combo and a right-click menu from one theme read as one control. Its height grows by the padding on two edges plus one row gap.
 #[test]
 fn the_dropdown_takes_the_context_menu_theme_it_documents() {
     let list_height = |padding: f32, gap: f32| {

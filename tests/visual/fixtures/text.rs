@@ -5,7 +5,7 @@ use palantir::{Background, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
 use crate::golden_name::GoldenName;
 
-/// A multi-line paragraph in mixed sizes and colours.
+/// A multi-line paragraph in mixed sizes and colors.
 #[test]
 fn text_paragraph_matches_golden() {
     GoldenName::TextParagraph.assert_scene(UVec2::new(360, 140), |ui| {

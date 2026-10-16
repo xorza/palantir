@@ -19,8 +19,8 @@ pub struct IconDefinition {
     pub view_box: Vec2,
     /// Byte range of this icon's SVG within its set's blob.
     pub svg: Span,
-    /// Every paint resolves to one colour (or `currentColor`), so it rasterizes to
-    /// a coverage mask and takes the shape's full tint; a colour icon rasterizes to
+    /// Every paint resolves to one color (or `currentColor`), so it rasterizes to
+    /// a coverage mask and takes the shape's full tint; a color icon rasterizes to
     /// RGBA, where tint modulates alpha only.
     pub tintable: bool,
     /// The icon uses an SVG filter (10-20x costlier to rasterize), so it is
@@ -175,14 +175,14 @@ fn blob_len(lens: impl IntoIterator<Item = usize>) -> Result<usize, u128> {
 #[cfg(test)]
 mod tests {
     use crate::icons::icon_table::{IconTable, blob_len};
-    use crate::icons::internals::{BROKEN, ONE_COLOUR, TWO_COLOURS};
+    use crate::icons::internals::{BROKEN, ONE_COLOR, TWO_COLORS};
     use crate::primitives::identity::icon_id::IconId;
     use glam::Vec2;
 
     /// `from_svgs` sorts by name, which `by_name`'s binary search rests on.
     #[test]
     fn runtime_build_sorts_by_name() {
-        let table = IconTable::from_svgs([("two", TWO_COLOURS), ("one", ONE_COLOUR)]).unwrap();
+        let table = IconTable::from_svgs([("two", TWO_COLORS), ("one", ONE_COLOR)]).unwrap();
         let names: Vec<&str> = table.icons().iter().map(|d| d.name.as_ref()).collect();
         assert_eq!(
             names,
@@ -197,9 +197,9 @@ mod tests {
     /// the ids the table mints name the sorted slots.
     #[test]
     fn spans_slice_each_icon_out_of_the_shared_blob() {
-        let table = IconTable::from_svgs([("b", TWO_COLOURS), ("a", ONE_COLOUR)]).unwrap();
-        assert_eq!(table.svg_bytes(IconId::new(0)), ONE_COLOUR.as_bytes());
-        assert_eq!(table.svg_bytes(IconId::new(1)), TWO_COLOURS.as_bytes());
+        let table = IconTable::from_svgs([("b", TWO_COLORS), ("a", ONE_COLOR)]).unwrap();
+        assert_eq!(table.svg_bytes(IconId::new(0)), ONE_COLOR.as_bytes());
+        assert_eq!(table.svg_bytes(IconId::new(1)), TWO_COLORS.as_bytes());
         assert_eq!(table.by_name("a"), Some(IconId::new(0)));
         assert_eq!(table.by_name("b"), Some(IconId::new(1)));
         assert_eq!(table.by_name("c"), None);
@@ -220,14 +220,14 @@ mod tests {
         use crate::icons::error::IconTableError;
 
         assert_eq!(
-            IconTable::from_svgs([("good", ONE_COLOUR), ("bad", BROKEN)]).err(),
+            IconTable::from_svgs([("good", ONE_COLOR), ("bad", BROKEN)]).err(),
             Some(IconTableError::Unreadable { name: "bad".into() }),
         );
         assert_eq!(
             IconTable::from_svgs([
-                ("twin", ONE_COLOUR),
-                ("other", ONE_COLOUR),
-                ("twin", ONE_COLOUR),
+                ("twin", ONE_COLOR),
+                ("other", ONE_COLOR),
+                ("twin", ONE_COLOR),
             ])
             .err(),
             Some(IconTableError::DuplicateName {

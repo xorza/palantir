@@ -54,7 +54,7 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
 struct RampTexels<'a> {
     stops: &'a GradientStops,
     linear: &'a [RgbaF32],
-    /// Oklab coordinates of the straight stop colours; empty under [`Interpolation::Linear`].
+    /// Oklab coordinates of the straight stop colors; empty under [`Interpolation::Linear`].
     oklab: &'a [[f32; 3]],
     interpolation: Interpolation,
     /// Index of the segment's upper stop.
@@ -64,7 +64,7 @@ struct RampTexels<'a> {
 
 impl<'a> RampTexels<'a> {
     /// `ramp`'s texels from its premultiplied `linear` stops and, under
-    /// [`Interpolation::Oklab`], their straight colours' `oklab` coordinates.
+    /// [`Interpolation::Oklab`], their straight colors' `oklab` coordinates.
     const fn new(ramp: &'a ColorRamp, linear: &'a [RgbaF32], oklab: &'a [[f32; 3]]) -> Self {
         Self {
             stops: &ramp.stops,

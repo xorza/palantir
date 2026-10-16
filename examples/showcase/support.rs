@@ -377,7 +377,7 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 #[derive(Default, Debug)]
 struct Ticks(u32);
 
-/// A plain colour swatch: a `Block` over [`swatch_bg`], for the caller to key and size.
+/// A plain color swatch: a `Block` over [`swatch_bg`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {
     Block::new().background(swatch_bg(c))
 }

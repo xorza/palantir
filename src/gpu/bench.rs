@@ -125,7 +125,7 @@ fn cell_origin(i: usize) -> Vec2 {
     Vec2::new((i % GRID) as f32 * CELL, (i / GRID) as f32 * CELL)
 }
 
-/// Per-frame paint toggle: every colour flips so the frame stays `Full`, while geometry stays cached.
+/// Per-frame paint toggle: every color flips so the frame stays `Full`, while geometry stays cached.
 const fn tint(phase: bool) -> RgbaF32 {
     if phase {
         RgbaF32::WHITE

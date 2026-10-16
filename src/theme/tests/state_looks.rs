@@ -196,7 +196,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
 }
 
 /// [`TabsTheme`] picks the selected chip's pack, then the pressed precedence inside it; the
-/// strip's focus picks the cap colour.
+/// strip's focus picks the cap color.
 #[test]
 fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     let theme = TabsTheme::default();
@@ -284,9 +284,9 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the colour, so size, face and leading follow `Theme::text` even when set after `from_palette`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_palette`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
 #[test]
-fn bundled_text_inherits_every_axis_but_colour() {
+fn bundled_text_inherits_every_axis_but_color() {
     use crate::theme::{Theme, ThemeText};
 
     let mono = TextStyleOverrides {
@@ -301,15 +301,15 @@ fn bundled_text_inherits_every_axis_but_colour() {
     let mut named = Vec::new();
     theme.for_each_text(|text| {
         if let ThemeText::Overrides(o) = text {
-            let past_colour = TextStyleOverrides { color: None, ..*o };
-            if !past_colour.is_empty() {
-                named.push(past_colour);
+            let past_color = TextStyleOverrides { color: None, ..*o };
+            if !past_color.is_empty() {
+                named.push(past_color);
             }
         }
     });
     assert_eq!(named, expected);
 
-    // The reported case: an app at 13 px. An inactive tab names a muted colour at rest and none when pressed; both shape at 13 px.
+    // The reported case: an app at 13 px. An inactive tab names a muted color at rest and none when pressed; both shape at 13 px.
     theme.text = theme.text.with_font_size(13.0);
     let p = Palette::DEFAULT;
     let rest = theme.tabs.inactive.normal.to_animated(theme.text).text;

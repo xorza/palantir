@@ -164,11 +164,11 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Fill colour for the buffer, overriding the resolved look's.
+    /// Fill color for the buffer, overriding the resolved look's.
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(domain::color(color));

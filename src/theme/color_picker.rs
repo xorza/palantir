@@ -1,5 +1,5 @@
-//! What a colour picker wears: its surfaces, the handle, and the checker
-//! behind translucent colours.
+//! What a color picker wears: its surfaces, the handle, and the checker
+//! behind translucent colors.
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
@@ -41,12 +41,12 @@ pub struct ColorPickerTheme {
     /// Stroke width of each of the handle's two rings, in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub handle_width: f32,
-    /// Outer ring of every handle. Dark and not a palette colour: a handle sits
-    /// over every colour the field shows.
+    /// Outer ring of every handle. Dark and not a palette color: a handle sits
+    /// over every color the field shows.
     pub handle_outer: RgbaF32,
     /// Inner ring of every handle.
     pub handle_inner: RgbaF32,
-    /// Light square of the checker behind a translucent colour.
+    /// Light square of the checker behind a translucent color.
     pub checker_light: RgbaF32,
     /// Dark square of the same checker.
     pub checker_dark: RgbaF32,
@@ -145,7 +145,7 @@ impl ColorPickerTheme {
         f(ThemeText::Overrides(label));
     }
 
-    /// Geometry is fixed; only handle and swatch colours come from `p`.
+    /// Geometry is fixed; only handle and swatch colors come from `p`.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             field_width: 208.0,

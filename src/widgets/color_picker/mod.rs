@@ -1,5 +1,5 @@
-//! The assembled colour picker: the panel, its retained state, and the rule
-//! deciding which control's write reaches the bound colour.
+//! The assembled color picker: the panel, its retained state, and the rule
+//! deciding which control's write reaches the bound color.
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -34,7 +34,7 @@ use std::rc::Rc;
 
 mod history;
 
-/// A colour picker: the saturation/value field, a hue bar, an optional alpha
+/// A color picker: the saturation/value field, a hue bar, an optional alpha
 /// bar, a preview chip, the channel values, the model switch and a swatch row.
 ///
 /// Arranges the family's other widgets; an app wanting a different layout
@@ -42,7 +42,7 @@ mod history;
 ///
 /// # What writes what
 ///
-/// Each control writes only the part of the colour it owns; the picker never
+/// Each control writes only the part of the color it owns; the picker never
 /// rebuilds the rest from its axes. A wedge of sRGB around pure blue lies
 /// outside the Okhsv cube (see [`Okhsv`](crate::Okhsv)), so rebuilding on an
 /// opacity change would shift `#0000ff` to `#0037ff`.
@@ -51,7 +51,7 @@ mod history;
 ///
 /// The axes, hex text and history live in the response map keyed off this
 /// widget's id. The axes are retained because black has no hue and grey no
-/// saturation; they are re-derived when the bound colour changes from outside.
+/// saturation; they are re-derived when the bound color changes from outside.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorPicker<'a> {
@@ -64,7 +64,7 @@ pub struct ColorPicker<'a> {
     style: Option<&'a ColorPickerTheme>,
 }
 
-/// Where the swatch row's colours come from, if it shows. One field with two
+/// Where the swatch row's colors come from, if it shows. One field with two
 /// setters, so the last call wins and none can conflict.
 #[derive(Debug)]
 enum Swatches<'a> {
@@ -80,10 +80,10 @@ enum Swatches<'a> {
 #[derive(Debug, Default)]
 struct PickerState {
     coords: ColorCoords,
-    /// The colour this picker last wrote or seeded from. Any other value in the
+    /// The color this picker last wrote or seeded from. Any other value in the
     /// binding is an outside edit and re-seeds the axes.
     written: Option<RgbaF32>,
-    /// The hex field's buffer, rewritten from the colour when unfocused.
+    /// The hex field's buffer, rewritten from the color when unfocused.
     hex: String,
     history: History,
 }
@@ -151,12 +151,12 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// The bound colour before `show`, for a [`ColorButton`](crate::ColorButton) chip.
+    /// The bound color before `show`, for a [`ColorButton`](crate::ColorButton) chip.
     pub const fn color(&self) -> RgbaF32 {
         *self.color
     }
 
-    /// Record the panel and report what it did to the bound colour.
+    /// Record the panel and report what it did to the bound color.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
         // An `Rc` bump so rows can borrow styles across the `&mut Ui` record.
         let theme = Rc::clone(ui.theme());
@@ -228,14 +228,14 @@ const VALUE_COLUMNS: usize = 4;
 /// Space between a channel's caption and its value.
 const LABEL_GAP: f32 = 2.0;
 
-/// What one frame of the panel or one cell of it did to the colour.
+/// What one frame of the panel or one cell of it did to the color.
 #[derive(Debug, Default)]
 struct Edit {
     changed: bool,
     committed: bool,
 }
 
-/// Which control wrote, and so which part of the colour to rebuild.
+/// Which control wrote, and so which part of the color to rebuild.
 #[derive(Clone, Copy, Debug, Default)]
 struct Writes {
     /// The field, the hue bar, or the H / S / V values moved.
@@ -243,7 +243,7 @@ struct Writes {
     /// The alpha bar or the opacity value moved.
     alpha: f32,
     alpha_moved: bool,
-    /// The hex field, an RGB value or a swatch named a colour outright.
+    /// The hex field, an RGB value or a swatch named a color outright.
     exact: Option<RgbaF32>,
     committed: bool,
     /// A pick the history keeps: a released pointer gesture, a committed typed
@@ -312,7 +312,7 @@ const CHANNELS: [ValueCell; 3] = [
     },
 ];
 
-/// The colour the panel shows: the bound one unless an axis moved this frame.
+/// The color the panel shows: the bound one unless an axis moved this frame.
 /// Built from the axes alone it would show their clamped reading (`#0000ff`
 /// seeds Okhsv at s = v = 1, which is `#0037ff`).
 fn shown(state: &PickerState, bound: RgbaF32, writes: &Writes) -> RgbaF32 {
@@ -324,7 +324,7 @@ fn shown(state: &PickerState, bound: RgbaF32, writes: &Writes) -> RgbaF32 {
     color.with_alpha(writes.alpha)
 }
 
-/// Whether two colours have the same sRGB channels, alpha aside.
+/// Whether two colors have the same sRGB channels, alpha aside.
 fn same_rgb(a: SrgbaU8, b: SrgbaU8) -> bool {
     (a.r, a.g, a.b) == (b.r, b.g, b.b)
 }
@@ -498,7 +498,7 @@ impl Rows<'_> {
                             .id(hex_id)
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui);
-                        // A buffer parsing to the colour already shown is no edit.
+                        // A buffer parsing to the color already shown is no edit.
                         if hex.committed
                             && let Ok(parsed) = self.state.hex.trim().parse::<RgbaF32>()
                             && !same_rgb(parsed.to_srgba_u8(), quantized)
@@ -644,7 +644,7 @@ impl Rows<'_> {
     }
 }
 
-/// Fold this frame's writes into the bound colour, rebuilding only the part
+/// Fold this frame's writes into the bound color, rebuilding only the part
 /// the moved control owns.
 fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
     let next = if let Some(exact) = writes.exact {

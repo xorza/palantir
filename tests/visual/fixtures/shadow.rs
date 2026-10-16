@@ -15,7 +15,7 @@ use crate::harness::Harness;
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
 
-/// The shadow colour the probes' arithmetic assumes: over white it leaves
+/// The shadow color the probes' arithmetic assumes: over white it leaves
 /// `1 − 0.85·coverage` linear ([`under_ink`]).
 const INK: RgbaF32 = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
 
@@ -55,7 +55,7 @@ fn channel_deltas<'a>(a: &'a RgbaImage, b: &'a RgbaImage) -> impl Iterator<Item 
         .map(|(&x, &y)| x.abs_diff(y))
 }
 
-/// `image` with every pixel in each of `holes` set to the clear colour, so
+/// `image` with every pixel in each of `holes` set to the clear color, so
 /// shadow shapes compare without their (clipped) sources.
 fn without(image: &RgbaImage, holes: &[Rect]) -> RgbaImage {
     let mut out = image.clone();
@@ -485,7 +485,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
 }
 
 /// An inset shadow takes its source's own edge ramp: with its hole closed by
-/// the spread it matches a fill of its colour pixel for pixel, partly covered
+/// the spread it matches a fill of its color pixel for pixel, partly covered
 /// corner pixels included.
 #[test]
 fn an_inset_shadow_shares_its_source_edge_ramp() {

@@ -34,7 +34,7 @@ pub(crate) struct Submission<'a> {
 }
 
 impl Submission<'_> {
-    /// Effective opaque clear colour: the buffer's override, else the plan's.
+    /// Effective opaque clear color: the buffer's override, else the plan's.
     pub(crate) fn clear(&self) -> RgbaF16 {
         let clear = self
             .buffer

@@ -82,7 +82,7 @@ impl CurveShape {
         }
     }
 
-    /// Vary the colour along the curve: at parameter `t` it is the stroke colour times `ramp` at `t`, per channel (as a mesh tint). `t` runs 0 to 1 (`p0` → `p3` on a Bézier, across the sweep on an arc); it is not arc length, so colour changes fastest where the curve moves least per step.
+    /// Vary the color along the curve: at parameter `t` it is the stroke color times `ramp` at `t`, per channel (as a mesh tint). `t` runs 0 to 1 (`p0` → `p3` on a Bézier, across the sweep on an arc); it is not arc length, so color changes fastest where the curve moves least per step.
     pub const fn ramp(mut self, ramp: ColorRamp) -> Self {
         self.style.ramp = Some(ramp);
         self

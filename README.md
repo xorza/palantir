@@ -101,7 +101,7 @@ The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommen
 - **SVG artwork** — icons rasterize at their exact physical size into the
   icon atlas, so they stay crisp at any scale factor and cost nothing until
   first drawn. Gradients and filters included. A single-paint icon takes a
-  tint whole; a colour one keeps its palette and takes the tint's alpha.
+  tint whole; a color one keeps its palette and takes the tint's alpha.
 - **Keyboard all the way** — `Tab` / `Shift+Tab` walk every interactive
   widget, an open dialog or menu keeps them inside itself and gives focus
   back when it closes, the arrows walk menus and any `arrow_focus` group,
@@ -123,7 +123,7 @@ The build sets `-C target-cpu=x86-64-v3` (see [Recommended build flag](#recommen
 Pre-1.0 — these are known gaps, not design rejections:
 
 - **Accessibility** — no AccessKit / screen-reader support yet.
-- **Rich text** — one family / size / colour per `Text`; no inline spans.
+- **Rich text** — one family / size / color per `Text`; no inline spans.
 - **Visual caret motion in bidirectional text** — `TextEdit`'s arrow keys
   step graphemes in logical order, so inside a right-to-left run `←` moves
   the caret visually rightward.
@@ -186,7 +186,7 @@ and the comparison reports exactly which pixels moved.
 
 ## Recommended build flag
 
-Colour, corner radii, spacing and shadow geometry are stored as f16. Without
+Color, corner radii, spacing and shadow geometry are stored as f16. Without
 F16C in the target features, each conversion takes a runtime feature check
 into a `#[target_feature]` fn that can't inline into its caller — a spill and
 a call every time. x86-64-v3 carries F16C, plus AVX2 and FMA:

@@ -1,6 +1,6 @@
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use crate::animation::animatable::Animatable;
@@ -278,11 +278,11 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
     worst
 }
 
-/// The default holds the field within nine 8-bit steps of the exact colour, one texel per pixel is exact,
+/// The default holds the field within nine 8-bit steps of the exact color, one texel per pixel is exact,
 /// and a coarse one is worse. The worst pixel is on the top edge, `v = 1`, where the gamut-boundary ramp is
 /// steepest; see [`ColorField::texel_size`](crate::ColorField::texel_size) for the table.
 #[test]
-fn texel_size_four_tracks_the_exact_colour() {
+fn texel_size_four_tracks_the_exact_color() {
     let errors = thread::scope(|scope| {
         let sweeps = ColorModel::ALL.map(|model| {
             array::from_fn::<_, 12, _>(|step| {

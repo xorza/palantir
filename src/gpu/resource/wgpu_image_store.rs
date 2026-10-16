@@ -119,12 +119,12 @@ impl ImageStore for WgpuImageStore {
     }
 }
 
-/// `texels` with every colour scaled by its own alpha, still sRGB-encoded:
+/// `texels` with every color scaled by its own alpha, still sRGB-encoded:
 /// what the texture holds and an [`Image`] does not.
 ///
 /// **The filter runs before the shader**, so texels must already carry their
-/// coverage: straight colour blended halfway to transparent black leaves a
-/// dark (or coloured) fringe once the shader multiplies by alpha. The image
+/// coverage: straight color blended halfway to transparent black leaves a
+/// dark (or colored) fringe once the shader multiplies by alpha. The image
 /// shader's header states the contract.
 ///
 /// The scale is in linear light, which the sRGB texture decodes to and the

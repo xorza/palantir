@@ -1,7 +1,7 @@
 //! The GPU half both raster tenants own, in one type. An icon quad and a glyph quad
 //! are the same at the GPU level (a tinted, atlas-sourced rectangle at the raster's
 //! pixel size), differing only in what fills the instance buffer. Each tenant gets
-//! its own instance, with its own atlas and eviction budget, so a colour-icon-heavy
+//! its own instance, with its own atlas and eviction budget, so a color-icon-heavy
 //! frame cannot evict the label's glyphs; the cost is one extra draw on a group
 //! mixing icons and text.
 

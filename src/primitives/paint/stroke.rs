@@ -1,4 +1,4 @@
-//! A line's colour and width, as a border or as a path's stroke.
+//! A line's color and width, as a border or as a path's stroke.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::is_invisible;
@@ -6,14 +6,14 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;
 
-/// One colour and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centres it on the path.
+/// One color and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centres it on the path.
 ///
 /// [`Background`]: crate::Background
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Stroke {
-    /// Ink colour.
+    /// Ink color.
     pub color: RgbaF32,
     /// Width in logical pixels.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -21,7 +21,7 @@ pub struct Stroke {
 }
 
 impl Stroke {
-    /// Panics unless the width is a [length](domain::length) and the colour a [colour](domain::color).
+    /// Panics unless the width is a [length](domain::length) and the color a [color](domain::color).
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -35,7 +35,7 @@ impl Stroke {
         width: 0.0,
     };
 
-    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent colour. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Background`'s `skip_serializing_if` needs `fn(&T) -> bool`.
+    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Background`'s `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()

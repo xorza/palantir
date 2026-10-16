@@ -1,10 +1,10 @@
-//! The colour half of a gradient: what colour each value in 0..1 maps to, independent of geometry.
+//! The color half of a gradient: what color each value in 0..1 maps to, independent of geometry.
 
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
 
-/// A colour for every value in `0..=1`: stops plus the interpolation space.
+/// A color for every value in `0..=1`: stops plus the interpolation space.
 ///
 /// A [`Gradient`](crate::Gradient) is a ramp plus a geometry; a stroked curve's own parameter runs 0 to 1, so it takes a bare ramp ([`CurveShape::ramp`](crate::widget::CurveShape::ramp)). Also the identity of a baked atlas row: equal ramps bake equal texels.
 // `repr(C)` keeps `interpolation` last; see the note on `Gradient`.
@@ -14,7 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 pub struct ColorRamp {
     /// Two through eight stops, in ascending offset order.
     pub stops: GradientStops,
-    /// Which space the colour between two stops interpolates in.
+    /// Which space the color between two stops interpolates in.
     pub interpolation: Interpolation,
 }
 
@@ -32,7 +32,7 @@ impl ColorRamp {
         Self::new([Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }
 
-    /// Override the interpolation colour space.
+    /// Override the interpolation color space.
     pub const fn with_interpolation(mut self, interpolation: Interpolation) -> Self {
         self.interpolation = interpolation;
         self

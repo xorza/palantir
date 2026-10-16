@@ -1,12 +1,12 @@
-//! [`ContentType`]: single-channel coverage, or full colour. Beside [`RasterImage`](crate::primitives::paint::raster_image::RasterImage) in primitives, since both rasterizers and the atlas name it.
+//! [`ContentType`]: single-channel coverage, or full color. Beside [`RasterImage`](crate::primitives::paint::raster_image::RasterImage) in primitives, since both rasterizers and the atlas name it.
 
 /// What a raster's bytes hold, and so which of an atlas's two sides it lives on; one answer for every rasterizer (see [`RasterImage::content`](crate::widget::RasterImage)). The discriminants are load-bearing: `RasterAtlas` indexes its `[Side; 2]` with `content as usize`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ContentType {
-    /// One coverage byte per pixel, multiplied by the shape's tint so one baked raster serves every theme colour.
+    /// One coverage byte per pixel, multiplied by the shape's tint so one baked raster serves every theme color.
     Mask = 0,
-    /// Straight sRGB RGBA, four bytes per pixel; stored on the colour side and premultiplied in linear at output.
+    /// Straight sRGB RGBA, four bytes per pixel; stored on the color side and premultiplied in linear at output.
     Color = 1,
 }
 

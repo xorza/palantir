@@ -1,4 +1,4 @@
-//! Stroked geometry: sub-pixel hairlines to wide widths, joins, caps, per-point / per-segment polyline colours, cubic and quadratic béziers, and circular arcs in solid and ramped colours. Every tile pushes raw `Shape`s through `ui.add_shape` onto the GPU curve pipeline, with no CPU tessellation.
+//! Stroked geometry: sub-pixel hairlines to wide widths, joins, caps, per-point / per-segment polyline colors, cubic and quadratic béziers, and circular arcs in solid and ramped colors. Every tile pushes raw `Shape`s through `ui.add_shape` onto the GPU curve pipeline, with no CPU tessellation.
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
@@ -35,13 +35,13 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
 
-    Section::new("Colour along a stroke")
+    Section::new("Color along a stroke")
         .apis(&[api!(type ColorRamp)])
         .show(ui, |ui| {
             support::note(ui, "Per point, per segment, or a ramp along the curve.");
             support::tiles(ui, |ui| {
-                DemoCell::new("per-point colours").show(ui, per_point);
-                DemoCell::new("per-segment colours").show(ui, per_segment);
+                DemoCell::new("per-point colors").show(ui, per_point);
+                DemoCell::new("per-segment colors").show(ui, per_segment);
                 DemoCell::new("gradient along t").show(ui, gradient_cubic);
                 DemoCell::new("gradient, three stops").show(ui, gradient_multistop);
             });
@@ -259,7 +259,7 @@ fn arcs(ui: &mut Ui) {
         28.0,
         Stroke::new(support::A, 3.0),
     ));
-    // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke colour sets the hue.
+    // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke color sets the hue.
     let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
     ui.add_shape(
         Shape::arc(

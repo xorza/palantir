@@ -171,7 +171,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
     }
 }
 
-/// The gate sees the faded payload. A draw faded to nothing is dropped by the existing no-op gate; a half fade halves the tint alpha and leaves colour lanes untouched.
+/// The gate sees the faded payload. A draw faded to nothing is dropped by the existing no-op gate; a half fade halves the tint alpha and leaves color lanes untouched.
 #[test]
 fn the_gate_sees_the_faded_payload() {
     let draw = || ImageDraw {
@@ -199,11 +199,11 @@ fn the_gate_sees_the_faded_payload() {
     let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
-    // Half an opaque white tint's alpha, colour untouched; exact in f16.
+    // Half an opaque white tint's alpha, color untouched; exact in f16.
     let tint = payload.tint.unpack();
     assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
-    // A polyline gates alike: its fade rides the payload's alpha lane, its colours being in the record store.
+    // A polyline gates alike: its fade rides the payload's alpha lane, its colors being in the record store.
     let line = DrawPolylinePayload {
         points: Span::new(0, 2),
         width: 1.0,

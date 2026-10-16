@@ -8,7 +8,7 @@ use crate::theme::palette::Palette;
 /// It paints inside the widget's arranged rect with its chrome's corners, so the widget's clip never cuts it and layout never moves.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FocusRingTheme {
-    /// Ring colour.
+    /// Ring color.
     pub color: RgbaF32,
     /// Ring width in logical px. `0` draws no ring.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

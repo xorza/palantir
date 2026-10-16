@@ -29,7 +29,7 @@ use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 
 /// A solid `Brush::Solid` panel emits a Quad with `fill_kind = BRUSH_KIND_SOLID
-/// = 0`, `fill_lut_row = 0` (no gradient) and the fill colour passed through.
+/// = 0`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();
@@ -192,7 +192,7 @@ fn compose_emits_image_batch_for_drawimage() {
         Rect::new(20.0, 40.0, 60.0, 80.0)
     );
     // The composer must forward the encoder's UV crop verbatim: a zero UV size
-    // samples one texel forever and paints every image a uniform colour.
+    // samples one texel forever and paints every image a uniform color.
     assert_eq!(buf.images.instance()[0].uv_min, Vec2::ZERO);
     assert_eq!(buf.images.instance()[0].uv_size, Vec2::ONE);
 }

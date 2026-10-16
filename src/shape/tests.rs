@@ -236,7 +236,7 @@ fn text_noop_rejects_invalid_metrics() {
     }
 }
 
-/// A curve paints nothing when its stroke does or the ramp its colour multiplies is transparent everywhere.
+/// A curve paints nothing when its stroke does or the ramp its color multiplies is transparent everywhere.
 #[test]
 fn curve_noop_follows_the_stroke_and_the_ramp() {
     let visible = ColorRamp::two_stop(RgbaF32::TRANSPARENT, RgbaF32::WHITE);

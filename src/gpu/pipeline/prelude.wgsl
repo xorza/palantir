@@ -37,7 +37,7 @@ fn band_coverage(core_half: f32, r: f32) -> f32 {
     return clamp((core_half + AA_HALF_WIDTH - r) / filter_width, 0.0, plateau);
 }
 
-// Rec. 709 luma. Both readers weigh colours that have already been
+// Rec. 709 luma. Both readers weigh colors that have already been
 // decoded to linear, which is the space these coefficients are defined in.
 const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
 
@@ -62,7 +62,7 @@ fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
 
 // Straight alpha in, premultiplied out — the contract every fragment
 // entry point in this backend writes under, because the blend state is
-// `PREMULTIPLIED_ALPHA_BLENDING`. See AGENTS.md "Colour pipeline".
+// `PREMULTIPLIED_ALPHA_BLENDING`. See AGENTS.md "Color pipeline".
 fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
 }
@@ -75,9 +75,9 @@ fn lut_u(t: f32, width: f32) -> f32 {
     return (t * (width - 1.0) + 0.5) / width;
 }
 
-// Premultiplied in, straight out — for a colour that was interpolated
-// premultiplied (a gradient texel, a vertex colour) and must meet a
-// straight-alpha multiply. A fully transparent colour has no hue; it
+// Premultiplied in, straight out — for a color that was interpolated
+// premultiplied (a gradient texel, a vertex color) and must meet a
+// straight-alpha multiply. A fully transparent color has no hue; it
 // comes back black.
 fn unpremultiply(c: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(select(vec3<f32>(0.0), c.rgb / c.a, c.a > 0.0), c.a);
@@ -85,7 +85,7 @@ fn unpremultiply(c: vec4<f32>) -> vec4<f32> {
 
 // sRGB-encoded channels → linear light: the exact piecewise transfer
 // function of IEC 61966-2-1, the inverse of what the GPU applies at every
-// sRGB write, so a colour authored as sRGB bytes reaches the screen as
+// sRGB write, so a color authored as sRGB bytes reaches the screen as
 // those bytes. The CPU decodes with the same function.
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let low = c / 12.92;

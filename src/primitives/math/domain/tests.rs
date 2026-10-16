@@ -259,7 +259,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     }
 }
 
-/// Kinds over other types: a colour checks every channel and lets HDR through, a count starts at one, a power of two stays under its maximum.
+/// Kinds over other types: a color checks every channel and lets HDR through, a count starts at one, a power of two stays under its maximum.
 #[test]
 fn compound_kinds_check_every_part() {
     let hdr = RgbaF32::new(2.0, -1.0, 0.0, 1.0);

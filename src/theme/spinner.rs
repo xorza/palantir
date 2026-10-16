@@ -7,7 +7,7 @@ use std::f32::consts;
 /// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)` / `.diameter(...)` / `.thickness(...)`) win.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SpinnerTheme {
-    /// Arc colour at the comet's head; the tail fades to transparent.
+    /// Arc color at the comet's head; the tail fades to transparent.
     pub color: RgbaF32,
     /// Diameter in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

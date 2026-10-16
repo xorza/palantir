@@ -12,7 +12,7 @@ use glam::Vec2;
 
 /// Per-instance quad data (60 B). Field order is constrained by `QUAD_INSTANCE_ATTRS` (backend); no tail padding, as vertex strides need only 4-byte alignment.
 ///
-/// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the colour, `fill_lut_row` / `fill_axis` ignored.
+/// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the color, `fill_lut_row` / `fill_axis` ignored.
 ///
 /// **Linear-gradient fill:** `fill_kind` is [`FillKind::linear`], `fill_lut_row` indexes the gradient atlas row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the projection axis and range; `fill` is white, the shader's multiplier on the ramp, so its alpha carries a fade.
 ///

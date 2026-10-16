@@ -20,7 +20,7 @@ pub struct Hsv {
     pub v: f32,
 }
 
-/// Channel spread below which a colour has no hue of its own.
+/// Channel spread below which a color has no hue of its own.
 const GREY_SPREAD: f32 = 1e-6;
 
 impl Hsv {
@@ -33,7 +33,7 @@ impl Hsv {
         clippy::cast_sign_loss,
         reason = "a turn puts the hue in [0, 6), so its sector is non-negative"
     )]
-    /// The colour in linear RGB.
+    /// The color in linear RGB.
     pub fn to_color(self) -> RgbaF32 {
         let hue = domain::turn(self.h) * 6.0;
         let sat = domain::fraction(self.s);

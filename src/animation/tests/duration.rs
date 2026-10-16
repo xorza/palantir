@@ -81,7 +81,7 @@ fn instant_duration_is_noop_and_drops_row() {
 }
 
 /// Sub-perceptual drift snaps instead of animating, using the type's own settle tolerance: `1e-5` on an
-/// `f32` (1e-4) snaps; `2e-4` snaps on a colour channel (under `1/4096`) but animates on an `f32`.
+/// `f32` (1e-4) snaps; `2e-4` snaps on a color channel (under `1/4096`) but animates on an `f32`.
 #[test]
 fn target_below_snap_floor_snaps_without_animating() {
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
@@ -107,15 +107,15 @@ fn target_below_snap_floor_snaps_without_animating() {
         let r = scalars.step(AnimationRequest::new(id, SLOT, 0.5 + 2e-4), *spec, 0.016);
         assert!(!r.settled, "case {label}: 2e-4 on an f32 animates");
 
-        let mut colours = AnimMapTyped::<RgbaF32>::default();
+        let mut colors = AnimMapTyped::<RgbaF32>::default();
         let (grey, nudged) = (
             RgbaF32::new(0.5, 0.5, 0.5, 1.0),
             RgbaF32::new(0.5 + 2e-4, 0.5, 0.5, 1.0),
         );
-        let _ = colours.step(AnimationRequest::new(id, SLOT, grey), *spec, 0.016);
-        let r = colours.step(AnimationRequest::new(id, SLOT, nudged), *spec, 0.016);
-        assert_eq!(r.current, nudged, "case {label}: a colour lands on target");
-        assert!(r.settled, "case {label}: 2e-4 on a colour snaps");
+        let _ = colors.step(AnimationRequest::new(id, SLOT, grey), *spec, 0.016);
+        let r = colors.step(AnimationRequest::new(id, SLOT, nudged), *spec, 0.016);
+        assert_eq!(r.current, nudged, "case {label}: a color lands on target");
+        assert!(r.settled, "case {label}: 2e-4 on a color snaps");
     }
 }
 
@@ -153,20 +153,20 @@ fn one_floor_animates_a_small_change_under_either_motion() {
         );
     }
 
-    let mut colours = AnimMapTyped::<RgbaF32>::default();
+    let mut colors = AnimMapTyped::<RgbaF32>::default();
     let id = support::wid("hover");
     let (rest, hover) = (RgbaF32::hex(0x121212), RgbaF32::hex(0x1c1c1c));
-    let _ = colours.step(
+    let _ = colors.step(
         AnimationRequest::new(id, SLOT, rest),
         AnimationSpec::SPRING,
         0.016,
     );
-    let _ = colours.step(
+    let _ = colors.step(
         AnimationRequest::new(id, SLOT, hover),
         AnimationSpec::SPRING,
         0.016,
     );
-    let moving = colours.step(
+    let moving = colors.step(
         AnimationRequest::new(id, SLOT, hover),
         AnimationSpec::SPRING,
         0.016,

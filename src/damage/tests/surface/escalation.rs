@@ -18,7 +18,7 @@ use glam::UVec2;
 
 /// A Display change between frames (resize, scale factor, snap flip) forces
 /// `Full` however few widgets are dirty: the backend recreates the backbuffer,
-/// and a partial paint over it would leave the rest clear colour.
+/// and a partial paint over it would leave the rest clear color.
 #[test]
 fn display_change_forces_full_repaint() {
     let cases: &[(&str, Display)] = &[
@@ -161,7 +161,7 @@ fn stable_surface_does_not_short_circuit() {
     let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(h.engines.damage.counters.dirty().is_empty());
-    // Frame 3: one leaf changes colour; `Partial` proves the short-circuit didn't fire.
+    // Frame 3: one leaf changes color; `Partial` proves the short-circuit didn't fire.
     let changed = frame(&mut h, |ui| build(ui, RED));
     let Some(Damage::Partial(damage)) = changed else {
         panic!(
@@ -175,10 +175,10 @@ fn stable_surface_does_not_short_circuit() {
     );
 }
 
-/// The clear colour is the bottom paint layer and no widget carries it; a
-/// partial frame only pre-fills scissors, so a new colour escalates once.
+/// The clear color is the bottom paint layer and no widget carries it; a
+/// partial frame only pre-fills scissors, so a new color escalates once.
 #[test]
-fn a_new_clear_colour_forces_full_damage() {
+fn a_new_clear_color_forces_full_damage() {
     let mut h = UiHarness::new(DISPLAY.physical);
     h.frame(|ui| one_frame(ui, BLUE));
     assert!(
@@ -193,13 +193,13 @@ fn a_new_clear_colour_forces_full_damage() {
             clear: RED,
             damage: Damage::Full,
         }),
-        "a clear colour reaches the screen through a full repaint or not \
-         at all, and the repaint clears to the colour it escalated for",
+        "a clear color reaches the screen through a full repaint or not \
+         at all, and the repaint clears to the color it escalated for",
     );
 
     assert!(
         frame(&mut h, |ui| one_frame(ui, BLUE)).is_none(),
-        "the colour the last frame presented under is the baseline now",
+        "the color the last frame presented under is the baseline now",
     );
 }
 

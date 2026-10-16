@@ -51,15 +51,15 @@ impl IconBackend {
                     vbuf: "palantir.icon.vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.icon",
-                        // The reverse of text: colour icons are the expected content, so the colour
+                        // The reverse of text: color icons are the expected content, so the color
                         // side is sized to avoid an immediate grow chain.
                         initial_mask_px: 256,
                         initial_color_px: 512,
-                        // The same 16 MiB as text: it caps the colour side at 2048^2, far past a
+                        // The same 16 MiB as text: it caps the color side at 2048^2, far past a
                         // plausible icon working set. A separate knob because the match between
                         // tenants is coincidence, not a property.
                         max_bytes: 16 << 20,
-                        // 4 MiB reaches 1024^2 on the colour side, enough for a few hundred icons.
+                        // 4 MiB reaches 1024^2 on the color side, enough for a few hundred icons.
                         eager_growth_bytes: 4 << 20,
                     },
                     initial_instances: 256,

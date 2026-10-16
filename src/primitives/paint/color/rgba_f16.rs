@@ -1,11 +1,11 @@
-//! Linear RGB in four f16 lanes: the lowered colour every draw lane carries.
+//! Linear RGB in four f16 lanes: the lowered color every draw lane carries.
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
-/// Linear-RGB colour packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and the full f32 range). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
+/// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and the full f32 range). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RgbaF16(F16x4);
@@ -13,7 +13,7 @@ pub(crate) struct RgbaF16(F16x4);
 impl RgbaF16 {
     pub(crate) const TRANSPARENT: Self = Self(F16x4::ZERO);
 
-    /// Opaque white: the identity of the channel-wise multiply a colour lane applies to a ramp sample.
+    /// Opaque white: the identity of the channel-wise multiply a color lane applies to a ramp sample.
     pub(crate) const WHITE: Self = Self(F16x4::ONE);
 
     /// Linear channels and a straight alpha packed to f16 lanes; the peer of [`RgbaF32::new`].
@@ -22,7 +22,7 @@ impl RgbaF16 {
         Self(F16x4::from_lanes([r, g, b, a]))
     }
 
-    /// Scale the alpha lane by `by`, leaving the colour lanes alone (storage is straight-alpha, so no premultiply). `by == 1.0` is the common case, so callers skip this.
+    /// Scale the alpha lane by `by`, leaving the color lanes alone (storage is straight-alpha, so no premultiply). `by == 1.0` is the common case, so callers skip this.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         let [r, g, b, a] = self.0.lanes();
@@ -36,7 +36,7 @@ impl RgbaF16 {
         self.0.lane_is_noop(3) || self.0.has_nan()
     }
 
-    /// True when alpha is within `EPS` of 1.0 (the mirror of `is_noop`, same bit-trick). On this tier alone: occlusion pruning asks, in the composer, which sees lowered colour.
+    /// True when alpha is within `EPS` of 1.0 (the mirror of `is_noop`, same bit-trick). On this tier alone: occlusion pruning asks, in the composer, which sees lowered color.
     #[inline]
     pub(crate) const fn is_opaque(self) -> bool {
         self.0.lane_is_opaque(3)

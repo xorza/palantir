@@ -66,7 +66,7 @@
 //!   [`Spinner::diameter`], [`Modal::backdrop`]) overrides one field.
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
-//! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a colour per
+//! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
 //! state, so those take the bundle. [`Background`] follows the same rule: widgets
 //! with one panel behind them have `background()` ([`Panel`], [`Grid`], [`Block`],
 //! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`ContextMenu`]).
@@ -82,7 +82,7 @@
 //! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
 //! | `golden` | no | The `golden` module for golden-image tests of suites that draw through Palantir; costs an image codec. |
 //!
-//! # Colour
+//! # Color
 //!
 //! [`RgbaF32`] holds **straight-alpha linear RGB**. The constructors
 //! ([`RgbaF32::srgb`], [`RgbaF32::hex`], [`RgbaF32::from_srgba`]) read sRGB and
@@ -180,7 +180,7 @@ macro_rules! fmt {
 /// }
 /// ```
 ///
-/// Not the whole crate: theme bundles, the docking model, hosts, colour models and
+/// Not the whole crate: theme bundles, the docking model, hosts, color models and
 /// gradient builders stay at the root; widget authoring stays in [`widget`].
 pub mod prelude {
     pub use crate::{

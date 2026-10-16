@@ -34,7 +34,7 @@ impl DrawCurvePayload {
         }
     }
 
-    /// Paints nothing for non-positive stroke width, a degenerate arc radius, or a transparent stroke colour. An all-transparent ramp is caught earlier by `CurveShape`'s no-op test.
+    /// Paints nothing for non-positive stroke width, a degenerate arc radius, or a transparent stroke color. An all-transparent ramp is caught earlier by `CurveShape`'s no-op test.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         if is_invisible(self.width) {

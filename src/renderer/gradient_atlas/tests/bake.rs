@@ -3,7 +3,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use crate::animation::animatable::Animatable;
@@ -52,7 +52,7 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     assert_stored(mid, RgbaF32::new(r, g, b, 1.0), "Oklab midpoint");
 }
 
-/// First and last texels hold the stops' stored colours (catches off-by-one in
+/// First and last texels hold the stops' stored colors (catches off-by-one in
 /// the `t = i/(N-1)` stride and the edge clamp).
 #[test]
 fn endpoints_match_stops_exactly() {
@@ -248,7 +248,7 @@ fn texel(out: &LutRowTexels, i: usize) -> RgbaF32 {
     out[i].unpack()
 }
 
-/// An opaque stop colour whose channels are `byte / 255` in linear
+/// An opaque stop color whose channels are `byte / 255` in linear
 /// light, with no sRGB decode.
 fn linear(r: u8, g: u8, b: u8) -> RgbaF32 {
     let lin = |byte: u8| f32::from(byte) / 255.0;

@@ -70,7 +70,7 @@ fn widget_look_serde_roundtrip() {
 fn text_overrides_reject_invalid_metrics_on_load() {
     for (label, ron, ok) in [
         ("empty", "()", true),
-        ("colour only", "(color: Some(\"#ff0000\"))", true),
+        ("color only", "(color: Some(\"#ff0000\"))", true),
         ("size", "(font_size: Some(13.0))", true),
         ("zero size", "(font_size: Some(0.0))", false),
         ("NaN size", "(font_size: Some(NaN))", false),

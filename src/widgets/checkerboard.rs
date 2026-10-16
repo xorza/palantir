@@ -1,4 +1,4 @@
-//! The checkerboard a translucent colour is read against.
+//! The checkerboard a translucent color is read against.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -9,7 +9,7 @@ use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 
-/// The light ground with dark squares drawn over it, behind translucent colour.
+/// The light ground with dark squares drawn over it, behind translucent color.
 ///
 /// One type so the chip, preview and alpha bar share a cell size. The painted size arrives with each paint (the themed one before the first arrange) and only decides how many squares are drawn.
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl Checkerboard {
         }
     }
 
-    /// The pattern when `color` is translucent, then the colour and the theme's hairline.
+    /// The pattern when `color` is translucent, then the color and the theme's hairline.
     pub(crate) fn paint_chip(&self, ui: &mut Ui, color: RgbaF32, size: Size) {
         if color.a < 1.0 {
             self.paint(ui, size);

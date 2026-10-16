@@ -1,6 +1,6 @@
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use crate::primitives::math::num::{F32Px, Vec2Ext, unit_to_u8};

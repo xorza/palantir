@@ -1,10 +1,10 @@
-//! Colours reach the screen as the bytes they were written as.
+//! Colors reach the screen as the bytes they were written as.
 //!
 //! CPU hex-to-linear decode and the GPU's sRGB encode must be exact inverses, and every lane between must hold display precision. A cubic fit once read `#1a1a1a` back as `#171717`; only a readback showed it. The ramp sits in the dark range, where one display step is smallest in linear light.
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use glam::{UVec2, Vec2};
@@ -101,13 +101,13 @@ fn a_dark_ramp_reads_back_as_authored() {
         assert_eq!(
             at(10, MESH_Y),
             want,
-            "a mesh coloured #{v:02x}{v:02x}{v:02x}"
+            "a mesh colored #{v:02x}{v:02x}{v:02x}"
         );
         let brightest = (x..x + COLUMN as u32)
             .flat_map(|px| (TEXT_Y as u32..LINE_Y as u32 - 4).map(move |py| (px, py)))
             .map(|(px, py)| img.get_pixel(px, py).0)
             .max_by_key(|p| p[0])
             .unwrap();
-        assert_eq!(brightest, want, "a glyph coloured #{v:02x}{v:02x}{v:02x}");
+        assert_eq!(brightest, want, "a glyph colored #{v:02x}{v:02x}{v:02x}");
     }
 }

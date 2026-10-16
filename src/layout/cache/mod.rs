@@ -425,7 +425,7 @@ pub(crate) mod internals {
     }
 
     /// What a variant of the broad tree changes in its first leaf. Both are
-    /// layout authoring; a colour is paint, which the cache does not key on.
+    /// layout authoring; a color is paint, which the cache does not key on.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(crate) enum BroadChange {
         /// The leaf's fill weight, which an only child's geometry ignores.

@@ -137,7 +137,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
     assert_ne!(width, width_b);
 }
 
-/// Comet trail: transparent white tail, opaque white head, so the stroke colour sets the hue; a translucent base keeps its alpha at the head.
+/// Comet trail: transparent white tail, opaque white head, so the stroke color sets the hue; a translucent base keeps its alpha at the head.
 #[test]
 fn comet_fades_tail_to_head() {
     let ramp = comet();
