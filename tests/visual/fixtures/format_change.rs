@@ -51,7 +51,7 @@ fn format_changes_render_identically() {
     h.size(UVec2::new(200, 120));
     let before = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
 
-    // Guard against a vacuous comparison: the card's centre must differ from the clear colour.
+    // Guard against a vacuous comparison: the card's centre must differ from the clear color.
     assert_ne!(
         before.get_pixel(2, 2).0,
         before.get_pixel(100, 60).0,

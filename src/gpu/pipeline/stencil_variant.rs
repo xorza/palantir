@@ -1,4 +1,4 @@
-//! A colour pipeline and its stencil-test twin, built together.
+//! A color pipeline and its stencil-test twin, built together.
 
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::surface::stencil::Stencil;

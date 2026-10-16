@@ -1,4 +1,4 @@
-//! A CPU-built texture a colour widget paints with, and when to rebuild it.
+//! A CPU-built texture a color widget paints with, and when to rebuild it.
 
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::size::Size;
@@ -7,9 +7,9 @@ use crate::ui::Ui;
 use glam::UVec2;
 use std::num::NonZeroU32;
 
-/// One CPU-filled texture a colour widget owns and rewrites in place via [`ImageHandle::update`].
+/// One CPU-filled texture a color widget owns and rewrites in place via [`ImageHandle::update`].
 ///
-/// Exact per texel, which a gradient (linear-light interpolation) or vertex-coloured mesh (8-bit
+/// Exact per texel, which a gradient (linear-light interpolation) or vertex-colored mesh (8-bit
 /// *linear*, crushing darks) cannot be. `K` is everything the fill reads, compared exactly.
 #[derive(Debug)]
 pub(crate) struct ColorSurface<K> {
@@ -80,7 +80,7 @@ impl<K: PartialEq> ColorSurface<K> {
             fill(&mut image);
             let handle = ui
                 .load_image(&image)
-                .expect("a colour surface is clamped to the device texture cap");
+                .expect("a color surface is clamped to the device texture cap");
             self.built = Some(Built { handle, image, key });
         }
         &self.built.as_ref().unwrap().handle

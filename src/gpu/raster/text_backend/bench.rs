@@ -46,10 +46,10 @@ const CHURN_INDEX_STRIDE: u32 = 37;
 
 const ROWS: u32 = 32;
 
-/// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale, colour and subpixel bins), and maintenance scales with rows.
+/// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale, color and subpixel bins), and maintenance scales with rows.
 const DISTINCT_RUNS: usize = 512;
 
-/// Grey of a run's colour: a label is brighter than a value.
+/// Grey of a run's color: a label is brighter than a value.
 const LABEL: f32 = 0.96;
 const VALUE: f32 = 0.86;
 

@@ -46,7 +46,7 @@ pub(crate) fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             support::note(ui, "A sweep about a centre from a start angle.");
             support::tiles(ui, |ui| {
-                DemoCell::new("colour wheel").show(ui, conic_wheel);
+                DemoCell::new("color wheel").show(ui, conic_wheel);
                 DemoCell::new("rotated 90°").show(ui, conic_rotated);
             });
         });
@@ -56,7 +56,7 @@ pub(crate) fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             support::note(
                 ui,
-                "What happens outside the stop range, and the colour space the stops \
+                "What happens outside the stop range, and the color space the stops \
                  blend in.",
             );
             support::tiles(ui, |ui| {
@@ -139,7 +139,7 @@ fn radial_ellipse(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Conic colour wheel: six saturated stops sweep clockwise from +x, stop 0 == stop 1 so the seam hides at angle 0.
+/// Conic color wheel: six saturated stops sweep clockwise from +x, stop 0 == stop 1 so the seam hides at angle 0.
 fn conic_wheel(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),

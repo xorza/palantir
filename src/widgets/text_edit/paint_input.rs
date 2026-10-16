@@ -24,7 +24,7 @@ pub(super) struct PaintInput<'a> {
     /// Identity of the text block's node, a child of the field so the layout engine places it; derived from the field's id, so stable across frames.
     pub(super) block_id: WidgetId,
     pub(super) text: &'a str,
-    /// `Some(width)` while an input method composes: the wash rects cover the composition and paint as underlines `width` thick in the text colour.
+    /// `Some(width)` while an input method composes: the wash rects cover the composition and paint as underlines `width` thick in the text color.
     pub(super) preedit_underline: Option<f32>,
     pub(super) placeholder: &'a str,
     pub(super) geometry: TextGeometry,

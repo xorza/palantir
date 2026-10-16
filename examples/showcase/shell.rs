@@ -91,7 +91,7 @@ const PAGES: &[Page] = &[
     Page {
         group: Group::Widgets,
         label: "colors",
-        blurb: "The colour picker, its parts on their own, and the chip that opens it.",
+        blurb: "The color picker, its parts on their own, and the chip that opens it.",
         keys: &["drag", "Esc"],
         flow: Flow::Scroll,
         build: |ui, _| pages::colors::build(ui),
@@ -211,7 +211,7 @@ const PAGES: &[Page] = &[
     Page {
         group: Group::Paint,
         label: "strokes",
-        blurb: "Lines, polylines, béziers and arcs: widths, joins, caps and colour.",
+        blurb: "Lines, polylines, béziers and arcs: widths, joins, caps and color.",
         keys: &[],
         flow: Flow::Scroll,
         build: |ui, _| pages::strokes::build(ui),

@@ -51,8 +51,8 @@ impl ColorSource {
     }
 }
 
-/// The colour-cardinality contract is checked at `PolylineShape`'s lowering: a polyline
-/// under two points is dropped whatever its colour slice, and a wrong-length
+/// The color-cardinality contract is checked at `PolylineShape`'s lowering: a polyline
+/// under two points is dropped whatever its color slice, and a wrong-length
 /// slice is never a no-op, so it lowers and is checked.
 #[test]
 fn polyline_color_cardinality_is_enforced_at_lowering() {
@@ -63,7 +63,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
         RgbaF32::new(0.5, 1.0, 0.5, 1.0),
         RgbaF32::new(0.0, 0.5, 1.0, 0.5),
     ];
-    // `tint` × each colour; every product is a power-of-two fraction, exact in f16.
+    // `tint` × each color; every product is a power-of-two fraction, exact in f16.
     let tinted = [
         RgbaF32::new(0.5, 0.25, 1.0, 0.5),
         RgbaF32::new(0.25, 0.25, 0.5, 0.5),
@@ -89,7 +89,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                     &colors[..colors_len],
                 );
                 let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
-                // A wrong-length colour slice (empty included) is never a no-op, so the cardinality assert panics.
+                // A wrong-length color slice (empty included) is never a no-op, so the cardinality assert panics.
                 let lowers = points_len >= 2;
                 let accepted = !lowers || source.accepts(points_len, colors_len);
 
@@ -139,7 +139,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                     assert_eq!(
                         &store.polyline_colors[color_span.range()],
                         expected.as_slice(),
-                        "{source:?}: staged colours are the stroke colour times each colour",
+                        "{source:?}: staged colors are the stroke color times each color",
                     );
                 }
             }
@@ -278,12 +278,12 @@ fn the_nan_gate_drops_every_shape_kind() {
         ..PolylineShape::new(&pts_ok, stroke)
     };
     gate(
-        "polyline_point_colour",
+        "polyline_point_color",
         colored(PolylineColors::PerPoint(&colors_nan)),
         colored(PolylineColors::PerPoint(&colors_ok)),
     );
     gate(
-        "polyline_segment_colour",
+        "polyline_segment_color",
         colored(PolylineColors::PerSegment(&colors_nan[1..])),
         colored(PolylineColors::PerSegment(&colors_ok[1..])),
     );
@@ -400,7 +400,7 @@ fn builders_refuse_what_they_check() {
         Shape::line(Vec2::ZERO, Vec2::X, Stroke::new(white, -1.0))
     });
 
-    // Geometry is checked as offsets at every door; a varying polyline colour as a colour.
+    // Geometry is checked as offsets at every door; a varying polyline color as a color.
     let geometry: [fn(); 10] = [
         || drop(Shape::rect(Rect::new(0.0, N, 8.0, 8.0))),
         || {

@@ -93,16 +93,16 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
         baseline,
         support::record(|ui| build(ui, &base_points, color_b)).node
     );
-    // The same comparison does see a move and a colour change it can show.
+    // The same comparison does see a move and a color change it can show.
     let moved = [Vec2::ZERO, Vec2::new(11.0, 0.0)];
     assert_ne!(
         baseline,
         support::record(|ui| build(ui, &moved, color_a)).node
     );
-    let recoloured = RgbaF32::new(0.6, 0.25, 0.75, 1.0);
+    let recolored = RgbaF32::new(0.6, 0.25, 0.75, 1.0);
     assert_ne!(
         baseline,
-        support::record(|ui| build(ui, &base_points, recoloured)).node
+        support::record(|ui| build(ui, &base_points, recolored)).node
     );
 }
 
@@ -551,7 +551,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
     let (full, layout) = hashes(base);
     let rows: [(&str, Edit, bool, bool); 3] = [
         (
-            "recolour",
+            "recolor",
             Edit {
                 fill: RgbaF32::srgb(0.9, 0.1, 0.1),
                 ..base

@@ -15,15 +15,15 @@ pub(super) mod cache;
 pub(super) mod encoder;
 
 /// Cache-hit identity for an encoded run. `area_color` is in the key because
-/// the colour is baked into every cached quad, which holds only while every
-/// run is shaped with one uniform colour (no per-glyph `color_opt`); add a
-/// colour-span fingerprint first if that changes. `extract_glyphs` asserts it.
+/// the color is baked into every cached quad, which holds only while every
+/// run is shaped with one uniform color (no per-glyph `color_opt`); add a
+/// color-span fingerprint first if that changes. `extract_glyphs` asserts it.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
     text: TextShapeKey,
     /// `(scale * 65536).round() as u32`.
     scale_q: u32,
-    /// The run's [`RgbaF16`](crate::primitives::paint::color::rgba_f16::RgbaF16) colour bits.
+    /// The run's [`RgbaF16`](crate::primitives::paint::color::rgba_f16::RgbaF16) color bits.
     area_color: u64,
     /// Packed subpixel bins, from [`crate::text::render::SubpixelOrigin::bins`].
     bins: u8,

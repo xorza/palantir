@@ -2,7 +2,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use glam::{UVec2, Vec2};
@@ -55,7 +55,7 @@ fn filled(handle: &ImageHandle) -> ImageShape {
     Shape::image(handle.clone()).fit(ImageFit::Fill)
 }
 
-/// Each `(x, colour, what)` probe on row `y` reads its colour.
+/// Each `(x, color, what)` probe on row `y` reads its color.
 #[track_caller]
 fn assert_probes(img: &RgbaImage, y: u32, probes: &[(u32, [u8; 4], &str)]) {
     for &(x, want, what) in probes {
@@ -329,7 +329,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 
 /// Taps combine *premultiplied*, so both modes are correct over alpha (geometry as above; `T1` clear, so each tap is three quarters of an outer texel).
 ///
-/// **Mean.** `WHITE(α=128) CLEAR CLEAR`: the lit tap is full-strength white at 0.75 coverage; the mean is `0.75 · α / 2 = 0.1882` linear, **120** sRGB. Straight colour applies coverage twice: 105.
+/// **Mean.** `WHITE(α=128) CLEAR CLEAR`: the lit tap is full-strength white at 0.75 coverage; the mean is `0.75 · α / 2 = 0.1882` linear, **120** sRGB. Straight color applies coverage twice: 105.
 ///
 /// **Peak.** `WHITE(α=26) CLEAR GREY(α=255)`, where orderings disagree: straight luma picks the faint white (0.75 vs 0.162), premultiplied the grey (0.121 vs 0.057). Grey sRGB 128 = 0.21586 linear, tap `0.75 · 0.21586 = 0.1619`, **113** sRGB (white 68, double coverage 98).
 #[test]
@@ -376,11 +376,11 @@ fn downsample_combines_taps_in_premultiplied_space() {
     }
 }
 
-/// A magnified edge keeps its colour: bilinear between opaque and transparent texels needs premultiplied storage, else soft edges darken.
+/// A magnified edge keeps its color: bilinear between opaque and transparent texels needs premultiplied storage, else soft edges darken.
 ///
-/// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centres 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight colour multiplies twice: 153.
+/// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centres 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight color multiplies twice: 153.
 #[test]
-fn a_magnified_transparent_edge_keeps_its_colour() {
+fn a_magnified_transparent_edge_keeps_its_color() {
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
     const PURE_RED: [u8; 4] = [255, 0, 0, 255];
 
@@ -439,7 +439,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
 /// - `B` then `A`: singletons; `A`'s second appearance is non-adjacent and must stay its own run, else it paints before `B`.
 /// - `C C`: a trailing run, pinning that the last span closes at the batch end.
 ///
-/// Read back per pane: a drifting range paints a neighbour's colour, a dropped run the clear colour.
+/// Read back per pane: a drifting range paints a neighbour's color, a dropped run the clear color.
 #[test]
 fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];

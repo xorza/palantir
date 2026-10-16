@@ -19,7 +19,7 @@ use crate::gpu::device::gpu_init_context::GpuInitContext;
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView). `'static`
 /// because rendering happens after `App::record` returns.
 ///
-/// **Write premultiplied colour into the target**, as the composite samples
+/// **Write premultiplied color into the target**, as the composite samples
 /// it like a registered image.
 pub trait GpuPaint: 'static {
     /// Builds GPU resources. Called **once** per view; skipped paints and

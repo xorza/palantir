@@ -110,7 +110,7 @@ impl TabsTheme {
         close.for_each_text(f);
     }
 
-    /// The cap colour a strip paints under its selected chip.
+    /// The cap color a strip paints under its selected chip.
     pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32 {
         match focus {
             TabStripFocus::Focused => self.accent,

@@ -210,9 +210,9 @@ fn run(name: &str, script: &[Knobs]) {
 }
 
 #[test]
-fn colour_and_text_change() {
+fn color_and_text_change() {
     run(
-        "damage_oracle_colour_and_text_change",
+        "damage_oracle_color_and_text_change",
         &[
             Knobs {
                 fill: RgbaF32::srgb(0.9, 0.9, 0.1),

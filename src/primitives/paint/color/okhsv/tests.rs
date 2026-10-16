@@ -25,7 +25,7 @@ const CORNERS: [RgbaF32; 6] = [
 /// Index of pure blue in [`CORNERS`], the one corner off the Okhsv gamut edge.
 const BLUE: usize = 4;
 
-/// Each cube corner is a fully saturated, full-value Okhsv colour of the hue above.
+/// Each cube corner is a fully saturated, full-value Okhsv color of the hue above.
 #[test]
 fn cube_corners_are_the_gamut_edge() {
     for (index, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
@@ -51,7 +51,7 @@ fn cube_corners_are_the_gamut_edge() {
     }
 }
 
-/// Pure blue is the one colour the cube cannot name: Okhsv's gamut edge is the first crossing of the
+/// Pure blue is the one color the cube cannot name: Okhsv's gamut edge is the first crossing of the
 /// chroma sweep, and pure blue sits in a later in-gamut island. The space is built this way; the port is not wrong.
 #[test]
 fn pure_blue_lies_outside_the_cube() {

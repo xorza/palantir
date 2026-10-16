@@ -67,7 +67,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
     }
 }
 
-/// Intern a curve's colour ramp into the gradient pool [`brush`] fills, as a row with no axis.
+/// Intern a curve's color ramp into the gradient pool [`brush`] fills, as a row with no axis.
 pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
     let hash = gradient_hash(FillKind::RAMP, ramp);
     let id = store.intern_gradient(

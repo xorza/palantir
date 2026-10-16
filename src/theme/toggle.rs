@@ -24,7 +24,7 @@ pub struct ToggleTheme {
     pub unchecked: StatefulLook,
     /// Look when checked.
     pub checked: StatefulLook,
-    /// Colour of the check polyline or radio dot, painted over the `checked` chrome.
+    /// Color of the check polyline or radio dot, painted over the `checked` chrome.
     pub indicator: RgbaF32,
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     /// Box side.

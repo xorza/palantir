@@ -28,7 +28,7 @@ impl DrawTextPayload {
         }
     }
 
-    /// Paints nothing for a zero-extent rect or fully transparent colour.
+    /// Paints nothing for a zero-extent rect or fully transparent color.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.color.is_noop()

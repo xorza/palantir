@@ -1,4 +1,4 @@
-//! The offscreen host every device-needing audit draws through, so all callers share the target's format, usage and clear colour.
+//! The offscreen host every device-needing audit draws through, so all callers share the target's format, usage and clear color.
 
 #![expect(
     clippy::disallowed_types,

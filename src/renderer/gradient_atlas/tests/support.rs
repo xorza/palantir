@@ -10,9 +10,9 @@ pub(super) fn fresh_row() -> LutRowTexels {
     [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]
 }
 
-/// A gradient whose stops are distinct for every `i` below 2^24 (`i`'s three low bytes are the first stop's colour). Only stops key a row, so varying geometry would silently reuse one.
+/// A gradient whose stops are distinct for every `i` below 2^24 (`i`'s three low bytes are the first stop's color). Only stops key a row, so varying geometry would silently reuse one.
 pub(super) fn distinct_grad(i: u32) -> LinearGradient {
-    assert!(i < 1 << 24, "{i} does not fit three colour bytes");
+    assert!(i < 1 << 24, "{i} does not fit three color bytes");
     let [r, g, b, _] = i.to_le_bytes();
     LinearGradient::two_stop(
         0.0,

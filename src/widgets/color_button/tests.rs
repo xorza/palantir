@@ -1,6 +1,6 @@
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use crate::internals::ui_harness::UiHarness;
@@ -130,7 +130,7 @@ fn panel_settings_reach_the_picker() {
     }
 }
 
-/// Opening the panel leaves the colour alone; only a gesture inside changes it.
+/// Opening the panel leaves the color alone; only a gesture inside changes it.
 #[test]
 fn opening_the_panel_is_not_an_edit() {
     let id = WidgetId::from_hash("color-button-no-edit");

@@ -39,11 +39,11 @@ impl<'a> MeshShape<'a> {
         self
     }
 
-    /// Multiplied onto every vertex colour. White leaves the mesh alone.
+    /// Multiplied onto every vertex color. White leaves the mesh alone.
     ///
     /// # Panics
     ///
-    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
+    /// Panics unless `tint` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn tint(mut self, tint: RgbaF32) -> Self {
         self.tint = domain::color(tint);

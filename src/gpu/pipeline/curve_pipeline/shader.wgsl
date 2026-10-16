@@ -140,7 +140,7 @@ struct VsOut {
     // Half the stroke's own width, physical px, which `band_coverage`
     // reads; the strip reaches `AA_HALF_WIDTH` past it.
     @location(2) @interpolate(flat) core_half: f32,
-    // Stroke colour, premultiplied, lerped `color0 → color1` along `t`
+    // Stroke color, premultiplied, lerped `color0 → color1` along `t`
     // for strips (constant when both lanes are equal). Multiplies the
     // ramp sample under `FLAG_RAMP_FILL`, once both are straight.
     @location(3) color: vec4<f32>,
@@ -327,7 +327,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         out.cap_t = cap_t;
         out.curve_t = t;
         // Premultiplied, so a fade to transparent passes through the
-        // stroke's own colour rather than darkening or taking on
+        // stroke's own color rather than darkening or taking on
         // `color1`'s hue, and the rasterizer interpolates it the same way.
         out.color = mix(
             premultiply(in.color0.rgb, in.color0.a),
@@ -428,8 +428,8 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
             gradient_sampler,
             vec2<f32>(lut_u(in.curve_t, dims.x), lut_v),
         );
-        // The stroke colour multiplies the sample, channel by channel —
-        // the same rule as a mesh tint, on the straight colours. See
+        // The stroke color multiplies the sample, channel by channel —
+        // the same rule as a mesh tint, on the straight colors. See
         // `GpuFill::curve`.
         rgba = unpremultiply(c) * rgba;
     }

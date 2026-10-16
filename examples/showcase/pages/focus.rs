@@ -513,7 +513,7 @@ fn ring(ui: &mut Ui) {
                     .step(0.5)
                     .size((Sizing::fixed(160.0), Sizing::HUG))
                     .show(ui);
-                Text::new("colour").style(&support::note_style()).show(ui);
+                Text::new("color").style(&support::note_style()).show(ui);
                 ColorButton::new(ColorPicker::new(&mut color)).show(ui);
                 if Button::new().label("Reset").show(ui).clicked() {
                     let default = FocusRingTheme::from_palette(&shell::showcase_palette());
@@ -527,7 +527,7 @@ fn ring(ui: &mut Ui) {
                 &[
                     "Tab to the width slider and press → : the ring around it grows",
                     "Width 0 draws no ring at all",
-                    "Open another page and press Tab: its ring has the same width and colour",
+                    "Open another page and press Tab: its ring has the same width and color",
                     "Reset puts the ring back to 2 px teal",
                 ],
             );

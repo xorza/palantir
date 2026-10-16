@@ -35,9 +35,9 @@ pub(crate) struct CurveInstance {
     pub(crate) t0: f32,
     pub(crate) t1: f32,
     pub(crate) width: f32,
-    /// Stroke colour at `t = 0`; under a ramp it multiplies the LUT colour.
+    /// Stroke color at `t = 0`; under a ramp it multiplies the LUT color.
     pub(crate) color0: RgbaF16,
-    /// Stroke colour at `t = 1`, lerped along `t`.
+    /// Stroke color at `t = 1`, lerped along `t`.
     pub(crate) color1: RgbaF16,
     /// The stroke's cap and which ends of this instance are the stroke's ends.
     pub(crate) caps: CurveCaps,

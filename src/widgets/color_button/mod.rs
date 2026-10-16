@@ -1,4 +1,4 @@
-//! The chip that opens a colour picker popup.
+//! The chip that opens a color picker popup.
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
@@ -21,7 +21,7 @@ use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use std::rc::Rc;
 
-/// A colour chip that opens a [`ColorPicker`] popup when clicked.
+/// A color chip that opens a [`ColorPicker`] popup when clicked.
 ///
 /// The picker is configured as usual and handed over whole. Open state lives
 /// in the response map keyed off the trigger. Click outside or Esc closes it;

@@ -1,5 +1,5 @@
 //! What a text field wears in each of its four states, plus the caret and
-//! selection colours that have no state.
+//! selection colors that have no state.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
@@ -85,7 +85,7 @@ impl TextEditTheme {
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
 
-    /// A field whose stroke changes colour on focus but never width.
+    /// A field whose stroke changes color on focus but never width.
     pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
         // Constant stroke width across states: `Tree::open_node` folds it into

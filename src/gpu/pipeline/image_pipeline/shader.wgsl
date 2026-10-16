@@ -2,7 +2,7 @@
 // group 0, switched per draw by the backend. Four-corner quad emitted
 // implicitly via `vertex_index` (TriangleStrip).
 //
-// Colour pipeline: texture is `Rgba8UnormSrgb`, so the sampler decodes
+// Color pipeline: texture is `Rgba8UnormSrgb`, so the sampler decodes
 // sRGB → linear automatically. Texels were premultiplied at upload
 // (`image_store::premultiply_into`), so the sample is premultiplied and
 // the filter between texels blends premultiplied. `tint` (linear, straight
@@ -163,7 +163,7 @@ fn footprint_taps(
             let t = (vec2<f32>(f32(i), f32(j)) + 0.5) * step - 0.5;
             let p = uv + uv_dx * t.x + uv_dy * t.y;
             // Premultiplied, as every tap is, which is what makes both
-            // modes correct over alpha: averaging straight colour lets a
+            // modes correct over alpha: averaging straight color lets a
             // transparent texel drag an opaque one's rgb toward black,
             // and ranking by straight luma lets a near-invisible bright
             // texel outrank a solid one. Each tap already carries its own
@@ -172,7 +172,7 @@ fn footprint_taps(
             sum += s;
             // Branchless so both modes cost the same walk; the mode picks a
             // result at the end rather than a path here. The whole tap wins
-            // rather than a per-channel `max`, so a coloured point source
+            // rather than a per-channel `max`, so a colored point source
             // keeps its hue instead of being pushed toward white.
             let luma = dot(s.rgb, LUMA);
             let brighter = luma > best_luma;

@@ -145,7 +145,7 @@ fn lerp_spans_both_endpoints_and_overshoots() {
     assert_eq!(Animatable::lerp(a, b, 2.0).r, -1.0);
 }
 
-/// `faded` scales alpha only; colour lanes stay bit-identical, and `by == 1.0` is the identity.
+/// `faded` scales alpha only; color lanes stay bit-identical, and `by == 1.0` is the identity.
 #[test]
 fn faded_scales_only_the_alpha_lane() {
     let f16 = RgbaF16::new(0.25, 0.5, 0.75, 0.8);

@@ -167,7 +167,7 @@ fn translucent_solid(ui: &mut Ui) {
     ));
 }
 
-/// Per-point translucent; same muted mixes, the bug shows as bright vertex colours.
+/// Per-point translucent; same muted mixes, the bug shows as bright vertex colors.
 fn translucent_per_point(ui: &mut Ui) {
     backdrop(ui);
     let pts = [

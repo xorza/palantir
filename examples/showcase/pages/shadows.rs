@@ -41,16 +41,16 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
 
-    Section::new("Colour and stacking")
+    Section::new("Color and stacking")
         .apis(&[api!(Shadow::with_spread)])
         .show(ui, |ui| {
             support::note(
                 ui,
-                "A coloured glow with no offset, and three shadows stacked in record order, \
+                "A colored glow with no offset, and three shadows stacked in record order, \
                  as a CSS box-shadow list stacks them.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("glow — coloured, spread 2")
+                DemoCell::new("glow — colored, spread 2")
                     .surface(Surface::LightWell)
                     .show(ui, glow);
                 DemoCell::new("stacked — three layers")
@@ -160,7 +160,7 @@ fn sharp(ui: &mut Ui) {
     card_fill(ui);
 }
 
-/// Coloured glow, zero offset — bloom feel.
+/// Colored glow, zero offset — bloom feel.
 fn glow(ui: &mut Ui) {
     ui.add_shape(shadow_shape(
         Shadow::drop(RgbaF32::srgba(0.4, 0.6, 1.0, 0.6), Vec2::ZERO, 18.0).with_spread(2.0),

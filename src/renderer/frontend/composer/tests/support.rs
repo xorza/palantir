@@ -2,7 +2,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 use crate::common::span::Span;
@@ -196,7 +196,7 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
-/// A polyline command a composer test records: white, one colour, butt-capped
+/// A polyline command a composer test records: white, one color, butt-capped
 /// and mitred unless set.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestPolyline<'a> {
@@ -236,7 +236,7 @@ impl<'a> TestPolyline<'a> {
         Self { join, ..self }
     }
 
-    /// Lowers the points and colours into `store` and records the draw onto `b`.
+    /// Lowers the points and colors into `store` and records the draw onto `b`.
     pub(super) fn record(self, b: &mut PaintCapture, store: &mut RecordStore) {
         let Self {
             points,

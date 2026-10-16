@@ -39,7 +39,7 @@ impl DrawPolylinePayload {
         }
     }
 
-    /// Paints nothing: degenerate, or faded out. Colours are not checked (an O(n) span read); the
+    /// Paints nothing: degenerate, or faded out. Colors are not checked (an O(n) span read); the
     /// bbox is not either, since a zero-area one can still paint stroke pixels.
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {

@@ -40,8 +40,8 @@ impl IconFit {
 }
 
 /// A baked SVG icon painted into the owner's rect, rasterized at its exact
-/// physical size. `tint` applies whole to a **tintable** icon (single-colour
-/// paints) but only as alpha to a **colour** icon.
+/// physical size. `tint` applies whole to a **tintable** icon (single-color
+/// paints) but only as alpha to a **color** icon.
 #[derive(Clone, Copy, Debug)]
 #[must_use]
 pub struct IconShape {
@@ -85,14 +85,14 @@ impl IconShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `tint` is a [colour](crate::widget::domain::color).
+    /// Panics unless `tint` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn tint(mut self, tint: RgbaF32) -> Self {
         self.tint = domain::color(tint);
         self
     }
 
-    /// Draws a **colour** icon in greyscale; no effect on a tintable icon.
+    /// Draws a **color** icon in greyscale; no effect on a tintable icon.
     pub const fn desaturate(mut self, desaturate: bool) -> Self {
         self.desaturate = desaturate;
         self

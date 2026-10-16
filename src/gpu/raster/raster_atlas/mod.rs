@@ -1,10 +1,10 @@
-//! Rasterized-quad atlas for mask and colour content, keyed by whatever its
+//! Rasterized-quad atlas for mask and color content, keyed by whatever its
 //! tenant rasterizes from: glyphs (cosmic `CacheKey`) or icons
 //! ([`IconRasterKey`](crate::icons::icon_raster_key::IconRasterKey)).
 //!
 //! The two instances share the policies (bucketed packing, clock-sweep eviction,
 //! grow-with-blit, batched staging uploads) and the layout from [`RasterProgram`].
-//! Each keeps its own textures, bind group and eviction budget, so a colour-icon-heavy
+//! Each keeps its own textures, bind group and eviction budget, so a color-icon-heavy
 //! frame cannot take rectangles from adjacent glyphs. Packing lives on [`Side`],
 //! victim selection on [`ClockSweep`].
 
@@ -48,7 +48,7 @@ pub(super) struct RasterAtlasConfig {
     pub(super) initial_mask_px: u32,
     pub(super) initial_color_px: u32,
     /// Hard ceiling on one side's backing texture. Per instance because the budget is
-    /// in bytes (a mask side gets four times a colour side's edge). When it binds,
+    /// in bytes (a mask side gets four times a color side's edge). When it binds,
     /// `Rasterized::AtlasFull` is returned and the entry re-encodes each frame.
     pub(super) max_bytes: u64,
     /// Byte budget below which [`RasterAtlas::allocate`] grows a side rather than

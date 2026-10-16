@@ -1,6 +1,6 @@
 //! DamageEngine visualization: a static scene rendered twice into one Harness (so
 //! `DamageEngine.prev` carries over), the second with
-//! `DebugOverlayConfig::dim_undamaged`. Magenta is the clear colour of **both**
+//! `DebugOverlayConfig::dim_undamaged`. Magenta is the clear color of **both**
 //! frames, so a pixel reads magenta only if the scene left it uncovered. A failing
 //! test writes its second frame under `tests/visual/output/damage_<name>/`.
 
@@ -162,7 +162,7 @@ fn static_scene_repeats_clean() {
     assert_eq!(
         magenta_pixels(&f2),
         0,
-        "the scene covers the surface, so no pixel may read as the clear colour",
+        "the scene covers the surface, so no pixel may read as the clear color",
     );
     goldens::assert_same("damage_static_repeat", &f2, &f1);
 }
@@ -184,7 +184,7 @@ fn single_button_change_repaints_partially() {
     assert_eq!(
         magenta_pixels(&f2),
         0,
-        "a partial frame loads the target, so nothing reads as the clear colour",
+        "a partial frame loads the target, so nothing reads as the clear color",
     );
 }
 
@@ -212,7 +212,7 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// static canvas. A single union rect would span the canvas and escalate to
 /// `Damage::Full`; multiple rects stay disjoint, each scissored to its own pass.
 /// With `dim_undamaged` the centre reads as frame 1 darkened, never the clear
-/// colour, and each corner reads its block's fill.
+/// color, and each corner reads its block's fill.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
     let mut h = Harness::new();

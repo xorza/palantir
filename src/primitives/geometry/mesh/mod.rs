@@ -18,7 +18,7 @@ use std::hash::Hasher as _;
 /// `pos` is in owner-local logical px (origin at the owner-rect top-left,
 /// after `local_rect.min`); the composer bakes in the transform and DPI scale.
 ///
-/// `color` is sRGB-encoded bytes with straight alpha: a hex colour survives
+/// `color` is sRGB-encoded bytes with straight alpha: a hex color survives
 /// exactly, any other lands within half a display step. The shader decodes it
 /// per vertex, so the rasterizer interpolates linear light, and premultiplies
 /// at output.
@@ -27,12 +27,12 @@ use std::hash::Hasher as _;
 pub struct MeshVertex {
     /// Position in the owner's local logical pixels.
     pub pos: Vec2,
-    /// Vertex colour, sRGB-encoded.
+    /// Vertex color, sRGB-encoded.
     pub color: SrgbaU8,
 }
 
 impl MeshVertex {
-    /// Construct at `pos`; an `RgbaF32` colour is encoded exactly here, an
+    /// Construct at `pos`; an `RgbaF32` color is encoded exactly here, an
     /// `SrgbaU8` stored as is.
     pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self {
         Self {
@@ -209,7 +209,7 @@ impl Mesh {
         b
     }
 
-    /// Filled triangle over `corners` in a single colour, with its bbox
+    /// Filled triangle over `corners` in a single color, with its bbox
     /// pre-cached: [`Self::filled_polygon`] over three points.
     ///
     /// # Panics

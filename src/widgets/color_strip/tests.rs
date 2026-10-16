@@ -14,7 +14,7 @@ fn harness() -> UiHarness {
     UiHarness::new(BAR)
 }
 
-/// The bar writes only its own axis; an alpha bar that wrote the colour would undo picks.
+/// The bar writes only its own axis; an alpha bar that wrote the color would undo picks.
 #[test]
 fn the_alpha_bar_writes_only_alpha() {
     let id = WidgetId::from_hash("strip-alpha-writes");
@@ -53,7 +53,7 @@ fn the_hue_bar_writes_only_the_hue() {
 
 /// The alpha bar's texture keeps straight alpha for the GPU to composite over the checker.
 #[test]
-fn the_alpha_texture_is_the_colour_at_every_alpha() {
+fn the_alpha_texture_is_the_color_at_every_alpha() {
     let color = RgbaF32::hex(0x4cd3ff);
     let want = color.to_srgba_u8();
     let mut image = Image::blank(UVec2::new(4, 2));
@@ -63,7 +63,7 @@ fn the_alpha_texture_is_the_colour_at_every_alpha() {
         assert_eq!(
             (texel.r, texel.g, texel.b),
             (want.r, want.g, want.b),
-            "colour held"
+            "color held"
         );
     }
     let alphas: Vec<u8> = texels.iter().take(4).map(|t| t.a).collect();
@@ -82,7 +82,7 @@ fn every_row_of_a_bar_is_the_first_row() {
     assert_eq!(&texels[..row], &texels[row * 2..]);
 }
 
-/// The hue ramp is each hue's most saturated colour, sRGB-encoded; the texture must match Okhsv's bytes at hue 0.5.
+/// The hue ramp is each hue's most saturated color, sRGB-encoded; the texture must match Okhsv's bytes at hue 0.5.
 #[test]
 fn the_hue_texture_follows_the_model() {
     for model in ColorModel::ALL {

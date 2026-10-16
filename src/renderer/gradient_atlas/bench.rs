@@ -36,7 +36,7 @@ const WORKING_SET: u32 = 128;
 
 const CHURN_BASE: u32 = 1_000_000;
 
-/// Distinct ramp per seed, walking the colour cube so every seed is a distinct
+/// Distinct ramp per seed, walking the color cube so every seed is a distinct
 /// bake key.
 ///
 /// Deliberately structured, not pre-mixed: constant channels across a run are

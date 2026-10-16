@@ -66,7 +66,7 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     }
 }
 
-/// A stop keeps the bytes of the hex code it was written as and returns the colour that names. Every grey byte, since linear bytes collapsed sRGB 8, 10 and 16 onto one value.
+/// A stop keeps the bytes of the hex code it was written as and returns the color that names. Every grey byte, since linear bytes collapsed sRGB 8, 10 and 16 onto one value.
 #[test]
 fn a_hex_stop_keeps_its_bytes() {
     for v in 0u8..=255 {
@@ -77,15 +77,15 @@ fn a_hex_stop_keeps_its_bytes() {
             SrgbaU8::rgb(v, v, v),
             "stored bytes of #{v:02x}"
         );
-        assert_eq!(stop.color(), authored, "decoded colour of #{v:02x}");
+        assert_eq!(stop.color(), authored, "decoded color of #{v:02x}");
     }
 }
 
-/// Distinct content still hashes distinctly; offset and colour occupy disjoint halves of one word, so a colour never aliases an offset.
+/// Distinct content still hashes distinctly; offset and color occupy disjoint halves of one word, so a color never aliases an offset.
 #[test]
-fn offset_and_colour_stay_independent() {
+fn offset_and_color_stay_independent() {
     let base = ramp(SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6));
-    let colour_swapped = ramp(SrgbaU8::rgb(4, 5, 6), SrgbaU8::rgb(1, 2, 3));
+    let color_swapped = ramp(SrgbaU8::rgb(4, 5, 6), SrgbaU8::rgb(1, 2, 3));
     let offset_moved = GradientStops::new([
         Stop::new(0.0, RgbaF32::from_srgba(SrgbaU8::rgb(1, 2, 3))),
         Stop::new(0.5, RgbaF32::from_srgba(SrgbaU8::rgb(4, 5, 6))),
@@ -96,7 +96,7 @@ fn offset_and_colour_stay_independent() {
         s.hash(&mut h);
         h.finish()
     };
-    assert_ne!(digest(&base), digest(&colour_swapped));
+    assert_ne!(digest(&base), digest(&color_swapped));
     assert_ne!(digest(&base), digest(&offset_moved));
     assert_eq!(digest(&base), digest(&base.clone()));
 }
@@ -110,7 +110,7 @@ fn written_order_does_not_reach_identity() {
         stops: GradientStops,
     }
 
-    // Colours the wire form (sRGB hex) can also name, so the parsed half lands on this ramp.
+    // Colors the wire form (sRGB hex) can also name, so the parsed half lands on this ramp.
     let a = RgbaF32::hex(0xff0000);
     let b = RgbaF32::hex(0x00ff00);
     let c = RgbaF32::hex(0x0000ff);

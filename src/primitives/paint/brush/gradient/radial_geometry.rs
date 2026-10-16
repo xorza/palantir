@@ -1,4 +1,4 @@
-//! The radial gradient's axis: colour runs outward from a centre, with a radius per axis for ellipses.
+//! The radial gradient's axis: color runs outward from a centre, with a radius per axis for ellipses.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -10,7 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
 
-/// Geometry of a radial gradient: colour runs outward from `center` along the elliptical `radius`, both in object-space 0..1 (origin top-left). The shader projects to `t = length((local01 - center) / radius)`, applies `Spread`, samples the LUT.
+/// Geometry of a radial gradient: color runs outward from `center` along the elliptical `radius`, both in object-space 0..1 (origin top-left). The shader projects to `t = length((local01 - center) / radius)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.

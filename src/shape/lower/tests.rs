@@ -158,14 +158,14 @@ fn background_lowering_keeps_an_authored_field() {
     let variants = [
         ("base", base.clone()),
         (
-            "border colour",
+            "border color",
             Background {
                 border: Stroke::new(RgbaF32::BLACK, 1.0),
                 ..base.clone()
             },
         ),
         (
-            "fill colour",
+            "fill color",
             Background {
                 fill: RgbaF32::BLACK.into(),
                 ..base.clone()
@@ -179,7 +179,7 @@ fn background_lowering_keeps_an_authored_field() {
             },
         ),
         (
-            "shadow colour",
+            "shadow color",
             with_shadow(Shadow {
                 color: RgbaF32::WHITE,
                 ..shadow

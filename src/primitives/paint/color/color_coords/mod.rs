@@ -7,7 +7,7 @@ use crate::primitives::paint::color::hsv::Hsv;
 use crate::primitives::paint::color::okhsv::Okhsv;
 
 /// A picker's three axes with their model, retained between frames: black has no hue and grey no
-/// saturation, so re-deriving from the bound colour would lose the hue.
+/// saturation, so re-deriving from the bound color would lose the hue.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub enum ColorCoords {
@@ -32,7 +32,7 @@ impl ColorCoords {
         }
     }
 
-    /// The colour model.
+    /// The color model.
     pub const fn model(self) -> ColorModel {
         match self {
             Self::Okhsv(_) => ColorModel::Okhsv,
@@ -40,7 +40,7 @@ impl ColorCoords {
         }
     }
 
-    /// The colour these coordinates give.
+    /// The color these coordinates give.
     pub fn to_color(self) -> RgbaF32 {
         match self {
             Self::Okhsv(c) => c.to_color(),
@@ -48,7 +48,7 @@ impl ColorCoords {
         }
     }
 
-    /// The same colour read in `model`; only the handles move, grey keeps its hue.
+    /// The same color read in `model`; only the handles move, grey keeps its hue.
     pub fn with_model(self, model: ColorModel) -> Self {
         if model == self.model() {
             return self;

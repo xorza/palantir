@@ -46,7 +46,7 @@ const FOLDER_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 
 <path d="M3 18.2 6.2 11H22l-3.2 7.2Z" fill="#ffefcb"/>
 </g></svg>"##;
 
-/// A single-colour outline. Every paint resolves to one colour, so it is
+/// A single-color outline. Every paint resolves to one color, so it is
 /// marked tintable and takes a shape's full tint rather than only its alpha.
 const NEW_FILE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 <path d="M6 2h8l5 5v15H6Z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>
@@ -168,7 +168,7 @@ pub(crate) fn build(ui: &mut Ui) {
     Section::new("Tint").show(ui, |ui| {
         support::note(
             ui,
-            "A single-colour icon takes the whole tint. A colour icon takes only \
+            "A single-color icon takes the whole tint. A color icon takes only \
                  its alpha, and desaturate is the other half of a disabled look.",
         );
         support::tiles(ui, |ui| {
@@ -181,14 +181,14 @@ pub(crate) fn build(ui: &mut Ui) {
                     icons.draw(ui, icons.new_file, tint);
                 });
             }
-            // A colour icon takes only the tint's alpha: fading, not recolouring.
-            DemoCell::new("colour icon at 40% alpha")
+            // A color icon takes only the tint's alpha: fading, not recoloring.
+            DemoCell::new("color icon at 40% alpha")
                 .size(96.0, 96.0)
                 .show(ui, |ui| {
                     icons.draw(ui, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
                 });
             // …and `desaturate` is the other half of a disabled state: the artwork's own luminance, hue gone.
-            DemoCell::new("colour icon desaturated")
+            DemoCell::new("color icon desaturated")
                 .size(96.0, 96.0)
                 .show(ui, |ui| {
                     ui.add_shape(icons.set.shape(icons.save).desaturate(true));

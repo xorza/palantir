@@ -13,7 +13,7 @@ use std::borrow::Cow;
 
 /// A solid black square filling its 8x8 viewBox: coverage is exactly 255 everywhere.
 const SOLID: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#000"/></svg>"##;
-/// Left half opaque red, right half empty: a hand-checkable split and the colour path's fixture.
+/// Left half opaque red, right half empty: a hand-checkable split and the color path's fixture.
 const HALF: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="8" fill="#ff0000"/><rect x="4" width="4" height="8" fill="#0000ff" fill-opacity="0.5"/></svg>"##;
 
 /// The two fixtures as a set (ids follow `from_svgs`' name order).
@@ -100,7 +100,7 @@ fn tintable_icon_rasterizes_to_full_coverage_at_the_exact_size() {
 }
 
 #[test]
-fn colour_icon_rasterizes_to_straight_srgb_rgba() {
+fn color_icon_rasterizes_to_straight_srgb_rgba() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
     let image = raster(&mut r, &table, key(HALF_ID, 8, 2));
     assert_eq!(image.content, ContentType::Color);

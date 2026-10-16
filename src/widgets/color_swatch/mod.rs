@@ -1,4 +1,4 @@
-//! A colour chip over a checker for translucent colours.
+//! A color chip over a checker for translucent colors.
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
@@ -14,7 +14,7 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 
-/// A chip painting one colour, over a checkerboard when it is translucent.
+/// A chip painting one color, over a checkerboard when it is translucent.
 ///
 /// Display only: it writes nothing and senses a click, read through [`clicked()`](crate::ResponseState::clicked). Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
 #[derive(Debug)]

@@ -1,7 +1,7 @@
 //! The per-window stencil attachment and the stencil-test state shared by every
 //! rounded-clip-aware pipeline. Masks stamp as a depth-counted stack
 //! (`mask_stamp`: level `k` writes `k + 1` where the stencil equals `k`), and
-//! colour draws test at `stencil_reference = chain depth`.
+//! color draws test at `stencil_reference = chain depth`.
 
 use crate::gpu::surface::render_target;
 use glam::UVec2;
@@ -49,7 +49,7 @@ impl Stencil {
         }
     }
 
-    /// The stencil-test colour pipelines: ref 0 outside masks, chain depth
+    /// The stencil-test color pipelines: ref 0 outside masks, chain depth
     /// inside, compared `Equal`; `write_mask = 0` keeps the stamped masks.
     pub(crate) fn test_state() -> wgpu::DepthStencilState {
         Self::state(

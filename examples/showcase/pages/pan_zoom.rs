@@ -364,7 +364,7 @@ fn cell_theme() -> ButtonTheme {
     }
 }
 
-/// Points `theme`'s four states at one cell's colour.
+/// Points `theme`'s four states at one cell's color.
 fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
     let bg = |fill: RgbaF32| Background::rounded(fill, Corners::all(3.0));
     theme.looks.normal.background = bg(base);

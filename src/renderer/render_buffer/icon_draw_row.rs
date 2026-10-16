@@ -15,8 +15,8 @@ pub(crate) struct IconDrawRow {
     pub(crate) origin: IVec2,
     /// Quad extents in physical px: the raster's own in the exact band; above it the icon's whole-pixel box, resampled from a nearby ladder rung (or the capped one far below).
     pub(crate) size: U16Vec2,
-    /// Straight-alpha **linear** RGBA. Multiplies a mask icon whole; a colour icon takes the alpha alone.
+    /// Straight-alpha **linear** RGBA. Multiplies a mask icon whole; a color icon takes the alpha alone.
     pub(crate) color: RgbaF16,
-    /// Draw a colour icon as its own luminance; folded into the quad's packed uv field.
+    /// Draw a color icon as its own luminance; folded into the quad's packed uv field.
     pub(crate) desaturate: bool,
 }

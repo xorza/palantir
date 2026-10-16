@@ -7,11 +7,11 @@ struct VsIn {
     //
     // **Straight alpha in, premultiplied alpha out.** `color` and
     // `tint` carry straight-alpha values; `vs` premultiplies their
-    // product, so the rasterizer interpolates premultiplied colour across
+    // product, so the rasterizer interpolates premultiplied color across
     // the face — white to transparent black is half-white at half alpha
     // midway, not a dark fringe — and `fs` writes it as is, matching the
     // pipeline's `PREMULTIPLIED_ALPHA_BLENDING` blend state. See AGENTS.md
-    // "Colour pipeline" for the shared contract.
+    // "Color pipeline" for the shared contract.
     @location(1) color: vec4<f32>,
     // Per-instance transform + tint. `physical = pos * scale + translate`;
     // `out_color = premultiply(color * tint)`.

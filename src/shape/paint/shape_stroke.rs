@@ -6,7 +6,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
 use std::hash::Hasher;
 
-/// Lowered stroke: a straight-alpha colour and a logical-px width.
+/// Lowered stroke: a straight-alpha color and a logical-px width.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ShapeStroke {
     pub(crate) width: f32,
@@ -39,7 +39,7 @@ impl ShapeStroke {
         is_invisible(self.width) || self.color.is_noop()
     }
 
-    /// Collapses a no-op stroke to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the stroke by colour alone.
+    /// Collapses a no-op stroke to [`Self::NONE`], so `DrawQuadPayload::is_noop` can test the stroke by color alone.
     /// A NaN width normalizes away like any non-painting width; catching it loudly is `Shapes::add`'s job.
     #[inline]
     pub(crate) const fn normalized(self) -> Self {

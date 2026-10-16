@@ -1,4 +1,4 @@
-//! Colours that fade to transparent, interpolated premultiplied.
+//! Colors that fade to transparent, interpolated premultiplied.
 
 use glam::{UVec2, Vec2};
 use palantir::widget::{Mesh, Shape};
@@ -7,9 +7,9 @@ use palantir::{LinearGradient, Rect, RgbaF32, Stroke};
 use crate::fixtures;
 use crate::harness::Harness;
 
-/// White fading to transparent black across 200 px over black, on every colour-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-grey (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
+/// White fading to transparent black across 200 px over black, on every color-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-grey (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
 #[test]
-fn a_fade_to_transparent_keeps_its_colour_midway() {
+fn a_fade_to_transparent_keeps_its_color_midway() {
     let mut mesh = Mesh::new();
     let (white, clear) = (RgbaF32::WHITE, RgbaF32::TRANSPARENT);
     let v = [

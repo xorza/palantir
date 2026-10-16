@@ -77,11 +77,11 @@ impl<'a> Text<'a> {
         self
     }
 
-    /// Fill colour for this run, overriding the resolved style's.
+    /// Fill color for this run, overriding the resolved style's.
     ///
     /// # Panics
     ///
-    /// Panics unless `color` is a [colour](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, color: RgbaF32) -> Self {
         self.overrides.color = Some(domain::color(color));

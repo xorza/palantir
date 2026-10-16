@@ -6,9 +6,9 @@ use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::hsv::Hsv;
 use crate::primitives::paint::color::okhsv::Okhsv;
 
-/// A model switch keeps the colour and moves only the axes.
+/// A model switch keeps the color and moves only the axes.
 #[test]
-fn switching_model_keeps_the_colour() {
+fn switching_model_keeps_the_color() {
     for model in ColorModel::ALL {
         let start = ColorCoords::new(model, RgbaF32::hex(0x4cd3ff), 0.0);
         let other = start.with_model(match model {
@@ -58,7 +58,7 @@ fn setters_clamp() {
     assert_eq!(
         coords.to_color().to_srgba_u8(),
         ColorCoords::default().to_color().to_srgba_u8(),
-        "hue 1 is the colour hue 0 is",
+        "hue 1 is the color hue 0 is",
     );
 
     // A non-finite axis is no value, so each setter reads it as 0.

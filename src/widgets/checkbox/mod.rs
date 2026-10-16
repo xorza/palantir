@@ -19,7 +19,7 @@ use crate::widgets::toggle_chrome::ToggleChrome;
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
-/// An HStack of [box, label], one `Sense::CLICK` target. Child ids derive via `WidgetId::with`, stable across sibling insertions. Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]): chrome via the slot's `plan` (`unchecked` / `checked`), glyph colour from `indicator`, geometry from `box_size`.
+/// An HStack of [box, label], one `Sense::CLICK` target. Child ids derive via `WidgetId::with`, stable across sibling insertions. Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]): chrome via the slot's `plan` (`unchecked` / `checked`), glyph color from `indicator`, geometry from `box_size`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Checkbox<'a> {

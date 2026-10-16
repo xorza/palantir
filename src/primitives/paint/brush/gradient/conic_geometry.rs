@@ -1,4 +1,4 @@
-//! The conic gradient's axis: colour sweeps around a centre by angle.
+//! The conic gradient's axis: color sweeps around a centre by angle.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -28,7 +28,7 @@ pub type ConicGradient = Gradient<ConicGeometry>;
 pub type ConicGradientBuilder = GradientBuilder<ConicGeometry>;
 
 impl Geometry for ConicGeometry {
-    /// Conic gradients are usually colour wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
+    /// Conic gradients are usually color wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Linear;
 
     /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch.

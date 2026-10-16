@@ -191,7 +191,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
             .show(ui);
         last = Some(current);
     });
-    // Text colour moves black → white, √3 in linear RGB; frame `n` after the retarget is step `n`.
+    // Text color moves black → white, √3 in linear RGB; frame `n` after the retarget is step `n`.
     let release = Release {
         spring: Spring::DEFAULT,
         distance: 3.0f64.sqrt(),

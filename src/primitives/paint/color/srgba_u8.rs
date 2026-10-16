@@ -4,9 +4,9 @@
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
-/// A 4-byte **sRGB-encoded** colour with straight 8-bit alpha.
+/// A 4-byte **sRGB-encoded** color with straight 8-bit alpha.
 ///
-/// The one non-linear colour form, a distinct type so encoded bytes are never
+/// The one non-linear color form, a distinct type so encoded bytes are never
 /// read as linear light. Decode with [`RgbaF32::from_srgba`] or `From`.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
@@ -27,7 +27,7 @@ impl SrgbaU8 {
         Self { r, g, b, a }
     }
 
-    /// Opaque colour from channels.
+    /// Opaque color from channels.
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 0xff }
     }

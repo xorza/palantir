@@ -6,7 +6,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "test fixtures cast non-negative sizes, coordinates, indices and colour channels"
+    reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
 mod fixtures;
@@ -28,7 +28,7 @@ use palantir::{FramePaint, RgbaF32, Ui, WindowConfig, WindowToken};
 
 use crate::harness::Harness;
 
-/// Harness smoke test: an empty scene reads back as the clear colour, and a replayed record pass reproduces it pixel-for-pixel.
+/// Harness smoke test: an empty scene reads back as the clear color, and a replayed record pass reproduces it pixel-for-pixel.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();

@@ -1,4 +1,4 @@
-//! The font, size, weight, colour and leading a run of text is shaped and
+//! The font, size, weight, color and leading a run of text is shaped and
 //! painted with.
 
 use crate::primitives::paint::color::RgbaF32;
@@ -102,7 +102,7 @@ impl TextStyle {
         self
     }
 
-    /// [`Self::with_font_size`] for the colour axis.
+    /// [`Self::with_font_size`] for the color axis.
     #[inline]
     pub const fn with_color(mut self, c: RgbaF32) -> Self {
         self.color = c;

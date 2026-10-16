@@ -5,7 +5,7 @@ use super::pretty;
 use crate::theme::Theme;
 use ron::ser;
 
-/// The size a disabled button shapes its label at; the look names only colour, so it is `theme.text`'s.
+/// The size a disabled button shapes its label at; the look names only color, so it is `theme.text`'s.
 fn disabled_size(theme: &Theme) -> f32 {
     theme
         .button

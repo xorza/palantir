@@ -17,7 +17,7 @@ use palantir_anim_derive::Animatable;
 )]
 #[must_use]
 pub struct Shadow {
-    /// Shadow colour.
+    /// Shadow color.
     pub color: RgbaF32,
     /// Shift in logical pixels.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
@@ -34,7 +34,7 @@ pub struct Shadow {
 }
 
 impl Shadow {
-    /// Panics unless the colour is a [colour](domain::color), offset and spread
+    /// Panics unless the color is a [color](domain::color), offset and spread
     /// are [offsets](domain::offset), and blur is a [length](domain::length).
     #[inline]
     #[track_caller]
@@ -77,7 +77,7 @@ impl Shadow {
         self
     }
 
-    /// True when this shadow paints nothing: its colour paints nothing or a scalar is NaN. Takes `&self` because `Background` names it in a `skip_serializing_if`.
+    /// True when this shadow paints nothing: its color paints nothing or a scalar is NaN. Takes `&self` because `Background` names it in a `skip_serializing_if`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         self.color.is_noop() || self.has_nan()

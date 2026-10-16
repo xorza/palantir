@@ -67,11 +67,11 @@ impl<'a> Spinner<'a> {
         self
     }
 
-    /// Arc colour (the comet's head), defaulting to the theme's.
+    /// Arc color (the comet's head), defaulting to the theme's.
     ///
     /// # Panics
     ///
-    /// Panics unless `c` is a [colour](crate::widget::domain::color).
+    /// Panics unless `c` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn color(mut self, c: RgbaF32) -> Self {
         self.color = Some(domain::color(c));
@@ -149,7 +149,7 @@ impl ArcGeometry {
 }
 
 /// Comet-trail ramp, transparent at the tail and opaque at the head. White, so
-/// it multiplies the stroke colour; shared across themes.
+/// it multiplies the stroke color; shared across themes.
 fn comet() -> ColorRamp {
     ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE)
 }

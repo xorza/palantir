@@ -19,7 +19,7 @@ two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 ## Architecture
 
 Each frame rebuilds the tree and runs **record → layout (measure, arrange) →
-cascade → damage → encode + compose → paint**. Colour is linear-RGB f32 on
+cascade → damage → encode + compose → paint**. Color is linear-RGB f32 on
 the CPU side; sRGB encoding happens on the GPU at swapchain write.
 
 Each step has one top-level module: `scene` holds what record writes,
@@ -87,7 +87,7 @@ renders.
 
 - **Spelling.** American (`center`, `color`) and whole words
   (`AnimationSpec`, `Interpolation`, `SplitDirection`, `saturation`). The
-  abbreviations allowed are the ones geometry, colour and input already use:
+  abbreviations allowed are the ones geometry, color and input already use:
   `id`, `x` `y` `w` `h`, `min` `max`, `pos`, `dt`, `bbox`, `col` (beside
   `row`), `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab` `hex`,
   `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt` after
@@ -144,7 +144,7 @@ renders.
 - **Sentinels.** `NONE` is a value that paints nothing or a set that holds
   nothing (`Background::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
   `Modifiers::NONE`, `TextStyleOverrides::NONE`). `ZERO` is a geometric zero
-  (`Rect`, `Size`, `Spacing`, `Corners`). `TRANSPARENT` is a colour or a brush
+  (`Rect`, `Size`, `Spacing`, `Corners`). `TRANSPARENT` is a color or a brush
   that paints nothing. `ONE` and `IDENTITY` are the multiplicative identity.
   `ALL` is a full set, and `EMPTY` is empty text.
 - **Units.** A length is in logical pixels, and its name carries no unit
@@ -157,7 +157,7 @@ renders.
   `percent`). A multiplier is a `factor` (`line_height_factor`,
   `scaled_by(factor)`), and a share of a whole is a `ratio` or a `fraction`
   (`DockSplit::ratio`, `thickness_ratio`, `ProgressBar::new(fraction)`). A
-  colour is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
+  color is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
 - **Lines and corners.** The width of a line — a stroke, a border, a caret — is
   `width` or `*_width` (`Stroke::width`, `border_width`, `caret_width`,
   `arrow_width`). The cross size of a bar, a track or a band is `thickness` or
@@ -169,13 +169,13 @@ renders.
 
 - **Concrete types**, so a setter can be `const`. `impl Into<T>` only where
   `T` has shorthand spellings a call site wants: numbers and tuples for
-  `Spacing`, `Corners`, `Size`, `Sizing`, `SizeSpec` and `GridCell`; a colour
+  `Spacing`, `Corners`, `Size`, `Sizing`, `SizeSpec` and `GridCell`; a color
   or a gradient for `Brush`; text for `TextInput` (borrowed, owned, interned,
   or `fmt!` output) and for `String` where the text outlives the frame (window
   titles); `Option<T>` for an optional argument (`style`,
   `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme`,
   `Ui::load_icons`); a pair or array for `Vec2` (`Configure::position`);
-  `SrgbaU8` where a colour is stored as bytes, so a linear `RgbaF32` encodes
+  `SrgbaU8` where a color is stored as bytes, so a linear `RgbaF32` encodes
   once at the boundary (`Mesh` vertices); a `&'static str` for a name
   (`AnimationSlot`); and a source enum (`FontSource`, `DragNum`, `PathBuf`).
 - **Required input goes in the constructor**: the bound value (`&'a mut T`),
@@ -258,7 +258,7 @@ index that exists, a `min` below its `max`.
 4. **Themes.** A theme file is checked when it loads, by the same predicates
    as a call site, so the two cannot disagree. A theme built in code is plain
    data, checked where its values enter: a value a widget hands to a checked
-   setter (`gap`, `padding`, a shape's colour) panics there on a value outside
+   setter (`gap`, `padding`, a shape's color) panics there on a value outside
    its kind, and a length the widget floors goes through `length_at_least`.
    A font is how theme text reaches paint, so a face the shaper cannot use
    shapes nothing, at `Shape::text` as in every text widget.
@@ -312,7 +312,7 @@ CI runs the same `x.py` steps, with `--locked`.
   binary opens the Tracy socket. The first test set names `alloc`, as
   `--tests` with `golden` would pull in `visual`; the second builds the
   library without `winit`, as a host that embeds the crate does.
-- **Rendering changes** (shaders, encoder/composer, atlases, colour pipeline,
+- **Rendering changes** (shaders, encoder/composer, atlases, color pipeline,
   layout that moves pixels) also run `./x.py test -p palantir --test
 visual`, under the test set with `golden`. Its goldens in
   `tests/visual/golden/` are local and record their adapter in

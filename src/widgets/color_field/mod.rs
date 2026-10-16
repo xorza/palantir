@@ -1,4 +1,4 @@
-//! The saturation/value area of a colour picker, and the texture it paints itself with.
+//! The saturation/value area of a color picker, and the texture it paints itself with.
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -25,7 +25,7 @@ use crate::widgets::color_surface;
 use crate::widgets::color_surface::ColorSurface;
 use glam::Vec2;
 
-/// The two-axis area of a colour picker: saturation left to right, value bottom to top, at the bound hue. Exact per texel: a CPU texture refreshed in place when hue or model moves, since a gradient stack interpolates in linear light and a vertex-coloured mesh crushes the darks. Returns [`ValueResponse`].
+/// The two-axis area of a color picker: saturation left to right, value bottom to top, at the bound hue. Exact per texel: a CPU texture refreshed in place when hue or model moves, since a gradient stack interpolates in linear light and a vertex-colored mesh crushes the darks. Returns [`ValueResponse`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorField<'a> {
@@ -73,7 +73,7 @@ impl<'a> ColorField<'a> {
         }
     }
 
-    /// The edge of one texture texel in physical pixels, as a power of two. Default 4. Worst error against the exact colour in 8-bit sRGB units (`tests::texel_size_four_tracks_the_exact_colour`):
+    /// The edge of one texture texel in physical pixels, as a power of two. Default 4. Worst error against the exact color in 8-bit sRGB units (`tests::texel_size_four_tracks_the_exact_color`):
     ///
     /// | texel size | Okhsv | HSV | texels to convert |
     /// |---|---|---|---|

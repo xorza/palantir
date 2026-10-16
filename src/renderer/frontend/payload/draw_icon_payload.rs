@@ -10,9 +10,9 @@ pub(crate) struct DrawIconPayload {
     /// Fit-resolved paint rect.
     pub(crate) rect: Rect,
     pub(crate) icon: IconRef,
-    /// Whole tint for a tintable icon, alpha only for a colour one.
+    /// Whole tint for a tintable icon, alpha only for a color one.
     pub(crate) tint: RgbaF16,
-    /// Draw a colour icon as its own luminance.
+    /// Draw a color icon as its own luminance.
     pub(crate) desaturate: bool,
 }
 

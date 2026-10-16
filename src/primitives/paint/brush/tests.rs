@@ -230,7 +230,7 @@ fn two_stop_gradients_take_their_kind_defaults() {
     assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
 }
 
-/// In code a stop offset is coerced (out of range clamps, non-finite reads 0) and a non-finite colour channel panics. A file refuses any offset outside `0..=1`.
+/// In code a stop offset is coerced (out of range clamps, non-finite reads 0) and a non-finite color channel panics. A file refuses any offset outside `0..=1`.
 #[test]
 fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     for (offset, want) in [

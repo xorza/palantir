@@ -12,7 +12,7 @@ pub(super) const fn decode(c: f64) -> f32 {
     decode_f64(c) as f32
 }
 
-/// [`decode`] of every sRGB byte, `byte / 255`, at compile time, so a hex colour
+/// [`decode`] of every sRGB byte, `byte / 255`, at compile time, so a hex color
 /// decodes by lookup.
 pub(super) const DECODED_BYTES: [f32; 256] = {
     let mut table = [0.0; 256];
@@ -138,7 +138,7 @@ const fn decode_f64(c: f64) -> f64 {
     if c <= 0.040_45 {
         return c / 12.92;
     }
-    // NaN and +∞ pass through: neither has a power that is a colour.
+    // NaN and +∞ pass through: neither has a power that is a color.
     if c.is_nan() || c == f64::INFINITY {
         return c;
     }

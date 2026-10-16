@@ -1,10 +1,10 @@
-//! The swatch row a picker keeps for itself, and the colours it starts with.
+//! The swatch row a picker keeps for itself, and the colors it starts with.
 
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use tinyvec::ArrayVec;
 
-/// Recently committed colours, most recent first, seeded with a preset row so it keeps its length; the newest
+/// Recently committed colors, most recent first, seeded with a preset row so it keeps its length; the newest
 /// goes to the front and the oldest preset falls off. Seeded on first use, not at construction: picker state is
 /// taken out and put back every frame, so a default that built the presets would pay sixteen conversions a frame.
 #[derive(Debug, Default)]

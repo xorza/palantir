@@ -2,7 +2,7 @@
 
 #![expect(
     clippy::cast_sign_loss,
-    reason = "the showcase casts non-negative sizes, ids and colour channels"
+    reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
 use crate::support;

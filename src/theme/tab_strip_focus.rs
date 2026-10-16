@@ -1,7 +1,7 @@
-//! Which selection-cap colour a tab strip paints.
+//! Which selection-cap color a tab strip paints.
 
 /// Whether a strip's view holds focus, which picks [`TabsTheme::cap`](crate::TabsTheme::cap)'s
-/// colour.
+/// color.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabStripFocus {
     /// The view holds focus: [`TabsTheme::accent`](crate::TabsTheme::accent).

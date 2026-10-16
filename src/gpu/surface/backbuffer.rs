@@ -1,9 +1,9 @@
-//! The off-screen colour target the backbuffer-copy path renders into.
+//! The off-screen color target the backbuffer-copy path renders into.
 
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::RenderTarget;
 
-/// Persistent off-screen colour target for the backbuffer-copy path; keeping
+/// Persistent off-screen color target for the backbuffer-copy path; keeping
 /// last frame's pixels is what lets `LoadOp::Load` work for incremental damage.
 /// Recreated on resize or format change; owned per-window by `WindowDriver`.
 #[derive(Debug)]

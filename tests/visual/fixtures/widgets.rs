@@ -318,7 +318,7 @@ fn modal_dialog_matches_golden() {
     });
 }
 
-/// The colour field and both bars at one hue, in each model. The only
+/// The color field and both bars at one hue, in each model. The only
 /// end-to-end check that the CPU texture reaches the screen.
 #[test]
 fn color_field_and_bars_match_golden() {

@@ -389,8 +389,8 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
 /// - `f32` settles at 1e-4: 0.5e-4 displacement is in; speed `√170·0.9e-4` swings
 ///   0.9e-4, in; `1.1e-4` out; 0.8e-4 plus a 0.8e-4 swing is `0.8² + 0.8² = 1.28 >
 ///   1`, out.
-/// - `RgbaF32` settles at 1/4096 ≈ 2.44e-4, so 2e-4 is in on a colour, out on an
-///   `f32`. A colour crossing its target at 0.05/s swings `0.05/√300 ≈ 2.9e-3` and
+/// - `RgbaF32` settles at 1/4096 ≈ 2.44e-4, so 2e-4 is in on a color, out on an
+///   `f32`. A color crossing its target at 0.05/s swings `0.05/√300 ≈ 2.9e-3` and
 ///   stays out.
 #[test]
 fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
@@ -405,18 +405,18 @@ fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
         ("small swing", 0.0, k.sqrt() * 0.9e-4, true),
         ("large swing", 0.0, k.sqrt() * 1.1e-4, false),
         ("both near", 0.8e-4, k.sqrt() * 0.8e-4, false),
-        ("f32 at a colour's tolerance", 2e-4, 0.0, false),
+        ("f32 at a color's tolerance", 2e-4, 0.0, false),
     ] {
         assert_eq!(spring(k).within_settle_eps(x, v), settled, "{label}");
     }
     let red = |r: f32| RgbaF32::new(r, 0.0, 0.0, 0.0);
     assert!(
         spring(k).within_settle_eps(red(2e-4), red(0.0)),
-        "a colour at 2e-4"
+        "a color at 2e-4"
     );
     assert!(
         !spring(300.0).within_settle_eps(red(0.0), red(0.05)),
-        "a bouncy colour crossing its target",
+        "a bouncy color crossing its target",
     );
 }
 

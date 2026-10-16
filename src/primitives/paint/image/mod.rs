@@ -70,14 +70,14 @@ pub enum ImageDownsample {
     Mean,
     /// Keep the brightest tap by luminance, so a point source survives
     /// minification (averaging a one-texel star over a 5×5 footprint costs it
-    /// 25× of its peak). Whole taps win, keeping colour, but it reads brighter
+    /// 25× of its peak). Whole taps win, keeping color, but it reads brighter
     /// than the true average.
     Peak,
 }
 
 /// A CPU pixel buffer: straight (non-premultiplied) sRGB RGBA8. The backend
 /// premultiplies on upload to a `Rgba8UnormSrgb` texture, since filtering
-/// straight colour across a soft edge darkens it. Window icons use the same
+/// straight color across a soft edge darkens it. Window icons use the same
 /// storage.
 ///
 /// Registration stages the borrowed pixels without keeping a CPU copy; keep

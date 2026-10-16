@@ -1,4 +1,4 @@
-//! The colour lanes every GPU fill writes.
+//! The color lanes every GPU fill writes.
 
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -9,7 +9,7 @@ use crate::primitives::paint::lut_row::LutRow;
 /// and a curve's stroke only in [`Self::curve`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct GpuFill {
-    /// Linear-RGB, straight alpha. A solid's colour, or the multiplier on the colour sampled at [`Self::lut_row`];
+    /// Linear-RGB, straight alpha. A solid's color, or the multiplier on the color sampled at [`Self::lut_row`];
     /// either way the paint is invisible exactly when this alpha is zero.
     pub(crate) color: RgbaF16,
     /// Low byte is the kind tag; bits 8..16 carry `Spread` for gradients.
@@ -19,7 +19,7 @@ pub(crate) struct GpuFill {
 }
 
 impl GpuFill {
-    /// A curve's fill: its stroke colour alone, or multiplying the ramp baked at `ramp_row`.
+    /// A curve's fill: its stroke color alone, or multiplying the ramp baked at `ramp_row`.
     #[inline]
     pub(crate) const fn curve(color: RgbaF16, ramp_row: Option<LutRow>) -> Self {
         match ramp_row {
@@ -36,7 +36,7 @@ impl GpuFill {
         }
     }
 
-    /// This fill with its opacity scaled by `by`; the colour lane's alpha is the paint's alpha for every kind.
+    /// This fill with its opacity scaled by `by`; the color lane's alpha is the paint's alpha for every kind.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         Self {

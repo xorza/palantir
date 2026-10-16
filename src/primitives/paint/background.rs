@@ -20,7 +20,7 @@ use palantir_anim_derive::Animatable;
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
 /// `background` and `default_background` check it where it enters and panic unless
-/// every colour is a [colour](crate::widget::domain::color), gradient angles are
+/// every color is a [color](crate::widget::domain::color), gradient angles are
 /// [angles](crate::widget::domain::angle), centres
 /// [offsets](crate::widget::domain::offset), radial radii and the border width
 /// [lengths](crate::widget::domain::length), each corner radius a length of at most
@@ -86,7 +86,7 @@ impl Background {
     /// width paints nothing. **The one definition of the fold** `Tree::open_node`
     /// applies to a chrome's padding, for widgets that need the inner rect before
     /// the tree has it (`TextEdit`, `TextEditTheme::corner_centering`). On the
-    /// width alone, not [`Stroke::is_noop`]: a border an invisible colour makes
+    /// width alone, not [`Stroke::is_noop`]: a border an invisible color makes
     /// still gets room.
     #[inline]
     pub(crate) const fn border_inset(&self) -> f32 {

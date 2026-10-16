@@ -29,7 +29,7 @@ pub enum Spread {
     Reflect = 2,
 }
 
-/// Colour space the interpolation runs in; stop colours are unchanged.
+/// Color space the interpolation runs in; stop colors are unchanged.
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize,
@@ -85,7 +85,7 @@ pub(crate) mod sealed {
 
 /// A gradient of any kind: `geometry` maps each fill point to a value,
 /// `spread` folds values outside `0..=1` back in, and `ramp` maps the value to
-/// a colour.
+/// a color.
 ///
 /// **Not `Copy`**: the inline [`GradientStops`] made implicit copies expensive
 /// through the recording chain (see `Brush`). `.clone()` is one memcpy.
@@ -99,7 +99,7 @@ pub struct Gradient<G> {
     #[serde(flatten)]
     /// Where the gradient runs.
     pub geometry: G,
-    /// The colours along that axis.
+    /// The colors along that axis.
     #[serde(flatten)]
     pub ramp: ColorRamp,
     /// What happens outside `0..=1`.
@@ -113,7 +113,7 @@ impl<G> Gradient<G> {
         self
     }
 
-    /// Override the colour space interpolation runs in.
+    /// Override the color space interpolation runs in.
     pub const fn with_interpolation(mut self, interpolation: Interpolation) -> Self {
         self.ramp.interpolation = interpolation;
         self
@@ -156,7 +156,7 @@ impl<G: GradientGeometry> hash::Hash for Gradient<G> {
     }
 }
 
-/// Stop offsets and colours are integer-encoded, so the geometry is the only
+/// Stop offsets and colors are integer-encoded, so the geometry is the only
 /// place a NaN can hide.
 impl<G: GradientGeometry> NanCheck for Gradient<G> {
     #[inline]

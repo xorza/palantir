@@ -39,7 +39,7 @@ fn tabbed_view_matches_golden() {
     fn scene(ui: &mut Ui) {
         ui.with_state::<usize, _>(WidgetId::from_hash("visual.page"), |ui, page| {
             *page = 1;
-            TabbedView::new(page, &["Colour", "Geometry", "Metadata"])
+            TabbedView::new(page, &["Color", "Geometry", "Metadata"])
                 .id_salt("pages")
                 .closable(false)
                 .size((Sizing::FILL, Sizing::FILL))
@@ -49,7 +49,7 @@ fn tabbed_view_matches_golden() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(14.0)
                         .show(ui, |ui| {
-                            Text::new(["Colour", "Geometry", "Metadata"][index])
+                            Text::new(["Color", "Geometry", "Metadata"][index])
                                 .id_salt("page-title")
                                 .show(ui);
                         });

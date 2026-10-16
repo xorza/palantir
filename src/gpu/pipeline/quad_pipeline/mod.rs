@@ -26,10 +26,10 @@ use crate::renderer::quad::Quad;
 use glam::Vec2;
 use std::slice;
 
-/// Every quad pipeline one swapchain format needs: colour per [`QuadForm`], shadows per edge form, and two stencil-writing mask variants.
+/// Every quad pipeline one swapchain format needs: color per [`QuadForm`], shadows per edge form, and two stencil-writing mask variants.
 #[derive(Debug)]
 pub(crate) struct QuadVariants {
-    /// Colour draws per [`QuadForm`], each the base and its stencil-test twin.
+    /// Color draws per [`QuadForm`], each the base and its stencil-test twin.
     solid: StencilVariant,
     gradient: StencilVariant,
     triangle: StencilVariant,
@@ -198,7 +198,7 @@ impl QuadPipeline {
         format: wgpu::TextureFormat,
     ) -> QuadVariants {
         let instance = Some(Self::instance_layout());
-        // The mask pair writes stencil only: `fs_mask` discards outside the SDF, colour writes are off, the blend is inert.
+        // The mask pair writes stencil only: `fs_mask` discards outside the SDF, color writes are off, the blend is inert.
         let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| {
             PipelineRecipe {
                 label,

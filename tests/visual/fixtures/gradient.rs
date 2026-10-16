@@ -23,7 +23,7 @@ const SWATCH: u32 = 8;
 
 const VIEWPORT: UVec2 = UVec2::new(COLS * SWATCH, ROWS * SWATCH);
 
-/// Stop colour for swatch `i`, in linear light as `byte / 255`, spread wide
+/// Stop color for swatch `i`, in linear light as `byte / 255`, spread wide
 /// enough that a wrong LUT row can't pass as rounding.
 fn swatch_color(i: u32) -> RgbaF32 {
     let lin = |byte: u32| byte as f32 / 255.0;
@@ -38,8 +38,8 @@ fn swatch_color(i: u32) -> RgbaF32 {
 /// 320 gradients in one frame force the atlas to grow, the backend to resize
 /// its LUT, and the shaders to read the new height via `textureDimensions`.
 ///
-/// Each swatch's two stops share one colour, so its LUT row is flat and a
-/// wrong row shows as a neighbouring swatch's colour. Every pixel of every
+/// Each swatch's two stops share one color, so its LUT row is flat and a
+/// wrong row shows as a neighbouring swatch's color. Every pixel of every
 /// swatch is asserted: a permuted row assignment would still satisfy mutual
 /// distinctness, and the swatches sit on whole pixels, so none is partly
 /// covered.

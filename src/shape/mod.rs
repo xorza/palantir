@@ -125,7 +125,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless every point is an *offset*, the stroke width a *length* and its colour a *colour*.
+    /// Panics unless every point is an *offset*, the stroke width a *length* and its color a *color*.
     #[track_caller]
     pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape {
         stroke.validate();
@@ -212,7 +212,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless colour, offset, spread and blur hold their kinds.
+    /// Panics unless color, offset, spread and blur hold their kinds.
     #[track_caller]
     pub const fn shadow(shadow: Shadow) -> ShadowShape {
         shadow.validate();

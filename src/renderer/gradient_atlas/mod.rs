@@ -6,7 +6,7 @@
 //! linear-RGB**, uploaded to an `Rgba16Float` texture with no auto-decode.
 //! Premultiplied so the sampler blends the way the stops do (see
 //! [`crate::primitives::paint::brush`]); the shader makes the sample straight
-//! before multiplying by the fill colour.
+//! before multiplying by the fill color.
 //!
 //! f16, not u8: a dark stop linearises tiny (`#1a1a2e`'s red ≈ 3/255), so an 8-bit
 //! linear row would band `#1a1a2e → #4c5cdb` into ~16 steps over 256 texels. Only

@@ -27,7 +27,7 @@ pub struct Okhsv {
     pub v: f32,
 }
 
-/// Chroma below which a colour has no hue and the caller's fallback answers: `f32`
+/// Chroma below which a color has no hue and the caller's fallback answers: `f32`
 /// rounding leaves an exact grey up to ~`3e-7`, one byte from grey is at least
 /// ~`1e-3`.
 const GREY_CHROMA: f32 = 1e-5;
@@ -51,7 +51,7 @@ impl Okhsv {
         Self { h, s, v }
     }
 
-    /// The opaque colour these axes name; apply alpha with [`RgbaF32::with_alpha`].
+    /// The opaque color these axes name; apply alpha with [`RgbaF32::with_alpha`].
     pub fn to_color(self) -> RgbaF32 {
         Self::slice(self.h).color(self.s, self.v)
     }
@@ -117,7 +117,7 @@ impl OkhsvSlice {
         peak_scale([l_vt, self.cos * c_vt, self.sin * c_vt])
     }
 
-    /// The opaque colour at `s` and `v` on this hue; both clamp to `0..1`.
+    /// The opaque color at `s` and `v` on this hue; both clamp to `0..1`.
     pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
         let sat = domain::fraction(s);
         let val = domain::fraction(v);

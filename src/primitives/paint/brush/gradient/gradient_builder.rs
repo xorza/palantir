@@ -40,7 +40,7 @@ impl<G: GradientGeometry> GradientBuilder<G> {
         self
     }
 
-    /// The colour space interpolation runs in.
+    /// The color space interpolation runs in.
     pub const fn interpolation(mut self, interpolation: Interpolation) -> Self {
         self.interpolation = interpolation;
         self

@@ -58,7 +58,7 @@ impl RasterProgram {
         )
     }
 
-    /// Group 0: mask at 0, colour at 1, no sampler (the shader reads each texel by index).
+    /// Group 0: mask at 0, color at 1, no sampler (the shader reads each texel by index).
     fn create_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.raster.atlas layout"),
