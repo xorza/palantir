@@ -195,9 +195,13 @@ pub mod prelude {
 }
 
 /// Authoring a widget: the node, paint primitives, and text and animation plumbing
-/// a widget of your own is built from. Nothing here is needed to compose shipped
-/// widgets; every widget in this crate uses only this module plus the root (see
-/// `examples/showcase/pages/custom_widget.rs`).
+/// a widget of your own is built from (see `examples/showcase/pages/custom_widget.rs`).
+/// Nothing here is needed to compose shipped widgets.
+///
+/// Shipped widgets also use some crate-private internals. A widget of your own
+/// cannot rebuild two of them from this module, so it composes them instead: the
+/// scroll viewport, through [`Scroll`], and the GPU view, through
+/// [`GpuView`].
 pub mod widget {
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
