@@ -103,7 +103,7 @@ pub(crate) struct WgpuBackend {
     mesh: MeshPipeline,
     image: ImagePipeline,
     /// The registered images; host recorders create, rewrite and free them through the
-    /// `ImageRegistry` this backend attached over this `Rc`.
+    /// `ImageRegistry` the host built over this `Rc`.
     image_store: Rc<WgpuImageStore>,
     gpu_view_targets: GpuViewTargets,
     /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
@@ -152,18 +152,12 @@ struct MainPass<'a> {
 }
 
 impl WgpuBackend {
-    /// Build the one shared GPU renderer over the host's handles and attach the image
-    /// store to `resources.images`. Per-format pipelines build lazily; see
-    /// [`Self::ensure_format`].
+    /// Build the one shared GPU renderer over the host's handles. Per-format pipelines
+    /// build lazily; see [`Self::ensure_format`].
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, config: BackendConfig) -> Self {
         let Gpu { device, queue } = gpu;
-        let texture_binding = TextureBinding::new(&device);
-        let image_store = Rc::new(WgpuImageStore::new(
-            device.clone(),
-            queue.clone(),
-            texture_binding.clone(),
-        ));
-        resources.images.attach(Rc::clone(&image_store));
+        let image_store = Rc::clone(resources.image_store);
+        let texture_binding = image_store.binding().clone();
         let gradient = GpuGradientAtlas::new(
             &device,
             resources.gradient_atlas.clone(),

@@ -8,16 +8,19 @@ use crate::display::Display;
 use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::window_driver::{
     CpuFrame, PresentPath, Presentation, WindowDriver, WindowDriverBuilder,
 };
+use crate::image_registry::ImageRegistry;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
-use crate::ui::resources::UiResources;
+use crate::ui::resources::{UiDevice, UiResources};
 use crate::window::window_token::WindowToken;
+use std::rc::Rc;
 
 /// What a host seals at build beside its device; `pixel_snap` is the host's, inherited by every driver.
 #[derive(Debug)]
@@ -38,18 +41,23 @@ pub(super) struct HostCore {
 
 impl HostCore {
     /// The texture cap is read from `gpu` once, so the surface clamp, [`TextureLimit`] and the frontend clamp are one number.
+    /// The image store comes first, so the registry every recorder clones holds it from the start.
     pub(super) fn new(gpu: Gpu, config: HostCoreConfig) -> Self {
         let max_texture_dim = gpu.max_texture_dim();
+        let image_store = Rc::new(WgpuImageStore::new(&gpu));
         let resources = UiResources::new(
             config.shaper,
             config.clipboard,
-            TextureLimit::from_device(max_texture_dim),
+            UiDevice {
+                texture_limit: TextureLimit::from_device(max_texture_dim),
+                images: ImageRegistry::new(Rc::clone(&image_store)),
+            },
         );
         let backend = WgpuBackend::new(
             gpu,
             BackendResources {
                 text: resources.text(),
-                images: resources.images(),
+                image_store: &image_store,
                 icons: resources.icons(),
                 gradient_atlas: resources.gradient_atlas(),
                 gpu_pass_stats: &resources.diagnostics().gpu_pass_stats,

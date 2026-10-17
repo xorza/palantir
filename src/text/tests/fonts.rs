@@ -4,13 +4,12 @@
 use super::*;
 use crate::common::clipboard::Clipboard;
 use crate::internals::ui_harness::UiHarness;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
-use crate::ui::resources::UiResources;
+use crate::ui::resources::{UiDevice, UiResources};
 use crate::widget_core::configure::Configure;
 use crate::widgets::text::Text;
 use glam::UVec2;
@@ -113,7 +112,7 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
 fn a_load_reaches_the_cascade_and_the_screen() {
     let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
     let mut h = UiHarness::from_resources(
-        UiResources::new(shaper, Clipboard::memory(), TextureLimit::default()),
+        UiResources::new(shaper, Clipboard::memory(), UiDevice::default()),
         UVec2::new(400, 300),
     );
     h.ui.load_font(INTER).expect("the bundled Inter loads");

@@ -20,6 +20,14 @@ use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
 
+/// What the device gives the resources, both fixed at construction: the ceiling a registered image is
+/// measured against and the registry over its texture store. `Default` is a deviceless recorder's.
+#[derive(Debug, Default)]
+pub(crate) struct UiDevice {
+    pub(crate) texture_limit: TextureLimit,
+    pub(crate) images: ImageRegistry,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources {
     text: TextShaper,
@@ -41,10 +49,14 @@ pub(crate) struct UiResources {
 }
 
 impl UiResources {
-    pub(crate) fn new(text: TextShaper, clipboard: Clipboard, texture_limit: TextureLimit) -> Self {
+    pub(crate) fn new(text: TextShaper, clipboard: Clipboard, device: UiDevice) -> Self {
+        let UiDevice {
+            texture_limit,
+            images,
+        } = device;
         Self {
             text,
-            images: ImageRegistry::default(),
+            images,
             icons: IconRegistry::default(),
             gradient_atlas: SharedGradientAtlas::new(texture_limit),
             texture_limit,
@@ -58,10 +70,6 @@ impl UiResources {
 
     pub(crate) const fn text(&self) -> &TextShaper {
         &self.text
-    }
-
-    pub(crate) const fn images(&self) -> &ImageRegistry {
-        &self.images
     }
 
     pub(crate) const fn icons(&self) -> &IconRegistry {
@@ -109,9 +117,8 @@ impl UiResources {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::common::clipboard::Clipboard;
-    use crate::renderer::texture_limit::TextureLimit;
     use crate::text::shaper::TextShaper;
-    use crate::ui::resources::UiResources;
+    use crate::ui::resources::{UiDevice, UiResources};
 
     impl UiResources {
         /// Recorder capabilities that share nothing with another recorder: a mono-fallback shaper (deterministic metrics),
@@ -120,17 +127,13 @@ pub(crate) mod internals {
             Self::new(
                 TextShaper::test_mono(),
                 Clipboard::memory(),
-                TextureLimit::default(),
+                UiDevice::default(),
             )
         }
 
         /// [`Self::isolated_mono`] with real shaping over the bundled faces, for anything that sizes to its text.
         pub(crate) fn isolated_text() -> Self {
-            Self::new(
-                TextShaper::new(),
-                Clipboard::memory(),
-                TextureLimit::default(),
-            )
+            Self::new(TextShaper::new(), Clipboard::memory(), UiDevice::default())
         }
     }
 }
