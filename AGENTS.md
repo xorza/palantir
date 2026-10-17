@@ -23,21 +23,42 @@ cascade → damage → encode + compose → paint**. Color is linear-RGB f32 on
 the CPU side; sRGB encoding happens on the GPU at swapchain write.
 
 Each step has one top-level module: `scene` holds what record writes, over
-the shapes, payload store and paint animations of `shape` below it, `layout` measures and arranges it, `cascade` derives the tables input and
-paint read, `damage` decides what repaints, `renderer` encodes and
-composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
-result type in `mod.rs` and their engine in `engine.rs`.
+the shapes, payload store and paint animations of `shape` below it, `layout`
+measures and arranges it, `cascade` derives the tables input and paint read,
+`damage` decides what repaints, `renderer` encodes and composes, and `gpu`
+paints. `layout`, `cascade` and `damage` each keep their result type in
+`mod.rs` and their engine in `engine.rs`.
 `primitives` is the value vocabulary below all of them, `widget_core` the
 framework the bundled `widgets` are written on, and `theme` the look they
 read. `input` holds the event vocabulary, and `input_state` the state
 machine that routes events over the cascade.
+
+### Layering
+
+A top-level module imports only modules to its left:
+
+```text
+common → primitives → {animation, text, input, display, window, image_registry, diagnostics}
+       → shape → icons → scene → layout → cascade → {damage, input_state}
+       → renderer ⇄ gpu → theme → ui ⇄ app → widget_core → widgets → host
+```
+
+- **`theme` is plain look data.** It holds the look vocabulary a theme file
+  serializes and knows no `Widget` or `Ui`; `Widget::wear` applies a look.
+- **`ui` records through `Node` and shapes**, never through `Widget` or a
+  bundled widget, so the recorder core sits below the authoring layer.
+- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names `GpuFrameContext` and
+  `GpuInitContext`, which hold the `wgpu` types `clippy.toml` keeps in `gpu`;
+  moving the trait into `gpu` would make `ui` depend on `gpu` for `GpuViews`.
+- **`app` ⇄ `ui` stays a cycle.** `App` is the callback contract of the frame
+  cycle; the two are one concept.
 
 ## Public API
 
 - **Never change it on your own.** Adding, renaming, removing or re-signing an
   exported item — a type, a method, an argument, a trait bound — waits for a
   go-ahead. Propose it, then stop.
-- **Match its neighbours.** Before proposing new surface, read what it will
+- **Match its neighbors.** Before proposing new surface, read what it will
   sit beside — the widget's other setters, the sibling type's methods, the
   trait it joins, the `Response` its peers return — and match their names,
   argument shapes and order.

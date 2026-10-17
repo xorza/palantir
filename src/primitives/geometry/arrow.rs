@@ -19,13 +19,13 @@ impl Arrow {
         ]
     }
 
-    /// [`Self::points`] turned `radians` about the box's centre. Only square in a square box: a quarter turn swaps extents, clipping one axis.
+    /// [`Self::points`] turned `radians` about the box's center. Only square in a square box: a quarter turn swaps extents, clipping one axis.
     pub(crate) fn rotated(self, radians: f32) -> [Vec2; 3] {
-        let centre = self.size * 0.5;
+        let center = self.size * 0.5;
         let (sin, cos) = radians.sin_cos();
         self.points().map(|p| {
-            let Vec2 { x, y } = p - centre;
-            centre + Vec2::new(x * cos - y * sin, x * sin + y * cos)
+            let Vec2 { x, y } = p - center;
+            center + Vec2::new(x * cos - y * sin, x * sin + y * cos)
         })
     }
 

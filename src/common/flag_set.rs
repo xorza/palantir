@@ -15,7 +15,7 @@ macro_rules! flag_set {
                 self.0
             }
 
-            /// Rebuild from packed bits, dropping any that name no flag (a word unpacked from a node's flag field carries neighbouring fields).
+            /// Rebuild from packed bits, dropping any that name no flag (a word unpacked from a node's flag field carries neighboring fields).
             #[inline]
             pub(crate) const fn from_bits_truncate(bits: u8) -> Self {
                 Self(bits & Self::ALL.0)

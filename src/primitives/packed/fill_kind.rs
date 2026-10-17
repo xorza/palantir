@@ -69,7 +69,7 @@ impl FillKind {
     /// Drop-shadow marker: `fill` is the shadow color, `fill_axis = (offset.x,
     /// offset.y, sigma, spread)`, `corners` the *source* shape's radii. The quad is
     /// the source moved by the offset and grown by the halo; the shader recovers
-    /// the source from the quad's centre.
+    /// the source from the quad's center.
     pub(crate) const SHADOW_DROP: Self = Self(Self::TAG_SHADOW_DROP);
 
     /// Inset-shadow marker: same `fill_axis` layout; the shader inverts coverage

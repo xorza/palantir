@@ -1,5 +1,5 @@
 //! One button's drag lifecycle on a widget — whether it started, how far
-//! it has travelled, and where it began.
+//! it has traveled, and where it began.
 
 use glam::Vec2;
 

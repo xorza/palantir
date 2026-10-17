@@ -26,7 +26,7 @@ fn linear_midpoint_black_to_white_is_half() {
         .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
-    // Texel 127 sits at t = 127/255, so the grey is that, f16-rounded.
+    // Texel 127 sits at t = 127/255, so the gray is that, f16-rounded.
     let t = 127.0 / 255.0;
     assert_eq!(texel(&out, 127), stored(RgbaF32::new(t, t, t, 1.0)));
 }
@@ -199,7 +199,7 @@ fn partial_range_clamps_at_edges() {
 }
 
 /// The showcase's dark `#1a1a2e -> #4c5cdb` gradient motivates the f16 store:
-/// both stops linearise to tiny reds (3/255 to 19/255), so an 8-bit linear row
+/// both stops linearize to tiny reds (3/255 to 19/255), so an 8-bit linear row
 /// crushes red onto ~16 steps across 256 texels (banding). Asserts both sides:
 /// the f16 row is smooth, and 8-bit linear requantizing reproduces the banding,
 /// so the test fails loudly if the premise changes.
@@ -207,7 +207,7 @@ fn partial_range_clamps_at_edges() {
 fn dark_gradient_row_has_no_banding() {
     let navy = RgbaF32::hex(0x1a1a2e);
     let blue = RgbaF32::hex(0x4c5cdb);
-    // Both stops linearise to tiny reds, 2.6/255 and 18.4/255, a span an 8-bit
+    // Both stops linearize to tiny reds, 2.6/255 and 18.4/255, a span an 8-bit
     // linear row can't resolve.
     assert_eq!([navy.r, blue.r], [0.010329823, 0.07227185]);
     let g = LinearGradient::two_stop(0.0, navy, blue); // default Oklab

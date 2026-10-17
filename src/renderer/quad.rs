@@ -34,7 +34,7 @@ pub(crate) struct Quad {
 }
 
 impl Quad {
-    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel centre within [`AA_HALF_WIDTH`]; a windowed rect is drawn at its rect.
+    /// The whole pixels the quad shader shades: `shaded_bounds` in `quad_pipeline/shader.wgsl` grows the rect to every pixel center within [`AA_HALF_WIDTH`]; a windowed rect is drawn at its rect.
     pub(crate) fn shaded_rect(&self) -> Rect {
         if self.fill_kind.is_window() {
             return self.rect;

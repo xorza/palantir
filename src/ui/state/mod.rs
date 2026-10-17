@@ -2,7 +2,7 @@
 //!
 //! Reusing a `WidgetId` with two `T`s is a caller bug: the rows live in separate stores. Unchecked, to avoid a probe per call.
 //!
-//! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbour via the `owners` vec in O(1).
+//! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbor via the `owners` vec in O(1).
 
 use crate::primitives::identity::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
@@ -76,7 +76,7 @@ impl<T> Store<T> {
 }
 
 impl<T: 'static> TypedStore for Store<T> {
-    /// `swap_remove` the row, then patch the swapped neighbour's index off `owners`.
+    /// `swap_remove` the row, then patch the swapped neighbor's index off `owners`.
     fn sweep_removed(&mut self, removed: &WidgetIdSet) {
         #[expect(
             clippy::iter_over_hash_type,

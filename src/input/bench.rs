@@ -76,7 +76,7 @@ fn build_ui(ui: &mut Ui) {
                     }
                 });
 
-            // Scrollable region over the viewport centre so `hit_test_targets` finds a scroll target.
+            // Scrollable region over the viewport center so `hit_test_targets` finds a scroll target.
             Scroll::both()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))

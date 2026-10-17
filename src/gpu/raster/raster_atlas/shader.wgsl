@@ -25,7 +25,7 @@ struct VertexOut {
     @location(0) color: vec4<f32>,          // linear straight
     @location(1) @interpolate(flat) flags: u32, // FLAG_* below
     // Atlas texel coordinate. A quad drawn at its raster's own size sits on
-    // whole pixels, so every fragment centre lands on a texel centre and the
+    // whole pixels, so every fragment center lands on a texel center and the
     // texel it reads is this one, truncated.
     @location(2) texel: vec2<f32>,
     // The raster's texel rect as inclusive min/max — read only under
@@ -76,7 +76,7 @@ fn vs(in: VertexIn) -> VertexOut {
 }
 
 // Bilinear weights and the four texel addresses around `texel`, clamped to
-// the raster's own rect so a tap never reads a neighbouring slot.
+// the raster's own rect so a tap never reads a neighboring slot.
 struct Taps {
     lo: vec2<i32>,
     hi: vec2<i32>,
@@ -112,8 +112,8 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     // DESATURATE collapses the artwork to its luminance — the disabled look
     // for an icon whose own colors the tint cannot replace. Alpha is
     // untouched, so the shape is unchanged and only the hue goes.
-    let grey = vec3<f32>(dot(s.rgb, LUMA));
-    let rgb = select(s.rgb, grey, (in.flags & FLAG_DESATURATE) != 0u);
+    let gray = vec3<f32>(dot(s.rgb, LUMA));
+    let rgb = select(s.rgb, gray, (in.flags & FLAG_DESATURATE) != 0u);
     return premultiply(rgb, s.a) * in.color.a;
 }
 
@@ -135,10 +135,10 @@ fn resampled(in: VertexOut) -> vec4<f32> {
     let c = premultiplied_texel(vec2<i32>(t.lo.x, t.hi.y));
     let d = premultiplied_texel(vec2<i32>(t.hi.x, t.hi.y));
     let s = mix(mix(a, b, t.f.x), mix(c, d, t.f.x), t.f.y);
-    // Luminance is linear, so the premultiplied grey is the grey of the
+    // Luminance is linear, so the premultiplied gray is the gray of the
     // straight color times its alpha — the same look as `fs`'s.
-    let grey = vec3<f32>(dot(s.rgb, LUMA));
-    let rgb = select(s.rgb, grey, (in.flags & FLAG_DESATURATE) != 0u);
+    let gray = vec3<f32>(dot(s.rgb, LUMA));
+    let rgb = select(s.rgb, gray, (in.flags & FLAG_DESATURATE) != 0u);
     return vec4<f32>(rgb, s.a) * in.color.a;
 }
 

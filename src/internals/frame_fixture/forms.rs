@@ -1,4 +1,4 @@
-//! The data-entry cards: request form, settings grid, property table and notes field. They carry every value-bound widget and both `Grid` flavours: static ([`settings_card`]) and row-count-driven ([`properties_card`]). The notes field sits behind the tree's one [`Expander`], held open.
+//! The data-entry cards: request form, settings grid, property table and notes field. They carry every value-bound widget and both `Grid` flavors: static ([`settings_card`]) and row-count-driven ([`properties_card`]). The notes field sits behind the tree's one [`Expander`], held open.
 
 use crate::internals::frame_fixture::FrameFixture;
 use crate::internals::frame_fixture::card::Card;

@@ -86,7 +86,7 @@
 //!
 //! [`RgbaF32`] holds **straight-alpha linear RGB**. The constructors
 //! ([`RgbaF32::srgb`], [`RgbaF32::hex`], [`RgbaF32::from_srgba`]) read sRGB and
-//! linearise; [`RgbaF32::new`] takes values already linear. Blending, anti-aliasing
+//! linearize; [`RgbaF32::new`] takes values already linear. Blending, anti-aliasing
 //! and animation run in linear, and the sRGB encode happens on the GPU at swapchain
 //! write, so sRGB values put into [`RgbaF32`] directly come out wrong.
 

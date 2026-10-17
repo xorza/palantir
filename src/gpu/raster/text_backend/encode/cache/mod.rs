@@ -304,7 +304,7 @@ pub(crate) mod internals {
     }
 
     /// Churn harness: `runs` rows re-keyed every frame, as a zoom (fresh `scale_q`) or
-    /// resize drag (fresh `max_w_q`) does. Not modelled on `bins`: a pan cycles its 16
+    /// resize drag (fresh `max_w_q`) does. Not modeled on `bins`: a pan cycles its 16
     /// values and re-hits entries.
     #[derive(Debug, Default)]
     pub(crate) struct ChurnBench {

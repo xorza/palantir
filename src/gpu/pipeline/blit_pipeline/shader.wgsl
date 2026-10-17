@@ -27,7 +27,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // copy, so it has to read one texel and not a weighted pair of them. The
     // group-0 sampler the layout carries is a *linear* one — shared with the
     // image draws, which snap their own UVs — and sampling through it would put a
-    // fraction of each neighbour into every pixel next to an edge.
+    // fraction of each neighbor into every pixel next to an edge.
     //
     // The fragment's own position is the texel index, and source and
     // destination are the same size, so there is no coordinate to get wrong.

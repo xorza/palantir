@@ -39,7 +39,7 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
             )
         })
         .collect();
-    // A greyscale/monochrome ramp: all channels move together.
+    // A grayscale/monochrome ramp: all channels move together.
     let mono: Vec<GradientStops> = (0..N)
         .map(|i| {
             let v = (i as u8).wrapping_mul(2);
@@ -66,7 +66,7 @@ fn hash_spreads_across_buckets_for_structured_palettes() {
     }
 }
 
-/// A stop keeps the bytes of the hex code it was written as and returns the color that names. Every grey byte, since linear bytes collapsed sRGB 8, 10 and 16 onto one value.
+/// A stop keeps the bytes of the hex code it was written as and returns the color that names. Every gray byte, since linear bytes collapsed sRGB 8, 10 and 16 onto one value.
 #[test]
 fn a_hex_stop_keeps_its_bytes() {
     for v in 0u8..=255 {

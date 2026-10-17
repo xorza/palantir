@@ -73,20 +73,20 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
         Stop::new(0.0, RgbaF32::BLACK),
         Stop::new(1.0, RgbaF32::WHITE),
     ];
-    let centre = glam::Vec2::splat(0.5);
+    let center = glam::Vec2::splat(0.5);
     let hashes = [
         brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops)))
             .hash_parts()
             .payload,
         brush(
             &mut store,
-            &Brush::Radial(RadialGradient::new(centre, centre, stops)),
+            &Brush::Radial(RadialGradient::new(center, center, stops)),
         )
         .hash_parts()
         .payload,
         brush(
             &mut store,
-            &Brush::Conic(ConicGradient::new(centre, 0.0, stops)),
+            &Brush::Conic(ConicGradient::new(center, 0.0, stops)),
         )
         .hash_parts()
         .payload,

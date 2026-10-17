@@ -1,4 +1,4 @@
-//! Thumb size and offset against hand-computed cases, and what a travelling
+//! Thumb size and offset against hand-computed cases, and what a traveling
 //! thumb keeps.
 
 use crate::internals::ui_harness::UiHarness;
@@ -198,9 +198,9 @@ fn the_def_deflates_scales_and_skips_axes_it_does_not_pan() {
     assert_eq!((across.track, across.thumb_size), (278.0, 77.0));
 }
 
-/// A travelling thumb must not change length on screen: physical snapping rounds min and max independently. This asserts the snapped extent.
+/// A traveling thumb must not change length on screen: physical snapping rounds min and max independently. This asserts the snapped extent.
 #[test]
-fn a_travelling_thumb_keeps_its_snapped_length() {
+fn a_traveling_thumb_keeps_its_snapped_length() {
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -229,12 +229,12 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
     let first = thumb_rects(&h.ui, "scroll")[0];
     let expected: Vec<f32> = [1.0, 2.0, 3.0].iter().map(|s| snapped(first, *s)).collect();
 
-    let mut travelled = Vec::new();
+    let mut traveled = Vec::new();
     for _ in 0..8 {
         h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 37.0));
         h.frame(build);
         let r = thumb_rects(&h.ui, "scroll")[0];
-        travelled.push(r.min.y);
+        traveled.push(r.min.y);
         for (i, scale) in [1.0f32, 2.0, 3.0].iter().enumerate() {
             assert_eq!(
                 snapped(r, *scale),
@@ -245,8 +245,8 @@ fn a_travelling_thumb_keeps_its_snapped_length() {
         }
     }
     assert!(
-        travelled.windows(2).any(|w| w[0] != w[1]),
-        "the thumb must actually travel for this to mean anything: {travelled:?}",
+        traveled.windows(2).any(|w| w[0] != w[1]),
+        "the thumb must actually travel for this to mean anything: {traveled:?}",
     );
 }
 

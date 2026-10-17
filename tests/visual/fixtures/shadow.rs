@@ -36,15 +36,15 @@ fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> R
     })
 }
 
-/// The sRGB byte of grey `lin` in linear light.
-fn grey(lin: f64) -> u8 {
+/// The sRGB byte of gray `lin` in linear light.
+fn gray(lin: f64) -> u8 {
     let lin = lin as f32;
     RgbaF32::new(lin, lin, lin, 1.0).to_srgba_u8().r
 }
 
 /// The sRGB byte of white under [`INK`] at `coverage`.
 fn under_ink(coverage: f64) -> u8 {
-    grey(1.0 - 0.85 * coverage)
+    gray(1.0 - 0.85 * coverage)
 }
 
 /// Each channel's distance between `a` and `b`.
@@ -190,8 +190,8 @@ fn negative_spread_deflates_drop_and_inset_shadow_geometry() {
 ///
 /// A 60×40 box at (80, 70) with only its top-left corner rounded, at 60: the
 /// radius fits the box first (40), then spreads to 46 on the 72×52 shadow box
-/// from (74, 64), centred at (120, 110). (88.5, 78.5) is 44.5 px out, inside;
-/// (86.5, 76.5) is 47.4 px, past. Spread first gives 66, fit to 52, centred
+/// from (74, 64), centered at (120, 110). (88.5, 78.5) is 44.5 px out, inside;
+/// (86.5, 76.5) is 47.4 px, past. Spread first gives 66, fit to 52, centered
 /// at (126, 116), putting the first probe 53.0 px out.
 #[test]
 fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
@@ -213,8 +213,8 @@ fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
         20.0,
         Shadow::drop(INK, Vec2::new(0.0, 45.0), 0.0).with_spread(-6.0),
     );
-    assert!(dark(&shrunk, 110, 148), "13.5 px below the centre");
-    assert!(clear(&shrunk, 110, 150), "15.5 px below the centre");
+    assert!(dark(&shrunk, 110, 148), "13.5 px below the center");
+    assert!(clear(&shrunk, 110, 150), "15.5 px below the center");
     assert!(clear(&shrunk, 120, 145), "14.1 px out on the diagonal");
 
     let sharp = render_shadow(
@@ -231,11 +231,11 @@ fn a_spread_moves_the_shadow_radius_by_the_css_rule() {
     );
     assert!(
         dark(&overlapping, 88, 78),
-        "44.5 px from the fitted arc's centre"
+        "44.5 px from the fitted arc's center"
     );
     assert!(
         clear(&overlapping, 86, 76),
-        "47.4 px from the fitted arc's centre"
+        "47.4 px from the fitted arc's center"
     );
 }
 
@@ -365,7 +365,7 @@ struct BlurredBox {
 }
 
 impl BlurredBox {
-    /// Coverage at the pixel centred on `p`. Summed in 1/2000-of-height rows
+    /// Coverage at the pixel centered on `p`. Summed in 1/2000-of-height rows
     /// through `pixel_cdf`, weighted by the kernel's share on each row.
     fn coverage(self, p: Vec2) -> f64 {
         const ROWS: u32 = 2000;
@@ -423,7 +423,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
             "{what} at ({x}, {y}): got {got}, want {want}"
         );
     };
-    let centre = |x: u32, y: u32| Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+    let center = |x: u32, y: u32| Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
 
     let sharp = Rect::new(40.0, 40.0, 60.0, 40.0);
     let img = render_shadow(sharp, 0.0, Shadow::drop(INK, Vec2::ZERO, 6.0));
@@ -433,7 +433,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
         sigma: 6.0,
     };
     for (x, y) in [(39, 39), (33, 33), (30, 30), (70, 37), (36, 60)] {
-        probe(&img, x, y, reference.coverage(centre(x, y)), "sharp box");
+        probe(&img, x, y, reference.coverage(center(x, y)), "sharp box");
     }
     assert!(
         (reference.coverage(Vec2::new(40.0, 40.0)) - 0.25).abs() < 1e-3,
@@ -446,7 +446,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
         ..reference
     };
     for (x, y) in [(41, 41), (37, 37), (33, 33), (44, 38), (38, 44)] {
-        probe(&img, x, y, reference.coverage(centre(x, y)), "rounded box");
+        probe(&img, x, y, reference.coverage(center(x, y)), "rounded box");
     }
 
     let small = Rect::new(150.0, 20.0, 4.0, 4.0);
@@ -458,7 +458,7 @@ fn a_blurred_shadow_is_the_box_convolved_with_the_gaussian() {
         sigma: 8.0,
     };
     for (x, y) in [(151, 81), (152, 82), (158, 82), (152, 90)] {
-        let want = reference.coverage(centre(x, y));
+        let want = reference.coverage(center(x, y));
         assert!(want < 0.04, "the reference spreads the box thin");
         probe(&img, x, y, want, "small box");
     }
@@ -540,12 +540,12 @@ fn a_drop_shadow_quad_holds_its_edge_ramp_and_its_tail() {
         sigma: 8.0,
     };
     assert!(
-        grey(reference.coverage(Vec2::new(184.5, 90.5))) >= 3,
+        gray(reference.coverage(Vec2::new(184.5, 90.5))) >= 3,
         "the tail past 3σ shows",
     );
     for x in 176..196 {
         let got = img.get_pixel(x, 90).0[0];
-        let want = grey(reference.coverage(Vec2::new(x as f32 + 0.5, 90.5)));
+        let want = gray(reference.coverage(Vec2::new(x as f32 + 0.5, 90.5)));
         assert!(
             got.abs_diff(want) <= 1,
             "glow at ({x}, 90): got {got}, want {want}",

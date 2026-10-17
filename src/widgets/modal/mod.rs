@@ -1,4 +1,4 @@
-//! The centred dialog and its input-blocking backdrop.
+//! The centered dialog and its input-blocking backdrop.
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
@@ -19,7 +19,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use std::rc::Rc;
 
-/// A centred dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
+/// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
 /// The backdrop or Esc sets [`OverlayResponse::dismissed`]; the body's
 /// [`CloseHandle`] closes it from inside.
 #[derive(Debug)]

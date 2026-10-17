@@ -108,11 +108,11 @@ fn target_below_snap_floor_snaps_without_animating() {
         assert!(!r.settled, "case {label}: 2e-4 on an f32 animates");
 
         let mut colors = AnimMapTyped::<RgbaF32>::default();
-        let (grey, nudged) = (
+        let (gray, nudged) = (
             RgbaF32::new(0.5, 0.5, 0.5, 1.0),
             RgbaF32::new(0.5 + 2e-4, 0.5, 0.5, 1.0),
         );
-        let _ = colors.step(AnimationRequest::new(id, SLOT, grey), *spec, 0.016);
+        let _ = colors.step(AnimationRequest::new(id, SLOT, gray), *spec, 0.016);
         let r = colors.step(AnimationRequest::new(id, SLOT, nudged), *spec, 0.016);
         assert_eq!(r.current, nudged, "case {label}: a color lands on target");
         assert!(r.settled, "case {label}: 2e-4 on a color snaps");

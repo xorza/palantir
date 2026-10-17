@@ -6,7 +6,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;
 
-/// One color and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centres it on the path.
+/// One color and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centers it on the path.
 ///
 /// [`Background`]: crate::Background
 #[derive(

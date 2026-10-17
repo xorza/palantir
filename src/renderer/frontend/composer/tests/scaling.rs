@@ -335,7 +335,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
         "identity survives compose"
     );
     // Origin 10*1.5 = 15, 20*1.5 = 30, and the raster fills the box exactly,
-    // so centring shifts nothing.
+    // so centering shifts nothing.
     assert_eq!(row.origin, IVec2::new(15, 30));
     assert_eq!(row.size, row.key.size(), "drawn texel for texel");
     assert_eq!(

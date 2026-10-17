@@ -586,7 +586,7 @@ fn a_focus_ring_damages_only_its_node() {
     );
     assert!(
         rects.iter().all(|r| !r.intersects(b_rect)),
-        "the neighbour {b_rect:?} is not damaged: {rects:?}",
+        "the neighbor {b_rect:?} is not damaged: {rects:?}",
     );
 }
 

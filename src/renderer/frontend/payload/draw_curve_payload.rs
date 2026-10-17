@@ -11,7 +11,7 @@ use glam::Vec2;
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) basis: CurveBasis,
-    /// Cull bound plus the spin, if any. The composer rotates about the pivot exactly: a Bézier by affine invariance, a circle by moving its centre and shifting both angles.
+    /// Cull bound plus the spin, if any. The composer rotates about the pivot exactly: a Bézier by affine invariance, a circle by moving its center and shifting both angles.
     pub(crate) bounds: StrokeBounds,
     pub(crate) origin: Vec2,
     /// Solid or ramp; [`GpuFill::curve`] makes no other kind. A curve reads no gradient geometry lane, so [`GpuFill`] is its whole paint.

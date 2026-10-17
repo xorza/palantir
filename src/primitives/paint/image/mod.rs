@@ -52,7 +52,7 @@ pub enum ImageFilter {
 
 /// Extra taps taken when an image minifies, and how they combine.
 ///
-/// One bilinear tap reads a 2×2 neighbourhood however far the image shrinks,
+/// One bilinear tap reads a 2×2 neighborhood however far the image shrinks,
 /// and which texels it reads moves with the fractional UV, so panning makes
 /// fine detail scintillate. Spreading taps across the pixel's derivative
 /// footprint stops that.
@@ -242,7 +242,7 @@ impl ImageFit {
     }
 }
 
-/// A `w`x`h` box centred inside `base`.
+/// A `w`x`h` box centered inside `base`.
 const fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
     Rect {
         min: Vec2::new(

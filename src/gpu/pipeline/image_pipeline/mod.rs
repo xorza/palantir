@@ -153,7 +153,7 @@ struct ImageRun {
 
 /// Split a batch's texture ids into maximal runs of *adjacent* equal ids.
 ///
-/// Only neighbours merge, so paint order is preserved and nothing is sorted;
+/// Only neighbors merge, so paint order is preserved and nothing is sorted;
 /// `A B A` stays three runs. Instance indices are contiguous within a batch,
 /// so each run is one `Span`. Lazy; allocates nothing.
 fn image_runs(ids: &[TextureId], first_instance: u32) -> impl Iterator<Item = ImageRun> + '_ {

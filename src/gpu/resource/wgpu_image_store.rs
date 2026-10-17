@@ -137,7 +137,7 @@ impl ImageStore for WgpuImageStore {
 /// The scale is in linear light, which the sRGB texture decodes to and the
 /// filter blends.
 ///
-/// The caller tests the alpha, since the error needs differing neighbour
+/// The caller tests the alpha, since the error needs differing neighbor
 /// alphas, a property of the image. The raster atlases keep straight alpha
 /// because their shader reads one texel per pixel and the icon path
 /// premultiplies its own taps.

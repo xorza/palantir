@@ -247,7 +247,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
 /// Regression: a static node in the backend's AA-padding ring (outside the raw damage rect, inside `RenderPlan::AA_PADDING`, 2 physical px) must still draw, since the backend clears the padded region every partial frame; testing only the raw rect left a hard cut along the damage boundary. A node beyond the ring must still be culled.
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
-    // At `scale_factor() == 1` the cull margin is `RenderPlan::AA_PADDING + 1 = 3` logical px: a neighbour 2 px away repaints, one 10 px away stays culled.
+    // At `scale_factor() == 1` the cull margin is `RenderPlan::AA_PADDING + 1 = 3` logical px: a neighbor 2 px away repaints, one 10 px away stays culled.
     let cases: &[(&str, Rect, usize)] = &[
         ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
         // Any gap under 3 px repaints; at 3 the pad's 2 px of clear stops a pixel short, so it stays culled.
@@ -266,9 +266,9 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    // Static neighbour at (100..120, 100..120), standing in for a node border the wire swept past.
+                    // Static neighbor at (100..120, 100..120), standing in for a node border the wire swept past.
                     Block::new()
-                        .id(WidgetId::from_hash("neighbour"))
+                        .id(WidgetId::from_hash("neighbor"))
                         .position(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                         .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))

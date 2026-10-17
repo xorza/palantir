@@ -123,7 +123,7 @@ fn quantize_px_snaps_to_whole_pixels_and_saturates() {
     ] {
         assert_eq!(v.quantize_px(), expected, "v = {v}");
     }
-    // Neighbouring inputs inside one pixel collapse, adjacent pixels don't: that keeps the key stable
+    // Neighboring inputs inside one pixel collapse, adjacent pixels don't: that keeps the key stable
     // under sub-pixel jitter during a resize drag.
     assert_eq!(100.1_f32.quantize_px(), 100.4_f32.quantize_px());
     assert_ne!(100.4_f32.quantize_px(), 100.6_f32.quantize_px());

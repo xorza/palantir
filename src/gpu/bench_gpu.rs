@@ -1,5 +1,5 @@
 //! The headless adapter and device every GPU bench driver runs on: one per
-//! [`Timing`] flavour, process-static. Separate from [`crate::gpu::test_gpu`],
+//! [`Timing`] flavor, process-static. Separate from [`crate::gpu::test_gpu`],
 //! whose interprocess lock a bench must not block behind.
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
@@ -34,7 +34,7 @@ pub enum Timing {
 pub struct BenchGpu {
     pub(crate) gpu: Gpu,
     pub(crate) info: wgpu::AdapterInfo,
-    /// What was granted: empty under [`Timing::Bare`], else a subset of what the flavour asks for.
+    /// What was granted: empty under [`Timing::Bare`], else a subset of what the flavor asks for.
     pub(crate) timing_features: wgpu::Features,
 }
 

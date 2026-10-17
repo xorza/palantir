@@ -1,4 +1,4 @@
-//! The push button: a labelled, themed leaf reporting pointer-button clicks.
+//! The push button: a labeled, themed leaf reporting pointer-button clicks.
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;

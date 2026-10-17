@@ -16,7 +16,7 @@ pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 ///
 /// Lanes by `kind`:
 /// - [`CurveKind::CUBIC`]: `p0..p3` are the control points.
-/// - [`CurveKind::ARC`]: `p0` = centre, `p1.x` = radius, `p2 = (a0, a1)`
+/// - [`CurveKind::ARC`]: `p0` = center, `p1.x` = radius, `p2 = (a0, a1)`
 ///   start/end radians (0 = +x, y-down).
 /// - [`CurveKind::SEGMENT`]: `p0`/`p3` are the endpoints; `p1`/`p2` are
 ///   pre-oriented bisector clip normals (zero = cap end). Adjacent segments

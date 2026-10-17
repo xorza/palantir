@@ -234,7 +234,7 @@ mod tests {
     use super::*;
 
     /// A content box in a 200×40 leaf at (10, 20): 80×16 of content leaves 120 × 24
-    /// of slack, so centring adds 60 and 12, the default keeps the top-left,
+    /// of slack, so centering adds 60 and 12, the default keeps the top-left,
     /// right-bottom adds all of it, and oversize content clamps to the top-left.
     #[test]
     fn place_in_splits_the_slack_by_alignment() {

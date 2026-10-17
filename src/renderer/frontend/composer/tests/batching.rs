@@ -214,7 +214,7 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
     assert_eq!(buf.text_batches[0].texts.len, 2);
 }
 
-/// A clipped text run lands in a batch whose scissor equals its clipped bounds (the text shader has no per-instance clip); wider neighbour text forces a split.
+/// A clipped text run lands in a batch whose scissor equals its clipped bounds (the text shader has no per-instance clip); wider neighbor text forces a split.
 #[test]
 fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     let buf = run(
@@ -229,7 +229,7 @@ fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
     assert_eq!(
         buf.text_batches.len(),
         2,
-        "strict (clipped-narrower) text must not coalesce with wider neighbours",
+        "strict (clipped-narrower) text must not coalesce with wider neighbors",
     );
     let strict = buf
         .text_batches
@@ -292,7 +292,7 @@ fn compose_rounded_clip_change_splits_text_batch() {
     assert_eq!(r1.corners.as_array()[0], 8.0);
 }
 
-/// The composer rotates each polyline point about `bbox.center()` before the ancestor transform: a 90 degree spin of a centred horizontal segment is vertical and centred.
+/// The composer rotates each polyline point about `bbox.center()` before the ancestor transform: a 90 degree spin of a centered horizontal segment is vertical and centered.
 #[test]
 fn compose_spins_polyline_about_bbox_center() {
     let aabb = |rotation: f32| -> (Vec2, Vec2) {
@@ -640,9 +640,9 @@ fn quad_fast_path_flag_cases() {
     }
 }
 
-/// A labelled toolbar of eight non-overlapping icon+label buttons costs one icon batch and one text batch: a higher-kind draw closes the text batch only where it covers a run already in it.
+/// A labeled toolbar of eight non-overlapping icon+label buttons costs one icon batch and one text batch: a higher-kind draw closes the text batch only where it covers a run already in it.
 #[test]
-fn labelled_toolbar_costs_one_icon_batch_and_one_text_batch() {
+fn labeled_toolbar_costs_one_icon_batch_and_one_text_batch() {
     const BUTTONS: usize = 8;
     let out = run(
         |buf, _| {

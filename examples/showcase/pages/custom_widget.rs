@@ -66,10 +66,10 @@ fn demo(ui: &mut Ui, s: &mut State) {
                  use ↑ ↓ Home End.",
             );
             support::well(ui, |ui| {
-                labelled(ui, "volume", |ui| {
+                labeled(ui, "volume", |ui| {
                     Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
                 });
-                labelled(ui, "count", |ui| {
+                labeled(ui, "count", |ui| {
                     Stepper::new(&mut s.count).range(-10, 10).show(ui);
                 });
             });
@@ -146,7 +146,7 @@ fn surface(ui: &mut Ui) {
 }
 
 #[track_caller]
-fn labelled(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+fn labeled(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))

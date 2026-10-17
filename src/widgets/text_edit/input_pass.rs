@@ -284,7 +284,7 @@ impl ProbeTarget {
             Self::Below => probe.byte_at(pos.x, pos.y_top + pos.line_height + 1.0),
             // A soft-wrapped line has no `\n` to scan for, so hit-test past each end
             // of the caret's row, which `byte_at` clamps. Mid-row, so the hit cannot
-            // fall to a neighbouring line.
+            // fall to a neighboring line.
             Self::RowStart => probe.byte_at(-1.0, pos.y_top + pos.line_height * 0.5),
             Self::RowEnd => probe.byte_at(probe.size().w + 1.0, pos.y_top + pos.line_height * 0.5),
         }

@@ -481,7 +481,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     );
     let text_rect = cmds.calls[1].as_text().unwrap().rect;
 
-    // "ok" is 19 px in the bundled face and one 20 px line, centred on
+    // "ok" is 19 px in the bundled face and one 20 px line, centered on
     // both axes inside the 20 px padding: 160 × 40 of room.
     assert_eq!(
         text_rect,

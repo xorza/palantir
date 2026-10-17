@@ -281,7 +281,7 @@ fn the_key_carries_any_family_index() {
         };
         let key = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
         assert_eq!(key.family().raw(), raw);
-        // The neighbours in the packed word must survive it.
+        // The neighbors in the packed word must survive it.
         assert_eq!(key.weight(), FontWeight::REGULAR);
         assert_eq!(key.slant(), FontSlant::Normal);
         assert_eq!(key.line_align(), LineAlign::Auto);

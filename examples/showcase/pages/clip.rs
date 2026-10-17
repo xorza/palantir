@@ -8,7 +8,7 @@ use palantir::{
 };
 
 const CARD: f32 = 200.0;
-/// How far the child overhangs the card on every side; the cell adds it to all four, so "no clip" spills into empty space, not the neighbouring tile.
+/// How far the child overhangs the card on every side; the cell adds it to all four, so "no clip" spills into empty space, not the neighboring tile.
 const SPILL: f32 = 18.0;
 const CELL: f32 = CARD + 2.0 * SPILL;
 

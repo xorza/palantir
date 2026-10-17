@@ -144,11 +144,11 @@ cargo test --test alloc
 Turn on the `internals` feature and `UiHarness` drives your interface with
 no window, no GPU and no event loop. It records frames, feeds synthetic
 input, and reads the result back. A whole interaction test costs
-microseconds, so UI behaviour stays a plain `cargo test`.
+microseconds, so UI behavior stays a plain `cargo test`.
 
 - **Act like a user** — `click_on(id)`, `right_click_on`, `drag_to`,
   `scroll_lines`, `pinch`, `type_text("hi")`, `key`, `set_modifiers`.
-- **Ask what happened** — arranged rect, centre, hit-test at a point,
+- **Ask what happened** — arranged rect, center, hit-test at a point,
   focus, hover, clipboard, and duplicate-id collisions.
 - **Own the clock** — step animations frame by frame, or move past the
   double-click window. Every run is deterministic.
@@ -180,7 +180,7 @@ h.frame(&mut screen);
 assert_eq!(clicks, 1);
 ```
 
-For pixels as well as behaviour, the `golden` feature adds golden-image
+For pixels as well as behavior, the `golden` feature adds golden-image
 regression tests. `OffscreenHost` renders a frame into a `wgpu::Texture`,
 and the comparison reports exactly which pixels moved.
 

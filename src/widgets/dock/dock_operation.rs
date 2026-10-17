@@ -55,7 +55,7 @@ pub enum DockOperation<T> {
     SetRatio {
         /// The split.
         split: DockPath,
-        /// Fraction the leading half takes, coerced into the split clamp; non-finite centres it.
+        /// Fraction the leading half takes, coerced into the split clamp; non-finite centers it.
         ratio: f32,
     },
     /// Move focus onto `group`, because a press landed inside its pane.

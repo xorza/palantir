@@ -20,14 +20,14 @@ var<immediate> imm: Immediates;
 // the box filter every edge is antialiased with.
 const AA_HALF_WIDTH: f32 = /*{AA_HALF_WIDTH}*/;
 
-// Coverage, at a pixel centred `d` outside an edge (negative inside), of
+// Coverage, at a pixel centered `d` outside an edge (negative inside), of
 // the side the edge bounds: zero from `AA_HALF_WIDTH` out, full from
 // `AA_HALF_WIDTH` in.
 fn edge_coverage(d: f32) -> f32 {
     return clamp((AA_HALF_WIDTH - d) / (2.0 * AA_HALF_WIDTH), 0.0, 1.0);
 }
 
-// Coverage, at a pixel centred `r` from a band's centre line, of the band
+// Coverage, at a pixel centered `r` from a band's center line, of the band
 // reaching `core_half` to either side: the edge ramp, capped at the share
 // of the filter the band's whole width fills, since a band narrower than
 // the filter can never cover more of a pixel than its own width.
@@ -52,7 +52,7 @@ const CORNERS = array<vec2<f32>, 4>(
 // Physical pixels to a clip-space position.
 //
 // The y lane flips because the two spaces disagree about direction: the
-// pixel grid runs down from the top-left, clip space up from the centre.
+// pixel grid runs down from the top-left, clip space up from the center.
 // The viewport is read here rather than passed in, so two shaders cannot
 // answer this against different ones.
 fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
@@ -69,8 +69,8 @@ fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
 
 // A ramp parameter `t` in 0..1 as the texture coordinate of a LUT row
 // `width` texels wide. The bake puts texel `i` at `t = i / (width - 1)`,
-// so `t = 0` and `t = 1` must land on the first and last texel centres
-// and everything between on the matching point between two centres.
+// so `t = 0` and `t = 1` must land on the first and last texel centers
+// and everything between on the matching point between two centers.
 fn lut_u(t: f32, width: f32) -> f32 {
     return (t * (width - 1.0) + 0.5) / width;
 }

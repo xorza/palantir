@@ -32,7 +32,7 @@ pub type PaintCurve = fn(f32) -> f32;
 pub struct PaintChannel {
     /// Alpha multiplier, lerped `from` → `to`. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
     pub alpha: Option<(f32, f32)>,
-    /// Full turns about the owner box's centre, lerped `from` → `to`. `None` leaves orientation alone; non-finite reads as no turn. Honoured on polylines, curves and arcs only.
+    /// Full turns about the owner box's center, lerped `from` → `to`. `None` leaves orientation alone; non-finite reads as no turn. Honored on polylines, curves and arcs only.
     pub turn: Option<(f32, f32)>,
 }
 
@@ -161,7 +161,7 @@ impl PaintAnimation {
         })
     }
 
-    /// Animate rotation from `from` to `to`, in full turns about the owner box's centre.
+    /// Animate rotation from `from` to `to`, in full turns about the owner box's center.
     pub fn turn(from: f32, to: f32) -> Self {
         Self::new(PaintChannel {
             alpha: None,

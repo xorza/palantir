@@ -48,7 +48,7 @@ use std::str;
 ///
 /// - [`Self::srgb`] / [`Self::srgba`] / [`Self::hex`] / [`Self::from_srgba`]
 ///   read their argument as sRGB-encoded (the numbers CSS and Figma show) and
-///   linearise it. Use these for colors a human picked.
+///   linearize it. Use these for colors a human picked.
 /// - [`Self::new`] takes already-linear values.
 ///
 /// Writing an sRGB value straight into the fields renders too bright.
@@ -148,11 +148,11 @@ impl RgbaF32 {
         Self { r, g, b, a }
     }
 
-    /// `(r, g, b)` in 0..1 sRGB-encoded space, linearised on the way in.
+    /// `(r, g, b)` in 0..1 sRGB-encoded space, linearized on the way in.
     pub const fn srgb(r: f32, g: f32, b: f32) -> Self {
         Self::srgba(r, g, b, 1.0)
     }
-    /// [`Self::srgb`] with an explicit straight alpha, which is not linearised.
+    /// [`Self::srgb`] with an explicit straight alpha, which is not linearized.
     pub const fn srgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
             r: srgb_transfer::decode(r as f64),

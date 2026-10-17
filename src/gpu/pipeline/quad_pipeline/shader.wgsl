@@ -110,7 +110,7 @@ const INV_SQRT_TAU: f32 = 0.39894228;
 
 // A drop shadow clips where its source's own coverage is within this of
 // full: one 8-bit step, so what the clip takes from under an opaque fill
-// never reaches a stored value, while a pixel centre that sits exactly on
+// never reaches a stored value, while a pixel center that sits exactly on
 // the threshold clips the same way under the float noise that the
 // interpolated `local` carries.
 const SHADOW_CLIP_EPS: f32 = 1.0 / 255.0;
@@ -192,7 +192,7 @@ struct VertexOut {
 
 // What a shadow's fragments read: `vs_shadow`'s geometry, worked out once
 // per vertex. Every position is in pixels, and a fragment takes its own as
-// the pixel centre less one of them, which is exact and the same however
+// the pixel center less one of them, which is exact and the same however
 // the quad was cut into cells, where an interpolated position carries the
 // rounding of whichever triangle covered the pixel.
 struct ShadowOut {
@@ -202,11 +202,11 @@ struct ShadowOut {
     @location(1) @interpolate(flat) kind: u32,
     @location(2) @interpolate(flat) sigma: f32,
     // The box whose blur the shadow paints (`ShadowBox`).
-    @location(3) @interpolate(flat) box_centre: vec2<f32>,
+    @location(3) @interpolate(flat) box_center: vec2<f32>,
     @location(4) @interpolate(flat) box_half: vec2<f32>,
     @location(5) @interpolate(flat) box_radius: vec4<f32>,
     // The rounded rect that casts the shadow, which clips it.
-    @location(6) @interpolate(flat) source_centre: vec2<f32>,
+    @location(6) @interpolate(flat) source_center: vec2<f32>,
     @location(7) @interpolate(flat) source_half: vec2<f32>,
     @location(8) @interpolate(flat) source_radius: vec4<f32>,
     // The baked cutout tables, `(tl, tr, br, bl)` like `box_radius`: each
@@ -214,7 +214,7 @@ struct ShadowOut {
     // `NO_CUTOUT_TABLE`.
     @location(9) @interpolate(flat) cutouts: vec4<u32>,
     // The box less `r + reach` on each side, `(lo.x, lo.y, hi.x, hi.y)`
-    // relative to its centre: on an axis strictly inside it, the pair of
+    // relative to its center: on an axis strictly inside it, the pair of
     // edges across that axis is constant (`shadow_coverage`).
     @location(10) @interpolate(flat) core: vec4<f32>,
 };
@@ -243,7 +243,7 @@ fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
 // (`QuadPipeline::draw_shadows`).
 //
 // A drop shadow's hole is its source inset by its largest radius and
-// `AA_HALF_WIDTH`: at every pixel centre there the source SDF is at most
+// `AA_HALF_WIDTH`: at every pixel center there the source SDF is at most
 // `−AA_HALF_WIDTH`, so the clip in `shadow_pixel` zeroes it, and skipping it
 // changes no pixel. An inset shadow's hole is its core (`ShadowOut::core`),
 // where the blurred box covers everything and the shadow is zero by its
@@ -264,7 +264,7 @@ fn vs_shadow(
     let q = quad_vertex(0u, quad);
     let bounds = shaded_bounds(quad.pos, quad.size, quad.fill_kind);
     let half = quad.size * 0.5;
-    let centre = quad.pos + half;
+    let center = quad.pos + half;
     let kind = quad.fill_kind & FILL_TAG_MASK;
     let sb = shadow_box(kind, half, q.radius, q.fill_axis);
     let sigma = q.fill_axis.z;
@@ -273,19 +273,19 @@ fn vs_shadow(
     let core_lo = -sb.half + vec2<f32>(max(r.x, r.w), max(r.x, r.y)) + vec2<f32>(reach);
     let core_hi = sb.half - vec2<f32>(max(r.y, r.z), max(r.w, r.z)) - vec2<f32>(reach);
 
-    var hole_lo = centre + sb.centre + core_lo;
-    var hole_hi = centre + sb.centre + core_hi;
+    var hole_lo = center + sb.center + core_lo;
+    var hole_hi = center + sb.center + core_hi;
     // An inset shadow's source is its quad. A drop shadow's quad is the
     // source moved by `offset` and grown by the halo, so the source sits
-    // `offset` back from its centre.
-    var source_centre = centre;
+    // `offset` back from its center.
+    var source_center = center;
     var source_half = half;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
         source_half = shadow_source_half(half, q.fill_axis);
-        source_centre = centre - q.fill_axis.xy;
+        source_center = center - q.fill_axis.xy;
         let inset = max(max(q.radius.x, q.radius.y), max(q.radius.z, q.radius.w)) + AA_HALF_WIDTH;
-        hole_lo = source_centre - source_half + vec2<f32>(inset);
-        hole_hi = source_centre + source_half - vec2<f32>(inset);
+        hole_lo = source_center - source_half + vec2<f32>(inset);
+        hole_hi = source_center + source_half - vec2<f32>(inset);
     }
     if (!SHADOW_GRID || any(hole_lo >= hole_hi)) {
         hole_lo = bounds.hi;
@@ -296,7 +296,7 @@ fn vs_shadow(
     var xs = array<f32, 4>(bounds.lo.x, inner_lo.x, inner_hi.x, bounds.hi.x);
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
 
-    // The grid's cells in row order, past the centre one: the hole.
+    // The grid's cells in row order, past the center one: the hole.
     let draw_cell = vi / 6u;
     let cell = draw_cell + u32(draw_cell >= 4u);
     let cx = cell % 3u;
@@ -307,10 +307,10 @@ fn vs_shadow(
     out.fill = q.fill;
     out.kind = kind;
     out.sigma = sigma;
-    out.box_centre = centre + sb.centre;
+    out.box_center = center + sb.center;
     out.box_half = sb.half;
     out.box_radius = sb.radius;
-    out.source_centre = source_centre;
+    out.source_center = source_center;
     out.source_half = source_half;
     out.source_radius = q.radius;
     out.cutouts = cutouts;
@@ -322,10 +322,10 @@ fn vs_shadow(
     return out;
 }
 
-// The pixel-centre extent the quad shader shades for a quad: its rect
-// grown to every pixel centre within `AA_HALF_WIDTH` of it, out to whole
+// The pixel-center extent the quad shader shades for a quad: its rect
+// grown to every pixel center within `AA_HALF_WIDTH` of it, out to whole
 // pixels, since its coverage reaches that far and the rasterizer only
-// shades a pixel whose centre is inside what it draws. A rect on pixel
+// shades a pixel whose center is inside what it draws. A rect on pixel
 // boundaries does not grow. A windowed rect is a mask over content of its
 // own extent and paints its fill outside the shape, so it stays at its
 // rect. `Quad::shaded_rect` is the same extent on the CPU.
@@ -593,7 +593,7 @@ fn normal_cdf_integral(v: f32) -> f32 {
 
 // The CDF at `u` of what one pixel sees of a blurred edge: a Gaussian of
 // `sigma` convolved with the pixel box of half-width `AA_HALF_WIDTH`. So
-// `filter_cdf(e - x, σ)` is the coverage, at a pixel centred on `x`, of
+// `filter_cdf(e - x, σ)` is the coverage, at a pixel centered on `x`, of
 // the blurred half-line below `e`. At σ = 0 it is the box alone, the same
 // ramp the unblurred shapes are drawn with.
 fn filter_cdf(u: f32, sigma: f32) -> f32 {
@@ -658,7 +658,7 @@ fn filter_pdf(u: f32, sigma: f32) -> f32 {
 
 // One corner's cutout: the filter's weight over the `r`×`r` square at the
 // corner minus its quarter disk, at the pixel `q` relative to the arc's
-// centre, reflected so the corner points to +x and +y. Kernel and region
+// center, reflected so the corner points to +x and +y. Kernel and region
 // are both symmetric, so the one function serves all four corners.
 //
 // Integrated over the arc's angle, `x = r·sin t`, which keeps the
@@ -732,7 +732,7 @@ fn tabled_cutout(table: u32, q: vec2<f32>, sigma: f32, reach: f32) -> f32 {
     return cutout_lookup(table, q, sigma, reach);
 }
 
-// `p` relative to each corner's arc centre, reflected so the corner points
+// `p` relative to each corner's arc center, reflected so the corner points
 // to +x and +y as `corner_cutout` takes it, `(tl, tr, br, bl)`.
 fn corner_points(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>) -> array<vec2<f32>, 4> {
     return array<vec2<f32>, 4>(
@@ -779,11 +779,11 @@ fn reached_span(x: f32, half: f32, sigma: f32, reach: f32) -> f32 {
 // One half of a corner arc's share of `blurred_box_coverage`, integrated
 // along one axis over `[e0, e1]` (either order): the sum of
 // `filter_cdf` across the arc, at each slice's midpoint, times the
-// slice's exact weight along. `p` and `centre` are given `(along,
-// across)`; the arc is `across = centre.y + side·√(r² − (along −
-// centre.x)²)`. Only the part of the range the kernel reaches is sliced:
+// slice's exact weight along. `p` and `center` are given `(along,
+// across)`; the arc is `across = center.y + side·√(r² − (along −
+// center.x)²)`. Only the part of the range the kernel reaches is sliced:
 // outside it the weight is zero.
-fn arc_half(p: vec2<f32>, centre: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32, sigma: f32, reach: f32) -> f32 {
+fn arc_half(p: vec2<f32>, center: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32, sigma: f32, reach: f32) -> f32 {
     let lo = max(min(e0, e1), p.x - reach);
     let hi = min(max(e0, e1), p.x + reach);
     if (lo >= hi) {
@@ -795,8 +795,8 @@ fn arc_half(p: vec2<f32>, centre: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32
     for (var i = 1u; i <= BLUR_ARC_SLICES; i++) {
         let at = lo + f32(i) * step;
         let next = filter_cdf(at - p.x, sigma);
-        let along = at - 0.5 * step - centre.x;
-        let across = centre.y + side * sqrt(max(r * r - along * along, 0.0));
+        let along = at - 0.5 * step - center.x;
+        let across = center.y + side * sqrt(max(r * r - along * along, 0.0));
         sum += filter_cdf(across - p.y, sigma) * (next - prev);
         prev = next;
     }
@@ -804,7 +804,7 @@ fn arc_half(p: vec2<f32>, centre: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32
 }
 
 // One rounded corner's share of `blurred_box_coverage`. The arc is the
-// quarter circle of radius `r` about `centre`, bulging toward `side`.
+// quarter circle of radius `r` about `center`, bulging toward `side`.
 //
 // Green's theorem turns the coverage integral into one along the outline,
 // in either of two forms: by rows, `∮ C(x)·dC(y)`, or by columns,
@@ -813,13 +813,13 @@ fn arc_half(p: vec2<f32>, centre: vec2<f32>, side: f32, r: f32, e0: f32, e1: f32
 // at any point for the cost of that product at the switch. The steep half
 // of the arc goes by rows and the shallow half by columns, so the
 // variable sliced is always the one the arc moves along fastest.
-fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigma: f32, reach: f32) -> f32 {
+fn blurred_corner(p: vec2<f32>, center: vec2<f32>, r: f32, side: vec2<f32>, sigma: f32, reach: f32) -> f32 {
     if (r <= 0.0) {
         return 0.0;
     }
-    let far = centre + side * r;
-    let lo = min(centre, far);
-    let hi = max(centre, far);
+    let far = center + side * r;
+    let lo = min(center, far);
+    let hi = max(center, far);
     let gap = abs(p - clamp(p, lo, hi));
     // Rows and columns cancel exactly when the kernel misses the corner
     // vertically; horizontally, it sees the corner as a straight side.
@@ -827,19 +827,19 @@ fn blurred_corner(p: vec2<f32>, centre: vec2<f32>, r: f32, side: vec2<f32>, sigm
         return 0.0;
     }
     if (gap.x > reach) {
-        return side.x * filter_cdf(centre.x - p.x, sigma)
+        return side.x * filter_cdf(center.x - p.x, sigma)
             * (filter_cdf(hi.y - p.y, sigma) - filter_cdf(lo.y - p.y, sigma));
     }
-    let diagonal = centre + side * (r * SQRT_HALF);
-    let rows = arc_half(p.yx, centre.yx, side.x, r, centre.y, diagonal.y, sigma, reach);
-    let columns = arc_half(p, centre, side.y, r, centre.x, diagonal.x, sigma, reach);
-    let switch_terms = filter_cdf(centre.x - p.x, sigma) * filter_cdf(far.y - p.y, sigma)
+    let diagonal = center + side * (r * SQRT_HALF);
+    let rows = arc_half(p.yx, center.yx, side.x, r, center.y, diagonal.y, sigma, reach);
+    let columns = arc_half(p, center, side.y, r, center.x, diagonal.x, sigma, reach);
+    let switch_terms = filter_cdf(center.x - p.x, sigma) * filter_cdf(far.y - p.y, sigma)
         - filter_cdf(diagonal.x - p.x, sigma) * filter_cdf(diagonal.y - p.y, sigma);
     return side.x * rows + side.y * columns + side.x * side.y * switch_terms;
 }
 
-// Coverage, at the pixel centred on `p`, of the rounded box of half-extents
-// `half` centred at the origin, blurred by a Gaussian of `sigma`: the
+// Coverage, at the pixel centered on `p`, of the rounded box of half-extents
+// `half` centered at the origin, blurred by a Gaussian of `sigma`: the
 // integral of the pixel's filter (`filter_cdf`) over the box. The kernel
 // is separable, so the straight sides are closed form; only the corner
 // arcs are sliced (`blurred_corner`). A sharp box is the exact product of
@@ -943,14 +943,14 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     return composite(d, fill, in.stroke_color, in.stroke_width);
 }
 
-// The box whose blur a shadow paints, relative to its quad's centre, with
+// The box whose blur a shadow paints, relative to its quad's center, with
 // the radii fitted to it. A drop shadow's box is its source grown by the
-// spread, centred on the quad, which is the source moved by `offset` and
+// spread, centered on the quad, which is the source moved by `offset` and
 // grown by the halo. An inset shadow's is the hole: the source shrunk by
 // the spread, moved by `offset`. `vs_shadow` lays the cells out from it and
 // hands it to the fragments, so the two cannot disagree.
 struct ShadowBox {
-    centre: vec2<f32>,
+    center: vec2<f32>,
     half: vec2<f32>,
     radius: vec4<f32>,
 };
@@ -1031,7 +1031,7 @@ fn tabled_coverage(p: vec2<f32>, half: vec2<f32>, radius: vec4<f32>, sigma: f32,
 // shadow entries start here and differ only in the coverage they take
 // (`shadow_paint`).
 struct ShadowPixel {
-    // The pixel relative to the centre of the shadow's box.
+    // The pixel relative to the center of the shadow's box.
     p: vec2<f32>,
     // What the source lets through: 0 where it clips the pixel, otherwise
     // 1 for a drop shadow and the source's own coverage for an inset one.
@@ -1039,8 +1039,8 @@ struct ShadowPixel {
 };
 
 fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
-    var px = ShadowPixel(in.clip.xy - in.box_centre, 0.0);
-    let s = in.clip.xy - in.source_centre;
+    var px = ShadowPixel(in.clip.xy - in.box_center, 0.0);
+    let s = in.clip.xy - in.source_center;
     if (in.kind == BRUSH_KIND_SHADOW_DROP) {
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where the source's own coverage is

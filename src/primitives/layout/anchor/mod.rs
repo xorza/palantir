@@ -42,7 +42,7 @@ pub enum AnchorAlign {
     /// Flush with the start edge; the default.
     #[default]
     Start,
-    /// Centred on the anchored rect.
+    /// Centered on the anchored rect.
     Center,
     /// Flush with the end edge.
     End,

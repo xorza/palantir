@@ -39,7 +39,7 @@ fn swatch_color(i: u32) -> RgbaF32 {
 /// its LUT, and the shaders to read the new height via `textureDimensions`.
 ///
 /// Each swatch's two stops share one color, so its LUT row is flat and a
-/// wrong row shows as a neighbouring swatch's color. Every pixel of every
+/// wrong row shows as a neighboring swatch's color. Every pixel of every
 /// swatch is asserted: a permuted row assignment would still satisfy mutual
 /// distinctness, and the swatches sit on whole pixels, so none is partly
 /// covered.
@@ -78,14 +78,14 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
     }
 }
 
-/// The LUT is sampled at texel centres: parameter `t` reads the point
+/// The LUT is sampled at texel centers: parameter `t` reads the point
 /// `t * 255` between them.
 ///
 /// A hard stop at 0.25 is stored at 64/255. Pixel 258 of 1024 sits at
 /// `t = 258.5 / 1024`, `255 * t - 64 = 0.373` of the way to blue: red 0.627
 /// and blue 0.373 linear, sRGB 207 and 163.
 #[test]
-fn a_gradient_samples_its_lut_at_texel_centres() {
+fn a_gradient_samples_its_lut_at_texel_centers() {
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     let mut h = Harness::new();
@@ -103,7 +103,7 @@ fn a_gradient_samples_its_lut_at_texel_centres() {
     let [r, g, b, _] = img.get_pixel(258, 8).0;
     assert!(
         r.abs_diff(207) <= SRGB_ROUND_TRIP && g == 0 && b.abs_diff(163) <= SRGB_ROUND_TRIP,
-        "pixel 258 is {r}, {g}, {b}; texel centres put it at 207, 0, 163",
+        "pixel 258 is {r}, {g}, {b}; texel centers put it at 207, 0, 163",
     );
 }
 

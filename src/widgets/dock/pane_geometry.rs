@@ -71,7 +71,7 @@ impl PaneGeometry<'_> {
             return join;
         }
 
-        // Outer band: nearest offered edge by normalised distance, so a wide pane does not bias top/bottom.
+        // Outer band: nearest offered edge by normalized distance, so a wide pane does not bias top/bottom.
         let w = content.size.w.max(1.0);
         let h = content.size.h.max(1.0);
         let edges = [

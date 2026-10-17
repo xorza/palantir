@@ -125,7 +125,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 
 /// Under a tight pass-budget a far-apart transform animation keeps prev and
 /// curr screen rects split; pinning both ends of the merge rule stops a budget
-/// tweak flipping behaviour silently.
+/// tweak flipping behavior silently.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

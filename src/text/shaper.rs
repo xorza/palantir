@@ -279,7 +279,7 @@ impl TextShaper {
     /// [`RasterImage`](crate::widget::RasterImage) terms. Real glyphs under mono too.
     ///
     /// Palantir's text backend and a caller drawing its own text (a
-    /// [`GpuView`](crate::GpuView) labelling a 3D scene) take this one lease. Holding
+    /// [`GpuView`](crate::GpuView) labeling a 3D scene) take this one lease. Holding
     /// it across anything on [`Ui`](crate::Ui) that measures text borrows the
     /// `RefCell` twice and panics, so take it inside the view's paint and drop it
     /// there. Reached through [`GpuInitContext`](crate::GpuInitContext).

@@ -300,7 +300,7 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// `TextSystem` is the honest fixture; rebuilding it per batch would measure
 /// a cold cache forever.
 ///
-/// Both halves of a frame are modelled, layout's measure and the encoder's
+/// Both halves of a frame are modeled, layout's measure and the encoder's
 /// restore, because the restore promotes a buffer onto the long window; a
 /// layout-only fixture ages everything out and looks bounded regardless.
 ///

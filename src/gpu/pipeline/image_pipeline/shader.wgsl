@@ -29,7 +29,7 @@ const FLAG_TAPS_PEAK:   u32 = /*{IMG_FLAG_TAPS_PEAK}*/;
 // which is a mip build done the expensive way.
 //
 // Cheaper than the fetch count suggests: at 9 taps (5× minification) the image
-// batch runs 1.8× the same draw with taps off, not 9×, because neighbouring
+// batch runs 1.8× the same draw with taps off, not 9×, because neighboring
 // taps overlap in the texture cache (`image_pipeline` bench, `minified_*`,
 // RTX 4090 Laptop / Vulkan). Both reductions measure the same, which is what
 // the branchless accumulate below is for.
@@ -77,8 +77,8 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
 //
 // A tiled draw filters itself, because `ClampToEdge` cannot express a
 // repeat and the sampler is shared with the gradient LUT. Wrapping the
-// coordinate is not enough: the filter reads the *neighbour* too, and at
-// a seam that neighbour clamps to the edge texel instead of continuing
+// coordinate is not enough: the filter reads the *neighbor* too, and at
+// a seam that neighbor clamps to the edge texel instead of continuing
 // into the next repeat — so the last half-texel of every tile blends
 // with itself. The wrap has to reach each fetched texel, which only a
 // hand-written filter can do. Four point fetches instead of one bilinear,
@@ -88,7 +88,7 @@ fn tap(uv: vec2<f32>, tiled: bool) -> vec4<f32> {
         return textureSampleLevel(tex, tex_smp, uv, 0.0);
     }
     let dims = vec2<i32>(textureDimensions(tex));
-    // Texel space as the sampler sees it: uv `(i + 0.5) / n` is the centre
+    // Texel space as the sampler sees it: uv `(i + 0.5) / n` is the center
     // of texel `i`, so the half-texel comes off before the floor.
     let t = fract(uv) * vec2<f32>(dims) - 0.5;
     let base = floor(t);
@@ -107,9 +107,9 @@ fn tap(uv: vec2<f32>, tiled: bool) -> vec4<f32> {
 }
 
 // The texel at `texel`, a floored texel-space coordinate, unfiltered: what a
-// nearest filter promises. Not the sampler at the texel's centre, which
+// nearest filter promises. Not the sampler at the texel's center, which
 // computes `uv · n − 0.5` in fixed point with as few as four bits below the
-// texel, and so blends in a neighbour (V3D reads 2 steps of it at a seam).
+// texel, and so blends in a neighbor (V3D reads 2 steps of it at a seam).
 // Wrapped on a tiled draw and clamped otherwise, as `tap` and the sampler's
 // `ClampToEdge` treat the same edge.
 fn nearest_texel(texel: vec2<f32>, tiled: bool) -> vec4<f32> {
@@ -144,7 +144,7 @@ fn footprint_taps(
 ) -> vec4<f32> {
     let peak = (flags & FLAG_TAPS_PEAK) != 0u;
     // The taps step *off* the base UV by up to half the footprint, so a
-    // tiled draw's leave [0,1) on their own and land in a neighbouring
+    // tiled draw's leave [0,1) on their own and land in a neighboring
     // repeat. `tap` wraps each fetch, so that is where they read — and
     // the flag has to reach it, since a Cover crop must not have its far
     // edge taken round to its near one.
@@ -157,7 +157,7 @@ fn footprint_taps(
     var best_luma = -1.0;
     for (var j = 0; j < n; j++) {
         for (var i = 0; i < n; i++) {
-            // (k + 0.5)/n - 0.5 walks tap centres across -0.5..0.5 of the
+            // (k + 0.5)/n - 0.5 walks tap centers across -0.5..0.5 of the
             // derivative span, so the grid tiles the footprint symmetrically
             // about the fragment's own UV.
             let t = (vec2<f32>(f32(i), f32(j)) + 0.5) * step - 0.5;

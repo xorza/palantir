@@ -322,7 +322,7 @@ fn a_table_is_baked_where_it_is_cheaper_than_shading() {
 /// `a_table_is_baked_where_it_is_cheaper_than_shading`). A repaint of the 4 px
 /// square at the first shadow's corner draws only that shadow, and alone would
 /// shade a sliver; the census still holds the other 13, so it reads the table
-/// and bakes only what the sliver reads: the top-left arc is centred at 16 per
+/// and bakes only what the sliver reads: the top-left arc is centered at 16 per
 /// axis, so it reads `(16 − p + 8.5) · 5` from 102.5 to 122.5, texels 101 to
 /// 124 with one past and one each side for rounding, where the whole frame
 /// reads 0 to 124 of 127. A repaint far from every shadow bakes nothing.
@@ -361,12 +361,12 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
 /// A repaint bakes the texels its pixels read past a corner's region, where
 /// bilinear filtering still reaches the table. An inset shadow 200 px square,
 /// radius 7.25, σ = 16, its hole moved 100 right to x 100 to 300: the top-left
-/// arc is centred at `(107.25, 7.25)`, `reach = 64.5`, the region runs to
+/// arc is centered at `(107.25, 7.25)`, `reach = 64.5`, the region runs to
 /// `q = 72.5`, x = 35.5. The table has `floor((7.25 + 129) · 0.625) + 2 = 87`
 /// texels, read up to `t = 86`, i.e. `q = 86 / 0.625 − 64.5 = 73.1`, x = 34.15.
 /// The two left corners show `136.25 · 71.75` px each, 234.6k nodes to shade
 /// against 181.7k to bake: the key pays. A repaint of x 0 to 35 misses the
-/// region, yet its pixel centred at 34.5 reads `t = (72.75 + 64.5) · 0.625 =
+/// region, yet its pixel centered at 34.5 reads `t = (72.75 + 64.5) · 0.625 =
 /// 85.78`, texels 85 and 86. So it bakes x from `floor((72.25 + 64.5) · 0.625)
 /// − 1 = 84` to the side, and y from 0 to `floor((7.25 + 64.5) · 0.625) + 3 = 47`.
 #[test]

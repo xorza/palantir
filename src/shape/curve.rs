@@ -1,4 +1,4 @@
-//! The line, Bézier and arc builder: every geometry lowers to one `ShapeRecord::Curve`, with stroke properties travelling beside it.
+//! The line, Bézier and arc builder: every geometry lowers to one `ShapeRecord::Curve`, with stroke properties traveling beside it.
 
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
@@ -62,7 +62,7 @@ struct CurveStyle {
     cap: LineCap,
 }
 
-/// Stroked line, Bézier, or circular arc, centred on the curve like every path shape.
+/// Stroked line, Bézier, or circular arc, centered on the curve like every path shape.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct CurveShape {

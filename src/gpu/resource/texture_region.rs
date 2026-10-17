@@ -17,7 +17,7 @@ pub(super) struct TextureRegion<'a> {
     /// Source stride, carried because the uploaders' texel widths differ. A
     /// multiple of `COPY_BYTES_PER_ROW_ALIGNMENT` reaches the texture in one
     /// copy; other pitches are re-packed inside wgpu. Padding here to avoid that
-    /// is a pessimisation, as wgpu still copies the whole into staging.
+    /// is a pessimization, as wgpu still copies the whole into staging.
     pub(super) bytes_per_row: u32,
 }
 

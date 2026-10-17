@@ -223,7 +223,7 @@ fn two_stop_gradients_take_their_kind_defaults() {
     check("radial", RadialGradient::two_stop, Interpolation::Oklab);
     check("conic", ConicGradient::two_stop, Interpolation::Linear);
 
-    // A radial gradient defaults to the centred circle: centre and radius 0.5, exact in f16.
+    // A radial gradient defaults to the centered circle: center and radius 0.5, exact in f16.
     let radial = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
     assert_eq!(radial.geometry.center, Vec2::splat(0.5));
     assert_eq!(radial.geometry.radius, Vec2::splat(0.5));
@@ -262,7 +262,7 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     }
 }
 
-/// Every kind round-trips; a file whose geometry breaks its kind is a deserialization error: angles are angles, centres offsets, radial radius a length per axis.
+/// Every kind round-trips; a file whose geometry breaks its kind is a deserialization error: angles are angles, centers offsets, radial radius a length per axis.
 #[test]
 fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
     #[derive(Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]

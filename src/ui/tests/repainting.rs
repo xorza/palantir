@@ -517,7 +517,7 @@ fn request_relayout_between_frames_is_a_caller_error() {
 }
 
 #[test]
-fn request_relayout_during_record_is_honoured() {
+fn request_relayout_during_record_is_honored() {
     let mut h = UiHarness::new(SURFACE);
     let mut asked = false;
     let report = h.frame(|ui| {

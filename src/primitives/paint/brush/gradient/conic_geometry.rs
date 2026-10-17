@@ -1,4 +1,4 @@
-//! The conic gradient's axis: color sweeps around a centre by angle.
+//! The conic gradient's axis: color sweeps around a center by angle.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -13,7 +13,7 @@ use std::hash;
 /// Geometry of a conic (sweep) gradient: the 0..1 axis sweeps around `center` from `start_angle` radians, clockwise on screen (angles grow from +x toward +y, which points down). `center` is in 0..1 object space. The shader projects each fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`, applies `Spread`, samples the LUT.
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
-    /// Sweep centre, in object-space `0..1` coordinates.
+    /// Sweep center, in object-space `0..1` coordinates.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub center: Vec2,
     /// Where the sweep begins, in radians.
@@ -66,7 +66,7 @@ impl ConicGradient {
         )
     }
 
-    /// Centred shorthand: `center = (0.5, 0.5)`, start angle 0 (+x, clockwise), 2 stops at offsets 0/1.
+    /// Centered shorthand: `center = (0.5, 0.5)`, start angle 0 (+x, clockwise), 2 stops at offsets 0/1.
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

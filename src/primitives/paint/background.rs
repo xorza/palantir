@@ -21,7 +21,7 @@ use palantir_anim_derive::Animatable;
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
 /// `background` and `default_background` check it where it enters and panic unless
 /// every color is a [color](crate::widget::domain::color), gradient angles are
-/// [angles](crate::widget::domain::angle), centres
+/// [angles](crate::widget::domain::angle), centers
 /// [offsets](crate::widget::domain::offset), radial radii and the border width
 /// [lengths](crate::widget::domain::length), each corner radius a length of at most
 /// 65504 (one f16 lane), and the shadow's offset and spread offsets and its blur a

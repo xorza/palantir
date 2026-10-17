@@ -1,4 +1,4 @@
-//! The gestures the harness synthesises, and the routing each depends on.
+//! The gestures the harness synthesizes, and the routing each depends on.
 
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};

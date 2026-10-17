@@ -50,7 +50,7 @@ fn stepping_walks_the_rungs_and_stops_at_the_ends() {
 /// (1.37 sits between 1.25 and 1.5). Within `EPS` of a rung it counts as on
 /// it; past `EPS` above, a step down lands on it.
 #[test]
-fn stepping_from_between_rungs_lands_on_the_neighbours() {
+fn stepping_from_between_rungs_lands_on_the_neighbors() {
     for (factor, up, down) in [
         (1.37, 1.5, 1.25),
         (1.0 + EPS * 0.5, 1.1, 0.9),

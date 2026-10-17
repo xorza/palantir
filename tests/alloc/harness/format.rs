@@ -102,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn user_relative_normalises_every_shape_of_our_own_files() {
+    fn user_relative_normalizes_every_shape_of_our_own_files() {
         let manifest = env!("CARGO_MANIFEST_DIR");
         // DWARF: the file name joined onto the compilation directory.
         let absolute = native(&format!("{manifest}/src/widgets/button.rs"));

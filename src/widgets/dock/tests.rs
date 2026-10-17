@@ -291,7 +291,7 @@ fn closing_the_last_tab_collapses_and_refocuses() {
 }
 
 /// A strip is addressed by index and read by identity, so removing a tab keeps
-/// the pane on the tab it showed; only removing that tab picks the neighbour
+/// the pane on the tab it showed; only removing that tab picks the neighbor
 /// that took its slot.
 ///
 /// Fixture: `[Main, Prefs, v1, v2]` showing v1 at slot 2. Dropping Prefs
@@ -339,7 +339,7 @@ fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
         "closing the shown tab falls to the one that took its slot",
     );
 
-    // The last slot's neighbour is behind it.
+    // The last slot's neighbor is behind it.
     let mut d = showing_v1();
     d.apply(DockOperation::ActivateTab { tab: viewer(2) });
     d.apply(DockOperation::CloseTab { tab: viewer(2) });
@@ -463,7 +463,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
         "the ratio clamps to the floor"
     );
 
-    // A non-finite ratio centres the split rather than landing NaN.
+    // A non-finite ratio centers the split rather than landing NaN.
     for ratio in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         d.apply(DockOperation::SetRatio {
             split: DockPath::ROOT,
@@ -784,7 +784,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         caret_width: 3.0,
     };
 
-    // Chip centres sit at x = 36 and 99; a pointer at 50 is between them.
+    // Chip centers sit at x = 36 and 99; a pointer at 50 is between them.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(50.0, 15.0));
     assert_eq!(hit.drop, DockDrop::Into { group, index: 1 });
     assert_eq!(
@@ -800,7 +800,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     assert_eq!(hit.drop, DockDrop::Into { group, index: 2 });
     assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 400.0, 270.0));
 
-    // Near the left edge, normalised distance picks Left over Top.
+    // Near the left edge, normalized distance picks Left over Top.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
     assert_eq!(
         hit.drop,

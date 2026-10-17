@@ -58,7 +58,7 @@ pub struct TabsTheme {
     /// Chip width floor.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
-    /// Chip width ceiling, so a long title ellipsises.
+    /// Chip width ceiling, so a long title ellipsizes.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub max_width: f32,
     /// Look pack for the chip's close button.

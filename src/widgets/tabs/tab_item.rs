@@ -9,7 +9,7 @@ use crate::primitives::text::interned_str::InternedStr;
 pub struct TabItem {
     /// Stable identity of the tab this chip stands for, unique within one strip.
     pub key: u64,
-    /// The chip's text, ellipsised at [`TabsTheme::max_width`](crate::TabsTheme::max_width).
+    /// The chip's text, ellipsized at [`TabsTheme::max_width`](crate::TabsTheme::max_width).
     pub label: InternedStr,
     /// Shows a close button.
     pub closable: bool,

@@ -464,6 +464,6 @@ fn a_glyphless_line_takes_its_caret_from_the_run_not_the_key() {
     );
     drop(right);
 
-    let centre = shaper.layout(&run(HAlign::Center));
-    assert_eq!(centre.caret_at(empty_line_byte).x, block_w * 0.5);
+    let center = shaper.layout(&run(HAlign::Center));
+    assert_eq!(center.caret_at(empty_line_byte).x, block_w * 0.5);
 }

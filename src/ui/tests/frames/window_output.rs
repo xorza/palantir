@@ -87,7 +87,7 @@ fn close_request_veto_protocol() {
         ui.keep_open();
         ui.close_requested()
     });
-    assert!(requested, "host signalled close ⇒ close_requested() true");
+    assert!(requested, "host signaled close ⇒ close_requested() true");
     assert!(
         h.ui.window_requests.close_vetoed,
         "keep_open must set the veto the host reads"

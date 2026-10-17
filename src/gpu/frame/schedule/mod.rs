@@ -34,7 +34,7 @@ pub(crate) struct MaskPlan {
 
 impl MaskPlan {
     /// Rebuild the plan for `buffer`. The scan over staged chains is linear in
-    /// distinct chains (rare: nested rounded clips). A neighbour-only comparison
+    /// distinct chains (rare: nested rounded clips). A neighbor-only comparison
     /// would break the span-per-chain invariant when anything, even a skipped group,
     /// sits between two groups sharing a chain.
     pub(crate) fn build(&mut self, buffer: &RenderBuffer) {

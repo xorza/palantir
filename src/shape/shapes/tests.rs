@@ -264,7 +264,7 @@ fn the_nan_gate_drops_every_shape_kind() {
         line(nan_pt),
         line(Vec2::new(4.0, 4.0)),
     );
-    gate("arc_centre", arc(nan_pt), arc(Vec2::ZERO));
+    gate("arc_center", arc(nan_pt), arc(Vec2::ZERO));
     gate(
         "polyline_point",
         PolylineShape::new(&pts_nan, stroke),

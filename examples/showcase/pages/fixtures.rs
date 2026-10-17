@@ -70,7 +70,7 @@ pub(crate) fn build(ui: &mut Ui) {
             DemoCell::new("chrome concentricity")
                 .surface(Surface::Bare)
                 .show(ui, concentricity);
-            DemoCell::new("premul — solid α 0.5, expect grey").show(ui, translucent_solid);
+            DemoCell::new("premul — solid α 0.5, expect gray").show(ui, translucent_solid);
             DemoCell::new("premul — per-point α 0.5").show(ui, translucent_per_point);
             DemoCell::new("premul — α 0.25, expect slight tint").show(ui, translucent_quarter);
         });
@@ -149,7 +149,7 @@ fn concentricity(ui: &mut Ui) {
 }
 
 /// Opaque magenta `(1, 0, 1)` backdrop so a translucent green `(0, 1, 0)` draw at α=0.5 shows a
-/// premultiplied-alpha bug: correct blending gives mid grey `(0.5, 0.5, 0.5)`, straight alpha bright green `(0.5, 1, 0.5)`.
+/// premultiplied-alpha bug: correct blending gives mid gray `(0.5, 0.5, 0.5)`, straight alpha bright green `(0.5, 1, 0.5)`.
 fn backdrop(ui: &mut Ui) {
     ui.add_shape(
         Shape::rect(Rect::new(0.0, 0.0, support::TILE, support::TILE))
@@ -157,7 +157,7 @@ fn backdrop(ui: &mut Ui) {
     );
 }
 
-/// Solid translucent polyline. Expected mid-grey diagonal.
+/// Solid translucent polyline. Expected mid-gray diagonal.
 fn translucent_solid(ui: &mut Ui) {
     backdrop(ui);
     let pts = [Vec2::new(14.0, 28.0), Vec2::new(154.0, 140.0)];
