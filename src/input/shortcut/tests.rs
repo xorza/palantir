@@ -105,53 +105,93 @@ fn ctrl_shift_matches() {
     assert!(s.matches(kp(primary_shift_mod(), Key::Char('K'))));
 }
 
+/// Every label on every platform, hand-written: macOS writes glyphs in its canonical order ⌥ ⇧ ⌘ with the primary modifier last and glyphs for the editing keys; Windows and Linux join names with `+` in the order Ctrl, Shift, Alt, then Win or Super. On macOS the Super key is Command, so `meta` shows as ⌘, once even beside `ctrl`.
 #[test]
-fn label_ctrl_letter() {
-    let s = Shortcut::ctrl('C').to_string();
-    let expected = match PLATFORM {
-        Platform::Mac => "⌘C",
-        _ => "Ctrl+C",
+fn the_label_follows_each_platforms_convention() {
+    let all = ShortcutMods {
+        ctrl: true,
+        shift: true,
+        alt: true,
+        meta: false,
     };
-    assert_eq!(s, expected);
-}
-
-#[test]
-fn label_ctrl_shift_letter() {
-    let s = Shortcut::ctrl_shift('K').to_string();
-    let expected = match PLATFORM {
-        Platform::Mac => "⇧⌘K",
-        _ => "Ctrl+Shift+K",
+    let meta = ShortcutMods {
+        meta: true,
+        ..ShortcutMods::NONE
     };
-    assert_eq!(s, expected);
-}
-
-#[test]
-fn label_non_letter_key() {
-    let s = Shortcut::new(ShortcutMods::CTRL, Key::ArrowLeft).to_string();
-    let expected = match PLATFORM {
-        Platform::Mac => "⌘←",
-        _ => "Ctrl+←",
-    };
-    assert_eq!(s, expected);
-}
-
-#[test]
-fn modifier_order_is_canonical() {
-    // Ctrl+Shift+Alt+K; Mac order is ⌥ ⇧ ⌘ then key (primary=⌘ last).
-    let s = Shortcut::new(
-        ShortcutMods {
-            ctrl: true,
-            shift: true,
-            alt: true,
-            meta: false,
-        },
-        Key::Char('K'),
-    );
-    let expected = match PLATFORM {
-        Platform::Mac => "⌥⇧⌘K",
-        _ => "Ctrl+Shift+Alt+K",
-    };
-    assert_eq!(s.to_string(), expected);
+    // (shortcut, macOS, Windows, Linux)
+    let rows = [
+        (Shortcut::ctrl('C'), "⌘C", "Ctrl+C", "Ctrl+C"),
+        // A lowercase ASCII letter shows uppercase.
+        (Shortcut::ctrl('c'), "⌘C", "Ctrl+C", "Ctrl+C"),
+        (
+            Shortcut::ctrl_shift('K'),
+            "⇧⌘K",
+            "Ctrl+Shift+K",
+            "Ctrl+Shift+K",
+        ),
+        (
+            Shortcut::new(ShortcutMods::CTRL, Key::ArrowLeft),
+            "⌘←",
+            "Ctrl+←",
+            "Ctrl+←",
+        ),
+        (
+            Shortcut::new(all, Key::Char('K')),
+            "⌥⇧⌘K",
+            "Ctrl+Shift+Alt+K",
+            "Ctrl+Shift+Alt+K",
+        ),
+        (
+            Shortcut::new(meta, Key::Char('L')),
+            "⌘L",
+            "Win+L",
+            "Super+L",
+        ),
+        (
+            Shortcut::new(ShortcutMods { ctrl: true, ..meta }, Key::Char('L')),
+            "⌘L",
+            "Ctrl+Win+L",
+            "Ctrl+Super+L",
+        ),
+        (Shortcut::key(Key::Enter), "⏎", "Enter", "Enter"),
+        (Shortcut::key(Key::Backspace), "⌫", "Backspace", "Backspace"),
+        (Shortcut::key(Key::Delete), "⌦", "Delete", "Delete"),
+        (
+            Shortcut::new(ShortcutMods::SHIFT, Key::Tab),
+            "⇧⇥",
+            "Shift+Tab",
+            "Shift+Tab",
+        ),
+        (
+            Shortcut::new(ShortcutMods::ALT, Key::F4),
+            "⌥F4",
+            "Alt+F4",
+            "Alt+F4",
+        ),
+    ];
+    for (shortcut, mac, windows, linux) in rows {
+        for (platform, want) in [
+            (Platform::Mac, mac),
+            (Platform::Windows, windows),
+            (Platform::Linux, linux),
+        ] {
+            assert_eq!(
+                shortcut.label(platform).to_string(),
+                want,
+                "{shortcut:?} on {platform:?}",
+            );
+        }
+        let native = match PLATFORM {
+            Platform::Mac => mac,
+            Platform::Windows => windows,
+            Platform::Linux => linux,
+        };
+        assert_eq!(
+            shortcut.to_string(),
+            native,
+            "`Display` is this build's label"
+        );
+    }
 }
 
 /// The two modifier types name the same sets and each event-state set converts to its shortcut twin; raw macOS Control has no twin, so Control+Shift reads as bare Shift.
@@ -173,10 +213,10 @@ fn named_modifier_sets_convert_to_their_twins() {
     assert_eq!(ShortcutMods::from(mac_control), ShortcutMods::SHIFT);
 }
 
-/// A Super chord converts to its shortcut twin, a bare-key shortcut doesn't fire under Super, and the display names the key as the platform does (Win on Windows, Super on Linux).
+/// A Super chord converts to its shortcut twin. On Windows and Linux it fires under Super; on macOS, where Super is Command, under Command, which the host reports as `ctrl`, so there it is the same chord with or without `ctrl`. A bare key fires under neither.
 #[test]
-fn the_meta_modifier_reaches_matching_and_display() {
-    let held = Modifiers {
+fn the_meta_modifier_is_super_and_command_on_macos() {
+    let held_super = Modifiers {
         meta: true,
         ..Modifiers::NONE
     };
@@ -184,16 +224,47 @@ fn the_meta_modifier_reaches_matching_and_display() {
         meta: true,
         ..ShortcutMods::NONE
     };
-    assert_eq!(ShortcutMods::from(held), declared);
+    assert_eq!(ShortcutMods::from(held_super), declared);
     assert!(declared.has_command());
     let super_l = Shortcut::new(declared, Key::Char('L'));
-    assert!(super_l.matches(kp(held, Key::Char('l'))));
-    assert!(!Shortcut::key(Key::Char('L')).matches(kp(held, Key::Char('l'))));
-    let shown = super_l.to_string();
-    match PLATFORM {
-        Platform::Windows => assert_eq!(shown, "Win+L"),
-        Platform::Linux => assert_eq!(shown, "Super+L"),
-        // macOS reports no Super key (Command is `ctrl`), so its name is never read.
-        Platform::Mac => {}
+    let ctrl_super_l = Shortcut::new(
+        ShortcutMods {
+            ctrl: true,
+            ..declared
+        },
+        Key::Char('L'),
+    );
+    let bare_l = Shortcut::key(Key::Char('L'));
+    let press = |mods| kp(mods, Key::Char('l'));
+    let held_ctrl_super = Modifiers {
+        meta: true,
+        ..Modifiers::CTRL
+    };
+
+    for platform in [Platform::Windows, Platform::Linux] {
+        assert!(
+            super_l.matches_on(press(held_super), platform),
+            "{platform:?}"
+        );
+        assert!(
+            !super_l.matches_on(press(Modifiers::CTRL), platform),
+            "{platform:?}"
+        );
+        assert!(
+            ctrl_super_l.matches_on(press(held_ctrl_super), platform),
+            "{platform:?}"
+        );
+        assert!(
+            !ctrl_super_l.matches_on(press(Modifiers::CTRL), platform),
+            "{platform:?}"
+        );
+        assert!(
+            !bare_l.matches_on(press(held_super), platform),
+            "{platform:?}"
+        );
     }
+    assert!(super_l.matches_on(press(Modifiers::CTRL), Platform::Mac));
+    assert!(ctrl_super_l.matches_on(press(Modifiers::CTRL), Platform::Mac));
+    assert!(!super_l.matches_on(press(Modifiers::NONE), Platform::Mac));
+    assert!(!bare_l.matches_on(press(Modifiers::CTRL), Platform::Mac));
 }

@@ -4,6 +4,9 @@
 //! - The primary command modifier (`ShortcutMods::ctrl`) is **Cmd on macOS, Ctrl
 //!   elsewhere**, so one binding fires on ⌘S and Ctrl+S; for raw Ctrl on macOS
 //!   match a `KeyPress` directly.
+//! - The Super modifier (`ShortcutMods::meta`) is the Windows / Super key, and **Cmd
+//!   on macOS**, where that key is Command: there it is the same key as the primary
+//!   modifier, as Electron's `Super` and VS Code's `meta` read it.
 //! - [`Shortcut::matches`] compares modifiers *exactly* (Ctrl+A does not match
 //!   Ctrl+Shift+A); `Char` keys compare ignore-case since [`Key::Char`] arrives
 //!   post-shift-layout.
@@ -14,7 +17,7 @@ use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
-use std::fmt;
+use std::fmt::{self, Write as _};
 
 /// Modifier set for declaring shortcuts: `ctrl` is the primary command key (Cmd on
 /// macOS, Ctrl elsewhere), `shift` and `alt` are literal. Distinct from event-state
@@ -29,7 +32,8 @@ pub struct ShortcutMods {
     pub shift: bool,
     /// Alt / Option, literally.
     pub alt: bool,
-    /// The Windows / Super key; never set by a chord meant for macOS.
+    /// The Windows / Super key; on macOS, where that key is Command, the same key as
+    /// [`Self::ctrl`].
     pub meta: bool,
 }
 
@@ -40,6 +44,19 @@ impl ShortcutMods {
     /// `mac_ctrl`: a chord is declared once for every platform.
     pub const fn has_command(self) -> bool {
         self.ctrl || self.alt || self.meta
+    }
+
+    /// The set a press holds to fire this chord on `platform`: on macOS the host reports
+    /// Command as `ctrl`, so a declared `meta` folds into it.
+    const fn held_on(self, platform: Platform) -> Self {
+        match platform {
+            Platform::Mac => Self {
+                ctrl: self.ctrl || self.meta,
+                meta: false,
+                ..self
+            },
+            Platform::Windows | Platform::Linux => self,
+        }
     }
 
     /// No modifiers: a bare key.
@@ -121,8 +138,8 @@ impl Shortcut {
         Self::new(ShortcutMods::NONE, key)
     }
 
-    /// `Ctrl+<c>`; `c` should be uppercase ASCII (matching ignores case, the label
-    /// uses what you pass).
+    /// `Ctrl+<c>`. Matching ignores ASCII case, and the label shows an ASCII letter
+    /// uppercase.
     pub const fn ctrl(c: char) -> Self {
         Self::new(ShortcutMods::CTRL, Key::Char(c))
     }
@@ -142,16 +159,34 @@ impl Shortcut {
     /// layout-independent [physical key] ([`KeyPress::physical`]); Dvorak / AZERTY
     /// still produce ASCII and are untouched.
     pub fn matches(self, press: KeyPress) -> bool {
-        if press.mods.mac_ctrl && !self.mods.has_command() {
+        self.matches_on(press, PLATFORM)
+    }
+
+    /// [`Self::matches`] on `platform`, so one host can check every platform's rule.
+    fn matches_on(self, press: KeyPress, platform: Platform) -> bool {
+        let chord = Self {
+            mods: self.mods.held_on(platform),
+            ..self
+        };
+        if press.mods.mac_ctrl && !chord.mods.has_command() {
             return false;
         }
-        if self.matches_key(press.key, press.mods) {
+        if chord.matches_key(press.key, press.mods) {
             return true;
         }
-        self.mods.has_command()
+        chord.mods.has_command()
             && press
                 .layout_retry()
-                .is_some_and(|physical| self.matches_key(physical, press.mods))
+                .is_some_and(|physical| chord.matches_key(physical, press.mods))
+    }
+
+    /// The label `platform` shows. Takes the platform, as [`Modifiers::compose_text`]
+    /// does, so one host can check every platform's label.
+    fn label(self, platform: Platform) -> impl fmt::Display {
+        ShortcutLabel {
+            shortcut: self,
+            platform,
+        }
     }
 
     /// Logical-key match with **no** layout fallback; [`Self::matches`] layers that
@@ -167,22 +202,38 @@ impl Shortcut {
     }
 }
 
-/// Platform-native label: macOS glyphs (`⌥⇧⌘<key>`), else `Ctrl+Shift+Alt+<key>`.
+/// Platform-native label for the platform this build targets: macOS glyphs (`⌥⇧⌘<key>`), else
+/// `Ctrl+Shift+Alt+<key>`.
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if matches!(PLATFORM, Platform::Mac) {
+        self.label(PLATFORM).fmt(f)
+    }
+}
+
+/// What [`Shortcut::label`] returns.
+#[derive(Clone, Copy, Debug)]
+struct ShortcutLabel {
+    shortcut: Shortcut,
+    platform: Platform,
+}
+
+impl fmt::Display for ShortcutLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Shortcut { mods, key } = self.shortcut;
+        let mods = mods.held_on(self.platform);
+        if matches!(self.platform, Platform::Mac) {
             // Canonical macOS order ⌥ ⇧ ⌘ <key>; the primary modifier is Cmd there,
             // so it sits last.
-            if self.mods.alt {
+            if mods.alt {
                 f.write_str("⌥")?;
             }
-            if self.mods.shift {
+            if mods.shift {
                 f.write_str("⇧")?;
             }
-            if self.mods.ctrl {
+            if mods.ctrl {
                 f.write_str("⌘")?;
             }
-            return write_key(f, self.key);
+            return write_key(f, key, self.platform);
         }
         let mut first = true;
         let sep = |f: &mut fmt::Formatter<'_>, first: &mut bool| -> fmt::Result {
@@ -192,35 +243,35 @@ impl fmt::Display for Shortcut {
             *first = false;
             Ok(())
         };
-        if self.mods.ctrl {
+        if mods.ctrl {
             sep(f, &mut first)?;
             f.write_str("Ctrl")?;
         }
-        if self.mods.shift {
+        if mods.shift {
             sep(f, &mut first)?;
             f.write_str("Shift")?;
         }
-        if self.mods.alt {
+        if mods.alt {
             sep(f, &mut first)?;
             f.write_str("Alt")?;
         }
-        if self.mods.meta {
+        if mods.meta {
             sep(f, &mut first)?;
-            f.write_str(if matches!(PLATFORM, Platform::Windows) {
+            f.write_str(if matches!(self.platform, Platform::Windows) {
                 "Win"
             } else {
                 "Super"
             })?;
         }
         sep(f, &mut first)?;
-        write_key(f, self.key)
+        write_key(f, key, self.platform)
     }
 }
 
-fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
-    let mac = matches!(PLATFORM, Platform::Mac);
+fn write_key(f: &mut fmt::Formatter<'_>, key: Key, platform: Platform) -> fmt::Result {
+    let mac = matches!(platform, Platform::Mac);
     match key {
-        Key::Char(c) => f.write_fmt(format_args!("{}", c.to_ascii_uppercase())),
+        Key::Char(c) => f.write_char(c.to_ascii_uppercase()),
         Key::ArrowLeft => f.write_str("←"),
         Key::ArrowRight => f.write_str("→"),
         Key::ArrowUp => f.write_str("↑"),
