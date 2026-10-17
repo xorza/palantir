@@ -1,6 +1,6 @@
 //! Duration motion model: the `(secs, ease)` validity bound and snap-if-close floor. Sibling of [`Spring`](crate::animation::spring::Spring); each model owns its admission predicate and settle tolerance.
 
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 
 use std::time::Duration;
 

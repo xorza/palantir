@@ -1,6 +1,6 @@
 //! `#[derive(Animatable)]`, read back field by field on probe structs.
 
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;

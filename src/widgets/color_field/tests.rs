@@ -3,10 +3,10 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use crate::animation::animatable::Animatable;
 use crate::damage::Damage;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;

@@ -1,11 +1,11 @@
 //! One animated value's cross-frame row: position, target and motion model.
 
 use crate::animation::anim_map_typed::TickResult;
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_spec::AnimMotion;
 use crate::animation::duration;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
+use crate::primitives::math::animatable::Animatable;
 
 /// State carried only by the active motion model; the variant is also the mode
 /// tag. A duration holds the value; a spring holds only its `offset` from the

@@ -690,7 +690,6 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod unit {
-    use crate::animation::animatable::Animatable;
     use crate::damage::Damage;
     use crate::damage::region::DamageRegion;
     use crate::internals::paint_capture::PaintCapture;
@@ -702,6 +701,7 @@ mod unit {
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::layout::axis::Axis;
     use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::math::animatable::Animatable;
     use crate::renderer::frontend::encoder;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;

@@ -16,7 +16,6 @@ pub(crate) mod state;
 
 use crate::animation::AnimMap;
 use crate::animation::anim_map_typed::AnimClock;
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
@@ -52,6 +51,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::image::Image;

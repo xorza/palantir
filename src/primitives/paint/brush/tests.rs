@@ -1,5 +1,5 @@
-use crate::animation::animatable::Animatable;
 use crate::internals::panic_probe;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;

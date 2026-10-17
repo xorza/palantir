@@ -1,4 +1,4 @@
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::paint::color::*;
 use ron::ser;
 

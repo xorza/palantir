@@ -2,7 +2,6 @@
 
 pub(crate) mod anim_map_typed;
 pub(crate) mod anim_row;
-pub(crate) mod animatable;
 pub(crate) mod animation_request;
 pub(crate) mod animation_slot;
 pub(crate) mod animation_spec;
@@ -13,11 +12,11 @@ pub(crate) mod easing;
 mod spring;
 
 use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::common::typed_stores::{Drained, TypedStores};
+use crate::primitives::identity::typed_stores::{Drained, TypedStores};
 use crate::primitives::identity::widget_id::WidgetIdSet;
+use crate::primitives::math::animatable::Animatable;
 
 /// Central animation table on [`crate::Ui`]; typed maps are allocated on demand by `TypeId`.
 #[derive(Debug, Default)]
@@ -79,7 +78,7 @@ impl AnimMap {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::animation::AnimMap;
-    use crate::animation::animatable::Animatable;
+    use crate::primitives::math::animatable::Animatable;
 
     impl AnimMap {
         /// Rows resident in the `T` map, zero when it has none.

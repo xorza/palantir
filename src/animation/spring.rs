@@ -2,8 +2,8 @@
 //! Accepted parameters converge at a bounded rate; a step costs the same
 //! whatever `dt` is.
 
-use crate::animation::animatable::Animatable;
 use crate::common::time::MAX_ANIM_DT;
+use crate::primitives::math::animatable::Animatable;
 use std::f64::consts::PI;
 
 pub(super) const SPRING_ERROR: &str = "spring parameters must be positive, finite, converge at 1/s or faster, and swing slower than 30 Hz";
