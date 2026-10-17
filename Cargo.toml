@@ -111,6 +111,7 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 # `objc2` debug assertions allocate on every Metal message send.
 [profile.dev.package.objc2]
