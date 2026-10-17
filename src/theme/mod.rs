@@ -1,4 +1,4 @@
-//! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`], [`text_style_overrides`] and [`widget_look`](crate::widget_core::widget_look) vocabulary.
+//! The theme bundle every widget styles from: one submodule per widget theme, over the shared [`palette`], [`text_style`], [`text_style_overrides`] and [`look`] vocabulary.
 //!
 //! [`Theme`] aggregates them; a widget reads only its own slice, so a bundle grows a field without changing existing widgets.
 
@@ -11,6 +11,7 @@ pub(crate) mod dock;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
+pub(crate) mod look;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;

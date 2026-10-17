@@ -7,13 +7,13 @@ use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::theme::check_state::CheckState;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::toggle_chrome;
 use crate::widgets::toggle_chrome::ToggleChrome;
 

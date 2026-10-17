@@ -6,9 +6,9 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
+use crate::theme::look::WidgetLook;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::WidgetLook;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.

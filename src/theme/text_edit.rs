@@ -9,12 +9,12 @@ use crate::primitives::paint::background::Background;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::WidgetLook;
-use crate::widget_core::widget_look::engagement::Engagement;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
-use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 
 /// Four-state TextEdit theme: a [`StatefulLook`] where `active` is **focused**,

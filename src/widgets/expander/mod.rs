@@ -15,12 +15,12 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::theme::expander::ExpanderTheme;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::text::Text;
 use std::rc::Rc;
 
@@ -143,7 +143,8 @@ impl<'a> Expander<'a> {
                 // target.
                 .input_scope(KeyFilter::TEXT);
             let state = header.response(ui);
-            let look = t.plan(&state, (), ambient).apply(ui, &mut header);
+            let plan = t.plan(&state, (), ambient);
+            let look = header.wear(ui, plan);
 
             // A disabled widget's button slices are already empty, but key events
             // skip that fold.

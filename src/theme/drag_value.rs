@@ -2,9 +2,9 @@
 
 use crate::theme::ThemeText;
 use crate::theme::button::ButtonTheme;
+use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
 /// Theme for [`crate::DragValue`]: scrub `chip` ([`ButtonTheme`]) and inline `editor` ([`TextEditTheme`]) used under [`crate::DragValue::editable`]. Built from one source via [`Self::from_chip`], so both modes share a box size and edit mode doesn't resize or restyle.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

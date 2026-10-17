@@ -8,6 +8,10 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::theme::button::ButtonTheme;
 use crate::theme::check_state::CheckState;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::animated_look::AnimatedLook;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::tab_selection::TabSelection;
 use crate::theme::tab_strip_focus::TabStripFocus;
@@ -16,10 +20,6 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
-use crate::widget_core::widget_look::WidgetLook;
-use crate::widget_core::widget_look::animated_look::AnimatedLook;
-use crate::widget_core::widget_look::engagement::Engagement;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use std::ptr;
 
 #[test]

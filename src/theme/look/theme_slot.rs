@@ -3,12 +3,13 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::look_plan::LookPlan;
 use crate::theme::text_style::TextStyle;
-use crate::widget_core::widget_look::WidgetLook;
-use crate::widget_core::widget_look::look_plan::LookPlan;
 
 /// A theme bundle a widget wears whole: per-state looks plus box defaults.
-/// [`Self::plan`] then [`LookPlan::apply`] are the two calls every themed widget makes:
+/// [`Self::plan`] then [`Widget::wear`](crate::widget::Widget::wear) are the two calls every
+/// themed widget makes:
 /// ```
 /// # use palantir::widget::{ThemeSlot, Widget};
 /// # use palantir::Ui;
@@ -16,10 +17,8 @@ use crate::widget_core::widget_look::look_plan::LookPlan;
 /// let mut widget = Widget::leaf();
 /// let response = widget.response(ui);
 /// let theme = ui.theme();
-/// let look = theme
-///     .button
-///     .plan(&response, (), theme.text)
-///     .apply(ui, &mut widget);
+/// let plan = theme.button.plan(&response, (), theme.text);
+/// let look = widget.wear(ui, plan);
 /// widget.record(ui, Some(&look.background), |_| {});
 /// # }
 /// ```
@@ -35,10 +34,10 @@ pub trait ThemeSlot {
     /// Slot defaults.
     fn defaults(&self) -> SlotDefaults;
 
-    /// Flattens into the owned plan [`LookPlan::apply`] consumes, folding the
-    /// picked look's text overrides onto the ambient `text`; the result owns
+    /// Flattens into the owned plan [`Widget::wear`](crate::widget::Widget::wear) consumes,
+    /// folding the picked look's text overrides onto the ambient `text`; the result owns
     /// everything, so the theme borrow ends.
-    // Cross-codegen-unit chain like `LookPlan::apply`; the default inliner leaves it outlined.
+    // Cross-codegen-unit chain like `Widget::wear`; the default inliner leaves it outlined.
     #[inline(always)]
     fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan {
         LookPlan {
