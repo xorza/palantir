@@ -277,12 +277,12 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
 
 /// Each [`ImageDownsample`] mode's answer for a lit texel the single bilinear tap misses.
 ///
-/// **Geometry.** A 24x1 `STAR SKY SKY` source in an 8x16 pane: 3 texels per pixel, taps per axis `clamp(ceil(3 · 0.5), 1, 4) = 2`. Pixel `x` covers texels `3x..3x+2`, centre `3x + 1.5`.
+/// **Geometry.** A 24x1 `STAR SKY SKY` source in an 8x16 pane: 3 texels per pixel, taps per axis `clamp(ceil(3 · 0.5), 1, 4) = 2`. Pixel `x` covers texels `3x..3x+2`, center `3x + 1.5`.
 ///
 /// **Taps.** The 2x2 grid offsets `±0.75` texels: `3x + 0.75` is `0.75·T0 + 0.25·T1`, `3x + 2.25` is `0.25·T1 + 0.75·T2`.
 ///
 /// **Results**, `T0 = STAR` (1.0), `T1 = T2 = SKY` (0.0):
-/// - `Single` samples T1's exact centre: `0.0`.
+/// - `Single` samples T1's exact center: `0.0`.
 /// - `Mean` = `(0.75 + 0 + 0 + 0) / 2` = `0.375` linear, sRGB `1.055 · 0.375^(1/2.4) − 0.055` = 0.6461, **165**.
 /// - `Peak` = `0.75` linear, sRGB 0.8808, **225**.
 #[test]
@@ -311,7 +311,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
         fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
-            format_args!("{label} must read {expected} grey, got {pixel:?}"),
+            format_args!("{label} must read {expected} gray, got {pixel:?}"),
         );
         assert_eq!(
             [pixel[0], pixel[1], pixel[2]],
@@ -331,14 +331,14 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
 ///
 /// **Mean.** `WHITE(α=128) CLEAR CLEAR`: the lit tap is full-strength white at 0.75 coverage; the mean is `0.75 · α / 2 = 0.1882` linear, **120** sRGB. Straight color applies coverage twice: 105.
 ///
-/// **Peak.** `WHITE(α=26) CLEAR GREY(α=255)`, where orderings disagree: straight luma picks the faint white (0.75 vs 0.162), premultiplied the grey (0.121 vs 0.057). Grey sRGB 128 = 0.21586 linear, tap `0.75 · 0.21586 = 0.1619`, **113** sRGB (white 68, double coverage 98).
+/// **Peak.** `WHITE(α=26) CLEAR GRAY(α=255)`, where orderings disagree: straight luma picks the faint white (0.75 vs 0.162), premultiplied the gray (0.121 vs 0.057). Gray sRGB 128 = 0.21586 linear, tap `0.75 · 0.21586 = 0.1619`, **113** sRGB (white 68, double coverage 98).
 #[test]
 fn downsample_combines_taps_in_premultiplied_space() {
     const PANE: Vec2 = Vec2::new(8.0, 16.0);
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
     const DIM_WHITE: [u8; 4] = [255, 255, 255, 128];
     const FAINT_WHITE: [u8; 4] = [255, 255, 255, 26];
-    const SOLID_GREY: [u8; 4] = [128, 128, 128, 255];
+    const SOLID_GRAY: [u8; 4] = [128, 128, 128, 255];
 
     let cases = [
         (
@@ -348,7 +348,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
             "Mean over alpha",
         ),
         (
-            [FAINT_WHITE, CLEAR, SOLID_GREY],
+            [FAINT_WHITE, CLEAR, SOLID_GRAY],
             ImageDownsample::Peak,
             113,
             "Peak ranking over alpha",
@@ -371,14 +371,14 @@ fn downsample_combines_taps_in_premultiplied_space() {
         fixtures::assert_px(
             pixel,
             [*expected, *expected, *expected, 255],
-            format_args!("{label} must read {expected} grey, got {pixel:?}"),
+            format_args!("{label} must read {expected} gray, got {pixel:?}"),
         );
     }
 }
 
 /// A magnified edge keeps its color: bilinear between opaque and transparent texels needs premultiplied storage, else soft edges darken.
 ///
-/// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centres 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight color multiplies twice: 153.
+/// `RED CLEAR` across 16 px; pixel 7 samples uv `7.5/16 = 0.46875`, `t = 0.4375` between centers 0.25 and 0.75: `0.5625` red at `0.5625` coverage, `0.5625` linear over black, **199** sRGB. Straight color multiplies twice: 153.
 #[test]
 fn a_magnified_transparent_edge_keeps_its_color() {
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
@@ -402,7 +402,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
     );
 }
 
-/// Taps wrap with the tile instead of clamping: a tap steps off the base UV by up to half the footprint, and `tap` wraps each fetch into the neighbouring repeat.
+/// Taps wrap with the tile instead of clamping: a tap steps off the base UV by up to half the footprint, and `tap` wraps each fetch into the neighboring repeat.
 ///
 /// **Geometry.** A 4x1 `STAR SKY SKY SKY` tile across an 8x16 pane: 3 tiles per pixel, `uv_dx = 3`, footprint 12 texels, `n = 4`. Every pixel's base UV wraps to exactly 0.5 (`fract(3k + 1.5)`).
 ///
@@ -428,7 +428,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
         fixtures::assert_px(
             pixel,
             [137, 137, 137, 255],
-            format_args!("tiled tap column {x} must read 137 grey, got {pixel:?}"),
+            format_args!("tiled tap column {x} must read 137 gray, got {pixel:?}"),
         );
     }
 }
@@ -439,7 +439,7 @@ fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
 /// - `B` then `A`: singletons; `A`'s second appearance is non-adjacent and must stay its own run, else it paints before `B`.
 /// - `C C`: a trailing run, pinning that the last span closes at the batch end.
 ///
-/// Read back per pane: a drifting range paints a neighbour's color, a dropped run the clear color.
+/// Read back per pane: a drifting range paints a neighbor's color, a dropped run the clear color.
 #[test]
 fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PATTERN: [usize; 6] = [0, 0, 1, 0, 2, 2];

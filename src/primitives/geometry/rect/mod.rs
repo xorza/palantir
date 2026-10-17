@@ -190,7 +190,7 @@ impl Rect {
         }
     }
 
-    /// Owner-local point a shape inside this rect spins about: its centre, with `min` no part of it.
+    /// Owner-local point a shape inside this rect spins about: its center, with `min` no part of it.
     #[inline]
     pub(crate) const fn spin_pivot(self) -> Vec2 {
         Vec2::new(self.size.w * 0.5, self.size.h * 0.5)

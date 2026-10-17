@@ -32,11 +32,11 @@ pub(crate) fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             support::note(
                 ui,
-                "A centre and a radius per axis, in the unit square of the box.",
+                "A center and a radius per axis, in the unit square of the box.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("centred, circular").show(ui, radial_centered);
-                DemoCell::new("offset centre, three stops").show(ui, radial_offset);
+                DemoCell::new("centered, circular").show(ui, radial_centered);
+                DemoCell::new("offset center, three stops").show(ui, radial_offset);
                 DemoCell::new("elliptical radius").show(ui, radial_ellipse);
             });
         });
@@ -44,7 +44,7 @@ pub(crate) fn build(ui: &mut Ui) {
     Section::new("Conic")
         .apis(&[api!(type ConicGradient)])
         .show(ui, |ui| {
-            support::note(ui, "A sweep about a centre from a start angle.");
+            support::note(ui, "A sweep about a center from a start angle.");
             support::tiles(ui, |ui| {
                 DemoCell::new("color wheel").show(ui, conic_wheel);
                 DemoCell::new("rotated 90°").show(ui, conic_rotated);
@@ -107,7 +107,7 @@ fn diagonal(ui: &mut Ui) {
     );
 }
 
-/// Radial centred at (0.5, 0.5), radius 0.5 (touches the square's mid-edges); bright core, dark rim.
+/// Radial centered at (0.5, 0.5), radius 0.5 (touches the square's mid-edges); bright core, dark rim.
 fn radial_centered(ui: &mut Ui) {
     gradient_frame(
         ui,
@@ -115,7 +115,7 @@ fn radial_centered(ui: &mut Ui) {
     );
 }
 
-/// Off-centre radial: the core hugs the top-left, the rim reaches further along the diagonal.
+/// Off-center radial: the core hugs the top-left, the rim reaches further along the diagonal.
 fn radial_offset(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::new(0.25, 0.3),
@@ -193,7 +193,7 @@ fn repeat(ui: &mut Ui) {
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 
-/// Red to green in Oklab: no muddy grey midpoint as in a linear-RGB blend.
+/// Red to green in Oklab: no muddy gray midpoint as in a linear-RGB blend.
 fn oklab(ui: &mut Ui) {
     let g = LinearGradient::two_stop(0.0, RED, GREEN).with_interpolation(Interpolation::Oklab);
     gradient_frame(ui, filled(Brush::Linear(g)));

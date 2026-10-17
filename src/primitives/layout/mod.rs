@@ -1,6 +1,6 @@
 //! The vocabulary a node declares layout in (sizing, alignment, justification, clipping, grid and scroll modes, overlay placement), the bounds screens the pass math trusts, and the [`offer`] a measure's answer holds under.
 //!
-//! The drivers in [`crate::layout`] read it; the little behaviour here is overlay placement beside an anchor and what counts as a usable bound.
+//! The drivers in [`crate::layout`] read it; the little behavior here is overlay placement beside an anchor and what counts as a usable bound.
 
 pub(crate) mod align;
 pub(crate) mod anchor;

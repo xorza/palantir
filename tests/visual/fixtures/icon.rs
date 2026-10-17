@@ -169,7 +169,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 }
 
 /// `desaturate` collapses a color icon to its own luminance (the disabled look).
-/// The greys are hand-computed to pin the *coefficients*: sRGB to linear, dot with
+/// The grays are hand-computed to pin the *coefficients*: sRGB to linear, dot with
 /// Rec. 709 (0.2126, 0.7152, 0.0722), then sRGB-encode.
 ///
 /// - `#e63c3c` → linear (0.7913, 0.0452, 0.0452) → luma 0.2038 → **125**
@@ -178,7 +178,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 /// They land a byte apart as the colors are nearly isoluminant, so the test
 /// asserts values, not an ordering.
 #[test]
-fn desaturate_greys_a_color_icon_by_its_luminance() {
+fn desaturate_grays_a_color_icon_by_its_luminance() {
     let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
         pane(
             ui,
@@ -192,7 +192,7 @@ fn desaturate_greys_a_color_icon_by_its_luminance() {
     for (label, px, expected) in [("left", left, 125u8), ("right", right, 124)] {
         assert!(
             px[0] == px[1] && px[1] == px[2],
-            "{label} half = {px:?} must be neutral grey after desaturation",
+            "{label} half = {px:?} must be neutral gray after desaturation",
         );
         fixtures::assert_px(
             px,
@@ -202,7 +202,7 @@ fn desaturate_greys_a_color_icon_by_its_luminance() {
     }
     // A flat channel average would give 117 and the artwork would stay LEFT /
     // RIGHT.
-    assert!(left != LEFT && right != RIGHT, "grey is not the artwork");
+    assert!(left != LEFT && right != RIGHT, "gray is not the artwork");
 }
 
 /// Paint order across the raster tiers: a label, an icon recorded *over* it, and a

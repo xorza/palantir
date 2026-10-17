@@ -72,7 +72,7 @@ pub const fn share_of(n: f32, d: f32) -> f32 {
     if is_invisible(d) { 0.0 } else { n / d }
 }
 
-/// Where `pos` sits along a track of `extent` as a 0..1 share, for a centred object of width `band`. Usable travel is `extent - band`; none left yields zero. Unclamped, see [`fraction_or`].
+/// Where `pos` sits along a track of `extent` as a 0..1 share, for a centered object of width `band`. Usable travel is `extent - band`; none left yields zero. Unclamped, see [`fraction_or`].
 #[inline]
 pub const fn band_fraction(pos: f32, extent: f32, band: f32) -> f32 {
     share_of(pos - band * 0.5, extent - band)
@@ -252,7 +252,7 @@ pub const fn fraction(v: f32) -> f32 {
     fraction_or(v, 0.0)
 }
 
-/// `v` clamped into `0..=1`, or `fallback` where it is not finite (NaN survives `f32::clamp`, an infinity would clamp to an unmeant end). The fallback is the caller's: unknown progress is empty, an unknown split is centred.
+/// `v` clamped into `0..=1`, or `fallback` where it is not finite (NaN survives `f32::clamp`, an infinity would clamp to an unmeant end). The fallback is the caller's: unknown progress is empty, an unknown split is centered.
 #[inline]
 pub const fn fraction_or(v: f32, fallback: f32) -> f32 {
     debug_assert!(

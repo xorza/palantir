@@ -125,7 +125,7 @@ impl ResponseState {
 
     /// Where the primary button's gesture sits across the widget, a `0..1` share per axis, on the press, every drag frame and the release; `None` otherwise, while disabled, and before arrangement.
     ///
-    /// Shared by pointer-driven axis widgets. `band` is the width of a centred knob that comes off each end (zero when the pointer is the position), see [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped.
+    /// Shared by pointer-driven axis widgets. `band` is the width of a centered knob that comes off each end (zero when the pointer is the position), see [`domain::band_fraction`](crate::widget::domain::band_fraction). Clamped.
     #[inline]
     pub fn press_fraction(&self, band: f32) -> Option<Vec2> {
         let in_gesture = self.pressed() || self.left.drag.is_live() || self.left.released();

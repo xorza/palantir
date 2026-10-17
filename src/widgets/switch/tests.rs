@@ -71,7 +71,7 @@ fn knob_floors_at_two() {
     assert_eq!(g.knob, 2.0);
 }
 
-/// The off knob is centred despite the border inset: `inset` (3 px) from every edge, offset (3, 3), 18 px of travel; clicked on, it rests 3 px from the right end.
+/// The off knob is centered despite the border inset: `inset` (3 px) from every edge, offset (3, 3), 18 px of travel; clicked on, it rests 3 px from the right end.
 #[test]
 fn knob_rests_inset_from_the_end_it_sits_against() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -95,7 +95,7 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
     assert_eq!(
         margins(&h),
         [3.0, 3.0, 18.0, 3.0],
-        "off, centred, at the left"
+        "off, centered, at the left"
     );
 
     h.click_on(id);

@@ -92,7 +92,7 @@ impl IconShape {
         self
     }
 
-    /// Draws a **color** icon in greyscale; no effect on a tintable icon.
+    /// Draws a **color** icon in grayscale; no effect on a tintable icon.
     pub const fn desaturate(mut self, desaturate: bool) -> Self {
         self.desaturate = desaturate;
         self
@@ -133,7 +133,7 @@ mod tests {
     use glam::Vec2;
 
     /// Every mode is a rect. A 24x12 artwork in a 100x100 rect: `Contain` gives
-    /// 100x50 centred vertically, `Fill` the rect, `None` 24x12 centred.
+    /// 100x50 centered vertically, `Fill` the rect, `None` 24x12 centered.
     #[test]
     fn icon_fit_resolves_to_hand_computed_rects() {
         let base = Rect::new(10.0, 20.0, 100.0, 100.0);
@@ -146,7 +146,7 @@ mod tests {
 
         assert_eq!(IconFit::Fill.resolve(base, art), base);
 
-        // Intrinsic px, centred: dx = 38, dy = 44.
+        // Intrinsic px, centered: dx = 38, dy = 44.
         let intrinsic = IconFit::None.resolve(base, art);
         assert_eq!(intrinsic.min, Vec2::new(48.0, 64.0));
         assert_eq!((intrinsic.size.w, intrinsic.size.h), (24.0, 12.0));

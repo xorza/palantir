@@ -314,7 +314,7 @@ impl<'a> Scroll<'a> {
     /// Route this frame's wheel / trackpad / pinch input into a pan delta and zoom
     /// step. The wheel pans or zooms, never both: a matching modifier turns notches
     /// into a zoom factor (positive `notches.y` zooms out) and suppresses the pan.
-    /// `pivot` resolves only when a step lands, falling back to the viewport centre
+    /// `pivot` resolves only when a step lands, falling back to the viewport center
     /// when the pointer is off the widget or there is no rect yet.
     fn read_input(&self, ui: &Ui, response: &ResponseState) -> ScrollInput {
         // Line step for wheel to pixel conversion, from the theme's default text size.
@@ -339,15 +339,15 @@ impl<'a> Scroll<'a> {
         let pan_delta = pan_delta + self.pan_request;
         let zoom_delta = scroll.zoom.combine(wheel_factor).combine(self.zoom_request);
 
-        let centre = response
+        let center = response
             .layout_rect
             .map(|r| Vec2::new(r.size.w * 0.5, r.size.h * 0.5));
         let zoom_changed = !domain::is_approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
                 || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
-                    ZoomPivot::Pointer => response.pointer_local.or(centre),
-                    ZoomPivot::Center => centre,
+                    ZoomPivot::Pointer => response.pointer_local.or(center),
+                    ZoomPivot::Center => center,
                 },
             )
             .flatten();

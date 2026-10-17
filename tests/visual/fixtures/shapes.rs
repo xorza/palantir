@@ -85,7 +85,7 @@ fn line_diagonal_aa_matches_golden() {
                 Vec2::new(150.0, 110.0),
                 Stroke::new(RgbaF32::srgb(0.2, 0.9, 1.0), 4.0),
             ));
-            // Sub-pixel hairlines must appear dim, not vanish. On a pixel boundary (y = 80) a 0.4 px line splits 0.2 + 0.2 over two rows; through a centre (y = 40.5) it lands 0.4 on one. Equal energy, so brightness does not pulse.
+            // Sub-pixel hairlines must appear dim, not vanish. On a pixel boundary (y = 80) a 0.4 px line splits 0.2 + 0.2 over two rows; through a center (y = 40.5) it lands 0.4 on one. Equal energy, so brightness does not pulse.
             for y in [80.0, 40.5] {
                 ui.add_shape(Shape::line(
                     Vec2::new(10.0, y),
@@ -230,7 +230,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
     GoldenName::PolylineTranslucentJoins.assert_matches(&img);
 }
 
-/// Pin: a translucent polyline blends correctly through `PREMULTIPLIED_ALPHA_BLENDING`. Green α=0.5 over magenta gives linear `(0.5, 0.5, 0.5)`, sRGB 188 grey; a straight-alpha source tints green (>220).
+/// Pin: a translucent polyline blends correctly through `PREMULTIPLIED_ALPHA_BLENDING`. Green α=0.5 over magenta gives linear `(0.5, 0.5, 0.5)`, sRGB 188 gray; a straight-alpha source tints green (>220).
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
     let img = Harness::new()
@@ -250,11 +250,11 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
             });
         })
         .image;
-    let grey = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba_u8();
+    let gray = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba_u8();
     fixtures::assert_px(
         img.get_pixel(60, 60).0,
-        [grey.r, grey.g, grey.b, 255],
-        "the stroke's centre blends to grey; green means the stroke shader skipped premultiplying",
+        [gray.r, gray.g, gray.b, 255],
+        "the stroke's center blends to gray; green means the stroke shader skipped premultiplying",
     );
 }
 
@@ -380,7 +380,7 @@ fn arc_shapes_match_golden() {
 
 /// A triangle with no area has no inside, so a radius grows only its edges and corners: three collinear corners paint a 4 px stadium, three coincident ones a 6 px disc, neither filling the inflated quad.
 ///
-/// The stadium runs (10, 20) to (90, 20), quad x 6..94, y 16..24; pixel (6, 16)'s centre (6.5, 16.5) is 4.95 px from (10, 20), outside. The disc at (50, 50) has quad 44..56; pixel (44, 44)'s centre is 7.8 px away.
+/// The stadium runs (10, 20) to (90, 20), quad x 6..94, y 16..24; pixel (6, 16)'s center (6.5, 16.5) is 4.95 px from (10, 20), outside. The disc at (50, 50) has quad 44..56; pixel (44, 44)'s center is 7.8 px away.
 #[test]
 fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
     let mut h = Harness::new();
@@ -413,12 +413,12 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
     assert!(lit(50, 17), "3.5 px from the spine, inside the 4 px radius");
     assert!(dark(6, 16), "the stadium's quad corner");
     assert!(dark(93, 23), "the stadium's other quad corner");
-    assert!(lit(50, 50), "the disc's centre");
+    assert!(lit(50, 50), "the disc's center");
     assert!(dark(44, 44), "the disc's quad corner");
     assert!(dark(55, 55), "the disc's other quad corner");
 }
 
-/// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's centre is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
+/// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's center is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
 #[test]
 fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
     let mut h = Harness::unsnapped();

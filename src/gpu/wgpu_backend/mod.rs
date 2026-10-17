@@ -30,7 +30,7 @@
 //!
 //! The main encoder opens before the first upload, and every dynamic-buffer upload
 //! routes through `staging_belt`, which records its copies on that encoder instead of
-//! a Metal blit encoder per `queue.write_buffer`. wgpu serialises in record order, so
+//! a Metal blit encoder per `queue.write_buffer`. wgpu serializes in record order, so
 //! copies land before the passes that read them. `finish_and_recall_on_submit` must
 //! precede `encoder.finish()`.
 //!

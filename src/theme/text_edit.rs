@@ -62,13 +62,13 @@ impl TextEditTheme {
     }
 
     /// Where a field must put its own corner for a run measuring `text` to come out
-    /// centred on `at`.
+    /// centered on `at`.
     ///
     /// Keeps a value from jumping when it becomes editable: a field is a box
     /// *around* the run, so placing it at the run's corner offsets the glyphs by
     /// padding, stroke and caret room.
     ///
-    /// Valid for a field that **hugs its content, centres it, and holds one line**,
+    /// Valid for a field that **hugs its content, centers it, and holds one line**,
     /// as an in-place edit does; wider fields spend alignment the theme can't know.
     ///
     /// The run's width cancels, but the caret's room does not: it is reserved at the

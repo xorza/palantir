@@ -44,12 +44,12 @@ pub(crate) enum ShadowEntry {
     General,
 }
 
-/// One shadow corner: cutout radius, the region where the cutout is nonzero, and the arc centre with reflection signs.
+/// One shadow corner: cutout radius, the region where the cutout is nonzero, and the arc center with reflection signs.
 #[derive(Clone, Copy, Debug)]
 struct CutoutCorner {
     r: f32,
     region: Rect,
-    centre: Vec2,
+    center: Vec2,
     sign: Vec2,
 }
 
@@ -65,7 +65,7 @@ impl CutoutCorner {
             .map_or(0.0, Rect::area)
     }
 
-    /// Texels of this corner's `side`-texel table at `σ` that pixels centred in `seen` read: `cutout_lookup` maps `p` to `t = (sign · (p − centre) + reach) · TEXELS_PER_SIGMA / σ` and reads the texels either side, plus one per side for GPU last-bit differences.
+    /// Texels of this corner's `side`-texel table at `σ` that pixels centered in `seen` read: `cutout_lookup` maps `p` to `t = (sign · (p − center) + reach) · TEXELS_PER_SIGMA / σ` and reads the texels either side, plus one per side for GPU last-bit differences.
     #[expect(
         clippy::cast_precision_loss,
         reason = "a side is at most `MAX_SIDE`, exact in f32"
@@ -73,8 +73,8 @@ impl CutoutCorner {
     fn texels(&self, seen: Rect, sigma: f32, side: u32) -> TexelSpan {
         let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
         let scale = CutoutPlan::TEXELS_PER_SIGMA / sigma;
-        let a = (seen.min - self.centre) * self.sign;
-        let b = (seen.max() - self.centre) * self.sign;
+        let a = (seen.min - self.center) * self.sign;
+        let b = (seen.max() - self.center) * self.sign;
         let side = Vec2::splat(side as f32);
         let lo = ((a.min(b) + reach) * scale).floor() - 1.0;
         let hi = ((a.max(b) + reach) * scale).floor() + 3.0;
@@ -452,8 +452,8 @@ impl CutoutPlan {
         }
         let half = Vec2::new(quad.rect.size.w, quad.rect.size.h) * 0.5;
         let radius = quad.corners.as_array();
-        // A drop shadow's box is centred on its quad; an inset hole is `offset` from its source's centre.
-        let (centre, box_half, radii) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
+        // A drop shadow's box is centered on its quad; an inset hole is `offset` from its source's center.
+        let (center, box_half, radii) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
             let source = half - Vec2::splat(ShadowGeom::REACH_SIGMAS * sigma + spread.max(0.0));
             let shadow = (source + Vec2::splat(spread)).max(Vec2::ZERO);
             (
@@ -470,14 +470,14 @@ impl CutoutPlan {
             )
         };
         let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
-        let (lo, hi) = (centre - box_half, centre + box_half);
+        let (lo, hi) = (center - box_half, center + box_half);
         // Each square runs `r + reach` inward and `reach` outward.
         let span = |edge: f32, r: f32, inward: f32| {
             let far = edge + inward * (r + reach);
             let near = edge - inward * reach;
             (near.min(far), near.max(far))
         };
-        // The arc centre is `r` inward; pixels reflect against the inward direction.
+        // The arc center is `r` inward; pixels reflect against the inward direction.
         let corner = |at: usize, x_edge: f32, x_in: f32, y_edge: f32, y_in: f32| {
             let r = radii[at];
             let (x0, x1) = span(x_edge, r, x_in);
@@ -485,7 +485,7 @@ impl CutoutPlan {
             CutoutCorner {
                 r,
                 region: Rect::from_min_max(Vec2::new(x0, y0), Vec2::new(x1, y1)),
-                centre: Vec2::new(x_edge + x_in * r, y_edge + y_in * r),
+                center: Vec2::new(x_edge + x_in * r, y_edge + y_in * r),
                 sign: Vec2::new(-x_in, -y_in),
             }
         };

@@ -432,21 +432,21 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
     }
 }
 
-/// Insertion is a count of chip centres passed; checked on hand-placed rects.
+/// Insertion is a count of chip centers passed; checked on hand-placed rects.
 #[test]
-fn the_insertion_slot_counts_the_centres_passed() {
+fn the_insertion_slot_counts_the_centers_passed() {
     let chips = [
         Rect::new(0.0, 0.0, 40.0, 20.0),
         Rect::new(50.0, 0.0, 40.0, 20.0),
         Rect::new(100.0, 0.0, 40.0, 20.0),
     ];
-    // Centres sit at 20, 70 and 120.
+    // Centers sit at 20, 70 and 120.
     let slot = |x: f32| tab_strip::insertion_slot(chips.iter().copied(), x);
     assert_eq!(slot(-5.0), 0, "before the first chip");
     assert_eq!(slot(19.0), 0, "the leading half of the first chip");
-    assert_eq!(slot(21.0), 1, "past the first centre");
+    assert_eq!(slot(21.0), 1, "past the first center");
     assert_eq!(slot(71.0), 2);
-    assert_eq!(slot(500.0), 3, "past every centre appends");
+    assert_eq!(slot(500.0), 3, "past every center appends");
     assert_eq!(
         tab_strip::insertion_slot(iter::empty(), 0.0),
         0,
@@ -560,7 +560,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     };
     let rows: [(&str, Release, Option<TabsAction>, usize); 3] = [
         (
-            "past the last centre: the append",
+            "past the last center: the append",
             |h, strip| {
                 let onto = h.center_of(TabStrip::chip_id(strip, 2));
                 Vec2::new(onto.x + 4.0, onto.y)
@@ -569,7 +569,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
             2,
         ),
         (
-            "just past its own centre: the gap beside it",
+            "just past its own center: the gap beside it",
             |h, strip| {
                 let own = h.center_of(TabStrip::chip_id(strip, 0));
                 Vec2::new(own.x + 4.0, own.y)

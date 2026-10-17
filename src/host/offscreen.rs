@@ -21,7 +21,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::window_token::WindowToken;
 
-/// The offscreen analogue of `WinitHost`, rendering into a texture.
+/// The offscreen analog of `WinitHost`, rendering into a texture.
 #[derive(Debug)]
 pub struct OffscreenHost {
     core: HostCore,

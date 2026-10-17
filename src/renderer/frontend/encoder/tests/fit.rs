@@ -69,7 +69,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
             scale: Vec2::splat(2.0),
         },
     ];
-    // Hand-computed: Contain scales min(100/200, 100/100) = 0.5 → 100×50, centred at y = 40 + 25; None paints 200×100 centred, x = 40 + (100 - 200)/2 = -10, y = 40.
+    // Hand-computed: Contain scales min(100/200, 100/100) = 0.5 → 100×50, centered at y = 40 + 25; None paints 200×100 centered, x = 40 + (100 - 200)/2 = -10, y = 40.
     let node = Rect::new(40.0, 40.0, 100.0, 100.0);
     let drawn = [
         node,

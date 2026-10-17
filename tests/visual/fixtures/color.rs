@@ -25,7 +25,7 @@ const ICON_Y: f32 = 52.0;
 const MESH_Y: f32 = 64.0;
 const SURFACE: UVec2 = UVec2::new(COLUMN as u32 * RAMP.len() as u32, 76);
 
-fn grey(v: u8) -> RgbaF32 {
+fn gray(v: u8) -> RgbaF32 {
     RgbaF32::hex(u32::from(v) * 0x01_01_01)
 }
 
@@ -39,19 +39,19 @@ fn ramp(ui: &mut Ui) {
                 .id_salt(("block", v))
                 .position(Vec2::new(x, BLOCK_Y))
                 .size((Sizing::fixed(COLUMN), Sizing::fixed(10.0)))
-                .background(Background::fill(grey(v)))
+                .background(Background::fill(gray(v)))
                 .show(ui);
             Text::new("\u{2588}")
                 .id_salt(("text", v))
                 .position(Vec2::new(x + 4.0, TEXT_Y))
                 .family(FontFamily::MONO)
                 .font_size(16.0)
-                .color(grey(v))
+                .color(gray(v))
                 .show(ui);
             ui.add_shape(Shape::line(
                 Vec2::new(x + 2.0, LINE_Y),
                 Vec2::new(x + COLUMN - 2.0, LINE_Y),
-                Stroke::new(grey(v), 6.0),
+                Stroke::new(gray(v), 6.0),
             ));
             let (left, right) = (x + 2.0, x + COLUMN - 2.0);
             let quad = [
@@ -60,13 +60,13 @@ fn ramp(ui: &mut Ui) {
                 Vec2::new(right, MESH_Y + 10.0),
                 Vec2::new(left, MESH_Y + 10.0),
             ];
-            ui.add_shape(Shape::mesh(&Mesh::filled_polygon(&quad, grey(v))));
+            ui.add_shape(Shape::mesh(&Mesh::filled_polygon(&quad, gray(v))));
             Panel::zstack()
                 .id_salt(("icon", v))
                 .position(Vec2::new(x + 5.0, ICON_Y))
                 .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
                 .show(ui, |ui| {
-                    ui.add_shape(icons.shape(solid).fit(IconFit::Fill).tint(grey(v)));
+                    ui.add_shape(icons.shape(solid).fit(IconFit::Fill).tint(gray(v)));
                 });
         }
     });

@@ -320,7 +320,7 @@ impl Panes {
 }
 
 /// A caller-supplied ratio made safe as a `Fill` weight; unlike a progress bar, an
-/// invalid one opens centred.
+/// invalid one opens centered.
 const fn sanitize_ratio(r: f32) -> f32 {
     domain::fraction_or(r, 0.5)
 }

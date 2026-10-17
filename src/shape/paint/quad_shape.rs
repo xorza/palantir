@@ -39,8 +39,8 @@ pub(crate) enum QuadShape {
         shadow: LoweredShadow,
     },
     /// Filled or bordered rounded triangle as an analytic SDF; `a`/`b`/`c` are
-    /// owner-local, fills solid only. `bbox` is the AABB inflated by `radius`
-    /// plus the AA fringe.
+    /// owner-local, fills solid only. `bbox` is their AABB inflated by `radius`;
+    /// `cascade::paint_rect` adds the AA fringe later.
     Triangle {
         a: Vec2,
         b: Vec2,

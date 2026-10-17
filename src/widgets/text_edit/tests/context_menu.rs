@@ -23,7 +23,7 @@ fn context_menu_cut_copy_paste_clear() {
         h.frame(|ui| body(ui, buf));
     }
 
-    /// Click the centre of the open menu's `row_idx`-th row (separators included) and run a frame; rects are read off the tree, not a fixed pitch.
+    /// Click the center of the open menu's `row_idx`-th row (separators included) and run a frame; rects are read off the tree, not a fixed pitch.
     fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
         let menu = h
             .node_of(editor_id().with("body"))

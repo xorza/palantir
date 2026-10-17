@@ -1,4 +1,4 @@
-//! The radial gradient's axis: color runs outward from a centre, with a radius per axis for ellipses.
+//! The radial gradient's axis: color runs outward from a center, with a radius per axis for ellipses.
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -57,7 +57,7 @@ impl RadialGradient {
         Self::from_stops(RadialGeometry { center, radius }, stops)
     }
 
-    /// 2-stop centred shorthand: `center = (0.5, 0.5)`, `radius = (0.5, 0.5)` (the inscribed circle); `c0` at the centre, `c1` at the edge.
+    /// 2-stop centered shorthand: `center = (0.5, 0.5)`, `radius = (0.5, 0.5)` (the inscribed circle); `c0` at the center, `c1` at the edge.
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

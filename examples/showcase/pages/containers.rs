@@ -221,7 +221,7 @@ fn badge<H: Hash>(ui: &mut Ui, key: H, w: f32) {
         .show(ui);
 }
 
-/// A labelled swatch filling one grid cell, or a span of them.
+/// A labeled swatch filling one grid cell, or a span of them.
 #[derive(Debug)]
 #[must_use]
 struct GridTile {

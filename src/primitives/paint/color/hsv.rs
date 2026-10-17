@@ -21,7 +21,7 @@ pub struct Hsv {
 }
 
 /// Channel spread below which a color has no hue of its own.
-const GREY_SPREAD: f32 = 1e-6;
+const GRAY_SPREAD: f32 = 1e-6;
 
 impl Hsv {
     /// Out-of-range values are resolved by [`Self::to_color`]: hue wraps, the rest clamp, non-finite reads as `0`.
@@ -56,7 +56,7 @@ impl Hsv {
 
     /// The axes naming `color`, ignoring its alpha.
     ///
-    /// `fallback_hue` answers grey, which has no hue to recover.
+    /// `fallback_hue` answers gray, which has no hue to recover.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
         let r = srgb_transfer::encode(color.r);
         let g = srgb_transfer::encode(color.g);
@@ -64,7 +64,7 @@ impl Hsv {
         let high = r.max(g).max(b);
         let low = r.min(g).min(b);
         let spread = high - low;
-        if spread <= GREY_SPREAD {
+        if spread <= GRAY_SPREAD {
             return Self {
                 h: domain::turn(fallback_hue),
                 s: 0.0,

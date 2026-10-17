@@ -26,9 +26,9 @@ pub(super) struct Scopes {
     active_layer: Option<Layer>,
     outermost: Option<WidgetId>,
     reader_memo: Option<ReaderMemo>,
-    /// Scopes withdrawn by [`Self::close`] this frame, honoured from the next resolve (the cascade is a frame stale, so a closing overlay has already recorded its scope).
+    /// Scopes withdrawn by [`Self::close`] this frame, honored from the next resolve (the cascade is a frame stale, so a closing overlay has already recorded its scope).
     closing: Vec<WidgetId>,
-    /// The previous frame's withdrawals, still honoured since the cascade is the one that frame left.
+    /// The previous frame's withdrawals, still honored since the cascade is the one that frame left.
     ///
     /// A close must outlive its pass by exactly one frame boundary: clearing per resolve lets pass B wipe pass A's close, holding longer suppresses a popup reopened under the same id. [`Self::end_frame`] swaps.
     closed: Vec<WidgetId>,

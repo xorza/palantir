@@ -21,16 +21,16 @@ use std::f32::consts::TAU;
 pub struct Okhsv {
     /// Hue around the Oklab circle, `0..1`. Wraps.
     pub h: f32,
-    /// Saturation, `0` grey to `1` at the gamut edge.
+    /// Saturation, `0` gray to `1` at the gamut edge.
     pub s: f32,
     /// Value, `0` black to `1` at the brightest slice of this hue.
     pub v: f32,
 }
 
 /// Chroma below which a color has no hue and the caller's fallback answers: `f32`
-/// rounding leaves an exact grey up to ~`3e-7`, one byte from grey is at least
+/// rounding leaves an exact gray up to ~`3e-7`, one byte from gray is at least
 /// ~`1e-3`.
-const GREY_CHROMA: f32 = 1e-5;
+const GRAY_CHROMA: f32 = 1e-5;
 
 /// The saturation the gamut triangle is anchored at in Ottosson's fit; the inverse
 /// undoes this constant.
@@ -61,13 +61,13 @@ impl Okhsv {
         OkhsvSlice::from_direction(cos, sin)
     }
 
-    /// The axes naming `color`, ignoring alpha; `fallback_hue` answers grey, which
+    /// The axes naming `color`, ignoring alpha; `fallback_hue` answers gray, which
     /// has no hue.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
         let lab = oklab::from_linear(color.r, color.g, color.b);
         let lightness = lab[0];
         let chroma = lab[1].hypot(lab[2]);
-        if chroma < GREY_CHROMA || lightness <= 0.0 {
+        if chroma < GRAY_CHROMA || lightness <= 0.0 {
             return Self {
                 h: domain::turn(fallback_hue),
                 s: 0.0,

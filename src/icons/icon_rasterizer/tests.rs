@@ -144,7 +144,7 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
 
 /// Unloading a set drops its parses and nothing else's.
 #[test]
-fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbours() {
+fn forgetting_a_set_drops_its_parses_and_leaves_its_neighbors() {
     let (mut r, table) = (IconRasterizer::default(), fixtures());
     for set in [0u16, 1] {
         for icon in [HALF_ID, SOLID_ID] {

@@ -24,7 +24,7 @@ fn scene(ui: &mut Ui, disabled: bool) -> OverlayResponse<Option<i32>> {
     PopupTrigger::on(&trigger).show(ui, |_, _| 7)
 }
 
-fn trigger_centre(h: &UiHarness) -> Vec2 {
+fn trigger_center(h: &UiHarness) -> Vec2 {
     h.rect(trigger_id()).expect("trigger arranged").center()
 }
 
@@ -35,7 +35,7 @@ fn a_click_toggles_and_the_body_runs_only_while_open() {
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
     assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
 
-    let at = trigger_centre(&h);
+    let at = trigger_center(&h);
     h.click_at(at);
     let opened = h.frame_value(|ui| scene(ui, false));
     assert_eq!(opened.inner, Some(7), "the click opens it");
@@ -119,7 +119,7 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
 
     let mut h = UiHarness::new(SURFACE);
     h.frame(record);
-    let at = trigger_centre(&h);
+    let at = trigger_center(&h);
     h.click_at(at);
     h.frame(record);
     assert!(PopupTrigger::is_open(&h.ui, trigger_id()));

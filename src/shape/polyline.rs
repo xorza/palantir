@@ -16,7 +16,7 @@ use glam::Vec2;
 use std::hash::Hasher as _;
 use std::slice;
 
-/// Stroked polyline, centred on its points, in one color or varied per point or segment.
+/// Stroked polyline, centered on its points, in one color or varied per point or segment.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct PolylineShape<'a> {

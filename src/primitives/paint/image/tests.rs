@@ -6,9 +6,9 @@ use glam::{UVec2, Vec2};
 
 /// A 100×50 image in a 200×200 rect, per fit:
 /// - `Fill`: the full rect (stretched).
-/// - `Contain`: scale min(2, 4) = 2 → 200×100, centred.
-/// - `Cover`: scale max(2, 4) = 4 → 400×200, painted 200×200 over the centred half of the width: `uv_size.x = 0.5`, `uv_min.x = 0.25`.
-/// - `None`: intrinsic 100×50, centred.
+/// - `Contain`: scale min(2, 4) = 2 → 200×100, centered.
+/// - `Cover`: scale max(2, 4) = 4 → 400×200, painted 200×200 over the centered half of the width: `uv_size.x = 0.5`, `uv_min.x = 0.25`.
+/// - `None`: intrinsic 100×50, centered.
 /// - `Tile`: raw UV, full rect.
 #[test]
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {

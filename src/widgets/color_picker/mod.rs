@@ -50,7 +50,7 @@ mod history;
 /// # Retained state
 ///
 /// The axes, hex text and history live in the response map keyed off this
-/// widget's id. The axes are retained because black has no hue and grey no
+/// widget's id. The axes are retained because black has no hue and gray no
 /// saturation; they are re-derived when the bound color changes from outside.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]

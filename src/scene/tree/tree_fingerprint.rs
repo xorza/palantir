@@ -13,6 +13,6 @@ pub(crate) struct TreeFingerprint {
     /// Counts of stored shapes, chrome rows and nodes folded together, so any move in how many paint rows
     /// nodes emit changes the hash. It lets `CascadeKey::keeps_structure` foresee that the incremental walk, which repairs paint
     /// rows only in place, would bail (a widget adding a shape without moving, e.g. a caret). A conservative
-    /// optimisation: it can miss or over-fire, and the per-node length check stays the correctness backstop.
+    /// optimization: it can miss or over-fire, and the per-node length check stays the correctness backstop.
     pub(crate) paint_counts: ContentHash,
 }

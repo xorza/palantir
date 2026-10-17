@@ -307,7 +307,7 @@ fn tooltip_state_is_swept_with_trigger_while_global_state_persists() {
     h.frame(record);
     assert!(
         h.ui.state::<TooltipState>(trigger_id).is_none(),
-        "an idle trigger must not materialise a state row",
+        "an idle trigger must not materialize a state row",
     );
     assert!(
         h.ui.singleton::<TooltipGlobal>().is_none(),

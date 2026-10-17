@@ -4,7 +4,7 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PaintMod {
     pub(crate) alpha: f32,
-    /// Rotation in radians about the owner-box centre; only a [`PaintChannel::turn`](crate::widget::PaintChannel) makes it non-zero.
+    /// Rotation in radians about the owner-box center; only a [`PaintChannel::turn`](crate::widget::PaintChannel) makes it non-zero.
     pub(crate) rotation: f32,
 }
 

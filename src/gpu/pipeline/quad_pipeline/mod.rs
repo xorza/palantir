@@ -354,7 +354,7 @@ impl QuadPipeline {
     }
 }
 
-/// Vertices per shadow instance: a 3×3 grid less the centre, two triangles per cell.
+/// Vertices per shadow instance: a 3×3 grid less the center, two triangles per cell.
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![

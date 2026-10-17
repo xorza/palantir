@@ -49,7 +49,7 @@ const ROWS: u32 = 32;
 /// Distinct-text run count for the large-stable-key-set workload: the steady scene's runs collapse onto few cache rows (`EncodedKey` folds in only text key, quantized scale, color and subpixel bins), and maintenance scales with rows.
 const DISTINCT_RUNS: usize = 512;
 
-/// Grey of a run's color: a label is brighter than a value.
+/// Gray of a run's color: a label is brighter than a value.
 const LABEL: f32 = 0.96;
 const VALUE: f32 = 0.86;
 
@@ -66,13 +66,13 @@ fn churn_rung(i: u32) -> f32 {
     )
 }
 
-/// One single-line run of `text` at `origin`, in `grey`.
+/// One single-line run of `text` at `origin`, in `gray`.
 #[derive(Clone, Copy, Debug)]
 struct BenchRun<'a> {
     text: &'a str,
     font_size: f32,
     origin: Vec2,
-    grey: f32,
+    gray: f32,
 }
 
 impl BenchRun<'_> {
@@ -82,7 +82,7 @@ impl BenchRun<'_> {
             text,
             font_size,
             origin,
-            grey,
+            gray,
         } = self;
         let interned = store.intern(text);
         let recorded = store.record_text(interned);
@@ -105,7 +105,7 @@ impl BenchRun<'_> {
             text: ShapedTextRef::new(key, &recorded),
             origin,
             bounds: URect::new(0, 0, PHYSICAL.x, PHYSICAL.y),
-            color: RgbaF16::new(grey, grey, grey, 1.0),
+            color: RgbaF16::new(gray, gray, gray, 1.0),
             scale: 1.0,
         }
     }
@@ -122,12 +122,12 @@ fn node_rows(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRow> {
     let mut runs = Vec::with_capacity(ROWS as usize * COLUMNS.len());
     for row in 0..ROWS {
         let y = 16.0 + row as f32 * 18.0;
-        for (text, size, x, grey) in COLUMNS {
+        for (text, size, x, gray) in COLUMNS {
             let run = BenchRun {
                 text,
                 font_size: size,
                 origin: Vec2::new(x, y),
-                grey,
+                gray,
             };
             runs.push(run.row(store, shaper));
         }
@@ -145,7 +145,7 @@ fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRo
                 text: &format!("field {i}: f32"),
                 font_size: 11.0,
                 origin,
-                grey: VALUE,
+                gray: VALUE,
             }
             .row(store, shaper)
         })
@@ -380,7 +380,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
 /// - **`steady`**: nothing expires, so every fired ticket re-files; this drain path runs every frame by design (a cadence gate would trade uniform cost for a spike), so it must stay small. 12 glyphs per row matches the 512-row scene (~11.8).
 /// - **`churn`**: a zoom or width drag re-keys every run; the only arm running `settle`'s allocate-and-copy.
 ///
-/// **Neither guards uniformity:** the replaced compaction was amortised free (one frame in 122 paying 122x), so the defect lived in the tail. `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates` guards the shape; these guard the constant.
+/// **Neither guards uniformity:** the replaced compaction was amortized free (one frame in 122 paying 122x), so the defect lived in the tail. `a_saturated_gesture_reaches_a_steady_state_where_no_frame_allocates` guards the shape; these guard the constant.
 ///
 /// `atomic/encoded_cache/cpu/steady/<rows>` and `atomic/encoded_cache/cpu/churn/<runs>x<glyphs>`.
 fn bench_encoded_cache(c: &mut Criterion) {

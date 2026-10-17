@@ -127,7 +127,7 @@ fn surface_rounded_clips_full_fill_child() {
 /// SDF must use the panel's true rect, not the viewport-clamped scissor.
 ///
 /// Panel `(-6, -6) .. (194, 144)` over `120x90`, radius 24: only the TL arc
-/// (centre `(18, 18)`) is visible, with a `DARK_BG` cutout there. The other
+/// (center `(18, 18)`) is visible, with a `DARK_BG` cutout there. The other
 /// corners must be solid black; a clamped mask notches them.
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
@@ -170,11 +170,11 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
         );
     }
 
-    let centre = *img.get_pixel(60, 45);
+    let center = *img.get_pixel(60, 45);
     assert!(
-        is_near_black(centre),
-        "viewport centre should be solid black, got rgba={:?}",
-        centre.0,
+        is_near_black(center),
+        "viewport center should be solid black, got rgba={:?}",
+        center.0,
     );
 
     GoldenName::RoundedClipPartiallyOffscreen.assert_matches(&img);
@@ -200,8 +200,8 @@ fn rounded_clip_survives_surface_resize() {
         });
     };
     // A stale stencil would mismatch the pass and panic. Each render must still
-    // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc centre (18, 18),
-    // outside the 8 px arc, so it reads clear; the centre reads the fill.
+    // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc center (18, 18),
+    // outside the 8 px arc, so it reads clear; the center reads the fill.
     let clear = DARK_BG.to_srgba_u8();
     let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba_u8();
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
@@ -214,7 +214,7 @@ fn rounded_clip_survives_surface_resize() {
         fixtures::assert_px(
             img.get_pixel(size.x / 2, size.y / 2).0,
             [fill.r, fill.g, fill.b, 255],
-            format_args!("{size}: the panel's centre"),
+            format_args!("{size}: the panel's center"),
         );
     }
 }

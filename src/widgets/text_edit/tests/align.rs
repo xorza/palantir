@@ -122,7 +122,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
     assert_eq!(
         settled.x,
         PAD_L + (ALIGN_W - TEXT_W_4CH) / 2.0,
-        "centred in the inner width less the caret room",
+        "centered in the inner width less the caret room",
     );
 
     let mut h = UiHarness::new(NARROW);
@@ -424,7 +424,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 ///
 /// The offset combines theme padding, the folded chrome stroke, the hug reservation and the caret room; checked against a laid-out field.
 #[test]
-fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
+fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
     let mut h = UiHarness::new(WIDE);
     // The line box height, floored at the leading by `resolve_geometry`.
     let text = Size::new(TEXT_W_4CH, LINE_H);
@@ -458,9 +458,9 @@ fn a_field_placed_by_its_own_text_centres_that_text_where_it_was_asked() {
     let origin = shape_origins(&h.ui, node.unwrap())
         .text
         .expect("text shape emitted");
-    let centre = field.min + origin + Vec2::new(text.w, text.h) * 0.5;
+    let center = field.min + origin + Vec2::new(text.w, text.h) * 0.5;
     assert_eq!(
-        centre, at,
-        "the glyphs centred on {centre:?} for a field asked to centre them on {at:?}"
+        center, at,
+        "the glyphs centered on {center:?} for a field asked to center them on {at:?}"
     );
 }

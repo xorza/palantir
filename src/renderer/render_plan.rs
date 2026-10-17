@@ -29,7 +29,7 @@ impl RenderPlan {
         })
     }
 
-    /// This plan escalated to a full repaint, keeping its clear color; for when partial damage can't be honoured (direct present, fresh backbuffer).
+    /// This plan escalated to a full repaint, keeping its clear color; for when partial damage can't be honored (direct present, fresh backbuffer).
     pub(crate) const fn to_full(self) -> Self {
         Self {
             clear: self.clear,

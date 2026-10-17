@@ -259,7 +259,7 @@ struct StripState {
     reveal: Option<u64>,
 }
 
-/// The slot an insertion at `x` addresses: the count of chips whose centre it has passed; `chips.len()` appends.
+/// The slot an insertion at `x` addresses: the count of chips whose center it has passed; `chips.len()` appends.
 pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
     chips.into_iter().filter(|c| c.center().x < x).count()
 }

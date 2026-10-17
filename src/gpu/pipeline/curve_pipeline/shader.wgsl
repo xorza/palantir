@@ -357,7 +357,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // `band_coverage` caps a sub-pixel stroke at its own width: without
-    // the cap a hairline over-brightens up to ~2× near pixel centres and
+    // the cap a hairline over-brightens up to ~2× near pixel centers and
     // pulses as its alignment drifts.
     var coverage: f32;
     if ((in.flags & FLAG_JOIN) != 0u) {

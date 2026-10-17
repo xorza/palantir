@@ -24,9 +24,9 @@ fn switching_model_keeps_the_color() {
     }
 }
 
-/// Grey has no hue in either model, so a switch and back carries the retained hue through.
+/// Gray has no hue in either model, so a switch and back carries the retained hue through.
 #[test]
-fn switching_model_keeps_greys_hue() {
+fn switching_model_keeps_grays_hue() {
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x808080), 0.0);
     coords.set_hue(0.42);
     let round_trip = coords
@@ -35,7 +35,7 @@ fn switching_model_keeps_greys_hue() {
     assert_eq!(round_trip.hue(), 0.42, "{}", round_trip.hue());
 }
 
-/// Switching to the model in use is the identity, axes included; re-deriving would move a grey's hue.
+/// Switching to the model in use is the identity, axes included; re-deriving would move a gray's hue.
 #[test]
 fn switching_to_the_same_model_changes_nothing() {
     let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::BLACK, 0.0);
@@ -110,9 +110,9 @@ fn hue_gap(a: f32, b: f32) -> f32 {
     raw.min(1.0 - raw)
 }
 
-/// What both models promise: every unit-cube triple is inside sRGB, so the round trip holds (9 × 8 × 8 samples, grey excluded, which keeps the fallback hue), and axes past their ends take what a drag gives them (hue wraps, the rest clamp).
+/// What both models promise: every unit-cube triple is inside sRGB, so the round trip holds (9 × 8 × 8 samples, gray excluded, which keeps the fallback hue), and axes past their ends take what a drag gives them (hue wraps, the rest clamp).
 #[test]
-fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
+fn both_models_round_trip_keep_grays_hue_and_wrap_or_clamp() {
     for model in ColorModel::ALL {
         let mut worst = 0.0_f32;
         for hi in 0..9 {
@@ -135,13 +135,13 @@ fn both_models_round_trip_keep_greys_hue_and_wrap_or_clamp() {
         );
 
         for level in [0.0, 0.25, 0.5, 1.0] {
-            let grey = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
-            assert_eq!(grey.hue(), 0.618, "{model:?}: grey at {level}");
+            let gray = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
+            assert_eq!(gray.hue(), 0.618, "{model:?}: gray at {level}");
             assert_close(
-                grey.saturation(),
+                gray.saturation(),
                 0.0,
                 1e-3,
-                "grey's saturation, to the model's f32 rounding",
+                "gray's saturation, to the model's f32 rounding",
             );
         }
 

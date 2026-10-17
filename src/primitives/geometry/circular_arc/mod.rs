@@ -8,7 +8,7 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 /// A circular arc about `center`, owner-local, sweeping `sweep` radians from `start_angle`. Angles are screen-convention radians (0 = +x, increasing = clockwise); a negative sweep runs counter-clockwise.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CircularArc {
-    /// The circle's centre.
+    /// The circle's center.
     pub center: Vec2,
     /// The circle's radius.
     pub radius: f32,
@@ -61,7 +61,7 @@ impl CircularArc {
         };
         let e0 = p_at(a0);
         let e1 = p_at(a1);
-        // A NaN centre, radius or angle reaches `e0`/`e1` through `p_at`.
+        // A NaN center, radius or angle reaches `e0`/`e1` through `p_at`.
         if e0.is_nan() || e1.is_nan() {
             return Rect::NAN;
         }

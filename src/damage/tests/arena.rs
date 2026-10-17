@@ -135,11 +135,11 @@ fn a_span_occupies_exactly_its_row_count() {
     );
 }
 
-/// A live span is stable for the snapshot's whole life, whatever a neighbour
+/// A live span is stable for the snapshot's whole life, whatever a neighbor
 /// does. That is what lets reclamation happen when a widget leaves, with no
 /// walking pass or ordering constraint.
 #[test]
-fn a_quiet_node_keeps_its_span_while_a_neighbour_churns() {
+fn a_quiet_node_keeps_its_span_while_a_neighbor_churns() {
     let mut h = UiHarness::new(DISPLAY.physical);
     let build = |shapes: u32| {
         move |ui: &mut Ui| {

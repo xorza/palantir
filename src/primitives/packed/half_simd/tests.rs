@@ -1,7 +1,7 @@
 use crate::primitives::packed::half_simd::F16x4;
 use half::f16;
 
-/// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighbouring lane would show only for specific patterns.
+/// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighboring lane would show only for specific patterns.
 #[test]
 fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     const F16_INFINITY: u16 = 0x7C00;
@@ -36,13 +36,13 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
         }
     }
 
-    // A saturated neighbour must not leak a carry into the lane under test.
+    // A saturated neighbor must not leak a carry into the lane under test.
     for lane in 0..4 {
         let mut lanes = [0x7FFFu16; 4];
         lanes[lane] = 0;
         assert!(
             F16x4::from_bits(lanes).any_lane_above(F16_INFINITY),
-            "saturated neighbours must still report above",
+            "saturated neighbors must still report above",
         );
         let mut lanes = [0u16; 4];
         lanes[lane] = 0x7FFF;

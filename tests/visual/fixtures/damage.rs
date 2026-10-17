@@ -211,7 +211,7 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// The workload multi-rect damage exists for: two tiny corner blocks change in a
 /// static canvas. A single union rect would span the canvas and escalate to
 /// `Damage::Full`; multiple rects stay disjoint, each scissored to its own pass.
-/// With `dim_undamaged` the centre reads as frame 1 darkened, never the clear
+/// With `dim_undamaged` the center reads as frame 1 darkened, never the clear
 /// color, and each corner reads its block's fill.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
@@ -224,8 +224,8 @@ fn corner_pair_change_keeps_center_unpainted() {
     let f2 = h.overlay(DIM_UNDAMAGED).frame(corner_pair_scene("b")).image;
     let _kept = KeptOnFailure::new("damage_corner_pair_change_keeps_center_unpainted", &f2);
 
-    let centre = Rect::new(50.0, 50.0, 100.0, 100.0);
-    let (before, after) = (goldens::crop(&f1, centre), goldens::crop(&f2, centre));
+    let center = Rect::new(50.0, 50.0, 100.0, 100.0);
+    let (before, after) = (goldens::crop(&f1, center), goldens::crop(&f2, center));
     let lum = |img: &RgbaImage| -> u64 {
         img.pixels()
             .map(|Rgba([r, g, b, _])| u64::from(*r) + u64::from(*g) + u64::from(*b))
@@ -234,12 +234,12 @@ fn corner_pair_change_keeps_center_unpainted() {
     assert_eq!(
         magenta_pixels(&after),
         0,
-        "the centre 100×100 must be free of magenta — dim_undamaged no longer fires \
+        "the center 100×100 must be free of magenta — dim_undamaged no longer fires \
          LoadOp::Clear, only a translucent dim pass",
     );
     assert!(
         lum(&after) < lum(&before),
-        "the dim pre-pass darkens the centre",
+        "the dim pre-pass darkens the center",
     );
 
     // Each corner is a damaged pass of its own, repainted in full: a later
@@ -255,7 +255,7 @@ fn corner_pair_change_keeps_center_unpainted() {
 }
 
 /// With `damage_rect` and a multi-rect region the overlay strokes *each* damage
-/// rect: red in both corners, none in the centre.
+/// rect: red in both corners, none in the center.
 #[test]
 fn corner_pair_overlay_strokes_each_rect() {
     let mut h = Harness::new();

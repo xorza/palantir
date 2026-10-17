@@ -78,7 +78,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 support::note(
                     ui,
                     "TabStrip draws chips and nothing else. Every chip reserves the status \
-                     dot's box and the even ones ink it, so a dot never shifts a neighbour. \
+                     dot's box and the even ones ink it, so a dot never shifts a neighbor. \
                      Close a chip with its × button.",
                 );
                 strip_demo(ui, s);

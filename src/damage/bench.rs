@@ -53,7 +53,7 @@ fn build_grid(ui: &mut Ui, row_bg: Option<RgbaF32>, fill: impl Fn(usize) -> Rgba
         });
 }
 
-/// [`build_grid`] with the cells in `hot` filled `hot_color` and the rest a fixed grey.
+/// [`build_grid`] with the cells in `hot` filled `hot_color` and the rest a fixed gray.
 fn build_hot(ui: &mut Ui, row_bg: Option<RgbaF32>, hot: &[usize], hot_color: RgbaF32) {
     build_grid(ui, row_bg, |i| {
         if hot.contains(&i) {

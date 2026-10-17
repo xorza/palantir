@@ -23,7 +23,7 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// One frame: a 401×100 row splitter at the origin; the 1 px rule leaves a 400 span, seam centre at ratio · 400 + 0.5, grab bar 6 px.
+/// One frame: a 401×100 row splitter at the origin; the 1 px rule leaves a 400 span, seam center at ratio · 400 + 0.5, grab bar 6 px.
 ///
 /// One snapshot per record pass: action input records twice, signals fire on pass A.
 const QUIET: ValueEdges = ValueEdges {
@@ -107,7 +107,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let after = frame_with(&mut h, &mut ratio);
     assert_eq!((after.len(), *after.a()), (1, QUIET));
 
-    // Double-click (seam at 350.5) resets to the centre: layout takes 0.5 on pass A, the binding commits on pass B.
+    // Double-click (seam at 350.5) resets to the center: layout takes 0.5 on pass A, the binding commits on pass B.
     let seam = Vec2::new(350.5, 50.0);
     h.press_at(seam);
     frame_with(&mut h, &mut ratio);
@@ -118,7 +118,7 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     h.release();
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
-    assert_eq!(ratio, 0.5, "the reset writes the centre, got {ratio}");
+    assert_eq!(ratio, 0.5, "the reset writes the center, got {ratio}");
     assert_eq!(*reset.a(), QUIET, "{reset:?}");
     assert_eq!(
         reset.b(),

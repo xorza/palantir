@@ -15,12 +15,12 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// A spun shape's payload bounds are the rotation-invariant square about the owner-box centre
+/// A spun shape's payload bounds are the rotation-invariant square about the owner-box center
 /// c = (40, 20) (box 80×40) holding the swept centerline bbox; the pivot is carried, not inferred.
 /// Polyline r = √(30² + 10²) ≈ 31.6228; arc bbox (40,20)..(60,30), r = √(20² + 10²). Arc lanes stay
 /// owner-local and unrotated; the composer spins them.
 #[test]
-fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
+fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
     use crate::display::Display;
     use crate::internals::paint_capture::PaintCall;
     use crate::shape::Shape;

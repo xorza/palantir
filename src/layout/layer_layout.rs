@@ -59,9 +59,9 @@ impl LayerLayout {
     /// Takes [`Self::rect_hash`] from the rects as they stand; `LayoutEngine::run` calls it once a
     /// layer's rects are final.
     ///
-    /// Hashed as raw bytes, not through `FloatHash`'s visual quantisation, on purpose: this gates a
+    /// Hashed as raw bytes, not through `FloatHash`'s visual quantization, on purpose: this gates a
     /// *cache-validity* decision, so it must be at least as strict as the exact comparison it replaces,
-    /// and quantising would let a sub-quantum arrange shift retain a cascade built for the old rects.
+    /// and quantizing would let a sub-quantum arrange shift retain a cascade built for the old rects.
     /// `Rect` is `Pod`, so the whole column hashes in one bulk write.
     pub(super) fn hash_rects(&mut self) {
         let mut h = Hasher::new();

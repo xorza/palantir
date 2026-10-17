@@ -73,7 +73,7 @@ pub struct DockState<T> {
     next_group: u64,
     pinned: T,
     seed: u64,
-    /// Policy, not document: not serialised; apply a changed cap after loading.
+    /// Policy, not document: not serialized; apply a changed cap after loading.
     #[serde(skip_serializing)]
     max_depth: u32,
     #[serde(skip_serializing)]
@@ -363,7 +363,7 @@ impl<T: DockTab> DockState<T> {
         self.normalize();
     }
 
-    /// Set the ratio of the split at `path`, clamped, centred when not finite. A path
+    /// Set the ratio of the split at `path`, clamped, centered when not finite. A path
     /// that no longer lands on a split is ignored.
     fn set_ratio(&mut self, path: DockPath, ratio: f32) {
         // A sentinel-less byte is a corrupt address; ignore it like a stale path.

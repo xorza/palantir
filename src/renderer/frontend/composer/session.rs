@@ -319,10 +319,10 @@ impl PaintSink for ComposeSession<'_> {
         let box_px = Vec2::new(phys_rect.size.w, phys_rect.size.h);
         let key = IconRasterKey::for_box(p.icon, box_px);
         let (origin, size) = if key.is_exact() {
-            // Whole-pixel origin with the raster centred in its box; the `Nearest` atlas sampler
+            // Whole-pixel origin with the raster centered in its box; the `Nearest` atlas sampler
             // needs integer origins.
-            let centred = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
-            (centred.fast_round().as_ivec2(), key.size())
+            let centered = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
+            (centered.fast_round().as_ivec2(), key.size())
         } else {
             // Above the exact band the raster is a nearby or capped rung; at its own size it
             // would stick out of or leave a gap in the box the cull and damage rects use. So
@@ -481,7 +481,7 @@ impl PaintSink for ComposeSession<'_> {
                     a1 += spin.angle;
                 }
                 // The transform is translate + uniform scale, so a circle stays a circle: transform
-                // the centre, scale the radius.
+                // the center, scale the radius.
                 let radius_phys = radius * geometry::phys_scale(xform, scale);
                 // Sub-instance count from the exact arc length; chord sagitta stays under 0.3 px
                 // even at r = 1.

@@ -178,7 +178,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless the stroke holds its kinds as in [`Self::line`], and the arc's centre is an *offset*, its radius a *length* and its angles *angles*.
+    /// Panics unless the stroke holds its kinds as in [`Self::line`], and the arc's center is an *offset*, its radius a *length* and its angles *angles*.
     #[track_caller]
     pub const fn arc(arc: CircularArc, stroke: Stroke) -> CurveShape {
         stroke.validate();

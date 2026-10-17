@@ -143,7 +143,7 @@ fn alignment(ui: &mut Ui) {
         .show(ui, |ui| {
             support::note(
                 ui,
-                "child_align places a container's children across its axis: centred in the \
+                "child_align places a container's children across its axis: centered in the \
                  row, right in the column. The orange chip overrides it with its own align.",
             );
             Panel::hstack()
@@ -193,7 +193,7 @@ fn spacing(ui: &mut Ui) {
             support::note(
                 ui,
                 "Padding reserves room inside the parent, a margin shrinks the child's slot, \
-                 and a negative margin overlaps the neighbour.",
+                 and a negative margin overlaps the neighbor.",
             );
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
