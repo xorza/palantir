@@ -2,7 +2,7 @@
 
 /// The group-0 layout every sampled texture binds through, with its sampler: gradient LUT atlas, registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target.
 ///
-/// Built once by the backend. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
+/// Built once, by the host's image store, which the backend takes its copy from. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
 #[derive(Clone, Debug)]
 pub(crate) struct TextureBinding {
     layout: wgpu::BindGroupLayout,

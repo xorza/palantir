@@ -1,10 +1,10 @@
 //! Registered image lifetimes shared by the host, its recorders and the backend.
 //!
 //! [`ImageHandle`](image_handle::ImageHandle) is the RAII owner of one registered image; the registry
-//! is what every handle reaches. Texels go straight to the [`ImageStore`] the backend attaches when
-//! the host builds it over the same resources (the trait carries the immediacy contract), so the
-//! registry keeps no CPU copy and waits for no frame. A registry no backend was built over is a
-//! deviceless recorder: it keeps ids, sizes and generations and discards the texels.
+//! is what every handle reaches. Texels go straight to the [`ImageStore`] the host builds the
+//! registry over, the one its backend draws from (the trait carries the immediacy contract), so the
+//! registry keeps no CPU copy and waits for no frame. A registry with no store is a deviceless
+//! recorder: it keeps ids, sizes and generations and discards the texels.
 //!
 //! The pure data types live elsewhere —
 //! [`Image`] / [`ImageFit`](crate::primitives::paint::image::ImageFit) in
@@ -21,42 +21,34 @@ pub(crate) mod image_store;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use std::cell::OnceCell;
 use std::rc::Rc;
 
-/// Cheap to clone: every clone reaches the one store.
+/// Cheap to clone: every clone reaches the one store. `Default` is a deviceless recorder's.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ImageRegistry {
-    /// Set once, by the backend that draws these images, and never for a standalone CPU recorder, as
-    /// [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) does for its ceiling. A clone
-    /// copies the cell as it stands, so the host attaches before it mints a recorder.
-    store: OnceCell<Rc<dyn ImageStore>>,
+    /// Fixed at construction, as [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) is
+    /// for its ceiling: the host builds the store before any recorder exists.
+    store: Option<Rc<dyn ImageStore>>,
 }
 
 impl ImageRegistry {
-    /// Gives the registry the store its texels go to. The host's one backend calls this at construction,
-    /// before the host mints a recorder, so every later clone carries the store.
-    ///
-    /// # Panics
-    ///
-    /// Panics on a second call: one host, one backend, one store.
-    pub(crate) fn attach<S: ImageStore + 'static>(&self, store: Rc<S>) {
-        let store: Rc<dyn ImageStore> = store;
-        assert!(
-            self.store.set(store).is_ok(),
-            "one backend attaches the image store once",
-        );
+    /// A registry whose texels go to `store`, the one the host's backend draws from.
+    pub(crate) fn new<S: ImageStore + 'static>(store: Rc<S>) -> Self {
+        Self { store: Some(store) }
     }
 
     fn write(&self, id: TextureId, image: &Image) {
-        if let Some(store) = self.store.get() {
+        if let Some(store) = &self.store {
             store.write(id, image);
         }
     }
 
     fn free(&self, id: TextureId) {
-        if let Some(store) = self.store.get() {
+        if let Some(store) = &self.store {
             store.free(id);
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,6 +1,7 @@
 //! GPU textures and bind groups for registered images, created, rewritten and
 //! freed as the registry asks.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::texture_region::TextureRegion;
 use crate::image_registry::image_store::ImageStore;
@@ -21,7 +22,9 @@ use std::sync::OnceLock;
 pub(crate) struct WgpuImageStore {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    /// The backend's group-0 layout and sampler, shared with `GpuView` targets.
+    /// The group-0 layout and sampler every pipeline of the backend composes over. Built here
+    /// because the host builds this store before the backend, which takes its copy from
+    /// [`Self::binding`].
     binding: TextureBinding,
     textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
     /// Staging for [`premultiply_into`], reused across updates. Opaque images skip
@@ -39,15 +42,19 @@ pub(crate) struct ImageTexture {
 }
 
 impl WgpuImageStore {
-    pub(crate) fn new(device: wgpu::Device, queue: wgpu::Queue, binding: TextureBinding) -> Self {
+    pub(crate) fn new(gpu: &Gpu) -> Self {
         Self {
-            binding,
-            device,
-            queue,
+            binding: TextureBinding::new(&gpu.device),
+            device: gpu.device.clone(),
+            queue: gpu.queue.clone(),
             textures: RefCell::default(),
             staged: RefCell::default(),
             premultiply: premultiplied_bytes(),
         }
+    }
+
+    pub(crate) const fn binding(&self) -> &TextureBinding {
+        &self.binding
     }
 
     /// One borrow per render traversal, avoiding a `RefCell` probe per run.
@@ -204,7 +211,6 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::resource::wgpu_image_store::{
         WgpuImageStore, premultiplied_bytes, premultiply_into,
     };
@@ -254,14 +260,9 @@ mod tests {
     #[test]
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {
         let gpu = test_gpu::headless_test_gpu();
-        let store = Rc::new(WgpuImageStore::new(
-            gpu.device.clone(),
-            gpu.queue.clone(),
-            TextureBinding::new(&gpu.device),
-        ));
+        let store = Rc::new(WgpuImageStore::new(&gpu.handles()));
         let weak = Rc::downgrade(&store);
-        let registry = ImageRegistry::default();
-        registry.attach(Rc::clone(&store));
+        let registry = ImageRegistry::new(Rc::clone(&store));
         assert!(!store.read().contains_key(&TextureId(1)));
 
         let mut image = Image::blank(UVec2::splat(2));
