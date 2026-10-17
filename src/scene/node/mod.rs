@@ -36,7 +36,7 @@ use glam::Vec2;
 /// Per-node config: layout, interaction and paint flags. Every [`Widget`] owns one; identity is the widget's, never the node's.
 ///
 /// [`Widget`]: crate::widget_core::widget::Widget
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Node {
     pub(crate) mode: NodeMode,
 
