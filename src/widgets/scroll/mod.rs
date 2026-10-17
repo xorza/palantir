@@ -13,13 +13,15 @@ use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::paint::background::Background;
 use crate::scene::bar_geometry::BarGeometry;
+use crate::scene::node::Node;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
@@ -87,7 +89,7 @@ struct ScrollInput {
 }
 
 /// The two `Widget`s a `Scroll` records: an outer `ZStack` (sizing, placement,
-/// sense, visibility) and an inner viewport (`Scroll` layout, padding, panel knobs).
+/// interaction flags) and an inner viewport (`Scroll` layout, padding, clip, panel knobs).
 #[derive(Debug)]
 struct ScrollWrappers {
     outer: Widget,
@@ -95,38 +97,59 @@ struct ScrollWrappers {
 }
 
 impl ScrollWrappers {
-    /// Split a user `Scroll` into outer/inner wrappers. A new authoring field needs
-    /// a side here. `Scroll::show` patches the per-frame inner fields and the ids.
+    /// Split a user `Scroll` into outer/inner wrappers. The destructure is exhaustive,
+    /// so a new `Node` field must be given a side. `Scroll::show` patches the
+    /// per-frame inner fields and the ids.
     fn split(widget: &Widget, axes: ScrollAxes) -> Self {
-        let mut outer = Widget::zstack()
-            .sense(widget.authored_sense())
-            .disabled(widget.authored_disabled())
-            .focusable(widget.authored_focusable())
-            .input_scope(widget.authored_input_scope());
-        outer.configure().adopt_placement(widget);
-        if let Some(size) = widget.authored_size() {
-            outer.configure().size(size);
-        }
-        if let Some(min) = widget.authored_min_size() {
-            outer.configure().min_size(min);
-        }
-        if let Some(max) = widget.authored_max_size() {
-            outer.configure().max_size(max);
-        }
+        let Node {
+            mode: _,
+            size,
+            min_size,
+            max_size,
+            padding,
+            margin,
+            clip,
+            gaps,
+            justify,
+            align,
+            child_align,
+            position,
+            grid,
+            // Interaction only: an authored clip stays in `clip` until `Node::columns`.
+            flags,
+            visibility,
+            transform,
+            tab_index,
+        } = widget.node;
+        debug_assert!(
+            transform == TranslateScale::IDENTITY,
+            "a `Scroll` owns its descendants' transform: transform a parent instead",
+        );
 
-        let mut inner = Widget::scroll(axes)
-            .size((Sizing::FILL, Sizing::FILL))
-            .justify(widget.authored_justify())
-            .child_align(widget.authored_child_align());
-        if let Some(padding) = widget.authored_padding() {
-            inner.configure().padding(padding);
-        }
-        if let Some(gap) = widget.authored_gap() {
-            inner.configure().gap(gap);
-        }
-        if let Some(line_gap) = widget.authored_line_gap() {
-            inner.configure().line_gap(line_gap);
-        }
+        let mut outer = Widget::zstack();
+        outer.node = Node {
+            size,
+            min_size,
+            max_size,
+            margin,
+            align,
+            position,
+            grid,
+            flags,
+            visibility,
+            tab_index,
+            ..outer.node
+        };
+        let mut inner = Widget::scroll(axes);
+        inner.node = Node {
+            size: Some(SizeSpec::new(Sizing::FILL, Sizing::FILL)),
+            padding,
+            clip,
+            gaps,
+            justify,
+            child_align,
+            ..inner.node
+        };
         Self { outer, inner }
     }
 }
@@ -139,6 +162,10 @@ impl ScrollWrappers {
 /// viewport senses the wheel only on axes its content overflows, so the other
 /// axis reaches the container behind it; a [`zoomable`](Self::zoomable) one senses
 /// both. Bar placement is chosen via [`BarMode`].
+///
+/// **A scroll owns its descendants' transform**, which is its pan and zoom. An
+/// authored [`transform`](Configure::transform) is a contract violation: transform
+/// a parent instead.
 ///
 /// **In a stack, a scroll gives way to its siblings.** A `Hug` scroll can shrink to
 /// nothing on its panned axis. A `Fill` scroll also grows into space no sibling
@@ -405,10 +432,6 @@ impl<'a> Scroll<'a> {
             .configure()
             .margin(geom.bars.reserve)
             .transform(state.transform(geom.content_inset()));
-        // `with_axes` set `ClipMode::Rect`; nothing unsets it, so `None` never runs.
-        if let Some(clip) = self.widget.authored_clip() {
-            inner.configure().clip(clip);
-        }
         ScrollWrappers { outer, inner }
     }
 
