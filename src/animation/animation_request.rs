@@ -1,8 +1,8 @@
 //! What one [`Ui::animate`](crate::Ui::animate) call asks for: the row it advances and the value it heads for.
 
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::animatable::Animatable;
 
 /// The animation row keyed by `(id, slot)`, and the `target` it heads for this frame.
 #[derive(Clone, Debug)]

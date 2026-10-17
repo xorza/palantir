@@ -1,12 +1,12 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::common::typed_stores::TypedStore;
+use crate::primitives::identity::typed_stores::TypedStore;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::math::animatable::Animatable;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -199,9 +199,9 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
-    use crate::animation::animatable::Animatable;
     use crate::animation::animation_request::AnimationRequest;
     use crate::animation::animation_spec::AnimationSpec;
+    use crate::primitives::math::animatable::Animatable;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     /// A render frame id no earlier call returned, so the multi-pass guard never

@@ -6,7 +6,7 @@
 
 pub(crate) mod gradient;
 
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::conic_geometry::{

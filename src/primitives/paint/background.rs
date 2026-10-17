@@ -27,7 +27,7 @@ use palantir_anim_derive::Animatable;
 /// 65504 (one f16 lane), and the shadow's offset and spread offsets and its blur a
 /// length.
 // Intentionally **not `Copy`**: it is the largest of the three types
-// `animation::animatable::Animatable` discusses, and the recording chain takes it
+// `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 #[must_use]

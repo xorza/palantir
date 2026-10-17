@@ -11,7 +11,7 @@
 pub mod curves;
 pub(crate) mod paint_mod;
 
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::shape::paint_animation::paint_mod::PaintMod;

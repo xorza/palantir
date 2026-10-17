@@ -4,7 +4,7 @@
 //!
 //! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbour via the `owners` vec in O(1).
 
-use crate::common::typed_stores::{Drained, TypedStore, TypedStores};
+use crate::primitives::identity::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 
 #[derive(Debug, Default)]

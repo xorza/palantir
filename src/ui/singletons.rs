@@ -1,6 +1,6 @@
 //! State a widget kind shares across instances: one value per type for the `Ui`'s life.
 
-use crate::common::typed_stores::DOWNCAST_ERROR;
+use crate::primitives::identity::typed_stores::DOWNCAST_ERROR;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::fmt;

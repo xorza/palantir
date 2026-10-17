@@ -2,7 +2,6 @@
 //! partitioning, and row settling.
 
 use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped};
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimMotion;
 use crate::animation::animation_spec::AnimationSpec;
@@ -10,6 +9,7 @@ use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, Release, SLOT};
 use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 

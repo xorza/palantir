@@ -1,5 +1,5 @@
 //! The value vocabulary every other layer is written in (geometry, layout, paint, text, identity, math, packed
-//! encodings) plus the lane macro for four-f16 types. A leaf layer: nothing here reaches up into scene, layout or renderer.
+//! encodings) plus the lane macro for four-f16 types. Below every layer but `common`, its one dependency: nothing here reaches up into animation, scene, layout or renderer.
 
 /// The surface a four-lane [`F16x4`](crate::primitives::packed::half_simd::F16x4) newtype shares with its
 /// siblings: lane access, `Debug` naming the lanes, scalar `From`, serde forwarders. For [`Corners`](crate::Corners)

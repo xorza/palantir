@@ -2,7 +2,7 @@
 //! interpolation between stops are premultiplied (CSS Color 4 §12.3), as the
 //! shaders filter in the same space.
 
-use crate::animation::animatable::Animatable;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;

@@ -1,13 +1,13 @@
 //! The one-widget harness an animation test drives, and the reads it asserts on.
 
 use crate::animation::anim_row::{AnimRow, MotionRow};
-use crate::animation::animatable::Animatable;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::math::animatable::Animatable;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use glam::UVec2;

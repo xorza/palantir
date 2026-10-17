@@ -199,7 +199,6 @@ pub mod prelude {
 /// widgets; every widget in this crate uses only this module plus the root (see
 /// `examples/showcase/pages/custom_widget.rs`).
 pub mod widget {
-    pub use crate::animation::animatable::Animatable;
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::common::span::Span;
@@ -207,6 +206,7 @@ pub mod widget {
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
+    pub use crate::primitives::math::animatable::Animatable;
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
