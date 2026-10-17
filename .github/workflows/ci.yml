@@ -21,52 +21,11 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  fmt:
-    name: rustfmt
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python x.py fmt --check --workspace
-
-  clippy:
-    name: clippy (${{ matrix.os }})
+  gate:
+    name: gate (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-2025]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Only master writes, so a pull request cannot evict what others read.
-          # No `key`: the action already keys on job, OS and architecture, and
-          # nothing else tells the matrix entries apart.
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      # Every target under every lint set, then the build that ships, as the
-      # local gate runs them; `Cargo.toml`'s `[package.metadata.x]` holds the
-      # sets. Clippy never runs the golden suite, so its absent baselines cost
-      # nothing, and `profile-with-tracy` starts no profiler.
-      - run: python x.py --locked lint --workspace
-
-  test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
+    # Clippy's 75 minutes and the tests' 75, in one job.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +38,9 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The driver, `drive/`.
+          submodules: true
       # Hosted Linux runners have no GPU, and vulkan is the only backend this
       # crate builds there. macOS needs nothing: its runner exposes Metal, and
       # Windows nothing either: WARP, Microsoft's software Dx12 adapter, ships
@@ -91,46 +53,23 @@ jobs:
             mesa-vulkan-drivers vulkan-tools libvulkan1 libxkbcommon-dev
           vulkaninfo --summary
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
+          # Only master writes, so a pull request cannot evict what others read.
+          # No `key`: the action already keys on job, OS and architecture, and
+          # nothing else tells the matrix entries apart.
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      # A per-step cap, because the job's own 45 minutes is the wrong
-      # instrument for a test binary that stops making progress: it spends
-      # the whole budget before saying so, and then says only that the job
-      # timed out. A cap covers the step's compile as well as its run, and
-      # the compile is cold on the first push after every stable release:
-      # rust-cache hashes the rustc version into its restore key. Cold, one
-      # `--lib` build took 525 s and 600 s on Windows; this step compiles the
-      # two test sets, `winit` on and off, so 40 minutes is twice that worst
-      # run per set.
-      #
-      # The test sets are the local gate's: `alloc` beside the library, and
+      # fmt --check, every target under every lint set, the build that ships,
+      # rustdoc, the test lanes and the doc tests, as `Cargo.toml`'s
+      # `[workspace.metadata.drive]` states them and its `gate` list chooses.
+      # Clippy never runs the golden suite, so its absent baselines cost
+      # nothing, and `profile-with-tracy` starts no profiler. The test lanes are `alloc` beside the library, and
       # the library without `winit`, a supported configuration in which the
-      # crate embeds into a host's own event loop. The scale ramp is skipped:
-      # its ceiling holds on one adapter only — see `gates/on_gpu.rs`.
-      - run: python x.py --locked test --workspace -- --skip gates::on_gpu::scale_ramp
-        timeout-minutes: 40
-      # `doc = include_str!` makes the README a doctest.
-      - run: python x.py --locked doctest --workspace
-        timeout-minutes: 20
-
-  docs:
-    name: rustdoc
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-      - run: python x.py --locked doc --workspace
+      # crate embeds into a host's own event loop; `doc = include_str!` makes
+      # the README a doc test.
+      - run: cargo drive gate
 
   api-surface:
     name: public API surface

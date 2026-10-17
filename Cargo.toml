@@ -24,7 +24,7 @@ exclude = [
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",
-    "x.py",
+    "drive/",
 ]
 
 
@@ -34,8 +34,11 @@ all-features = false
 # `--all-features` is clippy's alone: under `profile-with-tracy` a test binary opens the Tracy
 # socket. The first test set names `alloc`, as `--tests` with `golden` would pull in `visual`,
 # whose goldens are local; the second builds the crate without `winit`, as a host embeds it.
-[package.metadata.x]
+# `cargo test` ran the first in 2.1 s where nextest took 4.9 s, as a GPU test under nextest opens
+# a device in a process of its own.
+[workspace.metadata.drive]
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
+test-runner = "cargo-test"
 
 [workspace]
 members = ["api-surface", "palantir-anim-derive"]

@@ -9,3 +9,8 @@
 # (which sets `-D warnings`) builds baseline.
 [target.'cfg(target_arch = "x86_64")']
 rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+# The driver of every check, a submodule outside the workspace with its own lockfile and target
+# folder; `-q`: a check prints its own lines, not cargo's progress for building the driver.
+[alias]
+drive = "run -q --locked --manifest-path drive/Cargo.toml --"

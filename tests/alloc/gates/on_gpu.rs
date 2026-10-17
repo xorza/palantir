@@ -135,6 +135,7 @@ const RAMP_BLOCKS_PER_FRAME_MAX: u64 = 510;
 /// whole surface, so this is the one audit that encodes and composes a full
 /// tree. The warmup ramps too, or the window would measure the steady state.
 #[test]
+#[ignore = "its ceiling holds on one adapter only: `cargo drive test --ignored scale_ramp` on it"]
 fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
     let gpu = isolated_headless_test_gpu();
     let mut target = OffscreenTarget::new(
