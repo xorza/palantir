@@ -24,7 +24,6 @@ pub(crate) mod dock;
 pub(crate) mod drag_num;
 pub(crate) mod drag_value;
 pub(crate) mod expander;
-pub(crate) mod frame_stats_readout;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;

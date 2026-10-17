@@ -9,8 +9,8 @@ use crate::damage::engine::DamageInput;
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::display;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::sizing::Sizing;
 use crate::renderer::render_plan::RenderPlan;
+use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
@@ -18,9 +18,7 @@ use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
-use crate::widget_core::configure::Configure;
-use crate::widget_core::widget::Widget;
-use crate::widgets::frame_stats_readout;
+use crate::ui::frame_stats_readout;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 use std::mem;
@@ -207,9 +205,8 @@ impl<'a> FrameCycle<'a> {
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         self.pre_record();
         // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
-        let viewport = Widget::zstack().size(Sizing::FILL);
         let viewport_id = self.ui.resolve_ident(Ident::Verbatim(WidgetId::VIEWPORT));
-        self.ui.open_node(viewport_id, &viewport.node, None);
+        self.ui.open_node(viewport_id, &Node::viewport(), None);
         {
             tracy::zone!("Ui::record_user");
             app.record(win, self.ui);
