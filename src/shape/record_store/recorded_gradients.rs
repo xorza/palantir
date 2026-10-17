@@ -1,6 +1,6 @@
 //! The record pass's gradient interner.
 
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
 
 /// Record-local handle into [`RecordedGradients::records`].
 #[repr(transparent)]
@@ -125,7 +125,7 @@ impl GradientIndex {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::scene::record_store::recorded_gradients::RecordedGradients;
+    use crate::shape::record_store::recorded_gradients::RecordedGradients;
 
     impl RecordedGradients {
         /// Wind the frame serial to its last value so one `clear` steps over the wrap.

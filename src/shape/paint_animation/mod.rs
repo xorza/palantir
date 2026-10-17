@@ -1,10 +1,20 @@
-//! Paint-time animation a widget registers, and its vocabulary.
+//! Paint-time animation a widget registers per shape, and its vocabulary: the per-shape contract
+//! ([`PaintAnimation`] in, [`paint_mod::PaintMod`] out) that `scene::tree::paint_anims`
+//! stores per tree.
+//!
+//! It does not affect layout, hit-test or structure. Unlike `crate::animation`, sampling is a pure
+//! function of `now` at encode time, so irregular `dt` does not drift.
+//!
+//! An animation drives alpha, rotation, or both. Translation and scale would need a swept union the
+//! cascade can't bound without sampling; a rotation's cover is the same square at every angle.
+
+pub mod curves;
+pub(crate) mod paint_mod;
 
 use crate::animation::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
-use crate::scene::tree::paint_anims::curves;
-use crate::scene::tree::paint_anims::paint_mod::PaintMod;
+use crate::shape::paint_animation::paint_mod::PaintMod;
 use std::f32::consts::TAU;
 use std::hash;
 use std::num::NonZeroU32;
@@ -318,3 +328,6 @@ impl PaintTiming {
         Some(settles_at.map_or(wake, |at| wake.min(at)))
     }
 }
+
+#[cfg(test)]
+mod tests;

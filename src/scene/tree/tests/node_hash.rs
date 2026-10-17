@@ -478,7 +478,7 @@ fn nesting_alone_changes_cascade_static() {
 /// A paint animation is part of what a shape paints, so it moves the node hash: adding, dropping or changing it reads as a change, the same animation twice does not.
 #[test]
 fn a_paint_animation_moves_the_node_hash() {
-    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
+    use crate::shape::paint_animation::PaintAnimation;
     use std::time::Duration;
 
     fn build(ui: &mut Ui, anim: Option<PaintAnimation>) -> NodeId {

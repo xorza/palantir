@@ -3,9 +3,9 @@
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
+use crate::shape::record_store::recorded_gradients::GradientId;
 
 /// Resolves each recorded gradient to its atlas row at most once per frame.
 #[derive(Debug)]
@@ -69,7 +69,7 @@ impl GradientPass<'_> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
-    use crate::scene::record_store::recorded_gradients::GradientId;
+    use crate::shape::record_store::recorded_gradients::GradientId;
 
     impl GradientPass<'_> {
         /// Whether this pass has resolved `id` yet.

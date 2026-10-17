@@ -6,7 +6,7 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::scene::record_store::RecordStore;
+use crate::shape::record_store::RecordStore;
 use std::num::NonZeroU32;
 use std::time::Duration;
 

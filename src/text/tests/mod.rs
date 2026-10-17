@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::{Align, HAlign};
-use crate::scene::record_store::RecordStore;
+use crate::shape::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
 use crate::text::cosmic::shaped_buffer_cache;

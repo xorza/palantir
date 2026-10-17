@@ -210,12 +210,6 @@ pub mod widget {
     pub use crate::primitives::math::domain;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
-    /// The paint-time animation curves the crate ships; a custom curve is any
-    /// `fn(f32) -> f32`, see [`PaintCurve`].
-    pub use crate::scene::tree::paint_anims::curves;
-    pub use crate::scene::tree::paint_anims::paint_animation::{
-        PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
-    };
     /// The bound on [`Ui::add_shape`](crate::Ui::add_shape); sealed.
     pub use crate::shape::Lower;
     pub use crate::shape::Shape;
@@ -223,6 +217,12 @@ pub mod widget {
     pub use crate::shape::icon::{IconFit, IconShape};
     pub use crate::shape::image::ImageShape;
     pub use crate::shape::mesh::MeshShape;
+    /// The paint-time animation curves the crate ships; a custom curve is any
+    /// `fn(f32) -> f32`, see [`PaintCurve`].
+    pub use crate::shape::paint_animation::curves;
+    pub use crate::shape::paint_animation::{
+        PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+    };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
     pub use crate::shape::shadow::ShadowShape;

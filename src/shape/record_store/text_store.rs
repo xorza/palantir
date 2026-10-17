@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 /// so a stale handle cannot be resolved. One `String`, no interior cell: writers go through `&mut`
 /// [`RecordStore`]; no rotation or pool, as text is interned per frame per window (see [`InternedStr`]).
 ///
-/// [`RecordStore`]: crate::scene::record_store::RecordStore
+/// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Debug)]
 pub(super) struct TextStore {
     bytes: String,

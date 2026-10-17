@@ -29,10 +29,10 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 }
 
 pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
-    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
     use crate::shape::Shape;
+    use crate::shape::paint_animation::PaintAnimation;
+    use crate::shape::paint_animation::PaintRepeat;
+    use crate::shape::paint_animation::curves;
 
     ui.add_shape_animated(
         Shape::rect(Rect::new(0.0, 0.0, 4.0, 12.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),

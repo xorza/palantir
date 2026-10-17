@@ -10,7 +10,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::record_store::RecordStore;
+use crate::shape::record_store::RecordStore;
 
 /// `Copy` because all three are borrows: [`WgpuBackend::submit`] pulls them out and still hands the whole [`Submission`] on.
 ///

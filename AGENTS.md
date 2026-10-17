@@ -22,8 +22,8 @@ Each frame rebuilds the tree and runs **record → layout (measure, arrange) →
 cascade → damage → encode + compose → paint**. Color is linear-RGB f32 on
 the CPU side; sRGB encoding happens on the GPU at swapchain write.
 
-Each step has one top-level module: `scene` holds what record writes,
-`layout` measures and arranges it, `cascade` derives the tables input and
+Each step has one top-level module: `scene` holds what record writes, over
+the shapes, payload store and paint animations of `shape` below it, `layout` measures and arranges it, `cascade` derives the tables input and
 paint read, `damage` decides what repaints, `renderer` encodes and
 composes, and `gpu` paints. `layout`, `cascade` and `damage` each keep their
 result type in `mod.rs` and their engine in `engine.rs`.

@@ -19,8 +19,8 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::RecordStore;
 use crate::shape::record::ColorMode;
+use crate::shape::record_store::RecordStore;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 

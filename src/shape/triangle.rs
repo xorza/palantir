@@ -6,10 +6,10 @@ use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::record_store::RecordStore;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 use glam::Vec2;
 

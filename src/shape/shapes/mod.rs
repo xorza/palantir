@@ -7,11 +7,11 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
-use crate::scene::record_store::RecordStore;
-use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::shape::Lower;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::RecordStore;
 use std::fmt;
 use std::hash::Hasher as _;
 

@@ -44,7 +44,7 @@ pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextDrawRow>,
-    /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::meshes`](crate::scene::record_store::RecordStore::meshes); each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
+    /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::meshes`](crate::shape::record_store::RecordStore::meshes); each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
     pub(crate) meshes: Soa<MeshDrawRow>,
     pub(crate) groups: Vec<DrawGroup>,
     /// One entry per batch of text runs sharing a text-backend call. Text coalesces across adjacent groups when paint order is preserved. A batch's `texts` span is contiguous; it anchors to a group via `TextBatch.last_group`.

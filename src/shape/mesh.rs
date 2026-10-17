@@ -5,8 +5,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::record_store::RecordStore;
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 
 /// User-supplied colored triangle mesh.

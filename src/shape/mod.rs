@@ -1,4 +1,5 @@
-//! Shapes from authoring to record: builders, the per-tree record buffer, and lowering.
+//! Shapes from authoring to record: builders, the per-tree record buffer, the payload store they
+//! lower into, their paint animations, and lowering.
 
 #![expect(
     private_interfaces,
@@ -11,8 +12,10 @@ pub(crate) mod image;
 pub(crate) mod lower;
 pub(crate) mod mesh;
 pub(crate) mod paint;
+pub(crate) mod paint_animation;
 pub(crate) mod polyline;
 pub(crate) mod record;
+pub(crate) mod record_store;
 pub(crate) mod rect;
 pub(crate) mod shadow;
 pub(crate) mod shapes;
@@ -53,8 +56,8 @@ pub trait Lower: sealed::LowerShape {}
 impl<T: sealed::LowerShape> Lower for T {}
 
 mod sealed {
-    use crate::scene::record_store::RecordStore;
     use crate::shape::record::ShapeRecord;
+    use crate::shape::record_store::RecordStore;
     use std::fmt;
 
     #[expect(

@@ -13,7 +13,7 @@ use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::scene::record_store::RecordStore;
+use crate::shape::record_store::RecordStore;
 use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 

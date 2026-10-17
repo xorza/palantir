@@ -4,8 +4,9 @@
 
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
-use crate::scene::tree::paint_anims::{PaintAnimEntry, PaintAnims, curves};
+use crate::scene::tree::paint_anims::{PaintAnimEntry, PaintAnims};
+use crate::shape::paint_animation::curves;
+use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use std::time::Duration;

@@ -11,11 +11,11 @@ use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::record_store::RecordStore;
-use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::lower::{background, brush, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record_store::RecordStore;
+use crate::shape::record_store::recorded_gradients::GradientId;
 use std::collections::HashSet;
 use std::panic;
 
