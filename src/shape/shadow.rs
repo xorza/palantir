@@ -4,9 +4,9 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::shadow::Shadow;
-use crate::scene::record_store::RecordStore;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 
 /// Gaussian-blurred rounded rectangle shadow.

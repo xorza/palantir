@@ -2,7 +2,7 @@
 
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::scene::record_store::recorded_gradients::GradientId;
+use crate::shape::record_store::recorded_gradients::GradientId;
 
 /// No `Hash` derive: a `Gradient`'s [`GradientId`] is a per-frame index, so a derived hash would change every
 /// frame; [`Self::hash_parts`] folds a fill into a key.
@@ -55,8 +55,8 @@ impl NanCheck for ShapeBrush {
 mod tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::scene::record_store::recorded_gradients::GradientId;
     use crate::shape::paint::shape_brush::ShapeBrush;
+    use crate::shape::record_store::recorded_gradients::GradientId;
 
     /// A gradient's hash payload is its lowering-time content hash, not its frame-local id: equal
     /// stops under different ids hash alike; the same id under different stops does not.

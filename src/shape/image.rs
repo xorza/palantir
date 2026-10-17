@@ -6,9 +6,9 @@ use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
-use crate::scene::record_store::RecordStore;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
+use crate::shape::record_store::RecordStore;
 use crate::shape::sealed;
 
 /// Textured rectangle painted from a registered [`ImageHandle`].

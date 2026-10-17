@@ -16,13 +16,13 @@ use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::record_store::RecordStore;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::record_store::RecordStore;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use std::hash;
 use std::hash::{Hash as _, Hasher as _};
 

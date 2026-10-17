@@ -13,16 +13,16 @@ use crate::scene::layer::Layer;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::per_layer::PerLayer;
-use crate::scene::record_store::RecordStore;
 use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_anims::PaintAnimEntry;
-use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
+use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::record_store::RecordStore;
 use std::time::Duration;
 
 /// One arena per [`Layer`]; recording dispatches to `trees[current_layer.idx()]`.

@@ -10,7 +10,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use glam::Vec2;
 use soa_rs::Soars;
 
-/// One mesh draw within a group; vertex/index slices live in the recording's [`RecordStore::meshes`](crate::scene::record_store::RecordStore::meshes), transform and tint in [`MeshDrawRow::instance`].
+/// One mesh draw within a group; vertex/index slices live in the recording's [`RecordStore::meshes`](crate::shape::record_store::RecordStore::meshes), transform and tint in [`MeshDrawRow::instance`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,

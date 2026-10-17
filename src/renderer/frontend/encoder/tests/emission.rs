@@ -20,9 +20,9 @@ use crate::renderer::frontend::encoder::tests::support::{
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::scene::layer::Layer;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::record_store::recorded_gradients::GradientId;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
+use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};

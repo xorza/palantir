@@ -21,9 +21,9 @@ use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::interned_text::InternedText;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::primitives::text::text_input::TextInput;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::record_store::recorded_gradients::{GradientId, RecordedGradients};
-use crate::scene::record_store::text_store::TextStore;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
+use crate::shape::record_store::recorded_gradients::{GradientId, RecordedGradients};
+use crate::shape::record_store::text_store::TextStore;
 use glam::Vec2;
 use std::fmt;
 

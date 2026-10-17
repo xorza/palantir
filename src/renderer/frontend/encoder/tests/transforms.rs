@@ -23,9 +23,9 @@ use glam::{UVec2, Vec2};
 fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_centre() {
     use crate::display::Display;
     use crate::internals::paint_capture::PaintCall;
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_animation::{PaintAnimation, PaintRepeat};
     use crate::shape::Shape;
+    use crate::shape::paint_animation::curves;
+    use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
     use std::f32::consts::{PI, TAU};
     use std::time::Duration;
 

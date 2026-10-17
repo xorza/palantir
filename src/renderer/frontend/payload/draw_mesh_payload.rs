@@ -7,7 +7,7 @@ use glam::Vec2;
 
 /// Mesh draw payload: owner-local spans into the window's [`RecordStore`] (`meshes`); the composer folds `origin` into the per-instance translate so the vertex stream stays content-stable.
 ///
-/// [`RecordStore`]: crate::scene::record_store::RecordStore
+/// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawMeshPayload {
     /// Owner-local AABB of `vertices`.

@@ -1,6 +1,6 @@
 //! What a lowered curve's color multiplies by.
 
-use crate::scene::record_store::recorded_gradients::GradientId;
+use crate::shape::record_store::recorded_gradients::GradientId;
 
 /// What a curve's stroke color multiplies: nothing, or an interned ramp.
 ///

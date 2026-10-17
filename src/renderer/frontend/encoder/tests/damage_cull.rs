@@ -133,10 +133,10 @@ fn damage_filter_paints_leaves_in_any_rect() {
 fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     use crate::display::Display;
 
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
-    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
     use crate::shape::Shape;
+    use crate::shape::paint_animation::PaintAnimation;
+    use crate::shape::paint_animation::PaintRepeat;
+    use crate::shape::paint_animation::curves;
     use std::time::Duration;
 
     const HALF: Duration = Duration::from_millis(500);

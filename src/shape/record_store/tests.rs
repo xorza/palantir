@@ -4,9 +4,9 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::record_store::RecordStore;
-use crate::scene::record_store::recorded_gradient::RecordedGradient;
-use crate::scene::record_store::recorded_gradients::RecordedGradients;
+use crate::shape::record_store::RecordStore;
+use crate::shape::record_store::recorded_gradient::RecordedGradient;
+use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use glam::Vec2;
 
 #[test]

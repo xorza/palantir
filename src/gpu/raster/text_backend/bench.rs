@@ -22,7 +22,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::align::Align;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
-use crate::scene::record_store::RecordStore;
+use crate::shape::record_store::RecordStore;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;

@@ -12,7 +12,7 @@ use glam::Vec2;
 /// (per-segment), per `color_mode`. Points are owner-local; the composer applies `origin` and inflates
 /// `bounds` for stroke, cap, join and AA once in physical space.
 ///
-/// [`RecordStore`]: crate::scene::record_store::RecordStore
+/// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct DrawPolylinePayload {
     pub(crate) bounds: StrokeBounds,

@@ -301,9 +301,9 @@ fn button_unhover_damage_covers_only_the_button() {
 /// Fixture: 80x40 owner, line (10,10)-(70,30), pivot (40,20), far endpoint r = sqrt(30^2 + 10^2) = 31.623. A quarter turn puts it at pivot + (-10,30), outside the owner box. The pad is 0.5 half-width plus 0.5 fringe (butt cap, no join): 1 per side. Time zero, so the cascade covers the sweep from the registration alone.
 #[test]
 fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
-    use crate::scene::tree::paint_anims::curves;
-    use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
-    use crate::scene::tree::paint_anims::paint_animation::PaintRepeat;
+    use crate::shape::paint_animation::PaintAnimation;
+    use crate::shape::paint_animation::PaintRepeat;
+    use crate::shape::paint_animation::curves;
     use std::f32::consts::TAU;
     use std::time::Duration;
 

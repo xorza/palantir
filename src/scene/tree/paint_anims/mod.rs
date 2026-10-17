@@ -1,31 +1,21 @@
-//! Paint-only animations: the per-shape contract (`PaintAnimation` /
-//! `PaintMod`) and the per-tree registry that stores it.
+//! The per-tree registry of paint-only animations, whose per-shape contract is
+//! [`crate::shape::paint_animation`].
 //!
-//! They don't affect layout, hit-test or structure. Widgets register one via
-//! `Ui::add_shape_animated`; the encoder samples it at paint time and folds
-//! the [`PaintMod`] into the shape's brush. `Forest::min_paint_anim_wake`
-//! (called by `FrameCycle::run`) feeds each `next_wake` to the wake queue, so
-//! widgets never call `request_repaint_after` for them.
-//!
-//! Unlike `crate::animation`, sampling is a pure function of `now` at encode
-//! time, so irregular `dt` doesn't drift.
+//! Widgets register one via `Ui::add_shape_animated`; the encoder samples it at
+//! paint time and folds the [`PaintMod`] into the shape's brush.
+//! `Forest::min_paint_anim_wake` (called by `FrameCycle::run`) feeds each
+//! `next_wake` to the wake queue, so widgets never call `request_repaint_after`
+//! for them.
 //!
 //! The registry stores only live entries, sorted by shape index; the
 //! encoder's monotonic cursor skips culled ranges.
-//!
-//! An animation drives alpha, rotation, or both. Translation and scale would
-//! need a swept union the cascade can't bound without sampling; a rotation's
-//! cover is the same square at every angle.
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-pub mod curves;
-pub(crate) mod paint_animation;
-pub(crate) mod paint_mod;
 
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::paint_animation::PaintAnimation;
-use crate::scene::tree::paint_anims::paint_mod::PaintMod;
+use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::paint_animation::paint_mod::PaintMod;
 use std::time::Duration;
 
 const CURSOR_END: u64 = u64::MAX;
