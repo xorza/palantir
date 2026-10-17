@@ -8,6 +8,7 @@ pub(crate) mod frame_engines;
 pub(crate) mod frame_input;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
+mod frame_stats_readout;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod singletons;

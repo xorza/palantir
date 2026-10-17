@@ -9,6 +9,7 @@ use crate::internals::paint_capture::PaintCall;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::paint::background::Background;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -31,10 +32,13 @@ use glam::Vec2;
 use std::collections::HashSet;
 use std::time::Duration;
 
-/// Pin: enabling `frame_stats` records a Debug-layer text widget, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames.
+/// Pin: enabling `frame_stats` records a Debug-layer readout, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames. The readout is a row, its chip and the text leaf, with the chip's fill as its one chrome row: a theme's panel background and rounded clip, which would add rows, do not reach it.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = UiHarness::new(SURFACE);
+    let theme = h.ui.theme_mut();
+    theme.panel_background = Some(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
+    theme.panel_clip = ClipMode::Rounded;
     h.ui.set_debug_overlay(DebugOverlayConfig {
         frame_stats: true,
         ..h.ui.debug_overlay()
@@ -48,10 +52,9 @@ fn frame_stats_overlay_records_partial_damage() {
     };
     h.frame(&mut body);
     assert_eq!(h.ui.frame_runtime.fps_ema, 0.0);
-    assert!(
-        !h.ui.forest.trees[Layer::Debug].records.is_empty(),
-        "Debug layer must carry the frame_stats readout",
-    );
+    let debug = &h.ui.forest.trees[Layer::Debug];
+    assert_eq!(debug.records.len(), 3, "row, chip and text leaf");
+    assert_eq!(debug.chrome_table.len(), 1, "the chip's fill alone");
 
     let report = h.at(Duration::from_millis(16)).frame(&mut body);
     assert!(

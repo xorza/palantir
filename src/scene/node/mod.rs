@@ -21,7 +21,7 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::layout::sizing::SizeSpec;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain;
 use crate::scene::node::authored_gaps::AuthoredGaps;
@@ -240,6 +240,14 @@ impl Node {
             self.mode,
         );
         self.mode = NodeMode::Resolved(mode);
+    }
+
+    /// The synthetic root of `Layer::Main`: a `ZStack` filling the surface on both axes.
+    pub(crate) fn viewport() -> Self {
+        Self {
+            size: Some(SizeSpec::new(Sizing::FILL, Sizing::FILL)),
+            ..Self::new(NodeMode::Resolved(LayoutMode::ZStack))
+        }
     }
 
     pub(crate) fn new(mode: NodeMode) -> Self {
