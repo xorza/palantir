@@ -14,13 +14,13 @@ use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::drag_value::DragValueTheme;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::drag_num::limits::Limits;
 use crate::widgets::drag_num::{DragNum, Num, StoreRule};
 use crate::widgets::text_edit::TextEdit;
@@ -280,9 +280,8 @@ impl<'a> DragValue<'a> {
 
         let theme = ui.theme();
         let chip = &self.style.unwrap_or(&theme.drag_value).chip;
-        let look = chip
-            .plan(&response, (), theme.text)
-            .apply(ui, &mut self.widget);
+        let plan = chip.plan(&response, (), theme.text);
+        let look = self.widget.wear(ui, plan);
 
         self.widget.record(ui, Some(&look.background), |ui| {
             ui.add_shape(

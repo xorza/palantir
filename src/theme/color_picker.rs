@@ -7,10 +7,10 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::theme::ThemeText;
 use crate::theme::drag_value::DragValueTheme;
+use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and its parts
 /// ([`crate::ColorField`], [`crate::ColorStrip`], [`crate::ColorSwatch`],

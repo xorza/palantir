@@ -5,12 +5,12 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::background::Background;
 use crate::theme::ThemeText;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::WidgetLook;
-use crate::widget_core::widget_look::engagement::Engagement;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
-use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 

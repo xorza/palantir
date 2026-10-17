@@ -2584,7 +2584,6 @@ widget::LineJoin
 
 widget::LookPlan
     struct LookPlan: Debug
-        pub fn apply(self, ui: &mut Ui, widget: &mut Widget) -> AnimatedLook
 
 widget::Lower
     trait Lower: LowerShape
@@ -2813,6 +2812,7 @@ widget::Widget
         pub fn grid() -> Self
         pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId
         pub fn response(&mut self, ui: &mut Ui) -> ResponseState
+        pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook
         pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool
         pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Background>, body: impl FnOnce(&mut Ui) -> R) -> R
         pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Background>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>

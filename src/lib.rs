@@ -236,12 +236,12 @@ pub mod widget {
     pub use crate::text::probe::TextProbe;
     pub use crate::text::render::{GlyphRasterKey, PlacedGlyph};
     pub use crate::text::run::TextRun;
+    pub use crate::theme::look::look_plan::LookPlan;
+    pub use crate::theme::look::theme_slot::ThemeSlot;
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec, OverlayTurn};
     pub use crate::widget_core::widget::Widget;
-    pub use crate::widget_core::widget_look::look_plan::LookPlan;
-    pub use crate::widget_core::widget_look::theme_slot::ThemeSlot;
     pub use palantir_anim_derive::Animatable;
 }
 
@@ -379,6 +379,11 @@ pub use theme::dock::DockTheme;
 pub use theme::drag_value::DragValueTheme;
 pub use theme::expander::ExpanderTheme;
 pub use theme::focus_ring::FocusRingTheme;
+pub use theme::look::WidgetLook;
+pub use theme::look::animated_look::AnimatedLook;
+pub use theme::look::engagement::Engagement;
+pub use theme::look::stateful_look::StatefulLook;
+pub use theme::look::theme_slot::SlotDefaults;
 pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
 pub use theme::progress_bar::ProgressBarTheme;
@@ -402,11 +407,6 @@ pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::OverlayResponse;
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 pub use widget_core::value_response::ValueResponse;
-pub use widget_core::widget_look::WidgetLook;
-pub use widget_core::widget_look::animated_look::AnimatedLook;
-pub use widget_core::widget_look::engagement::Engagement;
-pub use widget_core::widget_look::stateful_look::StatefulLook;
-pub use widget_core::widget_look::theme_slot::SlotDefaults;
 pub use widgets::block::Block;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;

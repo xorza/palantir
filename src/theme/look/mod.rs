@@ -19,9 +19,9 @@ pub(crate) mod theme_slot;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::paint::background::Background;
 use crate::theme::ThemeText;
+use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::animated_look::AnimatedLook;
 
 /// Paint settings for one widget state, four to a
 /// [`StatefulLook`](stateful_look::StatefulLook); the engaged state is `active`

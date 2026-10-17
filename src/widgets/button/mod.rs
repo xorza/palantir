@@ -10,12 +10,12 @@ use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::button::ButtonTheme;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 
 /// A clickable, themed rectangle carrying an optional label.
 ///
@@ -92,9 +92,8 @@ impl<'a> Button<'a> {
         }
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
-        let look = slot
-            .plan(&response, (), theme.text)
-            .apply(ui, &mut self.widget);
+        let plan = slot.plan(&response, (), theme.text);
+        let look = self.widget.wear(ui, plan);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

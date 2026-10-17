@@ -8,12 +8,12 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::WidgetLook;
-use crate::widget_core::widget_look::engagement::Engagement;
-use crate::widget_core::widget_look::stateful_look::StatefulLook;
-use crate::widget_core::widget_look::theme_slot::{SlotDefaults, ThemeSlot};
 
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

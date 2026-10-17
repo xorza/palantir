@@ -8,8 +8,8 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::theme::Theme;
+use crate::theme::look::WidgetLook;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::widget_core::widget_look::WidgetLook;
 
 use super::pretty;
 

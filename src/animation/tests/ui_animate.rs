@@ -119,10 +119,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::paint::background::Background;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
+    use crate::theme::look::WidgetLook;
+    use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
     use crate::theme::text_style_overrides::TextStyleOverrides;
-    use crate::widget_core::widget_look::WidgetLook;
-    use crate::widget_core::widget_look::animated_look::AnimatedLook;
     use std::cell::Cell;
 
     let AnimUi { mut h, id } = support::setup_anim_ui("look-test");

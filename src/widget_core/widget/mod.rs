@@ -2,6 +2,7 @@
 //! configures, reads its last-frame state through, and records. Identity resolves
 //! on first contact with [`Ui`] and stays put unless an identity setter replaces it.
 
+use crate::animation::animation_request::AnimationRequest;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -26,6 +27,10 @@ use crate::scene::node::ident::{IdKind, Ident};
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::animated_look::AnimatedLook;
+use crate::theme::look::look_plan::LookPlan;
+use crate::theme::look::theme_slot::SlotDefaults;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -176,6 +181,33 @@ impl Widget {
         let mut state = ui.response_for(id);
         state.merge_disabled(self.node.flags.is_disabled());
         state
+    }
+
+    /// Fills the padding and margin the builder left unset from `plan`, then animates toward its
+    /// look. The look is not stashed on the widget: a toggle paints it on its inner box (see
+    /// `ToggleChrome::record_row`); widgets that wear it pass `Some(&look.background)` to
+    /// [`Self::record`].
+    // Forced inline across the theme/widget codegen-unit boundary: left outlined, the resolver cost
+    // 3.9% self-time in the frame bench.
+    #[inline(always)]
+    pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook {
+        let LookPlan {
+            target,
+            defaults:
+                SlotDefaults {
+                    padding,
+                    margin,
+                    animation,
+                },
+        } = plan;
+        self.configure()
+            .default_padding(padding)
+            .default_margin(margin);
+        let id = self.resolve(ui);
+        ui.animate(
+            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            animation,
+        )
     }
 
     /// Whether `shortcut` was pressed and granted to this widget, for a widget that

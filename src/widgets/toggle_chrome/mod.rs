@@ -9,11 +9,11 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::paint::background::Background;
 use crate::primitives::text::text_input::TextInput;
+use crate::theme::look::look_plan::LookPlan;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::look_plan::LookPlan;
 use crate::widgets::text::Text;
 
 /// One toggle row as [`ToggleChrome::record_row`] records it, all but the box's body.
@@ -84,7 +84,7 @@ impl ToggleChrome<'_> {
             pill,
         } = self;
         let id = widget.resolve(ui);
-        let mut look = plan.apply(ui, &mut widget);
+        let mut look = widget.wear(ui, plan);
         if let Some(radius) = pill {
             look.background.corners = Corners::all(radius);
         }

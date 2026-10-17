@@ -33,6 +33,7 @@ use crate::primitives::text::text_input::TextInput;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
@@ -40,7 +41,6 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 use crate::widgets::text_edit::editor::{EditRules, Editor};
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
@@ -315,7 +315,7 @@ impl<'a> TextEdit<'a> {
         if is_focused {
             self.widget.configure().input_scope(filter);
         }
-        // `apply` substitutes theme padding/margin where unconfigured; the renderer and caret
+        // `wear` substitutes theme padding/margin where unconfigured; the renderer and caret
         // hit-test both read `node.padding`.
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.text_edit);
@@ -323,9 +323,8 @@ impl<'a> TextEdit<'a> {
         let caret_width = slot.caret_width;
         let selection_color = slot.selection;
         let placeholder_color = slot.placeholder;
-        let mut look = slot
-            .plan(&response, (), theme.text)
-            .apply(ui, &mut self.widget);
+        let plan = slot.plan(&response, (), theme.text);
+        let mut look = self.widget.wear(ui, plan);
         // After the look animates, so a per-axis override outranks the theme in every state.
         look.text = self.overrides.apply(&look.text);
         // A face the shaper cannot be asked for shapes nothing (as `TextShape::is_noop`); caret and

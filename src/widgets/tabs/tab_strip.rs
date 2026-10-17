@@ -17,6 +17,8 @@ use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::background::Background;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::tab_selection::TabSelection;
 use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::tabs::TabsTheme;
@@ -26,8 +28,6 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::engagement::Engagement;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
@@ -353,10 +353,9 @@ impl StripPass<'_> {
             .padding(Spacing::new(0.0, cap, 0.0, 0.0))
             .sense(sense);
         let state = widget.response(ui);
-        // The look paints the inner box, so the plan applies for spacing and animation while the background goes a level down (the `ToggleChrome` shape).
-        let look = t
-            .plan(&state, TabSelection::from(selected), self.ambient)
-            .apply(ui, &mut widget);
+        // The look paints the inner box, so the widget wears the plan for spacing and animation while the background goes a level down (the `ToggleChrome` shape).
+        let plan = t.plan(&state, TabSelection::from(selected), self.ambient);
+        let look = widget.wear(ui, plan);
         let cap_bg = if selected {
             Background::rounded(t.cap(self.focus), Corners::top(t.radius))
         } else {

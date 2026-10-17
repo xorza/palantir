@@ -9,12 +9,12 @@ use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::context_menu::menu_item::MenuItemTheme;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widget_core::widget_look::theme_slot::ThemeSlot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::text::Text;
 
@@ -76,14 +76,13 @@ impl<'a> MenuItem<'a> {
         let id = self.widget.resolve(ui);
         let disabled = response.disabled;
 
-        // The look plan comes off one borrow of the theme that ends before `apply` reborrows `ui`; a menu row picks and animates like a Button.
+        // The look plan comes off one borrow of the theme that ends before `wear` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
         let item = self.style.unwrap_or(&theme.context_menu.item);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let look = item
-            .plan(&response, (), theme.text)
-            .apply(ui, &mut self.widget);
+        let plan = item.plan(&response, (), theme.text);
+        let look = self.widget.wear(ui, plan);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
 
