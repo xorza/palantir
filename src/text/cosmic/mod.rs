@@ -11,6 +11,7 @@
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
+use crate::text::cosmic::axis_range::AxisRange;
 use crate::text::cosmic::cache_entry::CachedExtent;
 use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
@@ -42,6 +43,7 @@ use swash::scale::{Render, ScaleContext, Scaler, Source, StrikeWith};
 use swash::zeno::{Angle, Format, Transform, Vector};
 use tinyvec::ArrayVec;
 
+mod axis_range;
 pub(super) mod cache_entry;
 pub(super) mod cluster_glyph;
 pub(super) mod counters;
@@ -162,21 +164,24 @@ enum Hinting {
 
 impl ScalerSpec {
     /// The scaler a glyph of `font` is read through, instanced on [`WGHT_AXIS`] for
-    /// variable faces. Uses `normalized_coords`, not `variations`, which leaves stale
-    /// entries in the retained context so a bold glyph bleeds into the next regular one.
+    /// variable faces. Sets `normalized_coords` on every glyph, even with no weight to
+    /// apply: the retained context keeps the last glyph's coordinates otherwise, and
+    /// `variations` keeps stale entries, so a bold glyph bleeds into the next regular one.
     fn scaler<'a>(self, context: &'a mut ScaleContext, font: &'a Font) -> Scaler<'a> {
         let face = font.as_swash();
-        let mut builder = context
+        let weight = face
+            .variations()
+            .find_by_tag(WGHT_AXIS)
+            .and_then(|axis| AxisRange::from(axis).coordinate(f32::from(self.weight.0)));
+        context
             .builder(face)
             .size(self.size)
-            .hint(self.hinting == Hinting::On);
-        if let Some(axis) = face.variations().find_by_tag(WGHT_AXIS) {
-            builder = builder.normalized_coords(face.variations().normalized_coords([(
-                WGHT_AXIS,
-                f32::from(self.weight.0).clamp(axis.min_value(), axis.max_value()),
-            )]));
-        }
-        builder.build()
+            .hint(self.hinting == Hinting::On)
+            .normalized_coords(
+                face.variations()
+                    .normalized_coords(weight.map(|weight| (WGHT_AXIS, weight))),
+            )
+            .build()
     }
 }
 
@@ -871,3 +876,6 @@ pub(crate) mod internals {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
