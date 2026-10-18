@@ -61,15 +61,16 @@ jobs:
           # No `key`: the action already keys on job, OS and architecture, and
           # nothing else tells the matrix entries apart.
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      # fmt --check, every target under every lint set, the build that ships,
-      # rustdoc, the test lanes and the doc tests, as `Cargo.toml`'s
-      # `[workspace.metadata.drive]` states them and its `gate` list chooses.
+      # `--ci` runs past failures: fmt --check, every target under every lint
+      # set, the build that ships, rustdoc, the test lanes and the doc tests,
+      # as `Cargo.toml`'s `[workspace.metadata.drive]` states them and its
+      # `gate` list chooses.
       # Clippy never runs the golden suite, so its absent baselines cost
       # nothing, and `profile-with-tracy` starts no profiler. The test lanes are `alloc` beside the library, and
       # the library without `winit`, a supported configuration in which the
       # crate embeds into a host's own event loop; `doc = include_str!` makes
       # the README a doc test.
-      - run: cargo drive gate
+      - run: cargo drive gate --ci
 
   api-surface:
     name: public API surface
