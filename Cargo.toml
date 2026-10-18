@@ -39,6 +39,7 @@ all-features = false
 [workspace.metadata.drive]
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 test-runner = "cargo-test"
+docs = true
 
 [workspace]
 members = ["api-surface", "palantir-anim-derive"]
