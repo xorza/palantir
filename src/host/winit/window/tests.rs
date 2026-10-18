@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use glam::Vec2;
 
-use crate::host::winit::input::PointerTrace;
+use crate::host::winit::input::translator::PointerTrace;
 use crate::host::winit::window::{FramePresent, PointerAnchor};
 
 const AT: Vec2 = Vec2::new(300.0, 120.0);

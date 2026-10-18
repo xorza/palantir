@@ -69,7 +69,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::WindowId;
 
 use crate::app::App;
-use crate::common::platform::PLATFORM;
 use crate::display;
 use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
@@ -340,21 +339,7 @@ where
         };
         let win = runtime.window(slot);
 
-        if let WindowEvent::ModifiersChanged(modifiers) = &event {
-            win.modifiers = modifiers.state();
-        }
-        let mut wants_repaint = false;
-        let scale = win.translation_scale();
-        let at = input::Translation {
-            scale_factor: scale,
-            modifiers: win.modifiers,
-            platform: PLATFORM,
-        };
-        let trace = input::translate(&event, at, |ev| {
-            wants_repaint |= win.on_input(ev).repaint_requested;
-        });
-        win.note_pointer(trace, scale);
-        if wants_repaint {
+        if win.on_window_event(&event) {
             win.next = FramePresent::Immediate;
         }
 
