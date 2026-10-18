@@ -107,7 +107,7 @@ profile-with-tracy = ["dep:tracy-client"]
 
 
 [profile.dev]
-opt-level = 0
+opt-level = 1
 debug = "line-tables-only"
 
 [profile.dev.package."*"]
