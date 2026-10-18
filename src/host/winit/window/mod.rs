@@ -5,20 +5,20 @@ use std::time::{Duration, Instant};
 
 use glam::{IVec2, UVec2, Vec2};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::keyboard::ModifiersState;
+use winit::event::WindowEvent;
 use winit::window::Window as WinitWindow;
 
 use crate::app::App;
+use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
 use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::window_surface::{Acquired, WindowSurface};
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
-use crate::host::winit::input::PointerTrace;
+use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
-use crate::input::interaction::input_delta::InputDelta;
 use crate::primitives::geometry::rect::Rect;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
@@ -94,7 +94,7 @@ pub(super) struct Window {
     occluded: bool,
     /// Resized to zero: how Windows reports a minimize (no `Occluded`).
     minimized: bool,
-    pub(super) modifiers: ModifiersState,
+    translator: Translator,
     /// Origin of the input clock. Not the frame clock, which `Clock::skip` rewinds over
     /// a hidden span: two presses either side would read as a double-click.
     input_epoch: Instant,
@@ -137,7 +137,7 @@ impl Window {
             occluded_at: None,
             occluded: false,
             minimized: false,
-            modifiers: ModifiersState::empty(),
+            translator: Translator::new(PLATFORM),
             input_epoch: Instant::now(),
             maximized_stale: false,
             suboptimal_handled: None,
@@ -148,24 +148,32 @@ impl Window {
         }
     }
 
-    pub(super) fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
+    /// Translate `event` into the recorder's input. Returns whether it asks for a repaint.
+    pub(super) fn on_window_event(&mut self, event: &WindowEvent) -> bool {
+        let scale = self.translation_scale();
         // Stamped where the event arrived: the frame clock stands still between frames.
         let now = self.input_epoch.elapsed();
-        self.driver.ui.on_input(event, now)
+        let ui = &mut self.driver.ui;
+        let mut repaint_requested = false;
+        let trace = self.translator.translate(event, scale, |input| {
+            repaint_requested |= ui.on_input(input, now).repaint_requested;
+        });
+        self.note_pointer(trace, scale);
+        repaint_requested
     }
 
     /// The scale an event's position is divided by: the one the current cascade was
     /// laid out at, which the event is hit-tested against. The live scale would
     /// misplace a click queued before a user-scale write lands; `resync_pointer`
     /// restates the pointer when it moves.
-    pub(super) fn translation_scale(&self) -> f32 {
+    fn translation_scale(&self) -> f32 {
         self.driver
             .ui
             .laid_out_scale()
             .unwrap_or_else(|| self.effective_scale())
     }
 
-    pub(super) const fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
+    const fn note_pointer(&mut self, trace: PointerTrace, scale: f32) {
         self.pointer = PointerAnchor::after(self.pointer, trace, scale);
     }
 

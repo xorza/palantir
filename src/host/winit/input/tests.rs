@@ -1,49 +1,15 @@
 use glam::Vec2;
-use winit::dpi::PhysicalPosition;
-use winit::event::{DeviceId, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::keyboard::{
     Key as WinitKey, KeyCode, ModifiersState, NamedKey, NativeKeyCode, PhysicalKey,
 };
 
-use crate::common::platform::{PLATFORM, Platform};
+use crate::common::platform::Platform;
 use crate::host::winit::input::{
-    KeyDownFacts, PointerTrace, Translation, key_down, logical_key, normalize_modifiers,
-    physical_key, shift_wheel, translate,
+    KeyDownFacts, key_down, logical_key, normalize_modifiers, physical_key, shift_wheel,
 };
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-
-fn at(scale_factor: f32) -> Translation {
-    Translation {
-        scale_factor,
-        modifiers: ModifiersState::empty(),
-        platform: PLATFORM,
-    }
-}
-
-fn wheel(delta: MouseScrollDelta) -> WindowEvent {
-    WindowEvent::MouseWheel {
-        device_id: DeviceId::dummy(),
-        delta,
-        phase: TouchPhase::Moved,
-    }
-}
-
-fn cursor_moved(x: f64, y: f64) -> WindowEvent {
-    WindowEvent::CursorMoved {
-        device_id: DeviceId::dummy(),
-        position: PhysicalPosition::new(x, y),
-    }
-}
-
-fn pinch(delta: f64) -> WindowEvent {
-    WindowEvent::PinchGesture {
-        device_id: DeviceId::dummy(),
-        delta,
-        phase: TouchPhase::Moved,
-    }
-}
 
 #[test]
 fn logical_keys_map_to_native_vocabulary() {
@@ -134,51 +100,6 @@ fn modifier_normalization_translates_each_bit() {
     }
 }
 
-#[test]
-fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
-    let lines = wheel(MouseScrollDelta::LineDelta(2.0, 1.0));
-    let pixels = wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
-        60.0, -120.0,
-    )));
-    let mut got = Vec::new();
-    translate(&lines, at(1.0), |event| got.push(event));
-    assert!(matches!(
-        got.as_slice(),
-        [InputEvent::ScrollLines(delta)] if *delta == Vec2::new(-2.0, -1.0)
-    ));
-    got.clear();
-
-    translate(&pixels, at(2.0), |event| got.push(event));
-    assert!(matches!(
-        got.as_slice(),
-        [InputEvent::ScrollPixels(delta)] if *delta == Vec2::new(-30.0, 60.0)
-    ));
-}
-
-/// A pinch delta is a displacement, so the factor is `1 + delta`; this layer only converts and ingress rejects
-/// factors no zoom can use (`InputEvent::is_valid`).
-#[test]
-fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
-    let half = pinch(0.5);
-    let mut emitted = Vec::new();
-    translate(&half, at(1.0), |event| emitted.push(event));
-    assert!(matches!(emitted.as_slice(), [InputEvent::Zoom(1.5)]));
-    assert!(emitted[0].is_valid());
-
-    for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        let event = pinch(delta);
-        let mut emitted = Vec::new();
-        translate(&event, at(1.0), |event| emitted.push(event));
-        let [event] = emitted.as_slice() else {
-            panic!("translation emits exactly one event, got {emitted:?}");
-        };
-        assert!(
-            !event.is_valid(),
-            "pinch delta {delta:?} produced a usable factor",
-        );
-    }
-}
-
 /// The logical and physical key tables denote the same [`Key`]; `Shortcut::matches`' non-Latin fallback uses `physical`
 /// alone, so a one-sided arm would silently stop matching under a non-Latin layout.
 #[test]
@@ -224,51 +145,6 @@ fn shared_keys_denote_the_same_key_on_both_sides() {
             "{named:?} must resolve on both sides, not fall through",
         );
     }
-}
-
-/// The recorder gets a logical position and the host the physical one it came from (what `Window::resync_pointer`
-/// re-divides on scale changes).
-#[test]
-fn a_move_emits_logical_and_traces_physical() {
-    let moved = cursor_moved(300.0, 120.0);
-    let mut emitted = Vec::new();
-    let trace = translate(&moved, at(2.5), |event| {
-        emitted.push(event);
-    });
-
-    assert!(matches!(
-        emitted.as_slice(),
-        [InputEvent::PointerMoved(at)] if *at == Vec2::new(120.0, 48.0)
-    ));
-    assert_eq!(trace, PointerTrace::At(Vec2::new(300.0, 120.0)));
-}
-
-/// A departure is traced as one, so the host drops a position it must not restate.
-#[test]
-fn a_departure_traces_gone_and_other_events_trace_nothing() {
-    let left = WindowEvent::CursorLeft {
-        device_id: DeviceId::dummy(),
-    };
-    let mut emitted = Vec::new();
-    assert_eq!(
-        translate(&left, at(1.0), |event| emitted.push(event)),
-        PointerTrace::Gone,
-    );
-    assert!(matches!(emitted.as_slice(), [InputEvent::PointerLeft]));
-
-    assert_eq!(
-        translate(&pinch(0.5), at(1.0), |_| {}),
-        PointerTrace::Unchanged,
-        "a gesture says nothing about where the pointer is",
-    );
-    assert_eq!(
-        translate(
-            &wheel(MouseScrollDelta::LineDelta(1.0, 1.0)),
-            at(1.0),
-            |_| {}
-        ),
-        PointerTrace::Unchanged,
-    );
 }
 
 /// A synthetic press (winit's replay of a key held at window focus) is not input; a real press with the same key is.
@@ -333,36 +209,5 @@ fn shift_wheel_turns_vertical_into_horizontal_off_macos() {
             expected,
             "{delta} {modifiers:?} on {platform:?}",
         );
-    }
-}
-
-/// Each IME event as the crate's: preedit with ordered cursor, commit, disable as the empty preedit, enable as nothing.
-#[test]
-fn ime_events_translate_and_a_disable_ends_the_composition() {
-    use winit::event::Ime;
-
-    let rows = [
-        (
-            Ime::Preedit("かな".into(), Some((6, 3))),
-            Some(
-                "ImePreedit(ImePreedit { text: \"かな\", cursor: Some(Span { start: 3, len: 3 }) })",
-            ),
-        ),
-        (
-            Ime::Preedit("か".into(), None),
-            Some("ImePreedit(ImePreedit { text: \"か\", cursor: None })"),
-        ),
-        (Ime::Commit("仮名".into()), Some("ImeCommit(\"仮名\")")),
-        (
-            Ime::Disabled,
-            Some("ImePreedit(ImePreedit { text: \"\", cursor: None })"),
-        ),
-        (Ime::Enabled, None),
-    ];
-    for (ime, want) in rows {
-        let event = WindowEvent::Ime(ime);
-        let mut emitted = Vec::new();
-        translate(&event, at(1.0), |event| emitted.push(format!("{event:?}")));
-        assert_eq!(emitted, want.into_iter().collect::<Vec<_>>(), "{event:?}");
     }
 }

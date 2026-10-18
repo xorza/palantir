@@ -1,140 +1,18 @@
 //! Translation from winit events into Palantir's native input vocabulary.
 
 use glam::Vec2;
-use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::Ime;
 use winit::keyboard::{Key as WinitKey, KeyCode, ModifiersState, NamedKey, PhysicalKey};
 
 use crate::common::platform::Platform;
 use crate::common::span::Span;
-use crate::display;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::input::pointer::PointerButton;
 
-/// The pointer's **physical** position, retained across events because a
-/// scale change invalidates the logical one and re-deriving needs it before
-/// the division.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum PointerTrace {
-    Unchanged,
-    At(Vec2),
-    Gone,
-}
-
-/// Host state that changes how an event reads.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Translation {
-    /// Physical pixels per logical pixel in the current frame's layout space.
-    pub(super) scale_factor: f32,
-    /// The modifiers winit last reported; key events carry none, and text and
-    /// wheel translation read them.
-    pub(super) modifiers: ModifiersState,
-    /// The platform whose conventions apply: `PLATFORM` in a build, any in a test.
-    pub(super) platform: Platform,
-}
-
-/// Returns the pointer's physical position the event reported, for
-/// `Window::resync_pointer`.
-pub(super) fn translate<'e>(
-    event: &'e WindowEvent,
-    at: Translation,
-    mut emit: impl FnMut(InputEvent<'e>),
-) -> PointerTrace {
-    let Translation {
-        scale_factor,
-        modifiers,
-        platform,
-    } = at;
-    debug_assert!(
-        display::scale_factor_is_valid(scale_factor),
-        "the host screens the platform's half through \
-         display::sanitize_system_scale and the app's half carries its range \
-         in UserScale; got {scale_factor}",
-    );
-    match event {
-        WindowEvent::CursorMoved { position, .. } => {
-            let physical = Vec2::new(position.x as f32, position.y as f32);
-            emit(InputEvent::PointerMoved(physical / scale_factor));
-            return PointerTrace::At(physical);
-        }
-        WindowEvent::CursorLeft { .. } => {
-            emit(InputEvent::PointerLeft);
-            return PointerTrace::Gone;
-        }
-        WindowEvent::MouseInput { state, button, .. } => {
-            // Three buttons on purpose: [`PointerButton`] indexes per-widget
-            // `ButtonState` and an `InputState` capture slot, so a fourth costs every app.
-            // Named, not wildcarded, so adding one is a decision.
-            let button = match button {
-                MouseButton::Left => PointerButton::Left,
-                MouseButton::Right => PointerButton::Right,
-                MouseButton::Middle => PointerButton::Middle,
-                MouseButton::Back | MouseButton::Forward | MouseButton::Other(_) => {
-                    return PointerTrace::Unchanged;
-                }
-            };
-            emit(match state {
-                ElementState::Pressed => InputEvent::PointerPressed(button),
-                ElementState::Released => InputEvent::PointerReleased(button),
-            });
-        }
-        // A pinch delta is a displacement, so the factor is `1 + delta`. Emitted
-        // unscreened; `InputEvent::is_valid` decides what a factor must satisfy.
-        WindowEvent::PinchGesture { delta, .. } => {
-            emit(InputEvent::Zoom(1.0 + *delta as f32));
-        }
-        WindowEvent::MouseWheel { delta, .. } => {
-            let (event, delta) = match *delta {
-                MouseScrollDelta::LineDelta(x, y) => (WheelUnit::Lines, Vec2::new(-x, -y)),
-                MouseScrollDelta::PixelDelta(position) => (
-                    WheelUnit::Pixels,
-                    Vec2::new(-position.x as f32, -position.y as f32) / scale_factor,
-                ),
-            };
-            let delta = shift_wheel(delta, modifiers, platform);
-            emit(match event {
-                WheelUnit::Lines => InputEvent::ScrollLines(delta),
-                WheelUnit::Pixels => InputEvent::ScrollPixels(delta),
-            });
-        }
-        WindowEvent::KeyboardInput {
-            event,
-            is_synthetic,
-            ..
-        } if event.state == ElementState::Pressed => {
-            if let Some(press) = key_down(
-                KeyDownFacts {
-                    logical: &event.logical_key,
-                    physical: &event.physical_key,
-                    text: event.text.as_deref(),
-                    repeat: event.repeat,
-                    is_synthetic: *is_synthetic,
-                },
-                modifiers,
-            ) {
-                emit(press);
-            }
-        }
-        WindowEvent::ModifiersChanged(modifiers) => {
-            emit(InputEvent::ModifiersChanged(normalize_modifiers(
-                modifiers.state(),
-                platform,
-            )));
-        }
-        // Only the loss is forwarded; regaining focus is learned from the next event.
-        WindowEvent::Focused(false) => emit(InputEvent::SurfaceFocusLost),
-        WindowEvent::Ime(ime) => {
-            if let Some(event) = ime_event(ime) {
-                emit(event);
-            }
-        }
-        _ => {}
-    }
-    PointerTrace::Unchanged
-}
+pub(super) mod translator;
 
 /// Keys winit spells the same in `NamedKey` (logical) and `KeyCode`
 /// (physical), and the [`Key`] each denotes. A macro because the enums share
@@ -239,13 +117,6 @@ fn physical_key(physical: PhysicalKey) -> Key {
     latin_position(code)
         .or(shared_key!(KeyCode, code))
         .unwrap_or(Key::Other)
-}
-
-/// The two units a wheel reports in.
-#[derive(Clone, Copy, Debug)]
-enum WheelUnit {
-    Lines,
-    Pixels,
 }
 
 /// A vertical wheel with Shift held scrolls horizontally on Windows and
