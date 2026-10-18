@@ -44,7 +44,6 @@ test-runner = "cargo-test"
 members = ["api-surface", "palantir-anim-derive"]
 
 [workspace.dependencies]
-# Exactly the rustdoc JSON format `api-surface` reads; a nightly that writes another fails loudly.
 rustdoc-types = "=0.61.0"
 serde_json = "1.0"
 
@@ -84,11 +83,9 @@ serde = { version = "1.0", features = ["derive"] }
 tinyvec = { version = "1.13", features = ["serde"] }
 unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
-
 criterion = { version = "0.8", optional = true }
 tracy-client = { version = "0.19", optional = true }
 
-# No default features, so a `--no-default-features` build stays winit-free.
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = "0.3"
@@ -107,9 +104,9 @@ winit = ["dep:winit", "system-clipboard"]
 profile-with-tracy = ["dep:tracy-client"]
 
 
-# The same profiles in every workspace root here: Cargo reads them from the root alone.
+
 [profile.dev]
-opt-level = 1
+opt-level = 0
 debug = "line-tables-only"
 
 [profile.dev.package."*"]
@@ -120,7 +117,6 @@ debug = false
 [profile.dev.package.objc2]
 debug-assertions = false
 
-# Full debug info, which `darkroom/packaging` splits out of the shipped binary.
 [profile.release]
 lto = "fat"
 codegen-units = 1
@@ -166,8 +162,6 @@ name = "palantir"
 harness = false
 required-features = ["internals"]
 
-
-# Warn, not deny: the verification chain runs clippy with `-D warnings`.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 meta_variable_misuse = "warn"
