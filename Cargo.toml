@@ -37,6 +37,7 @@ all-features = false
 # `cargo test` ran the first in 2.1 s where nextest took 4.9 s, as a GPU test under nextest opens
 # a device in a process of its own.
 [workspace.metadata.drive]
+version = "0.2"
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 test-runner = "cargo-test"
 docs = true

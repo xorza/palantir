@@ -38,9 +38,6 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2025]
     steps:
       - uses: actions/checkout@v5
-        with:
-          # The driver, `drive/`.
-          submodules: true
       # Hosted Linux runners have no GPU, and vulkan is the only backend this
       # crate builds there. macOS needs nothing: its runner exposes Metal, and
       # Windows nothing either: WARP, Microsoft's software Dx12 adapter, ships
@@ -61,6 +58,9 @@ jobs:
           # No `key`: the action already keys on job, OS and architecture, and
           # nothing else tells the matrix entries apart.
           save-if: ${{ github.ref == 'refs/heads/master' }}
+      # The driver's master, which the cache's `~/.cargo/bin` keeps until it moves. A master the
+      # drive table's `version` does not take fails the gate, and names the version it is.
+      - run: cargo install --locked --git https://github.com/xorza/drive
       # `--ci` runs past failures: fmt --check, every target under every lint
       # set, the build that ships, rustdoc, the test lanes and the doc tests,
       # as `Cargo.toml`'s `[workspace.metadata.drive]` states them, with
