@@ -315,8 +315,13 @@ workspace of each path dependency outside it, in its own folder. A step does
 not run again when no input changed since it passed; under nextest, the tests
 run only for the crates a change reaches and every crate that depends on them.
 Each step prints one line; a failure prints each diagnostic once and names its
-log, `target/drive/log/<step>.log`. Read the log rather than run cargo by
-hand: another shape of a cargo command builds another copy of the crates.
+log, `target/drive/log/<step>.log`, which holds no passing test. A run ends on
+one verdict line: `ok`, or `FAIL` with the failed steps and the first error,
+and `target/drive/last-<command>.txt`, which holds all the run printed; above
+it, each failed step shows its first lines again. So `| tail -1` is enough: on
+a failure, read the file it names rather than run the command again. Never
+run cargo by hand: another shape of a cargo command builds another copy of
+the crates.
 `check` and `gate` format the code and end at the first failed step; `gate
 --ci` formats nothing and runs every step.
 
