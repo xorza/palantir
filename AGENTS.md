@@ -297,8 +297,11 @@ panic says so under `# Panics`. The table is in the `domain` module doc.
 
 ## Verification
 
-`cargo drive` runs every check: the driver is the `drive` submodule at the
-root, the same repository in every project. Run it from the root.
+`cargo drive` runs every check: the driver is `cargo-drive`, the same in every
+project, installed with `cargo install --locked --git
+https://github.com/xorza/drive`. The drive table's `version` names the driver
+the project needs, and an older or newer one refuses to run. Run it from the
+root.
 
 ```
 cargo drive check          # after each change: fmt, then clippy --all-targets --all-features
