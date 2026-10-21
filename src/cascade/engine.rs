@@ -6,7 +6,7 @@ use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
 use crate::cascade::layer_cascade::LayerCascade;
-use crate::cascade::paint::PaintArena;
+use crate::cascade::paint::Paint;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
@@ -224,7 +224,8 @@ struct Frame {
 #[derive(Debug, Default)]
 pub(crate) struct CascadeEngine {
     stack: Vec<Frame>,
-    paint_scratch: PaintArena,
+    /// One node's rows on the incremental path, cleared per node: each node's rows are copied over its retained span at once, so the buffer never holds more than one node.
+    paint_rows: Vec<Paint>,
     pub(crate) counters: CascadeCounters,
 }
 
@@ -248,7 +249,6 @@ impl CascadeEngine {
             let n = tree.records.len();
             let base = cascade.layers[layer].entries_base as usize;
             self.stack.clear();
-            self.paint_scratch.reset_for(n);
             let incremental_complete = self.run_tree(
                 TreeSource {
                     tree,
@@ -448,16 +448,17 @@ impl CascadeEngine {
                 let paint_rect = if S::INCREMENTAL {
                     self.counters.refreshed_node();
                     let old_span = lc.paint_arena.node_spans[iu];
-                    let paint_rect = ctx.compute_paint_rect(&mut self.paint_scratch);
-                    let new_span = self.paint_scratch.node_spans[iu];
-                    if old_span.len != new_span.len {
+                    self.paint_rows.clear();
+                    let paint = ctx.compute_paint_rect(&mut self.paint_rows);
+                    if old_span.len != paint.span.len {
                         return false;
                     }
-                    lc.paint_arena.rows[old_span.range()]
-                        .copy_from_slice(&self.paint_scratch.rows[new_span.range()]);
-                    paint_rect
+                    lc.paint_arena.rows[old_span.range()].copy_from_slice(&self.paint_rows);
+                    paint.rect
                 } else {
-                    ctx.compute_paint_rect(&mut lc.paint_arena)
+                    let paint = ctx.compute_paint_rect(&mut lc.paint_arena.rows);
+                    lc.paint_arena.node_spans[iu] = paint.span;
+                    paint.rect
                 };
                 let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
                 if S::INCREMENTAL {
@@ -517,11 +518,19 @@ pub(crate) mod internals {
     use crate::cascade::cascade_key::CascadeKey;
     use crate::cascade::cascade_source::CascadeSource;
     use crate::cascade::engine::CascadeEngine;
+    #[cfg(test)]
+    use crate::cascade::paint::Paint;
 
     impl CascadeEngine {
         /// Rebuilds every row from `source`, whatever the cascade holds.
         pub(crate) fn run_full(&mut self, source: CascadeSource<'_>, cascade: &mut Cascade) {
             self.rebuild(source, CascadeKey::new(source), cascade);
+        }
+
+        /// The last node's rows the incremental walk recomputed.
+        #[cfg(test)]
+        pub(crate) fn paint_rows(&self) -> &[Paint] {
+            &self.paint_rows
         }
     }
 }
