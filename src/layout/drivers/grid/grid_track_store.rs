@@ -199,3 +199,26 @@ impl GridTrackStore {
         );
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
+
+    impl GridTrackStore {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                max_pool,
+                min_pool,
+                sizes_pool,
+                totals_pool,
+                slots,
+            } = self;
+            scratch_report::vec_bytes(max_pool)
+                + scratch_report::vec_bytes(min_pool)
+                + scratch_report::vec_bytes(sizes_pool)
+                + scratch_report::vec_bytes(totals_pool)
+                + scratch_report::vec_bytes(slots)
+        }
+    }
+}

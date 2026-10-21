@@ -342,12 +342,37 @@ impl Forest {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::internals::scratch_report;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::scene::forest::Forest;
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
+    use crate::scene::tree::recording_scratch::RecordingScratch;
 
     impl Forest {
+        /// Record's ancestor stacks and layer stack; the trees, payloads, ids and collisions are what record hands the later phases.
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                trees: _,
+                record_store: _,
+                scratch,
+                ids: _,
+                collisions: _,
+                layer_stack,
+            } = self;
+            let open_frames: usize = scratch
+                .iter()
+                .map(
+                    |RecordingScratch {
+                         open_frames,
+                         pending_placement: _,
+                         owner_disabled: _,
+                     }| scratch_report::vec_bytes(open_frames),
+                )
+                .sum();
+            open_frames + scratch_report::vec_bytes(layer_stack)
+        }
+
         /// The node carrying `id` on `layer`; linear scan.
         pub(crate) fn node_for_widget_id(&self, layer: Layer, id: WidgetId) -> NodeId {
             let idx = self.trees[layer]

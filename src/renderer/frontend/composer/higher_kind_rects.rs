@@ -98,6 +98,31 @@ impl HigherKindRects {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::renderer::frontend::composer::higher_kind_rects::{HigherKindRects, TierRects};
+
+    impl HigherKindRects {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { tiers, union: _ } = self;
+            tiers.iter().map(TierRects::scratch_bytes).sum()
+        }
+    }
+
+    impl TierRects {
+        fn scratch_bytes(&self) -> usize {
+            let Self {
+                rects,
+                union: _,
+                grid,
+                indexed: _,
+            } = self;
+            scratch_report::vec_bytes(rects) + grid.scratch_bytes()
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use crate::primitives::geometry::urect::URect;
     use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;

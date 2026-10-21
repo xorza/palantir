@@ -218,3 +218,28 @@ impl AxisScratch {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::layout::drivers::grid::axis_scratch::AxisScratch;
+
+    impl AxisScratch {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                sizes,
+                resolved,
+                offsets,
+                stable_from: _,
+                flexible,
+                hugs,
+            } = self;
+            // `FixedBitSet` exposes no capacity; its live blocks stand in.
+            scratch_report::vec_bytes(sizes)
+                + size_of_val(resolved.as_slice())
+                + scratch_report::vec_bytes(offsets)
+                + scratch_report::vec_bytes(flexible)
+                + scratch_report::vec_bytes(hugs)
+        }
+    }
+}

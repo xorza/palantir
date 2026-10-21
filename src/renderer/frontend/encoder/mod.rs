@@ -85,6 +85,13 @@ pub(crate) mod internals {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
 
+    impl Encoder {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { gradients } = self;
+            gradients.scratch_bytes()
+        }
+    }
+
     pub(crate) fn encode(
         scene: FrameScene<'_>,
         gradient_atlas: &SharedGradientAtlas,

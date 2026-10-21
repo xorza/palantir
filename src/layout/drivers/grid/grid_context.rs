@@ -10,3 +10,22 @@ pub(crate) struct GridContext {
     pub(crate) track_state: GridTrackStore,
     pub(crate) track_aggregator: Vec<f32>,
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::layout::drivers::grid::grid_context::GridContext;
+
+    impl GridContext {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                depth_stack,
+                track_state,
+                track_aggregator,
+            } = self;
+            depth_stack.scratch_bytes()
+                + track_state.scratch_bytes()
+                + scratch_report::vec_bytes(track_aggregator)
+        }
+    }
+}

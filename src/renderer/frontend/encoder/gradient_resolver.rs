@@ -68,8 +68,16 @@ impl GradientPass<'_> {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
+    use crate::internals::scratch_report;
+    use crate::renderer::frontend::encoder::gradient_resolver::{GradientPass, GradientResolver};
     use crate::shape::record_store::recorded_gradients::GradientId;
+
+    impl GradientResolver {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { atlas: _, resolved } = self;
+            scratch_report::vec_bytes(resolved)
+        }
+    }
 
     impl GradientPass<'_> {
         /// Whether this pass has resolved `id` yet.

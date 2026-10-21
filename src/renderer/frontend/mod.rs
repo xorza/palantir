@@ -77,5 +77,16 @@ pub(crate) mod internals {
         pub(crate) fn for_test() -> Self {
             Self::new(TEST_MAX_TEXTURE_DIM, SharedGradientAtlas::default())
         }
+
+        /// Leaves out `buffer`, the composed frame the backend reads.
+        #[cfg(test)]
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                encoder,
+                composer,
+                buffer: _,
+            } = self;
+            encoder.scratch_bytes() + composer.scratch_bytes()
+        }
     }
 }

@@ -61,4 +61,17 @@ impl InvertedOverlaps {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use crate::damage::inverted_overlaps::InvertedOverlaps;
+    use crate::internals::scratch_report;
+
+    impl InvertedOverlaps {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { unions } = self;
+            scratch_report::vec_bytes(unions)
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;

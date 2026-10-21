@@ -520,6 +520,8 @@ pub(crate) mod internals {
     use crate::cascade::engine::CascadeEngine;
     #[cfg(test)]
     use crate::cascade::paint::Paint;
+    #[cfg(test)]
+    use crate::internals::scratch_report;
 
     impl CascadeEngine {
         /// Rebuilds every row from `source`, whatever the cascade holds.
@@ -531,6 +533,16 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn paint_rows(&self) -> &[Paint] {
             &self.paint_rows
+        }
+
+        #[cfg(test)]
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                stack,
+                paint_rows,
+                counters: _,
+            } = self;
+            scratch_report::vec_bytes(stack) + scratch_report::vec_bytes(paint_rows)
         }
     }
 }

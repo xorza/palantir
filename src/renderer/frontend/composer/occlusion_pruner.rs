@@ -237,12 +237,32 @@ impl OcclusionPruner {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::internals::scratch_report;
     use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
 
     impl OcclusionPruner {
         /// `contains_rect` tests the prune ran this frame.
         pub(crate) fn contains_tests(&self) -> u32 {
             self.contains_tests.count()
+        }
+
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                opaque_in_group,
+                drop_indices,
+                last_tile: _,
+                tile_heads,
+                touched_tiles,
+                cover_links,
+                large_covers,
+                contains_tests: _,
+            } = self;
+            scratch_report::vec_bytes(opaque_in_group)
+                + scratch_report::vec_bytes(drop_indices)
+                + scratch_report::vec_bytes(tile_heads)
+                + scratch_report::vec_bytes(touched_tiles)
+                + scratch_report::vec_bytes(cover_links)
+                + scratch_report::vec_bytes(large_covers)
         }
     }
 }

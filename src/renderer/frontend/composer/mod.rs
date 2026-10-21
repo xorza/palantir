@@ -185,13 +185,53 @@ pub(crate) mod internals {
     //! Replay driver for the composer tests and the compose bench.
 
     use crate::internals::paint_capture::PaintCapture;
+    #[cfg(test)]
+    use crate::internals::scratch_report;
     use crate::renderer::frontend::composer::session::ComposeSession;
+    #[cfg(test)]
+    use crate::renderer::frontend::composer::{BatchState, Composer, PolylineScratch};
 
     impl ComposeSession<'_> {
         /// Replay a recorded paint stream into this session, closing it, so
         /// tests and benches can drive the composer from a stream captured once.
         pub(crate) fn replay_from(mut self, recorded: &PaintCapture) {
             recorded.replay(&mut self);
+        }
+    }
+
+    #[cfg(test)]
+    impl Composer {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                clip,
+                transform,
+                polyline:
+                    PolylineScratch {
+                        points,
+                        kept,
+                        directions,
+                    },
+                batch:
+                    BatchState {
+                        open: _,
+                        open_grid,
+                        closed_grid,
+                        pending_batch_cursor: _,
+                    },
+                higher_kinds,
+                cursors: _,
+                occlusion,
+                max_texture_dim: _,
+            } = self;
+            clip.scratch_bytes()
+                + transform.scratch_bytes()
+                + scratch_report::vec_bytes(points)
+                + scratch_report::vec_bytes(kept)
+                + scratch_report::vec_bytes(directions)
+                + open_grid.scratch_bytes()
+                + closed_grid.scratch_bytes()
+                + higher_kinds.scratch_bytes()
+                + occlusion.scratch_bytes()
         }
     }
 }

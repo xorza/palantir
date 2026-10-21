@@ -50,12 +50,18 @@ impl<T: Copy> DepthScratch<T> {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::internals::scratch_report;
     use crate::layout::depth_scratch::DepthScratch;
 
     impl<T> DepthScratch<T> {
         /// Whether the pool drained, which a driver's exit contract guarantees.
         pub(crate) fn is_empty(&self) -> bool {
             self.pool.is_empty()
+        }
+
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { pool } = self;
+            scratch_report::vec_bytes(pool)
         }
     }
 }

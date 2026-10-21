@@ -30,3 +30,21 @@ impl GridDepthStack {
         &mut self.scratch[self.depth - 1]
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::layout::drivers::grid::grid_depth_stack::GridDepthStack;
+    use crate::layout::drivers::grid::grid_scratch::GridScratch;
+
+    impl GridDepthStack {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { scratch, depth: _ } = self;
+            scratch_report::vec_bytes(scratch)
+                + scratch
+                    .iter()
+                    .map(GridScratch::scratch_bytes)
+                    .sum::<usize>()
+        }
+    }
+}
