@@ -482,6 +482,12 @@ fn refresh_recomputes_only_what_moved() {
             refreshed,
             "{label}: recomputed nodes",
         );
+        // The last node recomputed is a block (`a2`, then `a0`), whose one row is its chrome.
+        assert_eq!(
+            h.engines.cascade.paint_rows().len(),
+            1,
+            "{label}: scratch holds one node's rows",
+        );
         assert_cascades_match_full(&h.ui, label);
     }
 }

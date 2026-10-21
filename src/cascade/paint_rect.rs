@@ -1,6 +1,6 @@
 //! How much of the screen one node's paint can reach, and the damage that comes to.
 
-use crate::cascade::paint::{Paint, PaintArena};
+use crate::cascade::paint::Paint;
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::layout::layer_layout::LayerLayout;
@@ -67,7 +67,7 @@ fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
 /// One node's rows as they are pushed, and the screen union of those that produce pixels.
 #[derive(Debug)]
 struct PaintSpan<'a> {
-    arena: &'a mut PaintArena,
+    rows: &'a mut Vec<Paint>,
     /// Seeded at `Rect::ZERO`, `Rect::union`'s identity: a node painting nothing folds to zero and a fully-clipped shape cannot drag the extent to the clip edge.
     union: Rect,
 }
@@ -77,13 +77,13 @@ impl PaintSpan<'_> {
     #[inline]
     fn push(&mut self, screen: Rect, hash: ContentHash) {
         self.union = self.union.union(screen);
-        self.arena.rows.push(Paint { screen, hash });
+        self.rows.push(Paint { screen, hash });
     }
 
     /// Push a row that produces no pixels of its own (an invisible chrome, a child marker) without touching the union.
     #[inline]
     fn push_unpainted(&mut self, hash: ContentHash) {
-        self.arena.rows.push(Paint {
+        self.rows.push(Paint {
             screen: Rect::ZERO,
             hash,
         });
@@ -110,8 +110,17 @@ pub(super) struct PaintRectCtx<'a> {
     pub(super) invisible: bool,
 }
 
+/// What [`PaintRectCtx::compute_paint_rect`] appended for one node.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NodePaint {
+    /// The node's rows within the `rows` the call appended to.
+    pub(super) span: Span,
+    /// The screen union of the pixel-producing rows, the `subtree_paint_rects` seed for the encoder's cull.
+    pub(super) rect: Rect,
+}
+
 impl PaintRectCtx<'_> {
-    /// Emit every paint row for `node`: chrome at row 0 when present, then direct shapes and child markers in record order. Write the covering [`Span`] into `node_spans[node]` and return the screen union of the pixel-producing rows, the `subtree_paint_rects` seed for the encoder's cull.
+    /// Append every paint row for `node` to `rows`: chrome at row 0 when present, then direct shapes and child markers in record order.
     ///
     /// Chrome rides `parent_transform`; shapes ride `shape_transform`. Child markers are pushed raw (zero screen, child `WidgetId` as hash) so damage sees paint-order interleave.
     ///
@@ -119,8 +128,8 @@ impl PaintRectCtx<'_> {
     ///
     /// # Invariant
     ///
-    /// The returned `Rect` is the union of the non-paint-empty rows in `arena.rows[paints_start..]` plus the clip-only fold, so it equals `PaintRows::union_screens` except for a chromeless clip-only container, where it adds that container's visible rect: the encoder culls on it, while damage must not invent pixels. [`PaintSpan::push`] keeps union and rows in lockstep; child markers bypass it, and the clip-only branch is the one fold-without-push.
-    pub(super) fn compute_paint_rect(self, arena: &mut PaintArena) -> Rect {
+    /// [`NodePaint::rect`] is the union of the non-paint-empty rows in `rows[span.range()]` plus the clip-only fold, so it equals `PaintRows::union_screens` except for a chromeless clip-only container, where it adds that container's visible rect: the encoder culls on it, while damage must not invent pixels. [`PaintSpan::push`] keeps union and rows in lockstep; child markers bypass it, and the clip-only branch is the one fold-without-push.
+    pub(super) fn compute_paint_rect(self, rows: &mut Vec<Paint>) -> NodePaint {
         let Self {
             tree,
             layout,
@@ -135,14 +144,16 @@ impl PaintRectCtx<'_> {
             has_children,
             invisible,
         } = self;
-        let paints_start = arena.rows.len() as u32;
+        let paints_start = rows.len() as u32;
         if invisible {
-            arena.node_spans[node.idx()] = Span::new(paints_start, 0);
-            return Rect::ZERO;
+            return NodePaint {
+                span: Span::new(paints_start, 0),
+                rect: Rect::ZERO,
+            };
         }
         let layout_rect = layout.rect[node.idx()];
         let mut span = PaintSpan {
-            arena,
+            rows,
             union: Rect::ZERO,
         };
         let chrome = Lift {
@@ -300,9 +311,10 @@ impl PaintRectCtx<'_> {
             );
         }
 
-        let union = span.union;
-        let paints_len = arena.rows.len() as u32 - paints_start;
-        arena.node_spans[node.idx()] = Span::new(paints_start, paints_len);
-        union
+        let rect = span.union;
+        NodePaint {
+            span: Span::new(paints_start, rows.len() as u32 - paints_start),
+            rect,
+        }
     }
 }
