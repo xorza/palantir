@@ -24,7 +24,6 @@ exclude = [
     "assets/logo/",
     "benches/bench-perf.sh",
     "docs/",
-    "drive/",
 ]
 
 
