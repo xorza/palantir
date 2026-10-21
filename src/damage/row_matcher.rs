@@ -218,3 +218,24 @@ impl PaintKey {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::damage::row_matcher::RowMatcher;
+    use crate::internals::scratch_report;
+
+    impl RowMatcher {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                prev_matched,
+                matched_pos,
+                prev_keyed,
+                curr_keyed,
+            } = self;
+            scratch_report::vec_bytes(prev_matched)
+                + scratch_report::vec_bytes(matched_pos)
+                + scratch_report::vec_bytes(prev_keyed)
+                + scratch_report::vec_bytes(curr_keyed)
+        }
+    }
+}

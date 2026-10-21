@@ -8,3 +8,15 @@ pub(super) struct GridScratch {
     pub(super) col: AxisScratch,
     pub(super) row: AxisScratch,
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::layout::drivers::grid::grid_scratch::GridScratch;
+
+    impl GridScratch {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { col, row } = self;
+            col.scratch_bytes() + row.scratch_bytes()
+        }
+    }
+}

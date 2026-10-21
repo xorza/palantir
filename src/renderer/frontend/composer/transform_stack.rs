@@ -46,3 +46,16 @@ impl TransformStack {
             .expect("PopTransform without matching PushTransform");
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::renderer::frontend::composer::transform_stack::TransformStack;
+
+    impl TransformStack {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { saved, current: _ } = self;
+            scratch_report::vec_bytes(saved)
+        }
+    }
+}

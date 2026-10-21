@@ -73,3 +73,26 @@ fn roots(tree: &Tree) -> impl Iterator<Item = WidgetId> + '_ {
         .iter()
         .map(move |slot| ids[slot.first_node.idx()])
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::damage::root_order::RootOrder;
+    use crate::internals::scratch_report;
+
+    impl RootOrder {
+        /// Leaves out `prev`, the order the next frame diffs against.
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                prev: _,
+                positions,
+                matched,
+                extents,
+                inversions,
+            } = self;
+            scratch_report::vec_bytes(positions)
+                + scratch_report::vec_bytes(matched)
+                + scratch_report::vec_bytes(extents)
+                + inversions.scratch_bytes()
+        }
+    }
+}

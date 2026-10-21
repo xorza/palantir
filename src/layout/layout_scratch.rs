@@ -171,3 +171,40 @@ impl LayoutScratch {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::layout::layout_scratch::LayoutScratch;
+
+    impl LayoutScratch {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                counters: _,
+                grid,
+                wrap,
+                stack,
+                desired,
+                floor,
+                stable_from,
+                local,
+                replay_origins,
+                arrange_src,
+                intrinsics,
+                available_q,
+                cache_rebuild: _,
+            } = self;
+            grid.scratch_bytes()
+                + wrap.scratch_bytes()
+                + stack.scratch_bytes()
+                + scratch_report::vec_bytes(desired)
+                + scratch_report::vec_bytes(floor)
+                + scratch_report::vec_bytes(stable_from)
+                + scratch_report::vec_bytes(local)
+                + scratch_report::vec_bytes(replay_origins)
+                + scratch_report::vec_bytes(arrange_src)
+                + scratch_report::vec_bytes(intrinsics)
+                + scratch_report::vec_bytes(available_q)
+        }
+    }
+}

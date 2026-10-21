@@ -217,10 +217,31 @@ pub(crate) mod internals {
     use crate::cascade::paint::Paint;
     use crate::cascade::paint::PaintRows as _;
     use crate::damage::engine::DamageEngine;
+    use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::identity::widget_id::WidgetId;
 
     impl DamageEngine {
+        /// The buffers no frame reads from an earlier one; `prev` and `paints` are the baseline, and `root_order` holds both kinds.
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                prev: _,
+                paints: _,
+                presented: _,
+                matcher,
+                raw_rects,
+                order_extents,
+                inversions,
+                root_order,
+                counters: _,
+            } = self;
+            matcher.scratch_bytes()
+                + scratch_report::vec_bytes(raw_rects)
+                + scratch_report::vec_bytes(order_extents)
+                + inversions.scratch_bytes()
+                + root_order.scratch_bytes()
+        }
+
         /// Union of the paint screens retained for `wid` last frame; `None` if it didn't paint, [`Rect::ZERO`] if its rows painted nothing.
         pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
             let snap = self.prev.get(&wid)?;

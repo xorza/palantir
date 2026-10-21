@@ -162,11 +162,33 @@ impl RectGrid {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::internals::scratch_report;
     use crate::renderer::frontend::composer::rect_grid::RectGrid;
 
     impl RectGrid {
         pub(crate) fn intersect_tests(&self) -> u32 {
             self.intersect_tests.count()
+        }
+
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self {
+                cols: _,
+                rows: _,
+                lens,
+                slots,
+                overflow_heads,
+                overflow,
+                touched,
+                rects,
+                intersect_tests: _,
+                union: _,
+            } = self;
+            scratch_report::vec_bytes(lens)
+                + scratch_report::vec_bytes(slots)
+                + scratch_report::vec_bytes(overflow_heads)
+                + scratch_report::vec_bytes(overflow)
+                + scratch_report::vec_bytes(touched)
+                + scratch_report::vec_bytes(rects)
         }
     }
 }

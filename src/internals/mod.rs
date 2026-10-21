@@ -14,6 +14,8 @@ pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;
 pub mod record_app;
+#[cfg(test)]
+pub(crate) mod scratch_report;
 pub mod ui_harness;
 
 use crate::text;

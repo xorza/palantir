@@ -79,3 +79,16 @@ impl ClipStack {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::internals::scratch_report;
+    use crate::renderer::frontend::composer::clip_stack::ClipStack;
+
+    impl ClipStack {
+        pub(crate) fn scratch_bytes(&self) -> usize {
+            let Self { frames } = self;
+            scratch_report::vec_bytes(frames)
+        }
+    }
+}
