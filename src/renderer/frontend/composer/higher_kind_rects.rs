@@ -21,12 +21,19 @@ pub(super) struct HigherKindRects {
 struct TierRects {
     rects: Vec<URect>,
     union: URect,
-    /// The rects `rects[..indexed]`, by tile.
+    /// The rects `rects[..indexed]`, by tile. Shaped by the first index, not by [`Self::start_frame`]: most tiers never pass [`LINEAR_RECTS`], and shaping each would allocate a viewport of tiles nothing reads.
     grid: RectGrid,
     indexed: usize,
+    /// The viewport [`Self::start_frame`] gave, until the first index shapes `grid` to it.
+    unshaped: Option<UVec2>,
 }
 
 impl TierRects {
+    fn start_frame(&mut self, viewport: UVec2) {
+        self.clear();
+        self.unshaped = Some(viewport);
+    }
+
     fn push(&mut self, rect: URect) {
         self.rects.push(rect);
         self.union = self.union.union(rect);
@@ -43,6 +50,9 @@ impl TierRects {
     fn any_overlap_inside(&mut self, rect: URect) -> bool {
         if self.rects.len() <= LINEAR_RECTS {
             return self.rects.iter().any(|r| r.intersects(rect));
+        }
+        if let Some(viewport) = self.unshaped.take() {
+            self.grid.start_frame(viewport);
         }
         for &unindexed in &self.rects[self.indexed..] {
             self.grid.push(unindexed);
@@ -62,12 +72,10 @@ impl TierRects {
 }
 
 impl HigherKindRects {
-    /// Size every tier's grid to `viewport` and drop what they hold; called at compose start.
+    /// Drop what every tier holds, and give each the `viewport` its grid takes on its first index; called before new scene output: at compose start and after a clear-fold discard.
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
         for tier in &mut self.tiers {
-            tier.grid.start_frame(viewport);
-            tier.indexed = 0;
-            tier.clear();
+            tier.start_frame(viewport);
         }
         self.union = URect::ZERO;
     }
@@ -116,6 +124,7 @@ pub(crate) mod internals {
                 union: _,
                 grid,
                 indexed: _,
+                unshaped: _,
             } = self;
             scratch_report::vec_bytes(rects) + grid.scratch_bytes()
         }
@@ -160,6 +169,10 @@ mod tests {
 
             rects.clear();
             assert!(!rects.any_overlap(recorded_rect));
+            // One rect never passes `LINEAR_RECTS`, so no tier shaped its grid.
+            for tier in &rects.tiers {
+                assert_eq!(tier.grid.scratch_bytes(), 0, "recorded={recorded:?}");
+            }
         }
     }
 
@@ -180,5 +193,20 @@ mod tests {
         }
         let tests: u32 = rects.tiers.iter().map(|t| t.grid.intersect_tests()).sum();
         assert_eq!(tests, 500 * 16);
+        for tier in PaintTier::ALL
+            .into_iter()
+            .filter(|&t| t != PaintTier::Curve)
+        {
+            assert_eq!(rects.tiers[tier.idx()].grid.scratch_bytes(), 0, "{tier:?}");
+        }
+
+        // The next frame's first index reshapes the grid, dropping last frame's wires. 33 rects pass `LINEAR_RECTS`, and the corner pixel stretches the union over the first wire, so only the grid can answer.
+        rects.start_frame(glam::UVec2::new(800, 640));
+        rects.push(PaintTier::Curve, URect::new(0, 0, 1, 1));
+        for _ in 0..32 {
+            rects.push(PaintTier::Curve, URect::new(780, 620, 4, 4));
+        }
+        assert!(!rects.any_overlap(URect::new(2, 2, 4, 4)));
+        assert!(rects.any_overlap(URect::new(781, 621, 1, 1)));
     }
 }

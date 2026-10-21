@@ -51,7 +51,7 @@ pub(super) struct RectGrid {
 }
 
 impl RectGrid {
-    /// Reshape to cover `viewport` and reset all state, once per frame at compose start. No allocation when the viewport is unchanged.
+    /// Reshape to cover `viewport` and reset all state, before the first push of new scene output. No allocation when the viewport is unchanged.
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
         let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
