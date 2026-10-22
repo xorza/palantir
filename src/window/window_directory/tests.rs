@@ -20,16 +20,16 @@ fn directory_clones_observe_the_same_live_windows() {
 /// Two drivers under one token, or dropping a never-added token, is a host bug the directory refuses.
 #[test]
 fn a_duplicate_add_or_an_unknown_remove_panics() {
-    let directory = WindowDirectory::default();
-    directory.add(WindowToken(1));
+    let dir = WindowDirectory::default();
+    dir.add(WindowToken(1));
     panic_probe::assert_panics_with("already contains WindowToken(1)", || {
-        directory.add(WindowToken(1));
+        dir.add(WindowToken(1));
     });
     panic_probe::assert_panics_with("must be in the window directory", || {
-        directory.remove(WindowToken(2));
+        dir.remove(WindowToken(2));
     });
     assert!(
-        directory.contains(WindowToken(1)),
+        dir.contains(WindowToken(1)),
         "the failed calls changed nothing"
     );
 }

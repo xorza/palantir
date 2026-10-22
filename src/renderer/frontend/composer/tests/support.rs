@@ -179,7 +179,7 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
             origin: Vec2::ZERO,
             tint: RgbaF32::WHITE.into(),
             vertices: Span::new(0, 3),
-            indices: Span::new(0, 3),
+            idxs: Span::new(0, 3),
         },
         1.0,
     );

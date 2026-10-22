@@ -83,7 +83,7 @@ fn apply_key_word_nav_cases() {
         kp
     }
 
-    // Single-line apply_key. label, buf, caret, key, want_caret, want_sel.
+    // Single-line apply_key. label, buf, caret, key, want_caret, want_selection.
     #[expect(
         clippy::type_complexity,
         reason = "one table row, named by the comment above"
@@ -138,7 +138,7 @@ fn apply_key_word_nav_cases() {
             Some(11),
         ),
     ];
-    for (label, buf, caret, key, want_caret, want_sel) in cases {
+    for (label, buf, caret, key, want_caret, want_selection) in cases {
         let mut s = String::from(*buf);
         let mut state = EditState {
             caret: *caret,
@@ -146,7 +146,7 @@ fn apply_key_word_nav_cases() {
         };
         apply_key(&mut s, &mut state, *key);
         assert_eq!(state.caret, *want_caret, "{label}: caret");
-        assert_eq!(state.selection, *want_sel, "{label}: selection");
+        assert_eq!(state.selection, *want_selection, "{label}: selection");
         assert_eq!(s, *buf, "{label}: buffer must not mutate");
     }
 }

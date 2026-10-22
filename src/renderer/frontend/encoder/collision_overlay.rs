@@ -13,7 +13,7 @@ use crate::shape::rect::RectKind;
 /// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
 const STROKE: Stroke = Stroke::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 
-/// Final pass: a magenta outline per explicit-id collision recorded this frame, over everything. Emitted with no scissor or transform, so each outline is the node's unclipped screen rect. `NodeId`s are precomputed at recording time (`SeenIds.curr`).
+/// Final pass: a magenta outline per explicit-id collision recorded this frame, over everything. Emitted with no scissor or transform, so each outline is the node's unclipped screen rect. `NodeId`s are precomputed at recording time (`SeenIds.cur`).
 pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
     for record in &scene.forest.collisions {
         for ep in [record.first, record.second] {

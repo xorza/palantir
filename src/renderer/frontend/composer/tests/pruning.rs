@@ -685,10 +685,10 @@ fn indexed_prune_matches_a_full_scan() {
 fn equal_cells_cost_one_tile_each() {
     let mut recorded = PaintCapture::default();
     for row in 0..96 {
-        for column in 0..96 {
+        for col in 0..96 {
             draw(
                 &mut recorded,
-                Rect::new(column as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0),
+                Rect::new(col as f32 * 8.0, row as f32 * 8.0, 8.0, 8.0),
             );
         }
     }

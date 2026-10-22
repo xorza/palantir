@@ -137,10 +137,10 @@ impl<'a> FrameCycle<'a> {
         };
 
         // Re-queue the next paint-anim boundary on every path, else PaintOnly drains the ANIM wake and the caret freezes.
-        if let Some(min_wake) = self.ui.forest.min_paint_anim_wake(self.ui.now()) {
+        if let Some(min_wake) = self.ui.forest.min_paint_animation_wake(self.ui.now()) {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
-                WakeReasons::ANIM,
+                WakeReasons::ANIMATION,
                 self.ui.display.refresh_millihertz,
             );
         }
@@ -258,7 +258,7 @@ impl<'a> FrameCycle<'a> {
         let removed = self.ui.forest.ids.rollover();
         self.ui.cascade_is_last_frame = true;
         self.engines.layout.text.end_frame(removed);
-        self.ui.anim.sweep_removed(removed);
+        self.ui.animation.sweep_removed(removed);
         self.ui.state.sweep_removed(removed);
         self.ui.gpu_views.sweep_removed(removed);
 

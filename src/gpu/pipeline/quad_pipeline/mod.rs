@@ -66,14 +66,14 @@ impl QuadVariants {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct QuadBinding<'a> {
     pub(crate) pipeline: &'a wgpu::RenderPipeline,
-    pub(crate) gradient_bg: &'a wgpu::BindGroup,
+    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
 }
 
 impl<'a> QuadBinding<'a> {
     /// Bind the pipeline, the gradient group and `buffer` as the instance stream.
     pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
         pass.set_pipeline(self.pipeline);
-        pass.set_bind_group(0, self.gradient_bg, &[]);
+        pass.set_bind_group(0, self.gradient_bind_group, &[]);
         pass.set_vertex_buffer(0, buffer.slice(..));
     }
 }

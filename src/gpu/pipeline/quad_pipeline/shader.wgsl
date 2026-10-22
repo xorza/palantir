@@ -16,7 +16,7 @@ const ZERO_EPS: f32 = 1e-6;
 // limit keeps `1/σ` out of the arithmetic.
 const BLUR_EPS: f32 = 1e-4;
 
-// How far a shadow's Gaussian is followed, in σ (`ShadowGeom::REACH_SIGMAS`):
+// How far a shadow's Gaussian is followed, in σ (`ShadowGeometry::REACH_SIGMAS`):
 // a drop shadow's quad reaches this far past its source, beside the
 // positive spread, and a blurred corner is sliced only this far past the
 // pixel box.

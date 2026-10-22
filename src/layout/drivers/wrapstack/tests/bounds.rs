@@ -174,11 +174,11 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
         let mut h = UiHarness::new(UVec2::new(800, 600));
         h.frame(case.build);
         for i in 0..5u32 {
-            let column = (i / 2) as f32;
+            let col = (i / 2) as f32;
             let row = (i % 2) as f32;
             assert_eq!(
                 h.arranged(WidgetId::from_hash(("f", i))).min,
-                Vec2::new(column * 62.0, case.header + row * 50.0),
+                Vec2::new(col * 62.0, case.header + row * 50.0),
                 "{}: cell {i}",
                 case.name,
             );

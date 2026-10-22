@@ -19,7 +19,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
-                    .position((30.0, 40.0))
+                    .pos((30.0, 40.0))
                     .size((20.0, 20.0))
                     .show(ui);
             })
@@ -45,12 +45,12 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
-                    .position((10.0, 5.0))
+                    .pos((10.0, 5.0))
                     .size((30.0, 15.0))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
-                    .position((50.0, 60.0))
+                    .pos((50.0, 60.0))
                     .size((20.0, 20.0))
                     .show(ui);
             })
@@ -73,7 +73,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("overhang"))
-                    .position((700.0, 100.0))
+                    .pos((700.0, 100.0))
                     .size((160.0, 80.0))
                     .show(ui);
             })
@@ -105,7 +105,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("neg"))
-                    .position((-5.0, -5.0))
+                    .pos((-5.0, -5.0))
                     .size((20.0, 20.0))
                     .show(ui);
             })
@@ -140,7 +140,7 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("filler"))
-                        .position((10.0, 10.0))
+                        .pos((10.0, 10.0))
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
                 })
@@ -174,7 +174,7 @@ fn canvas_measures_a_child_against_the_room_past_its_position() {
                     Text::new("aaaa bbbb cccc")
                         .id(WidgetId::from_hash("wrapping"))
                         .text_wrap(TextWrap::WrapWithOverflow)
-                        .position((at_x, 0.0))
+                        .pos((at_x, 0.0))
                         .show(ui);
                 })
                 .response
@@ -195,7 +195,7 @@ fn canvas_measures_a_child_against_the_room_past_its_position() {
     );
 }
 
-/// Pin: Canvas places children at their explicit `.position(...)` and ignores `.align(...)`, unlike Stack/ZStack/Grid.
+/// Pin: Canvas places children at their explicit `.pos(...)` and ignores `.align(...)`, unlike Stack/ZStack/Grid.
 #[test]
 fn canvas_ignores_child_align() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -206,7 +206,7 @@ fn canvas_ignores_child_align() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("aligned"))
-                    .position((30.0, 40.0))
+                    .pos((30.0, 40.0))
                     .size((50.0, 50.0))
                     // Would matter on Stack/ZStack/Grid; Canvas ignores it.
                     .align(Align::new(HAlign::Right, VAlign::Bottom))

@@ -123,7 +123,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             if space || enter || alt_down {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             } else if !PopupTrigger::is_open(ui, id)
-                && let Some(shown) = domain::index(*self.selected, self.options.len())
+                && let Some(shown) = domain::idx(*self.selected, self.options.len())
             {
                 let last = self.options.len() - 1;
                 let next = if down {
@@ -147,35 +147,35 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let plan = slot.plan(&response, (), theme.text);
         let look = self.widget.wear(ui, plan);
 
-        let geom = self.style.unwrap_or(&theme.combo_box);
+        let geometry = self.style.unwrap_or(&theme.combo_box);
         self.widget
             .configure()
             .justify(Justify::SpaceBetween)
             .child_align(Align::v(VAlign::Center))
-            .gap(geom.gap);
+            .gap(geometry.gap);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
-        let chosen = domain::index(*self.selected, self.options.len())
+        let chosen = domain::idx(*self.selected, self.options.len())
             .map_or("", |shown| (self.label)(&self.options[shown]));
         // Intern the selected label: options borrow from the caller's collection, not
         // `'static`.
         let label = ui.intern(chosen);
 
-        self.widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.bg), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
                 .show(ui);
 
             let arrow = Widget::leaf().id(id.with("arrow")).size((
-                Sizing::fixed(geom.arrow_size.x),
-                Sizing::fixed(geom.arrow_size.y),
+                Sizing::fixed(geometry.arrow_size.x),
+                Sizing::fixed(geometry.arrow_size.y),
             ));
             arrow.record(ui, None, |ui| {
-                let pts = geom.chevron_pts();
+                let pts = geometry.chevron_pts();
                 ui.add_shape(
-                    Shape::polyline(&pts, Stroke::new(arrow_color, geom.arrow_width))
+                    Shape::polyline(&pts, Stroke::new(arrow_color, geometry.arrow_width))
                         .cap(LineCap::Round)
                         .join(LineJoin::Round),
                 );
@@ -197,7 +197,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             .id(id.with("list"))
             .arrow_focus(Axis::Y)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
-            .default_background(ctx.panel.clone())
+            .default_bg(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_gap(ctx.gap)
             .show(ui, |ui, popup| {

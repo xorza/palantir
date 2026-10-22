@@ -223,7 +223,7 @@ struct Inputs<'a> {
 
 /// Columns the value grid is built on. Four, so the hex field spans two and
 /// every channel box matches the one above it.
-const VALUE_COLUMNS: usize = 4;
+const VALUE_COLS: usize = 4;
 
 /// Space between a channel's caption and its value.
 const LABEL_GAP: f32 = 2.0;
@@ -476,7 +476,7 @@ impl Rows<'_> {
 
         Grid::new()
             .id(id.with("values"))
-            .cols([Track::FILL; VALUE_COLUMNS])
+            .cols([Track::FILL; VALUE_COLS])
             .rows([Track::HUG; 2])
             .gap(gap)
             .line_gap(gap)
@@ -623,10 +623,10 @@ impl Rows<'_> {
             .gap(domain::length_at_least(theme.gap, 0.0))
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                for (index, color) in colors.iter().enumerate() {
+                for (idx, color) in colors.iter().enumerate() {
                     if ColorSwatch::new(*color)
                         .style(theme)
-                        .id(id.with("swatch").with(index))
+                        .id(id.with("swatch").with(idx))
                         .show(ui)
                         .left
                         .clicked()

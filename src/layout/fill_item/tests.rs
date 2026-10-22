@@ -4,9 +4,7 @@ fn distribute(items: &[(f32, f32, f32)], budget: f32) -> Vec<f32> {
     let mut pool: Vec<FillItem<usize>> = items
         .iter()
         .enumerate()
-        .map(|(index, &(weight, floor, cap))| {
-            FillItem::new(index, FillDemand { weight, floor, cap })
-        })
+        .map(|(idx, &(weight, floor, cap))| FillItem::new(idx, FillDemand { weight, floor, cap }))
         .collect();
     FillItem::distribute(&mut pool, budget);
     pool.iter().map(|item| item.size).collect()
@@ -157,11 +155,11 @@ fn allocations_do_not_depend_on_item_order() {
         reversed_items.reverse();
         let mut reversed = distribute(&reversed_items, budget);
         reversed.reverse();
-        for (index, (a, b)) in forward.iter().zip(&reversed).enumerate() {
+        for (idx, (a, b)) in forward.iter().zip(&reversed).enumerate() {
             // The runs subtract frozen sizes in opposite orders, so they agree to f32 rounding.
             assert_eq!(
                 a, b,
-                "item {index} got {a} in list order and {b} reversed\n\
+                "item {idx} got {a} in list order and {b} reversed\n\
                  items: {items:?}\n forward: {forward:?}\n reversed: {reversed:?}"
             );
         }
@@ -184,10 +182,10 @@ fn every_allocation_respects_its_own_bounds() {
     ];
     for budget in [0.0, 25.0, 140.0, 1_000.0] {
         let sizes = distribute(ITEMS, budget);
-        for (index, (&size, &(_, floor, cap))) in sizes.iter().zip(ITEMS).enumerate() {
+        for (idx, (&size, &(_, floor, cap))) in sizes.iter().zip(ITEMS).enumerate() {
             assert!(
                 size >= floor.min(cap) && size <= cap,
-                "budget {budget}: item {index} got {size}, outside [{}, {cap}]",
+                "budget {budget}: item {idx} got {size}, outside [{}, {cap}]",
                 floor.min(cap),
             );
         }

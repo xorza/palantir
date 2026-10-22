@@ -16,7 +16,7 @@ pub(super) struct LayoutInput {
     pub(super) font: GlyphFont,
     pub(super) multiline: bool,
     pub(super) text_align: Option<Align>,
-    pub(super) previous_block_offset: Vec2,
+    pub(super) prev_block_offset: Vec2,
 }
 
 /// What is known before the shape probe runs: the text box and its shaping parameters. The input pass hit-tests against this (last frame's layout); probe output lands in [`TextGeometry`](crate::widgets::text_edit::text_geometry::TextGeometry).
@@ -83,7 +83,7 @@ impl TextLayout {
             text_align,
             caret_room,
             inner,
-            prev_block_offset: input.previous_block_offset,
+            prev_block_offset: input.prev_block_offset,
         }
     }
 }

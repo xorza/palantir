@@ -1,6 +1,6 @@
 //! A decorated leaf rectangle: background, size, margin, no body.
 
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -12,7 +12,7 @@ use crate::widget_core::widget::Widget;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Block {
     widget: Widget,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
 }
 
 impl Block {
@@ -33,28 +33,28 @@ impl Block {
 }
 
 impl Block {
-    /// Paint `background`. `Block` is unthemed, so unset paints nothing.
+    /// Paint `bg`. `Block` is unthemed, so unset paints nothing.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one; for wrappers that theme a held widget after the caller's setters. An explicit [`Self::background`] wins in either order.
+    /// Paint `bg` unless the caller set one; for wrappers that theme a held widget after the caller's setters. An explicit [`Self::bg`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

@@ -4,7 +4,7 @@
 use glam::{UVec2, Vec2};
 use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
 use palantir::{
-    Background, Block, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke,
+    Bg, Block, ColorRamp, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stroke,
 };
 
 use crate::fixtures;
@@ -55,7 +55,7 @@ fn interleaved_shapes_paint_in_record_order() {
                 );
                 Block::new()
                     .id_salt("cyan")
-                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 1.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 1.0)))
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(
@@ -64,7 +64,7 @@ fn interleaved_shapes_paint_in_record_order() {
                 );
                 Block::new()
                     .id_salt("yellow")
-                    .background(Background::fill(RgbaF32::srgb(1.0, 1.0, 0.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(1.0, 1.0, 0.0)))
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(

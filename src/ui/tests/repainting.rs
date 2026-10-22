@@ -10,7 +10,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::color::RgbaF32;
@@ -37,7 +37,7 @@ use std::time::Duration;
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = UiHarness::new(SURFACE);
     let theme = h.ui.theme_mut();
-    theme.panel_background = Some(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
+    theme.panel_bg = Some(Bg::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
     theme.panel_clip = ClipMode::Rounded;
     h.ui.set_debug_overlay(DebugOverlayConfig {
         frame_stats: true,
@@ -274,7 +274,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .background(Background {
+                .bg(Bg {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::srgb(1.0, 0.0, 0.0),
@@ -363,14 +363,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
 
     b.frame(|ui| {
         Panel::hstack().size(20.0).show(ui, |ui| {
-            for index in 0..INITIAL_ATLAS_ROWS - 1 {
+            for idx in 0..INITIAL_ATLAS_ROWS - 1 {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                     LinearGradient::two_stop(
                         0.0,
                         RgbaF32::from_srgba(SrgbaU8::rgb(
-                            index as u8,
-                            (index >> u8::BITS) as u8,
-                            (index >> (u8::BITS * 2)) as u8,
+                            idx as u8,
+                            (idx >> u8::BITS) as u8,
+                            (idx >> (u8::BITS * 2)) as u8,
                         )),
                         RgbaF32::WHITE,
                     ),
@@ -392,7 +392,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     );
 }
 
-/// `request_repaint` co-firing with an anim wake gives `REAL | ANIM`, so the classifier picks Full.
+/// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
     fn body(ui: &mut Ui, half: Duration) {

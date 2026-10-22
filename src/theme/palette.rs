@@ -1,7 +1,7 @@
 //! The color roster every theme recipe draws from. [`Palette`] is the input to [`crate::Theme::from_palette`]; [`Palette::DEFAULT`] is the built-in neutral dark grayscale with a blue accent.
 
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -17,7 +17,7 @@ pub struct Palette {
     /// Disabled-state foreground.
     pub text_disabled: RgbaF32,
     /// Window background (`Theme::window_clear`); also the active tab chip's fill.
-    pub window_background: RgbaF32,
+    pub window_bg: RgbaF32,
     /// Resting surface tier (disabled fills, menu panels).
     pub element: RgbaF32,
     /// One step brighter — resting chrome for interactive surfaces.
@@ -36,7 +36,7 @@ impl Palette {
         text: RgbaF32::hex(0xffffff),
         text_muted: RgbaF32::hex(0xaaaaa8),
         text_disabled: RgbaF32::hex(0x878a8d),
-        window_background: RgbaF32::hex(0x1a1a1a),
+        window_bg: RgbaF32::hex(0x1a1a1a),
         element: RgbaF32::hex(0x343434),
         element_mid: RgbaF32::hex(0x3e3e3e),
         element_strong: RgbaF32::hex(0x4b4b4b),
@@ -61,8 +61,8 @@ impl Palette {
     }
 
     /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. Radius is the small-overlay step shared with [`TooltipTheme`](crate::TooltipTheme); the shadow separates it from what it opened over, since its fill matches the panels beneath.
-    pub fn popup_panel(&self) -> Background {
-        Background::rounded(self.element, Corners::all(4.0))
+    pub fn popup_panel(&self) -> Bg {
+        Bg::rounded(self.element, Corners::all(4.0))
             .with_border(Stroke::new(self.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.5),

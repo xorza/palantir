@@ -4,7 +4,7 @@
 
 use crate::internals::demo_swatches;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -25,8 +25,8 @@ pub(super) const OK: RgbaF32 = demo_swatches::LIME;
 pub(super) const VIOLET: RgbaF32 = demo_swatches::VIOLET;
 
 /// Raised card: fill, hairline border and a real chrome drop shadow, the only driver of the encoder's chrome-shadow branch; keep it non-noop.
-pub(super) fn card_bg() -> Background {
-    Background {
+pub(super) fn card_bg() -> Bg {
+    Bg {
         fill: CARD_BG.into(),
         border: Stroke::new(BORDER, 1.0),
         corners: Corners::all(8.0),
@@ -35,8 +35,8 @@ pub(super) fn card_bg() -> Background {
 }
 
 /// Recessed well for canvases and scroll strips, so their bounds read against the card.
-pub(super) fn well_bg() -> Background {
-    Background {
+pub(super) fn well_bg() -> Bg {
+    Bg {
         fill: WELL_BG.into(),
         corners: Corners::all(6.0),
         ..Default::default()

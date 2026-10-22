@@ -19,7 +19,7 @@
 //! | [`f64::range`] | both ends finite | panic; the order is coerced |
 //! | [`fraction`] | `0..=1` | clamped; non-finite is `0` |
 //! | [`turn`] | `0..1` | wrapped; non-finite is `0` |
-//! | [`index`] | `0..len` | clamped; no index when `len == 0` |
+//! | [`idx`] | `0..len` | clamped; no index when `len == 0` |
 //!
 //! Theme files are checked on load by the same predicates. [`EPS`] is the one epsilon for "can the eye resolve this". Everything is `const fn` because the setters that call it are. [`vec2`] and [`f64`](mod@f64) hold the per-axis and `f64` twins.
 
@@ -276,7 +276,7 @@ pub const fn turn(v: f32) -> f32 {
 
 /// `i` as an *index* into `len` items: clamped to the last, `None` when empty. Display only; the caller's index is untouched.
 #[inline]
-pub const fn index(i: usize, len: usize) -> Option<usize> {
+pub const fn idx(i: usize, len: usize) -> Option<usize> {
     if len == 0 {
         None
     } else if i < len {

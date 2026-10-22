@@ -97,7 +97,7 @@ fn icon(icons: &IconSet, name: &str) -> IconShape {
 fn pane(ui: &mut Ui, at: Rect, icon: IconShape) {
     Panel::zstack()
         .id_salt(("pane", at.min.x as i32, at.min.y as i32))
-        .position(at.min)
+        .pos(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| ui.add_shape(icon));
 }
@@ -221,7 +221,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
     let label = |ui: &mut Ui, salt: &'static str, at: Vec2| {
         Panel::zstack()
             .id_salt(salt)
-            .position(at)
+            .pos(at)
             .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
             .show(ui, |ui| {
                 Text::new("AgAgAg")
@@ -247,7 +247,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
         Panel::zstack()
             .id_salt("panel")
             .clip_rect()
-            .position(Vec2::new(0.0, 44.0))
+            .pos(Vec2::new(0.0, 44.0))
             .size((Sizing::fixed(96.0), Sizing::fixed(28.0)))
             .show(ui, |ui| {
                 label(ui, "after", Vec2::new(6.0, 46.0));

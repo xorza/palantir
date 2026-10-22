@@ -5,7 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
@@ -26,7 +26,7 @@ use std::rc::Rc;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
     widget: Widget,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
     backdrop: Option<RgbaF32>,
     style: Option<&'a ModalTheme>,
 }
@@ -43,7 +43,7 @@ impl<'a> Modal<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::background`] and [`Self::backdrop`] still win.
+    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::bg`] and [`Self::backdrop`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
         self.style = s.into();
         self
@@ -71,7 +71,7 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
+        let dim = Bg::fill(self.backdrop.unwrap_or(mt.backdrop));
         let panel_bg = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
@@ -115,29 +115,29 @@ impl<'a> Modal<'a> {
 }
 
 impl Modal<'_> {
-    /// Paints `background` as the panel chrome; [`Background::NONE`] suppresses the themed chrome.
+    /// Paints `bg` as the panel chrome; [`Bg::NONE`] suppresses the themed chrome.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paints `background` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::background`] wins in either order.
+    /// Paints `bg` unless the caller set one, for a wrapper theming a
+    /// widget after the caller's setters; an explicit [`Self::bg`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

@@ -14,7 +14,7 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::look::engagement::Engagement;
@@ -172,11 +172,11 @@ impl<'a> TabStrip<'a> {
             overflow,
             style: _,
         } = self;
-        let selected = selected.and_then(|i| domain::index(i, items.len()));
+        let selected = selected.and_then(|i| domain::idx(i, items.len()));
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_bg = t.strip.clone();
-        let rule = Background::fill(t.rule);
+        let rule = Bg::fill(t.rule);
         let rule_thickness = t.rule_thickness;
 
         let mut pass = StripPass {
@@ -323,7 +323,7 @@ impl StripPass<'_> {
         let state = ui.response_for(id);
         let look = self.theme.close.pick(&state, Engagement::Pressed);
         GlyphButton {
-            background: look.background.clone(),
+            bg: look.bg.clone(),
             text: TextStyle {
                 line_height_factor: 1.0,
                 ..look.text.apply(&self.ambient)
@@ -357,13 +357,13 @@ impl StripPass<'_> {
         let plan = t.plan(&state, TabSelection::from(selected), self.ambient);
         let look = widget.wear(ui, plan);
         let cap_bg = if selected {
-            Background::rounded(t.cap(self.focus), Corners::top(t.radius))
+            Bg::rounded(t.cap(self.focus), Corners::top(t.radius))
         } else {
-            Background::NONE
+            Bg::NONE
         };
-        let inner_bg = Background {
+        let inner_bg = Bg {
             corners: Corners::top((t.radius - cap).max(0.0)),
-            ..look.background
+            ..look.bg
         };
         // The selected chip lifts its inner top inset by the cap, so height is unchanged; a badge or close button trades the right inset for its box (`TabsTheme::trailing_inset`).
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
@@ -408,9 +408,9 @@ impl StripPass<'_> {
                     .show(ui);
                 if badge.is_reserved() {
                     let fill = if badge.is_inked() {
-                        Background::rounded(t.badge, Corners::all(t.badge_size * 0.5))
+                        Bg::rounded(t.badge, Corners::all(t.badge_size * 0.5))
                     } else {
-                        Background::NONE
+                        Bg::NONE
                     };
                     let dot = Widget::leaf()
                         .id(chip_id.with("badge"))
@@ -425,7 +425,7 @@ impl StripPass<'_> {
                         .sense(Sense::CLICK)
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
-                    button.record(ui, Some(&close.background), |ui| {
+                    button.record(ui, Some(&close.bg), |ui| {
                         close.glyph(ui, close_id, "\u{00d7}");
                     });
                 }
@@ -473,7 +473,7 @@ impl StripPass<'_> {
             .sense(Sense::CLICK)
             .align(Align::v(VAlign::Bottom))
             .child_align(Align::CENTER);
-        button.record(ui, Some(&chevron.background), |ui| {
+        button.record(ui, Some(&chevron.bg), |ui| {
             chevron.glyph(ui, button_id, "\u{22ef}");
         });
         if chevron.state.clicked()
@@ -546,7 +546,7 @@ impl StripPass<'_> {
 #[derive(Debug)]
 struct GlyphButton {
     state: ResponseState,
-    background: Background,
+    bg: Bg,
     /// The look's text with the leading removed, else the glyph rides high.
     text: TextStyle,
 }

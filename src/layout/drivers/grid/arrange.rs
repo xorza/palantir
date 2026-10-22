@@ -2,7 +2,7 @@
 
 use crate::layout::axis_align_pair::AxisAlignPair;
 use crate::layout::drivers::grid::Grid;
-use crate::layout::drivers::grid::grid_context::GridContext;
+use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -15,7 +15,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
     let node = grid.node;
     let cols = grid.axis(tree, Axis::X);
     let rows = grid.axis(tree, Axis::Y);
-    let scratch = pass.grid_mut().depth_stack.current();
+    let scratch = pass.grid_mut().depth_stack.cur();
     scratch.col.reset_for(cols.tracks.len());
     scratch.row.reset_for(rows.tracks.len());
 
@@ -28,12 +28,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
 
     // Resolve track sizes. Fast path: when measure resolved this axis against the same `total` (`track_state.total_used` is `Some`) and arrange's `inner.size.X` equals measure's `inner_avail.X` (no Stretch grow since), copy the persisted sizes instead of re-solving. Offsets are cheap, so they are always recomputed.
     {
-        let GridContext {
+        let GridCtx {
             depth_stack,
             track_state,
             ..
         } = pass.grid_mut();
-        let s = depth_stack.current();
+        let s = depth_stack.cur();
         s.col.resolve_or_reuse(cols, track_state, inner.w);
         s.row.resolve_or_reuse(rows, track_state, inner.h);
         s.col.compute_offsets(cols.gap);
@@ -47,7 +47,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
         let cell = placed.bounds.grid;
 
         let slot = {
-            let s = pass.grid_mut().depth_stack.current();
+            let s = pass.grid_mut().depth_stack.cur();
             Rect {
                 min: Vec2::new(
                     s.col.offsets[cell.col as usize],

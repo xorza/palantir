@@ -2,7 +2,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::animation::tests::support::{self, AnimUi, SLOT};
+use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
@@ -13,7 +13,7 @@ use std::time::Duration;
 /// First-touch settled: no repaint; in-flight retarget: repaint; repeated frames settle and stop requesting.
 #[test]
 fn animate_drives_repaint_until_settle() {
-    let AnimUi { mut h, id } = support::setup_anim_ui("anim-test");
+    let AnimationUi { mut h, id } = support::setup_animation_ui("anim-test");
 
     let repaint = h
         .frame(|ui| {
@@ -57,7 +57,7 @@ fn animate_drives_repaint_until_settle() {
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
     for (label, spec) in [("none", None), ("snap", Some(AnimationSpec::SNAP))] {
-        let AnimUi { mut h, id } = support::setup_anim_ui("anim-none");
+        let AnimationUi { mut h, id } = support::setup_animation_ui("anim-none");
         let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
             let v1 = ui.animate(AnimationRequest::new(id, SLOT, 7.0_f32), spec);
             let v2 = ui.animate(AnimationRequest::new(id, SLOT, 9.0_f32), spec);
@@ -70,7 +70,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
             "{label} spec must never request a repaint"
         );
         assert_eq!(
-            h.anim_row_count::<f32>(),
+            h.animation_row_count::<f32>(),
             0,
             "{label} spec must not allocate a row",
         );
@@ -80,7 +80,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
 /// Switching from `Some(spec)` to `None` mid-flight drops the stale row, so a later retarget starts fresh.
 #[test]
 fn animate_some_then_none_drops_stale_row() {
-    let AnimUi { mut h, id } = support::setup_anim_ui("anim-toggle");
+    let AnimationUi { mut h, id } = support::setup_animation_ui("anim-toggle");
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 0.0_f32),
@@ -96,7 +96,7 @@ fn animate_some_then_none_drops_stale_row() {
         Block::new().id(id).show(ui);
     });
     assert_eq!(
-        h.anim_row_count::<f32>(),
+        h.animation_row_count::<f32>(),
         1,
         "Some(FAST) must allocate a row mid-flight",
     );
@@ -106,7 +106,7 @@ fn animate_some_then_none_drops_stale_row() {
         Block::new().id(id).show(ui);
     });
     assert_eq!(
-        h.anim_row_count::<f32>(),
+        h.animation_row_count::<f32>(),
         0,
         "None spec must drop the stale row inserted by a prior Some()",
     );
@@ -116,7 +116,7 @@ fn animate_some_then_none_drops_stale_row() {
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
     use crate::theme::look::WidgetLook;
@@ -125,16 +125,16 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::theme::text_style_overrides::TextStyleOverrides;
     use std::cell::Cell;
 
-    let AnimUi { mut h, id } = support::setup_anim_ui("look-test");
+    let AnimationUi { mut h, id } = support::setup_animation_ui("look-test");
 
-    let bg = Background {
+    let bg = Bg {
         fill: RgbaF32::hex(0x336699).into(),
         border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
     let look = WidgetLook {
-        background: bg.clone(),
+        bg: bg.clone(),
         text: TextStyleOverrides::NONE,
     };
     let fallback = TextStyle::default();
@@ -149,26 +149,23 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
-    assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
-    assert_eq!(
-        snap.background.border.width, 2.0,
-        "None: stroke width snaps"
-    );
-    assert_eq!(snap.background.border.color, bg.border.color);
-    assert_eq!(snap.background.corners, bg.corners);
+    assert_eq!(snap.bg.fill, bg.fill, "None: fill snaps to target");
+    assert_eq!(snap.bg.border.width, 2.0, "None: stroke width snaps");
+    assert_eq!(snap.bg.border.color, bg.border.color);
+    assert_eq!(snap.bg.corners, bg.corners);
     assert_eq!(
         snap.text, fallback,
         "a look that overrides nothing takes the ambient style whole",
     );
     assert_eq!(
-        h.anim_row_count::<AnimatedLook>(),
+        h.animation_row_count::<AnimatedLook>(),
         0,
         "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
 
-    // Retargeting the fill allocates a Background row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
+    // Retargeting the fill allocates a `Bg` row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
     let look2 = WidgetLook {
-        background: Background {
+        bg: Bg {
             fill: RgbaF32::hex(0xff0000).into(),
             ..bg
         },
@@ -183,7 +180,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         Block::new().id(id).show(ui);
     });
     assert_eq!(
-        h.anim_row_count::<AnimatedLook>(),
+        h.animation_row_count::<AnimatedLook>(),
         1,
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
@@ -198,7 +195,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         ..fallback
     };
     let look3 = WidgetLook {
-        background: bg,
+        bg,
         text: TextStyleOverrides::NONE
             .with_font_size(own_size)
             .with_color(own_color),
@@ -228,7 +225,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 #[test]
 fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     use crate::animation::easing::Easing;
-    let AnimUi { mut h, id } = support::setup_anim_ui("from-rest");
+    let AnimationUi { mut h, id } = support::setup_animation_ui("from-rest");
     let record = |h: &mut UiHarness, at: Duration, target: f32| {
         let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {

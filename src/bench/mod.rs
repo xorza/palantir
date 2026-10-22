@@ -26,7 +26,7 @@ use crate::renderer::frontend;
 use crate::renderer::frontend::composer;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::gradient_atlas;
-use crate::scene::tree::paint_anims;
+use crate::scene::tree::paint_animations;
 use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, text, ui};
 use criterion::Criterion;
@@ -45,7 +45,7 @@ pub fn run(c: &mut Criterion) {
     cascade::bench::atomic(c);
     image_pipeline::bench::atomic(c, backends);
     input::bench::atomic(c);
-    paint_anims::bench::atomic(c);
+    paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, backends);
     rect_grid::bench::atomic(c);
     schedule::bench::atomic(c);

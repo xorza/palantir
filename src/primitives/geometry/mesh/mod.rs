@@ -50,10 +50,10 @@ impl MeshVertex {
 #[derive(Default, Clone, Debug)]
 pub struct Mesh {
     pub(crate) vertices: Vec<MeshVertex>,
-    pub(crate) indices: Vec<u32>,
+    pub(crate) idxs: Vec<u32>,
     /// The largest index pushed, so [`Self::is_noop`] screens an index past
-    /// the last vertex at one compare. Meaningless while `indices` is empty.
-    max_index: u32,
+    /// the last vertex at one compare. Meaningless while `idxs` is empty.
+    max_idx: u32,
     /// Lazy cache of `content_hash`, cleared by every public mutator.
     /// Internal arena pushes bypass it; arena meshes never hash. It turns a
     /// retained mesh's per-frame O(n) re-hash into a hit.
@@ -68,8 +68,8 @@ impl Mesh {
     pub const fn new() -> Self {
         Self {
             vertices: Vec::new(),
-            indices: Vec::new(),
-            max_index: 0,
+            idxs: Vec::new(),
+            max_idx: 0,
             cached_hash: Cell::new(None),
             cached_bbox: Cell::new(None),
         }
@@ -77,11 +77,11 @@ impl Mesh {
 
     /// [`Self::new`] with both buffers reserved.
     #[inline]
-    pub fn with_capacity(vertices: usize, indices: usize) -> Self {
+    pub fn with_capacity(vertices: usize, idxs: usize) -> Self {
         Self {
             vertices: Vec::with_capacity(vertices),
-            indices: Vec::with_capacity(indices),
-            max_index: 0,
+            idxs: Vec::with_capacity(idxs),
+            max_idx: 0,
             cached_hash: Cell::new(None),
             cached_bbox: Cell::new(None),
         }
@@ -91,8 +91,8 @@ impl Mesh {
     #[inline]
     pub fn clear(&mut self) {
         self.vertices.clear();
-        self.indices.clear();
-        self.max_index = 0;
+        self.idxs.clear();
+        self.max_idx = 0;
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
     }
@@ -102,11 +102,11 @@ impl Mesh {
     #[inline]
     pub fn is_noop(&self) -> bool {
         self.vertices.is_empty()
-            || self.indices.len() < 3
-            || !self.indices.len().is_multiple_of(3)
+            || self.idxs.len() < 3
+            || !self.idxs.len().is_multiple_of(3)
             // A release build reaches here with what `triangle`'s debug
             // assert would have caught.
-            || self.max_index as usize >= self.vertices.len()
+            || self.max_idx as usize >= self.vertices.len()
             // A NaN vertex reaches the AABB by the fold's NaN contract, so
             // this memoized read stands in for scanning every position.
             || self.bbox().has_nan()
@@ -123,7 +123,7 @@ impl Mesh {
             vertex.pos.hash_visual(&mut h);
             h.write_u32(vertex.color.to_u32());
         }
-        h.pod_slice(self.indices.as_slice());
+        h.pod_slice(self.idxs.as_slice());
         let v = h.finish();
         self.cached_hash.set(Some(v));
         v
@@ -138,12 +138,12 @@ impl Mesh {
     #[inline]
     #[track_caller]
     pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32 {
-        let index = checked_vertex_index(self.vertices.len());
+        let idx = checked_vertex_idx(self.vertices.len());
         self.vertices
             .push(MeshVertex::new(vec2::offset(pos), color));
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
-        index
+        idx
     }
 
     /// Push three indices (CCW by convention).
@@ -160,15 +160,15 @@ impl Mesh {
             "mesh triangle indices [{a}, {b}, {c}] exceed vertex count {}",
             self.vertices.len(),
         );
-        self.indices.push(a);
-        self.indices.push(b);
-        self.indices.push(c);
-        self.max_index = self.max_index.max(a.max(b).max(c));
+        self.idxs.push(a);
+        self.idxs.push(b);
+        self.idxs.push(c);
+        self.max_idx = self.max_idx.max(a.max(b).max(c));
         self.cached_hash.set(None);
     }
 
     /// Append another mesh, offsetting its indices into this mesh's vertex
-    /// space. Public because `vertices` and `indices` are private, so a
+    /// space. Public because `vertices` and `idxs` are private, so a
     /// consumer cannot compose meshes otherwise.
     ///
     /// # Panics
@@ -183,17 +183,15 @@ impl Mesh {
             .len()
             .checked_add(other.vertices.len())
             .expect("combined mesh vertex count overflowed usize");
-        checked_vertex_index(combined_vertex_count - 1);
-        let base = checked_vertex_index(self.vertices.len());
+        checked_vertex_idx(combined_vertex_count - 1);
+        let base = checked_vertex_idx(self.vertices.len());
         self.vertices.extend_from_slice(&other.vertices);
-        self.indices.reserve(other.indices.len());
-        for &index in &other.indices {
-            self.indices.push(checked_rebased_index(base, index));
+        self.idxs.reserve(other.idxs.len());
+        for &idx in &other.idxs {
+            self.idxs.push(checked_rebased_idx(base, idx));
         }
-        if !other.indices.is_empty() {
-            self.max_index = self
-                .max_index
-                .max(checked_rebased_index(base, other.max_index));
+        if !other.idxs.is_empty() {
+            self.max_idx = self.max_idx.max(checked_rebased_idx(base, other.max_idx));
         }
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
@@ -248,13 +246,13 @@ impl Mesh {
 }
 
 #[inline]
-fn checked_vertex_index(index: usize) -> u32 {
-    u32::try_from(index).expect("mesh vertex index exceeds u32 range")
+fn checked_vertex_idx(idx: usize) -> u32 {
+    u32::try_from(idx).expect("mesh vertex index exceeds u32 range")
 }
 
 #[inline]
-const fn checked_rebased_index(base: u32, index: u32) -> u32 {
-    base.checked_add(index)
+const fn checked_rebased_idx(base: u32, idx: u32) -> u32 {
+    base.checked_add(idx)
         .expect("appended mesh index exceeds u32 range")
 }
 

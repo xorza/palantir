@@ -90,7 +90,7 @@ struct ClipboardState {
     primary: Option<Box<dyn Backend>>,
     fallback: Box<dyn Backend>,
     authority: Authority,
-    fallback_current: bool,
+    fallback_cur: bool,
 }
 
 impl ClipboardState {
@@ -99,7 +99,7 @@ impl ClipboardState {
             primary,
             fallback,
             authority: Authority::Primary,
-            fallback_current: false,
+            fallback_cur: false,
         }
     }
 
@@ -124,10 +124,10 @@ impl ClipboardState {
 
         match read {
             Ok(text) => {
-                self.fallback_current = self.fallback.set_text(&text).is_ok();
+                self.fallback_cur = self.fallback.set_text(&text).is_ok();
                 Ok(text)
             }
-            Err(error) if self.fallback_current => self.fallback.get_text().or(Err(error)),
+            Err(error) if self.fallback_cur => self.fallback.get_text().or(Err(error)),
             Err(error) => Err(error),
         }
     }
@@ -144,13 +144,13 @@ impl ClipboardState {
 
         if primary.set_text(text).is_ok() {
             self.authority = Authority::Primary;
-            self.fallback_current = fallback_written;
+            self.fallback_cur = fallback_written;
             Ok(())
         } else if fallback_written {
             self.authority = Authority::Fallback {
                 primary_then: primary.get_text().ok(),
             };
-            self.fallback_current = true;
+            self.fallback_cur = true;
             Ok(())
         } else {
             Err(ClipboardUnavailable)

@@ -84,7 +84,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     let max_size = Size::new(100.0, 120.0);
     let padding = Spacing::new(1.0, 2.0, 3.0, 4.0);
     let margin = Spacing::new(5.0, 6.0, 7.0, 8.0);
-    let position = Vec2::new(9.0, 10.0);
+    let pos = Vec2::new(9.0, 10.0);
     let align = Align::new(HAlign::Right, VAlign::Bottom);
     let child_align = Align::new(HAlign::Center, VAlign::Top);
     let sense = Sense::CLICK | Sense::DRAG;
@@ -97,7 +97,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .max_size(max_size)
         .padding(padding)
         .margin(margin)
-        .position(position)
+        .pos(pos)
         .grid_cell(GridCell::at(2, 3).with_span(4, 5))
         .gap(6.0)
         .line_gap(7.0)
@@ -118,7 +118,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored_max_size(), Some(max_size));
     assert_eq!(widget.authored_padding(), Some(padding));
     assert_eq!(widget.authored_margin(), Some(margin));
-    assert_eq!(widget.authored_position(), position);
+    assert_eq!(widget.authored_pos(), pos);
     assert_eq!(
         widget.authored_grid_cell(),
         GridCell {
@@ -154,7 +154,7 @@ fn authored_readers_answer_the_defaults_before_anything_is_set() {
     assert_eq!(widget.authored_clip(), None);
     assert_eq!(widget.authored_gap(), None);
     assert_eq!(widget.authored_line_gap(), None);
-    assert_eq!(widget.authored_position(), Vec2::ZERO);
+    assert_eq!(widget.authored_pos(), Vec2::ZERO);
     assert_eq!(widget.authored_grid_cell(), GridCell::default());
     assert_eq!(widget.authored_justify(), Justify::Start);
     assert_eq!(widget.authored_align(), Align::default());
@@ -426,13 +426,13 @@ fn spacings_validate_their_kinds_authored_or_themed() {
 #[test]
 fn position_and_grid_span_validate_their_kinds() {
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-        Widget::leaf().position(Vec2::new(f32::NAN, 0.0))
+        Widget::leaf().pos(Vec2::new(f32::NAN, 0.0))
     });
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-        Widget::leaf().position(Vec2::new(0.0, f32::INFINITY))
+        Widget::leaf().pos(Vec2::new(0.0, f32::INFINITY))
     });
-    let at = Widget::leaf().position(Vec2::new(-5.0, 7.0));
-    assert_eq!(at.node.position, Vec2::new(-5.0, 7.0));
+    let at = Widget::leaf().pos(Vec2::new(-5.0, 7.0));
+    assert_eq!(at.node.pos, Vec2::new(-5.0, 7.0));
 
     for (rows, cols) in [(0, 1), (1, 0)] {
         panic_probe::assert_panics_with(domain::COUNT_RULE, || {

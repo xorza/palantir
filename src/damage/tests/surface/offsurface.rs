@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -97,7 +97,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("off"))
                     .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui, |_| {});
             });
     });
@@ -142,7 +142,7 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                             Block::new()
                                 .id(WidgetId::from_hash(key))
                                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                                .background(Background::fill(fill))
+                                .bg(Bg::fill(fill))
                                 .show(ui);
                         }
                     });

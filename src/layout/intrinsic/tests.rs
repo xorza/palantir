@@ -189,7 +189,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
             Panel::canvas().id_salt("range-canvas").show(ui, |ui| {
                 Block::new()
                     .id_salt("range-canvas-child")
-                    .position((7.0, 9.0))
+                    .pos((7.0, 9.0))
                     .size((19.0, 13.0))
                     .show(ui);
             });
@@ -227,7 +227,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::WrapStack(Axis::Y),
         LayoutMode::ZStack,
         LayoutMode::Canvas,
-        LayoutMode::Grid(GridDefId::from_index(0)),
+        LayoutMode::Grid(GridDefId::from_idx(0)),
         LayoutMode::Scroll(ScrollAxes::VERTICAL),
     ];
     let tree = h.ui.tree(Layer::Main);

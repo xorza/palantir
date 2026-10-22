@@ -20,36 +20,36 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::renderer::render_buffer::curve_instance::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use wgpu::util::DeviceExt;
 
-const INDICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
+const IDXS_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
 const UNIQUE_VERTICES_PER_INSTANCE: u16 = 2 * (SEGMENTS_PER_INSTANCE as u16 + 1);
-const CURVE_INDICES: [u16; INDICES_PER_INSTANCE as usize] = curve_indices();
+const CURVE_IDXS: [u16; IDXS_PER_INSTANCE as usize] = curve_idxs();
 
-const fn curve_indices() -> [u16; INDICES_PER_INSTANCE as usize] {
-    let mut indices = [0; INDICES_PER_INSTANCE as usize];
+const fn curve_idxs() -> [u16; IDXS_PER_INSTANCE as usize] {
+    let mut idxs = [0; IDXS_PER_INSTANCE as usize];
     let mut segment = 0;
     while segment < SEGMENTS_PER_INSTANCE as u16 {
         let vertex = 2 * segment;
         let offset = 6 * segment as usize;
-        indices[offset] = vertex;
-        indices[offset + 1] = vertex + 2;
-        indices[offset + 2] = vertex + 1;
-        indices[offset + 3] = vertex + 1;
-        indices[offset + 4] = vertex + 2;
-        indices[offset + 5] = vertex + 3;
+        idxs[offset] = vertex;
+        idxs[offset + 1] = vertex + 2;
+        idxs[offset + 2] = vertex + 1;
+        idxs[offset + 3] = vertex + 1;
+        idxs[offset + 4] = vertex + 2;
+        idxs[offset + 5] = vertex + 3;
         segment += 1;
     }
-    indices
+    idxs
 }
 
 const _: () = {
-    assert!(INDICES_PER_INSTANCE == 96);
+    assert!(IDXS_PER_INSTANCE == 96);
     assert!(UNIQUE_VERTICES_PER_INSTANCE == 34);
 };
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
     instance_buffer: DynamicBuffer<CurveInstance>,
-    index_buffer: wgpu::Buffer,
+    idx_buffer: wgpu::Buffer,
     shader: wgpu::ShaderModule,
     /// Format-independent, so built once here rather than per format.
     pipeline_layout: wgpu::PipelineLayout,
@@ -61,15 +61,15 @@ impl CurvePipeline {
 
         let instance_buffer =
             DynamicBuffer::<CurveInstance>::vertex(device, "palantir.curve.instances", 64);
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let idx_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("palantir.curve.indices"),
-            contents: bytemuck::cast_slice(&CURVE_INDICES),
+            contents: bytemuck::cast_slice(&CURVE_IDXS),
             usage: wgpu::BufferUsages::INDEX,
         });
 
         Self {
             instance_buffer,
-            index_buffer,
+            idx_buffer,
             shader,
             // Gradient at group 0; the viewport rides the shared immediate region.
             pipeline_layout: PipelineRecipe::pipeline_layout(
@@ -124,14 +124,14 @@ impl CurvePipeline {
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
-        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_index_buffer(self.idx_buffer.slice(..), wgpu::IndexFormat::Uint16);
     }
 
     pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
         if instances.len == 0 {
             return;
         }
-        pass.draw_indexed(0..INDICES_PER_INSTANCE, 0, instances.into());
+        pass.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.into());
     }
 }
 
@@ -171,22 +171,22 @@ const _: () = {
 #[cfg(test)]
 mod tests {
     use crate::gpu::pipeline::curve_pipeline::{
-        CURVE_INDICES, INDICES_PER_INSTANCE, UNIQUE_VERTICES_PER_INSTANCE,
+        CURVE_IDXS, IDXS_PER_INSTANCE, UNIQUE_VERTICES_PER_INSTANCE,
     };
     use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 
     #[test]
     fn curve_indices_tile_adjacent_cross_sections() {
-        assert_eq!(CURVE_INDICES.len(), INDICES_PER_INSTANCE as usize);
+        assert_eq!(CURVE_IDXS.len(), IDXS_PER_INSTANCE as usize);
         assert_eq!(
-            CURVE_INDICES.iter().copied().max(),
+            CURVE_IDXS.iter().copied().max(),
             Some(UNIQUE_VERTICES_PER_INSTANCE - 1)
         );
         for segment in 0..SEGMENTS_PER_INSTANCE as u16 {
             let vertex = 2 * segment;
             let offset = 6 * segment as usize;
             assert_eq!(
-                &CURVE_INDICES[offset..offset + 6],
+                &CURVE_IDXS[offset..offset + 6],
                 &[
                     vertex,
                     vertex + 2,

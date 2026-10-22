@@ -212,8 +212,8 @@ impl StripPaint {
 
     fn fill(self, image: &mut Image) {
         let width = image.size().x;
-        for (column, texel) in image.row_mut(0).iter_mut().enumerate() {
-            let along = (column as f32 + 0.5) / width as f32;
+        for (col, texel) in image.row_mut(0).iter_mut().enumerate() {
+            let along = (col as f32 + 0.5) / width as f32;
             *texel = match self {
                 Self::Hue(model) => model.slice(along).color(1.0, 1.0).into(),
                 Self::Alpha(color) => color.with_alpha(along).into(),

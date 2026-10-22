@@ -125,11 +125,11 @@ impl GradientStops {
     /// Stable insertion sort: input is nearly ordered and the strict `>` keeps
     /// equal offsets in written order.
     fn sorted(mut values: ArrayVec<[Stop; MAX_STOPS]>) -> Self {
-        for index in 1..values.len() {
-            let mut current = index;
-            while current > 0 && values[current - 1].offset_u8 > values[current].offset_u8 {
-                values.swap(current - 1, current);
-                current -= 1;
+        for idx in 1..values.len() {
+            let mut cur = idx;
+            while cur > 0 && values[cur - 1].offset_u8 > values[cur].offset_u8 {
+                values.swap(cur - 1, cur);
+                cur -= 1;
             }
         }
         let mut stops = [Stop::default(); MAX_STOPS];

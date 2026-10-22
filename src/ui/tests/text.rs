@@ -135,9 +135,9 @@ fn text_reuse_evicts_disappeared_widgets() {
                 .show(ui);
         });
     });
-    let wid = WidgetId::from_hash("transient");
+    let widget_id = WidgetId::from_hash("transient");
     assert!(
-        h.engines.layout.text.has_entry(wid, 0),
+        h.engines.layout.text.has_entry(widget_id, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -145,7 +145,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !h.engines.layout.text.has_entry(wid, 0),
+        !h.engines.layout.text.has_entry(widget_id, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -156,11 +156,11 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// `LayoutPass::shape_text_runs`.
 #[test]
 fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
-    let wid = WidgetId::from_hash("multi-run");
+    let widget_id = WidgetId::from_hash("multi-run");
     let build = move |runs: usize| {
         move |ui: &mut Ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                Widget::leaf().id(wid).record(ui, None, |ui| {
+                Widget::leaf().id(widget_id).record(ui, None, |ui| {
                     for i in 0..runs {
                         let text = ui.intern(format!("run {i}"));
                         ui.add_shape(Shape::text(text, GlyphFont::new(14.0)));
@@ -174,15 +174,18 @@ fn a_widget_recording_fewer_runs_loses_the_rows_above_its_count() {
     h.frame(build(3));
     for ordinal in 0..3 {
         assert!(
-            h.engines.layout.text.has_entry(wid, ordinal),
+            h.engines.layout.text.has_entry(widget_id, ordinal),
             "premise: run {ordinal} took a row",
         );
     }
 
     h.frame(build(1));
-    assert!(h.engines.layout.text.has_entry(wid, 0), "the run it kept");
-    assert!(!h.engines.layout.text.has_entry(wid, 1));
-    assert!(!h.engines.layout.text.has_entry(wid, 2));
+    assert!(
+        h.engines.layout.text.has_entry(widget_id, 0),
+        "the run it kept"
+    );
+    assert!(!h.engines.layout.text.has_entry(widget_id, 1));
+    assert!(!h.engines.layout.text.has_entry(widget_id, 2));
 }
 
 #[test]
@@ -282,7 +285,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
 /// Every frame that reaches the screen advances the shared text clock,
 /// `PaintOnly` ones included.
 ///
-/// A stalled clock makes nothing atlas-evictable (`last_use < current_frame`),
+/// A stalled clock makes nothing atlas-evictable (`last_use < cur_frame`),
 /// so a full atlas starves inserts and can't recover. The clock normally
 /// ticks in `TextSystem::end_frame` (`FullRecord` only); this pins the
 /// separate `PaintOnly` tick.

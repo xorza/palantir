@@ -100,7 +100,7 @@ fn context_menu_cut_copy_paste_clear() {
     h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
     let state = h.state::<TextEditState>(editor_id()).clone();
-    assert_eq!(state.edit.sel_range(), Some(0..buf.len()));
+    assert_eq!(state.edit.selection_range(), Some(0..buf.len()));
     assert!(
         !ContextMenu::is_open(&h.ui, editor_id()),
         "Select All shortcut closes the menu",

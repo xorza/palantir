@@ -30,7 +30,7 @@ mod tokens;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -111,7 +111,7 @@ impl FrameFixture {
             .gap(10.0)
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .background(Background::fill(tokens::APP_BG))
+            .bg(Bg::fill(tokens::APP_BG))
             .show(ui, |ui| {
                 chrome::app_bar(ui);
 

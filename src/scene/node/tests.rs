@@ -55,13 +55,13 @@ fn flag_setters_round_trip_each_field_independently() {
 fn adopt_placement_carries_the_tab_order() {
     let from = Widget::leaf()
         .tab_stop(false)
-        .tab_index(7)
+        .tab_idx(7)
         .sense(Sense::CLICK)
         .node;
     let mut to = Widget::leaf().focusable(true).node;
     to.adopt_placement(from);
     assert!(!to.flags.is_tab_stop());
-    assert_eq!(to.tab_index, 7);
+    assert_eq!(to.tab_idx, 7);
     assert!(to.flags.is_focusable(), "its own flags stay");
     assert_eq!(
         to.flags.sense(),
@@ -98,11 +98,9 @@ fn unconfigured_and_explicit_default_values_remain_distinct() {
     assert_eq!(explicit.node.clip, Some(ClipMode::None));
 
     // Explicitly-set defaults record identically to unset fields.
-    let columns = explicit
-        .node
-        .columns(WidgetId::from_hash("explicit-defaults"));
-    assert_eq!(columns.attrs, NodeFlags::default());
-    assert_eq!(columns.bounds, BoundsExtras::DEFAULT);
+    let cols = explicit.node.cols(WidgetId::from_hash("explicit-defaults"));
+    assert_eq!(cols.attrs, NodeFlags::default());
+    assert_eq!(cols.bounds, BoundsExtras::DEFAULT);
 }
 
 /// `set_mode` refines a node, never re-kinds it: a pending grid or bar overlay takes only its own definition, a resolved mode only a fresh payload of its own kind.
@@ -113,7 +111,7 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
         "grid node recorded before its definition was installed",
         || LayoutCore::from_node(&grid),
     );
-    let grid_id = GridDefId::from_index(42);
+    let grid_id = GridDefId::from_idx(42);
     grid.set_mode(LayoutMode::Grid(grid_id));
     assert_eq!(grid.mode, NodeMode::Resolved(LayoutMode::Grid(grid_id)));
 
@@ -122,7 +120,7 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
         "scrollbar overlay recorded before its definition was installed",
         || LayoutCore::from_node(&bars),
     );
-    let bars_id = ScrollbarsDefId::from_index(7);
+    let bars_id = ScrollbarsDefId::from_idx(7);
     bars.set_mode(LayoutMode::Scrollbars(bars_id));
     assert_eq!(
         bars.mode,
@@ -149,10 +147,10 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
             .set_mode(LayoutMode::Grid(grid_id));
     });
 
-    let last_grid = GridDefId::from_index(65_534);
+    let last_grid = GridDefId::from_idx(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
     panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
-        GridDefId::from_index(65_535)
+        GridDefId::from_idx(65_535)
     });
 }
 
@@ -172,7 +170,7 @@ fn layout_core_round_trips_mode_align_visibility() {
             Visibility::Hidden,
         ),
         (
-            LayoutMode::Grid(GridDefId::from_index(42)),
+            LayoutMode::Grid(GridDefId::from_idx(42)),
             Align::new(HAlign::Right, VAlign::Bottom),
             Visibility::Collapsed,
         ),

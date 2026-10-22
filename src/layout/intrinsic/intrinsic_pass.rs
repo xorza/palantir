@@ -136,9 +136,9 @@ impl<'a> IntrinsicPass<'a> {
     #[inline]
     fn memo(&mut self, idx: usize, axis: Axis, req: LenReq) -> Option<f32> {
         let slot = req.slot(axis);
-        let current = self.engine.scratch.intrinsics[idx][slot];
-        if !current.is_nan() {
-            return Some(current);
+        let cur = self.engine.scratch.intrinsics[idx][slot];
+        if !cur.is_nan() {
+            return Some(cur);
         }
         let snapshot = self.snapshot(idx, slot)?;
         self.engine.scratch.intrinsics[idx][slot] = snapshot;
@@ -209,13 +209,13 @@ impl<'a> IntrinsicPass<'a> {
     /// pass; see [`IntrinsicWalk`] for what the other buys.
     fn leaf(&mut self, node: NodeId, query: IntrinsicQuery) -> IntrinsicWalk {
         let (tree, interned_text) = (self.tree, self.interned_text);
-        let wid = tree.records.widget_id()[node.idx()];
+        let widget_id = tree.records.widget_id()[node.idx()];
         let mut min_content = Size::ZERO;
         let mut max_content = Size::ZERO;
         for ts in TextShapeInput::on_leaf(tree, interned_text, node) {
             let unbounded = self.engine.text.root(
                 TextRunSlot {
-                    widget_id: wid,
+                    widget_id,
                     ordinal: ts.ordinal,
                 },
                 ts.shape_request(),

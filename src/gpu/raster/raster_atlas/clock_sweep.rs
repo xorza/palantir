@@ -15,11 +15,11 @@ pub(super) struct ClockSweep {
     pub(super) examined: u32,
 }
 
-/// The slots a sweep may evict: packed with `content`, and not drawn on `current_frame`.
+/// The slots a sweep may evict: packed with `content`, and not drawn on `cur_frame`.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Evictable {
     pub(super) content: ContentType,
-    pub(super) current_frame: u64,
+    pub(super) cur_frame: u64,
 }
 
 impl ClockSweep {
@@ -27,7 +27,7 @@ impl ClockSweep {
     pub(super) fn over(slots: &[AtlasSlot], hand: u32, wanted: Evictable) -> Self {
         let Evictable {
             content: target,
-            current_frame,
+            cur_frame,
         } = wanted;
         let n = slots.len();
         if n == 0 {
@@ -43,8 +43,7 @@ impl ClockSweep {
             let idx = at;
             at = if at + 1 == n { 0 } else { at + 1 };
             let slot = &slots[idx];
-            if slot.placement.is_some_and(|p| p.content == target) && slot.last_use < current_frame
-            {
+            if slot.placement.is_some_and(|p| p.content == target) && slot.last_use < cur_frame {
                 return Self {
                     victim: Some(idx as u32),
                     hand: at as u32,

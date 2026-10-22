@@ -8,9 +8,9 @@ use crate::widgets::splitter::split_half::SplitHalf;
 
 /// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes (a stale one no-ops), unlike [`TabGroupId`](crate::TabGroupId).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeIndex(pub(super) u32);
+pub struct NodeIdx(pub(super) u32);
 
-impl NodeIndex {
+impl NodeIdx {
     /// The index of slot `slot`.
     pub(super) fn at(slot: usize) -> Self {
         Self(
@@ -37,8 +37,8 @@ pub enum DockNode<T> {
 pub struct DockSplit {
     pub(super) direction: SplitDirection,
     pub(super) ratio: f32,
-    pub(super) first: NodeIndex,
-    pub(super) second: NodeIndex,
+    pub(super) first: NodeIdx,
+    pub(super) second: NodeIdx,
 }
 
 impl DockSplit {
@@ -52,18 +52,18 @@ impl DockSplit {
         self.ratio
     }
 
-    /// The leading child: left in a Row, top in a Column.
-    pub const fn first(self) -> NodeIndex {
+    /// The leading child: left in a `Row`, top in a `Col`.
+    pub const fn first(self) -> NodeIdx {
         self.first
     }
 
     /// The trailing child.
-    pub const fn second(self) -> NodeIndex {
+    pub const fn second(self) -> NodeIdx {
         self.second
     }
 
     /// The child on `half`.
-    pub(super) const fn child(self, half: SplitHalf) -> NodeIndex {
+    pub(super) const fn child(self, half: SplitHalf) -> NodeIdx {
         match half {
             SplitHalf::First => self.first,
             SplitHalf::Second => self.second,

@@ -66,7 +66,7 @@ pub(crate) struct RenderBuffer {
     pub(crate) clear_override: Option<RgbaF16>,
     /// The display this buffer was composed for, held whole so every reader sees the viewport the compose session used.
     pub(crate) display: Display,
-    /// This frame's monotonic time, stamped by `Frontend::build`; the backend diffs it for `GpuFrameContext::dt`.
+    /// This frame's monotonic time, stamped by `Frontend::build`; the backend diffs it for `GpuFrameCtx::dt`.
     pub(crate) time: Duration,
 }
 

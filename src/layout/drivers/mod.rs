@@ -129,7 +129,7 @@ mod tests {
             LayoutMode::WrapStack(Axis::Y),
             LayoutMode::ZStack,
             LayoutMode::Canvas,
-            LayoutMode::Grid(GridDefId::from_index(0)),
+            LayoutMode::Grid(GridDefId::from_idx(0)),
             LayoutMode::Scroll(ScrollAxes::BOTH),
         ];
         for mode in slot_pure {
@@ -141,7 +141,7 @@ mod tests {
         assert!(
             !ReplayOp.dispatch(
                 NodeId(0),
-                LayoutMode::Scrollbars(ScrollbarsDefId::from_index(0))
+                LayoutMode::Scrollbars(ScrollbarsDefId::from_idx(0))
             ),
             "Scrollbars reads a sibling's scroll_content and must never replay",
         );

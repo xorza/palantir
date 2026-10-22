@@ -8,7 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::layer::Layer;
 use crate::theme::dock::DockTheme;
 use crate::ui::Ui;
@@ -17,7 +17,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::dock::dock_node::{DockNode, NodeIndex};
+use crate::widgets::dock::dock_node::{DockNode, NodeIdx};
 use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
@@ -345,7 +345,7 @@ struct DockCtx<'c, T, D> {
 }
 
 impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
-    fn node(&mut self, ui: &mut Ui, idx: NodeIndex, path: DockPath) {
+    fn node(&mut self, ui: &mut Ui, idx: NodeIdx, path: DockPath) {
         let state = self.state;
         match state.node(idx) {
             DockNode::Group(group) => self.group(ui, group),
@@ -354,7 +354,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 let mut live = split.ratio();
                 let splitter = match split.direction() {
                     SplitDirection::Row => Splitter::row(&mut live),
-                    SplitDirection::Column => Splitter::column(&mut live),
+                    SplitDirection::Col => Splitter::col(&mut live),
                 };
                 let hit = splitter
                     .id(DockView::splitter_id(state, path))
@@ -460,7 +460,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let dock = DockView::dock_id(state);
         if let Some(target) = DockView::drop_target(state, ui) {
             let r = target.highlight;
-            let preview = Background::rounded(
+            let preview = Bg::rounded(
                 self.theme.preview_fill,
                 Corners::all(self.theme.preview_radius),
             )
@@ -472,7 +472,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     Panel::zstack()
                         .id(dock.with("preview"))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(preview)
+                        .bg(preview)
                         .show(ui, |_| {});
                 });
         }
@@ -480,7 +480,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             return;
         };
         let label = self.tabs.title(ui, tab);
-        let ghost = self.theme.ghost.background.clone();
+        let ghost = self.theme.ghost.bg.clone();
         let ghost_text = self.theme.ghost.text.apply(&ui.theme().text);
         let padding = self.theme.ghost_padding;
         ui.layer(Layer::Tooltip)
@@ -490,7 +490,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     .id(dock.with("ghost"))
                     .size((Sizing::HUG, Sizing::HUG))
                     .padding(padding)
-                    .background(ghost)
+                    .bg(ghost)
                     .show(ui, |ui| {
                         Text::new(label)
                             .id(dock.with("ghost_label"))

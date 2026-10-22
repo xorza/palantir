@@ -82,7 +82,7 @@ fn mono_root(text: &str, shape: TestShape) -> TextRoot {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct GlyphPosition {
+struct GlyphPos {
     x: f32,
     width: f32,
     line_top: f32,
@@ -92,14 +92,14 @@ struct GlyphPosition {
 }
 
 /// Glyph geometry in the block-local space the renderer and probe see.
-fn glyph_positions(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPosition> {
+fn glyph_poss(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPos> {
     let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
     let left = shaped.left;
     shaped
         .buffer
         .layout_runs()
         .flat_map(move |run| {
-            run.glyphs.iter().map(move |glyph| GlyphPosition {
+            run.glyphs.iter().map(move |glyph| GlyphPos {
                 x: glyph.x - left,
                 width: glyph.w,
                 line_top: run.line_top,

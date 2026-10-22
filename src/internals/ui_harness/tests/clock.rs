@@ -54,15 +54,15 @@ fn one_clock_stamps_both_frames_and_input() {
 
 #[test]
 fn advance_frames_rejects_a_step_that_would_be_clamped() {
-    // Animation dt clamps to MAX_ANIM_DT per frame; a larger step silently under-integrates.
+    // Animation dt clamps to MAX_ANIMATION_DT per frame; a larger step silently under-integrates.
     let mut harness = UiHarness::new(SURFACE);
     harness.advance_frames(3, Duration::from_millis(16), support::button);
     assert_eq!(harness.time, Duration::from_millis(48));
 
-    panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
+    panic_probe::assert_panics_with("exceeds MAX_ANIMATION_DT", || {
         UiHarness::new(SURFACE).advance_frames(1, Duration::from_millis(500), support::button);
     });
-    panic_probe::assert_panics_with("exceeds MAX_ANIM_DT", || {
+    panic_probe::assert_panics_with("exceeds MAX_ANIMATION_DT", || {
         UiHarness::new(SURFACE).frames_until_idle(1, Duration::from_millis(500), support::button);
     });
 }

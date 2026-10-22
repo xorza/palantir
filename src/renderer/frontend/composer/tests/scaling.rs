@@ -37,7 +37,7 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 
     // Centerline (10,20)..(30,30), plus origin (2,4), then
     // x ↦ 1.5x + (3,5) gives logical (21,41)..(51,56).
-    // Butt cases use physical pad = width_phys/2 + 0.5:
+    // Butt cases use physical pad = width_physical/2 + 0.5:
     // 0.5× → 2, 1× → 3.5, 2× → 6.5.
     let cases = [
         Case {
@@ -73,14 +73,14 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
             expected: URect::new(7, 27, 58, 43),
         },
     ];
-    let xform = TranslateScale::new(Vec2::new(3.0, 5.0), 1.5);
+    let transform = TranslateScale::new(Vec2::new(3.0, 5.0), 1.5);
 
     for case in cases {
         let actual = StrokeBbox {
-            xform,
+            transform,
             bbox: Rect::new(10.0, 20.0, 20.0, 10.0),
             origin: Vec2::new(2.0, 4.0),
-            width_phys: 4.0 * 1.5 * case.scale,
+            width_physical: 4.0 * 1.5 * case.scale,
             cap: case.cap,
             joints: case.joints,
             display: params(case.scale, UVec2::new(200, 200)),

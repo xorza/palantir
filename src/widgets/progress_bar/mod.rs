@@ -3,7 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::theme::progress_bar::ProgressBarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -52,8 +52,8 @@ impl<'a> ProgressBar<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::FILL, Sizing::fixed(thickness)));
-        let track = Background::rounded(theme.track, radius);
-        let fill_bg = Background::rounded(theme.fill, radius);
+        let track = Bg::rounded(theme.track, radius);
+        let fill_bg = Bg::rounded(theme.fill, radius);
 
         let id = widget.resolve(ui);
         widget

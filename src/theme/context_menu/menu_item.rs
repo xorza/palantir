@@ -3,7 +3,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
@@ -47,7 +47,7 @@ impl MenuItemTheme {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::menu_button`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
         let hovered = WidgetLook {
-            background: Background::rounded(p.element_mid, Corners::all(3.0)),
+            bg: Bg::rounded(p.element_mid, Corners::all(3.0)),
             text: TextStyleOverrides::NONE,
         };
         Self {
@@ -56,7 +56,7 @@ impl MenuItemTheme {
                 active: hovered.clone(),
                 hovered,
                 disabled: WidgetLook {
-                    background: Background::NONE,
+                    bg: Bg::NONE,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },

@@ -307,7 +307,7 @@ fn a_collapsed_child_takes_no_room() {
         let child = |ui: &mut Ui, id: WidgetId, size: (f32, f32), at: (f32, f32), col: u16| {
             let mut block = Block::new().id(id).size(size);
             match driver {
-                Driver::Canvas => block = block.position(at),
+                Driver::Canvas => block = block.pos(at),
                 Driver::Grid => block = block.grid_cell((0, col)),
                 _ => {}
             }

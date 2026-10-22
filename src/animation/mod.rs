@@ -1,8 +1,8 @@
-//! Per-`(WidgetId, AnimationSlot)` animation rows, generic over [`Animatable`]. Storage is type-erased: [`AnimMap`] holds one boxed [`AnimMapTyped<T>`] per `TypeId` used, allocated by the first `Ui::animate::<T>` call.
+//! Per-`(WidgetId, AnimationSlot)` animation rows, generic over [`Animatable`]. Storage is type-erased: [`AnimationMap`] holds one boxed [`AnimationMapTyped<T>`] per `TypeId` used, allocated by the first `Ui::animate::<T>` call.
 
-pub(crate) mod anim_map_typed;
-pub(crate) mod anim_row;
+pub(crate) mod animation_map_typed;
 pub(crate) mod animation_request;
+pub(crate) mod animation_row;
 pub(crate) mod animation_slot;
 pub(crate) mod animation_spec;
 #[cfg(feature = "internals")]
@@ -11,7 +11,7 @@ mod duration;
 pub(crate) mod easing;
 mod spring;
 
-use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
+use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped, TickResult};
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::{Drained, TypedStores};
@@ -20,11 +20,11 @@ use crate::primitives::math::animatable::Animatable;
 
 /// Central animation table on [`crate::Ui`]; typed maps are allocated on demand by `TypeId`.
 #[derive(Debug, Default)]
-pub(crate) struct AnimMap {
+pub(crate) struct AnimationMap {
     stores: TypedStores,
 }
 
-impl AnimMap {
+impl AnimationMap {
     /// Resolve one call site's animated value for this frame.
     ///
     /// Cheapest first: nothing has ever animated and no motion wanted returns the target before
@@ -36,7 +36,7 @@ impl AnimMap {
         &mut self,
         request: AnimationRequest<T>,
         spec: AnimationSpec,
-        clock: AnimClock,
+        clock: AnimationClock,
     ) -> TickResult<T> {
         if spec.is_instant() {
             if !self.is_empty()
@@ -45,7 +45,7 @@ impl AnimMap {
                 typed.drop_row(request.id, request.slot);
             }
             return TickResult {
-                current: request.target,
+                cur: request.target,
                 settled: true,
             };
         }
@@ -53,8 +53,8 @@ impl AnimMap {
     }
 
     /// Get-or-create the typed map for `T`.
-    fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
-        self.stores.get_or_default::<AnimMapTyped<T>>()
+    fn typed_mut<T: Animatable>(&mut self) -> &mut AnimationMapTyped<T> {
+        self.stores.get_or_default::<AnimationMapTyped<T>>()
     }
 
     /// No typed map exists yet: the fast path for an app that never animated, and once every map has drained.
@@ -63,8 +63,8 @@ impl AnimMap {
     }
 
     /// Borrow the typed map for `T` if it exists, so an instant spec can drop a stale row without allocating.
-    pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimMapTyped<T>> {
-        self.stores.get_mut::<AnimMapTyped<T>>()
+    pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimationMapTyped<T>> {
+        self.stores.get_mut::<AnimationMapTyped<T>>()
     }
 
     /// Drop rows for removed widgets and for slots not poked this frame (else abandoned slots accumulate for widgets whose id lingers), then clear `touched` on survivors. Called once per frame from `FrameCycle::finalize_frame`.
@@ -77,10 +77,10 @@ impl AnimMap {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::animation::AnimMap;
+    use crate::animation::AnimationMap;
     use crate::primitives::math::animatable::Animatable;
 
-    impl AnimMap {
+    impl AnimationMap {
         /// Rows resident in the `T` map, zero when it has none.
         pub(crate) fn row_count<T: Animatable>(&mut self) -> usize {
             self.try_typed_mut::<T>().map_or(0, |rows| rows.len())

@@ -69,9 +69,9 @@ fn split_routes_every_setter_to_one_wrapper() {
         ),
         (
             "position",
-            |s| s.position(Vec2::new(7.0, 9.0)),
+            |s| s.pos(Vec2::new(7.0, 9.0)),
             Side::Outer,
-            |n| n.position = Vec2::new(7.0, 9.0),
+            |n| n.pos = Vec2::new(7.0, 9.0),
         ),
         (
             "grid_cell",
@@ -82,9 +82,9 @@ fn split_routes_every_setter_to_one_wrapper() {
         // `adopt_placement` copies the donor's `Tab` order among its placement fields.
         (
             "adopt_placement",
-            |s| s.adopt_placement(&Widget::leaf().tab_index(4)),
+            |s| s.adopt_placement(&Widget::leaf().tab_idx(4)),
             Side::Outer,
-            |n| n.tab_index = 4,
+            |n| n.tab_idx = 4,
         ),
         ("gap", |s| s.gap(3.0), Side::Inner, |n| n.gaps.set_gap(3.0)),
         (
@@ -149,10 +149,10 @@ fn split_routes_every_setter_to_one_wrapper() {
             |n| n.flags.set_arrow_focus(Some(Axis::Y)),
         ),
         (
-            "tab_index",
-            |s| s.tab_index(-3),
+            "tab_idx",
+            |s| s.tab_idx(-3),
             Side::Outer,
-            |n| n.tab_index = -3,
+            |n| n.tab_idx = -3,
         ),
         (
             "input_scope",

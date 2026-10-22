@@ -65,7 +65,7 @@ pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DamageBase {
     /// Diff against it.
-    Previous,
+    Prev,
     /// Discard it and repaint the whole surface: the first frame, a surface
     /// change, or a missed submit.
     Discarded,

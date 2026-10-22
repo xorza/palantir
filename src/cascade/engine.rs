@@ -107,7 +107,7 @@ impl RowSink for TreeSink<'_> {
                 layer,
                 root: self.root,
                 id,
-                index: tree.bounds(NodeId(iu as u32)).tab_index,
+                idx: tree.bounds(NodeId(iu as u32)).tab_idx,
             });
         }
         lc.hit_rows[iu] = if sense != Sense::NONE || focusable {
@@ -162,14 +162,14 @@ impl RowSink for TreePatch<'_> {
 
 /// The four values a node hands its descendants, the only inputs [`Self::prefix`] hashes; bundled because two adjacent `bool`s swap silently.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct CascadeContext {
+pub(super) struct CascadeCtx {
     pub(super) transform: TranslateScale,
     pub(super) clip: Option<Rect>,
     pub(super) disabled: bool,
     pub(super) invisible: bool,
 }
 
-impl CascadeContext {
+impl CascadeCtx {
     pub(super) const ROOT: Self = Self {
         transform: TranslateScale::IDENTITY,
         clip: None,
@@ -213,7 +213,7 @@ struct TreeSource<'a> {
 
 #[derive(Debug)]
 struct Frame {
-    cascade: CascadeContext,
+    cascade: CascadeCtx,
     subtree_end: u32,
     node_idx: usize,
     subtree_paint_rect: Rect,
@@ -318,9 +318,9 @@ impl CascadeEngine {
             );
         }
 
-        // `SeenIds::pre_record` clears `curr` before a relayout pass can query the preceding pass's responses.
+        // `SeenIds::pre_record` clears `cur` before a relayout pass can query the preceding pass's responses.
         //
-        // Refilled, not `clone_from`: `curr` and `prev` swap every frame and hashbrown's `clone_from` reallocates when bucket counts differ.
+        // Refilled, not `clone_from`: `cur` and `prev` swap every frame and hashbrown's `clone_from` reallocates when bucket counts differ.
         cascade.by_id.clear();
         cascade.by_id.extend(forest.ids.recorded());
         cascade.key = Some(key);
@@ -374,7 +374,7 @@ impl CascadeEngine {
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
         let skip_clean = sink.skips_clean_subtrees();
-        let root_prefix = CascadeContext::ROOT.prefix();
+        let root_prefix = CascadeCtx::ROOT.prefix();
 
         let mut i: u32 = 0;
         while i < n {
@@ -382,7 +382,7 @@ impl CascadeEngine {
                 finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
             }
             let top = self.stack.last();
-            let parent = top.map_or(CascadeContext::ROOT, |frame| frame.cascade);
+            let parent = top.map_or(CascadeCtx::ROOT, |frame| frame.cascade);
             let parent_prefix = top.map_or(&root_prefix, |frame| &frame.cascade_prefix);
 
             let iu = i as usize;
@@ -485,7 +485,7 @@ impl CascadeEngine {
             lc.subtree_paint_rects[iu] = subtree_seed;
 
             if has_children {
-                let cascade = CascadeContext {
+                let cascade = CascadeCtx {
                     transform: desc_transform,
                     clip: shape_clip,
                     disabled,

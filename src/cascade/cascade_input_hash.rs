@@ -22,7 +22,7 @@ impl CascadeInputHash {
         Self((hash & HASH_MASK) | ((invisible as u64) << 63))
     }
 
-    /// A node's input: its parent's [`CascadeContext::prefix`](crate::cascade::engine::CascadeContext::prefix) folded with its own arranged rect, packed with its resolved `invisible`.
+    /// A node's input: its parent's [`CascadeCtx::prefix`](crate::cascade::engine::CascadeCtx::prefix) folded with its own arranged rect, packed with its resolved `invisible`.
     #[inline]
     pub(crate) fn finish(prefix: &Hasher, layout_rect: Rect, invisible: bool) -> Self {
         let mut h = prefix.clone();

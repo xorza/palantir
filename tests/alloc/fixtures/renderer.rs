@@ -16,14 +16,14 @@ use glam::Vec2;
 use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Background, Block, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing,
-    Stroke, Track, TranslateScale, Ui,
+    Bg, Block, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing, Stroke,
+    Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
 
 /// Distinct nudge positions: more than one so damage is full every frame, few
 /// enough that the tree isn't culled off the surface.
-const NUDGE_POSITIONS: u32 = 4;
+const NUDGE_POSS: u32 = 4;
 
 /// Whole nudge cycles of warmup; the scene cycles, so the probe could settle
 /// before its widest frame (see `Warmup::Probe`).
@@ -41,9 +41,9 @@ fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
     let mut frontend = FrontendHarness::new(harness::new_ui());
     let mut step = 0u32;
     Audit::new()
-        .warmup((WARMUP_CYCLES * NUDGE_POSITIONS) as usize)
+        .warmup((WARMUP_CYCLES * NUDGE_POSS) as usize)
         .run_frames(|| {
-            step = (step + 1) % NUDGE_POSITIONS;
+            step = (step + 1) % NUDGE_POSS;
             let report = frontend.frame(|ui| {
                 Panel::zstack()
                     .auto_id()
@@ -74,7 +74,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Block::new()
                             .id_salt((r, c))
-                            .background(Background::fill(RgbaF32::WHITE))
+                            .bg(Bg::fill(RgbaF32::WHITE))
                             .grid_cell((r, c))
                             .show(ui);
                     }

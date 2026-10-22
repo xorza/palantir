@@ -14,7 +14,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -26,7 +26,7 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
     Panel::hstack()
         .id(WidgetId::from_hash(id))
         .size((Sizing::fixed(180.0), Sizing::fixed(90.0)))
-        .background(Background::fill(BLUE))
+        .bg(Bg::fill(BLUE))
         .show(ui, |ui| {
             for s in 0..shapes {
                 ui.add_shape(

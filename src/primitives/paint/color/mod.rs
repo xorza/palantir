@@ -277,8 +277,8 @@ impl str::FromStr for RgbaF32 {
 /// `u8::from_str_radix` would accept a leading `+`.
 fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
     let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
-    let parse_byte = |index: usize| -> Result<u8, &'static str> {
-        Ok((hex_nibble(body[index])? << 4) | hex_nibble(body[index + 1])?)
+    let parse_byte = |idx: usize| -> Result<u8, &'static str> {
+        Ok((hex_nibble(body[idx])? << 4) | hex_nibble(body[idx + 1])?)
     };
     match body.len() {
         6 => Ok(RgbaF32::from_srgba(SrgbaU8::rgb(

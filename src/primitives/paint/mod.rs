@@ -2,7 +2,7 @@
 //! backgrounds, and images.
 
 pub(crate) mod antialias;
-pub(crate) mod background;
+pub(crate) mod bg;
 pub(crate) mod brush;
 pub(crate) mod color;
 pub(crate) mod content_type;

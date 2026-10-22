@@ -38,7 +38,7 @@ impl Card {
             .gap(8.0)
             .padding(10.0)
             .size((Sizing::FILL, height))
-            .background(tokens::card_bg())
+            .bg(tokens::card_bg())
             .show(ui, |ui| {
                 Text::new(title)
                     .id_salt((id, "section"))

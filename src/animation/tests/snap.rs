@@ -1,10 +1,10 @@
 //! Snap-marked fields carry their target immediately; only their own velocity clears.
 
-use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::spring::Spring;
-use crate::animation::tests::support::{self, AnimUi, Release, SLOT};
+use crate::animation::tests::support::{self, AnimationUi, Release, SLOT};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
@@ -12,17 +12,17 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
 
-/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Background.radius` is snap).
+/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Bg.radius` is snap).
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
-    let mut map = AnimMapTyped::<Background>::default();
-    let id = support::wid("snap-carry");
-    let start = Background {
+    let mut map = AnimationMapTyped::<Bg>::default();
+    let id = support::widget_id("snap-carry");
+    let start = Bg {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
         border: Stroke::NONE,
         corners: Corners::all(2.0),
@@ -35,7 +35,7 @@ fn spring_snap_fields_carry_target_immediately() {
     );
 
     // Retarget fill (animated) and radius (snap): from rest the change's frame steps nothing and shows the start.
-    let target = Background {
+    let target = Bg {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         border: Stroke::NONE,
         corners: Corners::all(12.0),
@@ -46,7 +46,7 @@ fn spring_snap_fields_carry_target_immediately() {
         AnimationSpec::SPRING,
         0.016,
     );
-    assert_eq!(r.current, start, "the change's frame shows the start");
+    assert_eq!(r.cur, start, "the change's frame shows the start");
     let r = map.step(
         AnimationRequest::new(id, SLOT, target.clone()),
         AnimationSpec::SPRING,
@@ -57,34 +57,34 @@ fn spring_snap_fields_carry_target_immediately() {
         "spring with a real fill diff must remain in flight after one step",
     );
     assert_eq!(
-        r.current.corners, target.corners,
+        r.cur.corners, target.corners,
         "snap field must carry target value on the first stepped frame, not lag until settle",
     );
     assert!(
-        r.current.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
+        r.cur.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
         "animated fill should still be mid-flight; got {:?}",
-        r.current.fill,
+        r.cur.fill,
     );
 }
 
 #[test]
 fn gradient_snap_clears_only_its_background_velocity() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
-    let mut map = AnimMapTyped::<Background>::default();
-    let id = support::wid("gradient-background-velocity");
-    let start = Background {
+    let mut map = AnimationMapTyped::<Bg>::default();
+    let id = support::widget_id("gradient-background-velocity");
+    let start = Bg {
         fill: Brush::Solid(RgbaF32::BLACK),
         border: Stroke::new(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let moving = Background {
+    let moving = Bg {
         fill: Brush::Solid(RgbaF32::WHITE),
         border: Stroke::new(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
@@ -115,7 +115,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
         RgbaF32::BLACK,
         RgbaF32::WHITE,
     ));
-    let target = Background {
+    let target = Bg {
         fill: gradient.clone(),
         border: Stroke::new(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
@@ -128,7 +128,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
     );
     let row = &map.rows[&(id, SLOT)];
     let velocity = support::spring_velocity(row);
-    assert_eq!(result.current.fill, gradient);
+    assert_eq!(result.cur.fill, gradient);
     assert_eq!(velocity.fill, Brush::TRANSPARENT);
     assert_eq!(velocity.border.width, stroke_velocity);
     assert!(
@@ -139,33 +139,33 @@ fn gradient_snap_clears_only_its_background_velocity() {
 
 #[test]
 fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
     use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
 
-    let AnimUi { mut h, id } = support::setup_anim_ui("gradient-look-settle");
+    let AnimationUi { mut h, id } = support::setup_animation_ui("gradient-look-settle");
     let start = AnimatedLook {
-        background: Background::fill(RgbaF32::BLACK),
+        bg: Bg::fill(RgbaF32::BLACK),
         text: TextStyle::default().with_color(RgbaF32::BLACK),
     };
     let gradient = Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE));
     let target = AnimatedLook {
-        background: Background::fill(gradient.clone()),
+        bg: Bg::fill(gradient.clone()),
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
     let frame = |h: &mut UiHarness, look: &AnimatedLook| {
         h.frame_passes(|ui| {
-            let current = ui.animate(
+            let cur = ui.animate(
                 AnimationRequest::new(id, SLOT, look.clone()),
                 Some(AnimationSpec::SPRING),
             );
             Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
-            current
+            cur
         })
     };
 
@@ -175,21 +175,21 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let tick = Duration::from_millis(16);
     let retarget = frame(h.advance(tick), &target);
-    assert_eq!(retarget.a().background.fill, gradient);
+    assert_eq!(retarget.a().bg.fill, gradient);
     assert_ne!(retarget.a().text.color, target.text.color);
     assert!(retarget.report().repaint_requested);
 
     let mut last = None;
     let frames = h.frames_until_idle(600, tick, |ui| {
-        let current = ui.animate(
+        let cur = ui.animate(
             AnimationRequest::new(id, SLOT, target.clone()),
             Some(AnimationSpec::SPRING),
         );
-        assert_eq!(current.background.fill, gradient);
+        assert_eq!(cur.bg.fill, gradient);
         Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);
-        last = Some(current);
+        last = Some(cur);
     });
     // Text color moves black → white, √3 in linear RGB; frame `n` after the retarget is step `n`.
     let release = Release {

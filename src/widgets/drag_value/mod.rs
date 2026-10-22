@@ -283,7 +283,7 @@ impl<'a> DragValue<'a> {
         let plan = chip.plan(&response, (), theme.text);
         let look = self.widget.wear(ui, plan);
 
-        self.widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.bg), |ui| {
             ui.add_shape(
                 Shape::text(text, look.text.font())
                     .color(look.text.color)

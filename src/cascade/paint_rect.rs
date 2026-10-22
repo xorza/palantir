@@ -194,7 +194,7 @@ impl PaintRectCtx<'_> {
 
         // The owner-local bound a stroked shape is damaged against: its recorded bbox, or the square it sweeps under a rotating paint anim (what the composer culls against). No angle is read.
         let spun_if_animated = |bbox: Rect, shape_idx: u32| {
-            if tree.paint_anims.rotates(shape_idx) {
+            if tree.paint_animations.rotates(shape_idx) {
                 bbox.spun_cover(layout_rect.spin_pivot())
             } else {
                 bbox

@@ -3,7 +3,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -33,8 +33,8 @@ pub struct TabsTheme {
     /// Cap breadth in logical px; the selected chip lifts its top inset by the same amount.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub accent_thickness: f32,
-    /// The band behind the chips; [`Background::NONE`] by default.
-    pub strip: Background,
+    /// The band behind the chips; [`Bg::NONE`] by default.
+    pub strip: Bg,
     /// Inset between the band's edges and the chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub strip_padding: Spacing,
@@ -125,15 +125,15 @@ impl TabsTheme {
         let inactive_text = TextStyleOverrides::NONE.with_color(p.text_muted);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let chip = |fill: RgbaF32, text: TextStyleOverrides| WidgetLook {
-            background: Background::rounded(fill, top),
+            bg: Bg::rounded(fill, top),
             text,
         };
         Self {
             active: StatefulLook {
-                normal: chip(p.window_background, TextStyleOverrides::NONE),
-                hovered: chip(p.window_background, TextStyleOverrides::NONE),
-                active: chip(p.window_background, TextStyleOverrides::NONE),
-                disabled: chip(p.window_background, disabled_text),
+                normal: chip(p.window_bg, TextStyleOverrides::NONE),
+                hovered: chip(p.window_bg, TextStyleOverrides::NONE),
+                active: chip(p.window_bg, TextStyleOverrides::NONE),
+                disabled: chip(p.window_bg, disabled_text),
             },
             inactive: StatefulLook {
                 normal: chip(p.element_mid, inactive_text),
@@ -144,7 +144,7 @@ impl TabsTheme {
             accent: p.accent,
             accent_idle: p.element_strong,
             accent_thickness: 2.0,
-            strip: Background::NONE,
+            strip: Bg::NONE,
             strip_padding: Spacing::new(6.0, 4.0, 6.0, 0.0),
             gap: 3.0,
             rule: p.border_soft(),
@@ -156,20 +156,20 @@ impl TabsTheme {
             max_width: 200.0,
             close: StatefulLook {
                 normal: WidgetLook {
-                    background: Background::NONE,
+                    bg: Bg::NONE,
                     text: inactive_text,
                 },
                 hovered: WidgetLook {
-                    background: Background::rounded(p.element_strong, Corners::all(3.0)),
+                    bg: Bg::rounded(p.element_strong, Corners::all(3.0)),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: Background::rounded(p.element_strong, Corners::all(3.0))
+                    bg: Bg::rounded(p.element_strong, Corners::all(3.0))
                         .with_border(Stroke::new(p.border_focused, 1.0)),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    background: Background::NONE,
+                    bg: Bg::NONE,
                     text: disabled_text,
                 },
             },

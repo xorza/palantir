@@ -54,7 +54,7 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(!h.ui.is_window_open(close), "only `open` is live");
 
     let placed = WindowPlacement {
-        position: Some(IVec2::new(-120, 48)),
+        pos: Some(IVec2::new(-120, 48)),
         maximized: true,
     };
     h.ui.window_frame.placement = placed;

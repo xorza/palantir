@@ -6,9 +6,9 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use palantir_anim_derive::Animatable;
 
-/// One color and one width; where the width lies is the shape's rule. An area shape ([`Background`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centers it on the path.
+/// One color and one width; where the width lies is the shape's rule. An area shape ([`Bg`], rect, triangle) paints it as a border inside its edge; a path shape (line, curve, arc, polyline) centers it on the path.
 ///
-/// [`Background`]: crate::Background
+/// [`Bg`]: crate::Bg
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
@@ -35,7 +35,7 @@ impl Stroke {
         width: 0.0,
     };
 
-    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Background`'s `skip_serializing_if` needs `fn(&T) -> bool`.
+    /// True when this stroke paints nothing: width within tolerance of zero (negative counts as zero) or fully transparent color. Animation lerps through `Stroke::NONE`, so a bordered-to-borderless transition settles here. Takes `&self` because `Bg`'s `skip_serializing_if` needs `fn(&T) -> bool`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         is_invisible(self.width) || self.color.is_noop()

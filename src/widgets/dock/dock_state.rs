@@ -1,7 +1,7 @@
 //! The dock's persisted arrangement: a binary split tree whose leaves are tab
 //! groups, plus the six operations that mutate it.
 //!
-//! **Flat storage.** One `Vec<DockNode<T>>` with [`NodeIndex`] children, kept
+//! **Flat storage.** One `Vec<DockNode<T>>` with [`NodeIdx`] children, kept
 //! canonical (pre-order from slot 0, no dead slots) by re-packing after every
 //! structural operation, so `Vec` equality is structural equality (an undo layer
 //! can diff snapshots).
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
-use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_tab::DockTab;
@@ -42,7 +42,7 @@ pub struct TabAddress {
     /// The group holding the tab.
     pub group: TabGroupId,
     /// Its slot in that group's strip.
-    pub index: usize,
+    pub idx: usize,
 }
 
 /// The whole pane arrangement: the flat split tree, the focused group, and the
@@ -118,7 +118,7 @@ impl<T: DockTab> TryFrom<RawDockState<T>> for DockState<T> {
 
 impl<T: DockTab> DockState<T> {
     /// The root node's index: always slot 0.
-    pub const ROOT: NodeIndex = NodeIndex(0);
+    pub const ROOT: NodeIdx = NodeIdx(0);
 
     /// Smallest share a split gives either pane.
     pub const RATIO_MIN: f32 = RATIO_MIN;
@@ -188,9 +188,9 @@ impl<T: DockTab> DockState<T> {
         self.focused
     }
 
-    /// The node at `index`; the record walk follows [`DockSplit`]'s child indices.
-    pub fn node(&self, index: NodeIndex) -> &DockNode<T> {
-        &self.nodes[index.usize()]
+    /// The node at `idx`; the record walk follows [`DockSplit`]'s child indices.
+    pub fn node(&self, idx: NodeIdx) -> &DockNode<T> {
+        &self.nodes[idx.usize()]
     }
 
     /// The leaf groups in left-to-right, top-to-bottom pane order (vector order).
@@ -224,7 +224,7 @@ impl<T: DockTab> DockState<T> {
             g.tabs
                 .iter()
                 .position(|t| *t == tab)
-                .map(|index| TabAddress { group: g.id, index })
+                .map(|idx| TabAddress { group: g.id, idx })
         })
     }
 
@@ -269,12 +269,12 @@ impl<T: DockTab> DockState<T> {
     /// Make `tab` visible in whichever group holds it and focus that group. A closed
     /// tab no-ops.
     fn activate(&mut self, tab: T) {
-        let Some(TabAddress { group, index }) = self.find_tab(tab) else {
+        let Some(TabAddress { group, idx }) = self.find_tab(tab) else {
             return;
         };
         self.group_mut(group)
             .expect("find_tab resolved a live group")
-            .active = index;
+            .active = idx;
         self.focused = group;
     }
 
@@ -296,12 +296,12 @@ impl<T: DockTab> DockState<T> {
         if tab == self.pinned {
             return;
         }
-        let Some(TabAddress { group, index }) = self.find_tab(tab) else {
+        let Some(TabAddress { group, idx }) = self.find_tab(tab) else {
             return;
         };
         self.group_mut(group)
             .expect("find_tab resolved a live group")
-            .remove_tab(index);
+            .remove_tab(idx);
         self.normalize();
     }
 
@@ -332,21 +332,21 @@ impl<T: DockTab> DockState<T> {
 
         self.group_mut(source.group)
             .expect("source exists")
-            .remove_tab(source.index);
+            .remove_tab(source.idx);
 
         match drop {
-            DockDrop::Into { group, index } => {
-                // `index` addresses the strip as the caller saw it; a rightward move in one group
+            DockDrop::Into { group, idx } => {
+                // `idx` addresses the strip as the caller saw it; a rightward move in one group
                 // compensates for its own removal.
-                let index = if group == source.group && index > source.index {
-                    index - 1
+                let idx = if group == source.group && idx > source.idx {
+                    idx - 1
                 } else {
-                    index
+                    idx
                 };
                 let g = self.group_mut(group).expect("target exists");
-                let index = index.min(g.tabs.len());
-                g.tabs.insert(index, tab);
-                g.active = index;
+                let idx = idx.min(g.tabs.len());
+                g.tabs.insert(idx, tab);
+                g.active = idx;
                 self.focused = group;
             }
             DockDrop::Split { group, side } => {
@@ -406,7 +406,7 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Number of splits between `idx` and `id`'s group, if the group is under `idx`.
-    fn depth_below(&self, idx: NodeIndex, id: TabGroupId) -> Option<u32> {
+    fn depth_below(&self, idx: NodeIdx, id: TabGroupId) -> Option<u32> {
         match self.node(idx) {
             DockNode::Group(g) => (g.id == id).then_some(0),
             DockNode::Split(s) => self
@@ -426,8 +426,8 @@ impl<T: DockTab> DockState<T> {
         else {
             return;
         };
-        let existing_idx = NodeIndex::at(self.nodes.len());
-        let fresh_idx = NodeIndex::at(self.nodes.len() + 1);
+        let existing_idx = NodeIdx::at(self.nodes.len());
+        let fresh_idx = NodeIdx::at(self.nodes.len() + 1);
         let (first, second) = if side.new_pane_first() {
             (fresh_idx, existing_idx)
         } else {
@@ -462,7 +462,7 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Whether any tab survives under `idx`.
-    fn is_alive(&self, idx: NodeIndex) -> bool {
+    fn is_alive(&self, idx: NodeIdx) -> bool {
         match self.node(idx) {
             DockNode::Group(g) => !g.tabs.is_empty(),
             DockNode::Split(s) => self.is_alive(s.first) || self.is_alive(s.second),
@@ -471,11 +471,11 @@ impl<T: DockTab> DockState<T> {
 
     /// Copy the live subtree under `idx` onto `out` in pre-order, returning where
     /// it landed; a split with one live child dissolves into it.
-    fn copy_live(&self, idx: NodeIndex, out: &mut Vec<DockNode<T>>) -> NodeIndex {
+    fn copy_live(&self, idx: NodeIdx, out: &mut Vec<DockNode<T>>) -> NodeIdx {
         match self.node(idx) {
             DockNode::Group(g) => {
                 out.push(DockNode::Group(g.clone()));
-                NodeIndex::at(out.len() - 1)
+                NodeIdx::at(out.len() - 1)
             }
             DockNode::Split(s) => match (self.is_alive(s.first), self.is_alive(s.second)) {
                 (true, true) => {
@@ -489,7 +489,7 @@ impl<T: DockTab> DockState<T> {
                         second,
                         ..*s
                     });
-                    NodeIndex::at(slot)
+                    NodeIdx::at(slot)
                 }
                 (true, false) => self.copy_live(s.first, out),
                 (false, true) => self.copy_live(s.second, out),
@@ -556,7 +556,7 @@ impl<T: DockTab> DockState<T> {
     /// addresses; `max_depth` governs later splits only.
     fn check_canonical(
         &self,
-        idx: NodeIndex,
+        idx: NodeIdx,
         depth: u32,
         expect: &mut u32,
     ) -> Result<(), DockError<T>> {
@@ -564,7 +564,7 @@ impl<T: DockTab> DockState<T> {
             return Err(DockError::NonCanonical);
         }
         let Some(node) = self.nodes.get(idx.usize()) else {
-            return Err(DockError::NodeOutOfRange { index: idx.0 });
+            return Err(DockError::NodeOutOfRange { idx: idx.0 });
         };
         *expect += 1;
         if let DockNode::Split(s) = node {

@@ -1,9 +1,9 @@
 //! Text measurement and wrapping. The left column is single-text wrapping in fixed-width containers (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
 use crate::support;
-use crate::support::{Column, Section, api};
+use crate::support::{Col, Section, api};
 use palantir::{
-    Background, Block, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
+    Bg, Block, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -11,9 +11,9 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     How vexingly quick daft zebras jump!";
 
 pub(crate) fn build(ui: &mut Ui) {
-    support::columns(ui, |ui, column| match column {
-        Column::Left => wrapping(ui),
-        Column::Right => compositions(ui),
+    support::cols(ui, |ui, col| match col {
+        Col::Left => wrapping(ui),
+        Col::Right => compositions(ui),
     });
 }
 
@@ -76,7 +76,7 @@ impl WrapPanel {
             .id_salt(self.id)
             .size((Sizing::fixed(self.width), Sizing::HUG))
             .padding(8.0)
-            .background(support::well_bg())
+            .bg(support::well_bg())
             .show(ui, |ui| {
                 Text::new(self.text)
                     .style(&support::body_style())
@@ -205,7 +205,7 @@ impl ChatRow {
                 Block::new()
                     .id_salt(("avatar", key))
                     .size((Sizing::fixed(36.0), Sizing::fixed(36.0)))
-                    .background(Background::rounded(avatar, Corners::all(18.0)))
+                    .bg(Bg::rounded(avatar, Corners::all(18.0)))
                     .show(ui);
                 Text::new(message)
                     .id_salt(("message", key))

@@ -4,7 +4,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -15,7 +15,7 @@ use glam::UVec2;
 /// A chrome panel emits a Paint row at the start of its `node_spans` span; a chromeless childless panel an empty span; a chromeless parent one zero-screen marker row per child, hash = the child's `WidgetId` bits.
 #[test]
 fn node_spans_rows_mirror_chrome_and_children() {
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
 
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
@@ -23,7 +23,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
             Panel::hstack()
                 .id(WidgetId::from_hash("chrome"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {});
             Panel::hstack()
                 .id(WidgetId::from_hash("bare"))
@@ -127,7 +127,7 @@ fn per_node_columns_track_tree_size() {
 /// A non-painting sibling seeds `Rect::ZERO`; folding it into the parent rollup must not anchor `subtree_paint_rects` at the origin, which would defeat the encoder's subtree cull.
 #[test]
 fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
@@ -142,7 +142,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
             Block::new()
                 .id(WidgetId::from_hash("painted"))
                 .size(50.0)
-                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     });
@@ -167,7 +167,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
                     Panel::vstack()
                         .id(WidgetId::from_hash("child"))
                         .size(Sizing::fixed(size))
-                        .background(Background::fill(fill))
+                        .bg(Bg::fill(fill))
                         .show(ui, |_| {});
                 });
         }

@@ -54,7 +54,7 @@ impl TextStore {
 
     /// Screens a handle from outside this pass. A foreign epoch is caller error (its bytes are gone), so it
     /// panics even in release; a `u64` compare is cheap.
-    fn assert_current(&self, text: InternedStr) {
+    fn assert_cur(&self, text: InternedStr) {
         assert!(
             text.epoch == self.epoch,
             "InternedStr outlived the record pass that minted it — intern text \
@@ -63,17 +63,17 @@ impl TextStore {
     }
 
     pub(super) fn reuse(&self, text: InternedStr) -> InternedStr {
-        self.assert_current(text);
+        self.assert_cur(text);
         text
     }
 
     pub(super) fn text(&self, text: InternedStr) -> &str {
-        self.assert_current(text);
+        self.assert_cur(text);
         &self.bytes[text.span.range()]
     }
 
     pub(super) fn record(&self, text: InternedStr) -> RecordedText {
-        self.assert_current(text);
+        self.assert_cur(text);
         RecordedText::new(text.span, hash::str(&self.bytes[text.span.range()]))
     }
 }

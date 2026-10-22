@@ -10,7 +10,7 @@ pub(crate) struct GridDepthStack {
 }
 
 impl GridDepthStack {
-    /// Take the next slot for a grid whose measure or arrange begins; [`Self::current`] reads it until the paired [`Self::exit`].
+    /// Take the next slot for a grid whose measure or arrange begins; [`Self::cur`] reads it until the paired [`Self::exit`].
     pub(super) fn enter(&mut self) {
         if self.scratch.len() == self.depth {
             self.scratch.push(GridScratch::default());
@@ -25,7 +25,7 @@ impl GridDepthStack {
     }
 
     /// The innermost entered grid's slot. Nested grids enter and exit inside it, so it holds across a child's measure or arrange.
-    pub(super) fn current(&mut self) -> &mut GridScratch {
+    pub(super) fn cur(&mut self) -> &mut GridScratch {
         debug_assert!(self.depth > 0, "GridDepthStack::current outside any grid");
         &mut self.scratch[self.depth - 1]
     }

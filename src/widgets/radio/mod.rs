@@ -16,26 +16,26 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::toggle_chrome;
 use crate::widgets::toggle_chrome::ToggleChrome;
 
-/// One option in a radio group: selected when `*current == value`, and clicking assigns `value` into
-/// `current`. `T: PartialEq` is the only bound. Layout matches [`crate::Checkbox`] (pip, label); the pip
+/// One option in a radio group: selected when `*cur == value`, and clicking assigns `value` into
+/// `cur`. `T: PartialEq` is the only bound. Layout matches [`crate::Checkbox`] (pip, label); the pip
 /// is always a pill. Visuals come from `theme.radio` ([`crate::ToggleTheme`]).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct RadioButton<'a, T: PartialEq> {
     widget: Widget,
-    current: &'a mut T,
+    cur: &'a mut T,
     value: T,
     label: TextInput<'a>,
     style: Option<&'a ToggleTheme>,
 }
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
-    /// Writes `value` into `current` when picked; selected while the two are equal.
+    /// Writes `value` into `cur` when picked; selected while the two are equal.
     #[track_caller]
-    pub fn new(current: &'a mut T, value: T) -> Self {
+    pub fn new(cur: &'a mut T, value: T) -> Self {
         Self {
             widget: toggle_chrome::row(),
-            current,
+            cur,
             value,
             label: TextInput::default(),
             style: None,
@@ -67,12 +67,12 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let indicator = slot.indicator;
         let dot_inset = domain::length_at_least(slot.indicator_inset, 0.0);
 
-        let mut selected = *self.current == self.value;
+        let mut selected = *self.cur == self.value;
         // Radios latch: re-clicking the selected option is a no-op. A fresh click flips `selected` now, since
-        // `value` moves into `current`, or the pip paints unselected until the next repaint.
+        // `value` moves into `cur`, or the pip paints unselected until the next repaint.
         let changed = activated && !selected;
         if changed {
-            *self.current = self.value;
+            *self.cur = self.value;
             selected = true;
         }
 
@@ -83,7 +83,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             plan: slot.plan(&response, CheckState::from(selected), theme.text),
             gap: slot.gap,
             boxed: Widget::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
-            // Forces the pip to a circle whatever `radio.checked.normal.background.radius` a theme sets.
+            // Forces the pip to a circle whatever `radio.checked.normal.bg.radius` a theme sets.
             pill: Some(pip_size * 0.5),
         };
         let response = chrome.record_row(ui, |ui, _| {

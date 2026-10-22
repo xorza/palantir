@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -87,12 +87,12 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
-                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
-                    .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     };
@@ -158,7 +158,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
                 Block::new()
                     .id(WidgetId::from_hash("new"))
                     .size(50.0)
-                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             });
     });
@@ -361,7 +361,7 @@ fn node_snapshot_decomposition_matches_cascade() {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -423,12 +423,12 @@ fn node_snapshot_decomposition_matches_cascade() {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |ui| two_lines(ui));
         Panel::hstack()
             .id(WidgetId::from_hash("multi2"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |ui| two_lines(ui));
     });
     let snap2_paints = h
@@ -455,7 +455,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(180.0)))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
@@ -489,7 +489,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     frame(&mut h, |ui| build(140.0, ui));
 
     let canvas_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
-    let curr_shape2_rect = h
+    let cur_shape2_rect = h
         .engines
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))[1 + 2]
@@ -512,9 +512,9 @@ fn per_shape_damage_only_pushes_changed_shapes() {
          prev_rect = {prev_shape2_rect:?}, region = {region:?}",
     );
     assert!(
-        intersects(curr_shape2_rect),
+        intersects(cur_shape2_rect),
         "new position of moved shape must be in damage region; \
-         curr_rect = {curr_shape2_rect:?}, region = {region:?}",
+         cur_rect = {cur_shape2_rect:?}, region = {region:?}",
     );
 
     // Sentinel on the chrome's top edge (y < 120): the whole 180x180 paint_rect union would hit it.
@@ -534,7 +534,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background::fill(fill))
+            .bg(Bg::fill(fill))
             .show(ui, |_| {});
     };
     frame(&mut h, |ui| build(BLUE, ui));
@@ -598,14 +598,14 @@ fn chrome_only_owner_has_nonzero_paint_span() {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |_| {});
     };
     frame(&mut h, build);
     frame(&mut h, build); // settle prev
 
-    let wid = WidgetId::from_hash("chrome_only");
-    let snap = h.engines.damage.prev[&wid];
+    let widget_id = WidgetId::from_hash("chrome_only");
+    let snap = h.engines.damage.prev[&widget_id];
     assert_eq!(
         snap.paint_span.len, 1,
         "chrome-only owner must contribute exactly one Paint row (chrome)",
@@ -678,10 +678,10 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 
     frame(&mut h, |ui| build("abcdef", ui));
-    let curr_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
-    let curr_size_long = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
+    let cur_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
+    let cur_size_long = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert_eq!(
-        curr_text_rect.size, curr_size_long,
+        cur_text_rect.size, cur_size_long,
         "the long text's damage size"
     );
 
@@ -772,7 +772,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
         let mut p = Panel::zstack()
             .id(WidgetId::from_hash("a"))
             .size(50.0)
-            .background(Background::fill(BLUE));
+            .bg(Bg::fill(BLUE));
         if hidden {
             p = p.hidden();
         }

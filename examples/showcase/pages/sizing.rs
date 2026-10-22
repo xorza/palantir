@@ -6,20 +6,20 @@
 )]
 
 use crate::support;
-use crate::support::{Column, Section, api};
+use crate::support::{Col, Section, api};
 use palantir::{
     Align, Block, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Ui, VAlign,
     Visibility,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
-    support::columns(ui, |ui, column| match column {
-        Column::Left => {
+    support::cols(ui, |ui, col| match col {
+        Col::Left => {
             sizing(ui);
             justify(ui);
             visibility(ui);
         }
-        Column::Right => {
+        Col::Right => {
             alignment(ui);
             spacing(ui);
             gap(ui);
@@ -50,7 +50,7 @@ fn sizing(ui: &mut Ui) {
                         .id_salt(i)
                         .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
-                        .background(support::swatch_bg(support::C))
+                        .bg(support::swatch_bg(support::C))
                         .show(ui);
                 }
             });
@@ -86,7 +86,7 @@ fn justify(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(32.0)))
                     .padding((6.0, 4.0, 6.0, 4.0))
                     .justify(j)
-                    .background(support::well_bg())
+                    .bg(support::well_bg())
                     .show(ui, |ui| {
                         for i in 0..3 {
                             support::swatch(support::A)
@@ -118,7 +118,7 @@ fn visibility(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(44.0)))
                     .padding(6.0)
                     .gap(12.0)
-                    .background(support::well_bg())
+                    .bg(support::well_bg())
                     .show(ui, |ui| {
                         for (key, c, v) in [
                             ("a", support::A, Visibility::Visible),
@@ -129,7 +129,7 @@ fn visibility(ui: &mut Ui) {
                                 .id_salt((id, key))
                                 .size((Sizing::fixed(70.0), Sizing::fixed(28.0)))
                                 .visibility(v)
-                                .background(support::swatch_bg(c))
+                                .bg(support::swatch_bg(c))
                                 .show(ui);
                         }
                     });
@@ -151,7 +151,7 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     aligned_chip(support::A, Align::default())
                         .id_salt("a")
@@ -171,7 +171,7 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     aligned_chip(support::A, Align::default())
                         .id_salt("a-vs")
@@ -199,7 +199,7 @@ fn spacing(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(20.0)
                 .gap(8.0)
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     for i in 0..3 {
                         support::swatch(support::A)
@@ -211,24 +211,24 @@ fn spacing(ui: &mut Ui) {
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .gap(8.0)
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
-                        .background(support::swatch_bg(support::A))
+                        .bg(support::swatch_bg(support::A))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
-                        .background(support::swatch_bg(support::A))
+                        .bg(support::swatch_bg(support::A))
                         .show(ui);
                 });
             // The orange box's left margin pulls it back 30 px so the two overlap.
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(8.0)
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     support::swatch(support::A)
                         .id_salt(("neg", "a"))
@@ -237,7 +237,7 @@ fn spacing(ui: &mut Ui) {
                     Block::new()
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
-                        .background(support::swatch_bg(support::B))
+                        .bg(support::swatch_bg(support::B))
                         .show(ui);
                 });
         });
@@ -254,7 +254,7 @@ fn gap(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(40.0)))
                     .padding(6.0)
                     .gap(g)
-                    .background(support::well_bg())
+                    .bg(support::well_bg())
                     .show(ui, |ui| {
                         for i in 0..5 {
                             support::swatch(support::A)

@@ -21,7 +21,7 @@ struct Rows {
 }
 
 /// `frame_value`, since `changed` is a one-frame edge reported only by the input-observing pass.
-fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
+fn frame_rows(h: &mut UiHarness, selection: &mut Pick) -> Rows {
     h.frame_value(|ui| {
         let mut rows = Rows {
             rects: [None; 3],
@@ -29,7 +29,7 @@ fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
         };
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
-                let r = RadioButton::new(&mut *sel, value)
+                let r = RadioButton::new(&mut *selection, value)
                     .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
@@ -45,11 +45,11 @@ fn frame_rows(h: &mut UiHarness, sel: &mut Pick) -> Rows {
 fn clicking_a_row_selects_it() {
     let surface = UVec2::new(300, 100);
     let mut h = UiHarness::new(surface);
-    let mut sel = Pick::A;
+    let mut selection = Pick::A;
 
     // The first frame lays out (rects read the previous layout); a second frame returns them.
-    let _ = frame_rows(&mut h, &mut sel);
-    let rows = frame_rows(&mut h, &mut sel);
+    let _ = frame_rows(&mut h, &mut selection);
+    let rows = frame_rows(&mut h, &mut selection);
     let row_b = rows.rects[1].expect("row B rect");
     let row_c = rows.rects[2].expect("row C rect");
     assert_eq!(
@@ -58,8 +58,8 @@ fn clicking_a_row_selects_it() {
     );
 
     h.click_at(row_b.min + (row_b.max() - row_b.min) * 0.5);
-    let rows = frame_rows(&mut h, &mut sel);
-    assert_eq!(sel, Pick::B, "click on row B selects B");
+    let rows = frame_rows(&mut h, &mut selection);
+    assert_eq!(selection, Pick::B, "click on row B selects B");
     assert_eq!(
         rows.changed,
         [false, true, false],
@@ -67,14 +67,14 @@ fn clicking_a_row_selects_it() {
     );
 
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);
-    let rows = frame_rows(&mut h, &mut sel);
-    assert_eq!(sel, Pick::C, "click on row C selects C");
+    let rows = frame_rows(&mut h, &mut selection);
+    assert_eq!(selection, Pick::C, "click on row C selects C");
     assert_eq!(rows.changed, [false, false, true]);
 
     // Why `changed` sits beside the response: `clicked()` is true but `changed` is false here, which `Response` alone can't tell apart.
     h.click_at(row_c.min + (row_c.max() - row_c.min) * 0.5);
-    let rows = frame_rows(&mut h, &mut sel);
-    assert_eq!(sel, Pick::C, "re-click on selected row is no-op");
+    let rows = frame_rows(&mut h, &mut selection);
+    assert_eq!(selection, Pick::C, "re-click on selected row is no-op");
     assert_eq!(
         rows.changed, [false; 3],
         "re-clicking the selected row reports no pick",

@@ -9,7 +9,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeom};
+use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
@@ -18,7 +18,7 @@ use glam::Vec2;
 /// shadows arrive as an already-resolved rect; a triangle's covering rect
 /// only exists after its points are transformed, so it carries the points.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum QuadGeom {
+pub(crate) enum QuadGeometry {
     /// A logical-px rect and corner radii; a shadow's are the source shape's
     /// (the composer grows a drop shadow's paint rect from it after snapping).
     Rect { rect: Rect, corners: Corners },
@@ -37,7 +37,7 @@ pub(crate) enum QuadGeom {
 
 /// One quad-tier draw (rounded rect, windowed rect, box-shadow or rounded
 /// triangle), all lowered to a single `Quad` instance; they differ in
-/// [`geom`](Self::geom) and the SDF `fill_kind` selects.
+/// [`geometry`](Self::geometry) and the SDF `fill_kind` selects.
 ///
 /// `fill_kind`'s low byte is the kind tag; bits 8..16 carry `Spread` for
 /// gradients. `fill_lut_row` is the gradient atlas row, or
@@ -51,7 +51,7 @@ pub(crate) enum QuadGeom {
 /// `RgbaF32`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawQuadPayload {
-    pub(crate) geom: QuadGeom,
+    pub(crate) geometry: QuadGeometry,
     pub(crate) fill: GpuFill,
     /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
     pub(crate) stroke: ShapeStroke,
@@ -117,7 +117,7 @@ impl DrawQuadPayload {
             lanes.kind = lanes.kind.with_window();
         }
         Self {
-            geom: QuadGeom::Rect { rect, corners },
+            geometry: QuadGeometry::Rect { rect, corners },
             fill: lanes,
             stroke: stroke.normalized(),
             fill_axis: fill.fill_axis(),
@@ -137,7 +137,7 @@ impl DrawQuadPayload {
             FillKind::SHADOW_DROP
         };
         Some(Self {
-            geom: QuadGeom::Rect { rect, corners },
+            geometry: QuadGeometry::Rect { rect, corners },
             fill: GpuFill {
                 color: shadow.color,
                 kind,
@@ -146,7 +146,7 @@ impl DrawQuadPayload {
             // A shadow has no stroke; its edge is the blur.
             stroke: ShapeStroke::NONE,
             // The axis travels as the packed word; unpacking would round-trip identical bytes through f16.
-            fill_axis: FillAxis::from(shadow.geom_f16),
+            fill_axis: FillAxis::from(shadow.geometry_f16),
         })
     }
 
@@ -161,7 +161,7 @@ impl DrawQuadPayload {
             stroke,
         } = q;
         Self {
-            geom: QuadGeom::Triangle {
+            geometry: QuadGeometry::Triangle {
                 origin,
                 a,
                 b,
@@ -198,13 +198,13 @@ impl DrawQuadPayload {
     /// after transform, and `TriangleShape::is_noop` filters degenerates.
     #[inline]
     fn is_paint_empty(&self) -> bool {
-        match self.geom {
-            QuadGeom::Rect { rect, .. } if self.fill.kind == FillKind::SHADOW_DROP => {
-                let halo = ShadowGeom::from_lanes(self.fill_axis.lanes()).halo();
+        match self.geometry {
+            QuadGeometry::Rect { rect, .. } if self.fill.kind == FillKind::SHADOW_DROP => {
+                let halo = ShadowGeometry::from_lanes(self.fill_axis.lanes()).halo();
                 rect.inflated(halo).is_paint_empty()
             }
-            QuadGeom::Rect { rect, .. } => rect.is_paint_empty(),
-            QuadGeom::Triangle { .. } => false,
+            QuadGeometry::Rect { rect, .. } => rect.is_paint_empty(),
+            QuadGeometry::Triangle { .. } => false,
         }
     }
 }

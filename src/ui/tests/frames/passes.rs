@@ -1,6 +1,6 @@
 //! Pass count and replay: what triggers a second record.
 
-use crate::common::time::MAX_ANIM_DT;
+use crate::common::time::MAX_ANIMATION_DT;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -207,7 +207,7 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
     assert_eq!(captured, 1, "capture returns the input-observing pass");
 }
 
-/// `Ui::frame` plumbs `now`, `dt` (clamped to `MAX_ANIM_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
+/// `Ui::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
@@ -257,7 +257,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "FrameRuntime::dt should be next-frame delta",
     );
 
-    // Frame C: a 5s gap clamps dt to MAX_ANIM_DT; `time` still tracks the true clock.
+    // Frame C: a 5s gap clamps dt to MAX_ANIMATION_DT; `time` still tracks the true clock.
     let _ = h.at(Duration::from_millis(5_032)).frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -265,8 +265,8 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     });
     assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
     assert_eq!(
-        h.ui.frame_runtime.dt, MAX_ANIM_DT,
-        "FrameRuntime::dt should clamp at MAX_ANIM_DT",
+        h.ui.frame_runtime.dt, MAX_ANIMATION_DT,
+        "FrameRuntime::dt should clamp at MAX_ANIMATION_DT",
     );
 
     // Frame D: the prior frame's repaint_requested must not leak.

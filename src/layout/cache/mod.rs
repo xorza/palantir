@@ -89,8 +89,8 @@ fn union_spans(a: Span, b: Span) -> Span {
 
 #[derive(Debug, Default)]
 pub(crate) struct MeasureCache {
-    previous: MeasureSnapshot,
-    current: MeasureSnapshot,
+    prev: MeasureSnapshot,
+    cur: MeasureSnapshot,
     hug_offsets: Vec<u32>,
     text_bounds: Vec<Span>,
     /// Snapshot-map rebuilds so far, letting a test prove the reuse gate in
@@ -110,33 +110,33 @@ impl MeasureCache {
     }
 
     pub(super) fn begin_frame(&mut self) {
-        self.current.clear_capture();
+        self.cur.clear_capture();
     }
 
     /// Whether last frame's capture still describes `forest` at `surface`:
     /// same node and root counts, and every root under the same widget id,
     /// subtree hash and quantized available. `false` forces a rebuild.
     pub(super) fn matches_forest(&self, forest: &Forest, surface: Rect) -> bool {
-        let snapshot = &self.previous;
+        let snapshot = &self.prev;
         if snapshot.nodes.desired.len() != forest.total_nodes()
             || snapshot.roots.len() != forest.total_roots()
         {
             return false;
         }
-        let mut root_index = 0;
+        let mut root_idx = 0;
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             for slot in &tree.roots {
                 let root = slot.first_node;
-                let current = SubtreeKey {
-                    wid: tree.records.widget_id()[root.idx()],
+                let cur = SubtreeKey {
+                    widget_id: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.layout_subtree[root.idx()],
                     available_q: Self::available_key(slot.available(layer, surface)),
                 };
-                if snapshot.roots[root_index] != current {
+                if snapshot.roots[root_idx] != cur {
                     return false;
                 }
-                root_index += 1;
+                root_idx += 1;
             }
         }
         true
@@ -147,8 +147,8 @@ impl MeasureCache {
     pub(super) fn arranged(&self, base: usize, len: usize) -> Arranged<'_> {
         let nodes = base..base + len;
         Arranged {
-            rects: &self.previous.nodes.rect[nodes.clone()],
-            locals: &self.previous.nodes.local[nodes],
+            rects: &self.prev.nodes.rect[nodes.clone()],
+            locals: &self.prev.nodes.local[nodes],
         }
     }
 
@@ -158,13 +158,13 @@ impl MeasureCache {
     /// finite offer past [`Measured::stable_from`], per axis.
     #[inline]
     pub(super) fn try_lookup(&self, key: SubtreeKey, available: Size) -> Option<CachedSubtree<'_>> {
-        let snap = self.previous.descriptor(key.wid)?;
+        let snap = self.prev.desc(key.widget_id)?;
         if snap.subtree_hash != key.subtree_hash {
             return None;
         }
         let available_q = key.available_q;
         let nodes = snap.nodes.range();
-        let stable_from = self.previous.nodes.stable_from[nodes.start];
+        let stable_from = self.prev.nodes.stable_from[nodes.start];
         let holds = |measured_at: i32, key: i32, offer: f32, from: f32| {
             measured_at == key || (offer.is_finite() && offer >= from)
         };
@@ -183,38 +183,38 @@ impl MeasureCache {
         }
         Some(CachedSubtree {
             root: Measured {
-                size: self.previous.nodes.desired[nodes.start],
-                floor: self.previous.nodes.floor[nodes.start],
+                size: self.prev.nodes.desired[nodes.start],
+                floor: self.prev.nodes.floor[nodes.start],
                 stable_from,
             },
             nodes_base: snap.nodes.start,
-            desired: &self.previous.nodes.desired[nodes.clone()],
-            floor: &self.previous.nodes.floor[nodes.clone()],
-            stable_from: &self.previous.nodes.stable_from[nodes.clone()],
-            scroll_content: &self.previous.nodes.scroll_content[nodes.clone()],
-            text_spans: &self.previous.nodes.text_spans[nodes.clone()],
-            intrinsics: &self.previous.nodes.intrinsics[nodes.clone()],
-            available_q: &self.previous.nodes.available_q[nodes],
-            tracks: &self.previous.tracks[snap.tracks.range()],
-            text_shapes: &self.previous.text_shapes[snap.text_shapes.range()],
+            desired: &self.prev.nodes.desired[nodes.clone()],
+            floor: &self.prev.nodes.floor[nodes.clone()],
+            stable_from: &self.prev.nodes.stable_from[nodes.clone()],
+            scroll_content: &self.prev.nodes.scroll_content[nodes.clone()],
+            text_spans: &self.prev.nodes.text_spans[nodes.clone()],
+            intrinsics: &self.prev.nodes.intrinsics[nodes.clone()],
+            available_q: &self.prev.nodes.available_q[nodes],
+            tracks: &self.prev.tracks[snap.tracks.range()],
+            text_shapes: &self.prev.text_shapes[snap.text_shapes.range()],
             text_shapes_base: snap.text_shapes.start,
         })
     }
 
-    /// Last frame's intrinsic `slot` of `wid`'s subtree root, if its authoring
+    /// Last frame's intrinsic `slot` of `widget_id`'s subtree root, if its authoring
     /// is unchanged and the slot was computed.
     #[inline]
     pub(super) fn lookup_root_intrinsic(
         &self,
-        wid: WidgetId,
+        widget_id: WidgetId,
         subtree_hash: ContentHash,
         slot: usize,
     ) -> Option<f32> {
-        let snap = self.previous.descriptor(wid)?;
+        let snap = self.prev.desc(widget_id)?;
         if snap.subtree_hash != subtree_hash {
             return None;
         }
-        let value = self.previous.nodes.intrinsics[snap.nodes.start as usize][slot];
+        let value = self.prev.nodes.intrinsics[snap.nodes.start as usize][slot];
         (!value.is_nan()).then_some(value)
     }
 
@@ -245,24 +245,24 @@ impl MeasureCache {
         debug_assert_eq!(available_q.len(), node_count);
         debug_assert_eq!(text_spans.len(), node_count);
 
-        let node_base = self.current.nodes.desired.len() as u32;
-        let text_base = self.current.text_shapes.len() as u32;
+        let node_base = self.cur.nodes.desired.len() as u32;
+        let text_base = self.cur.text_shapes.len() as u32;
 
-        self.current.nodes.rect.extend_from_slice(rect);
-        self.current.nodes.local.extend_from_slice(local);
-        self.current.nodes.intrinsics.extend_from_slice(intrinsics);
-        self.current
+        self.cur.nodes.rect.extend_from_slice(rect);
+        self.cur.nodes.local.extend_from_slice(local);
+        self.cur.nodes.intrinsics.extend_from_slice(intrinsics);
+        self.cur
             .nodes
             .scroll_content
             .extend_from_slice(scroll_content);
         let has_text = !text_shapes.is_empty();
         if has_text {
-            self.current.text_shapes.extend_from_slice(text_shapes);
+            self.cur.text_shapes.extend_from_slice(text_shapes);
             // Bare `resize`: the loop below writes every slot, and `clear`
             // would add a truncate-then-regrow round trip.
             self.text_bounds.resize(node_count, Span::default());
             let mut owned_text_count = 0u32;
-            for (index, span) in text_spans.iter().copied().enumerate() {
+            for (idx, span) in text_spans.iter().copied().enumerate() {
                 // Both arms assign so the column is total; a text-less node
                 // must not inherit a longer previous tree's bound.
                 let stored = if span.len == 0 {
@@ -271,16 +271,16 @@ impl MeasureCache {
                     owned_text_count += span.len;
                     Span::new(text_base + span.start, span.len)
                 };
-                self.current.nodes.text_spans.push(stored);
-                self.text_bounds[index] = stored;
+                self.cur.nodes.text_spans.push(stored);
+                self.text_bounds[idx] = stored;
             }
             debug_assert_eq!(owned_text_count as usize, text_shapes.len());
 
-            for index in (0..node_count).rev() {
-                let end = tree.subtree_end_of(index);
-                let mut bound = self.text_bounds[index];
+            for idx in (0..node_count).rev() {
+                let end = tree.subtree_end_of(idx);
+                let mut bound = self.text_bounds[idx];
                 let mut run_count = bound.len;
-                let mut child = index + 1;
+                let mut child = idx + 1;
                 while child < end {
                     let child_bound = self.text_bounds[child];
                     run_count += child_bound.len;
@@ -291,11 +291,11 @@ impl MeasureCache {
                     bound.len, run_count,
                     "a measured subtree's text runs must be contiguous"
                 );
-                self.text_bounds[index] = bound;
+                self.text_bounds[idx] = bound;
             }
         } else {
-            self.current.nodes.text_spans.resize(
-                self.current.nodes.text_spans.len() + node_count,
+            self.cur.nodes.text_spans.resize(
+                self.cur.nodes.text_spans.len() + node_count,
                 Span::default(),
             );
         }
@@ -305,84 +305,77 @@ impl MeasureCache {
         if has_grids {
             // Every slot `0..=node_count` is assigned below.
             self.hug_offsets.resize(node_count + 1, 0);
-            for (index, layout) in layouts.iter().copied().enumerate() {
-                self.hug_offsets[index] = self.current.tracks.len() as u32;
-                if let LayoutMode::Grid(idx) = LayoutMode::from(layout.meta) {
-                    grid_track_state.snapshot_grid(idx, &mut self.current.tracks);
+            for (idx, layout) in layouts.iter().copied().enumerate() {
+                self.hug_offsets[idx] = self.cur.tracks.len() as u32;
+                if let LayoutMode::Grid(grid) = LayoutMode::from(layout.meta) {
+                    grid_track_state.snapshot_grid(grid, &mut self.cur.tracks);
                 }
             }
-            self.hug_offsets[node_count] = self.current.tracks.len() as u32;
+            self.hug_offsets[node_count] = self.cur.tracks.len() as u32;
         }
 
         for slot in &tree.roots {
-            let index = slot.first_node.idx();
-            self.current.roots.push(SubtreeKey {
-                wid: tree.records.widget_id()[index],
-                subtree_hash: tree.rollups.layout_subtree[index],
-                available_q: available_q[index],
+            let idx = slot.first_node.idx();
+            self.cur.roots.push(SubtreeKey {
+                widget_id: tree.records.widget_id()[idx],
+                subtree_hash: tree.rollups.layout_subtree[idx],
+                available_q: available_q[idx],
             });
         }
 
-        for index in 0..node_count {
-            if LayoutMode::from(layouts[index].meta) == LayoutMode::Leaf
-                || available_q[index] == INVALID_AVAILABLE
+        for idx in 0..node_count {
+            if LayoutMode::from(layouts[idx].meta) == LayoutMode::Leaf
+                || available_q[idx] == INVALID_AVAILABLE
             {
                 continue;
             }
-            let end = tree.subtree_end_of(index);
+            let end = tree.subtree_end_of(idx);
             let tracks = if has_grids {
-                let start = self.hug_offsets[index];
+                let start = self.hug_offsets[idx];
                 Span::new(start, self.hug_offsets[end] - start)
             } else {
                 Span::default()
             };
             let text_shapes = if has_text {
-                self.text_bounds[index]
+                self.text_bounds[idx]
             } else {
                 Span::default()
             };
-            let wid = tree.records.widget_id()[index];
-            self.current.descriptor_identity = (self.current.descriptor_identity.rotate_left(5)
-                ^ wid.0)
+            let widget_id = tree.records.widget_id()[idx];
+            self.cur.desc_identity = (self.cur.desc_identity.rotate_left(5) ^ widget_id.0)
                 .wrapping_mul(0x517c_c1b7_2722_0a95);
-            self.current.descriptors.push(ArenaSnapshot {
-                subtree_hash: tree.rollups.layout_subtree[index],
-                available_q: available_q[index],
-                nodes: Span::new(node_base + index as u32, (end - index) as u32),
+            self.cur.descs.push(ArenaSnapshot {
+                subtree_hash: tree.rollups.layout_subtree[idx],
+                available_q: available_q[idx],
+                nodes: Span::new(node_base + idx as u32, (end - idx) as u32),
                 tracks,
                 text_shapes,
             });
-            self.current.descriptor_wids.push(wid);
+            self.cur.desc_widget_ids.push(widget_id);
         }
 
         // Copied for every layer, the first included: a swap for the first
         // would leave the engine's scratch columns empty while the
         // container-text pass still runs.
-        self.current.nodes.desired.extend_from_slice(desired);
-        self.current.nodes.floor.extend_from_slice(floor);
-        self.current
-            .nodes
-            .stable_from
-            .extend_from_slice(stable_from);
-        self.current
-            .nodes
-            .available_q
-            .extend_from_slice(available_q);
+        self.cur.nodes.desired.extend_from_slice(desired);
+        self.cur.nodes.floor.extend_from_slice(floor);
+        self.cur.nodes.stable_from.extend_from_slice(stable_from);
+        self.cur.nodes.available_q.extend_from_slice(available_q);
     }
 
     pub(super) fn end_frame(&mut self) {
-        if self.current.refresh_snapshots() {
+        if self.cur.refresh_snapshots() {
             self.snapshot_rebuilds.bump();
         }
-        mem::swap(&mut self.previous, &mut self.current);
+        mem::swap(&mut self.prev, &mut self.cur);
     }
 
     /// Force a cold start: both buffers forget everything. The other
     /// invalidations ask whether inputs moved, which a font load does not
     /// change (see `TextSystem::sync_fonts`).
     pub(super) fn forget_all(&mut self) {
-        self.previous.forget_all();
-        self.current.forget_all();
+        self.prev.forget_all();
+        self.cur.forget_all();
     }
 }
 
@@ -498,7 +491,7 @@ pub(crate) mod internals {
     impl MeasureCache {
         /// Last frame's measured `desired` column.
         pub(crate) fn captured_desired(&self) -> &[Size] {
-            &self.previous.nodes.desired
+            &self.prev.nodes.desired
         }
     }
 }

@@ -4,7 +4,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -82,7 +82,7 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.window_background,
+            p.window_bg,
             p,
         )
     }
@@ -95,7 +95,7 @@ impl ToggleTheme {
                 box_size: 16.0,
                 indicator_inset: 4.0,
             },
-            p.window_background,
+            p.window_bg,
             p,
         )
     }
@@ -124,43 +124,42 @@ impl ToggleTheme {
         } = geometry;
         let radius = Corners::all(corner);
         let edge = p.border_strong();
-        let bg =
-            |fill: RgbaF32, stroke: Stroke| Background::rounded(fill, radius).with_border(stroke);
+        let bg = |fill: RgbaF32, stroke: Stroke| Bg::rounded(fill, radius).with_border(stroke);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                background: bg(p.element_mid, Stroke::new(edge, 1.0)),
+                bg: bg(p.element_mid, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                background: bg(p.element_strong, Stroke::new(edge, 1.0)),
+                bg: bg(p.element_strong, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                background: bg(p.element_strong, Stroke::new(p.border_focused, 1.0)),
+                bg: bg(p.element_strong, Stroke::new(p.border_focused, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                background: bg(p.element, Stroke::new(p.border_soft(), 1.0)),
+                bg: bg(p.element, Stroke::new(p.border_soft(), 1.0)),
                 text: disabled_text,
             },
         };
         let acc = p.accent;
         let checked = StatefulLook {
             normal: WidgetLook {
-                background: bg(acc, Stroke::NONE),
+                bg: bg(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                background: bg(acc, Stroke::NONE),
+                bg: bg(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                background: bg(acc, Stroke::new(p.border_focused, 1.0)),
+                bg: bg(acc, Stroke::new(p.border_focused, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                background: bg(acc.with_alpha(0.45), Stroke::NONE),
+                bg: bg(acc.with_alpha(0.45), Stroke::NONE),
                 text: disabled_text,
             },
         };

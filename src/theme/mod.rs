@@ -31,7 +31,7 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -117,8 +117,8 @@ pub struct Theme {
     pub window_clear: RgbaF32,
     /// Default chrome for containers (`Panel`, `Grid`, `Popup`) without a background. `None` leaves them unpainted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub panel_background: Option<Background>,
-    /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_background`]'s `radius`.
+    pub panel_bg: Option<Bg>,
+    /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_bg`]'s `radius`.
     #[serde(default, skip_serializing_if = "is_clip_none")]
     pub panel_clip: ClipMode,
 }
@@ -207,7 +207,7 @@ impl Theme {
             splitter: _,
             focus_ring: _,
             window_clear: _,
-            panel_background: _,
+            panel_bg: _,
             panel_clip: _,
         } = self;
         let f = &mut f;
@@ -251,8 +251,8 @@ impl Theme {
             expander: ExpanderTheme::from_palette(p),
             focus_ring: FocusRingTheme::from_palette(p),
             text: TextStyle::default().with_color(p.text),
-            window_clear: p.window_background,
-            panel_background: None,
+            window_clear: p.window_bg,
+            panel_bg: None,
             panel_clip: ClipMode::None,
         }
     }

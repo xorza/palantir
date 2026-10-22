@@ -14,8 +14,8 @@ pub(crate) mod resources;
 pub(crate) mod singletons;
 pub(crate) mod state;
 
-use crate::animation::AnimMap;
-use crate::animation::anim_map_typed::AnimClock;
+use crate::animation::AnimationMap;
+use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::app::App;
@@ -53,7 +53,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -130,7 +130,7 @@ pub struct Ui {
     cascade_is_last_frame: bool,
     input: InputState,
     display: Display,
-    anim: AnimMap,
+    animation: AnimationMap,
     /// Frame clock, wake queue, repaint/relayout flags and prior-frame validity.
     frame_runtime: FrameRuntime,
     /// Recorder-to-host requests retained across frames.
@@ -165,7 +165,7 @@ impl Ui {
             cascade_is_last_frame: false,
             input: InputState::default(),
             display: Display::default(),
-            anim: AnimMap::default(),
+            animation: AnimationMap::default(),
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
@@ -251,13 +251,13 @@ impl Ui {
     /// layers strictly below, since watches bypass hit-testing.
     #[inline]
     pub fn pointer_events(&self) -> &[PointerEvent] {
-        self.input.pointer_events(self.forest.current_layer())
+        self.input.pointer_events(self.forest.cur_layer())
     }
 
     /// This frame's presses, in arrival order. Layer-gated like [`Self::pointer_events`].
     #[inline]
     pub fn keyboard_events(&self) -> &[KeyPress] {
-        self.input.keyboard_events(self.forest.current_layer())
+        self.input.keyboard_events(self.forest.cur_layer())
     }
 
     /// `true` if any press this frame matches `shortcut`. Auto-watches the chord,
@@ -265,8 +265,8 @@ impl Ui {
     #[inline]
     pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
         let reader = KeyReader {
-            layer: self.forest.current_layer(),
-            parent: self.forest.current_parent_id(),
+            layer: self.forest.cur_layer(),
+            parent: self.forest.cur_parent_id(),
         };
         self.input.key_pressed(reader, &self.cascade, shortcut)
     }
@@ -275,7 +275,7 @@ impl Ui {
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
         let reader = KeyReader {
-            layer: self.forest.current_layer(),
+            layer: self.forest.cur_layer(),
             parent: Some(reader),
         };
         self.input.key_pressed(reader, &self.cascade, shortcut)
@@ -697,12 +697,7 @@ impl Ui {
     /// calls `Widget::record`, never this.
     #[inline]
     #[track_caller]
-    pub(crate) fn open_node(
-        &mut self,
-        resolved: ResolvedId,
-        node: &Node,
-        chrome: Option<&Background>,
-    ) {
+    pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Bg>) {
         let ring = if self.input.focused() == Some(resolved.id()) && self.input.focus_visible() {
             let theme = &self.theme.focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
@@ -852,15 +847,15 @@ impl Ui {
         spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
         let spec = spec.into().unwrap_or(AnimationSpec::SNAP);
-        let clock = AnimClock {
+        let clock = AnimationClock {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,
         };
-        let r = self.anim.animate(request, spec, clock);
+        let r = self.animation.animate(request, spec, clock);
         if !r.settled {
             self.frame_runtime.repaint_requested = true;
         }
-        r.current
+        r.cur
     }
 
     /// Currently focused widget id, or `None`.
@@ -1085,7 +1080,7 @@ pub(crate) mod internals {
     use std::rc::Rc;
 
     #[cfg(test)]
-    use crate::animation::AnimMap;
+    use crate::animation::AnimationMap;
     use crate::cascade::Cascade;
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
@@ -1189,8 +1184,8 @@ pub(crate) mod internals {
         }
 
         /// The animation rows, for tests that count what is resident.
-        pub(crate) fn anim_mut(&mut self) -> &mut AnimMap {
-            &mut self.anim
+        pub(crate) fn animation_mut(&mut self) -> &mut AnimationMap {
+            &mut self.animation
         }
 
         /// Only the winit host's own tests write here.

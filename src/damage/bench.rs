@@ -7,7 +7,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -38,14 +38,14 @@ fn build_grid(ui: &mut Ui, row_bg: Option<RgbaF32>, fill: impl Fn(usize) -> Rgba
                     .gap(2.0)
                     .size((Sizing::FILL, Sizing::fixed(20.0)));
                 if let Some(bg) = row_bg {
-                    row = row.background(Background::fill(bg));
+                    row = row.bg(Bg::fill(bg));
                 }
                 row.show(ui, |ui| {
                     for c in 0..COLS {
                         Block::new()
                             .id_salt(("cell", r, c))
                             .size((Sizing::fixed(30.0), Sizing::FILL))
-                            .background(Background::fill(fill(r * COLS + c)))
+                            .bg(Bg::fill(fill(r * COLS + c)))
                             .show(ui);
                     }
                 });
@@ -225,7 +225,7 @@ fn bench_workloads(group: &mut BenchmarkGroup<'_, WallTime>) {
         Panel::vstack()
             .id(WidgetId::from_hash(("canvas", c)))
             .size((Sizing::fixed(40.0), Sizing::fixed(25.0)))
-            .background(Background::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
+            .bg(Bg::fill(RgbaF32::srgb(0.1, 0.1, 0.12)))
             .show(ui, |ui| {
                 for s in 0..count {
                     ui.add_shape(
@@ -393,7 +393,7 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
                 Block::new()
                     .id_salt(("sib", i))
                     .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                    .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.25)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.2, 0.25)))
                     .show(ui);
             }
         });

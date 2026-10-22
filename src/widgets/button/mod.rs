@@ -98,7 +98,7 @@ impl<'a> Button<'a> {
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        self.widget.record(ui, Some(&look.background), |ui| {
+        self.widget.record(ui, Some(&look.bg), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(

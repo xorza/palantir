@@ -27,7 +27,7 @@ use glam::Vec2;
 fn shape_rect_composes_self_transform() {
     let scale = 3.0;
     let translate = Vec2::new(10.0, 20.0);
-    let xform = TranslateScale::new(translate, scale);
+    let transform = TranslateScale::new(translate, scale);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(|ui| {
@@ -35,7 +35,7 @@ fn shape_rect_composes_self_transform() {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(300.0))
-                .transform(xform)
+                .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
@@ -132,7 +132,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
 #[test]
 fn self_transform_anchors_scale_at_panel_origin() {
     let zoom = 2.0;
-    let xform = TranslateScale::from_scale(zoom);
+    let transform = TranslateScale::from_scale(zoom);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(|ui| {
@@ -144,7 +144,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(200.0))
-                .transform(xform)
+                .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 10.0, 10.0))
@@ -169,7 +169,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
 /// a transformed child's composed quad rect equals the cascade's screen rect.
 #[test]
 fn cascade_screen_rect_matches_composed_quad_under_transform() {
-    let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
+    let transform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(|ui| {
@@ -178,7 +178,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(300.0))
                 .clip(ClipMode::Rect)
-                .transform(xform)
+                .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 20.0, 20.0))

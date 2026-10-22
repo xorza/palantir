@@ -10,37 +10,37 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 pub(super) struct TransformStack {
     /// Ancestor products, innermost last.
     saved: Vec<TranslateScale>,
-    current: TranslateScale,
+    cur: TranslateScale,
 }
 
 impl TransformStack {
     /// Open a pass at the identity, keeping the stack's capacity.
     pub(super) fn clear(&mut self) {
         self.saved.clear();
-        self.current = TranslateScale::IDENTITY;
+        self.cur = TranslateScale::IDENTITY;
     }
 
     /// The live product.
-    pub(super) const fn current(&self) -> TranslateScale {
-        self.current
+    pub(super) const fn cur(&self) -> TranslateScale {
+        self.cur
     }
 
     pub(super) const fn scale(&self) -> f32 {
-        self.current.scale
+        self.cur.scale
     }
 
     pub(super) const fn apply_rect(&self, rect: Rect) -> Rect {
-        self.current.apply_rect(rect)
+        self.cur.apply_rect(rect)
     }
 
     pub(super) fn push(&mut self, t: TranslateScale) {
-        self.saved.push(self.current);
-        self.current = self.current.compose(t);
+        self.saved.push(self.cur);
+        self.cur = self.cur.compose(t);
     }
 
     /// Panics on a `PopTransform` with no matching push (a malformed paint stream).
     pub(super) fn pop(&mut self) {
-        self.current = self
+        self.cur = self
             .saved
             .pop()
             .expect("PopTransform without matching PushTransform");
@@ -54,7 +54,7 @@ pub(crate) mod internals {
 
     impl TransformStack {
         pub(crate) fn scratch_bytes(&self) -> usize {
-            let Self { saved, current: _ } = self;
+            let Self { saved, cur: _ } = self;
             scratch_report::vec_bytes(saved)
         }
     }

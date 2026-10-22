@@ -20,7 +20,7 @@ use std::mem;
 #[derive(Debug, Default)]
 pub(crate) struct Oracle {
     prev: Vec<OwnedPaint>,
-    curr: Vec<OwnedPaint>,
+    cur: Vec<OwnedPaint>,
     /// Whether `prev` holds a frame yet; the first checked frame has nothing to diff.
     primed: bool,
 }
@@ -40,8 +40,8 @@ impl Oracle {
 
     /// Rows in one frame and not the other, and overlaps whose paint order flipped, must sit inside the painted damage; compared per owner as a multiset of `(hash, screen)`.
     fn check_damage(&mut self, h: &UiHarness, report: &FrameReport) {
-        self.curr.clear();
-        h.ui.cascade().owned_paints(h.ui.forest(), &mut self.curr);
+        self.cur.clear();
+        h.ui.cascade().owned_paints(h.ui.forest(), &mut self.cur);
         if self.primed {
             let surface = h.ui.display().logical_rect();
             let margin = RenderPlan::cull_margin(h.ui.display().scale_factor());
@@ -55,8 +55,8 @@ impl Oracle {
                     .collect(),
             };
             sort_rows(&mut self.prev);
-            sort_rows(&mut self.curr);
-            let RowDiff { changed, mut kept } = diff_rows(&self.prev, &self.curr);
+            sort_rows(&mut self.cur);
+            let RowDiff { changed, mut kept } = diff_rows(&self.prev, &self.cur);
             for (row, side) in changed {
                 let Some(visible) = row.screen.intersect(surface) else {
                     continue;
@@ -70,7 +70,7 @@ impl Oracle {
                     row.hash,
                 );
             }
-            kept.sort_unstable_by_key(|pair| pair.curr_rank);
+            kept.sort_unstable_by_key(|pair| pair.cur_rank);
             for (later, b) in kept.iter().enumerate() {
                 for a in &kept[..later] {
                     if a.prev_rank < b.prev_rank {
@@ -92,7 +92,7 @@ impl Oracle {
                 }
             }
         }
-        mem::swap(&mut self.prev, &mut self.curr);
+        mem::swap(&mut self.prev, &mut self.cur);
         self.primed = true;
     }
 }
@@ -179,7 +179,7 @@ fn row_key(row: &OwnedPaint) -> RowKey {
 struct KeptRow {
     screen: Rect,
     prev_rank: u32,
-    curr_rank: u32,
+    cur_rank: u32,
 }
 
 #[derive(Debug)]
@@ -189,20 +189,20 @@ struct RowDiff<'a> {
 }
 
 /// Merge two sorted multisets of rows.
-fn diff_rows<'a>(prev: &'a [OwnedPaint], curr: &'a [OwnedPaint]) -> RowDiff<'a> {
+fn diff_rows<'a>(prev: &'a [OwnedPaint], cur: &'a [OwnedPaint]) -> RowDiff<'a> {
     let mut diff = RowDiff {
         changed: Vec::new(),
         kept: Vec::new(),
     };
     let (mut i, mut j) = (0, 0);
-    while i < prev.len() || j < curr.len() {
-        match (prev.get(i), curr.get(j)) {
+    while i < prev.len() || j < cur.len() {
+        match (prev.get(i), cur.get(j)) {
             (Some(a), Some(b)) => match row_key(a).cmp(&row_key(b)) {
                 cmp::Ordering::Equal => {
                     diff.kept.push(KeptRow {
                         screen: b.screen,
                         prev_rank: a.rank,
-                        curr_rank: b.rank,
+                        cur_rank: b.rank,
                     });
                     i += 1;
                     j += 1;

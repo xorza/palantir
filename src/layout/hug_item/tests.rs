@@ -56,7 +56,7 @@ fn hug_items_give_way_in_proportion_to_their_range() {
         let mut pool: Vec<HugItem<usize>> = items
             .iter()
             .enumerate()
-            .map(|(index, &(lo, hi))| HugItem::new(index, lo, hi))
+            .map(|(idx, &(lo, hi))| HugItem::new(idx, lo, hi))
             .collect();
         assert_eq!(HugItem::share(&mut pool, budget), stable_from, "{label}");
         let got: Vec<f32> = pool.iter().map(|item| item.size).collect();

@@ -35,7 +35,7 @@
 //!    [`advance_past_double_click`](UiHarness::advance_past_double_click) between
 //!    separate clicks.
 //! 8. **Animation time is not the frame clock.** Per-frame animation dt is clamped
-//!    to `MAX_ANIM_DT` (0.1 s) and quantized at `ANIM_SUBSTEP_DT` (1/240 s). Use
+//!    to `MAX_ANIMATION_DT` (0.1 s) and quantized at `ANIMATION_SUBSTEP_DT` (1/240 s). Use
 //!    [`advance_frames`](UiHarness::advance_frames).
 //! 9. **A frame can run no record pass.** A focused `TextEdit`'s caret blink keeps
 //!    `PaintOnly` frames coming for 30 s. [`frame_value`](UiHarness::frame_value)
@@ -57,7 +57,7 @@
 //! not see it as unused.
 
 use crate::app::App;
-use crate::common::time::MAX_ANIM_DT;
+use crate::common::time::MAX_ANIMATION_DT;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::user_scale::UserScale;
@@ -264,10 +264,10 @@ impl UiHarness {
         self
     }
 
-    /// `n` frames stepping `dt` each, the way to move an animation. A `dt` past `MAX_ANIM_DT`
+    /// `n` frames stepping `dt` each, the way to move an animation. A `dt` past `MAX_ANIMATION_DT`
     /// panics rather than under-integrate silently.
     pub fn advance_frames(&mut self, n: u32, dt: Duration, mut record: impl FnMut(&mut Ui)) {
-        Self::assert_anim_step(dt);
+        Self::assert_animation_step(dt);
         for _ in 0..n {
             self.advance(dt);
             self.frame(&mut record);
@@ -282,17 +282,17 @@ impl UiHarness {
         dt: Duration,
         mut record: impl FnMut(&mut Ui),
     ) -> Option<u32> {
-        Self::assert_anim_step(dt);
+        Self::assert_animation_step(dt);
         (1..=max).find(|_| {
             self.advance(dt);
             !self.frame(&mut record).repaint_requested
         })
     }
 
-    fn assert_anim_step(dt: Duration) {
+    fn assert_animation_step(dt: Duration) {
         assert!(
-            dt.as_secs_f32() <= MAX_ANIM_DT,
-            "a {dt:?} step exceeds MAX_ANIM_DT ({MAX_ANIM_DT}s) and would silently \
+            dt.as_secs_f32() <= MAX_ANIMATION_DT,
+            "a {dt:?} step exceeds MAX_ANIMATION_DT ({MAX_ANIMATION_DT}s) and would silently \
              under-integrate the animation; use more, smaller frames",
         );
     }
@@ -772,8 +772,8 @@ mod unit {
                 .collect()
         }
 
-        pub(crate) fn anim_row_count<T: Animatable>(&mut self) -> usize {
-            self.ui.anim_mut().row_count::<T>()
+        pub(crate) fn animation_row_count<T: Animatable>(&mut self) -> usize {
+            self.ui.animation_mut().row_count::<T>()
         }
 
         pub(crate) fn encode_paint(&self) -> PaintCapture {

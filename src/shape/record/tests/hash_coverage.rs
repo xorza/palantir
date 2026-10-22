@@ -526,11 +526,11 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
 
-    let mesh = |local_rect, tint, vertices, indices, bbox, content_hash| ShapeRecord::Mesh {
+    let mesh = |local_rect, tint, vertices, idxs, bbox, content_hash| ShapeRecord::Mesh {
         local_rect,
         tint,
         vertices,
-        indices,
+        idxs,
         bbox,
         content_hash,
     };
@@ -625,7 +625,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             mag_filter,
             downsample,
         };
-    let tex = ImageSource::Texture {
+    let texture = ImageSource::Texture {
         id: TextureId(1),
         size: glam::UVec2::new(2, 3),
         generation: 0,
@@ -633,7 +633,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let base = image(
         rect(0.0),
         white,
-        tex,
+        texture,
         ImageFit::Fill,
         ImageFilter::Linear,
         ImageFilter::Linear,
@@ -645,7 +645,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(1.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -658,7 +658,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             red,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -701,7 +701,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Cover,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -714,7 +714,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Nearest,
             ImageFilter::Linear,
@@ -727,7 +727,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Nearest,
@@ -741,7 +741,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -754,7 +754,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -766,7 +766,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,
@@ -775,7 +775,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            tex,
+            texture,
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,

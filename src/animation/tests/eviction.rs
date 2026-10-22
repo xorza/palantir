@@ -1,6 +1,6 @@
 //! Which rows the per-frame sweep drops.
 
-use crate::animation::AnimMap;
+use crate::animation::AnimationMap;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
@@ -11,9 +11,9 @@ use glam::Vec2;
 
 #[test]
 fn removed_widget_evicts_all_slots_across_typed_maps() {
-    let mut map = AnimMap::default();
-    let id = support::wid("a");
-    let other = support::wid("b");
+    let mut map = AnimationMap::default();
+    let id = support::widget_id("a");
+    let other = support::widget_id("b");
     let _ = map.typed_mut::<f32>().step(
         AnimationRequest::new(id, AnimationSlot::new("a"), 1.0),
         AnimationSpec::FAST,
@@ -39,9 +39,9 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
         AnimationSpec::FAST,
         0.016,
     );
-    let f = |m: &mut AnimMap| m.row_count::<f32>();
-    let v = |m: &mut AnimMap| m.row_count::<Vec2>();
-    let c = |m: &mut AnimMap| m.row_count::<RgbaF32>();
+    let f = |m: &mut AnimationMap| m.row_count::<f32>();
+    let v = |m: &mut AnimationMap| m.row_count::<Vec2>();
+    let c = |m: &mut AnimationMap| m.row_count::<RgbaF32>();
     assert_eq!(f(&mut map), 3);
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
@@ -62,8 +62,8 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
 /// `post_record` also evicts slots not poked this frame even when the widget id stays.
 #[test]
 fn post_record_evicts_untouched_slots() {
-    let mut map = AnimMap::default();
-    let id = support::wid("a");
+    let mut map = AnimationMap::default();
+    let id = support::widget_id("a");
     let empty = WidgetIdSet::default();
 
     let _ = map.typed_mut::<f32>().step(
@@ -77,7 +77,7 @@ fn post_record_evicts_untouched_slots() {
         0.016,
     );
     map.sweep_removed(&empty);
-    let count = |m: &mut AnimMap| m.row_count::<f32>();
+    let count = |m: &mut AnimationMap| m.row_count::<f32>();
     assert_eq!(
         count(&mut map),
         2,
@@ -101,6 +101,6 @@ fn post_record_evicts_untouched_slots() {
         AnimationSpec::FAST,
         0.016,
     );
-    assert_eq!(r.current, 99.0);
+    assert_eq!(r.cur, 99.0);
     assert!(r.settled, "re-touch after eviction is a fresh first-touch");
 }

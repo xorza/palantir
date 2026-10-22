@@ -7,7 +7,7 @@ use crate::input::shortcut::Shortcut;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
@@ -151,7 +151,7 @@ fn cold_start_first_frame_damage_is_full() {
         Block::new()
             .auto_id()
             .size(50.0)
-            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui);
     });
     assert!(

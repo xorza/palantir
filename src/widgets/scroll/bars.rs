@@ -9,7 +9,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
@@ -41,8 +41,7 @@ impl BarAxis {
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
         let radius = Corners::all(theme.thickness * 0.5);
         let track = Widget::leaf().id(self.track_id).sense(Sense::CLICK);
-        let track_chrome =
-            (!theme.track.is_noop()).then(|| Background::rounded(theme.track, radius));
+        let track_chrome = (!theme.track.is_noop()).then(|| Bg::rounded(theme.track, radius));
         track.record(ui, track_chrome.as_ref(), |_| {});
 
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
@@ -53,7 +52,7 @@ impl BarAxis {
             theme.thumb
         };
         let thumb = Widget::leaf().id(self.thumb_id).sense(Sense::DRAG);
-        let chrome = Background::rounded(fill, radius);
+        let chrome = Bg::rounded(fill, radius);
         thumb.record(ui, Some(&chrome), |_| {});
     }
 }
@@ -95,13 +94,13 @@ impl Bars {
     /// track pages. Two passes because a page click reads the offset a same-frame
     /// drag on the *other* axis moved, and the drag anchor is one slot shared by
     /// both axes.
-    pub(super) fn drive(&self, state: &mut ScrollState, geom: ScrollGeometry) {
-        let axes = geom.bars.axes;
+    pub(super) fn drive(&self, state: &mut ScrollState, geometry: ScrollGeometry) {
+        let axes = geometry.bars.axes;
         for (axis, bar) in self.axes() {
             if !axes.pans(axis) {
                 continue;
             }
-            let travel = geom.thumb(axis, state).map(ThumbTravel::of);
+            let travel = geometry.thumb(axis, state).map(ThumbTravel::of);
             state.apply_thumb_drag(axis, bar.thumb.left.drag, travel);
         }
         for (axis, bar) in self.axes() {
@@ -111,7 +110,7 @@ impl Bars {
             let Some(pointer_local) = bar.track.pointer_local else {
                 continue;
             };
-            let page = geom
+            let page = geometry
                 .thumb(axis, state)
                 .map(|thumb| TrackPage::at(thumb, axis.main_v(pointer_local)));
             state.apply_track_page(axis, page);

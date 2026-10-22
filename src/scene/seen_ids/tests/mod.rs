@@ -46,7 +46,7 @@ fn resolve_skips_occupied_occurrence_ids() {
         let node = occupied_slots + 1;
         let final_id = ids.open(x, IdKind::Explicit, ep(node));
         assert_eq!(final_id, x.with(occupied_slots + 1));
-        assert_eq!(ids.curr.entries.len(), (occupied_slots + 2) as usize);
+        assert_eq!(ids.cur.entries.len(), (occupied_slots + 2) as usize);
         assert_eq!(ids.endpoint(x), Some(ep(0)));
         for slot in 1..=occupied_slots {
             assert_eq!(ids.endpoint(x.with(slot)), Some(ep(slot)));
@@ -219,14 +219,14 @@ fn pre_record_clears_per_frame_state_but_keeps_prev() {
     assert!(!ids.counters.is_empty());
 
     ids.rollover();
-    assert!(ids.curr.entries.is_empty());
+    assert!(ids.cur.entries.is_empty());
     assert_eq!(ids.prev.entries.len(), 2);
     // Counters persist across rollover; `pre_record` clears per-frame state.
     assert!(!ids.counters.is_empty());
 
     ids.pre_record();
     assert!(ids.counters.is_empty());
-    assert!(ids.curr.entries.is_empty());
+    assert!(ids.cur.entries.is_empty());
     assert_eq!(ids.prev.entries.len(), 2, "prev must survive pre_record");
 }
 

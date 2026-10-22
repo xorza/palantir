@@ -95,20 +95,20 @@ fn state_is_swept_when_scroll_disappears() {
 /// A thumb drag composes cumulative delta against the offset the press captured; `ScrollbarsDef::thumb` goes `None` if content fits or the track collapses mid-press, and the anchor must not outlive it.
 #[test]
 fn thumb_drag_anchor_dies_with_its_geometry() {
-    let geom = Some(ThumbTravel {
+    let geometry = Some(ThumbTravel {
         factor: 2.0,
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, 10.0);
 
-    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
     state.apply_thumb_drag(
         Axis::Y,
         Drag::Active {
             delta: Vec2::new(0.0, 5.0),
         },
-        geom,
+        geometry,
     );
     assert_eq!(state.offset.y, 20.0);
     assert!(!state.drag_anchor_is_none(), "the press is still held");
@@ -132,18 +132,18 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         Drag::Active {
             delta: Vec2::new(0.0, 60.0),
         },
-        geom,
+        geometry,
     );
     assert_eq!(state.offset.y, 20.0, "a dead anchor must not resume");
 
     // A fresh press re-anchors against the current offset: 20 + 3 * 2 = 26.
-    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
     state.apply_thumb_drag(
         Axis::Y,
         Drag::Active {
             delta: Vec2::new(0.0, 3.0),
         },
-        geom,
+        geometry,
     );
     assert_eq!(state.offset.y, 26.0);
 }
@@ -336,21 +336,21 @@ fn cascade_skip_busts_on_scroll_offset_change() {
 /// A thumb drag starting inside a `content_margin` leading band must move the thumb on the first tracked pixel: the bar domain is `[0, max_off]` but the offset runs negative there, so anchor in the bar domain.
 #[test]
 fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
-    let geom = Some(ThumbTravel {
+    let geometry = Some(ThumbTravel {
         factor: 2.0,
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
     state.offset = Vec2::new(0.0, -30.0);
 
-    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geom);
+    state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
     // One pixel of thumb travel buys `factor` px of offset from the clamped anchor 0, not from -30.
     state.apply_thumb_drag(
         Axis::Y,
         Drag::Active {
             delta: Vec2::new(0.0, 1.0),
         },
-        geom,
+        geometry,
     );
     assert_eq!(
         state.offset.y, 2.0,

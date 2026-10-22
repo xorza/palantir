@@ -13,7 +13,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::PointerWake;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -285,7 +285,7 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
         Block::new()
             .id(WidgetId::from_hash("modifier-visual"))
             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-            .background(Background::fill(color))
+            .bg(Bg::fill(color))
             .show(ui);
     }
 

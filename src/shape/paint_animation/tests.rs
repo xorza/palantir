@@ -301,9 +301,9 @@ fn zero_steps_is_a_caller_bug() {
 /// drives, each timing field, and the curve. The same animation hashes the same.
 #[test]
 fn hash_static_covers_channel_timing_and_curve() {
-    let hash = |anim: PaintAnimation| {
+    let hash = |animation: PaintAnimation| {
         let mut h = Hasher::new();
-        anim.hash_static(&mut h);
+        animation.hash_static(&mut h);
         h.finish()
     };
     let base = blink();

@@ -12,8 +12,8 @@
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;
 
-use crate::gpu::device::gpu_frame_context::GpuFrameContext;
-use crate::gpu::device::gpu_init_context::GpuInitContext;
+use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView). `'static`
@@ -24,14 +24,14 @@ use crate::gpu::device::gpu_init_context::GpuInitContext;
 pub trait GpuPaint: 'static {
     /// Builds GPU resources. Called **once** per view; skipped paints and
     /// resizes do not re-run it, so recreate your depth/MSAA attachments in
-    /// [`Self::paint`] when [`GpuFrameContext::physical_size`] changes. It
+    /// [`Self::paint`] when [`GpuFrameCtx::physical_size`] changes. It
     /// runs again only after the view is gone (widget unrecorded or window
     /// closed) and returns.
-    fn init(&mut self, context: &GpuInitContext<'_>) {
-        let _ = context;
+    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
+        let _ = ctx;
     }
 
     /// Renders into the off-screen target with your own pass(es) on
-    /// `context.encoder` against `context.target`.
-    fn paint(&mut self, context: &mut GpuFrameContext<'_>);
+    /// `ctx.encoder` against `ctx.target`.
+    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>);
 }

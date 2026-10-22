@@ -5,7 +5,7 @@ use crate::primitives::layout::offer;
 use crate::common::span::Span;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
 use crate::layout::counters::LayoutCounters;
-use crate::layout::drivers::grid::grid_context::GridContext;
+use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
@@ -45,7 +45,7 @@ pub(super) struct RestoreTarget<'a> {
 pub(crate) struct LayoutScratch {
     /// Test-only observability for this run; see [`LayoutCounters`].
     pub(crate) counters: LayoutCounters,
-    pub(super) grid: GridContext,
+    pub(super) grid: GridCtx,
     pub(super) wrap: WrapScratch,
     pub(super) stack: StackScratch,
     pub(super) desired: Vec<Size>,

@@ -36,7 +36,11 @@ fn double_and_triple_click_select_word_and_all() {
     h.at(Duration::from_secs_f32(0.1))
         .frame(|ui| body(ui, &mut buf));
     let st = h.state::<TextEditState>(ed_id).clone();
-    assert_eq!(st.edit.sel_range(), Some(0..5), "double click selects word");
+    assert_eq!(
+        st.edit.selection_range(),
+        Some(0..5),
+        "double click selects word"
+    );
     h.release();
     h.at(Duration::from_secs_f32(0.1))
         .frame(|ui| body(ui, &mut buf));
@@ -46,7 +50,7 @@ fn double_and_triple_click_select_word_and_all() {
         .frame(|ui| body(ui, &mut buf));
     let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(
-        st.edit.sel_range(),
+        st.edit.selection_range(),
         Some(0..buf.len()),
         "triple click selects all"
     );

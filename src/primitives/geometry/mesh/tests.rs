@@ -21,16 +21,16 @@ fn mesh_vertex_pod_roundtrip() {
 
 #[test]
 fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
-    assert_eq!(checked_vertex_index(u32::MAX as usize), u32::MAX);
+    assert_eq!(checked_vertex_idx(u32::MAX as usize), u32::MAX);
     if let Some(overflow) = (u32::MAX as usize).checked_add(1) {
         panic_probe::assert_panics_with("mesh vertex index exceeds u32 range", || {
-            checked_vertex_index(overflow)
+            checked_vertex_idx(overflow)
         });
     }
 
-    assert_eq!(checked_rebased_index(u32::MAX - 1, 1), u32::MAX);
+    assert_eq!(checked_rebased_idx(u32::MAX - 1, 1), u32::MAX);
     panic_probe::assert_panics_with("appended mesh index exceeds u32 range", || {
-        checked_rebased_index(u32::MAX, 1)
+        checked_rebased_idx(u32::MAX, 1)
     });
 }
 
@@ -40,8 +40,8 @@ fn mesh_index_arithmetic_accepts_boundaries_and_rejects_overflow() {
 fn triangle_validates_each_index_before_mutating() {
     fn mesh_with_vertices(count: usize) -> Mesh {
         let mut mesh = Mesh::with_capacity(count, 0);
-        for index in 0..count {
-            mesh.vertex(Vec2::new(index as f32, 0.0), RgbaF32::WHITE);
+        for idx in 0..count {
+            mesh.vertex(Vec2::new(idx as f32, 0.0), RgbaF32::WHITE);
         }
         mesh
     }
@@ -49,28 +49,28 @@ fn triangle_validates_each_index_before_mutating() {
     #[derive(Debug)]
     struct Case {
         label: &'static str,
-        indices: [u32; 3],
+        idxs: [u32; 3],
     }
 
     for case in [
         Case {
             label: "first",
-            indices: [3, 1, 2],
+            idxs: [3, 1, 2],
         },
         Case {
             label: "second",
-            indices: [0, 3, 2],
+            idxs: [0, 3, 2],
         },
         Case {
             label: "third",
-            indices: [0, 1, 3],
+            idxs: [0, 1, 3],
         },
     ] {
         let mut mesh = mesh_with_vertices(3);
-        let [a, b, c] = case.indices;
+        let [a, b, c] = case.idxs;
         panic_probe::assert_panics_with("exceed vertex count 3", || mesh.triangle(a, b, c));
         assert!(
-            mesh.indices.is_empty(),
+            mesh.idxs.is_empty(),
             "{} failure must not partially append indices",
             case.label,
         );
@@ -78,7 +78,7 @@ fn triangle_validates_each_index_before_mutating() {
 
     let mut mesh = mesh_with_vertices(3);
     mesh.triangle(2, 1, 0);
-    assert_eq!(mesh.indices, [2, 1, 0]);
+    assert_eq!(mesh.idxs, [2, 1, 0]);
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn triangle_indices_offset_in_append() {
     let b = Mesh::filled_triangle([Vec2::ZERO, Vec2::X, Vec2::Y], RgbaF32::default());
     a.append(&b);
     assert_eq!(a.vertices.len(), 6);
-    assert_eq!(a.indices, vec![0, 1, 2, 3, 4, 5]);
+    assert_eq!(a.idxs, vec![0, 1, 2, 3, 4, 5]);
     assert_eq!(a.bbox(), Rect::new(0.0, 0.0, 1.0, 1.0));
 
     let mut expected = Mesh::with_capacity(6, 6);
@@ -99,7 +99,7 @@ fn triangle_indices_offset_in_append() {
     }
     assert_eq!(a.vertices, expected.vertices);
     assert_eq!(a.content_hash(), expected.content_hash());
-    assert_eq!(a.max_index, 5);
+    assert_eq!(a.max_idx, 5);
     assert!(!a.is_noop());
 }
 
@@ -111,8 +111,8 @@ fn an_index_past_the_last_vertex_is_a_noop() {
         for x in 0..3 {
             mesh.vertex(Vec2::new(x as f32, x as f32 * 2.0), RgbaF32::WHITE);
         }
-        mesh.indices.extend([0, 1, last]);
-        mesh.max_index = last;
+        mesh.idxs.extend([0, 1, last]);
+        mesh.max_idx = last;
         assert_eq!(mesh.is_noop(), noop, "last index {last} of 3 vertices");
     }
 }
@@ -127,7 +127,7 @@ fn polygon_fan_indices_share_pivot() {
     ];
     let m = Mesh::filled_polygon(&pts, RgbaF32::default());
     assert_eq!(m.vertices.len(), 4);
-    assert_eq!(m.indices, vec![0, 1, 2, 0, 2, 3]);
+    assert_eq!(m.idxs, vec![0, 1, 2, 0, 2, 3]);
 }
 
 fn red_tri() -> Mesh {
@@ -161,9 +161,9 @@ fn content_hash_stable_for_identical_input() {
 fn content_hash_changes_on_reordered_indices() {
     let mut a = red_tri();
     let mut b = red_tri();
-    a.indices = vec![0, 1, 2];
+    a.idxs = vec![0, 1, 2];
     a.cached_hash.set(None);
-    b.indices = vec![0, 2, 1];
+    b.idxs = vec![0, 2, 1];
     b.cached_hash.set(None);
     assert_ne!(a.content_hash(), b.content_hash());
 }

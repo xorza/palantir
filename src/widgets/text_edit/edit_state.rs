@@ -120,7 +120,7 @@ impl EditState {
             && self
                 .undo
                 .back_mut()
-                .is_some_and(|previous| previous.coalesce(parts, kind));
+                .is_some_and(|prev| prev.coalesce(parts, kind));
         if !coalesced {
             if self.undo.len() == UNDO_LIMIT {
                 self.undo.pop_front();
@@ -173,7 +173,7 @@ impl EditState {
         TextProbe::hash_of(text)
     }
 
-    pub(super) fn sel_range(&self) -> Option<ops::Range<usize>> {
+    pub(super) fn selection_range(&self) -> Option<ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
     }

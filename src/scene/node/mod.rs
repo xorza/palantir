@@ -7,7 +7,7 @@ pub(crate) mod bounds_extras;
 pub(crate) mod gaps;
 pub(crate) mod ident;
 pub(crate) mod layout_core;
-pub(crate) mod node_columns;
+pub(crate) mod node_cols;
 pub(crate) mod node_flags;
 pub(crate) mod node_mode;
 pub(crate) mod panel_extras;
@@ -27,7 +27,7 @@ use crate::primitives::math::domain;
 use crate::scene::node::authored_gaps::AuthoredGaps;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::layout_core::LayoutCore;
-use crate::scene::node::node_columns::NodeColumns;
+use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::node::panel_extras::PanelExtras;
@@ -40,13 +40,13 @@ use glam::Vec2;
 pub(crate) struct Node {
     pub(crate) mode: NodeMode,
 
-    /// Themable fields are `None` until set, so widgets layer theme defaults under user intent; [`Self::columns`] resolves `None` to layout defaults.
+    /// Themable fields are `None` until set, so widgets layer theme defaults under user intent; [`Self::cols`] resolves `None` to layout defaults.
     pub(crate) size: Option<SizeSpec>,
     pub(crate) min_size: Option<Size>,
     pub(crate) max_size: Option<Size>,
     pub(crate) padding: Option<Spacing>,
     pub(crate) margin: Option<Spacing>,
-    /// Clip mode, `None` until set; folded into the recorded flags by [`Self::columns`].
+    /// Clip mode, `None` until set; folded into the recorded flags by [`Self::cols`].
     pub(crate) clip: Option<ClipMode>,
 
     /// Within-line and between-line gap as two f16 lanes: `gap()` for siblings (and Grid columns), `line_gap()` for lines (and Grid rows). Ignored by Leaf/ZStack/Canvas.
@@ -55,7 +55,7 @@ pub(crate) struct Node {
     pub(crate) justify: Justify,
     pub(crate) align: Align,
     pub(crate) child_align: Align,
-    pub(crate) position: Vec2,
+    pub(crate) pos: Vec2,
     /// Cell and span inside a `Grid` parent; ignored elsewhere.
     pub(crate) grid: GridCell,
 
@@ -65,7 +65,7 @@ pub(crate) struct Node {
     pub(crate) visibility: Visibility,
     /// Pan/zoom applied to descendants post-layout, like WPF's `RenderTransform`; origin is the panel's top-left.
     pub(crate) transform: TranslateScale,
-    pub(crate) tab_index: i16,
+    pub(crate) tab_idx: i16,
 }
 
 impl Node {
@@ -211,21 +211,21 @@ impl Node {
             transform: _,
             margin,
             align,
-            position,
+            pos,
             grid,
             visibility,
-            tab_index,
+            tab_idx,
         } = from;
 
         if let Some(margin) = margin {
             self.set_margin(margin);
         }
         self.align = align;
-        self.position = position;
+        self.pos = pos;
         self.grid = grid;
         self.visibility = visibility;
         self.flags.set_tab_stop(flags.is_tab_stop());
-        self.tab_index = tab_index;
+        self.tab_idx = tab_idx;
     }
 
     /// Installs this node's layout mode once the payload a builder chain couldn't carry exists; see [`NodeMode::accepts`].
@@ -263,30 +263,30 @@ impl Node {
             justify: Justify::Start,
             align: Align::new(HAlign::Auto, VAlign::Auto),
             child_align: Align::new(HAlign::Auto, VAlign::Auto),
-            position: Vec2::ZERO,
+            pos: Vec2::ZERO,
             grid: GridCell::default(),
             flags: NodeFlags::default(),
             visibility: Visibility::Visible,
             transform: TranslateScale::IDENTITY,
-            tab_index: 0,
+            tab_idx: 0,
         }
     }
 
     /// Fans this `Node` out into the per-`NodeId` columns `Tree` stores, resolving `None` themable fields to layout defaults. Takes `&self` so the opener chain moves no 100-byte `Node` per hop; named without `to_`/`into_`, which would read as by-value.
     #[inline(always)]
-    pub(super) fn columns(&self, widget_id: WidgetId) -> NodeColumns {
+    pub(super) fn cols(&self, widget_id: WidgetId) -> NodeCols {
         let mut attrs = self.flags;
         attrs.set_clip(self.clip.unwrap_or(ClipMode::None));
-        NodeColumns {
+        NodeCols {
             widget_id,
             layout: LayoutCore::from_node(self),
             attrs,
             bounds: BoundsExtras {
-                position: self.position,
+                pos: self.pos,
                 grid: self.grid,
                 min_size: self.min_size.unwrap_or(Size::ZERO),
                 max_size: self.max_size.unwrap_or(Size::INF),
-                tab_index: self.tab_index,
+                tab_idx: self.tab_idx,
             },
             panel: PanelExtras {
                 gaps: self.gaps.resolve(),

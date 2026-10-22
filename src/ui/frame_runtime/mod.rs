@@ -4,7 +4,7 @@
 
 pub(crate) mod wake;
 
-use crate::common::time::{self, ANIM_SUBSTEP_DT, MAX_ANIM_DT};
+use crate::common::time::{self, ANIMATION_SUBSTEP_DT, MAX_ANIMATION_DT};
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
@@ -43,7 +43,7 @@ pub(super) struct FrameClassifyInput {
 pub(crate) struct FrameRuntime {
     /// Effective per-frame dt fed to the animation integrators. Wall-clock dt
     /// accumulates in [`Self::dt_accum`] and is spent here only once it crosses
-    /// [`crate::common::time::ANIM_SUBSTEP_DT`]; other frames see `0.0`.
+    /// [`crate::common::time::ANIMATION_SUBSTEP_DT`]; other frames see `0.0`.
     /// Otherwise an unthrottled loop produces deltas below the f32 ULP at
     /// pixel-scale positions and stalls a spring short of settling.
     pub(super) dt: f32,
@@ -116,7 +116,7 @@ impl FrameRuntime {
 
     pub(super) fn advance_clock(&mut self, now: Duration) {
         let true_dt = now.saturating_sub(self.time).as_secs_f32();
-        let raw_dt = true_dt.min(MAX_ANIM_DT);
+        let raw_dt = true_dt.min(MAX_ANIMATION_DT);
         if self.render_frame_id > 0 && true_dt > EPS {
             let instant_fps = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {
@@ -126,14 +126,14 @@ impl FrameRuntime {
             };
         }
         self.dt_accum += raw_dt;
-        self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
+        self.dt = if self.dt_accum >= ANIMATION_SUBSTEP_DT {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
             // Bounds what one frame spends (this plus a carry of up to one
-            // accumulator step); `Spring::step` takes `MAX_ANIM_DT` as its
+            // accumulator step); `Spring::step` takes `MAX_ANIMATION_DT` as its
             // contract. The excess is dropped, not carried, so a stall cannot
             // bleed into later frames as catch-up motion.
-            spent.min(MAX_ANIM_DT)
+            spent.min(MAX_ANIMATION_DT)
         } else {
             0.0
         };
@@ -162,7 +162,7 @@ impl FrameRuntime {
         let first_frame = self.is_first_frame();
         let display_changed = self
             .prev_stamp
-            .is_some_and(|previous| !previous.display.raster_eq(&input.display));
+            .is_some_and(|prev| !prev.display.raster_eq(&input.display));
         let force_full = first_frame || display_changed || !input.damage_baseline_valid;
         if force_full {
             tracing::debug!(
@@ -184,7 +184,7 @@ impl FrameRuntime {
             && !repaint_requested
             && !input_forces_record
             && !input.close_requested
-            && fired_reasons.is_anim_only();
+            && fired_reasons.is_animation_only();
         if paint_only {
             FramePlan::PaintOnly
         } else {
@@ -192,7 +192,7 @@ impl FrameRuntime {
                 base: if force_full {
                     DamageBase::Discarded
                 } else {
-                    DamageBase::Previous
+                    DamageBase::Prev
                 },
             }
         }
@@ -206,22 +206,20 @@ impl FrameRuntime {
     ) {
         let coalesce = time::coalesce_dt_for_refresh(refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
-        let position = self
+        let pos = self
             .repaint_wakes
             .partition_point(|wake| wake.deadline < deadline);
-        if position < self.repaint_wakes.len() && near(self.repaint_wakes[position].deadline) {
-            self.repaint_wakes[position].reasons =
-                self.repaint_wakes[position].reasons.merge(reasons);
+        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
+            self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
             return;
         }
-        if position > 0 && near(self.repaint_wakes[position - 1].deadline) {
-            self.repaint_wakes[position - 1].deadline = deadline;
-            self.repaint_wakes[position - 1].reasons =
-                self.repaint_wakes[position - 1].reasons.merge(reasons);
+        if pos > 0 && near(self.repaint_wakes[pos - 1].deadline) {
+            self.repaint_wakes[pos - 1].deadline = deadline;
+            self.repaint_wakes[pos - 1].reasons =
+                self.repaint_wakes[pos - 1].reasons.merge(reasons);
             return;
         }
-        self.repaint_wakes
-            .insert(position, Wake { deadline, reasons });
+        self.repaint_wakes.insert(pos, Wake { deadline, reasons });
     }
 }
 

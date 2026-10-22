@@ -35,7 +35,7 @@ impl FamilyTable {
     }
 
     fn get(&self, name: &str) -> Option<FontFamily> {
-        self.index.get(name).map(|&index| FontFamily(index))
+        self.index.get(name).map(|&idx| FontFamily(idx))
     }
 
     fn intern(&mut self, name: &str) -> Option<FontFamily> {
@@ -49,11 +49,11 @@ impl FamilyTable {
     }
 
     fn push(&mut self, name: &'static str) -> FontFamily {
-        let index =
+        let idx =
             u16::try_from(self.names.len()).expect("the table limit keeps every index inside u16");
         self.names.push(name);
-        self.index.insert(name, index);
-        FontFamily(index)
+        self.index.insert(name, idx);
+        FontFamily(idx)
     }
 }
 
@@ -176,13 +176,13 @@ mod tests {
         let fresh = ["Full Table A", "Full Table B"].map(|name| table.intern(name));
         assert_eq!(fresh, [Some(FontFamily(2)), Some(FontFamily(3))]);
         assert_eq!(table.intern("Full Table C"), None, "the table is full");
-        for (name, index) in [
+        for (name, idx) in [
             ("Inter", 0),
             ("JetBrains Mono", 1),
             ("Full Table A", 2),
             ("Full Table B", 3),
         ] {
-            assert_eq!(table.intern(name), Some(FontFamily(index)), "{name}");
+            assert_eq!(table.intern(name), Some(FontFamily(idx)), "{name}");
         }
         assert_eq!(table.names.len(), 4, "a refusal leaves no trace");
     }

@@ -30,12 +30,12 @@ fn raster<'a>(r: &'a mut IconRasterizer, table: &IconTable, key: IconRasterKey) 
 }
 
 fn key(icon: IconId, w: u16, h: u16) -> IconRasterKey {
-    IconRasterKey::for_test(IconRef::fixture(0, icon.index()), U16Vec2::new(w, h))
+    IconRasterKey::for_test(IconRef::fixture(0, icon.idx()), U16Vec2::new(w, h))
 }
 
 /// `icon` of set slot `set`, at 8 × 8.
 fn in_set(set: u16, icon: IconId) -> IconRasterKey {
-    IconRasterKey::for_test(IconRef::fixture(set, icon.index()), U16Vec2::splat(8))
+    IconRasterKey::for_test(IconRef::fixture(set, icon.idx()), U16Vec2::splat(8))
 }
 
 /// The parse cache is capped and evicts the longest-unrasterized.

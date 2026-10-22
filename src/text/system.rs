@@ -375,11 +375,9 @@ pub(crate) mod internals {
             }
         }
 
-        pub(crate) fn has_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
-            self.entries.contains_key(&TextRunSlot {
-                widget_id: wid,
-                ordinal,
-            })
+        pub(crate) fn has_entry(&self, widget_id: WidgetId, ordinal: u16) -> bool {
+            self.entries
+                .contains_key(&TextRunSlot { widget_id, ordinal })
         }
 
         pub(crate) fn entry_count(&self) -> usize {

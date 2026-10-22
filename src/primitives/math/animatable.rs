@@ -2,17 +2,17 @@
 //! interpolation, spring displacement arithmetic, and a squared distance in its
 //! own settle tolerance; value-dependent snap-only fields normalize first.
 //! Built-in impls cover `f32`, `Vec2`, `RgbaF32`; domain types opt in via
-//! `#[derive(Animatable)]` (`palantir-anim-derive`, type-erased `AnimMap`).
+//! `#[derive(Animatable)]` (`palantir-animation-derive`, type-erased `AnimationMap`).
 
 use crate::primitives::math::domain::EPS;
 use glam::Vec2;
 
-/// Math-only trait; storage is the type-erased `AnimMap` keyed on `TypeId`.
+/// Math-only trait; storage is the type-erased `AnimationMap` keyed on `TypeId`.
 ///
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
 /// unchanged.
 ///
-/// `Clone`, not `Copy`: heavy types (`Background`, `Brush`, `Stroke`) ride the
+/// `Clone`, not `Copy`: heavy types (`Bg`, `Brush`, `Stroke`) ride the
 /// recording chain once per chromed widget per frame, where auto-`Copy` was
 /// measurably costly. A `Copy` supertrait would bring that back, so copies
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned

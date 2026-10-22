@@ -14,7 +14,7 @@ use crate::support::{Section, api};
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
 use palantir::{
-    Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Sense, Sizing, Ui, WidgetId,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Ui, WidgetId,
 };
 use wgpu::util::DeviceExt;
 
@@ -41,7 +41,7 @@ const VERTICES: [Vertex; 8] = [
 ];
 
 /// 12 triangles; culling is off, so depth alone resolves occlusion.
-const INDICES: [u16; 36] = [
+const IDXS: [u16; 36] = [
     0, 1, 2, 0, 2, 3, // -z
     4, 6, 5, 4, 7, 6, // +z
     4, 0, 3, 4, 3, 7, // -x
@@ -80,7 +80,7 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 struct CubeGpu {
     pipeline: wgpu::RenderPipeline,
     vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
+    idxs: wgpu::Buffer,
     uniform: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     /// Private depth attachment, recreated on resize.
@@ -113,7 +113,7 @@ impl Cube {
 }
 
 impl GpuPaint for Cube {
-    fn init(&mut self, ctx: &GpuInitContext<'_>) {
+    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("showcase.cube.shader"),
@@ -124,9 +124,9 @@ impl GpuPaint for Cube {
             contents: bytemuck::cast_slice(&VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let idxs = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("showcase.cube.ibuf"),
-            contents: bytemuck::cast_slice(&INDICES),
+            contents: bytemuck::cast_slice(&IDXS),
             usage: wgpu::BufferUsages::INDEX,
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
@@ -202,14 +202,14 @@ impl GpuPaint for Cube {
         self.gpu = Some(CubeGpu {
             pipeline,
             vertices,
-            indices,
+            idxs,
             uniform,
             bind_group,
             depth: None,
         });
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         // Slow auto-rotation (~34°/s), framerate-independent via real `dt` (ZERO on the first paint).
         self.spin += 0.6 * ctx.dt.as_secs_f32();
         let mvp = {
@@ -227,7 +227,7 @@ impl GpuPaint for Cube {
         // Depth matches the color target's size; recreate it when `physical_size` changes.
         let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.physical_size);
         if need_depth {
-            let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
                 size: wgpu::Extent3d {
                     width: ctx.physical_size.x.max(1),
@@ -241,7 +241,7 @@ impl GpuPaint for Cube {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             });
-            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
             gpu.depth = Some((view, ctx.physical_size));
         }
         let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
@@ -284,8 +284,8 @@ impl GpuPaint for Cube {
         pass.set_pipeline(&gpu.pipeline);
         pass.set_bind_group(0, &gpu.bind_group, &[]);
         pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-        pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint16);
-        pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+        pass.set_index_buffer(gpu.idxs.slice(..), wgpu::IndexFormat::Uint16);
+        pass.draw_indexed(0..IDXS.len() as u32, 0, 0..1);
     }
 }
 

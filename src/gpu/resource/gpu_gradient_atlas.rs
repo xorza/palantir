@@ -25,10 +25,10 @@ pub(crate) struct GpuGradientAtlas {
     /// LUT atlas texture: 256 cols × N rows of `Rgba16Float` linear values (8-bit
     /// would band dark stops). [`Self::upload`] fills it and replaces it when the CPU atlas outgrew it.
     texture: wgpu::Texture,
-    /// The shared sampled-texture binding, kept to rebuild [`Self::bg`]; height-independent.
+    /// The shared sampled-texture binding, kept to rebuild [`Self::bind_group`]; height-independent.
     binding: TextureBinding,
     /// Group-0 bind group for both pipelines.
-    pub(crate) bg: wgpu::BindGroup,
+    pub(crate) bind_group: wgpu::BindGroup,
 }
 
 /// Allocates the LUT atlas texture at `rows` rows; shaders read the height via `textureDimensions`.
@@ -57,13 +57,13 @@ impl GpuGradientAtlas {
     ) -> Self {
         let texture = create_texture(device, cpu.rows());
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bg = binding.bind_group(device, &view, "palantir.gradient.bg");
+        let bind_group = binding.bind_group(device, &view, "palantir.gradient.bg");
 
         Self {
             cpu,
             texture,
             binding,
-            bg,
+            bind_group,
         }
     }
 
@@ -77,13 +77,13 @@ impl GpuGradientAtlas {
             cpu,
             texture,
             binding,
-            bg,
+            bind_group,
         } = self;
         cpu.flush_with(|rows| {
             if texture.height() != rows.total_rows {
                 *texture = create_texture(ctx.device, rows.total_rows);
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                *bg = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
+                *bind_group = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
             }
             let height = rows.bytes.len() as u32 / ROW_PITCH;
             TextureRegion {

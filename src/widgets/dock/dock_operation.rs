@@ -9,12 +9,12 @@ use crate::widgets::dock::tab_group::TabGroupId;
 /// Where a moved tab lands — the payload of [`DockOperation::MoveTab`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DockDrop {
-    /// Join `group`'s strip at `index` (clamped to its length).
+    /// Join `group`'s strip at `idx` (clamped to its length).
     Into {
         /// Target group.
         group: TabGroupId,
         /// Slot within that strip, clamped to its length.
-        index: usize,
+        idx: usize,
     },
     /// Split `group`'s pane; the tab becomes a fresh single-tab group on
     /// the given side.

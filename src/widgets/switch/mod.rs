@@ -4,7 +4,7 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::check_state::CheckState;
 use crate::theme::look::theme_slot::ThemeSlot;
@@ -72,7 +72,7 @@ impl<'a> Switch<'a> {
             aspect: slot.track_aspect,
         };
         let knob_color = slot.indicator;
-        let anim = slot.defaults.animation;
+        let animation = slot.defaults.animation;
         let knob_id = id.with("knob");
         let chrome = ToggleChrome {
             row: self.widget,
@@ -93,15 +93,15 @@ impl<'a> Switch<'a> {
             } else {
                 border
             };
-            let geom = track.knob(border_inset);
+            let geometry = track.knob(border_inset);
 
-            let target_x = if on { geom.on_x } else { geom.off_x };
-            let knob_x = ui.animate(AnimationRequest::new(knob_id, "x", target_x), anim);
-            let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
+            let target_x = if on { geometry.on_x } else { geometry.off_x };
+            let knob_x = ui.animate(AnimationRequest::new(knob_id, "x", target_x), animation);
+            let knob_bg = Bg::rounded(knob_color, Corners::all(geometry.knob * 0.5));
             let knob = Widget::leaf()
                 .id(knob_id)
-                .size((Sizing::fixed(geom.knob), Sizing::fixed(geom.knob)))
-                .position(Vec2::new(knob_x, geom.knob_y));
+                .size((Sizing::fixed(geometry.knob), Sizing::fixed(geometry.knob)))
+                .pos(Vec2::new(knob_x, geometry.knob_y));
             knob.record(ui, Some(&knob_bg), |_| {});
         });
         ValueResponse {
@@ -131,7 +131,7 @@ struct SwitchTrack {
 
 /// Knob placement inside the track, relative to its content box.
 #[derive(Debug)]
-struct KnobGeom {
+struct KnobGeometry {
     knob: f32,
     off_x: f32,
     on_x: f32,
@@ -146,9 +146,9 @@ impl SwitchTrack {
 
     /// The knob is `height - 2 * inset`, floored at 2 px. The track's `border` insets the Canvas content box on
     /// every side (`Tree::open_node`), so it is subtracted back out to keep the knob `inset` from the pill's edge.
-    fn knob(self, border: f32) -> KnobGeom {
+    fn knob(self, border: f32) -> KnobGeometry {
         let knob = (self.height - 2.0 * self.inset).max(2.0);
-        KnobGeom {
+        KnobGeometry {
             knob,
             off_x: self.inset - border,
             on_x: self.width() - knob - self.inset - border,

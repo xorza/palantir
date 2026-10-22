@@ -25,15 +25,15 @@ pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
     debug_assert!(stops.is_ascending(), "GradientStops must arrive sorted");
 
     let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
-    for index in 0..count {
-        linear_stops[index] = stops[index].color().premultiplied();
+    for idx in 0..count {
+        linear_stops[idx] = stops[idx].color().premultiplied();
     }
     let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
     let oklab: &[[f32; 3]] = match interpolation {
         Interpolation::Oklab => {
-            for index in 0..count {
-                let color = stops[index].color();
-                oklab_stops[index] = oklab::from_linear(color.r, color.g, color.b);
+            for idx in 0..count {
+                let color = stops[idx].color();
+                oklab_stops[idx] = oklab::from_linear(color.r, color.g, color.b);
             }
             &oklab_stops[..count]
         }

@@ -211,11 +211,11 @@ impl Window {
         self.maximized_stale = false;
         let facts = SystemFacts {
             placement: WindowPlacement {
-                position: self
+                pos: self
                     .window
                     .outer_position()
                     .ok()
-                    .map(|position| IVec2::new(position.x, position.y)),
+                    .map(|pos| IVec2::new(pos.x, pos.y)),
                 maximized: self.window.is_maximized(),
             },
             refresh_millihertz: self

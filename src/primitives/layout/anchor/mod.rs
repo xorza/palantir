@@ -156,22 +156,22 @@ impl Anchor {
     pub(crate) fn resolve(self, measured: Size, bounds: Rect) -> Vec2 {
         let axis = self.side.axis();
         axis.compose_point(
-            self.main_position(axis.main(measured), bounds),
-            self.cross_position(axis.cross(measured), bounds),
+            self.main_pos(axis.main(measured), bounds),
+            self.cross_pos(axis.cross(measured), bounds),
         )
     }
 
     /// The body's near edge along the side axis: the requested side if a body of `extent` fits inside `bounds`, else the opposite side, else the requested side shifted inside.
-    fn main_position(self, extent: f32, bounds: Rect) -> f32 {
+    fn main_pos(self, extent: f32, bounds: Rect) -> f32 {
         let axis = self.side.axis();
         let lo = axis.main_v(bounds.min);
         let hi = axis.main_v(bounds.max());
-        let fits = |position: f32| position >= lo && position + extent <= hi;
-        let preferred = self.side_position(self.side, extent);
+        let fits = |pos: f32| pos >= lo && pos + extent <= hi;
+        let preferred = self.side_pos(self.side, extent);
         if fits(preferred) {
             return preferred;
         }
-        let fallback = self.side_position(self.side.opposite(), extent);
+        let fallback = self.side_pos(self.side.opposite(), extent);
         if fits(fallback) {
             return fallback;
         }
@@ -179,7 +179,7 @@ impl Anchor {
     }
 
     /// The near edge of a body of `extent` on `side`, `gap` off the rect.
-    const fn side_position(self, side: AnchorSide, extent: f32) -> f32 {
+    const fn side_pos(self, side: AnchorSide, extent: f32) -> f32 {
         match side {
             AnchorSide::Above => self.rect.min.y - self.gap - extent,
             AnchorSide::Below => self.rect.max().y + self.gap,
@@ -189,16 +189,16 @@ impl Anchor {
     }
 
     /// The body's near edge across the side axis: aligned on the rect, then shifted inside `bounds`.
-    fn cross_position(self, extent: f32, bounds: Rect) -> f32 {
+    fn cross_pos(self, extent: f32, bounds: Rect) -> f32 {
         let axis = self.side.axis();
-        let position = axis.cross_v(self.rect.min)
+        let pos = axis.cross_v(self.rect.min)
             + self
                 .align
                 .axis_align()
                 .offset_in(axis.cross(self.rect.size), extent);
         let lo = axis.cross_v(bounds.min);
         let hi = axis.cross_v(bounds.max());
-        position.clamp(lo, (hi - extent).max(lo))
+        pos.clamp(lo, (hi - extent).max(lo))
     }
 }
 

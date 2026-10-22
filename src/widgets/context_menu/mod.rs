@@ -8,7 +8,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain::vec2;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::layer::Layer;
 use crate::theme::context_menu::ContextMenuTheme;
 use crate::ui::Ui;
@@ -62,7 +62,7 @@ pub struct ContextMenu<'a> {
     open_on_show: bool,
     /// The popup this menu is. Its anchor is a placeholder until `show`; a
     /// closed menu returns before recording. It owns the chrome too, so
-    /// `.background(..)` and the theme fallback land in one place.
+    /// `.bg(..)` and the theme fallback land in one place.
     popup: Popup,
     style: Option<&'a ContextMenuTheme>,
 }
@@ -128,7 +128,7 @@ impl<'a> ContextMenu<'a> {
             .popup
             .layer(Layer::Menu)
             .anchor(Anchor::at_point(open_at))
-            .default_background(ctx.panel.clone())
+            .default_bg(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_min_size(Size::new(ctx.min_width, 0.0))
             .default_gap(ctx.gap)
@@ -170,28 +170,28 @@ impl<'a> ContextMenu<'a> {
 }
 
 impl ContextMenu<'_> {
-    /// Paint `background` as the menu panel's background; the theme's `panel`
-    /// fills it when unset. [`Background::NONE`] suppresses the chrome.
+    /// Paint `bg` as the menu panel's background; the theme's `panel`
+    /// fills it when unset. [`Bg::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        self.popup = self.popup.background(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        self.popup = self.popup.bg(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one, for a wrapper theming
+    /// Paint `bg` unless the caller set one, for a wrapper theming
     /// a widget after the caller's setters ran. An explicit
-    /// [`Self::background`] wins in either order.
+    /// [`Self::bg`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        self.popup = self.popup.default_background(background);
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        self.popup = self.popup.default_bg(bg);
         self
     }
 }

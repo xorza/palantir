@@ -11,8 +11,8 @@
 use glam::UVec2;
 use palantir::widget::Shape;
 use palantir::{
-    Background, Block, Button, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing,
-    Stroke, TargetFormat, Ui,
+    Bg, Block, Button, Configure, Corners, Image, ImageHandle, Panel, RgbaF32, Sizing, Stroke,
+    TargetFormat, Ui,
 };
 use wgpu::TextureFormat;
 
@@ -29,8 +29,8 @@ fn scene(ui: &mut Ui) {
             Block::new()
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(
-                    Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
+                .bg(
+                    Bg::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(12.0))
                         .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 )
                 .show(ui);

@@ -99,14 +99,14 @@ pub(super) fn snap_text_scale(s: f32) -> f32 {
 
 /// The pixels a physical-px AABB covers, held inside the viewport: the `URect`
 /// the GPU consumes. Pairs [`URect::covering`] with [`URect::clamp_to`].
-pub(super) fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
+pub(super) fn urect_from_physical(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
 }
 
-/// Physical pixels per owner-local unit under `xform`.
+/// Physical pixels per owner-local unit under `transform`.
 #[inline]
-pub(super) const fn phys_scale(xform: TranslateScale, display_scale: f32) -> f32 {
-    xform.scale * display_scale
+pub(super) const fn physical_scale(transform: TranslateScale, display_scale: f32) -> f32 {
+    transform.scale * display_scale
 }
 
 #[cold]

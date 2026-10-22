@@ -4,7 +4,7 @@ use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
-    Background, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
+    Bg, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
 };
 use std::f64::consts::SQRT_2;
 
@@ -259,10 +259,10 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         render(CLEAR, |ui| {
             Panel::zstack()
                 .id_salt("chrome")
-                .position((40.0, 40.0))
+                .pos((40.0, 40.0))
                 .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
-                .background(
-                    Background::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
+                .bg(
+                    Bg::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
                         .with_border(Stroke::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0))
                         .with_shadow(if on_chrome { shadow } else { Shadow::NONE }),
                 )
@@ -299,9 +299,9 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
             if chrome {
                 Panel::zstack()
                     .id_salt("box")
-                    .position(source.min)
+                    .pos(source.min)
                     .size((Sizing::fixed(source.size.w), Sizing::fixed(source.size.h)))
-                    .background(Background::rounded(fill, Corners::all(radius)).with_shadow(shadow))
+                    .bg(Bg::rounded(fill, Corners::all(radius)).with_shadow(shadow))
                     .show(ui, |_| {});
             } else {
                 ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
@@ -643,7 +643,7 @@ struct GridCase {
 /// A shadow cell of the sweep, in logical px: wide enough for the largest
 /// blur's reach (`4σ`, 72 px at σ = 18) on both sides.
 const GRID_CELL: f32 = 360.0;
-const GRID_COLUMNS: usize = 6;
+const GRID_COLS: usize = 6;
 
 /// Cases the grid's cells must agree with the full form on: drop and inset
 /// over σ = 0, 0.2 (below `CUTOUT_MIN_SIGMA`), 2 and 18, radius 0, 4 and 30;
@@ -720,7 +720,7 @@ fn grid_cases() -> Vec<GridCase> {
 }
 
 fn grid_case_rect(i: usize, case: GridCase) -> Rect {
-    let cell = Vec2::new((i % GRID_COLUMNS) as f32, (i / GRID_COLUMNS) as f32) * GRID_CELL;
+    let cell = Vec2::new((i % GRID_COLS) as f32, (i / GRID_COLS) as f32) * GRID_CELL;
     let min = cell + (Vec2::splat(GRID_CELL) - case.size) * 0.5;
     Rect::new(min.x, min.y, case.size.x, case.size.y)
 }
@@ -753,13 +753,13 @@ fn grid_sweep(ui: &mut Ui) {
             offset: Vec2::new(6.0, 10.0),
             spread: 2.0,
         };
-        let row = cases.len().div_ceil(GRID_COLUMNS) as f32 * GRID_CELL;
+        let row = cases.len().div_ceil(GRID_COLS) as f32 * GRID_CELL;
         for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
             Panel::canvas()
                 .id_salt(("clip", rounded))
-                .position((x + 40.0, row + 40.0))
+                .pos((x + 40.0, row + 40.0))
                 .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
-                .background(Background::rounded(
+                .bg(Bg::rounded(
                     RgbaF32::TRANSPARENT,
                     Corners::all(if rounded { 40.0 } else { 0.0 }),
                 ))
@@ -785,9 +785,9 @@ fn grid_sweep(ui: &mut Ui) {
 #[test]
 fn a_shadow_grid_matches_the_full_form() {
     let cases = grid_cases();
-    let rows = cases.len().div_ceil(GRID_COLUMNS) + 1;
+    let rows = cases.len().div_ceil(GRID_COLS) + 1;
     let size = UVec2::new(
-        (GRID_COLUMNS as f32 * GRID_CELL) as u32,
+        (GRID_COLS as f32 * GRID_CELL) as u32,
         (rows as f32 * GRID_CELL) as u32,
     );
     let mut grid = Harness::new();

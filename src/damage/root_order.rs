@@ -15,7 +15,7 @@ use crate::scene::tree::Tree;
 pub(super) struct RootOrder {
     prev: PerLayer<Vec<WidgetId>>,
     /// Scratch: last frame's roots of the layer being diffed with their positions, sorted by id.
-    positions: Vec<(WidgetId, u32)>,
+    poss: Vec<(WidgetId, u32)>,
     /// Scratch: each current root's position last frame, or [`ROW_UNMATCHED`].
     matched: Vec<u32>,
     /// Scratch: each current root's painted extent.
@@ -37,18 +37,18 @@ impl RootOrder {
             return;
         }
         if !prev.is_empty() {
-            self.positions.clear();
-            self.positions
+            self.poss.clear();
+            self.poss
                 .extend(prev.iter().enumerate().map(|(at, id)| (*id, at as u32)));
-            self.positions.sort_unstable_by_key(|(id, _)| id.0);
+            self.poss.sort_unstable_by_key(|(id, _)| id.0);
             self.matched.clear();
             self.extents.clear();
             for slot in &tree.roots {
                 let id = ids[slot.first_node.idx()];
                 let at = self
-                    .positions
+                    .poss
                     .binary_search_by_key(&id.0, |(id, _)| id.0)
-                    .map_or(ROW_UNMATCHED, |found| self.positions[found].1);
+                    .map_or(ROW_UNMATCHED, |found| self.poss[found].1);
                 self.matched.push(at);
                 self.extents
                     .push(cascade.subtree_paint_rects[slot.first_node.idx()]);
@@ -84,12 +84,12 @@ pub(crate) mod internals {
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 prev: _,
-                positions,
+                poss,
                 matched,
                 extents,
                 inversions,
             } = self;
-            scratch_report::vec_bytes(positions)
+            scratch_report::vec_bytes(poss)
                 + scratch_report::vec_bytes(matched)
                 + scratch_report::vec_bytes(extents)
                 + inversions.scratch_bytes()

@@ -19,7 +19,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
-use crate::renderer::frontend::composer::phys_map::PhysMap;
+use crate::renderer::frontend::composer::physical_map::PhysicalMap;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -29,7 +29,7 @@ use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
-use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::quad::Quad;
@@ -48,7 +48,7 @@ use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::lowered_shadow::ShadowGeom;
+use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
@@ -84,11 +84,11 @@ impl PackedQuad {
     /// [`Self::is_sharp`] plus physical edges on whole pixels. Exactness makes the
     /// fragment fast path bitwise-identical to the SDF.
     fn is_pixel_aligned(&self) -> bool {
-        let phys = self.rect.phys;
-        let max = phys.max();
+        let physical = self.rect.physical;
+        let max = physical.max();
         self.is_sharp()
-            && phys.min.x.is_integral()
-            && phys.min.y.is_integral()
+            && physical.min.x.is_integral()
+            && physical.min.y.is_integral()
             && max.x.is_integral()
             && max.y.is_integral()
     }
@@ -96,15 +96,15 @@ impl PackedQuad {
 
 #[derive(Debug)]
 struct ScaledRect {
-    phys: Rect,
+    physical: Rect,
     urect: URect,
 }
 
 impl ScaledRect {
-    fn from_phys(phys: Rect, viewport: UVec2) -> Self {
+    fn from_physical(physical: Rect, viewport: UVec2) -> Self {
         Self {
-            phys,
-            urect: geometry::urect_from_phys(phys.min, phys.max(), viewport),
+            physical,
+            urect: geometry::urect_from_physical(physical.min, physical.max(), viewport),
         }
     }
 }
@@ -148,11 +148,11 @@ impl ComposeSession<'_> {
     /// once, for cull and instance alike.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
-        let phys = world.scaled_by(
+        let physical = world.scaled_by(
             self.out.display.scale_factor(),
             self.out.display.edge_rounding(),
         );
-        ScaledRect::from_phys(phys, self.out.display.physical)
+        ScaledRect::from_physical(physical, self.out.display.physical)
     }
 
     /// The part of `whole` that can be seen (inside the surface and the active clip),
@@ -181,11 +181,11 @@ impl PaintSink for ComposeSession<'_> {
     fn push_clip(&mut self, p: PushClipPayload) {
         let scale = self.out.display.scale_factor();
         let edges = self.out.display.edge_rounding();
-        let viewport_phys = self.out.display.physical;
+        let viewport_physical = self.out.display.physical;
         let logical_radius = (!p.corners.is_approx_zero()).then_some(p.corners);
         let world = self.composer.transform.apply_rect(p.rect);
-        let phys = world.scaled_by(scale, edges);
-        let me = geometry::urect_from_phys(phys.min, phys.max(), viewport_phys);
+        let physical = world.scaled_by(scale, edges);
+        let me = geometry::urect_from_physical(physical.min, physical.max(), viewport_physical);
         let parent = self.composer.clip.top();
         let scissor = match parent {
             Some(parent) => me.clamp_to(parent.scissor),
@@ -193,12 +193,12 @@ impl PaintSink for ComposeSession<'_> {
         };
         let parent_chain = parent.map_or_else(Span::default, |f| f.chain);
         let chain = if let Some(logical_radius) = logical_radius {
-            let scale_phys = geometry::phys_scale(self.composer.transform.current(), scale);
+            let scale_physical = geometry::physical_scale(self.composer.transform.cur(), scale);
             // `mask_rect` stays unclamped: the SDF needs the true edges or corners shift inward
             // when the clip leaves the viewport.
             let rc = RoundedClip {
-                mask_rect: phys,
-                corners: logical_radius.fit_to(phys.size, scale_phys),
+                mask_rect: physical,
+                corners: logical_radius.fit_to(physical.size, scale_physical),
             };
             // A rounded push nested in rounded ancestors stacks: child chain = ancestor chain + own
             // mask. Re-pushing the innermost mask adds no depth.
@@ -258,7 +258,7 @@ impl PaintSink for ComposeSession<'_> {
             p.fill.kind
         };
         self.out.quads.push(Quad {
-            rect: packed.rect.phys,
+            rect: packed.rect.physical,
             fill: p.fill.color,
             corners: packed.corners,
             stroke_color: p.stroke.color,
@@ -272,15 +272,18 @@ impl PaintSink for ComposeSession<'_> {
 
     fn mesh(&mut self, p: DrawMeshPayload) {
         let scale = self.out.display.scale_factor();
-        let viewport_phys = self.out.display.physical;
+        let viewport_physical = self.out.display.physical;
         // `draw_mesh` already gated empty meshes, so `vertices` is non-empty. Inflate by 0.5 phys px
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
         // skips snapping, so it cannot use `scaled_rect`.
-        let xform = self.composer.transform.current();
-        let phys = PhysMap::new(xform, p.origin, scale).bbox(p.bbox);
+        let transform = self.composer.transform.cur();
+        let physical = PhysicalMap::new(transform, p.origin, scale).bbox(p.bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
-        let mesh_urect =
-            geometry::urect_from_phys(phys.min - fringe, phys.max() + fringe, viewport_phys);
+        let mesh_urect = geometry::urect_from_physical(
+            physical.min - fringe,
+            physical.max() + fringe,
+            viewport_physical,
+        );
         // A surviving mesh closes the open text batch so its text emits before this above-text
         // geometry.
         if !self.admit_higher_kind(PaintTier::Mesh, mesh_urect) {
@@ -288,16 +291,16 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Verts stay owner-local; the per-instance translate folds in owner origin and transform
         // stack, so the shader produces physical coords.
-        let scale_phys = geometry::phys_scale(xform, scale);
-        let phys_translate = (xform.scale * p.origin + xform.translation) * scale;
+        let scale_physical = geometry::physical_scale(transform, scale);
+        let physical_translate = (transform.scale * p.origin + transform.translation) * scale;
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
-                indices: p.indices,
+                idxs: p.idxs,
             },
             instance: MeshInstance {
-                translate: phys_translate,
-                scale: scale_phys,
+                translate: physical_translate,
+                scale: scale_physical,
                 tint: p.tint,
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -310,25 +313,25 @@ impl PaintSink for ComposeSession<'_> {
     )]
     fn icon(&mut self, p: DrawIconPayload) {
         let ScaledRect {
-            phys: phys_rect,
+            physical: physical_rect,
             urect,
         } = self.scaled_rect(p.rect);
         if !self.admit_higher_kind(PaintTier::Icon, urect) {
             return;
         }
-        let box_px = Vec2::new(phys_rect.size.w, phys_rect.size.h);
+        let box_px = Vec2::new(physical_rect.size.w, physical_rect.size.h);
         let key = IconRasterKey::for_box(p.icon, box_px);
         let (origin, size) = if key.is_exact() {
             // Whole-pixel origin with the raster centered in its box; the `Nearest` atlas sampler
             // needs integer origins.
-            let centered = phys_rect.min + (box_px - key.size().as_vec2()) * 0.5;
+            let centered = physical_rect.min + (box_px - key.size().as_vec2()) * 0.5;
             (centered.fast_round().as_ivec2(), key.size())
         } else {
             // Above the exact band the raster is a nearby or capped rung; at its own size it
             // would stick out of or leave a gap in the box the cull and damage rects use. So
             // the quad is the box and the raster is resampled.
-            let min = phys_rect.min.fast_round();
-            let max = phys_rect.max().fast_round();
+            let min = physical_rect.min.fast_round();
+            let max = physical_rect.max().fast_round();
             let size = (max - min).max(Vec2::ONE);
             (min.as_ivec2(), U16Vec2::new(size.x as u16, size.y as u16))
         };
@@ -348,7 +351,7 @@ impl PaintSink for ComposeSession<'_> {
     fn image(&mut self, draw: ImageDraw<'_>) {
         let ImageDraw { payload: p, view } = draw;
         let ScaledRect {
-            phys: phys_rect,
+            physical: physical_rect,
             urect: image_urect,
         } = self.scaled_rect(p.rect);
         if !self.admit_higher_kind(PaintTier::Image, image_urect) {
@@ -356,8 +359,8 @@ impl PaintSink for ComposeSession<'_> {
         }
         // A `GpuView` draws over only its visible part, since that is all its target holds; its UV
         // stays whole.
-        let seen = view.and_then(|_| self.seen(phys_rect));
-        let composite = seen.unwrap_or(phys_rect);
+        let seen = view.and_then(|_| self.seen(physical_rect));
+        let composite = seen.unwrap_or(physical_rect);
         self.out.images.push(ImageDrawRow {
             // Only the registration id: the encoder already resolved fit into `rect` + UV. `target`
             // only schedules the off-screen paint.
@@ -377,7 +380,7 @@ impl PaintSink for ComposeSession<'_> {
         if let Some(view) = view {
             let scale = self.out.display.scale_factor();
             let cap = NonZeroI64::from(self.composer.max_texture_dim).get();
-            let whole = phys_rect.size;
+            let whole = physical_rect.size;
             // The cap is measured against the whole view so the downsample does not change as the
             // view scrolls (it would shimmer).
             let downsample =
@@ -387,7 +390,7 @@ impl PaintSink for ComposeSession<'_> {
             // origin.
             let at = |v: f32| ((v * downsample).floor() as i64).clamp(0, cap) as u32;
             let (used, offset) = match seen {
-                Some(seen) => (seen.size, seen.min - phys_rect.min),
+                Some(seen) => (seen.size, seen.min - physical_rect.min),
                 None => (whole, Vec2::ZERO),
             };
             // The window lands inside the view by arithmetic, not a clamp: origin rounds
@@ -398,7 +401,7 @@ impl PaintSink for ComposeSession<'_> {
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
-                raster_scale: geometry::phys_scale(self.composer.transform.current(), scale)
+                raster_scale: geometry::physical_scale(self.composer.transform.cur(), scale)
                     * downsample,
                 paint: view.paint.clone(),
                 epoch: view.epoch,
@@ -408,14 +411,14 @@ impl PaintSink for ComposeSession<'_> {
 
     fn curve(&mut self, p: DrawCurvePayload) {
         let scale = self.out.display.scale_factor();
-        let xform = self.composer.transform.current();
-        let width_phys = p.width * geometry::phys_scale(xform, scale);
+        let transform = self.composer.transform.cur();
+        let width_physical = p.width * geometry::physical_scale(transform, scale);
         let cap = p.cap;
         let bbox_urect = StrokeBbox {
-            xform,
+            transform,
             bbox: p.bounds.cull_rect(),
             origin: p.origin,
-            width_phys,
+            width_physical,
             cap,
             joints: StrokeJoints::Unjoined,
             display: self.out.display,
@@ -426,10 +429,10 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.
-        let to_phys = PhysMap::new(xform, p.origin, scale);
+        let to_physical = PhysicalMap::new(transform, p.origin, scale);
         let spin = p.bounds.spin();
         let proto = CurveInstance {
-            width: width_phys,
+            width: width_physical,
             color0: p.fill.color,
             color1: p.fill.color,
             caps: CurveCaps::new(cap, true, true),
@@ -446,7 +449,7 @@ impl PaintSink for ComposeSession<'_> {
                         *q = rotor.apply(*q);
                     }
                 }
-                let ctrl = ctrl.map(|q| to_phys.point(q));
+                let ctrl = ctrl.map(|q| to_physical.point(q));
                 let [p0, p1, p2, p3] = ctrl;
                 // Adaptive sub-instance count from the control-polygon length, which bounds arc
                 // length from above (no faceting). Near-straight cubics use one instance: every
@@ -482,13 +485,13 @@ impl PaintSink for ComposeSession<'_> {
                 }
                 // The transform is translate + uniform scale, so a circle stays a circle: transform
                 // the center, scale the radius.
-                let radius_phys = radius * geometry::phys_scale(xform, scale);
+                let radius_physical = radius * geometry::physical_scale(transform, scale);
                 // Sub-instance count from the exact arc length; chord sagitta stays under 0.3 px
                 // even at r = 1.
-                let n = geometry::sub_instance_count(radius_phys * (a1 - a0).abs());
+                let n = geometry::sub_instance_count(radius_physical * (a1 - a0).abs());
                 let proto = CurveInstance {
-                    p0: to_phys.point(center),
-                    p1: Vec2::new(radius_phys, 0.0),
+                    p0: to_physical.point(center),
+                    p1: Vec2::new(radius_physical, 0.0),
                     p2: Vec2::new(a0, a1),
                     p3: Vec2::ZERO,
                     kind: CurveKind::ARC,
@@ -506,18 +509,18 @@ impl PaintSink for ComposeSession<'_> {
         let mode = p.color_mode;
         let cap = p.cap;
         let join = p.join;
-        let xform = self.composer.transform.current();
-        let width_phys = p.width * geometry::phys_scale(xform, scale);
+        let transform = self.composer.transform.cur();
+        let width_physical = p.width * geometry::physical_scale(transform, scale);
 
         // Inflated physical AABB, computed once for cull and overlap. Inflating by the
         // stroke fringe means the cull never trims reachable pixels. Clamped here because
         // `admit_higher_kind` wants the same clipped rect.
         let visible = self.composer.clip.clamped(
             StrokeBbox {
-                xform,
+                transform,
                 bbox: p.bounds.cull_rect(),
                 origin: p.origin,
-                width_phys,
+                width_physical,
                 cap,
                 joints: StrokeJoints::polyline(p.points.len, join),
                 display,
@@ -534,18 +537,19 @@ impl PaintSink for ComposeSession<'_> {
         // Transform points to physical px with owner origin folded in. No snapping: it would shift
         // thin lines off-axis.
         self.composer.polyline.points.clear();
-        let to_phys = PhysMap::new(xform, p.origin, scale);
+        let to_physical = PhysicalMap::new(transform, p.origin, scale);
         if let Some(spin) = p.bounds.spin() {
             let rotor = spin.rotor();
-            self.composer
-                .polyline
-                .points
-                .extend(src_points.iter().map(|&q| to_phys.point(rotor.apply(q))));
+            self.composer.polyline.points.extend(
+                src_points
+                    .iter()
+                    .map(|&q| to_physical.point(rotor.apply(q))),
+            );
         } else {
             self.composer
                 .polyline
                 .points
-                .extend(src_points.iter().map(|&q| to_phys.point(q)));
+                .extend(src_points.iter().map(|&q| to_physical.point(q)));
         }
 
         // Keep only points beyond the coincidence threshold from their predecessor; dropped points
@@ -622,7 +626,7 @@ impl PaintSink for ComposeSession<'_> {
                 p3: pt(k + 1),
                 t0: 0.0,
                 t1: 1.0,
-                width: width_phys,
+                width: width_physical,
                 color0: colors.start,
                 color1: colors.end,
                 caps: CurveCaps::new(cap, k == 0, k + 1 == n_segs),
@@ -648,7 +652,7 @@ impl PaintSink for ComposeSession<'_> {
                 p2: d_b,
                 t0: 0.0,
                 t1: 1.0,
-                width: width_phys,
+                width: width_physical,
                 color0: color,
                 color1: color,
                 kind: geometry::polyline_join_kind(d_a, d_b, join),
@@ -660,7 +664,7 @@ impl PaintSink for ComposeSession<'_> {
     fn text(&mut self, t: DrawTextPayload) {
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
-        let phys_rect = world.scaled_by(scale, self.out.display.edge_rounding());
+        let physical_rect = world.scaled_by(scale, self.out.display.edge_rounding());
         // What the glyphs can reach: ink from the placed origin at true size, padded by
         // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
         // Covered, never rounded in, so the last AA column is not cut.
@@ -672,8 +676,8 @@ impl PaintSink for ComposeSession<'_> {
             let lead = (world.min - inked.min) * scale;
             let size = Vec2::new(inked.size.w, inked.size.h) * scale;
             let pad = size * (TEXT_SCALE_STEP * 0.5);
-            let min = phys_rect.min - lead;
-            geometry::urect_from_phys(min - pad, min + size + pad, self.out.display.physical)
+            let min = physical_rect.min - lead;
+            geometry::urect_from_physical(min - pad, min + size + pad, self.out.display.physical)
         };
         // `bounds` feeds the batch GPU scissor and the backend's per-line y-cull; there is no
         // per-glyph clip. An empty intersection with the clip skips the push.
@@ -700,7 +704,7 @@ impl PaintSink for ComposeSession<'_> {
         let b = self.open_batch();
         b.strict |= new_strict;
         self.out.texts.push(TextDrawRow {
-            origin: phys_rect.min,
+            origin: physical_rect.min,
             bounds,
             color: t.color,
             text: t.text,
@@ -715,28 +719,28 @@ impl PaintSink for ComposeSession<'_> {
 impl ComposeSession<'_> {
     /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
-        let xform = self.composer.transform.current();
-        let scale_phys = geometry::phys_scale(xform, self.out.display.scale_factor());
-        match p.geom {
-            QuadGeom::Rect { rect, corners } => {
+        let transform = self.composer.transform.cur();
+        let scale_physical = geometry::physical_scale(transform, self.out.display.scale_factor());
+        match p.geometry {
+            QuadGeometry::Rect { rect, corners } => {
                 let source = self.scaled_rect(rect);
                 // Shadow scalars are logical px, so scale them; a gradient axis is unit-space.
                 let fill_axis = if p.fill.kind.is_shadow() {
-                    p.fill_axis.scaled(scale_phys)
+                    p.fill_axis.scaled(scale_physical)
                 } else {
                     p.fill_axis
                 };
-                let corners = corners.fit_to(source.phys.size, scale_phys);
+                let corners = corners.fit_to(source.physical.size, scale_physical);
                 // A drop shadow's quad is its snapped source moved and grown, not re-snapped, so
                 // the source inside it lies on the same pixels as the fill.
                 let rect = if p.fill.kind == FillKind::SHADOW_DROP {
-                    let geom = ShadowGeom::from_lanes(fill_axis.lanes());
-                    let phys = Rect {
-                        min: source.phys.min + geom.offset,
-                        size: source.phys.size,
+                    let geometry = ShadowGeometry::from_lanes(fill_axis.lanes());
+                    let physical = Rect {
+                        min: source.physical.min + geometry.offset,
+                        size: source.physical.size,
                     }
-                    .inflated(geom.halo());
-                    ScaledRect::from_phys(phys, self.out.display.physical)
+                    .inflated(geometry.halo());
+                    ScaledRect::from_physical(physical, self.out.display.physical)
                 } else {
                     source
                 };
@@ -744,10 +748,10 @@ impl ComposeSession<'_> {
                     rect,
                     corners,
                     fill_axis,
-                    stroke_width: p.stroke.width * scale_phys,
+                    stroke_width: p.stroke.width * scale_physical,
                 }
             }
-            QuadGeom::Triangle {
+            QuadGeometry::Triangle {
                 origin,
                 a,
                 b,
@@ -756,27 +760,32 @@ impl ComposeSession<'_> {
             } => {
                 let scale = self.out.display.scale_factor();
                 // No snapping: the SDF handles sub-pixel placement.
-                let to_phys = PhysMap::new(xform, origin, scale);
-                let (a, b, c) = (to_phys.point(a), to_phys.point(b), to_phys.point(c));
-                let radius_phys = (radius * scale_phys).max(0.0);
+                let to_physical = PhysicalMap::new(transform, origin, scale);
+                let (a, b, c) = (
+                    to_physical.point(a),
+                    to_physical.point(b),
+                    to_physical.point(c),
+                );
+                let radius_physical = (radius * scale_physical).max(0.0);
                 // Covering AABB of the rounded shape; the stroke sits on the inner edge, so it adds
                 // no outward reach.
                 let lo = a.min(b).min(c);
                 let hi = a.max(b).max(c);
-                let phys_rect = Rect::from_min_max(lo, hi).inflated(radius_phys);
+                let physical_rect = Rect::from_min_max(lo, hi).inflated(radius_physical);
                 // Pack the points as unorm16 shares of the covering rect and the radius as f16;
                 // `FillKind::TRIANGLE` tells the shader to decode them.
                 let share = |p: Vec2| {
-                    let at = (p - phys_rect.min) / Vec2::new(phys_rect.size.w, phys_rect.size.h);
+                    let at = (p - physical_rect.min)
+                        / Vec2::new(physical_rect.size.w, physical_rect.size.h);
                     [unorm16(at.x), unorm16(at.y)]
                 };
                 let ([ax, ay], [bx, by], [cx, cy]) = (share(a), share(b), share(c));
-                let radius_f16 = F16x4::from_lanes([0.0, 0.0, radius_phys, 0.0]).lane_bits(2);
+                let radius_f16 = F16x4::from_lanes([0.0, 0.0, radius_physical, 0.0]).lane_bits(2);
                 PackedQuad {
-                    rect: ScaledRect::from_phys(phys_rect, self.out.display.physical),
+                    rect: ScaledRect::from_physical(physical_rect, self.out.display.physical),
                     corners: Corners::from_bits([ax, ay, bx, by]),
                     fill_axis: FillAxis::from(F16x4::from_bits([cx, cy, radius_f16, 0])),
-                    stroke_width: (p.stroke.width * scale_phys).max(0.0),
+                    stroke_width: (p.stroke.width * scale_physical).max(0.0),
                 }
             }
         }
@@ -790,11 +799,11 @@ impl ComposeSession<'_> {
     ///
     /// Returns `true` when folded; the quad must not be emitted.
     fn fold_into_clear(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) -> bool {
-        let phys = packed.rect.phys;
-        let covers_viewport = phys.min.x <= EPS
-            && phys.min.y <= EPS
-            && phys.max().x >= self.out.display.physical.as_vec2().x - EPS
-            && phys.max().y >= self.out.display.physical.as_vec2().y - EPS;
+        let physical = packed.rect.physical;
+        let covers_viewport = physical.min.x <= EPS
+            && physical.min.y <= EPS
+            && physical.max().x >= self.out.display.physical.as_vec2().x - EPS
+            && physical.max().y >= self.out.display.physical.as_vec2().y - EPS;
         if !covers_viewport
             || self.composer.clip.top().is_some()
             || p.fill.kind != FillKind::SOLID
@@ -814,7 +823,7 @@ impl ComposeSession<'_> {
         if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
             return;
         }
-        let inscribed = packed.rect.phys.inscribed_for_corners(packed.corners);
+        let inscribed = packed.rect.physical.inscribed_for_corners(packed.corners);
         let stroke_inset = if is_invisible(packed.stroke_width) || p.stroke.color.is_opaque() {
             0.0
         } else {

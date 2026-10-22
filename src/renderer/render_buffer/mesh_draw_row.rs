@@ -14,7 +14,7 @@ use soa_rs::Soars;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,
-    pub(crate) indices: Span,
+    pub(crate) idxs: Span,
 }
 
 /// One mesh draw row; the SoA split lets the backend upload `rows.instance()` in one `write_buffer`.

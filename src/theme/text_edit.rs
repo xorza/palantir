@@ -5,7 +5,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -80,7 +80,7 @@ impl TextEditTheme {
         // rect sits inside the ring, and `TextEdit::show` mirrors that fold. Off
         // `normal`: the width is one number across states (see
         // [`TextEditTheme::from_palette`]).
-        let ring = self.looks.normal.background.border_inset();
+        let ring = self.looks.normal.bg.border_inset();
         at - Vec2::new(text.w, text.h) * 0.5
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
@@ -92,17 +92,17 @@ impl TextEditTheme {
         // padding, so a change would shift the inner rect and jitter the text on
         // focus. 1.5 px gives focus emphasis without the shift.
         let stroke_w = 1.5;
-        let normal_bg = Background::rounded(p.element_mid, radius)
-            .with_border(Stroke::new(p.border_soft(), stroke_w));
-        let focused_bg = Background::rounded(p.element_mid, radius)
-            .with_border(Stroke::new(p.border_focused, stroke_w));
-        let disabled_bg = Background::rounded(p.element, radius)
-            .with_border(Stroke::new(p.border_soft(), stroke_w));
+        let normal_bg =
+            Bg::rounded(p.element_mid, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
+        let focused_bg =
+            Bg::rounded(p.element_mid, radius).with_border(Stroke::new(p.border_focused, stroke_w));
+        let disabled_bg =
+            Bg::rounded(p.element, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
         // Selection = accent at ~25% alpha: a wash that leaves glyphs readable.
         let selection = p.accent.with_alpha(0.25);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {
-            background: normal_bg,
+            bg: normal_bg,
             text: TextStyleOverrides::NONE,
         };
         Self {
@@ -110,11 +110,11 @@ impl TextEditTheme {
                 hovered: normal.clone(),
                 normal,
                 active: WidgetLook {
-                    background: focused_bg,
+                    bg: focused_bg,
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    background: disabled_bg,
+                    bg: disabled_bg,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },

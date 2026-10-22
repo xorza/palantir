@@ -9,7 +9,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{
-    DrawQuadPayload, QuadGeom, RectQuad, TriangleQuad,
+    DrawQuadPayload, QuadGeometry, RectQuad, TriangleQuad,
 };
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -50,7 +50,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             stroke,
         });
         assert!(
-            matches!(rp.geom, QuadGeom::Rect { .. }),
+            matches!(rp.geometry, QuadGeometry::Rect { .. }),
             "case {label}: rect must carry rect geometry",
         );
 
@@ -66,7 +66,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             stroke,
         });
         assert!(
-            matches!(tp.geom, QuadGeom::Triangle { .. }),
+            matches!(tp.geometry, QuadGeometry::Triangle { .. }),
             "case {label}: triangle must carry triangle geometry",
         );
         assert_eq!(tp.fill.kind, FillKind::TRIANGLE, "case {label}");

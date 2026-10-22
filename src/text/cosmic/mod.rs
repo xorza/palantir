@@ -167,14 +167,13 @@ impl ScalerSpec {
     /// variable faces. Sets `normalized_coords` on every glyph, even with no weight to
     /// apply: the retained context keeps the last glyph's coordinates otherwise, and
     /// `variations` keeps stale entries, so a bold glyph bleeds into the next regular one.
-    fn scaler<'a>(self, context: &'a mut ScaleContext, font: &'a Font) -> Scaler<'a> {
+    fn scaler<'a>(self, ctx: &'a mut ScaleContext, font: &'a Font) -> Scaler<'a> {
         let face = font.as_swash();
         let weight = face
             .variations()
             .find_by_tag(WGHT_AXIS)
             .and_then(|axis| AxisRange::from(axis).coordinate(f32::from(self.weight.0)));
-        context
-            .builder(face)
+        ctx.builder(face)
             .size(self.size)
             .hint(self.hinting == Hinting::On)
             .normalized_coords(
@@ -204,7 +203,7 @@ pub(super) struct CosmicMeasure {
     /// disagree.
     resolved: Vec<FamilyResolution>,
     /// Swash's scaler caches, retained across glyphs.
-    scale_context: ScaleContext,
+    scale_ctx: ScaleContext,
     /// The image every glyph rasterizes into, reused to avoid per-glyph allocation.
     glyph_image: SwashImage,
     /// Which buffers are resident and for how long; also owns the shared frame clock.
@@ -235,7 +234,7 @@ impl CosmicMeasure {
         Self {
             font_system,
             resolved: Vec::new(),
-            scale_context: ScaleContext::new(),
+            scale_ctx: ScaleContext::new(),
             glyph_image: SwashImage::new(),
             cache: ShapedBufferCache::default(),
             ellipsis: ArrayVec::new(),
@@ -287,9 +286,9 @@ impl CosmicMeasure {
             .iter()
             .enumerate()
             .filter(|(_, answer)| **answer != FamilyResolution::Unasked)
-            .map(|(index, _)| {
+            .map(|(idx, _)| {
                 FontFamily::from_raw(
-                    u16::try_from(index).expect("`resolved` is indexed by a u16 family index"),
+                    u16::try_from(idx).expect("`resolved` is indexed by a u16 family index"),
                 )
             })
             .collect();
@@ -306,8 +305,8 @@ impl CosmicMeasure {
     /// Whether a face answers to `family`. Memoized, and the shaping path reads the
     /// same memo so the answer and the shaped face cannot disagree.
     pub(super) fn has_font(&mut self, family: FontFamily) -> bool {
-        let index = usize::from(family.raw());
-        match self.resolved.get(index).copied().unwrap_or_default() {
+        let idx = usize::from(family.raw());
+        match self.resolved.get(idx).copied().unwrap_or_default() {
             FamilyResolution::Present => return true,
             FamilyResolution::Missing => return false,
             FamilyResolution::Unasked => {}
@@ -320,10 +319,10 @@ impl CosmicMeasure {
                 FontFamily::SANS.name(),
             );
         }
-        if self.resolved.len() <= index {
-            self.resolved.resize(index + 1, FamilyResolution::Unasked);
+        if self.resolved.len() <= idx {
+            self.resolved.resize(idx + 1, FamilyResolution::Unasked);
         }
-        self.resolved[index] = if present {
+        self.resolved[idx] = if present {
             FamilyResolution::Present
         } else {
             FamilyResolution::Missing
@@ -536,7 +535,7 @@ impl CosmicMeasure {
             hinting,
             weight: cache_key.font_weight,
         }
-        .scaler(&mut self.scale_context, &font);
+        .scaler(&mut self.scale_ctx, &font);
         // Cleared, not overwritten: `render_into` zero-fills only what a resize added, so a smaller
         // glyph would read the last one's coverage.
         self.glyph_image.clear();

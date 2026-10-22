@@ -24,7 +24,7 @@ impl PartialEq for GpuPaintRef {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::device::gpu_frame_context::GpuFrameContext;
+    use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
     use crate::renderer::gpu_paint::GpuPaint;
     use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use std::cell::RefCell;
@@ -35,7 +35,7 @@ pub(crate) mod internals {
     pub(crate) struct NoopPaint;
 
     impl GpuPaint for NoopPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameContext<'_>) {}
+        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
     }
 
     impl GpuPaintRef {

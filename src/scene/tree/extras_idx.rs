@@ -1,23 +1,23 @@
 //! Sparse side-table indices for optional per-node data.
 
-use crate::common::index16::Index16;
+use crate::common::idx16::Idx16;
 
 /// One node's slots in the three optional side tables; `None` keeps them sparse (a plain leaf pays six bytes).
 ///
 /// # Ceiling
 ///
-/// [`Index16`] caps each table at [`Index16::LAST`]` + 1` rows **per layer, per frame**; a row past that
+/// [`Idx16`] caps each table at [`Idx16::LAST`]` + 1` rows **per layer, per frame**; a row past that
 /// panics in release rather than wrapping. 32-bit indices would double this per-node SoA column.
 ///
-/// A large scene fills `chrome` first (any node with a paintable [`Background`] or rounded clip).
+/// A large scene fills `chrome` first (any node with a paintable [`Bg`] or rounded clip).
 ///
-/// [`Background`]: crate::Background
+/// [`Bg`]: crate::Bg
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct ExtrasIdx {
-    pub(crate) bounds: Option<Index16>,
-    pub(crate) panel: Option<Index16>,
-    pub(crate) chrome: Option<Index16>,
+    pub(crate) bounds: Option<Idx16>,
+    pub(crate) panel: Option<Idx16>,
+    pub(crate) chrome: Option<Idx16>,
 }
 
 unsafe impl bytemuck::NoUninit for ExtrasIdx {}

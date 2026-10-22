@@ -159,7 +159,7 @@ impl InputState {
         match KeyClass::of(press) {
             KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
                 let direction = if press.mods.shift {
-                    TabDirection::Previous
+                    TabDirection::Prev
                 } else {
                     TabDirection::Next
                 };
@@ -172,7 +172,7 @@ impl InputState {
                 let group = cascade.arrow_group_of(self.focused?)?;
                 let direction = match (group.axis, press.key) {
                     (Axis::Y, Key::ArrowDown) | (Axis::X, Key::ArrowRight) => TabDirection::Next,
-                    (Axis::Y, Key::ArrowUp) | (Axis::X, Key::ArrowLeft) => TabDirection::Previous,
+                    (Axis::Y, Key::ArrowUp) | (Axis::X, Key::ArrowLeft) => TabDirection::Prev,
                     _ => return None,
                 };
                 let claimed = self
@@ -347,12 +347,12 @@ impl InputState {
     }
 
     fn target_scroll_delta_mut(&mut self, target: WidgetId) -> &mut ScrollDelta {
-        if let Some(index) = self
+        if let Some(idx) = self
             .frame_target_deltas
             .iter()
             .position(|deltas| deltas.target == target)
         {
-            return &mut self.frame_target_deltas[index].delta;
+            return &mut self.frame_target_deltas[idx].delta;
         }
         self.frame_target_deltas
             .push(TargetScrollDelta::new(target));
@@ -565,8 +565,8 @@ impl InputState {
                         PointerEvent::Down { pos, button: btn }
                     });
                 // Any press breaks every other button's multi-click run.
-                for (index, cap) in self.captures.iter_mut().enumerate() {
-                    if index != btn.idx() {
+                for (idx, cap) in self.captures.iter_mut().enumerate() {
+                    if idx != btn.idx() {
                         cap.run = None;
                     }
                 }
@@ -832,12 +832,12 @@ impl InputState {
     /// Give focus back, newest first, for every overlay that left the cascade, if focus is now
     /// nowhere and the holder remains.
     fn return_from_closed_overlays(&mut self, cascade: &Cascade) {
-        while let Some(index) = self
+        while let Some(idx) = self
             .focus_returns
             .iter()
             .rposition(|row| !cascade.by_id.contains_key(&row.overlay))
         {
-            let row = self.focus_returns.remove(index);
+            let row = self.focus_returns.remove(idx);
             if self.focused.is_none() && cascade.by_id.contains_key(&row.to) {
                 self.focused = Some(row.to);
             }

@@ -2,7 +2,7 @@
 //! Accepted parameters converge at a bounded rate; a step costs the same
 //! whatever `dt` is.
 
-use crate::common::time::MAX_ANIM_DT;
+use crate::common::time::MAX_ANIMATION_DT;
 use crate::primitives::math::animatable::Animatable;
 use std::f64::consts::PI;
 
@@ -36,7 +36,7 @@ impl Spring {
     /// `(displacement, velocity)` can never again carry the value a settle
     /// tolerance away from its target, so the caller can snap and clear residual
     /// motion. The one threshold, used by [`Self::step`] and the spring arm of
-    /// `AnimMapTyped::tick`'s snap-if-close path.
+    /// `AnimationMapTyped::tick`'s snap-if-close path.
     ///
     /// An energy bound, not two floors. With the target held still the energy
     /// `½v² + ½k·x²` only falls, so no later `|x|` exceeds `√(x² + v²/k)` in any
@@ -86,17 +86,17 @@ impl Spring {
     /// back, so the decay reaches the settle tolerance however large the value is.
     /// A settled step is at rest, with zero offset and velocity.
     pub(super) fn step<T: Animatable>(self, offset: T, velocity: T, dt: f32) -> SpringStep<T> {
-        debug_assert!(dt.is_finite() && (0.0..=MAX_ANIM_DT).contains(&dt));
+        debug_assert!(dt.is_finite() && (0.0..=MAX_ANIMATION_DT).contains(&dt));
         let transition = SpringTransition::new(self, dt);
-        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Background`
+        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Bg`
         // are only `Copy` when their fields are; scalar clones compile to noops.
         let moved = offset
             .clone()
             .scale(transition.pos_from_pos)
-            .add(velocity.clone().scale(transition.pos_from_vel));
+            .add(velocity.clone().scale(transition.pos_from_velocity));
         let velocity = velocity
-            .scale(transition.vel_from_vel)
-            .add(offset.scale(transition.vel_from_pos));
+            .scale(transition.velocity_from_velocity)
+            .add(offset.scale(transition.velocity_from_pos));
         if self.within_settle_eps(moved.clone(), velocity.clone()) {
             return SpringStep {
                 offset: T::zero(),
@@ -150,9 +150,9 @@ pub(super) struct SpringStep<T: Animatable> {
 #[derive(Debug)]
 struct SpringTransition {
     pos_from_pos: f32,
-    pos_from_vel: f32,
-    vel_from_pos: f32,
-    vel_from_vel: f32,
+    pos_from_velocity: f32,
+    velocity_from_pos: f32,
+    velocity_from_velocity: f32,
 }
 
 impl SpringTransition {
@@ -190,9 +190,9 @@ impl SpringTransition {
         };
         Self {
             pos_from_pos: (ec + half_damping * es) as f32,
-            pos_from_vel: es as f32,
-            vel_from_pos: (-stiffness * es) as f32,
-            vel_from_vel: (ec - half_damping * es) as f32,
+            pos_from_velocity: es as f32,
+            velocity_from_pos: (-stiffness * es) as f32,
+            velocity_from_velocity: (ec - half_damping * es) as f32,
         }
     }
 }

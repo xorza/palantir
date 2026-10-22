@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -43,9 +43,9 @@ struct SnapView<'a> {
     avail: AvailableKey,
 }
 
-fn snap_for(h: &UiHarness, wid: WidgetId) -> Option<SnapView<'_>> {
-    let snapshot = &h.engines.layout.cache.previous;
-    let snap = *snapshot.descriptor(wid)?;
+fn snap_for(h: &UiHarness, widget_id: WidgetId) -> Option<SnapView<'_>> {
+    let snapshot = &h.engines.layout.cache.prev;
+    let snap = *snapshot.desc(widget_id)?;
     Some(SnapView {
         snap,
         desired: &snapshot.nodes.desired[snap.nodes.range()],
@@ -54,7 +54,7 @@ fn snap_for(h: &UiHarness, wid: WidgetId) -> Option<SnapView<'_>> {
 }
 
 fn assert_snapshot_is_linear(h: &UiHarness) {
-    let snapshot = &h.engines.layout.cache.previous;
+    let snapshot = &h.engines.layout.cache.prev;
     let len = snapshot.nodes.desired.len();
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
@@ -86,7 +86,7 @@ impl WrappedLeaf {
                 Block::new()
                     .id(WidgetId::from_hash((self.id, "leaf")))
                     .size(self.size)
-                    .background(Background::fill(self.fill))
+                    .bg(Bg::fill(self.fill))
                     .show(ui);
             });
     }
@@ -136,14 +136,14 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = h.engines.layout.cache.previous.nodes.desired.clone();
+    let first_desired = h.engines.layout.cache.prev.nodes.desired.clone();
     let first_rects = h.ui.layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap();
 
     assert_eq!(first_hash, second.snap.subtree_hash);
-    assert_eq!(first_desired, h.engines.layout.cache.previous.nodes.desired);
+    assert_eq!(first_desired, h.engines.layout.cache.prev.nodes.desired);
     assert_eq!(first_rects, h.ui.layout(Layer::Main).rect);
     assert_eq!(
         h.engines.layout.scratch.counters.cache_hits().len(),
@@ -251,7 +251,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
         h.engines
             .layout
             .cache
-            .previous
+            .prev
             .snapshots
             .contains_key(&WidgetId::from_hash("gone"))
     );
@@ -269,7 +269,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
         !h.engines
             .layout
             .cache
-            .previous
+            .prev
             .snapshots
             .contains_key(&WidgetId::from_hash("gone"))
     );
@@ -277,7 +277,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
         h.engines
             .layout
             .cache
-            .previous
+            .prev
             .snapshots
             .contains_key(&WidgetId::from_hash("kept"))
     );
@@ -517,9 +517,9 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             Panel::vstack()
                 .id(WidgetId::from_hash("oscillating"))
                 .show(ui, |ui| {
-                    for index in 0..10 {
+                    for idx in 0..10 {
                         Block::new()
-                            .id(WidgetId::from_hash(("row", index)))
+                            .id(WidgetId::from_hash(("row", idx)))
                             .size(10.0)
                             .show(ui);
                     }
@@ -538,41 +538,41 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         render(&mut h, frame % 2 == 0);
     }
     // Only non-leaf nodes earn a descriptor, so adding and dropping a leaf leaves the id sequence, and
-    // its `descriptor_identity`, the same every frame. Steady-state oscillation must reuse the retained
+    // its `desc_identity`, the same every frame. Steady-state oscillation must reuse the retained
     // map, not refill it. Counted because the `debug_assert` in the reuse branch is vacuous on a frame
     // that rebuilt instead.
     let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
-        h.engines.layout.cache.previous.nodes.desired.capacity(),
-        h.engines.layout.cache.current.nodes.desired.capacity(),
+        h.engines.layout.cache.prev.nodes.desired.capacity(),
+        h.engines.layout.cache.cur.nodes.desired.capacity(),
         h.engines.layout.scratch.desired.capacity(),
     ];
     node_capacities.sort_unstable();
-    let mut descriptor_capacities = [
-        h.engines.layout.cache.previous.snapshots.capacity(),
-        h.engines.layout.cache.current.snapshots.capacity(),
+    let mut desc_capacities = [
+        h.engines.layout.cache.prev.snapshots.capacity(),
+        h.engines.layout.cache.cur.snapshots.capacity(),
     ];
-    descriptor_capacities.sort_unstable();
+    desc_capacities.sort_unstable();
 
     for frame in 8..40 {
         render(&mut h, frame % 2 == 0);
         assert_snapshot_is_linear(&h);
-        let mut current_node_capacities = [
-            h.engines.layout.cache.previous.nodes.desired.capacity(),
-            h.engines.layout.cache.current.nodes.desired.capacity(),
+        let mut cur_node_capacities = [
+            h.engines.layout.cache.prev.nodes.desired.capacity(),
+            h.engines.layout.cache.cur.nodes.desired.capacity(),
             h.engines.layout.scratch.desired.capacity(),
         ];
-        current_node_capacities.sort_unstable();
-        let mut current_descriptor_capacities = [
-            h.engines.layout.cache.previous.snapshots.capacity(),
-            h.engines.layout.cache.current.snapshots.capacity(),
+        cur_node_capacities.sort_unstable();
+        let mut cur_desc_capacities = [
+            h.engines.layout.cache.prev.snapshots.capacity(),
+            h.engines.layout.cache.cur.snapshots.capacity(),
         ];
-        current_descriptor_capacities.sort_unstable();
+        cur_desc_capacities.sort_unstable();
         assert_eq!(
-            node_capacities, current_node_capacities,
+            node_capacities, cur_node_capacities,
             "both alternating buffers must retain their warmed capacities"
         );
-        assert_eq!(descriptor_capacities, current_descriptor_capacities);
+        assert_eq!(desc_capacities, cur_desc_capacities);
     }
     assert_eq!(
         h.engines.layout.cache.snapshot_rebuilds.count(),
@@ -602,7 +602,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         h.engines
             .layout
             .cache
-            .previous
+            .prev
             .snapshots
             .contains_key(&WidgetId::from_hash("re-keyed")),
         "the rebuilt map must resolve the id that busted it",

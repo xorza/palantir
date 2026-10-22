@@ -52,16 +52,16 @@ impl<T> Default for Store<T> {
 
 impl<T> Store<T> {
     /// The row `id` occupies, if any. The map column is `u32` to stay narrow; readers index with `usize`.
-    fn index_of(&self, id: WidgetId) -> Option<usize> {
+    fn idx_of(&self, id: WidgetId) -> Option<usize> {
         self.map.get(&id).map(|&idx| idx as usize)
     }
 
     fn try_get(&self, id: WidgetId) -> Option<&T> {
-        Some(&self.data[self.index_of(id)?])
+        Some(&self.data[self.idx_of(id)?])
     }
 
     fn get_or_insert_with<F: FnOnce() -> T>(&mut self, id: WidgetId, init: F) -> &mut T {
-        let idx = if let Some(idx) = self.index_of(id) {
+        let idx = if let Some(idx) = self.idx_of(id) {
             idx
         } else {
             let idx = self.data.len();

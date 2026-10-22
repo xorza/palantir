@@ -4,7 +4,7 @@ use crate::text::shaper::TextShaper;
 
 /// Handed once to [`GpuPaint::init`](crate::renderer::gpu_paint::GpuPaint::init).
 #[derive(Debug)]
-pub struct GpuInitContext<'a> {
+pub struct GpuInitCtx<'a> {
     /// The device to create pipelines and resources against.
     pub device: &'a wgpu::Device,
     /// The off-screen color target's format (`Rgba8UnormSrgb`); match it in your pipeline.

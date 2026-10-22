@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
@@ -31,17 +31,17 @@ fn stable_painting_subtree_triggers_skip_jump() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("painting_parent"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(60.0)))
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui, |ui| {
                         Block::new()
                             .id(WidgetId::from_hash("child_a"))
                             .size(20.0)
-                            .background(Background::fill(RED))
+                            .bg(Bg::fill(RED))
                             .show(ui);
                         Block::new()
                             .id(WidgetId::from_hash("child_b"))
                             .size(20.0)
-                            .background(Background::fill(RED))
+                            .bg(Bg::fill(RED))
                             .show(ui);
                     });
             });
@@ -75,7 +75,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui);
             });
     };
@@ -117,12 +117,12 @@ fn popup_eater_does_not_force_full_repaint() {
     frame(&mut h, |ui| {
         Popup::new(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui, |ui, _popup| {
                 Block::new()
                     .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)
-                    .background(Background::fill(RED))
+                    .bg(Bg::fill(RED))
                     .show(ui);
             });
     });
@@ -160,7 +160,7 @@ fn click_on_empty_bg_does_not_force_full() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui);
             });
     };

@@ -2,7 +2,7 @@
 //!
 //! - `TIMESTAMP_QUERY_INSIDE_PASSES` writes a timestamp at every category transition in `render_groups`, attributed per [`BatchKind`]; off, only pass begin/end are timed.
 //! - `PIPELINE_STATISTICS_QUERY` brackets the main pass.
-//! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_INDEX`], published as [`GpuPassStats::last_copy_out`].
+//! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`].
 //!
 //! Readback is one frame lagged (`map_async`); benchmarks should `device.poll(Wait)` first.
 
@@ -18,9 +18,9 @@ const BYTES_PER_U64: u64 = 8;
 const MAX_TIMESTAMPS: u32 = 32;
 
 /// Where the copy-out's timestamps sit, past every main-pass slot; a query resolve must land on a `QUERY_RESOLVE_BUFFER_ALIGNMENT` offset, which the main pass's slots fill exactly.
-const COPY_OUT_INDEX: u32 = MAX_TIMESTAMPS;
-const QUERY_COUNT: u32 = COPY_OUT_INDEX + 2;
-const COPY_OUT_OFFSET: u64 = COPY_OUT_INDEX as u64 * BYTES_PER_U64;
+const COPY_OUT_IDX: u32 = MAX_TIMESTAMPS;
+const QUERY_COUNT: u32 = COPY_OUT_IDX + 2;
+const COPY_OUT_OFFSET: u64 = COPY_OUT_IDX as u64 * BYTES_PER_U64;
 const TIMESTAMP_BUFFER_BYTES: u64 = QUERY_COUNT as u64 * BYTES_PER_U64;
 
 const _: () = assert!(COPY_OUT_OFFSET.is_multiple_of(wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT));
@@ -66,9 +66,9 @@ struct Slot {
 /// Interior-mutable per-frame state: `render_groups` holds `&self`, so `mark()` mutates through these.
 #[derive(Debug)]
 struct Inner {
-    next_index: Cell<u32>,
+    next_idx: Cell<u32>,
     /// Kind in flight since the last timestamp; `None` before the first `mark()` (recorded as [`BatchKind::Setup`]).
-    current_kind: Cell<Option<BatchKind>>,
+    cur_kind: Cell<Option<BatchKind>>,
     segment_kinds: RefCell<Vec<BatchKind>>,
     copied_out: Cell<bool>,
 }
@@ -152,8 +152,8 @@ impl GpuTimings {
             pending_slot: None,
             period_ns,
             inner: Inner {
-                next_index: Cell::new(0),
-                current_kind: Cell::new(None),
+                next_idx: Cell::new(0),
+                cur_kind: Cell::new(None),
                 segment_kinds: RefCell::new(Vec::with_capacity(MAX_TIMESTAMPS as usize)),
                 copied_out: Cell::new(false),
             },
@@ -177,11 +177,11 @@ impl GpuTimings {
         if !self.inside_passes {
             return;
         }
-        self.inner.next_index.set(0);
-        self.inner.current_kind.set(None);
+        self.inner.next_idx.set(0);
+        self.inner.cur_kind.set(None);
         self.inner.segment_kinds.borrow_mut().clear();
         pass.write_timestamp(&self.timestamp_query_set, 0);
-        self.inner.next_index.set(1);
+        self.inner.next_idx.set(1);
     }
 
     /// Marks a category boundary: no-op if `kind` is active, else writes a timestamp and records the closed segment. Once the set is full minus the pass-end slot, transitions fold into the current kind.
@@ -189,19 +189,19 @@ impl GpuTimings {
         if !self.inside_passes {
             return;
         }
-        let cur = self.inner.current_kind.get();
+        let cur = self.inner.cur_kind.get();
         if cur == Some(kind) {
             return;
         }
-        let idx = self.inner.next_index.get();
+        let idx = self.inner.next_idx.get();
         if idx >= MAX_TIMESTAMPS - 1 {
             return;
         }
         pass.write_timestamp(&self.timestamp_query_set, idx);
         let segment_kind = cur.unwrap_or(BatchKind::Setup);
         self.inner.segment_kinds.borrow_mut().push(segment_kind);
-        self.inner.current_kind.set(Some(kind));
-        self.inner.next_index.set(idx + 1);
+        self.inner.cur_kind.set(Some(kind));
+        self.inner.next_idx.set(idx + 1);
     }
 
     /// Writes the pass-end timestamp, closing the final segment; per-batch mode only.
@@ -209,11 +209,11 @@ impl GpuTimings {
         if !self.inside_passes {
             return;
         }
-        let idx = self.inner.next_index.get();
+        let idx = self.inner.next_idx.get();
         pass.write_timestamp(&self.timestamp_query_set, idx);
-        let final_kind = self.inner.current_kind.get().unwrap_or(BatchKind::Setup);
+        let final_kind = self.inner.cur_kind.get().unwrap_or(BatchKind::Setup);
         self.inner.segment_kinds.borrow_mut().push(final_kind);
-        self.inner.next_index.set(idx + 1);
+        self.inner.next_idx.set(idx + 1);
     }
 
     pub(crate) fn begin_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
@@ -230,13 +230,13 @@ impl GpuTimings {
 
     pub(crate) fn copy_out_begin(&self, encoder: &mut wgpu::CommandEncoder) {
         if self.inside_encoders {
-            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_INDEX);
+            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_IDX);
         }
     }
 
     pub(crate) fn copy_out_end(&self, encoder: &mut wgpu::CommandEncoder) {
         if self.inside_encoders {
-            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_INDEX + 1);
+            encoder.write_timestamp(&self.timestamp_query_set, COPY_OUT_IDX + 1);
             self.inner.copied_out.set(true);
         }
     }
@@ -253,7 +253,7 @@ impl GpuTimings {
 
         // Basic mode is 2 (the descriptor wrote 0/1); per-batch is what `mark()` and `pass_end` accumulated.
         let count = if self.inside_passes {
-            self.inner.next_index.get().clamp(2, MAX_TIMESTAMPS)
+            self.inner.next_idx.get().clamp(2, MAX_TIMESTAMPS)
         } else {
             2
         };
@@ -279,7 +279,7 @@ impl GpuTimings {
         if copied_out {
             encoder.resolve_query_set(
                 &self.timestamp_query_set,
-                COPY_OUT_INDEX..QUERY_COUNT,
+                COPY_OUT_IDX..QUERY_COUNT,
                 &self.timestamps_resolve,
                 COPY_OUT_OFFSET,
             );
@@ -431,7 +431,7 @@ impl Publisher<'_> {
     }
 
     fn copy_out(self, ts: &[u8], copied_out: bool) {
-        let begin = COPY_OUT_INDEX as usize;
+        let begin = COPY_OUT_IDX as usize;
         let ns = copied_out.then(|| self.span_ns(ts, begin, begin + 1));
         self.sink.record_copy_out_ns(ns);
     }
@@ -459,10 +459,10 @@ impl Publisher<'_> {
     }
 }
 
-/// The `index`th 64-bit word of a resolved query buffer. `pod_read_unaligned` rather than `bytemuck::cast_slice`: a mapped range's alignment is the driver's to promise, and a panicking cast would take the frame down over a debug counter.
+/// The `idx`th 64-bit word of a resolved query buffer. `pod_read_unaligned` rather than `bytemuck::cast_slice`: a mapped range's alignment is the driver's to promise, and a panicking cast would take the frame down over a debug counter.
 #[inline]
-fn tick(bytes: &[u8], index: usize) -> u64 {
-    let off = index * 8;
+fn tick(bytes: &[u8], idx: usize) -> u64 {
+    let off = idx * 8;
     bytemuck::pod_read_unaligned(&bytes[off..off + 8])
 }
 
@@ -514,13 +514,13 @@ mod tests {
         }
     }
 
-    /// A frame that copied publishes its copy-out from the two timestamps at `COPY_OUT_INDEX`; the next that copied nothing clears it. Ticks 7000 to 7600 at 0.5 ns/tick: `floor(600 * 0.5)` = 300 ns.
+    /// A frame that copied publishes its copy-out from the two timestamps at `COPY_OUT_IDX`; the next that copied nothing clears it. Ticks 7000 to 7600 at 0.5 ns/tick: `floor(600 * 0.5)` = 300 ns.
     #[test]
     fn copy_out_publishes_its_two_timestamps_or_clears() {
         let sink = GpuPassStats::default();
         let mut ticks = vec![0; QUERY_COUNT as usize];
-        ticks[COPY_OUT_INDEX as usize] = 7_000;
-        ticks[COPY_OUT_INDEX as usize + 1] = 7_600;
+        ticks[COPY_OUT_IDX as usize] = 7_000;
+        ticks[COPY_OUT_IDX as usize + 1] = 7_600;
         let bytes = ts_bytes(&ticks);
         let publisher = Publisher {
             period_ns: 0.5,

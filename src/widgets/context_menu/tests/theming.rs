@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -240,7 +240,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
-            .background(Background::NONE)
+            .bg(Bg::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(5.0))
             .min_size(Size::ZERO)
@@ -251,9 +251,9 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let menu = h.node_of(derived).expect("context menu body node");
     assert_eq!(menu.layer, Layer::Menu);
     let tree = h.ui.tree(Layer::Menu);
-    let index = menu.node.idx();
-    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.records.layout()[index].margin, Spacing::all(5.0));
+    let idx = menu.node.idx();
+    assert_eq!(tree.records.layout()[idx].padding, Spacing::ZERO);
+    assert_eq!(tree.records.layout()[idx].margin, Spacing::all(5.0));
     assert_eq!(tree.bounds(menu.node).min_size, Size::ZERO);
 
     let explicit = WidgetId::from_hash("my-own-menu-body");

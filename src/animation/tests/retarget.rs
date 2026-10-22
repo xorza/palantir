@@ -1,6 +1,6 @@
 //! A new target mid-flight, including one that switches spec mode.
 
-use crate::animation::anim_map_typed::AnimMapTyped;
+use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
@@ -10,32 +10,32 @@ use std::time::Duration;
 
 #[test]
 fn retarget_mid_flight_starts_new_segment_from_current() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("a");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("a");
     let spec = support::linear_100ms();
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), spec, 0.016);
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.016);
-    assert_eq!(r.current, 0.0);
+    assert_eq!(r.cur, 0.0);
     let mid = map
         .step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.05)
-        .current;
+        .cur;
     assert_eq!(mid, 0.5);
 
     // In flight: the retarget restarts at 0.5 and spends 50 ms at once: lerp(0.5, 2.0, 0.5).
     let r = map.step(AnimationRequest::new(id, SLOT, 2.0), spec, 0.05);
-    assert_eq!(r.current, 1.25);
+    assert_eq!(r.cur, 1.25);
 }
 
 /// A target that moves every frame keeps moving; only the first change, from rest, spends nothing.
 #[test]
 fn a_target_that_moves_every_frame_moves_every_frame() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("follow");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("follow");
     let spec = support::linear_100ms();
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), spec, 0.016);
     let mut last = map
         .step(AnimationRequest::new(id, SLOT, 10.0), spec, 0.016)
-        .current;
+        .cur;
     assert_eq!(last, 0.0, "the first change starts from rest");
     for frame in 2..=10 {
         let now = map
@@ -44,7 +44,7 @@ fn a_target_that_moves_every_frame_moves_every_frame() {
                 spec,
                 0.016,
             )
-            .current;
+            .cur;
         assert!(now > last, "frame {frame}: {now} after {last}");
         last = now;
     }
@@ -52,8 +52,8 @@ fn a_target_that_moves_every_frame_moves_every_frame() {
 
 #[test]
 fn spring_to_duration_same_target_restarts_from_current() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("spec-switch");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("spec-switch");
     let _ = map.step(
         AnimationRequest::new(id, SLOT, 0.0_f32),
         AnimationSpec::SPRING,
@@ -67,7 +67,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
         );
     }
     let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
-    let segment_start = row.current();
+    let segment_start = row.cur();
     let velocity = *support::spring_velocity(row);
     assert!(
         velocity.abs() > 0.01,
@@ -83,18 +83,18 @@ fn spring_to_duration_same_target_restarts_from_current() {
     let motion = support::duration_motion(row);
     assert_eq!(*motion.segment_start, segment_start);
     assert_eq!(motion.elapsed, dt);
-    assert_eq!(result.current, expected);
+    assert_eq!(result.cur, expected);
 }
 
 #[test]
 fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("round-trip-spec-switch");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("round-trip-spec-switch");
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), duration, 0.016);
     let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.016);
     let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.4);
-    assert_eq!(duration_result.current, 0.4);
+    assert_eq!(duration_result.cur, 0.4);
 
     // The spring takes over at rest 0.6 short of the target: `1 − 0.6·e^(-13t)(cos t + 13 sin t)` at t = 0.016 (k = 170, h = 13, ω = 1).
     let spring_result = map.step(
@@ -105,7 +105,7 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let t = f64::from(0.016_f32);
     let from_point_four = 1.0 - 0.6 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
     domain::internals::assert_close(
-        spring_result.current,
+        spring_result.cur,
         from_point_four,
         1e-7,
         "the spring starts from the duration's value, to f32 rounding near 0.4",
@@ -113,7 +113,7 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let spring_row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
     assert!(*support::spring_velocity(spring_row) > 0.0);
 
-    let segment_start = spring_result.current;
+    let segment_start = spring_result.cur;
     let dt = 0.25;
     let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, dt);
     let duration_row = map
@@ -124,5 +124,5 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let motion = support::duration_motion(duration_row);
     assert_eq!(*motion.segment_start, segment_start);
     assert_eq!(motion.elapsed, dt);
-    assert_eq!(duration_result.current, expected);
+    assert_eq!(duration_result.cur, expected);
 }

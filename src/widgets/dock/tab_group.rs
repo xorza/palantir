@@ -29,15 +29,15 @@ impl<T: Copy> TabGroup<T> {
 }
 
 impl<T> TabGroup<T> {
-    /// Removes the tab at `index`, and keeps showing the tab that was showing.
+    /// Removes the tab at `idx`, and keeps showing the tab that was showing.
     ///
     /// A strip is addressed by index and read by identity: removing a tab ahead of the visible one slides
     /// it down a slot, so a held index would switch the pane to a document nobody asked for. Removing the
     /// visible tab is the one case that chooses another: the tab that took the slot, or the one before it
     /// where the slot was last.
-    pub(super) fn remove_tab(&mut self, index: usize) {
-        self.tabs.remove(index);
-        if index < self.active {
+    pub(super) fn remove_tab(&mut self, idx: usize) {
+        self.tabs.remove(idx);
+        if idx < self.active {
             self.active -= 1;
         }
         self.clamp_active();
@@ -49,14 +49,14 @@ impl<T> TabGroup<T> {
     /// Counted rather than searched (the active tab moves down one slot per rejected tab ahead of it), so
     /// no tab comparison is needed and one pass covers any number of removals.
     pub(super) fn retain(&mut self, mut keep: impl FnMut(&T) -> bool) {
-        let mut index = 0;
+        let mut idx = 0;
         let mut active = self.active;
         self.tabs.retain(|tab| {
             let kept = keep(tab);
-            if !kept && index < active {
+            if !kept && idx < active {
                 active -= 1;
             }
-            index += 1;
+            idx += 1;
             kept
         });
         self.active = active;

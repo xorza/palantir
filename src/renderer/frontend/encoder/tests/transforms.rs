@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
@@ -112,9 +112,9 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     let shape_color = RgbaF32::srgb(0.2, 0.6, 0.9);
     let child_color = RgbaF32::srgb(0.9, 0.4, 0.2);
     let scale = 2.0;
-    let xform = TranslateScale::new(Vec2::new(10.0, 20.0), scale);
+    let transform = TranslateScale::new(Vec2::new(10.0, 20.0), scale);
 
-    // Shape 30×30 at (0, 0), child 40×40 at (50, 60); under `xform` the screen rects are:
+    // Shape 30×30 at (0, 0), child 40×40 at (50, 60); under `transform` the screen rects are:
     //   shape: min = (10, 20), size = (60, 60)
     //   child: min = (10 + 50*2, 20 + 60*2) = (110, 140), size = (80, 80)
     let mut h = UiHarness::new(UVec2::new(400, 400));
@@ -123,7 +123,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(300.0))
-                .transform(xform)
+                .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
@@ -132,9 +132,9 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                     );
                     Block::new()
                         .id(WidgetId::from_hash("child"))
-                        .position((50.0, 60.0))
+                        .pos((50.0, 60.0))
                         .size(40.0)
-                        .background(Background::fill(child_color))
+                        .bg(Bg::fill(child_color))
                         .show(ui);
                 });
         });
@@ -152,7 +152,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
 #[test]
 fn transformed_panel_chrome_stays_in_parent_space() {
     let chrome_color = RgbaF32::srgb(0.1, 0.1, 0.1);
-    let xform = TranslateScale::new(Vec2::new(50.0, 50.0), 2.0);
+    let transform = TranslateScale::new(Vec2::new(50.0, 50.0), 2.0);
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(|ui| {
@@ -160,8 +160,8 @@ fn transformed_panel_chrome_stays_in_parent_space() {
             Panel::canvas()
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(150.0))
-                .transform(xform)
-                .background(Background::fill(chrome_color))
+                .transform(transform)
+                .bg(Bg::fill(chrome_color))
                 .show(ui, |_| {});
         });
     });

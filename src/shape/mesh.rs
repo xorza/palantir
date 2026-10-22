@@ -74,7 +74,7 @@ impl sealed::LowerShape for MeshShape<'_> {
             local_rect,
             tint: tint.into(),
             vertices: staged.vertices,
-            indices: staged.indices,
+            idxs: staged.idxs,
             bbox: mesh.bbox(),
             content_hash: mesh.content_hash(),
         }

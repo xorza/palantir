@@ -6,7 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
@@ -17,7 +17,7 @@ use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
-use crate::scene::tree::paint_anims::PaintAnimEntry;
+use crate::scene::tree::paint_animations::PaintAnimationEntry;
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
@@ -25,7 +25,7 @@ use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
 use std::time::Duration;
 
-/// One arena per [`Layer`]; recording dispatches to `trees[current_layer.idx()]`.
+/// One arena per [`Layer`]; recording dispatches to `trees[cur_layer.idx()]`.
 #[derive(Debug, Default)]
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
@@ -49,7 +49,7 @@ pub(crate) struct Forest {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NodeChrome<'a> {
     /// `None` for a chrome-less node.
-    pub(crate) bg: Option<&'a Background>,
+    pub(crate) bg: Option<&'a Bg>,
     /// `Stroke::NONE` unless the node shows keyboard focus.
     pub(crate) ring: Stroke,
 }
@@ -57,7 +57,7 @@ pub(crate) struct NodeChrome<'a> {
 impl Forest {
     /// Active layer for the next `open_node`; `Main` outside `Ui::layer` scopes.
     #[inline]
-    pub(crate) fn current_layer(&self) -> Layer {
+    pub(crate) fn cur_layer(&self) -> Layer {
         self.layer_stack.last().copied().unwrap_or(Layer::Main)
     }
 
@@ -74,7 +74,7 @@ impl Forest {
     /// Interns a grid's track definition into the current layer's tree, so `open_node`'s handle check holds by construction.
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
-        let layer = self.current_layer();
+        let layer = self.cur_layer();
         self.trees[layer].push_grid_def(rows, cols)
     }
 
@@ -87,7 +87,7 @@ impl Forest {
     /// Panics if the viewport was not recorded earlier this frame.
     #[inline]
     pub(crate) fn push_scrollbars_def(&mut self, def: ScrollbarsDef) -> ScrollbarsDefId {
-        let layer = self.current_layer();
+        let layer = self.cur_layer();
         let Some(viewport) = self.ids.endpoint(def.content) else {
             panic!(
                 "scrollbar overlay names viewport {:?}, which was not recorded earlier this frame",
@@ -109,7 +109,7 @@ impl Forest {
     /// Parent mixing and disambiguation must happen together: without the first the id moves with record order, without the second it collides. Parent-scoped idents pass their inputs to the tracker so an unchanged frame never hashes the raw id.
     #[inline]
     pub(crate) fn widget_id(&mut self, ident: Ident) -> ResolvedId {
-        let parent = self.current_parent_id();
+        let parent = self.cur_parent_id();
         match ident {
             Ident::Auto(_) | Ident::Hash(_) => self.ids.resolve_scoped(ident, parent),
             _ => self.ids.resolve(ident.raw_id(parent), ident.kind()),
@@ -132,7 +132,7 @@ impl Forest {
     /// Finalizes every tree.
     pub(crate) fn post_record(&mut self) {
         tracy::zone!();
-        let active = self.current_layer();
+        let active = self.cur_layer();
         debug_assert_eq!(
             active,
             Layer::Main,
@@ -150,29 +150,29 @@ impl Forest {
     }
 
     /// Minimum `next_wake` across every layer's paint anims, or `None` when nothing wants a wake.
-    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Option<Duration> {
+    pub(crate) fn min_paint_animation_wake(&self, now: Duration) -> Option<Duration> {
         self.trees
             .iter()
-            .flat_map(|tree| &tree.paint_anims.entries)
-            .filter_map(|entry| entry.anim.next_wake(now))
+            .flat_map(|tree| &tree.paint_animations.entries)
+            .filter_map(|entry| entry.animation.next_wake(now))
             .min()
     }
 
     /// Opens a node whose id was already resolved by [`crate::widget::Widget::resolve`], and records its endpoint (also emitting any pending explicit collision pair).
     #[inline]
     pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: NodeChrome<'_>) {
-        let layer = self.current_layer();
+        let layer = self.cur_layer();
         let store = &mut self.record_store;
         let NodeChrome { bg, ring } = chrome;
         // A ring with no background rides an empty one.
         let chrome = (bg.is_some() || !ring.is_noop()).then(|| ChromeInput {
-            bg: bg.unwrap_or(&Background::NONE),
+            bg: bg.unwrap_or(&Bg::NONE),
             ring,
             store,
         });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        let node_id = tree.open_node(scratch, node.columns(resolved.id()), chrome);
+        let node_id = tree.open_node(scratch, node.cols(resolved.id()), chrome);
         let endpoint = Endpoint {
             layer,
             node: node_id,
@@ -199,7 +199,7 @@ impl Forest {
 
     #[inline]
     pub(crate) fn close_node(&mut self) {
-        let layer = self.current_layer();
+        let layer = self.cur_layer();
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
         tree.close_node(scratch);
@@ -215,7 +215,7 @@ impl Forest {
 
     /// Whether a record pass is in flight, i.e. some layer has a node open.
     ///
-    /// Not `current_layer()`: [`Ui::layer`](crate::Ui::layer) pushes a layer without opening a node in it, which would misread as not recording.
+    /// Not `cur_layer()`: [`Ui::layer`](crate::Ui::layer) pushes a layer without opening a node in it, which would misread as not recording.
     pub(crate) fn is_recording(&self) -> bool {
         self.scratch.iter().any(|s| !s.open_frames.is_empty())
     }
@@ -236,16 +236,16 @@ impl Forest {
     }
 
     /// [`Self::add_shape`] plus a `PaintAnimation` registered against the new shape. No entry is pushed if the shape noop-collapsed or the node is effectively invisible.
-    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, anim: PaintAnimation) {
+    pub(crate) fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation) {
         self.push_shape("add_shape_animated", |tree, store, frame| {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
-            tree.shapes.fold_paint_anim(shape_idx, &anim);
+            tree.shapes.fold_paint_animation(shape_idx, &animation);
             // The paint row is charged either way.
             if frame.effectively_visible {
-                tree.paint_anims.push_entry(PaintAnimEntry {
-                    anim,
+                tree.paint_animations.push_entry(PaintAnimationEntry {
+                    animation,
                     shape_idx,
                     row: frame.paint_rows,
                     node: frame.node,
@@ -264,7 +264,7 @@ impl Forest {
         what: &str,
         push: impl FnOnce(&mut Tree, &mut RecordStore, &OpenFrame) -> bool,
     ) {
-        let layer = self.current_layer();
+        let layer = self.cur_layer();
         self.assert_node_open(layer, what);
         let tree = &mut self.trees[layer];
         let frames = &mut self.scratch[layer].open_frames;
@@ -277,7 +277,7 @@ impl Forest {
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, placement: Placement) {
-        let active = self.current_layer();
+        let active = self.cur_layer();
         // A nested layer must paint above the scope it's raised from (e.g. Tooltip over Popup), and equal would clobber `pending_placement`.
         //
         // Release assert: a violation raises no error downstream, the frame is just subtly wrong. Cold path, once per side scope.
@@ -314,26 +314,26 @@ impl Forest {
     }
 
     #[inline]
-    fn current_tree(&self) -> &Tree {
-        &self.trees[self.current_layer()]
+    fn cur_tree(&self) -> &Tree {
+        &self.trees[self.cur_layer()]
     }
 
     #[inline]
-    fn current_scratch(&self) -> &RecordingScratch {
-        &self.scratch[self.current_layer()]
+    fn cur_scratch(&self) -> &RecordingScratch {
+        &self.scratch[self.cur_layer()]
     }
 
     /// Whether an ancestor of the node being recorded is disabled; the cascade reports it a frame late.
     #[inline]
     pub(crate) fn ancestor_disabled(&self) -> bool {
-        self.current_scratch().ancestor_disabled()
+        self.cur_scratch().ancestor_disabled()
     }
 
     /// `WidgetId` of the innermost open node in the active layer, or `None` before any.
     #[inline]
-    pub(crate) fn current_parent_id(&self) -> Option<WidgetId> {
-        let tree = self.current_tree();
-        self.current_scratch()
+    pub(crate) fn cur_parent_id(&self) -> Option<WidgetId> {
+        let tree = self.cur_tree();
+        self.cur_scratch()
             .open_frames
             .last()
             .map(|f| tree.records.widget_id()[f.node.idx()])

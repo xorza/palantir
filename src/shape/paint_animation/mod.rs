@@ -1,5 +1,5 @@
 //! Paint-time animation a widget registers per shape, and its vocabulary: the per-shape contract
-//! ([`PaintAnimation`] in, [`paint_mod::PaintMod`] out) that `scene::tree::paint_anims`
+//! ([`PaintAnimation`] in, [`paint_mod::PaintMod`] out) that `scene::tree::paint_animations`
 //! stores per tree.
 //!
 //! It does not affect layout, hit-test or structure. Unlike `crate::animation`, sampling is a pure

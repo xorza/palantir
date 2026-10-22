@@ -19,7 +19,7 @@ use crate::theme::text_style::TextStyle;
 /// let theme = ui.theme();
 /// let plan = theme.button.plan(&response, (), theme.text);
 /// let look = widget.wear(ui, plan);
-/// widget.record(ui, Some(&look.background), |_| {});
+/// widget.record(ui, Some(&look.bg), |_| {});
 /// # }
 /// ```
 ///

@@ -47,7 +47,7 @@ impl RectShape {
     ///
     /// # Panics
     ///
-    /// Panics unless a solid fill is a [color](crate::widget::domain::color) and a gradient's geometry holds the kinds [`Background`](crate::Background) lists.
+    /// Panics unless a solid fill is a [color](crate::widget::domain::color) and a gradient's geometry holds the kinds [`Bg`](crate::Bg) lists.
     #[track_caller]
     pub fn fill(mut self, fill: impl Into<Brush>) -> Self {
         let fill = fill.into();

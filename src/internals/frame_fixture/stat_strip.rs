@@ -4,7 +4,7 @@ use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -65,7 +65,7 @@ pub(super) fn show(ui: &mut Ui) {
                         Block::new()
                             .id_salt(("stat-plate", i))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
+                            .bg(Bg {
                                 fill,
                                 border: Stroke::new(tokens::BORDER, 1.0),
                                 corners: Corners::all(8.0),
@@ -80,7 +80,7 @@ pub(super) fn show(ui: &mut Ui) {
                         Block::new()
                             .id_salt(("stat-alert", i))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
+                            .bg(Bg {
                                 border: Stroke::new(tokens::WARN, 2.0),
                                 corners: Corners::all(8.0),
                                 ..Default::default()

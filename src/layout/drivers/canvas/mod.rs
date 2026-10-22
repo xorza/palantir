@@ -24,23 +24,23 @@ impl Canvas {
 impl LayoutDriver for Canvas {
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Canvas: children placed at their declared `Layout.position` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`LayoutPass::measure_per_axis_hug`].
+    /// Canvas: children placed at their declared `Layout.pos` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`LayoutPass::measure_per_axis_hug`].
     ///
-    /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.position(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
+    /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.pos(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
     /// Negative positions render outside `inner` either way (the running max starts at 0); build scrollable negative-origin canvases on [`crate::widgets::scroll::Scroll`].
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
         // Active children only: a collapsed child must not inflate the content size. The position decides both the room a bounded axis has left and the extent a Hug axis grows to; `measure_per_axis_hug` derives each.
-        pass.measure_per_axis_hug(self.node, inner_avail, |tree, c| tree.bounds(c).position)
+        pass.measure_per_axis_hug(self.node, inner_avail, |tree, c| tree.bounds(c).pos)
     }
 
-    /// Each child gets a slot at `bounds.position`, sized per its desired size; `Fill` falls back to intrinsic as in `measure`.
+    /// Each child gets a slot at `bounds.pos`, sized per its desired size; `Fill` falls back to intrinsic as in `measure`.
     fn arrange(self, pass: &mut LayoutPass<'_>, inner: Size) {
         let tree = pass.tree;
         let canvas_size = tree.records.layout()[self.node.idx()].size;
         for child in tree.children(self.node) {
             let c = child.id;
             let placed = pass.placed(c);
-            let pos = placed.bounds.position;
+            let pos = placed.bounds.pos;
             // A bounded axis gives the room past the child's position, exactly what `measure` offered, so a wrapping child arranges at the width it shaped against. A Hug axis gives the desired.
             let room = inner.room_past(pos);
             let slot = pass.desired(c).select(canvas_size.hug_mask(), room);
@@ -52,7 +52,7 @@ impl LayoutDriver for Canvas {
         }
     }
 
-    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.position + child.intrinsic)`; `Fill` drops the offset so a `.position(...)` past `available` cannot floor it.
+    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.pos + child.intrinsic)`; `Fill` drops the offset so a `.pos(...)` past `available` cannot floor it.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange {
         let axis = query.axis();
         let pos_inflates = axis
@@ -60,7 +60,7 @@ impl LayoutDriver for Canvas {
             .is_hug();
         pass.children_max(self.node, query, |tree, c| {
             if pos_inflates {
-                axis.main_v(tree.bounds(c).position)
+                axis.main_v(tree.bounds(c).pos)
             } else {
                 0.0
             }

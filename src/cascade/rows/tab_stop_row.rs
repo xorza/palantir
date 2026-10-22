@@ -13,5 +13,5 @@ pub(crate) struct TabStopRow {
     /// The root of the tree the stop was recorded under; what a trap domain is named by.
     pub(crate) root: WidgetId,
     pub(crate) id: WidgetId,
-    pub(crate) index: i16,
+    pub(crate) idx: i16,
 }

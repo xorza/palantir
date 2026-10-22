@@ -1,10 +1,10 @@
 //! The one `queue.write_texture` seam: the image store and gradient atlas write
 //! through [`TextureRegion::write`]; the glyph atlas batches through
 //! `copy_buffer_to_texture` instead. Not a wrapper around `wgpu::Queue`: it could
-//! not make the seam unbypassable, as [`GpuFrameContext`] hands app code the raw
+//! not make the seam unbypassable, as [`GpuFrameCtx`] hands app code the raw
 //! queue.
 //!
-//! [`GpuFrameContext`]: crate::gpu::device::gpu_frame_context::GpuFrameContext
+//! [`GpuFrameCtx`]: crate::gpu::device::gpu_frame_ctx::GpuFrameCtx
 
 use glam::UVec2;
 

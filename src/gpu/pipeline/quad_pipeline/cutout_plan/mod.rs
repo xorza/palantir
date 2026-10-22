@@ -13,7 +13,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::quad::Quad;
-use crate::shape::paint::lowered_shadow::ShadowGeom;
+use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
 use glam::{UVec2, Vec2};
 use std::cmp::Reverse;
@@ -71,7 +71,7 @@ impl CutoutCorner {
         reason = "a side is at most `MAX_SIDE`, exact in f32"
     )]
     fn texels(&self, seen: Rect, sigma: f32, side: u32) -> TexelSpan {
-        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+        let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
         let scale = CutoutPlan::TEXELS_PER_SIGMA / sigma;
         let a = (seen.min - self.center) * self.sign;
         let b = (seen.max() - self.center) * self.sign;
@@ -156,7 +156,7 @@ pub(crate) enum CutoutMode {
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Census {
-    Current,
+    Cur,
     /// A shadow not redrawn whole gained or lost a table: the frame repaints in full.
     Stale,
 }
@@ -224,7 +224,7 @@ impl CutoutPlan {
                 self.corners.resize(quads.len(), CornerTables::NONE);
                 self.entries.resize(quads.len(), ShadowEntry::General);
             }
-            return Census::Current;
+            return Census::Cur;
         }
         let viewport = Rect::from_min_max(Vec2::ZERO, viewport.as_vec2());
         let partial = match repaint {
@@ -274,7 +274,7 @@ impl CutoutPlan {
         mem::swap(&mut self.census, &mut self.next);
         mem::swap(&mut self.tabled, &mut self.last_tabled);
         if !quads.iter().any(|quad| quad.fill_kind.is_shadow()) {
-            return Census::Current;
+            return Census::Cur;
         }
         self.repaint.clear();
         match partial {
@@ -334,7 +334,7 @@ impl CutoutPlan {
                 });
             }
         }
-        Census::Current
+        Census::Cur
     }
 
     fn decide(&mut self) {
@@ -392,7 +392,7 @@ impl CutoutPlan {
     )]
     fn side(key: CutoutKey) -> u32 {
         let sigma = key.sigma();
-        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+        let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
         ((key.r() + 2.0 * reach) * (Self::TEXELS_PER_SIGMA / sigma)) as u32 + 2
     }
 
@@ -454,7 +454,7 @@ impl CutoutPlan {
         let radius = quad.corners.as_array();
         // A drop shadow's box is centered on its quad; an inset hole is `offset` from its source's center.
         let (center, box_half, radii) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
-            let source = half - Vec2::splat(ShadowGeom::REACH_SIGMAS * sigma + spread.max(0.0));
+            let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));
             let shadow = (source + Vec2::splat(spread)).max(Vec2::ZERO);
             (
                 quad.rect.center(),
@@ -469,7 +469,7 @@ impl CutoutPlan {
                 fit_radii(spread_radius(radius, -spread), hole),
             )
         };
-        let reach = ShadowGeom::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
+        let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
         let (lo, hi) = (center - box_half, center + box_half);
         // Each square runs `r + reach` inward and `reach` outward.
         let span = |edge: f32, r: f32, inward: f32| {

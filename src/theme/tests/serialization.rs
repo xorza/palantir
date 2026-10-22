@@ -1,5 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -27,7 +27,7 @@ fn widget_look_serde_roundtrip() {
     let cases = [
         WidgetLook::default(),
         WidgetLook {
-            background: Background {
+            bg: Bg {
                 fill: RgbaF32::hex(0x336699).into(),
                 border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
                 corners: Corners::all(6.0),
@@ -36,11 +36,11 @@ fn widget_look_serde_roundtrip() {
             text: TextStyleOverrides::NONE.with_font_size(20.0),
         },
         WidgetLook {
-            background: Background::NONE,
+            bg: Bg::NONE,
             text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0x808080)),
         },
         WidgetLook {
-            background: Background::NONE,
+            bg: Bg::NONE,
             text: TextStyleOverrides {
                 family: Some(FontFamily::MONO),
                 weight: Some(FontWeight::BOLD),

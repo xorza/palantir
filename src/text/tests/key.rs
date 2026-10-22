@@ -249,14 +249,14 @@ fn cache_key_collapses_halign_when_unbounded() {
 #[test]
 fn bounded_identity_cache_keys_width_and_halign() {
     let mut text = TextSystem::cosmic();
-    let wid = WidgetId::from_hash("w");
+    let widget_id = WidgetId::from_hash("w");
     let params = shape(16.0);
-    text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
+    text.shape_run(slot(widget_id), "hi", params, TextWrap::SingleLine);
     let baseline = text.shaper().measure_calls();
 
     let wrap_at = |text: &mut TextSystem, width, halign| {
         text.shape_run(
-            slot(wid),
+            slot(widget_id),
             "hi",
             params.width(width).halign(halign),
             TextWrap::Wrap,
@@ -308,8 +308,8 @@ fn quantized_key_shaping_is_insertion_order_independent() {
     assert_eq!(a.size, b_hit.size);
     assert_eq!(a.intrinsic_min, b.intrinsic_min);
     assert_eq!(
-        glyph_positions(&first_then_second, a.buffer_key()),
-        glyph_positions(&second_then_first, b.buffer_key()),
+        glyph_poss(&first_then_second, a.buffer_key()),
+        glyph_poss(&second_then_first, b.buffer_key()),
     );
 }
 

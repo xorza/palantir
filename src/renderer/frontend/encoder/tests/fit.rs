@@ -91,7 +91,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
                 .show(ui, |ui| {
                     Panel::zstack()
                         .id(WidgetId::from_hash("frame"))
-                        .position((node.min.x, node.min.y))
+                        .pos((node.min.x, node.min.y))
                         .size(node.size.w)
                         .show(ui, |ui| {
                             ui.add_shape(Shape::image(handle.clone()).fit(fit));

@@ -355,11 +355,11 @@ impl<'a> LineMap<'a> {
         let byte_offset = byte_offset.min(self.shown);
         let last = self.buffer.lines.len().saturating_sub(1);
         let mut start = 0;
-        for (index, line) in self.buffer.lines.iter().enumerate() {
+        for (idx, line) in self.buffer.lines.iter().enumerate() {
             let len = line.text().len();
             let next = start + len + line.ending().as_str().len();
-            if byte_offset < next || index == last {
-                return cosmic_text::Cursor::new(index, (byte_offset - start).min(len));
+            if byte_offset < next || idx == last {
+                return cosmic_text::Cursor::new(idx, (byte_offset - start).min(len));
             }
             start = next;
         }

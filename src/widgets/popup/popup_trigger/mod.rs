@@ -4,7 +4,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -65,26 +65,26 @@ impl PopupTrigger {
         }
     }
 
-    /// Paint `background` as the popup's background. See [`Popup::background`].
+    /// Paint `bg` as the popup's background. See [`Popup::bg`].
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        self.popup = self.popup.background(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        self.popup = self.popup.bg(bg);
         self
     }
 
-    /// Paint `background` as the popup's background unless the caller set one. See
-    /// [`Popup::default_background`].
+    /// Paint `bg` as the popup's background unless the caller set one. See
+    /// [`Popup::default_bg`].
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        self.popup = self.popup.default_background(background);
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        self.popup = self.popup.default_bg(bg);
         self
     }
 

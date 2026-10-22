@@ -11,7 +11,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -165,7 +165,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Tooltip::on(&snapshot, "tip")
-            .background(Background::NONE)
+            .bg(Bg::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(7.0))
             .max_size(Size::INF)
@@ -177,9 +177,9 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let bubble = h.node_of(derived).expect("tooltip bubble node");
     assert_eq!(bubble.layer, Layer::Tooltip);
     let tree = h.ui.tree(Layer::Tooltip);
-    let index = bubble.node.idx();
-    assert_eq!(tree.records.layout()[index].padding, Spacing::ZERO);
-    assert_eq!(tree.records.layout()[index].margin, Spacing::all(7.0));
+    let idx = bubble.node.idx();
+    assert_eq!(tree.records.layout()[idx].padding, Spacing::ZERO);
+    assert_eq!(tree.records.layout()[idx].margin, Spacing::all(7.0));
     assert_eq!(tree.bounds(bubble.node).max_size, Size::INF);
 
     // Same trigger, caller-set id: the derived one must not appear.

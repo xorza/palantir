@@ -255,7 +255,7 @@ impl WgpuBackend {
             "wgpu_backend.submit"
         );
 
-        let surface_tex = target.texture();
+        let surface_texture = target.texture();
         let format = target.format();
         self.ensure_format(format);
 
@@ -290,7 +290,7 @@ impl WgpuBackend {
         // At most one surface view, only where a pass reads it; the normal backbuffer path avoids a
         // view per frame.
         let surface_view = (via_backbuffer.is_none() || draws_damage_rects || !target.takes_copy())
-            .then(|| surface_tex.create_view(&wgpu::TextureViewDescriptor::default()));
+            .then(|| surface_texture.create_view(&wgpu::TextureViewDescriptor::default()));
         let color_view: &wgpu::TextureView = match via_backbuffer {
             Some(bb) => bb.view(),
             None => surface_view
@@ -322,7 +322,7 @@ impl WgpuBackend {
                 t.copy_out_begin(&mut encoder);
             }
             if target.takes_copy() {
-                bb.copy_onto(&mut encoder, surface_tex);
+                bb.copy_onto(&mut encoder, surface_texture);
             } else {
                 let view = surface_view
                     .as_ref()
@@ -397,7 +397,7 @@ impl WgpuBackend {
             &mut ctx,
             MeshUpload {
                 vertices: &store.meshes.vertices,
-                indices: &store.meshes.indices,
+                idxs: &store.meshes.idxs,
                 instances: buffer.meshes.instance(),
             },
         );
@@ -428,9 +428,9 @@ impl WgpuBackend {
                 value = buffer.text_batches.len() as u64
             );
             let interned_text = store.interned_text();
-            for (index, b) in buffer.text_batches.iter().enumerate() {
+            for (idx, b) in buffer.text_batches.iter().enumerate() {
                 self.text.prepare_batch(TextBatchInput {
-                    index,
+                    idx,
                     runs: &buffer.texts[b.texts.range()],
                     scale: buffer.display.scale_factor(),
                     interned_text,
@@ -478,7 +478,7 @@ impl WgpuBackend {
                     .quad
                     .color(QuadForm::Solid)
                     .select(StencilMode::Off),
-                gradient_bg: &self.gradient.bg,
+                gradient_bind_group: &self.gradient.bind_group,
             },
             viewport: draw.viewport,
         }
@@ -654,7 +654,7 @@ impl WgpuBackend {
         let raster_pipeline = fmt.raster.select(stencil);
         let quad = |pipeline| QuadBinding {
             pipeline,
-            gradient_bg: &self.gradient.bg,
+            gradient_bind_group: &self.gradient.bind_group,
         };
 
         let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
@@ -779,8 +779,11 @@ impl WgpuBackend {
                     }
                     PaintTier::Curve => {
                         binder.rebind(Bound::Curve, pass, |pass| {
-                            self.curve
-                                .bind(pass, fmt.curve.select(stencil), &self.gradient.bg);
+                            self.curve.bind(
+                                pass,
+                                fmt.curve.select(stencil),
+                                &self.gradient.bind_group,
+                            );
                         });
                         self.curve.draw(pass, items());
                     }
@@ -860,7 +863,7 @@ impl WgpuBackend {
         backbuffer: &Backbuffer,
         target: RenderTarget<'_>,
     ) {
-        let surface_tex = target.texture();
+        let surface_texture = target.texture();
         debug_assert!(
             backbuffer.describes(target),
             "skip-copy backbuffer doesn't match the target — a Skip frame \
@@ -873,13 +876,13 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.skip"),
             });
         if target.takes_copy() {
-            backbuffer.copy_onto(&mut encoder, surface_tex);
+            backbuffer.copy_onto(&mut encoder, surface_texture);
         } else {
             let fmt = self
                 .pipelines
                 .get(&target.format())
                 .expect("a skip implies a prior submit built this format's pipelines");
-            let view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let view = surface_texture.create_view(&wgpu::TextureViewDescriptor::default());
             backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
         }
         self.gpu.queue.submit(iter::once(encoder.finish()));

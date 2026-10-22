@@ -3,8 +3,7 @@
 use crate::support;
 use crate::support::{DemoCell, Section, Surface, api};
 use palantir::{
-    Align, Background, Block, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale,
-    Ui, Vec2,
+    Align, Bg, Block, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale, Ui, Vec2,
 };
 
 const CARD: f32 = 200.0;
@@ -105,8 +104,8 @@ enum Mode {
 }
 
 /// Card with a large corner radius so the rect scissor and rounded stencil differ clearly.
-fn card_bg() -> Background {
-    Background::rounded(support::WELL, Corners::all(28.0))
+fn card_bg() -> Bg {
+    Bg::rounded(support::WELL, Corners::all(28.0))
         .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5))
 }
 
@@ -136,7 +135,7 @@ impl ClipCard {
                         let mut panel = Panel::zstack()
                             .size((Sizing::fixed(CARD), Sizing::fixed(CARD)))
                             .padding(padding)
-                            .background(card_bg());
+                            .bg(card_bg());
                         panel = match mode {
                             Mode::None => panel,
                             Mode::Rect => panel.clip_rect(),
@@ -154,7 +153,7 @@ fn spiller(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::FILL))
         .margin((-SPILL, -SPILL, -SPILL, -SPILL))
         // Translucent so the card edge stays visible beneath; unclipped would otherwise be a solid block.
-        .background(Background::fill(support::B.with_alpha(0.8)))
+        .bg(Bg::fill(support::B.with_alpha(0.8)))
         .show(ui);
 }
 
@@ -163,6 +162,6 @@ fn tile(ui: &mut Ui) {
     Block::new()
         .auto_id()
         .size((Sizing::fixed(56.0), Sizing::fixed(56.0)))
-        .background(support::swatch_bg(support::A))
+        .bg(support::swatch_bg(support::A))
         .show(ui);
 }

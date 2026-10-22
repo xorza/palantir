@@ -3,7 +3,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
@@ -73,19 +73,19 @@ impl ExpanderTheme {
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    background: Background::NONE,
+                    bg: Bg::NONE,
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    background: Background::rounded(p.element_mid, radius),
+                    bg: Bg::rounded(p.element_mid, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: Background::rounded(p.element_strong, radius),
+                    bg: Bg::rounded(p.element_strong, radius),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    background: Background::NONE,
+                    bg: Bg::NONE,
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },

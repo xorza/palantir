@@ -8,10 +8,10 @@ pub enum SplitDirection {
     /// Side by side, divided by a vertical rule.
     Row,
     /// Stacked, divided by a horizontal rule.
-    Column,
+    Col,
 }
 
-/// Which edge of a pane a split lands on; `Left`/`Right` make a [`SplitDirection::Row`], `Top`/`Bottom` a [`SplitDirection::Column`].
+/// Which edge of a pane a split lands on; `Left`/`Right` make a [`SplitDirection::Row`], `Top`/`Bottom` a [`SplitDirection::Col`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitSide {
     /// Left half.
@@ -29,7 +29,7 @@ impl SplitSide {
     pub const fn direction(self) -> SplitDirection {
         match self {
             Self::Left | Self::Right => SplitDirection::Row,
-            Self::Top | Self::Bottom => SplitDirection::Column,
+            Self::Top | Self::Bottom => SplitDirection::Col,
         }
     }
 

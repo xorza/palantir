@@ -1,6 +1,6 @@
 //! Inventory of the per-frame types whose `size`/`align` must not drift silently.
 
-use crate::animation::anim_row::AnimRow;
+use crate::animation::animation_row::AnimationRow;
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::Paint;
 use crate::cascade::rows::entry_row::EntryRow;
@@ -18,7 +18,7 @@ use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -143,7 +143,7 @@ const PINS: &[Pin] = &[
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    pin::<Background>("primitives::Background", 124, 4),
+    pin::<Bg>("primitives::Bg", 124, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -186,7 +186,7 @@ const PINS: &[Pin] = &[
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
-    pin::<AnimRow<AnimatedLook>>("animation::AnimRow<AnimatedLook>", 496, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 496, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

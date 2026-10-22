@@ -6,8 +6,8 @@ use crate::support;
 use crate::support::{DemoCell, Section, Surface, api};
 use palantir::widget::Shape;
 use palantir::{
-    Align, Background, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke,
-    Text, TextStyle, Ui, Vec2,
+    Align, Bg, Block, Button, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke, Text,
+    TextStyle, Ui, Vec2,
 };
 
 pub(crate) fn build(ui: &mut Ui) {
@@ -29,7 +29,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     Block::new()
                         .id_salt("idcol-dup-frame")
                         .size(36.0)
-                        .background(Background::fill(fill))
+                        .bg(Bg::fill(fill))
                         .show(ui);
                 }
             });
@@ -94,7 +94,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, order: Order) {
             .show(ui, |ui| {
                 Block::new()
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(support::swatch_bg(match order {
+                    .bg(support::swatch_bg(match order {
                         Order::TextOver => support::A,
                         Order::QuadOver => support::B,
                     }))
@@ -109,7 +109,7 @@ fn zorder_cell(ui: &mut Ui, label: &'static str, order: Order) {
                 if matches!(order, Order::QuadOver) {
                     Block::new()
                         .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                        .background(support::swatch_bg(RgbaF32::hex(0x14161a)))
+                        .bg(support::swatch_bg(RgbaF32::hex(0x14161a)))
                         .show(ui);
                 }
             });
@@ -124,22 +124,17 @@ fn concentricity(ui: &mut Ui) {
     Panel::zstack()
         .size((Sizing::FILL, Sizing::FILL))
         .child_align(Align::CENTER)
-        .background(Background::rounded(
-            RgbaF32::hex(0xff0000),
-            Corners::all(4.0),
-        ))
+        .bg(Bg::rounded(RgbaF32::hex(0xff0000), Corners::all(4.0)))
         .show(ui, |ui| {
             Panel::zstack()
                 .size((Sizing::fixed(130.0), Sizing::fixed(100.0)))
                 .child_align(Align::CENTER)
-                .background(
-                    Background::rounded(RgbaF32::hex(0x0000ff), Corners::all(OUTER))
-                        .with_border(Stroke::new(RgbaF32::hex(0x00ff00), STROKE)),
-                )
+                .bg(Bg::rounded(RgbaF32::hex(0x0000ff), Corners::all(OUTER))
+                    .with_border(Stroke::new(RgbaF32::hex(0x00ff00), STROKE)))
                 .show(ui, |ui| {
                     Block::new()
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background::rounded(
+                        .bg(Bg::rounded(
                             RgbaF32::hex(0x000000),
                             Corners::all(OUTER - STROKE - 1.0),
                         ))

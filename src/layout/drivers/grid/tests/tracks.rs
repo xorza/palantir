@@ -372,7 +372,7 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 
     let axis = GridAxis {
         id: GridAxisId {
-            def: GridDefId::from_index(0),
+            def: GridDefId::from_idx(0),
             axis: Axis::X,
         },
         tracks: &tracks,

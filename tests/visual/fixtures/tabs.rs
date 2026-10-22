@@ -43,13 +43,13 @@ fn tabbed_view_matches_golden() {
                 .id_salt("pages")
                 .closable(false)
                 .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui, index| {
+                .show(ui, |ui, idx| {
                     Panel::vstack()
                         .id_salt("page")
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(14.0)
                         .show(ui, |ui| {
-                            Text::new(["Color", "Geometry", "Metadata"][index])
+                            Text::new(["Color", "Geometry", "Metadata"][idx])
                                 .id_salt("page-title")
                                 .show(ui);
                         });

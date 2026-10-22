@@ -3,7 +3,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -65,7 +65,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
             "{case:?}: the authored spinner shape must survive",
         );
         assert!(
-            tree.paint_anims.entries.is_empty(),
+            tree.paint_animations.entries.is_empty(),
             "{case:?}: an invisible spinner must have no active animation row",
         );
         assert_eq!(
@@ -91,7 +91,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(h.ui.tree(Layer::Main).paint_anims.entries.len(), 1);
+    assert_eq!(h.ui.tree(Layer::Main).paint_animations.entries.len(), 1);
 
     h.ui.request_repaint();
     let hidden_at = Duration::from_millis(16);
@@ -105,7 +105,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         "hiding must retain the authored spinner shape",
     );
     assert!(
-        h.ui.tree(Layer::Main).paint_anims.entries.is_empty(),
+        h.ui.tree(Layer::Main).paint_animations.entries.is_empty(),
         "hiding must drop the active animation row",
     );
 
@@ -116,7 +116,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
     assert_eq!(
-        h.ui.tree(Layer::Main).paint_anims.entries.len(),
+        h.ui.tree(Layer::Main).paint_animations.entries.len(),
         1,
         "showing must restore the active animation row",
     );
@@ -170,18 +170,18 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
-                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
-                    .background(Background::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .hidden()
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
-                    .background(Background::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .show(ui);
             })
             .response

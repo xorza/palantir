@@ -37,7 +37,7 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
                     });
             }),
             SplitHalf::Second => {
-                Splitter::column(&mut s.v)
+                Splitter::col(&mut s.v)
                     .min_pane(100.0)
                     .show(ui, |ui, half| match half {
                         SplitHalf::First => pane(ui, "horizontal", |ui| {
@@ -70,7 +70,7 @@ fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
-        .background(support::well_bg())
+        .bg(support::well_bg())
         .show(ui, |ui| {
             Text::new(label).style(&support::caption_style()).show(ui);
             body(ui);
@@ -82,7 +82,7 @@ fn row(ui: &mut Ui, i: u32) {
         .id_salt(i)
         .size((Sizing::FILL, Sizing::fixed(28.0)))
         .padding((10.0, 6.0))
-        .background(support::swatch_bg(ramp(i)))
+        .bg(support::swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "row {i:02}");
             Text::new(label).style(&support::on_swatch_style()).show(ui);
@@ -94,7 +94,7 @@ fn col(ui: &mut Ui, i: u32) {
         .id_salt(i)
         .size((Sizing::fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
-        .background(support::swatch_bg(ramp(i)))
+        .bg(support::swatch_bg(ramp(i)))
         .show(ui, |ui| {
             let label = fmt!(ui, "col {i:02}");
             Text::new(label).style(&support::on_swatch_style()).show(ui);
@@ -111,7 +111,7 @@ fn grid(ui: &mut Ui) {
                         .id_salt(c)
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .padding((6.0, 4.0))
-                        .background(support::swatch_bg(ramp(r * 12 + c)))
+                        .bg(support::swatch_bg(ramp(r * 12 + c)))
                         .show(ui, |ui| {
                             let label = fmt!(ui, "{r},{c}");
                             Text::new(label)

@@ -12,7 +12,7 @@ use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::shape::paint::lowered_shadow::ShadowGeom;
+use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 
@@ -75,7 +75,7 @@ impl ShaderBody {
                 // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
                 ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
                 ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-                ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeom::REACH_SIGMAS),
+                ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeometry::REACH_SIGMAS),
                 ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
                 ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
                 ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),

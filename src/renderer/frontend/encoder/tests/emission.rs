@@ -7,7 +7,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::RgbaF32;
@@ -72,7 +72,7 @@ fn baseline_draw_rect_count_cases() {
         Empty,
         FrameWithFill,
         InvisibleFrame,
-        FrameWithDegenerateBackground,
+        FrameWithDegenerateBg,
         FrameWithClipRectSurface,
     }
     let cases: &[(&str, Scene, usize)] = &[
@@ -81,7 +81,7 @@ fn baseline_draw_rect_count_cases() {
         ("invisible_frame", Scene::InvisibleFrame, 0),
         (
             "frame_with_degenerate_background",
-            Scene::FrameWithDegenerateBackground,
+            Scene::FrameWithDegenerateBg,
             0,
         ),
         (
@@ -99,7 +99,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
@@ -108,11 +108,11 @@ fn baseline_draw_rect_count_cases() {
                         .size(50.0)
                         .show(ui);
                 }
-                Scene::FrameWithDegenerateBackground => {
+                Scene::FrameWithDegenerateBg => {
                     Block::new()
                         .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
-                        .background(Background {
+                        .bg(Bg {
                             fill: RgbaF32::TRANSPARENT.into(),
                             border: Stroke::NONE,
                             ..Default::default()
@@ -293,7 +293,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
 fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::paint::shadow::Shadow;
-    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeom;
+    use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 
     struct Case {
         label: &'static str,
@@ -350,7 +350,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     ];
     for case in &cases {
         let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
-        let background = Background {
+        let bg = Bg {
             fill: RgbaF32::WHITE.into(),
             border: case.border,
             corners: case.corners,
@@ -362,7 +362,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                 Block::new()
                     .id(WidgetId::from_hash("chrome"))
                     .size((100.0, 60.0))
-                    .background(background.clone())
+                    .bg(bg.clone())
                     .show(ui);
             });
         });
@@ -389,7 +389,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             FillKind::SHADOW_DROP
         };
         assert_eq!(shadow.fill.kind, expected_kind, "{label}");
-        let QuadGeom::Rect { rect, corners } = shadow.geom else {
+        let QuadGeometry::Rect { rect, corners } = shadow.geometry else {
             panic!("{label}: a shadow has rect geometry");
         };
         let expected = Rect {

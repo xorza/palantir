@@ -11,7 +11,7 @@ pub enum AllowedSplits {
     /// Only side-by-side splits.
     Row,
     /// Only stacking splits.
-    Column,
+    Col,
     /// No splits; a dragged tab can only join a strip.
     None,
 }
@@ -22,7 +22,7 @@ impl AllowedSplits {
         match self {
             Self::All => true,
             Self::Row => side.direction() == SplitDirection::Row,
-            Self::Column => side.direction() == SplitDirection::Column,
+            Self::Col => side.direction() == SplitDirection::Col,
             Self::None => false,
         }
     }

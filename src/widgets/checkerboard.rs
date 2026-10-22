@@ -48,11 +48,11 @@ impl Checkerboard {
     )]
     pub(crate) fn paint(&self, ui: &mut Ui, size: Size) {
         ui.add_shape(Shape::owner_rect().fill(self.light));
-        let columns = (size.w / self.cell).ceil().max(0.0) as u32;
+        let cols = (size.w / self.cell).ceil().max(0.0) as u32;
         let rows = (size.h / self.cell).ceil().max(0.0) as u32;
         for row in 0..rows {
-            for column in (row % 2..columns).step_by(2) {
-                let x = column as f32 * self.cell;
+            for col in (row % 2..cols).step_by(2) {
+                let x = col as f32 * self.cell;
                 let y = row as f32 * self.cell;
                 let w = self.cell.min(size.w - x);
                 let h = self.cell.min(size.h - y);

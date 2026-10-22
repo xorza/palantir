@@ -8,8 +8,8 @@ use palantir::internals::demo_swatches;
 use std::panic::Location;
 
 use palantir::{
-    Align, Background, Block, Checkbox, Configure, Corners, FontFamily, FontWeight, Panel, RgbaF32,
-    Sizing, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
+    Align, Bg, Block, Checkbox, Configure, Corners, FontFamily, FontWeight, Panel, RgbaF32, Sizing,
+    Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
 };
 
 /// Window clear; the darkest tier.
@@ -150,20 +150,20 @@ pub(crate) const fn mix(a: RgbaF32, b: RgbaF32, t: f32) -> RgbaF32 {
     )
 }
 
-pub(crate) fn swatch_bg(c: RgbaF32) -> Background {
-    Background::rounded(c, Corners::all(4.0))
+pub(crate) fn swatch_bg(c: RgbaF32) -> Bg {
+    Bg::rounded(c, Corners::all(4.0))
 }
 
-pub(crate) fn well_bg() -> Background {
-    Background::rounded(WELL, Corners::all(RADIUS))
+pub(crate) fn well_bg() -> Bg {
+    Bg::rounded(WELL, Corners::all(RADIUS))
 }
 
-pub(crate) fn light_well_bg() -> Background {
-    Background::rounded(LIGHT_WELL, Corners::all(RADIUS))
+pub(crate) fn light_well_bg() -> Bg {
+    Bg::rounded(LIGHT_WELL, Corners::all(RADIUS))
 }
 
-pub(crate) fn raised_bg() -> Background {
-    Background::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
+pub(crate) fn raised_bg() -> Bg {
+    Bg::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
 }
 
 /// A titled block of demo content: a title, a chip per demonstrated API, then the body. A [`note`] may name an API only when one of the section's [`api!`] chips checks it.
@@ -235,25 +235,25 @@ pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Column {
+pub(crate) enum Col {
     Left,
     Right,
 }
 
 /// The two columns of a side-by-side page; one body runs for both, told which it fills.
 #[track_caller]
-pub(crate) fn columns(ui: &mut Ui, mut body: impl FnMut(&mut Ui, Column)) {
+pub(crate) fn cols(ui: &mut Ui, mut body: impl FnMut(&mut Ui, Col)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
         .gap(32.0)
         .show(ui, |ui| {
-            for column in [Column::Left, Column::Right] {
+            for col in [Col::Left, Col::Right] {
                 Panel::vstack()
-                    .id_salt(column as u8)
+                    .id_salt(col as u8)
                     .gap(PAGE_GAP)
                     .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui, |ui| body(ui, column));
+                    .show(ui, |ui| body(ui, col));
             }
         });
 }
@@ -265,7 +265,7 @@ pub(crate) fn well(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::HUG))
         .padding(14.0)
         .gap(10.0)
-        .background(well_bg())
+        .bg(well_bg())
         .show(ui, body);
 }
 
@@ -319,11 +319,12 @@ impl Chip {
         }
     }
 
-    fn background(self) -> Background {
+    fn bg(self) -> Bg {
         match self {
-            Self::Api => Background::rounded(RAISED, Corners::all(4.0)),
-            Self::Key => Background::rounded(ELEMENT, Corners::all(4.0))
-                .with_border(Stroke::new(ELEM_STRONG, 1.0)),
+            Self::Api => Bg::rounded(RAISED, Corners::all(4.0)),
+            Self::Key => {
+                Bg::rounded(ELEMENT, Corners::all(4.0)).with_border(Stroke::new(ELEM_STRONG, 1.0))
+            }
         }
     }
 }
@@ -332,7 +333,7 @@ fn chip(ui: &mut Ui, text: &'static str, kind: Chip) {
     Panel::hstack()
         .id_salt(text)
         .padding((6.0, 2.0))
-        .background(kind.background())
+        .bg(kind.bg())
         .show(ui, |ui| {
             Text::new(text)
                 .style(&mono_style(11.0, kind.ink()))
@@ -350,10 +351,8 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
         .size((Sizing::FILL, Sizing::HUG))
         .padding(12.0)
         .gap(6.0)
-        .background(
-            Background::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
-                .with_border(Stroke::new(BORDER, 1.0)),
-        )
+        .bg(Bg::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
+            .with_border(Stroke::new(BORDER, 1.0)))
         .show(ui, |ui| {
             Text::new("CHECK BY HAND")
                 .style(
@@ -379,7 +378,7 @@ struct Ticks(u32);
 
 /// A plain color swatch: a `Block` over [`swatch_bg`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {
-    Block::new().background(swatch_bg(c))
+    Block::new().bg(swatch_bg(c))
 }
 
 #[track_caller]
@@ -448,8 +447,8 @@ impl DemoCell {
                     .show(ui);
                 let cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(self.h)));
                 let cell = match self.surface {
-                    Surface::Well => cell.padding(CELL_PADDING).background(well_bg()),
-                    Surface::LightWell => cell.padding(CELL_PADDING).background(light_well_bg()),
+                    Surface::Well => cell.padding(CELL_PADDING).bg(well_bg()),
+                    Surface::LightWell => cell.padding(CELL_PADDING).bg(light_well_bg()),
                     Surface::Bare => cell,
                 };
                 cell.show(ui, body);

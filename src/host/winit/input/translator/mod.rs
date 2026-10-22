@@ -107,9 +107,9 @@ impl Translator {
             WindowEvent::MouseWheel { delta, .. } => {
                 let (event, delta) = match *delta {
                     MouseScrollDelta::LineDelta(x, y) => (WheelUnit::Lines, Vec2::new(-x, -y)),
-                    MouseScrollDelta::PixelDelta(position) => (
+                    MouseScrollDelta::PixelDelta(pos) => (
                         WheelUnit::Pixels,
-                        Vec2::new(-position.x as f32, -position.y as f32) / scale_factor,
+                        Vec2::new(-pos.x as f32, -pos.y as f32) / scale_factor,
                     ),
                 };
                 let delta = shift_wheel(delta, self.modifiers, self.platform);

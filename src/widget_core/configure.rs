@@ -148,7 +148,7 @@ pub trait Configure: Sized {
     /// on it); layout runs untransformed. Scale anchors at the node's own origin; see
     /// [`TranslateScale::anchored_at`].
     ///
-    /// Widget chrome ([`Panel::background`](crate::Panel::background) and siblings)
+    /// Widget chrome ([`Panel::bg`](crate::Panel::bg) and siblings)
     /// paints in the parent's space, so the background frames the viewport; to pan it
     /// with the body, nest a container with the chrome on the child.
     #[inline]
@@ -168,8 +168,8 @@ pub trait Configure: Sized {
     #[inline]
     #[must_use]
     #[track_caller]
-    fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.configure().position(p);
+    fn pos(mut self, p: impl Into<Vec2>) -> Self {
+        self.configure().pos(p);
         self
     }
 
@@ -314,8 +314,8 @@ pub trait Configure: Sized {
     /// WPF's `TabIndex`.
     #[inline]
     #[must_use]
-    fn tab_index(mut self, index: i16) -> Self {
-        self.configure().tab_index(index);
+    fn tab_idx(mut self, idx: i16) -> Self {
+        self.configure().tab_idx(idx);
         self
     }
 

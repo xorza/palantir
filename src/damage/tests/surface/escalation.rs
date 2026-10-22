@@ -8,7 +8,7 @@ use crate::display::user_scale::UserScale;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_plan::RenderPlan;
 use crate::ui::Ui;
@@ -115,12 +115,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                 Block::new()
                     .id(WidgetId::from_hash("big"))
                     .size((60.0, 60.0))
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui);
             });
     };
@@ -129,12 +129,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     assert!(h.engines.damage.counters.dirty().is_empty());
 
     // Flip "small"'s prev `cascade_input`: 3000 of 4M area, far below the full-repaint threshold.
-    let target_wid = WidgetId::from_hash("small");
+    let target_widget_id = WidgetId::from_hash("small");
     let snap = h
         .engines
         .damage
         .prev
-        .get_mut(&target_wid)
+        .get_mut(&target_widget_id)
         .expect("small in prev");
     snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 

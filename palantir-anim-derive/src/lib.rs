@@ -40,17 +40,17 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
     let settle_eps = container_settle_eps(input)?;
 
-    let mut anim: Vec<(&Ident, &Type)> = Vec::new();
+    let mut animation: Vec<(&Ident, &Type)> = Vec::new();
     let mut snap: Vec<(&Ident, &Type)> = Vec::new();
     for f in fields {
         let ident = f.ident.as_ref().expect("named fields have idents");
         match FieldKind::of(f)? {
             FieldKind::Snap => snap.push((ident, &f.ty)),
-            FieldKind::Animated => anim.push((ident, &f.ty)),
+            FieldKind::Animated => animation.push((ident, &f.ty)),
         }
     }
 
-    let lerp_anim = anim.iter().map(|(f, _)| {
+    let lerp_animation = animation.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::lerp(a.#f, b.#f, t), }
     });
     let lerp_snap = snap.iter().map(|(f, _)| {
@@ -58,20 +58,21 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     });
     let keep_snap: Vec<TokenStream2> = snap.iter().map(|(f, _)| quote! { #f: self.#f, }).collect();
 
-    let sub_anim = anim.iter().map(|(f, _)| {
+    let sub_animation = animation.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::sub(self.#f, other.#f), }
     });
 
-    let add_anim = anim.iter().map(|(f, _)| {
+    let add_animation = animation.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::add(self.#f, other.#f), }
     });
 
-    let scale_anim = anim.iter().map(|(f, _)| {
+    let scale_animation = animation.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::scale(self.#f, k), }
     });
 
     let magnitude_squared_body = sum_or_zero(
-        anim.iter()
+        animation
+            .iter()
             .map(|(f, _)| quote! { ::palantir::widget::Animatable::magnitude_squared(self.#f) }),
     );
 
@@ -81,18 +82,18 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             ::palantir::widget::Animatable::magnitude_squared(self) / (eps * eps)
         }
     } else {
-        sum_or_zero(anim.iter().map(|(f, _)| {
+        sum_or_zero(animation.iter().map(|(f, _)| {
             quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
         }))
     };
 
-    let zero_anim = anim.iter().map(|(f, ty)| {
+    let zero_animation = animation.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::palantir::widget::Animatable>::zero(), }
     });
     let zero_snap = snap.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::core::default::Default>::default(), }
     });
-    let normalize_for_spring_anim = anim.iter().map(|(f, ty)| {
+    let normalize_for_spring_animation = animation.iter().map(|(f, ty)| {
         quote! {
             <#ty as ::palantir::widget::Animatable>::normalize_for_spring(
                 &mut self.#f,
@@ -108,28 +109,28 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             #[inline]
             fn lerp(a: Self, b: Self, t: f32) -> Self {
                 Self {
-                    #(#lerp_anim)*
+                    #(#lerp_animation)*
                     #(#lerp_snap)*
                 }
             }
             #[inline]
             fn sub(self, other: Self) -> Self {
                 Self {
-                    #(#sub_anim)*
+                    #(#sub_animation)*
                     #(#keep_snap)*
                 }
             }
             #[inline]
             fn add(self, other: Self) -> Self {
                 Self {
-                    #(#add_anim)*
+                    #(#add_animation)*
                     #(#keep_snap)*
                 }
             }
             #[inline]
             fn scale(self, k: f32) -> Self {
                 Self {
-                    #(#scale_anim)*
+                    #(#scale_animation)*
                     #(#keep_snap)*
                 }
             }
@@ -144,14 +145,14 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             #[inline]
             fn zero() -> Self {
                 Self {
-                    #(#zero_anim)*
+                    #(#zero_animation)*
                     #(#zero_snap)*
                 }
             }
             #[inline]
             fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
                 let _ = (&*self, target, &*velocity);
-                #(#normalize_for_spring_anim)*
+                #(#normalize_for_spring_animation)*
             }
         }
     };

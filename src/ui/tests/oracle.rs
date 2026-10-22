@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::internals::ui_harness::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::primitives::paint::stroke::Stroke;
@@ -46,8 +46,8 @@ impl Knobs {
     };
 }
 
-fn fill(c: RgbaF32) -> Background {
-    Background::fill(c)
+fn fill(c: RgbaF32) -> Bg {
+    Bg::fill(c)
 }
 
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
@@ -59,7 +59,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
             Block::new()
                 .id(WidgetId::from_hash("swatch"))
                 .size(40.0)
-                .background(fill(k.fill))
+                .bg(fill(k.fill))
                 .show(ui);
             Text::new(k.label).id(WidgetId::from_hash("label")).show(ui);
             Panel::canvas()
@@ -68,9 +68,9 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("mover"))
-                        .position((k.nudge, 5.0))
+                        .pos((k.nudge, 5.0))
                         .size(20.0)
-                        .background(fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
+                        .bg(fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);
                 });
             Panel::zstack()
@@ -110,13 +110,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id(WidgetId::from_hash("extra"))
                     .size(30.0)
-                    .background(fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
+                    .bg(fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
                     .show(ui);
             }
             let mut maybe = Block::new()
                 .id(WidgetId::from_hash("maybe-hidden"))
                 .size(30.0)
-                .background(fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
+                .bg(fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
             if k.hidden {
                 maybe = maybe.hidden();
             }
@@ -139,7 +139,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id(WidgetId::from_hash(name))
                     .size(60.0)
-                    .background(fill(color))
+                    .bg(fill(color))
                     .show(ui);
             });
     }
