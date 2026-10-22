@@ -1274,7 +1274,7 @@ OverlayResponse
         impl<R: Default> Default for OverlayResponse<R>
 
 PLATFORM
-    const PLATFORM: Platform = { { Platform::Mac } }
+    const PLATFORM: Platform
 
 Palette
     struct Palette: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -2856,10 +2856,10 @@ widget::domain
     mod
 
 widget::domain::EPS
-    const EPS: f32 = 1.0e-4
+    const EPS: f32
 
 widget::domain::MAX_GAP
-    const MAX_GAP: f32 = F16x4::MAX_LANE
+    const MAX_GAP: f32
 
 widget::domain::angle
     const fn angle(v: f32) -> f32

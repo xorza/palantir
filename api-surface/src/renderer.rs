@@ -188,12 +188,10 @@ impl<'a> Renderer<'a> {
                 decl::generics(&alias.generics),
                 decl::ty(&alias.type_)
             )),
-            ItemEnum::Constant { type_, const_ } => {
-                lines.push(format!(
-                    "const {name}: {} = {}",
-                    decl::ty(type_),
-                    const_.expr
-                ));
+            // The value is left out: rustdoc renders it after `cfg` stripping, so a
+            // host-dependent const would make the surface differ between machines.
+            ItemEnum::Constant { type_, .. } => {
+                lines.push(format!("const {name}: {}", decl::ty(type_)));
             }
             ItemEnum::Static(s) => {
                 let mutable = if s.is_mutable { "mut " } else { "" };
