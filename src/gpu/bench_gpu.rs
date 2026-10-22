@@ -121,14 +121,14 @@ impl BenchGpu {
         OffscreenHost::builder(self.gpu.clone())
     }
 
-    /// A host whose panels paint no theme background, so the driver's own
+    /// A host whose panels paint no theme chrome, so the driver's own
     /// draws are all a frame holds.
     pub(crate) fn plain_host(&self, collect_gpu_stats: bool) -> OffscreenHost {
         let mut host = self
             .offscreen_builder()
             .collect_gpu_stats(collect_gpu_stats)
             .build();
-        host.ui().theme_mut().panel_bg = None;
+        host.ui().theme_mut().panel_chrome = None;
         host
     }
 

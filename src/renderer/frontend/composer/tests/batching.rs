@@ -82,11 +82,11 @@ fn compose_same_clip_push_pop_preserves_overlap_state() {
     let buf = run(
         |b, _arena| {
             clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
-            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A bg
+            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A chrome
             text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
             clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
             b.pop_clip();
-            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B bg, overlaps A's label
+            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
             b.pop_clip();
         },
         &params(1.0, UVec2::new(400, 400)),

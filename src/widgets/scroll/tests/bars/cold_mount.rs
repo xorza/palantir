@@ -4,7 +4,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
@@ -206,7 +206,7 @@ fn nested_clipped_scrolls_compose_through_warm_cache() {
                         .id(WidgetId::from_hash(("card", tag)))
                         .padding(8.0)
                         .size((Sizing::FILL, Sizing::FILL))
-                        .bg(Bg::fill(RgbaF32::srgb(0.16, 0.20, 0.28)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(0.16, 0.20, 0.28)))
                         .clip_rect()
                         .show(ui, |ui| {
                             let s = match tag {

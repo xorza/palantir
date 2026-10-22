@@ -1,7 +1,7 @@
 //! Text rendering fixtures.
 
 use glam::UVec2;
-use palantir::{Bg, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
+use palantir::{Chrome, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
 use crate::golden_name::GoldenName;
 
@@ -63,7 +63,7 @@ fn text_row_list_batches_into_one_render() {
                     Panel::hstack()
                         .id_salt(label)
                         .padding(6.0)
-                        .bg(Bg::fill(bg))
+                        .chrome(Chrome::fill(bg))
                         .size((Sizing::fixed(200.0), Sizing::HUG))
                         .show(ui, |ui| {
                             Text::new(label)

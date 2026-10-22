@@ -2,8 +2,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Bg, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke, Text,
-    TextStyle, Track,
+    Block, Button, Chrome, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke,
+    Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -33,8 +33,8 @@ fn dashboard_matches_golden() {
                         .max_size((f32::INFINITY, 40.0))
                         .padding((10.0, 14.0, 10.0, 14.0))
                         .gap(8.0)
-                        .bg(
-                            Bg::rounded(RgbaF32::srgb(0.18, 0.22, 0.32), Corners::all(6.0))
+                        .chrome(
+                            Chrome::rounded(RgbaF32::srgb(0.18, 0.22, 0.32), Corners::all(6.0))
                                 .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
                         )
                         .show(ui, |ui| {
@@ -59,7 +59,7 @@ fn dashboard_matches_golden() {
                         .grid_cell((1, 0))
                         .padding(8.0)
                         .gap(4.0)
-                        .bg(Bg::rounded(
+                        .chrome(Chrome::rounded(
                             RgbaF32::srgb(0.14, 0.17, 0.24),
                             Corners::all(6.0),
                         ))
@@ -69,7 +69,7 @@ fn dashboard_matches_golden() {
                                     .id_salt(("nav-bg", i))
                                     .size((Sizing::FILL, Sizing::fixed(28.0)))
                                     .padding((6.0, 8.0, 6.0, 8.0))
-                                    .bg(Bg::rounded(
+                                    .chrome(Chrome::rounded(
                                         if i == 1 {
                                             RgbaF32::srgb(0.22, 0.30, 0.46)
                                         } else {
@@ -103,7 +103,7 @@ fn dashboard_matches_golden() {
                                     .grid_cell((row, col))
                                     .padding(12.0)
                                     .gap(6.0)
-                                    .bg(Bg::rounded(*c, Corners::all(8.0)).with_border(
+                                    .chrome(Chrome::rounded(*c, Corners::all(8.0)).with_border(
                                         Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     ))
                                     .show(ui, |ui| {
@@ -134,7 +134,7 @@ fn dashboard_matches_golden() {
                         .grid_cell(GridCell::at(2, 0).with_span(1, 2))
                         .max_size((f32::INFINITY, 24.0))
                         .padding((4.0, 10.0, 4.0, 10.0))
-                        .bg(Bg::rounded(
+                        .chrome(Chrome::rounded(
                             RgbaF32::srgb(0.10, 0.12, 0.18),
                             Corners::all(4.0),
                         ))

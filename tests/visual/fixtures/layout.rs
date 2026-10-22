@@ -3,8 +3,8 @@
 use glam::UVec2;
 use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
-    Align, Bg, Block, Button, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke,
-    Text, TextStyle, TextWrap, Track,
+    Align, Block, Button, Chrome, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing,
+    Stroke, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -24,17 +24,17 @@ fn vstack_fill_weights_matches_golden() {
                 Block::new()
                     .id_salt("a")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.85, 0.30, 0.30)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.85, 0.30, 0.30)))
                     .show(ui);
                 Block::new()
                     .id_salt("b")
                     .size((Sizing::FILL, Sizing::fill(2.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.30, 0.85, 0.40)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.30, 0.85, 0.40)))
                     .show(ui);
                 Block::new()
                     .id_salt("c")
                     .size((Sizing::FILL, Sizing::fill(1.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.30, 0.50, 0.95)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.30, 0.50, 0.95)))
                     .show(ui);
             });
     });
@@ -56,7 +56,7 @@ fn grid_mixed_tracks_matches_golden() {
                 Block::new()
                     .id_salt("header")
                     .grid_cell(GridCell::at(0, 0).with_span(1, 3))
-                    .bg(Bg::rounded(
+                    .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.25, 0.30, 0.45),
                         Corners::all(4.0),
                     ))
@@ -64,7 +64,7 @@ fn grid_mixed_tracks_matches_golden() {
                 Block::new()
                     .id_salt("side")
                     .grid_cell((1, 0))
-                    .bg(Bg::rounded(
+                    .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.35, 0.45, 0.30),
                         Corners::all(4.0),
                     ))
@@ -72,7 +72,7 @@ fn grid_mixed_tracks_matches_golden() {
                 Block::new()
                     .id_salt("body")
                     .grid_cell((1, 1))
-                    .bg(Bg::rounded(
+                    .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.20, 0.20, 0.28),
                         Corners::all(4.0),
                     ))
@@ -80,7 +80,7 @@ fn grid_mixed_tracks_matches_golden() {
                 Block::new()
                     .id_salt("aside")
                     .grid_cell((1, 2))
-                    .bg(Bg::rounded(
+                    .chrome(Chrome::rounded(
                         RgbaF32::srgb(0.50, 0.30, 0.45),
                         Corners::all(4.0),
                     ))
@@ -97,8 +97,8 @@ fn zstack_centered_button_matches_golden() {
             .auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .bg(
-                Bg::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
+            .chrome(
+                Chrome::rounded(RgbaF32::srgb(0.16, 0.20, 0.28), Corners::all(10.0))
                     .with_border(Stroke::new(RgbaF32::srgb(0.30, 0.36, 0.46), 1.0)),
             )
             .show(ui, |ui| {

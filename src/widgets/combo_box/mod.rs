@@ -162,7 +162,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         // `'static`.
         let label = ui.intern(chosen);
 
-        self.widget.record(ui, Some(&look.bg), |ui| {
+        self.widget.record(ui, Some(&look.chrome), |ui| {
             Text::new(label)
                 .id(id.with("label"))
                 .style(&text_style)
@@ -197,7 +197,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             .id(id.with("list"))
             .arrow_focus(Axis::Y)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
-            .default_bg(ctx.panel.clone())
+            .default_chrome(ctx.panel.clone())
             .default_padding(ctx.padding)
             .default_gap(ctx.gap)
             .show(ui, |ui, popup| {

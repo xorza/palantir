@@ -5,7 +5,7 @@ pub(crate) mod popup_trigger;
 
 use crate::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -37,7 +37,7 @@ pub struct Popup {
     click_outside: ClickOutside,
     layer: Layer,
     widget: Widget,
-    chrome: Option<Bg>,
+    chrome: Option<Chrome>,
 }
 
 impl Popup {
@@ -110,7 +110,7 @@ impl Popup {
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        let chrome = chrome.as_ref().or(theme.panel_bg.as_ref());
+        let chrome = chrome.as_ref().or(theme.panel_chrome.as_ref());
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
@@ -129,31 +129,31 @@ impl Popup {
 }
 
 impl Popup {
-    /// Paint `bg` as this widget's background; unset falls back to
-    /// `panel_bg`. [`Bg::NONE`] suppresses the fallback.
+    /// Paint `chrome` behind this widget; unset falls back to
+    /// `panel_chrome`. [`Chrome::NONE`] suppresses the fallback.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
+        self.chrome = Some(chrome);
         self
     }
 
-    /// Paint `bg` unless the caller set one; an explicit
-    /// [`Self::bg`] wins in either order. For wrappers that theme a held
+    /// Paint `chrome` unless the caller set one; an explicit
+    /// [`Self::chrome`] wins in either order. For wrappers that theme a held
     /// widget after the caller's setters ran.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        bg.validate();
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(chrome);
         }
         self
     }

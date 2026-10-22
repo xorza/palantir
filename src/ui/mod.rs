@@ -53,7 +53,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::interned_str::InternedStr;
@@ -697,7 +697,7 @@ impl Ui {
     /// calls `Widget::record`, never this.
     #[inline]
     #[track_caller]
-    pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Bg>) {
+    pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Chrome>) {
         let ring = if self.input.focused() == Some(resolved.id()) && self.input.focus_visible() {
             let theme = &self.theme.focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
@@ -705,7 +705,7 @@ impl Ui {
             Stroke::NONE
         };
         self.forest
-            .open_node(resolved, node, NodeChrome { bg: chrome, ring });
+            .open_node(resolved, node, NodeChrome { chrome, ring });
     }
 
     #[inline]

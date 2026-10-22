@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -87,12 +87,12 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(a_size), Sizing::fixed(20.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(30.0), Sizing::fixed(20.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     };
@@ -158,7 +158,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
                 Block::new()
                     .id(WidgetId::from_hash("new"))
                     .size(50.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             });
     });
@@ -361,7 +361,7 @@ fn node_snapshot_decomposition_matches_cascade() {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -423,12 +423,12 @@ fn node_snapshot_decomposition_matches_cascade() {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| two_lines(ui));
         Panel::hstack()
             .id(WidgetId::from_hash("multi2"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| two_lines(ui));
     });
     let snap2_paints = h
@@ -455,7 +455,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::fixed(180.0), Sizing::fixed(180.0)))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(
                     Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
@@ -534,7 +534,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(fill))
+            .chrome(Chrome::fill(fill))
             .show(ui, |_| {});
     };
     frame(&mut h, |ui| build(BLUE, ui));
@@ -598,7 +598,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |_| {});
     };
     frame(&mut h, build);
@@ -772,7 +772,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
         let mut p = Panel::zstack()
             .id(WidgetId::from_hash("a"))
             .size(50.0)
-            .bg(Bg::fill(BLUE));
+            .chrome(Chrome::fill(BLUE));
         if hidden {
             p = p.hidden();
         }

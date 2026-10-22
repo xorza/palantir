@@ -6,7 +6,7 @@ use crate::support;
 use palantir::SlotDefaults;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
-    AnimationSpec, Bg, Block, Brush, Button, ButtonTheme, Checkbox, Configure, Corners, Grid,
+    AnimationSpec, Block, Brush, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
     Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
 };
@@ -215,7 +215,7 @@ fn gradient_strip(ui: &mut Ui) {
                 Block::new()
                     .id_salt(i)
                     .size((Sizing::fixed(72.0), Sizing::fixed(56.0)))
-                    .bg(Bg {
+                    .chrome(Chrome {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
                         corners: Corners::all(6.0),
                         border: Stroke::new(RgbaF32::hex(0x202020), 1.0),
@@ -282,7 +282,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                     .show(ui, |ui| {
                         Block::new()
                             .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                            .bg(Bg::rounded(
+                            .chrome(Chrome::rounded(
                                 CellPos { row: i, col: i / 3 }.color(),
                                 Corners::all(20.0),
                             ))
@@ -311,8 +311,10 @@ fn chat_messages(ui: &mut Ui, count: u32) {
 fn canvas_polylines(ui: &mut Ui) {
     Panel::canvas()
         .size((Sizing::FILL, Sizing::fixed(120.0)))
-        .bg(Bg::rounded(support::WELL, Corners::all(4.0))
-            .with_border(Stroke::new(support::BORDER, 1.0)))
+        .chrome(
+            Chrome::rounded(support::WELL, Corners::all(4.0))
+                .with_border(Stroke::new(support::BORDER, 1.0)),
+        )
         .show(ui, |ui| {
             Block::new().size((Sizing::FILL, Sizing::FILL)).show(ui);
             for line in 0..6 {
@@ -343,7 +345,7 @@ fn cell_theme() -> ButtonTheme {
         .with_font_size(11.0)
         .with_color(RgbaF32::hex(0x14161a));
     let look = || WidgetLook {
-        bg: Bg::NONE,
+        chrome: Chrome::NONE,
         text: label,
     };
     ButtonTheme {
@@ -363,11 +365,12 @@ fn cell_theme() -> ButtonTheme {
 
 /// Points `theme`'s four states at one cell's color.
 fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
-    let bg = |fill: RgbaF32| Bg::rounded(fill, Corners::all(3.0));
-    theme.looks.normal.bg = bg(base);
-    theme.looks.hovered.bg = bg(brighten(base, 0.15));
-    theme.looks.active.bg = bg(brighten(base, 0.3)).with_border(Stroke::new(RgbaF32::WHITE, 1.0));
-    theme.looks.disabled.bg = bg(base);
+    let chrome = |fill: RgbaF32| Chrome::rounded(fill, Corners::all(3.0));
+    theme.looks.normal.chrome = chrome(base);
+    theme.looks.hovered.chrome = chrome(brighten(base, 0.15));
+    theme.looks.active.chrome =
+        chrome(brighten(base, 0.3)).with_border(Stroke::new(RgbaF32::WHITE, 1.0));
+    theme.looks.disabled.chrome = chrome(base);
 }
 
 const fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {

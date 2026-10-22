@@ -7,7 +7,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::theme::slider::SliderTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -118,9 +118,9 @@ impl<'a> Slider<'a> {
         let fraction = range.fraction_of(self.value.read().widen());
 
         let pill = Corners::all(track_h * 0.5);
-        let fill_bg = Bg::rounded(fill_color, pill);
-        let track_bg = Bg::rounded(track_color, pill);
-        let knob_bg = Bg::rounded(knob_color, Corners::all(knob * 0.5));
+        let fill_chrome = Chrome::rounded(fill_color, pill);
+        let track_chrome = Chrome::rounded(track_color, pill);
+        let knob_chrome = Chrome::rounded(knob_color, Corners::all(knob * 0.5));
 
         self.widget
             .configure()
@@ -133,16 +133,16 @@ impl<'a> Slider<'a> {
             Widget::leaf()
                 .id(id.with("fill"))
                 .size((filled, track))
-                .record(ui, Some(&fill_bg), |_| {});
+                .record(ui, Some(&fill_chrome), |_| {});
             let knob = Sizing::fixed(knob);
             Widget::leaf()
                 .id(id.with("knob"))
                 .size((knob, knob))
-                .record(ui, Some(&knob_bg), |_| {});
+                .record(ui, Some(&knob_chrome), |_| {});
             Widget::leaf()
                 .id(id.with("track"))
                 .size((remainder, track))
-                .record(ui, Some(&track_bg), |_| {});
+                .record(ui, Some(&track_chrome), |_| {});
         });
         ValueResponse {
             response: Response::new(id, ui, response),

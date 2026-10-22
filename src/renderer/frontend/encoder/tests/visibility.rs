@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::ui::Ui;
@@ -36,7 +36,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("V"))
                             .pos((0.0, 0.0))
                             .size(30.0)
-                            .bg(Bg::fill(v_color))
+                            .chrome(Chrome::fill(v_color))
                             .sense(Sense::CLICK)
                             .show(ui)
                             .left
@@ -45,7 +45,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("D"))
                             .pos((40.0, 0.0))
                             .size(30.0)
-                            .bg(Bg::fill(d_color))
+                            .chrome(Chrome::fill(d_color))
                             .sense(Sense::CLICK)
                             .disabled(true)
                             .show(ui)
@@ -55,7 +55,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .id(WidgetId::from_hash("H"))
                             .pos((80.0, 0.0))
                             .size(30.0)
-                            .bg(Bg::fill(h_color))
+                            .chrome(Chrome::fill(h_color))
                             .sense(Sense::CLICK)
                             .hidden()
                             .show(ui)
@@ -125,7 +125,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                 Block::new()
                     .auto_id()
                     .size(Sizing::fixed(40.0))
-                    .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui)
                     .node()
             })

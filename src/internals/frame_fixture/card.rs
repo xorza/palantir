@@ -7,7 +7,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 
-/// Titled card: caption over its body on [`tokens::card_bg`].
+/// Titled card: caption over its body on [`tokens::card_chrome`].
 #[derive(Debug)]
 pub(super) struct Card {
     id: &'static str,
@@ -38,7 +38,7 @@ impl Card {
             .gap(8.0)
             .padding(10.0)
             .size((Sizing::FILL, height))
-            .bg(tokens::card_bg())
+            .chrome(tokens::card_chrome())
             .show(ui, |ui| {
                 Text::new(title)
                     .id_salt((id, "section"))

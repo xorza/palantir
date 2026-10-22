@@ -2,16 +2,16 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::palette::Palette;
 
-/// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.bg(...)` / `.backdrop(...)`) win; these defaults fill in.
+/// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.backdrop(...)`) win; these defaults fill in.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ModalTheme {
     /// Dialog panel chrome.
-    pub panel: Bg,
+    pub panel: Chrome,
     /// Dimming scrim; straight-alpha linear.
     pub backdrop: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
@@ -25,7 +25,7 @@ pub struct ModalTheme {
 impl ModalTheme {
     /// A raised panel over a half-opaque black scrim.
     pub fn from_palette(p: &Palette) -> Self {
-        let panel = Bg::rounded(p.element_mid, Corners::all(12.0))
+        let panel = Chrome::rounded(p.element_mid, Corners::all(12.0))
             .with_border(Stroke::new(p.border_mid(), 1.0));
         Self {
             panel,

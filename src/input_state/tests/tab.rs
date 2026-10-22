@@ -230,7 +230,7 @@ fn a_scope_that_takes_focus_keeps_tab() {
 #[test]
 fn the_focus_ring_shows_only_for_keyboard_focus() {
     use crate::input::sense::Sense;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::stroke::Stroke;
     use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -243,7 +243,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
                 .padding(3.0)
                 .sense(Sense::CLICK)
                 .focusable(true)
-                .bg(Bg::rounded(RgbaF32::WHITE, 4.0.into()))
+                .chrome(Chrome::rounded(RgbaF32::WHITE, 4.0.into()))
                 .show(ui);
             Block::new()
                 .id(id("b"))

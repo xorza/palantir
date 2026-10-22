@@ -89,7 +89,7 @@ impl SpecimenCell {
                 Panel::canvas()
                     .id_salt(("spec-canvas", id))
                     .size((Sizing::FILL, Sizing::fixed(96.0)))
-                    .bg(tokens::well_bg())
+                    .chrome(tokens::well_chrome())
                     .show(ui, body);
             });
     }
@@ -227,7 +227,7 @@ fn add_solids(ui: &mut Ui) {
     gradient_mesh(ui);
 }
 
-/// A `Shape::shadow` under the rect casting it, the shape-level peer of the chrome shadow on [`tokens::card_bg`].
+/// A `Shape::shadow` under the rect casting it, the shape-level peer of the chrome shadow on [`tokens::card_chrome`].
 fn add_shadow(ui: &mut Ui) {
     let plate = Rect::new(34.0, 20.0, 100.0, 52.0);
     ui.add_shape(

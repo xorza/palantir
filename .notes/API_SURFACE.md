@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 no features and one build per public feature; a tag names the builds an item needs or
 loses. `internals` is the crate's own test surface and is left out.
 
-`prelude` re-exports these root items: `Align`, `App`, `Axis`, `Bg`, `Block`, `Brush`, `Button`, `Checkbox`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
+`prelude` re-exports these root items: `Align`, `App`, `Axis`, `Block`, `Brush`, `Button`, `Checkbox`, `Chrome`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
 ```text
 Align
@@ -52,7 +52,7 @@ AnchorAlign
 
 AnimatedLook
     struct AnimatedLook: Animatable, Clone, Debug, Default, PartialEq
-        pub bg: Bg
+        pub chrome: Chrome
         pub text: TextStyle
 
 AnimationSpec
@@ -97,25 +97,12 @@ BatchKind
         pub const ALL: [Self; 10]
         pub const fn label(self) -> &'static str
 
-Bg
-    struct Bg: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
-        pub fill: Brush
-        pub border: Stroke
-        pub corners: Corners
-        pub shadow: Shadow
-        pub const NONE: Self
-        pub const fn is_noop(&self) -> bool
-        pub fn fill<I: Into<Brush>>(brush: I) -> Self
-        pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self
-        pub const fn with_border(self, border: Stroke) -> Self
-        pub const fn with_shadow(self, shadow: Shadow) -> Self
-
 Block
     struct Block: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 Brush
     enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<GradientBuilder<ConicGeometry>>, From<GradientBuilder<LinearGeometry>>, From<GradientBuilder<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
@@ -172,6 +159,19 @@ Checkbox
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+
+Chrome
+    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub fill: Brush
+        pub border: Stroke
+        pub corners: Corners
+        pub shadow: Shadow
+        pub const NONE: Self
+        pub const fn is_noop(&self) -> bool
+        pub fn fill<I: Into<Brush>>(brush: I) -> Self
+        pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self
+        pub const fn with_border(self, border: Stroke) -> Self
+        pub const fn with_shadow(self, shadow: Shadow) -> Self
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -270,7 +270,7 @@ ColorPickerTheme
         pub border: RgbaF32
         pub border_width: f32
         pub gap: f32
-        pub popup: Bg
+        pub popup: Chrome
         pub popup_padding: Spacing
         pub value: DragValueTheme
         pub hex: TextEditTheme
@@ -373,12 +373,12 @@ ContextMenu
         pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ContextMenuTheme
     struct ContextMenuTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
-        pub panel: Bg
+        pub panel: Chrome
         pub padding: Spacing
         pub min_width: f32
         pub gap: f32
@@ -871,8 +871,8 @@ Grid
         impl<Rows, Cols> Grid<Rows, Cols>
             pub fn rows<NewRows: AsRef<[Track]>>(self, rows: NewRows) -> Grid<NewRows, Cols>
             pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols>
-            pub const fn bg(self, bg: Bg) -> Self
-            pub const fn default_bg(self, bg: Bg) -> Self
+            pub const fn chrome(self, chrome: Chrome) -> Self
+            pub const fn default_chrome(self, chrome: Chrome) -> Self
             pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
         impl<Rows, Cols> Configure for Grid<Rows, Cols>
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
@@ -1204,12 +1204,12 @@ Modal
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn backdrop(self, c: RgbaF32) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ModalTheme
     struct ModalTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
-        pub panel: Bg
+        pub panel: Chrome
         pub backdrop: RgbaF32
         pub padding: Spacing
         pub min_width: f32
@@ -1291,7 +1291,7 @@ Palette
         pub const fn border_soft(&self) -> RgbaF32
         pub const fn border_mid(&self) -> RgbaF32
         pub const fn border_strong(&self) -> RgbaF32
-        pub fn popup_panel(&self) -> Bg
+        pub fn popup_panel(&self) -> Chrome
 
 Panel
     struct Panel: Configure, Debug, ThemeDefaults (blanket)
@@ -1303,8 +1303,8 @@ Panel
         pub fn wrap_vstack() -> Self
         pub fn zstack() -> Self
         pub fn canvas() -> Self
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 PipelineStats
     struct PipelineStats: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1372,14 +1372,14 @@ Popup
         pub const fn click_outside(self, m: ClickOutside) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 PopupTrigger
     struct PopupTrigger: Configure, Debug, ThemeDefaults (blanket)
         pub fn on(snapshot: &ResponseSnapshot) -> Self
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
         pub fn open(ui: &mut Ui, for_id: WidgetId)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
@@ -1527,8 +1527,8 @@ Scroll
         pub fn zoomable(self) -> Self
         pub fn zoom_config(self, config: ZoomConfig) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ScrollDelta
     struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
@@ -1933,7 +1933,7 @@ TabsTheme
         pub accent: RgbaF32
         pub accent_idle: RgbaF32
         pub accent_thickness: f32
-        pub strip: Bg
+        pub strip: Chrome
         pub strip_padding: Spacing
         pub gap: f32
         pub rule: RgbaF32
@@ -2099,7 +2099,7 @@ Theme
         pub focus_ring: FocusRingTheme
         pub text: TextStyle
         pub window_clear: RgbaF32
-        pub panel_bg: Option<Bg>
+        pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
         pub fn from_palette(p: &Palette) -> Self
@@ -2127,8 +2127,8 @@ Tooltip
         pub const fn delay(self, delay: Duration) -> Self
         pub const fn when_disabled(self, yes: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
-        pub const fn bg(self, bg: Bg) -> Self
-        pub const fn default_bg(self, bg: Bg) -> Self
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 TooltipResponse
     struct TooltipResponse: Clone, Copy, Debug
@@ -2136,7 +2136,7 @@ TooltipResponse
 
 TooltipTheme
     struct TooltipTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
-        pub panel: Bg
+        pub panel: Chrome
         pub text: TextStyleOverrides
         pub padding: Spacing
         pub max_size: Size
@@ -2300,7 +2300,7 @@ WidgetId
 
 WidgetLook
     struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
-        pub bg: Bg
+        pub chrome: Chrome
         pub text: TextStyleOverrides
         pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook
 
@@ -2814,8 +2814,8 @@ widget::Widget
         pub fn response(&mut self, ui: &mut Ui) -> ResponseState
         pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook
         pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool
-        pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Bg>, body: impl FnOnce(&mut Ui) -> R) -> R
-        pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Bg>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>
+        pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> R
+        pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>
         pub const fn authored_size(&self) -> Option<SizeSpec>
         pub const fn authored_min_size(&self) -> Option<Size>
         pub const fn authored_max_size(&self) -> Option<Size>

@@ -18,11 +18,11 @@ use crate::primitives::geometry::mesh::MeshVertex;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -143,7 +143,7 @@ const PINS: &[Pin] = &[
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    pin::<Bg>("primitives::Bg", 124, 4),
+    pin::<Chrome>("primitives::Chrome", 124, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),

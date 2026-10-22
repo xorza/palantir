@@ -9,7 +9,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
@@ -41,7 +41,7 @@ impl BarAxis {
     fn record(&self, ui: &mut Ui, theme: &ScrollbarTheme) {
         let radius = Corners::all(theme.thickness * 0.5);
         let track = Widget::leaf().id(self.track_id).sense(Sense::CLICK);
-        let track_chrome = (!theme.track.is_noop()).then(|| Bg::rounded(theme.track, radius));
+        let track_chrome = (!theme.track.is_noop()).then(|| Chrome::rounded(theme.track, radius));
         track.record(ui, track_chrome.as_ref(), |_| {});
 
         let fill = if self.thumb.left.drag.delta().is_some() || self.thumb.pressed() {
@@ -52,7 +52,7 @@ impl BarAxis {
             theme.thumb
         };
         let thumb = Widget::leaf().id(self.thumb_id).sense(Sense::DRAG);
-        let chrome = Bg::rounded(fill, radius);
+        let chrome = Chrome::rounded(fill, radius);
         thumb.record(ui, Some(&chrome), |_| {});
     }
 }

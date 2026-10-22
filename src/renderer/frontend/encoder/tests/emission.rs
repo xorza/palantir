@@ -7,9 +7,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
@@ -64,7 +64,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
 }
 
 /// Baseline counts: an empty tree emits no draws, a filled Frame one rect quad; invisible Frames, degenerate
-/// Backgrounds and clip-only Surfaces emit none.
+/// Chrome and clip-only Surfaces emit none.
 #[test]
 fn baseline_draw_rect_count_cases() {
     #[derive(Debug)]
@@ -99,7 +99,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
@@ -112,7 +112,7 @@ fn baseline_draw_rect_count_cases() {
                     Block::new()
                         .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
-                        .bg(Bg {
+                        .chrome(Chrome {
                             fill: RgbaF32::TRANSPARENT.into(),
                             border: Stroke::NONE,
                             ..Default::default()
@@ -133,7 +133,7 @@ fn baseline_draw_rect_count_cases() {
     }
 }
 
-/// The encoder iterates all shape variants in the background phase, not just `Text`.
+/// The encoder emits every shape variant, not just `Text`.
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::paint::lut_row::LutRow;
@@ -350,7 +350,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
     ];
     for case in &cases {
         let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 6.0);
-        let bg = Bg {
+        let chrome = Chrome {
             fill: RgbaF32::WHITE.into(),
             border: case.border,
             corners: case.corners,
@@ -362,7 +362,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
                 Block::new()
                     .id(WidgetId::from_hash("chrome"))
                     .size((100.0, 60.0))
-                    .bg(bg.clone())
+                    .chrome(chrome.clone())
                     .show(ui);
             });
         });

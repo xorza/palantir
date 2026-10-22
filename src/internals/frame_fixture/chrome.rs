@@ -11,11 +11,11 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -43,7 +43,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
             Block::new()
                 .id_salt("brand")
                 .size((Sizing::fixed(22.0), Sizing::fixed(22.0)))
-                .bg(Bg {
+                .chrome(Chrome {
                     fill: Brush::Conic(ConicGradient::new(
                         glam::Vec2::splat(0.5),
                         0.0,
@@ -95,7 +95,7 @@ pub(super) fn sidebar(ui: &mut Ui, items: usize) {
         .gap(6.0)
         .padding(8.0)
         .size((Sizing::fixed(216.0), Sizing::FILL))
-        .bg(tokens::card_bg())
+        .chrome(tokens::card_chrome())
         .clip_rounded()
         .show(ui, |ui| {
             Text::new("WORKSPACE")
@@ -152,7 +152,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
             Block::new()
                 .id_salt("footer-bg")
                 .size((Sizing::FILL, Sizing::FILL))
-                .bg(Bg {
+                .chrome(Chrome {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::hex(0x1a1a2e),
@@ -200,7 +200,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
     );
     Popup::new(Anchor::above(anchor))
         .click_outside(ClickOutside::PassThrough)
-        .bg(Bg {
+        .chrome(Chrome {
             fill: tokens::CARD_BG.into(),
             border: Stroke::new(tokens::BORDER, 1.0),
             corners: Corners::all(6.0),

@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -35,7 +35,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .bg(Bg::fill(fill))
+                            .chrome(Chrome::fill(fill))
                             .show(ui)
                             .node(),
                     );
@@ -82,7 +82,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -140,7 +140,7 @@ fn transform_animation_keeps_far_positions_split() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -344,7 +344,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                                 Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
-                                    .bg(Bg::fill(BLUE))
+                                    .chrome(Chrome::fill(BLUE))
                                     .show(ui);
                             }
                         });
@@ -408,12 +408,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                             Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
-                                .bg(Bg::fill(fill))
+                                .chrome(Chrome::fill(fill))
                                 .show(ui);
                             Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
-                                .bg(Bg::fill(BLUE))
+                                .chrome(Chrome::fill(BLUE))
                                 .show(ui);
                         });
                 });

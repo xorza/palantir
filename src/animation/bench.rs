@@ -8,7 +8,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
@@ -44,7 +44,7 @@ impl Motion {
 
 fn look(bg: RgbaF32, text: RgbaF32) -> AnimatedLook {
     AnimatedLook {
-        bg: Bg::fill(bg),
+        chrome: Chrome::fill(bg),
         text: TextStyle::default().with_color(text),
     }
 }

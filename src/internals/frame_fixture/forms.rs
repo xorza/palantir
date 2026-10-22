@@ -9,7 +9,7 @@ use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -103,7 +103,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                 Block::new()
                     .id_salt("s-rule")
                     .size((Sizing::FILL, Sizing::fixed(1.0)))
-                    .bg(Bg::fill(tokens::BORDER))
+                    .chrome(Chrome::fill(tokens::BORDER))
                     .grid_cell(GridCell::at(1, 0).with_span(1, 2))
                     .show(ui);
 
@@ -189,7 +189,7 @@ pub(super) fn properties_card(state: &FrameFixture, ui: &mut Ui, rows: usize) {
                         Block::new()
                             .id_salt(("pband", row))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .bg(Bg {
+                            .chrome(Chrome {
                                 fill: RgbaF32::hex(0x1f232d).into(),
                                 corners: Corners::all(4.0),
                                 ..Default::default()

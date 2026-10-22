@@ -3,7 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::theme::progress_bar::ProgressBarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -52,8 +52,8 @@ impl<'a> ProgressBar<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::FILL, Sizing::fixed(thickness)));
-        let track = Bg::rounded(theme.track, radius);
-        let fill_bg = Bg::rounded(theme.fill, radius);
+        let track = Chrome::rounded(theme.track, radius);
+        let fill_chrome = Chrome::rounded(theme.fill, radius);
 
         let id = widget.resolve(ui);
         widget
@@ -61,7 +61,7 @@ impl<'a> ProgressBar<'a> {
                 Widget::leaf()
                     .id(id.with("fill"))
                     .size((fill, Sizing::FILL))
-                    .record(ui, Some(&fill_bg), |_| {});
+                    .record(ui, Some(&fill_chrome), |_| {});
                 // Remainder spacer: its `Fill` weight pushes the fill to the right fraction.
                 Widget::leaf()
                     .id(id.with("rest"))

@@ -20,7 +20,7 @@ use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_vari
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::text::wrap::TextWrap;
@@ -44,10 +44,10 @@ const GRID_ROWS: usize = 128;
 /// real cosmic-text shaping, an extra zstack per row, and group strokes, so
 /// measure is shaping-bound rather than mono-fallback.
 fn build_list(ui: &mut Ui) {
-    let group_bg = Bg::rounded(RgbaF32::hex(0x1a1a1a), Corners::all(12.0))
+    let group_chrome = Chrome::rounded(RgbaF32::hex(0x1a1a1a), Corners::all(12.0))
         .with_border(Stroke::new(RgbaF32::hex(0x4d5663), 1.5));
-    let row_bg = Bg::rounded(RgbaF32::hex(0x252525), Corners::all(6.0));
-    let avatar_bg = Bg::rounded(RgbaF32::hex(0x3a4a5c), Corners::all(10.0));
+    let row_bg = Chrome::rounded(RgbaF32::hex(0x252525), Corners::all(6.0));
+    let avatar_chrome = Chrome::rounded(RgbaF32::hex(0x3a4a5c), Corners::all(10.0));
     Panel::vstack()
         .id_salt("heavy-root")
         .gap(6.0)
@@ -60,7 +60,7 @@ fn build_list(ui: &mut Ui) {
                     .gap(4.0)
                     .padding(8.0)
                     .size((Sizing::FILL, Sizing::HUG))
-                    .bg(group_bg.clone())
+                    .chrome(group_chrome.clone())
                     .clip_rounded()
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
@@ -73,7 +73,7 @@ fn build_list(ui: &mut Ui) {
                                 .gap(8.0)
                                 .padding(6.0)
                                 .size((Sizing::FILL, Sizing::HUG))
-                                .bg(row_bg.clone())
+                                .chrome(row_bg.clone())
                                 .clip_rounded()
                                 .show(ui, |ui| {
                                     // Adds a nesting level.
@@ -84,7 +84,7 @@ fn build_list(ui: &mut Ui) {
                                             Block::new()
                                                 .id_salt(("h-avatar", g, r))
                                                 .size((Sizing::FILL, Sizing::FILL))
-                                                .bg(avatar_bg.clone())
+                                                .chrome(avatar_chrome.clone())
                                                 .show(ui);
                                         });
                                     Text::new("row name with longer text content")

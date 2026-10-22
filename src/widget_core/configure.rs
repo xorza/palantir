@@ -148,8 +148,8 @@ pub trait Configure: Sized {
     /// on it); layout runs untransformed. Scale anchors at the node's own origin; see
     /// [`TranslateScale::anchored_at`].
     ///
-    /// Widget chrome ([`Panel::bg`](crate::Panel::bg) and siblings)
-    /// paints in the parent's space, so the background frames the viewport; to pan it
+    /// Widget chrome ([`Panel::chrome`](crate::Panel::chrome) and siblings)
+    /// paints in the parent's space, so the chrome frames the viewport; to pan it
     /// with the body, nest a container with the chrome on the child.
     #[inline]
     #[must_use]
@@ -372,7 +372,7 @@ pub trait Configure: Sized {
         self
     }
 
-    /// Rounded-corner stencil clip; the radius comes from the widget chrome's background (zero
+    /// Rounded-corner stencil clip; the radius comes from the widget's chrome (zero
     /// without chrome).
     #[inline]
     #[must_use]

@@ -48,7 +48,7 @@ impl Shapes {
     /// don't survive it. [`Lower`]'s `has_nan` is `O(1)`, so it stays in release,
     /// where NaN means no-op.
     ///
-    /// Chrome is gated by `lower::bg`, which sanitizes rather than drops.
+    /// Chrome is gated by `lower::chrome`, which sanitizes rather than drops.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;

@@ -1,9 +1,9 @@
-//! Which background a popup body paints.
+//! Which chrome a popup body paints.
 
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -15,7 +15,7 @@ use crate::widgets::popup::tests::support::{ANCHOR, SURFACE};
 /// A builder step a case applies.
 type Step = fn(Popup) -> Popup;
 
-/// The theme's panel background is the popup's last resort: it paints when the caller set none, and a default beats it. Default-versus-explicit resolution is checked for every chrome widget in `widgets::tests`.
+/// The theme's panel chrome is the popup's last resort: it paints when the caller set none, and a default beats it. Default-versus-explicit resolution is checked for every chrome widget in `widgets::tests`.
 #[test]
 fn the_theme_panel_is_the_last_resort() {
     let theme_fill = RgbaF32::srgb(0.1, 0.2, 0.3);
@@ -25,13 +25,13 @@ fn the_theme_panel_is_the_last_resort() {
         ("neither", |p| p, theme_fill),
         (
             "default only",
-            |p| p.default_bg(Bg::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
+            |p| p.default_chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
             default_fill,
         ),
     ];
     for (label, build, want) in cases {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().panel_bg = Some(Bg::fill(theme_fill));
+        h.ui.theme_mut().panel_chrome = Some(Chrome::fill(theme_fill));
         h.frame(|ui| {
             build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });

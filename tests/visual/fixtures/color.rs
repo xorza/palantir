@@ -9,7 +9,7 @@
 
 use glam::{UVec2, Vec2};
 use palantir::widget::{IconFit, Mesh, Shape};
-use palantir::{Bg, Block, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
+use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
 
 use crate::fixtures;
 use crate::fixtures::icon;
@@ -39,7 +39,7 @@ fn ramp(ui: &mut Ui) {
                 .id_salt(("block", v))
                 .pos(Vec2::new(x, BLOCK_Y))
                 .size((Sizing::fixed(COL), Sizing::fixed(10.0)))
-                .bg(Bg::fill(gray(v)))
+                .chrome(Chrome::fill(gray(v)))
                 .show(ui);
             Text::new("\u{2588}")
                 .id_salt(("text", v))

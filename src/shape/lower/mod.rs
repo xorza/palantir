@@ -1,6 +1,6 @@
-//! The lowering every shape and chrome share: a [`Brush`] or curve ramp interned into the window's [`RecordStore`] gradient pool, and [`Bg`] chrome lowered to its [`ChromeRow`]. Each shape lowers itself in its [`Lower`] impl and calls in here for what it interns.
+//! The lowering every shape and chrome share: a [`Brush`] or curve ramp interned into the window's [`RecordStore`] gradient pool, and [`Chrome`] chrome lowered to its [`ChromeRow`]. Each shape lowers itself in its [`Lower`] impl and calls in here for what it interns.
 //!
-//! Entry points: [`Shapes::add`](crate::shape::shapes::Shapes::add) for shapes; `Tree::open_node` calls [`bg`].
+//! Entry points: [`Shapes::add`](crate::shape::shapes::Shapes::add) for shapes; `Tree::open_node` calls [`chrome`].
 //!
 //! [`Lower`]: crate::shape::Lower
 
@@ -10,10 +10,10 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::chrome_row::ChromeRow;
@@ -81,38 +81,38 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
     CurveRamp::Interned { id, hash }
 }
 
-/// Lower a `Bg` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `bg` by reference: [`Bg`] is deliberately not `Copy`.
-pub(crate) fn bg(store: &mut RecordStore, bg: &Bg, ring: Stroke) -> ChromeRow {
+/// Lower a `Chrome` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `chrome` by reference: [`Chrome`] is deliberately not `Copy`.
+pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> ChromeRow {
     // Chrome's NaN gate, the second of two (the shape path's is `Shapes::add`), before lowering because `fill` interns its gradient.
     //
     // It sanitizes where the shape path drops: `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op, so the stencil mask can read `corners`, and dropping it would leave the mask reading the NaN. Each field falls back to what its NaN meant; sanitizing before the hash keeps `ChromeRow.hash` honest.
     debug_assert!(
-        !bg.has_nan(),
-        "NaN in a Bg — it degrades to no rounding and no paint: {bg:?}",
+        !chrome.has_nan(),
+        "NaN in a Chrome — it degrades to no rounding and no paint: {chrome:?}",
     );
-    let fill_brush = if bg.fill.has_nan() || bg.is_noop() {
+    let fill_brush = if chrome.fill.has_nan() || chrome.is_noop() {
         &Brush::TRANSPARENT
     } else {
-        &bg.fill
+        &chrome.fill
     };
     let fill = brush(store, fill_brush);
     let border = ShapeStroke {
-        width: bg.border_inset(),
-        ..ShapeStroke::from(if bg.border.has_nan() {
+        width: chrome.border_inset(),
+        ..ShapeStroke::from(if chrome.border.has_nan() {
             Stroke::NONE
         } else {
-            bg.border
+            chrome.border
         })
     };
-    let corners = if bg.corners.has_nan() {
+    let corners = if chrome.corners.has_nan() {
         Corners::ZERO
     } else {
-        bg.corners
+        chrome.corners
     };
-    let shadow: LoweredShadow = if bg.shadow.has_nan() {
+    let shadow: LoweredShadow = if chrome.shadow.has_nan() {
         Shadow::NONE.into()
     } else {
-        bg.shadow.into()
+        chrome.shadow.into()
     };
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();

@@ -12,17 +12,17 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
 
-/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Bg.radius` is snap).
+/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Chrome.radius` is snap).
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
-    let mut map = AnimationMapTyped::<Bg>::default();
+    let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("snap-carry");
-    let start = Bg {
+    let start = Chrome {
         fill: RgbaF32::srgb(0.0, 0.0, 0.0).into(),
         border: Stroke::NONE,
         corners: Corners::all(2.0),
@@ -35,7 +35,7 @@ fn spring_snap_fields_carry_target_immediately() {
     );
 
     // Retarget fill (animated) and radius (snap): from rest the change's frame steps nothing and shows the start.
-    let target = Bg {
+    let target = Chrome {
         fill: RgbaF32::srgb(1.0, 0.0, 0.0).into(),
         border: Stroke::NONE,
         corners: Corners::all(12.0),
@@ -68,23 +68,23 @@ fn spring_snap_fields_carry_target_immediately() {
 }
 
 #[test]
-fn gradient_snap_clears_only_its_background_velocity() {
+fn gradient_snap_clears_only_its_chrome_velocity() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
-    let mut map = AnimationMapTyped::<Bg>::default();
+    let mut map = AnimationMapTyped::<Chrome>::default();
     let id = support::widget_id("gradient-background-velocity");
-    let start = Bg {
+    let start = Chrome {
         fill: Brush::Solid(RgbaF32::BLACK),
         border: Stroke::new(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
     };
-    let moving = Bg {
+    let moving = Chrome {
         fill: Brush::Solid(RgbaF32::WHITE),
         border: Stroke::new(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
@@ -115,7 +115,7 @@ fn gradient_snap_clears_only_its_background_velocity() {
         RgbaF32::BLACK,
         RgbaF32::WHITE,
     ));
-    let target = Bg {
+    let target = Chrome {
         fill: gradient.clone(),
         border: Stroke::new(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
@@ -139,20 +139,20 @@ fn gradient_snap_clears_only_its_background_velocity() {
 
 #[test]
 fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
-    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
 
     let AnimationUi { mut h, id } = support::setup_animation_ui("gradient-look-settle");
     let start = AnimatedLook {
-        bg: Bg::fill(RgbaF32::BLACK),
+        chrome: Chrome::fill(RgbaF32::BLACK),
         text: TextStyle::default().with_color(RgbaF32::BLACK),
     };
     let gradient = Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE));
     let target = AnimatedLook {
-        bg: Bg::fill(gradient.clone()),
+        chrome: Chrome::fill(gradient.clone()),
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
@@ -175,7 +175,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let tick = Duration::from_millis(16);
     let retarget = frame(h.advance(tick), &target);
-    assert_eq!(retarget.a().bg.fill, gradient);
+    assert_eq!(retarget.a().chrome.fill, gradient);
     assert_ne!(retarget.a().text.color, target.text.color);
     assert!(retarget.report().repaint_requested);
 
@@ -185,7 +185,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
             AnimationRequest::new(id, SLOT, target.clone()),
             Some(AnimationSpec::SPRING),
         );
-        assert_eq!(cur.bg.fill, gradient);
+        assert_eq!(cur.chrome.fill, gradient);
         Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))
             .show(ui);

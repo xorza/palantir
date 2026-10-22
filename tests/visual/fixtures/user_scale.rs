@@ -2,7 +2,7 @@
 
 use glam::UVec2;
 use palantir::golden::image::{Rgba, RgbaImage};
-use palantir::{Bg, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
+use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::goldens;
 use crate::harness::Harness;
@@ -18,7 +18,7 @@ fn block(ui: &mut Ui) {
             Block::new()
                 .id_salt("block")
                 .size((Sizing::fixed(40.0), Sizing::fixed(24.0)))
-                .bg(Bg::fill(RgbaF32::WHITE))
+                .chrome(Chrome::fill(RgbaF32::WHITE))
                 .show(ui);
         });
 }

@@ -4,7 +4,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -12,7 +12,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::UVec2;
 
-/// A clip-only Surface (no painted background) still emits a PushClip/PopClip pair so children are clipped, with zero rect quads of its own.
+/// A clip-only Surface (no painted chrome) still emits a PushClip/PopClip pair so children are clipped, with zero rect quads of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -41,7 +41,7 @@ fn clip_emits_balanced_push_pop() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
-                        .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                 });
         });
@@ -50,7 +50,7 @@ fn clip_emits_balanced_push_pop() {
 }
 
 #[test]
-fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
+fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
     use crate::primitives::geometry::corners::Corners;
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
@@ -58,7 +58,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             Panel::zstack()
                 .id(WidgetId::from_hash("rounded"))
                 .size(80.0)
-                .bg(Bg {
+                .chrome(Chrome {
                     fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     border: Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),
@@ -84,7 +84,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 }
 
 #[test]
-fn clip_rounded_falls_back_to_scissor_without_background() {
+fn clip_rounded_falls_back_to_scissor_without_chrome() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

@@ -9,9 +9,9 @@ use crate::common::idx16::Idx16;
 /// [`Idx16`] caps each table at [`Idx16::LAST`]` + 1` rows **per layer, per frame**; a row past that
 /// panics in release rather than wrapping. 32-bit indices would double this per-node SoA column.
 ///
-/// A large scene fills `chrome` first (any node with a paintable [`Bg`] or rounded clip).
+/// A large scene fills `chrome` first (any node with a paintable [`Chrome`] or rounded clip).
 ///
-/// [`Bg`]: crate::Bg
+/// [`Chrome`]: crate::Chrome
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct ExtrasIdx {

@@ -753,7 +753,7 @@ mod cutout_census_tests {
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
@@ -806,7 +806,7 @@ mod cutout_census_tests {
                         .id_salt("tick")
                         .pos((500.0, 150.0))
                         .size(10.0)
-                        .bg(Bg::fill(fill))
+                        .chrome(Chrome::fill(fill))
                         .show(ui);
                 });
         });

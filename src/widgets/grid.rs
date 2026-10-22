@@ -1,7 +1,7 @@
 //! The WPF-style grid: explicit row and column tracks, children placed into named cells.
 
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -16,7 +16,7 @@ pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
     widget: Widget,
     rows: Rows,
     cols: Cols,
-    chrome: Option<Bg>,
+    chrome: Option<Chrome>,
 }
 
 impl Grid {
@@ -54,28 +54,28 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         }
     }
 
-    /// Paint chrome; `None` takes `ui.theme().panel_bg`, [`Bg::NONE`] suppresses that.
+    /// Paint chrome; `None` takes `ui.theme().panel_chrome`, [`Chrome::NONE`] suppresses that.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
+        self.chrome = Some(chrome);
         self
     }
 
-    /// Paint `bg` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::bg`] wins either order.
+    /// Paint `chrome` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::chrome`] wins either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        bg.validate();
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(chrome);
         }
         self
     }
@@ -92,7 +92,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         // See `Panel::show` for why the handle is what gets cloned.
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        let chrome = self.chrome.as_ref().or(theme.panel_bg.as_ref());
+        let chrome = self.chrome.as_ref().or(theme.panel_chrome.as_ref());
         widget.show(ui, chrome, body)
     }
 }

@@ -58,7 +58,7 @@ pub(crate) struct RenderBuffer {
     /// Every `GpuView` recorded this frame, painted or not: the backend's retention roster. An undamaged view leaves [`Self::frame_targets`] but stays here, keeping its texture alive.
     pub(crate) live_targets: Vec<TextureId>,
     pub(crate) icons: Vec<IconDrawRow>,
-    /// Native GPU stroke instances: a `[t0, t1]` sub-range of a cubic/arc, a polyline segment, or joint chrome. One indexed instanced draw per batch.
+    /// Native GPU stroke instances: a `[t0, t1]` sub-range of a cubic/arc, a polyline segment, or a join billboard. One indexed instanced draw per batch.
     pub(crate) curves: Vec<CurveInstance>,
     /// Flat pool of rounded-clip mask chains (outer→inner); `DrawGroup.rounded_clips` and `TextBatch.rounded_clips` are spans into it. Value-equal chains dedup at mask staging.
     pub(crate) rounded_clips: Vec<RoundedClip>,

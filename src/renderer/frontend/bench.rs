@@ -3,9 +3,9 @@
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::internals::ui_harness::UiHarness;
 use crate::internals::ui_harness::frontend_harness::FrontendHarness;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -33,7 +33,7 @@ impl FillCase {
         }
     }
 
-    fn bg(self) -> Bg {
+    fn chrome(self) -> Chrome {
         let fill = match self {
             Self::Solid => Brush::Solid(RgbaF32::srgb(0.12, 0.24, 0.48)),
             Self::Gradient => Brush::Linear(LinearGradient::two_stop(
@@ -42,7 +42,7 @@ impl FillCase {
                 RgbaF32::hex(0x4c5cdb),
             )),
         };
-        Bg::fill(fill)
+        Chrome::fill(fill)
     }
 }
 
@@ -61,14 +61,14 @@ impl ChromeBench {
     }
 
     fn frame(&mut self, fill_case: FillCase) -> usize {
-        let bg = fill_case.bg();
+        let chrome = fill_case.chrome();
         self.frontend.harness.at(self.start.elapsed());
         let report = self.frontend.frame(|ui| {
             for row in 0..ROWS {
                 Block::new()
                     .id_salt(row)
                     .size((8.0, 8.0))
-                    .bg(bg.clone())
+                    .chrome(chrome.clone())
                     .show(ui);
             }
         });

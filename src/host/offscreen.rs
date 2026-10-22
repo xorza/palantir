@@ -242,7 +242,7 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::PresentPath;
     use crate::internals::record_app::RecordApp;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
@@ -260,7 +260,7 @@ mod tests {
             Block::new()
                 .id_salt("tile")
                 .size(10.0)
-                .bg(Bg::fill(RgbaF32::WHITE))
+                .chrome(Chrome::fill(RgbaF32::WHITE))
                 .show(ui);
         });
 

@@ -13,8 +13,8 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_chrome;
-use crate::widgets::toggle_chrome::ToggleChrome;
+use crate::widgets::toggle_row;
+use crate::widgets::toggle_row::ToggleRow;
 
 /// One option in a radio group: selected when `*cur == value`, and clicking assigns `value` into
 /// `cur`. `T: PartialEq` is the only bound. Layout matches [`crate::Checkbox`] (pip, label); the pip
@@ -34,7 +34,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(cur: &'a mut T, value: T) -> Self {
         Self {
-            widget: toggle_chrome::row(),
+            widget: toggle_row::row(),
             cur,
             value,
             label: TextInput::default(),
@@ -58,7 +58,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     /// `changed` is not. A pick commits at once, so `committed == changed`.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
-        let activated = toggle_chrome::activated(ui, &mut self.widget, &response);
+        let activated = toggle_row::activated(ui, &mut self.widget, &response);
 
         // Read ahead of the latch below, which moves `self.value`.
         let theme = ui.theme();
@@ -76,14 +76,14 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             selected = true;
         }
 
-        let chrome = ToggleChrome {
+        let chrome = ToggleRow {
             row: self.widget,
             response,
             label: self.label,
             plan: slot.plan(&response, CheckState::from(selected), theme.text),
             gap: slot.gap,
             boxed: Widget::leaf().size((Sizing::fixed(pip_size), Sizing::fixed(pip_size))),
-            // Forces the pip to a circle whatever `radio.checked.normal.bg.radius` a theme sets.
+            // Forces the pip to a circle whatever `radio.checked.normal.chrome.radius` a theme sets.
             pill: Some(pip_size * 0.5),
         };
         let response = chrome.record_row(ui, |ui, _| {

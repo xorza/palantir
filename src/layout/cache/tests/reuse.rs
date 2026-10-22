@@ -10,7 +10,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -86,7 +86,7 @@ impl WrappedLeaf {
                 Block::new()
                     .id(WidgetId::from_hash((self.id, "leaf")))
                     .size(self.size)
-                    .bg(Bg::fill(self.fill))
+                    .chrome(Chrome::fill(self.fill))
                     .show(ui);
             });
     }

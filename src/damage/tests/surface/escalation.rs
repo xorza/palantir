@@ -8,7 +8,7 @@ use crate::display::user_scale::UserScale;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_plan::RenderPlan;
 use crate::ui::Ui;
@@ -115,12 +115,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                 Block::new()
                     .id(WidgetId::from_hash("big"))
                     .size((60.0, 60.0))
-                    .bg(Bg::fill(BLUE))
+                    .chrome(Chrome::fill(BLUE))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
-                    .bg(Bg::fill(BLUE))
+                    .chrome(Chrome::fill(BLUE))
                     .show(ui);
             });
     };

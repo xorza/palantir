@@ -5,7 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
@@ -26,7 +26,7 @@ use std::rc::Rc;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
     widget: Widget,
-    chrome: Option<Bg>,
+    chrome: Option<Chrome>,
     backdrop: Option<RgbaF32>,
     style: Option<&'a ModalTheme>,
 }
@@ -43,7 +43,7 @@ impl<'a> Modal<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::bg`] and [`Self::backdrop`] still win.
+    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::chrome`] and [`Self::backdrop`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
         self.style = s.into();
         self
@@ -71,8 +71,8 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = Bg::fill(self.backdrop.unwrap_or(mt.backdrop));
-        let panel_bg = self.chrome.as_ref().unwrap_or(&mt.panel);
+        let dim = Chrome::fill(self.backdrop.unwrap_or(mt.backdrop));
+        let panel_chrome = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
 
@@ -97,7 +97,7 @@ impl<'a> Modal<'a> {
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
-                panel.record(ui, Some(panel_bg), |ui| body(ui, &handle))
+                panel.record(ui, Some(panel_chrome), |ui| body(ui, &handle))
             })
         });
         let response = OverlayResponse {
@@ -115,29 +115,29 @@ impl<'a> Modal<'a> {
 }
 
 impl Modal<'_> {
-    /// Paints `bg` as the panel chrome; [`Bg::NONE`] suppresses the themed chrome.
+    /// Paints `chrome` as the panel chrome; [`Chrome::NONE`] suppresses the themed chrome.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
+        self.chrome = Some(chrome);
         self
     }
 
-    /// Paints `bg` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::bg`] wins in either order.
+    /// Paints `chrome` unless the caller set one, for a wrapper theming a
+    /// widget after the caller's setters; an explicit [`Self::chrome`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        bg.validate();
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(chrome);
         }
         self
     }

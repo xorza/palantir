@@ -10,9 +10,9 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::lut_row::LutRow;
@@ -32,12 +32,12 @@ use glam::Vec2;
 use std::collections::HashSet;
 use std::time::Duration;
 
-/// Pin: enabling `frame_stats` records a Debug-layer readout, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames. The readout is a row, its chip and the text leaf, with the chip's fill as its one chrome row: a theme's panel background and rounded clip, which would add rows, do not reach it.
+/// Pin: enabling `frame_stats` records a Debug-layer readout, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames. The readout is a row, its chip and the text leaf, with the chip's fill as its one chrome row: a theme's panel chrome and rounded clip, which would add rows, do not reach it.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = UiHarness::new(SURFACE);
     let theme = h.ui.theme_mut();
-    theme.panel_bg = Some(Bg::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
+    theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
     theme.panel_clip = ClipMode::Rounded;
     h.ui.set_debug_overlay(DebugOverlayConfig {
         frame_stats: true,
@@ -274,7 +274,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
             Block::new()
                 .id(WidgetId::from_hash("grad_bg"))
                 .size(50.0)
-                .bg(Bg {
+                .chrome(Chrome {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::srgb(1.0, 0.0, 0.0),

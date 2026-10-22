@@ -21,7 +21,7 @@ use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::node::Node;
 use crate::scene::node::ident::{IdKind, Ident};
 use crate::scene::node::node_mode::NodeMode;
@@ -185,7 +185,7 @@ impl Widget {
 
     /// Fills the padding and margin the builder left unset from `plan`, then animates toward its
     /// look. The look is not stashed on the widget: a toggle paints it on its inner box (see
-    /// `ToggleChrome::record_row`); widgets that wear it pass `Some(&look.bg)` to
+    /// `ToggleRow::record_row`); widgets that wear it pass `Some(&look.chrome)` to
     /// [`Self::record`].
     // Forced inline across the theme/widget codegen-unit boundary: left outlined, the resolver cost
     // 3.9% self-time in the frame bench.
@@ -221,12 +221,12 @@ impl Widget {
     }
 
     /// Open this widget's node, run its body, and close it; the crate's one opener.
-    /// `chrome` is `None` for chrome-less widgets, `Some(bg)` for a background; both it
+    /// `chrome` is `None` for chrome-less widgets, `Some(chrome)` for a painted one; both it
     /// and the node pass by reference down to `Node::cols`.
     pub fn record<R>(
         mut self,
         ui: &mut Ui,
-        chrome: Option<&Bg>,
+        chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
         let resolved = self.resolved(ui);
@@ -242,7 +242,7 @@ impl Widget {
     pub fn show<'a, R>(
         mut self,
         ui: &'a mut Ui,
-        chrome: Option<&Bg>,
+        chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<'a, R> {
         let id = self.resolve(ui);

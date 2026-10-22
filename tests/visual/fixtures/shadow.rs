@@ -4,7 +4,7 @@ use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
-    Bg, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
+    Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,
 };
 use std::f64::consts::SQRT_2;
 
@@ -261,8 +261,8 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
                 .id_salt("chrome")
                 .pos((40.0, 40.0))
                 .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
-                .bg(
-                    Bg::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
+                .chrome(
+                    Chrome::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
                         .with_border(Stroke::new(RgbaF32::srgb(0.1, 0.2, 0.6), 4.0))
                         .with_shadow(if on_chrome { shadow } else { Shadow::NONE }),
                 )
@@ -301,7 +301,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
                     .id_salt("box")
                     .pos(source.min)
                     .size((Sizing::fixed(source.size.w), Sizing::fixed(source.size.h)))
-                    .bg(Bg::rounded(fill, Corners::all(radius)).with_shadow(shadow))
+                    .chrome(Chrome::rounded(fill, Corners::all(radius)).with_shadow(shadow))
                     .show(ui, |_| {});
             } else {
                 ui.add_shape(Shape::shadow(shadow).at(source).corners(radius));
@@ -759,7 +759,7 @@ fn grid_sweep(ui: &mut Ui) {
                 .id_salt(("clip", rounded))
                 .pos((x + 40.0, row + 40.0))
                 .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
-                .bg(Bg::rounded(
+                .chrome(Chrome::rounded(
                     RgbaF32::TRANSPARENT,
                     Corners::all(if rounded { 40.0 } else { 0.0 }),
                 ))

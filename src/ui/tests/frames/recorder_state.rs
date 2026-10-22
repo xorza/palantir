@@ -2,7 +2,7 @@
 
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
@@ -46,7 +46,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);
     let mut style = h.ui.theme.button.clone();
-    style.looks.disabled.bg = Bg::fill(disabled_fill);
+    style.looks.disabled.chrome = Chrome::fill(disabled_fill);
     let response = h.frame_value(|ui| {
         Button::new()
             .id(self_id)

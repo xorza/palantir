@@ -1,9 +1,9 @@
-//! Gradient brushes. Each tile paints a `Block` whose `Bg.fill` carries one gradient variant, exercising composer, atlas bake, shader sample and premultiplied blend every frame. Vivid stops make spread and interpolation differences read at a glance.
+//! Gradient brushes. Each tile paints a `Block` whose `Chrome.fill` carries one gradient variant, exercising composer, atlas bake, shader sample and premultiplied blend every frame. Vivid stops make spread and interpolation differences read at a glance.
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
 use palantir::{
-    Bg, Block, Brush, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
+    Block, Brush, Chrome, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
     RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, Vec2,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
@@ -67,18 +67,18 @@ pub(crate) fn build(ui: &mut Ui) {
         });
 }
 
-fn filled(brush: Brush) -> Bg {
-    Bg {
+fn filled(brush: Brush) -> Chrome {
+    Chrome {
         fill: brush,
         corners: Corners::all(support::RADIUS),
         ..Default::default()
     }
 }
 
-fn gradient_frame(ui: &mut Ui, bg: Bg) {
+fn gradient_frame(ui: &mut Ui, chrome: Chrome) {
     Block::new()
         .size((Sizing::FILL, Sizing::FILL))
-        .bg(bg)
+        .chrome(chrome)
         .show(ui);
 }
 

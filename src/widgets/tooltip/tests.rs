@@ -11,7 +11,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -165,7 +165,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| {
         Tooltip::on(&snapshot, "tip")
-            .bg(Bg::NONE)
+            .chrome(Chrome::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(7.0))
             .max_size(Size::INF)

@@ -1,7 +1,7 @@
 use crate::internals::ui_harness::UiHarness;
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::theme_slot::SlotDefaults;
@@ -19,7 +19,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
         },
         ..ButtonTheme::default()
     };
-    theme.looks.normal.bg = Bg::NONE;
+    theme.looks.normal.chrome = Chrome::NONE;
 
     let mut h = UiHarness::new(UVec2::new(200, 120));
     let [explicit, inherited] = h.frame_value(|ui| {

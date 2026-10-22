@@ -342,14 +342,14 @@ impl<'a> TextEdit<'a> {
             self.widget
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
-            self.widget.record(ui, Some(&look.bg), |_| {});
+            self.widget.record(ui, Some(&look.chrome), |_| {});
             return EditSignals::focus_only(focus, committed, response);
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored padding, and the
         // encoder's clip mask is `rect.deflated_by(post-inflate padding)`, so glyph and
         // caret coordinates must use that value or the top glyph row is scissored away.
-        let stroke_w = look.bg.border_inset();
+        let stroke_w = look.chrome.border_inset();
         let padding = Spacing::from_array(
             self.widget
                 .authored_padding()
@@ -535,7 +535,7 @@ impl<'a> TextEdit<'a> {
             .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
-            chrome: look.bg,
+            chrome: look.chrome,
             block_id: id.with("text-block"),
             text,
             preedit_underline: composing.then_some(caret_width),

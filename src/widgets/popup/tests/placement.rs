@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -299,7 +299,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
                 popup
                     .id(body_id)
                     .padding(0.0)
-                    .bg(Bg::default())
+                    .chrome(Chrome::default())
                     .show(ui, |ui, _| {
                         Panel::vstack()
                             .id(WidgetId::from_hash("dynamic-content"))

@@ -96,7 +96,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             .is_noop(),
         ),
         ("Mesh::is_noop", nan_mesh.is_noop()),
-        // Chrome skips `Shapes::add`, so these are all that guard a NaN `Bg`.
+        // Chrome skips `Shapes::add`, so these are all that guard a NaN `Chrome`.
         (
             "RgbaF16::is_noop/red",
             RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
