@@ -8,8 +8,8 @@ use palantir::internals::demo_swatches;
 use std::panic::Location;
 
 use palantir::{
-    Align, Bg, Block, Checkbox, Configure, Corners, FontFamily, FontWeight, Panel, RgbaF32, Sizing,
-    Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
+    Align, Block, Checkbox, Chrome, Configure, Corners, FontFamily, FontWeight, Panel, RgbaF32,
+    Sizing, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
 };
 
 /// Window clear; the darkest tier.
@@ -150,20 +150,20 @@ pub(crate) const fn mix(a: RgbaF32, b: RgbaF32, t: f32) -> RgbaF32 {
     )
 }
 
-pub(crate) fn swatch_bg(c: RgbaF32) -> Bg {
-    Bg::rounded(c, Corners::all(4.0))
+pub(crate) fn swatch_chrome(c: RgbaF32) -> Chrome {
+    Chrome::rounded(c, Corners::all(4.0))
 }
 
-pub(crate) fn well_bg() -> Bg {
-    Bg::rounded(WELL, Corners::all(RADIUS))
+pub(crate) fn well_chrome() -> Chrome {
+    Chrome::rounded(WELL, Corners::all(RADIUS))
 }
 
-pub(crate) fn light_well_bg() -> Bg {
-    Bg::rounded(LIGHT_WELL, Corners::all(RADIUS))
+pub(crate) fn light_well_chrome() -> Chrome {
+    Chrome::rounded(LIGHT_WELL, Corners::all(RADIUS))
 }
 
-pub(crate) fn raised_bg() -> Bg {
-    Bg::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
+pub(crate) fn raised_chrome() -> Chrome {
+    Chrome::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
 }
 
 /// A titled block of demo content: a title, a chip per demonstrated API, then the body. A [`note`] may name an API only when one of the section's [`api!`] chips checks it.
@@ -265,7 +265,7 @@ pub(crate) fn well(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::HUG))
         .padding(14.0)
         .gap(10.0)
-        .bg(well_bg())
+        .chrome(well_chrome())
         .show(ui, body);
 }
 
@@ -319,12 +319,11 @@ impl Chip {
         }
     }
 
-    fn bg(self) -> Bg {
+    fn chrome(self) -> Chrome {
         match self {
-            Self::Api => Bg::rounded(RAISED, Corners::all(4.0)),
-            Self::Key => {
-                Bg::rounded(ELEMENT, Corners::all(4.0)).with_border(Stroke::new(ELEM_STRONG, 1.0))
-            }
+            Self::Api => Chrome::rounded(RAISED, Corners::all(4.0)),
+            Self::Key => Chrome::rounded(ELEMENT, Corners::all(4.0))
+                .with_border(Stroke::new(ELEM_STRONG, 1.0)),
         }
     }
 }
@@ -333,7 +332,7 @@ fn chip(ui: &mut Ui, text: &'static str, kind: Chip) {
     Panel::hstack()
         .id_salt(text)
         .padding((6.0, 2.0))
-        .bg(kind.bg())
+        .chrome(kind.chrome())
         .show(ui, |ui| {
             Text::new(text)
                 .style(&mono_style(11.0, kind.ink()))
@@ -351,8 +350,10 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
         .size((Sizing::FILL, Sizing::HUG))
         .padding(12.0)
         .gap(6.0)
-        .bg(Bg::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
-            .with_border(Stroke::new(BORDER, 1.0)))
+        .chrome(
+            Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
+                .with_border(Stroke::new(BORDER, 1.0)),
+        )
         .show(ui, |ui| {
             Text::new("CHECK BY HAND")
                 .style(
@@ -376,9 +377,9 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 #[derive(Default, Debug)]
 struct Ticks(u32);
 
-/// A plain color swatch: a `Block` over [`swatch_bg`], for the caller to key and size.
+/// A plain color swatch: a `Block` over [`swatch_chrome`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {
-    Block::new().bg(swatch_bg(c))
+    Block::new().chrome(swatch_chrome(c))
 }
 
 #[track_caller]
@@ -447,8 +448,8 @@ impl DemoCell {
                     .show(ui);
                 let cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(self.h)));
                 let cell = match self.surface {
-                    Surface::Well => cell.padding(CELL_PADDING).bg(well_bg()),
-                    Surface::LightWell => cell.padding(CELL_PADDING).bg(light_well_bg()),
+                    Surface::Well => cell.padding(CELL_PADDING).chrome(well_chrome()),
+                    Surface::LightWell => cell.padding(CELL_PADDING).chrome(light_well_chrome()),
                     Surface::Bare => cell,
                 };
                 cell.show(ui, body);

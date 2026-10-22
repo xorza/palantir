@@ -8,7 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::dock::DockTheme;
 use crate::ui::Ui;
@@ -460,7 +460,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         let dock = DockView::dock_id(state);
         if let Some(target) = DockView::drop_target(state, ui) {
             let r = target.highlight;
-            let preview = Bg::rounded(
+            let preview = Chrome::rounded(
                 self.theme.preview_fill,
                 Corners::all(self.theme.preview_radius),
             )
@@ -472,7 +472,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     Panel::zstack()
                         .id(dock.with("preview"))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .bg(preview)
+                        .chrome(preview)
                         .show(ui, |_| {});
                 });
         }
@@ -480,7 +480,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             return;
         };
         let label = self.tabs.title(ui, tab);
-        let ghost = self.theme.ghost.bg.clone();
+        let ghost = self.theme.ghost.chrome.clone();
         let ghost_text = self.theme.ghost.text.apply(&ui.theme().text);
         let padding = self.theme.ghost_padding;
         ui.layer(Layer::Tooltip)
@@ -490,7 +490,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     .id(dock.with("ghost"))
                     .size((Sizing::HUG, Sizing::HUG))
                     .padding(padding)
-                    .bg(ghost)
+                    .chrome(ghost)
                     .show(ui, |ui| {
                         Text::new(label)
                             .id(dock.with("ghost_label"))

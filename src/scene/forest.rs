@@ -6,7 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
@@ -45,11 +45,11 @@ pub(crate) struct Forest {
     layer_stack: Vec<Layer>,
 }
 
-/// What paints behind a node [`Forest::open_node`] opens: its background, borrowed so a chromed widget doesn't re-copy it down the record chain, and the focus ring over it.
+/// What paints behind a node [`Forest::open_node`] opens: its chrome, borrowed so a chromed widget doesn't re-copy it down the record chain, and the focus ring over it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NodeChrome<'a> {
     /// `None` for a chrome-less node.
-    pub(crate) bg: Option<&'a Bg>,
+    pub(crate) chrome: Option<&'a Chrome>,
     /// `Stroke::NONE` unless the node shows keyboard focus.
     pub(crate) ring: Stroke,
 }
@@ -160,19 +160,24 @@ impl Forest {
 
     /// Opens a node whose id was already resolved by [`crate::widget::Widget::resolve`], and records its endpoint (also emitting any pending explicit collision pair).
     #[inline]
-    pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: NodeChrome<'_>) {
+    pub(crate) fn open_node(
+        &mut self,
+        resolved: ResolvedId,
+        node: &Node,
+        node_chrome: NodeChrome<'_>,
+    ) {
         let layer = self.cur_layer();
         let store = &mut self.record_store;
-        let NodeChrome { bg, ring } = chrome;
-        // A ring with no background rides an empty one.
-        let chrome = (bg.is_some() || !ring.is_noop()).then(|| ChromeInput {
-            bg: bg.unwrap_or(&Bg::NONE),
+        let NodeChrome { chrome, ring } = node_chrome;
+        // A ring with no chrome rides an empty one.
+        let input = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
+            chrome: chrome.unwrap_or(&Chrome::NONE),
             ring,
             store,
         });
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
-        let node_id = tree.open_node(scratch, node.cols(resolved.id()), chrome);
+        let node_id = tree.open_node(scratch, node.cols(resolved.id()), input);
         let endpoint = Endpoint {
             layer,
             node: node_id,

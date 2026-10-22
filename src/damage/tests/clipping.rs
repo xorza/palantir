@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -43,7 +43,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
-                                    .bg(Bg::fill(fill))
+                                    .chrome(Chrome::fill(fill))
                                     .show(ui)
                                     .node(),
                             );
@@ -70,7 +70,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 
 /// A node painting a drop shadow contributes its **inflated** paint bounds
 /// (`rect + offset`, then `4*sigma + max(spread, 0)` per side) to damage. Both
-/// `Shape::Shadow` and `Bg::shadow` chrome must reach the same
+/// `Shape::Shadow` and `Chrome::shadow` chrome must reach the same
 /// `paint_rect`, so a tab swap clears the full halo.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
@@ -86,7 +86,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .bg(Bg::fill(BLUE))
+                .chrome(Chrome::fill(BLUE))
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::shadow(Shadow {
@@ -104,7 +104,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .bg(Bg {
+                .chrome(Chrome {
                     fill: BLUE.into(),
                     shadow: Shadow {
                         color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
@@ -179,7 +179,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
                                 .size((Sizing::fixed(card), Sizing::fixed(card)))
-                                .bg(Bg::fill(fill))
+                                .chrome(Chrome::fill(fill))
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::shadow(Shadow {
@@ -218,7 +218,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 /// the per-shape rect must be the host's deflated mask, not the full 400 px.
 #[test]
 fn direct_shape_on_clipped_node_clips_to_own_mask() {
-    // WindowDriver panel: 80x40, padding 4 per side via background. The direct
+    // WindowDriver panel: 80x40, padding 4 per side via chrome. The direct
     // shape extends to x=400; after the cascade walk `shape_rects[idx]` must be
     // clipped to the host's deflated mask.
     let mut h = UiHarness::new(DISPLAY.physical);
@@ -228,7 +228,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
             Panel::hstack()
                 .id(host_id)
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                .bg(Bg::fill(BLUE))
+                .chrome(Chrome::fill(BLUE))
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
@@ -250,7 +250,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let tree = h.ui.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
-    // The host paints chrome (the BLUE background), so row 0 is the chrome `Paint`,
+    // The host paints chrome (the BLUE fill), so row 0 is the chrome `Paint`,
     // whose screen is always the 80x40 arranged rect and would pass even with the
     // clip regressed. The shape under test is row 1.
     let paint_arena = &cascade.layers[Layer::Main].paint_arena;
@@ -281,7 +281,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
             Panel::zstack()
                 .id(WidgetId::from_hash("rounded-host"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                .bg(Bg {
+                .chrome(Chrome {
                     corners: Corners::all(12.0),
                     ..Default::default()
                 })
@@ -290,7 +290,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(CHILD)
-                        .bg(Bg::fill(BLUE))
+                        .chrome(Chrome::fill(BLUE))
                         .show(ui);
                 });
         });

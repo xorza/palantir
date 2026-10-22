@@ -1,6 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
@@ -8,10 +7,11 @@ use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Interpolation, Spread};
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::shape::lower::{bg, brush, ramp};
+use crate::shape::lower::{brush, chrome, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record_store::RecordStore;
@@ -26,37 +26,40 @@ fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
     }
 }
 
-fn with_corners(corners: Corners) -> Bg {
-    Bg {
+fn with_corners(corners: Corners) -> Chrome {
+    Chrome {
         corners,
-        ..Bg::fill(RgbaF32::WHITE)
+        ..Chrome::fill(RgbaF32::WHITE)
     }
 }
 
-/// The four ways a `Bg` can carry a NaN, one per field; no no-op predicate owns the question.
-fn nan_bgs() -> [(&'static str, Bg); 4] {
+/// The four ways a `Chrome` can carry a NaN, one per field; no no-op predicate owns the question.
+fn nan_chromes() -> [(&'static str, Chrome); 4] {
     [
         (
             "corners",
             with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
         ),
-        ("fill", Bg::fill(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0))),
+        (
+            "fill",
+            Chrome::fill(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0)),
+        ),
         (
             "stroke",
-            Bg {
+            Chrome {
                 border: Stroke::new(RgbaF32::WHITE, f32::NAN),
-                ..Bg::fill(RgbaF32::WHITE)
+                ..Chrome::fill(RgbaF32::WHITE)
             },
         ),
         (
             "shadow",
-            Bg {
+            Chrome {
                 shadow: Shadow {
                     color: RgbaF32::WHITE,
                     blur: f32::NAN,
                     ..Shadow::default()
                 },
-                ..Bg::fill(RgbaF32::WHITE)
+                ..Chrome::fill(RgbaF32::WHITE)
             },
         ),
     ]
@@ -96,20 +99,20 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
     assert_eq!(distinct.len(), 4, "{hashes:?}");
 }
 
-/// A sane background reaches the row unchanged and every field reaches the hash.
+/// A sane chrome reaches the row unchanged and every field reaches the hash.
 #[test]
-fn background_lowering_keeps_an_authored_field() {
+fn chrome_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();
     let sane = Corners::all(6.0);
-    let kept = bg(&mut store, &with_corners(sane), Stroke::NONE);
+    let kept = chrome(&mut store, &with_corners(sane), Stroke::NONE);
     assert_eq!(kept.corners, sane);
     assert_ne!(
         kept.hash,
-        bg(&mut store, &with_corners(Corners::ZERO), Stroke::NONE).hash,
+        chrome(&mut store, &with_corners(Corners::ZERO), Stroke::NONE).hash,
         "corners must still reach the chrome hash",
     );
     let ring = Stroke::new(RgbaF32::WHITE, 2.0);
-    let ringed = bg(&mut store, &with_corners(sane), ring);
+    let ringed = chrome(&mut store, &with_corners(sane), ring);
     assert!(ringed.ring, "a ring is flagged on the row");
     assert!(!kept.ring, "no ring unless one is passed");
     assert_ne!(
@@ -117,11 +120,11 @@ fn background_lowering_keeps_an_authored_field() {
         "the ring must reach the chrome hash"
     );
     // A transparent border paints nothing, but its width is the inset shadow's padding edge, so it is kept.
-    let clear_border = Bg {
+    let clear_border = Chrome {
         border: Stroke::new(RgbaF32::TRANSPARENT, 4.0),
         ..with_corners(sane)
     };
-    let clear = bg(&mut store, &clear_border, Stroke::NONE);
+    let clear = chrome(&mut store, &clear_border, Stroke::NONE);
     assert_eq!(clear.border.width, 4.0);
     assert!(clear.border.is_noop(), "it still paints no stroke");
     assert_ne!(
@@ -136,12 +139,12 @@ fn background_lowering_keeps_an_authored_field() {
         spread: 1.0,
         inset: false,
     };
-    let base = Bg {
+    let base = Chrome {
         border: Stroke::new(RgbaF32::WHITE, 1.0),
         shadow,
         ..with_corners(sane)
     };
-    let with_shadow = |shadow| Bg {
+    let with_shadow = |shadow| Chrome {
         shadow,
         ..base.clone()
     };
@@ -156,21 +159,21 @@ fn background_lowering_keeps_an_authored_field() {
         ("base", base.clone()),
         (
             "border color",
-            Bg {
+            Chrome {
                 border: Stroke::new(RgbaF32::BLACK, 1.0),
                 ..base.clone()
             },
         ),
         (
             "fill color",
-            Bg {
+            Chrome {
                 fill: RgbaF32::BLACK.into(),
                 ..base.clone()
             },
         ),
         (
             "gradient fill",
-            Bg {
+            Chrome {
                 fill: gradient,
                 ..base.clone()
             },
@@ -213,7 +216,7 @@ fn background_lowering_keeps_an_authored_field() {
     ];
     let hashes: Vec<_> = variants
         .iter()
-        .map(|(label, authored)| (*label, bg(&mut store, authored, Stroke::NONE).hash))
+        .map(|(label, authored)| (*label, chrome(&mut store, authored, Stroke::NONE).hash))
         .collect();
     for (i, (a, ha)) in hashes.iter().enumerate() {
         for (b, hb) in &hashes[i + 1..] {
@@ -222,15 +225,15 @@ fn background_lowering_keeps_an_authored_field() {
     }
 }
 
-/// `bg` is the NaN gate for chrome, which `Shapes::add` never sees. It sanitizes rather than drops,
+/// `chrome` is the NaN gate for chrome, which `Shapes::add` never sees. It sanitizes rather than drops,
 /// since `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op. A NaN never reaches
 /// the row: debug asserts, release falls each field back, and `catch_unwind` accepts either.
 #[test]
-fn a_nan_background_field_never_reaches_the_row() {
+fn a_nan_chrome_field_never_reaches_the_row() {
     let mut store = RecordStore::default();
-    for (label, authored) in nan_bgs() {
+    for (label, authored) in nan_chromes() {
         let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            bg(&mut store, &authored, Stroke::NONE)
+            chrome(&mut store, &authored, Stroke::NONE)
         })) else {
             continue;
         };
@@ -245,7 +248,7 @@ fn a_nan_background_field_never_reaches_the_row() {
 
     // A radius falls back to no rounding so a `ClipMode::Rounded` stencil never clips to a shape nobody chose.
     if let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        bg(
+        chrome(
             &mut store,
             &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
             Stroke::NONE,

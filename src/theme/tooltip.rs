@@ -3,7 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -17,7 +17,7 @@ use std::time::Duration;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
-    pub panel: Bg,
+    pub panel: Chrome,
     /// Text axes the bubble sets over [`Theme::text`](crate::Theme).
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
@@ -54,7 +54,7 @@ impl TooltipTheme {
 
     /// A small raised bubble with a soft drop shadow.
     pub fn from_palette(p: &Palette) -> Self {
-        let panel = Bg::rounded(p.element, Corners::all(4.0))
+        let panel = Chrome::rounded(p.element, Corners::all(4.0))
             .with_border(Stroke::new(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 RgbaF32::new(0.0, 0.0, 0.0, 0.6),

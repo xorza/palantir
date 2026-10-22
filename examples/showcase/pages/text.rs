@@ -3,7 +3,7 @@
 use crate::support;
 use crate::support::{Col, Section, api};
 use palantir::{
-    Bg, Block, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
+    Block, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
 };
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -76,7 +76,7 @@ impl WrapPanel {
             .id_salt(self.id)
             .size((Sizing::fixed(self.width), Sizing::HUG))
             .padding(8.0)
-            .bg(support::well_bg())
+            .chrome(support::well_chrome())
             .show(ui, |ui| {
                 Text::new(self.text)
                     .style(&support::body_style())
@@ -205,7 +205,7 @@ impl ChatRow {
                 Block::new()
                     .id_salt(("avatar", key))
                     .size((Sizing::fixed(36.0), Sizing::fixed(36.0)))
-                    .bg(Bg::rounded(avatar, Corners::all(18.0)))
+                    .chrome(Chrome::rounded(avatar, Corners::all(18.0)))
                     .show(ui);
                 Text::new(message)
                     .id_salt(("message", key))

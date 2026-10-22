@@ -1,7 +1,7 @@
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::response_state::ResponseState;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -249,7 +249,7 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
 #[test]
 fn animated_look_line_height_delegates_to_text_style() {
     let look = AnimatedLook {
-        bg: Bg::default(),
+        chrome: Chrome::default(),
         text: TextStyle {
             font_size: 16.0,
             color: RgbaF32::TRANSPARENT,

@@ -6,10 +6,10 @@ use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::wrap::TextWrap;
 use crate::theme::text_style::TextStyle;
@@ -29,7 +29,7 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
             .gap(8.0)
             .padding(6.0)
             .size((Sizing::FILL, Sizing::fixed(74.0)))
-            .bg(tokens::well_bg())
+            .chrome(tokens::well_chrome())
             .show(ui, |ui| {
                 for i in 0..cells {
                     Panel::vstack()
@@ -40,7 +40,7 @@ pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
                             Block::new()
                                 .id_salt(("film-thumb", i))
                                 .size((Sizing::FILL, Sizing::FILL))
-                                .bg(Bg {
+                                .chrome(Chrome {
                                     fill: Brush::Linear(LinearGradient::two_stop(
                                         0.9,
                                         RgbaF32::hex(0x24304d),
@@ -80,7 +80,7 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                 Block::new()
                                     .id_salt(("avatar", i))
                                     .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
-                                    .bg(Bg {
+                                    .chrome(Chrome {
                                         fill: Brush::Radial(RadialGradient::two_stop(
                                             RgbaF32::hex(0xfacc15),
                                             RgbaF32::hex(0x4c5cdb),
@@ -156,7 +156,7 @@ pub(super) fn tags_card(ui: &mut Ui, tags: usize, badges: usize) {
                     .gap(6.0)
                     .padding(6.0)
                     .size((Sizing::HUG, Sizing::fixed(96.0)))
-                    .bg(tokens::well_bg())
+                    .chrome(tokens::well_chrome())
                     .show(ui, |ui| {
                         for i in 0..badges {
                             Text::new(fmt!(ui, "badge {i}"))

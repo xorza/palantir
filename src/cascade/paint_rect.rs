@@ -171,19 +171,19 @@ impl PaintRectCtx<'_> {
         };
 
         match tree.chrome(node) {
-            Some(bg) if bg.is_invisible() => {
-                span.push_unpainted(bg.hash);
+            Some(row) if row.is_invisible() => {
+                span.push_unpainted(row.hash);
                 span.union = visible_rect;
             }
-            Some(bg) => {
-                let screen = if bg.shadow.is_noop() {
+            Some(row) => {
+                let screen = if row.shadow.is_noop() {
                     visible_rect
                 } else {
                     let chrome_local =
-                        owner_local.union(bg.shadow.paint_rect_local(None, layout_rect.size));
+                        owner_local.union(row.shadow.paint_rect_local(None, layout_rect.size));
                     chrome.to_screen(chrome_local, parent_clip)
                 };
-                span.push(screen, bg.hash);
+                span.push(screen, row.hash);
             }
             None if clips => {
                 // Chromeless clip-only container: union the owner rect into the cull rollup so the encoder emits the PushClip/PopClip pair even when the subtree paints nothing. No Paint row.

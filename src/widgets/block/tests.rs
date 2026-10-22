@@ -3,7 +3,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -22,7 +22,7 @@ fn frame_paints_a_single_rounded_rect() {
                 Block::new()
                     .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                    .bg(Bg {
+                    .chrome(Chrome {
                         fill: RgbaF32::srgb(0.2, 0.4, 0.8).into(),
                         corners: Corners::all(6.0),
                         ..Default::default()

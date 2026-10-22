@@ -40,7 +40,7 @@ pub(crate) mod switch;
 pub(crate) mod tabs;
 pub(crate) mod text;
 pub(crate) mod text_edit;
-pub(crate) mod toggle_chrome;
+pub(crate) mod toggle_row;
 pub(crate) mod tooltip;
 
 #[cfg(test)]

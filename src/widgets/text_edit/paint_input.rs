@@ -4,7 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
@@ -20,7 +20,7 @@ use glam::Vec2;
 
 #[derive(Debug)]
 pub(super) struct PaintInput<'a> {
-    pub(super) chrome: Bg,
+    pub(super) chrome: Chrome,
     /// Identity of the text block's node, a child of the field so the layout engine places it; derived from the field's id, so stable across frames.
     pub(super) block_id: WidgetId,
     pub(super) text: &'a str,

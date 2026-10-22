@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
@@ -134,7 +134,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                         .id(WidgetId::from_hash("child"))
                         .pos((50.0, 60.0))
                         .size(40.0)
-                        .bg(Bg::fill(child_color))
+                        .chrome(Chrome::fill(child_color))
                         .show(ui);
                 });
         });
@@ -148,7 +148,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     assert_eq!(child_rect, Rect::new(110.0, 140.0, 80.0, 80.0));
 }
 
-/// Chrome paints in parent space: a background still frames the viewport while the body pans or zooms.
+/// Chrome paints in parent space: the chrome still frames the viewport while the body pans or zooms.
 #[test]
 fn transformed_panel_chrome_stays_in_parent_space() {
     let chrome_color = RgbaF32::srgb(0.1, 0.1, 0.1);
@@ -161,7 +161,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
                 .id(WidgetId::from_hash("xpanel"))
                 .size(Sizing::fixed(150.0))
                 .transform(transform)
-                .bg(Bg::fill(chrome_color))
+                .chrome(Chrome::fill(chrome_color))
                 .show(ui, |_| {});
         });
     });

@@ -1,5 +1,5 @@
 // Native parametric stroke pipeline (cubic beziers, circular arcs,
-// polyline segments, and polyline join chrome). One
+// polyline segments, and polyline join billboards). One
 // `draw_indexed(96, instance_count)` per scissor group; each instance
 // describes a sub-range of one stroke. A static index buffer builds 16
 // quads from 34 cross-section vertices, with no per-instance CPU
@@ -259,7 +259,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     var phys: vec2<f32>;
 
     if (in.kind >= KIND_JOIN_ROUND) {
-        // Join chrome: tile the strip's 16 quads across one billboard
+        // Join billboards: tile the strip's 16 quads across one billboard
         // around P = p0. The composer ships the face-plane normals
         // pre-oriented in the neighbor lanes (`p1 = -d_a`,
         // `p2 = d_b`, both unit) — they pass straight through to the
@@ -361,7 +361,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // pulses as its alignment drifts.
     var coverage: f32;
     if ((in.flags & FLAG_JOIN) != 0u) {
-        // Join chrome. Exact per-kind distance metric around the
+        // Join billboards. Exact per-kind distance metric around the
         // joint point P; the face-plane clip below restricts it to
         // the wedge between the two segment ends.
         let d_a = -in.jv0.xy;
@@ -404,7 +404,7 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     }
     if ((in.flags & FLAG_CLIP) != 0u) {
         // Keep-half-plane tests (bisector clip for segments, face
-        // planes for join chrome). Hard cut: the planes partition
+        // planes for join billboards). Hard cut: the planes partition
         // fragments between adjacent primitives exactly, and both
         // sides carry identical coverage at the seam, so no AA is
         // needed along it.

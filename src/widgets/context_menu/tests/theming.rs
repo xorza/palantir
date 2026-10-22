@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -240,7 +240,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
-            .bg(Bg::NONE)
+            .chrome(Chrome::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(5.0))
             .min_size(Size::ZERO)

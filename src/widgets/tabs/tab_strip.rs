@@ -14,7 +14,7 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::look::engagement::Engagement;
@@ -175,8 +175,8 @@ impl<'a> TabStrip<'a> {
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
         let id = widget.resolve(ui);
         let response = widget.response(ui);
-        let strip_bg = t.strip.clone();
-        let rule = Bg::fill(t.rule);
+        let strip_chrome = t.strip.clone();
+        let rule = Chrome::fill(t.rule);
         let rule_thickness = t.rule_thickness;
 
         let mut pass = StripPass {
@@ -188,7 +188,7 @@ impl<'a> TabStrip<'a> {
             focus,
             hits: StripHits::default(),
         };
-        widget.record(ui, Some(&strip_bg), |ui| {
+        widget.record(ui, Some(&strip_chrome), |ui| {
             let row = Widget::hstack()
                 .id(id.with("row"))
                 .size((Sizing::FILL, Sizing::HUG))
@@ -323,7 +323,7 @@ impl StripPass<'_> {
         let state = ui.response_for(id);
         let look = self.theme.close.pick(&state, Engagement::Pressed);
         GlyphButton {
-            bg: look.bg.clone(),
+            chrome: look.chrome.clone(),
             text: TextStyle {
                 line_height_factor: 1.0,
                 ..look.text.apply(&self.ambient)
@@ -353,17 +353,17 @@ impl StripPass<'_> {
             .padding(Spacing::new(0.0, cap, 0.0, 0.0))
             .sense(sense);
         let state = widget.response(ui);
-        // The look paints the inner box, so the widget wears the plan for spacing and animation while the background goes a level down (the `ToggleChrome` shape).
+        // The look paints the inner box, so the widget wears the plan for spacing and animation while the chrome goes a level down (the `ToggleRow` shape).
         let plan = t.plan(&state, TabSelection::from(selected), self.ambient);
         let look = widget.wear(ui, plan);
-        let cap_bg = if selected {
-            Bg::rounded(t.cap(self.focus), Corners::top(t.radius))
+        let cap_chrome = if selected {
+            Chrome::rounded(t.cap(self.focus), Corners::top(t.radius))
         } else {
-            Bg::NONE
+            Chrome::NONE
         };
-        let inner_bg = Bg {
+        let inner_chrome = Chrome {
             corners: Corners::top((t.radius - cap).max(0.0)),
-            ..look.bg
+            ..look.chrome
         };
         // The selected chip lifts its inner top inset by the cap, so height is unchanged; a badge or close button trades the right inset for its box (`TabsTheme::trailing_inset`).
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
@@ -390,8 +390,8 @@ impl StripPass<'_> {
             .padding(padding)
             .gap(t.label_gap)
             .child_align(Align::v(VAlign::Center));
-        widget.record(ui, Some(&cap_bg), |ui| {
-            inner.record(ui, Some(&inner_bg), |ui| {
+        widget.record(ui, Some(&cap_chrome), |ui| {
+            inner.record(ui, Some(&inner_chrome), |ui| {
                 if let Some(handle) = icon {
                     let side = text.font_size;
                     let art = Widget::leaf()
@@ -408,9 +408,9 @@ impl StripPass<'_> {
                     .show(ui);
                 if badge.is_reserved() {
                     let fill = if badge.is_inked() {
-                        Bg::rounded(t.badge, Corners::all(t.badge_size * 0.5))
+                        Chrome::rounded(t.badge, Corners::all(t.badge_size * 0.5))
                     } else {
-                        Bg::NONE
+                        Chrome::NONE
                     };
                     let dot = Widget::leaf()
                         .id(chip_id.with("badge"))
@@ -425,7 +425,7 @@ impl StripPass<'_> {
                         .sense(Sense::CLICK)
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
-                    button.record(ui, Some(&close.bg), |ui| {
+                    button.record(ui, Some(&close.chrome), |ui| {
                         close.glyph(ui, close_id, "\u{00d7}");
                     });
                 }
@@ -473,7 +473,7 @@ impl StripPass<'_> {
             .sense(Sense::CLICK)
             .align(Align::v(VAlign::Bottom))
             .child_align(Align::CENTER);
-        button.record(ui, Some(&chevron.bg), |ui| {
+        button.record(ui, Some(&chevron.chrome), |ui| {
             chevron.glyph(ui, button_id, "\u{22ef}");
         });
         if chevron.state.clicked()
@@ -546,7 +546,7 @@ impl StripPass<'_> {
 #[derive(Debug)]
 struct GlyphButton {
     state: ResponseState,
-    bg: Bg,
+    chrome: Chrome,
     /// The look's text with the leading removed, else the glyph rides high.
     text: TextStyle,
 }

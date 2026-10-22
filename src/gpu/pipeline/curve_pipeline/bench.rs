@@ -28,21 +28,21 @@ const JOIN_INSTANCES: u64 = (GRID * GRID * 3) as u64;
 #[derive(Clone, Copy, Debug)]
 enum Workload {
     CubicStrips,
-    JoinChrome,
+    Join,
 }
 
 impl Workload {
     const fn label(self) -> &'static str {
         match self {
             Self::CubicStrips => "cubic_strips",
-            Self::JoinChrome => "join_chrome",
+            Self::Join => "join",
         }
     }
 
     const fn instances(self) -> u64 {
         match self {
             Self::CubicStrips => CUBIC_INSTANCES,
-            Self::JoinChrome => JOIN_INSTANCES,
+            Self::Join => JOIN_INSTANCES,
         }
     }
 }
@@ -57,7 +57,7 @@ fn record(ui: &mut Ui, workload: Workload, phase: bool) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| match workload {
             Workload::CubicStrips => record_cubics(ui, phase),
-            Workload::JoinChrome => record_joins(ui, phase),
+            Workload::Join => record_joins(ui, phase),
         });
 }
 
@@ -129,7 +129,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
         return;
     };
     let mut group = Kind::Atomic.group(c, "curve_pipeline", Scale::Sample);
-    for workload in [Workload::CubicStrips, Workload::JoinChrome] {
+    for workload in [Workload::CubicStrips, Workload::Join] {
         group.throughput(Throughput::Elements(workload.instances()));
         group.bench_function(backend.case(workload.label()), |bencher| {
             let gpu = gpu();

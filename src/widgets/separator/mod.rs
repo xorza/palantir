@@ -4,7 +4,7 @@ use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
@@ -93,7 +93,7 @@ impl<'a> Separator<'a> {
             Some(_) => self.widget,
             None => self.widget.size(default_size).default_align(stretch),
         };
-        let chrome = Bg::fill(self.color.unwrap_or(theme.color));
+        let chrome = Chrome::fill(self.color.unwrap_or(theme.color));
         // Theme margin fills in only where the caller stayed silent.
         let widget = widget.default_margin(theme.margin);
         widget.show(ui, Some(&chrome), |_| {}).response

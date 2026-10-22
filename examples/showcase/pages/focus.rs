@@ -282,7 +282,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             Panel::hstack()
                 .gap(6.0)
                 .padding(6.0)
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .arrow_focus(Axis::X)
                 .show(ui, |ui| {
                     for label in ["Bold", "Italic", "Underline"] {
@@ -304,7 +304,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
                 .gap(2.0)
                 .padding(6.0)
                 .size((Sizing::fixed(200.0), Sizing::HUG))
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .arrow_focus(Axis::Y)
                 .show(ui, |ui| {
                     for (i, label) in LIST.iter().enumerate() {

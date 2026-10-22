@@ -31,7 +31,7 @@ pub(super) fn panes_card(state: &mut FrameFixture, ui: &mut Ui) {
                         .id_salt(id)
                         .padding(8.0)
                         .size((Sizing::FILL, Sizing::FILL))
-                        .bg(tokens::well_bg())
+                        .chrome(tokens::well_chrome())
                         .show(ui, |ui| {
                             Text::new(label)
                                 .id_salt((id, "label"))

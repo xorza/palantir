@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::popup::Popup;
@@ -31,17 +31,17 @@ fn stable_painting_subtree_triggers_skip_jump() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("painting_parent"))
                     .size((Sizing::fixed(80.0), Sizing::fixed(60.0)))
-                    .bg(Bg::fill(BLUE))
+                    .chrome(Chrome::fill(BLUE))
                     .show(ui, |ui| {
                         Block::new()
                             .id(WidgetId::from_hash("child_a"))
                             .size(20.0)
-                            .bg(Bg::fill(RED))
+                            .chrome(Chrome::fill(RED))
                             .show(ui);
                         Block::new()
                             .id(WidgetId::from_hash("child_b"))
                             .size(20.0)
-                            .bg(Bg::fill(RED))
+                            .chrome(Chrome::fill(RED))
                             .show(ui);
                     });
             });
@@ -62,24 +62,24 @@ fn stable_painting_subtree_triggers_skip_jump() {
     assert!(h.engines.damage.counters.dirty().is_empty());
 }
 
-/// A widget that loses its background flips from painting to non-painting. The diff must (a) add its
+/// A widget that loses its chrome flips from painting to non-painting. The diff must (a) add its
 /// prev rect to damage so the prior pixels clear, (b) drop the entry from `prev` so the next frame
 /// sees it as absent, and (c) add no curr rect.
 #[test]
 fn paints_to_non_paints_transition_evicts_and_clears() {
     let mut h = UiHarness::new(DISPLAY.physical);
-    let with_bg = |ui: &mut Ui| {
+    let with_chrome = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .bg(Bg::fill(BLUE))
+                    .chrome(Chrome::fill(BLUE))
                     .show(ui);
             });
     };
-    let no_bg = |ui: &mut Ui| {
+    let no_chrome = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
@@ -89,11 +89,11 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                     .show(ui);
             });
     };
-    frame(&mut h, with_bg);
+    frame(&mut h, with_chrome);
     let id = WidgetId::from_hash("a");
     assert!(h.engines.damage.prev.contains_key(&id));
 
-    frame(&mut h, no_bg);
+    frame(&mut h, no_chrome);
     assert!(
         !h.engines.damage.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
@@ -117,12 +117,12 @@ fn popup_eater_does_not_force_full_repaint() {
     frame(&mut h, |ui| {
         Popup::new(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
-            .bg(Bg::fill(BLUE))
+            .chrome(Chrome::fill(BLUE))
             .show(ui, |ui, _popup| {
                 Block::new()
                     .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)
-                    .bg(Bg::fill(RED))
+                    .chrome(Chrome::fill(RED))
                     .show(ui);
             });
     });
@@ -160,7 +160,7 @@ fn click_on_empty_bg_does_not_force_full() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .bg(Bg::fill(BLUE))
+                    .chrome(Chrome::fill(BLUE))
                     .show(ui);
             });
     };

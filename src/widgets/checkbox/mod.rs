@@ -14,8 +14,8 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_chrome;
-use crate::widgets::toggle_chrome::ToggleChrome;
+use crate::widgets::toggle_row;
+use crate::widgets::toggle_row::ToggleRow;
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
@@ -34,7 +34,7 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            widget: toggle_chrome::row(),
+            widget: toggle_row::row(),
             value,
             label: TextInput::default(),
             style: None,
@@ -58,8 +58,8 @@ impl<'a> Checkbox<'a> {
         let response = self.widget.response(ui);
 
         let before = *self.value;
-        let checked = toggle_chrome::toggled(
-            toggle_chrome::activated(ui, &mut self.widget, &response),
+        let checked = toggle_row::toggled(
+            toggle_row::activated(ui, &mut self.widget, &response),
             self.value,
         );
         let changed = checked != before;
@@ -70,7 +70,7 @@ impl<'a> Checkbox<'a> {
         let indicator = slot.indicator;
         let indicator_width = domain::length_at_least(slot.indicator_width, 0.0);
         let check = slot.check_polyline();
-        let chrome = ToggleChrome {
+        let chrome = ToggleRow {
             row: self.widget,
             response,
             label: self.label,

@@ -8,7 +8,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -57,7 +57,7 @@ pub(crate) fn record(ui: &mut Ui) {
         font_size: 12.0,
         ..ui.theme().text
     };
-    let chrome = Bg::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
+    let chrome = Chrome::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
     let row = Node {
         size: Some(SizeSpec::new(Sizing::FILL, Sizing::HUG)),
         justify: Justify::End,
@@ -83,7 +83,7 @@ pub(crate) fn record(ui: &mut Ui) {
 /// Records `node` around `body` under the id of this call site, as `Widget::record` does for a
 /// widget's `#[track_caller]` constructor.
 #[track_caller]
-fn record_node(ui: &mut Ui, node: &Node, chrome: Option<&Bg>, body: impl FnOnce(&mut Ui)) {
+fn record_node(ui: &mut Ui, node: &Node, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui)) {
     let resolved = ui.resolve_ident(Ident::Auto(Location::caller()));
     ui.open_node(resolved, node, chrome);
     body(ui);

@@ -7,7 +7,7 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Bg, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
+    Block, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
     RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
 };
 
@@ -54,13 +54,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
-        .bg(Bg::fill(veil))
+        .chrome(Chrome::fill(veil))
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("swatch")
                 .size(30.0)
-                .bg(Bg::fill(k.fill))
+                .chrome(Chrome::fill(k.fill))
                 .show(ui);
             Text::new(k.label).id_salt("label").show(ui);
             Panel::canvas()
@@ -71,7 +71,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                         .id_salt("mover")
                         .pos((k.nudge, 5.0))
                         .size(20.0)
-                        .bg(Bg::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);
                 });
             Panel::zstack()
@@ -111,13 +111,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id_salt("extra")
                     .size(20.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
                     .show(ui);
             }
             let mut maybe = Block::new()
                 .id_salt("maybe-hidden")
                 .size(20.0)
-                .bg(Bg::fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
+                .chrome(Chrome::fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
             if k.hidden {
                 maybe = maybe.hidden();
             }
@@ -140,7 +140,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id_salt(name)
                     .size(60.0)
-                    .bg(Bg::fill(color))
+                    .chrome(Chrome::fill(color))
                     .show(ui);
             });
     }

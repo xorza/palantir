@@ -10,7 +10,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -355,7 +355,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .clip_rect()
                     .size((Sizing::FILL, Sizing::HUG))
                     .padding(6.0)
-                    .bg(Bg {
+                    .chrome(Chrome {
                         fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
                         border: Stroke::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                         corners: Corners::all(4.0),
@@ -400,7 +400,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Block::new()
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
                     .show(ui);
             });
     };

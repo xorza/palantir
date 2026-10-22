@@ -373,40 +373,40 @@ impl LayerCtx<'_, '_> {
         let clip = mode.is_clip();
         let chrome = self.tree.chrome(id);
 
-        if let Some(bg) = chrome {
+        if let Some(chrome) = chrome {
             // Alpha `1.0`: chrome isn't a shape, so no paint animation. CSS Backgrounds 3 §7.1 order: drop shadow under the fill, inset over it.
             let fill = DrawQuadPayload::rect(RectQuad {
                 kind: RectKind::Rounded,
                 rect,
-                corners: bg.corners,
-                fill: self.brush_source(bg.fill),
-                stroke: bg.border,
+                corners: chrome.corners,
+                fill: self.brush_source(chrome.fill),
+                stroke: chrome.border,
             });
-            if bg.shadow.inset() {
+            if chrome.shadow.inset() {
                 out.draw_quad(fill, 1.0);
-                let width = bg.border.width;
+                let width = chrome.border.width;
                 let padding_box = Rect {
                     min: Vec2::ZERO,
                     size: rect.size,
                 }
                 .deflated(width);
                 let source = geometry::resolve_local_rect(rect, Some(padding_box));
-                let corners = bg.corners.deflated(rect.size, width);
-                if let Some(shadow) = DrawQuadPayload::shadow(source, corners, bg.shadow) {
+                let corners = chrome.corners.deflated(rect.size, width);
+                if let Some(shadow) = DrawQuadPayload::shadow(source, corners, chrome.shadow) {
                     out.draw_quad(shadow, 1.0);
                 }
             } else {
                 // The owner's rect, as `compute_paint_rect` mirrors.
-                if let Some(shadow) = DrawQuadPayload::shadow(rect, bg.corners, bg.shadow) {
+                if let Some(shadow) = DrawQuadPayload::shadow(rect, chrome.corners, chrome.shadow) {
                     out.draw_quad(shadow, 1.0);
                 }
                 out.draw_quad(fill, 1.0);
             }
-            if bg.ring {
+            if chrome.ring {
                 let ring = DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,
                     rect,
-                    corners: bg.corners,
+                    corners: chrome.corners,
                     fill: self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT)),
                     stroke: self.tree.focus_ring,
                 });
@@ -421,7 +421,7 @@ impl LayerCtx<'_, '_> {
                 ClipMode::Rect => out.push_clip(PushClipPayload::rect(mask_rect)),
                 ClipMode::Rounded => {
                     // Per-corner reduction by the larger adjacent edge inset, keeping the mask curve inside both edges.
-                    let painted = chrome.map(|bg| bg.corners).expect(
+                    let painted = chrome.map(|row| row.corners).expect(
                         "ClipMode::Rounded without chrome row — open_node invariant violated",
                     );
                     let [ptl, ptr_, pbr, pbl] = painted.as_array();
@@ -443,7 +443,7 @@ impl LayerCtx<'_, '_> {
 
         let transform = self.tree.anchored_transform(id, rect);
 
-        // The body paints inside the node's transform; chrome stays in parent space, so a transform pans/zooms content while the background stays anchored.
+        // The body paints inside the node's transform; chrome stays in parent space, so a transform pans/zooms content while the chrome stays anchored.
         if let Some(t) = transform {
             out.push_transform(t);
         }

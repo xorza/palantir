@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -29,7 +29,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 const ID: &str = "chrome-default";
 
 #[derive(Clone, Copy, Debug)]
-enum Chrome {
+enum SetterOrder {
     DefaultOnly,
     ExplicitOnly,
     ExplicitThenDefault,
@@ -39,15 +39,15 @@ enum Chrome {
 const DEFAULT_FILL: RgbaF32 = RgbaF32::new(0.9, 0.1, 0.1, 1.0);
 const EXPLICIT_FILL: RgbaF32 = RgbaF32::new(0.1, 0.1, 0.9, 1.0);
 
-impl Chrome {
-    fn apply<W>(self, w: W, bg: fn(W, Bg) -> W, default: fn(W, Bg) -> W) -> W {
-        let d = Bg::fill(DEFAULT_FILL);
-        let e = Bg::fill(EXPLICIT_FILL);
+impl SetterOrder {
+    fn apply<W>(self, w: W, chrome: fn(W, Chrome) -> W, default: fn(W, Chrome) -> W) -> W {
+        let d = Chrome::fill(DEFAULT_FILL);
+        let e = Chrome::fill(EXPLICIT_FILL);
         match self {
             Self::DefaultOnly => default(w, d),
-            Self::ExplicitOnly => bg(w, e),
-            Self::ExplicitThenDefault => default(bg(w, e), d),
-            Self::DefaultThenExplicit => bg(default(w, d), e),
+            Self::ExplicitOnly => chrome(w, e),
+            Self::ExplicitThenDefault => default(chrome(w, e), d),
+            Self::DefaultThenExplicit => chrome(default(w, d), e),
         }
     }
 
@@ -73,7 +73,7 @@ fn hovered_trigger() -> ResponseSnapshot {
 #[derive(Debug)]
 struct Kind {
     name: &'static str,
-    record: fn(&mut Ui, Chrome),
+    record: fn(&mut Ui, SetterOrder),
     chrome_node: fn() -> WidgetId,
     layer: Layer,
 }
@@ -82,16 +82,20 @@ fn own_id() -> WidgetId {
     WidgetId::from_hash(ID)
 }
 
-/// Every widget with `bg(bg)` has `default_bg(bg)`; the default fills in only
-/// where the caller set no background, in either call order.
+/// Every widget with `chrome(chrome)` has `default_chrome(chrome)`; the default fills in only
+/// where the caller set no chrome, in either call order.
 #[test]
-fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
+fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
     let kinds = [
         Kind {
             name: "Block",
             record: |ui, c| {
-                c.apply(Block::new().id(own_id()), Block::bg, Block::default_bg)
-                    .show(ui);
+                c.apply(
+                    Block::new().id(own_id()),
+                    Block::chrome,
+                    Block::default_chrome,
+                )
+                .show(ui);
             },
             chrome_node: own_id,
             layer: Layer::Main,
@@ -99,8 +103,12 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         Kind {
             name: "Panel",
             record: |ui, c| {
-                c.apply(Panel::vstack().id(own_id()), Panel::bg, Panel::default_bg)
-                    .show(ui, |_| {});
+                c.apply(
+                    Panel::vstack().id(own_id()),
+                    Panel::chrome,
+                    Panel::default_chrome,
+                )
+                .show(ui, |_| {});
             },
             chrome_node: own_id,
             layer: Layer::Main,
@@ -108,7 +116,7 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         Kind {
             name: "Grid",
             record: |ui, c| {
-                c.apply(Grid::new().id(own_id()), Grid::bg, Grid::default_bg)
+                c.apply(Grid::new().id(own_id()), Grid::chrome, Grid::default_chrome)
                     .show(ui, |_| {});
             },
             chrome_node: own_id,
@@ -119,8 +127,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             record: |ui, c| {
                 c.apply(
                     Scroll::vertical().id(own_id()),
-                    Scroll::bg,
-                    Scroll::default_bg,
+                    Scroll::chrome,
+                    Scroll::default_chrome,
                 )
                 .show(ui, |_| {});
             },
@@ -132,8 +140,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             record: |ui, c| {
                 c.apply(
                     Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0))).id(own_id()),
-                    Popup::bg,
-                    Popup::default_bg,
+                    Popup::chrome,
+                    Popup::default_chrome,
                 )
                 .show(ui, |_, _| {});
             },
@@ -147,8 +155,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
                 PopupTrigger::open(ui, trigger.id);
                 c.apply(
                     PopupTrigger::on(&trigger),
-                    PopupTrigger::bg,
-                    PopupTrigger::default_bg,
+                    PopupTrigger::chrome,
+                    PopupTrigger::default_chrome,
                 )
                 .show(ui, |_, _| {});
             },
@@ -158,8 +166,12 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         Kind {
             name: "Modal",
             record: |ui, c| {
-                c.apply(Modal::new().id(own_id()), Modal::bg, Modal::default_bg)
-                    .show(ui, |_, _| {});
+                c.apply(
+                    Modal::new().id(own_id()),
+                    Modal::chrome,
+                    Modal::default_chrome,
+                )
+                .show(ui, |_, _| {});
             },
             chrome_node: || own_id().with("panel"),
             layer: Layer::Modal,
@@ -170,8 +182,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
                 let trigger = hovered_trigger();
                 c.apply(
                     Tooltip::on(&trigger, "tip").delay(Duration::ZERO),
-                    Tooltip::bg,
-                    Tooltip::default_bg,
+                    Tooltip::chrome,
+                    Tooltip::default_chrome,
                 )
                 .show(ui);
             },
@@ -183,8 +195,8 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
             record: |ui, c| {
                 c.apply(
                     ContextMenu::for_id(own_id()),
-                    ContextMenu::bg,
-                    ContextMenu::default_bg,
+                    ContextMenu::chrome,
+                    ContextMenu::default_chrome,
                 )
                 .show(ui, |_, _| {});
             },
@@ -193,10 +205,10 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
         },
     ];
     let cases = [
-        Chrome::DefaultOnly,
-        Chrome::ExplicitOnly,
-        Chrome::ExplicitThenDefault,
-        Chrome::DefaultThenExplicit,
+        SetterOrder::DefaultOnly,
+        SetterOrder::ExplicitOnly,
+        SetterOrder::ExplicitThenDefault,
+        SetterOrder::DefaultThenExplicit,
     ];
     for kind in &kinds {
         for case in cases {
@@ -224,10 +236,10 @@ fn default_background_yields_to_an_explicit_one_on_every_chrome_widget() {
     }
 }
 
-/// Backgrounds are checked where they enter a widget through either setter: NaN fill, negative border
+/// Chrome values are checked where they enter a widget through either setter: NaN fill, negative border
 /// width, NaN or f16-overflowing corner and NaN shadow blur each panic with their kind's rule.
 #[test]
-fn chrome_setters_check_the_background() {
+fn chrome_setters_check_the_chrome() {
     use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::math::domain;
@@ -235,34 +247,34 @@ fn chrome_setters_check_the_background() {
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
 
-    let bad: [(&str, Bg); 5] = [
+    let bad: [(&str, Chrome); 5] = [
         (
             "a color must have finite channels",
-            Bg::fill(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
+            Chrome::fill(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
         ),
         (
             domain::LENGTH_RULE,
-            Bg::fill(RgbaF32::WHITE).with_border(Stroke::new(RgbaF32::WHITE, -1.0)),
+            Chrome::fill(RgbaF32::WHITE).with_border(Stroke::new(RgbaF32::WHITE, -1.0)),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
-            Bg::rounded(RgbaF32::WHITE, Corners::all(f32::NAN)),
+            Chrome::rounded(RgbaF32::WHITE, Corners::all(f32::NAN)),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
-            Bg::rounded(RgbaF32::WHITE, Corners::all(1.0e5)),
+            Chrome::rounded(RgbaF32::WHITE, Corners::all(1.0e5)),
         ),
         (
             domain::LENGTH_RULE,
-            Bg::fill(RgbaF32::WHITE).with_shadow(Shadow {
+            Chrome::fill(RgbaF32::WHITE).with_shadow(Shadow {
                 blur: f32::NAN,
                 ..Shadow::default()
             }),
         ),
     ];
-    for (rule, bg) in bad {
-        panic_probe::assert_panics_with(rule, || Panel::vstack().bg(bg.clone()));
-        panic_probe::assert_panics_with(rule, || Block::new().default_bg(bg.clone()));
+    for (rule, chrome) in bad {
+        panic_probe::assert_panics_with(rule, || Panel::vstack().chrome(chrome.clone()));
+        panic_probe::assert_panics_with(rule, || Block::new().default_chrome(chrome.clone()));
     }
 }
 

@@ -13,7 +13,7 @@ use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::theme::splitter::SplitterTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -236,8 +236,8 @@ impl<'a> Splitter<'a> {
         if bar_fill.is_some() {
             ui.set_cursor(CursorIcon::resize_along(axis));
         }
-        let bar_bg = bar_fill.map(Bg::fill).unwrap_or_default();
-        let rule_bg = Bg::fill(rule_color);
+        let bar_chrome = bar_fill.map(Chrome::fill).unwrap_or_default();
+        let rule_chrome = Chrome::fill(rule_color);
 
         let main_tracks = [
             Track::fill(layout_ratio),
@@ -257,7 +257,7 @@ impl<'a> Splitter<'a> {
                 .id(id.with("rule"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .grid_cell(GridCell::along(axis, 1))
-                .record(ui, Some(&rule_bg), |_| {});
+                .record(ui, Some(&rule_chrome), |_| {});
 
             panes.record(ui, SplitHalf::Second, |ui| body(ui, SplitHalf::Second));
 
@@ -266,7 +266,7 @@ impl<'a> Splitter<'a> {
                 .size((Sizing::FILL, Sizing::FILL))
                 .margin(axis.compose_spacing(inset, 0.0))
                 .grid_cell(GridCell::along(axis, 1))
-                .record(ui, Some(&bar_bg), |_| {});
+                .record(ui, Some(&bar_chrome), |_| {});
         });
 
         ValueResponse {

@@ -51,7 +51,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 Panel::vstack()
                     .size((Sizing::FILL, Sizing::fixed(180.0)))
                     .padding(10.0)
-                    .bg(support::well_bg())
+                    .chrome(support::well_chrome())
                     .show(ui, |ui| {
                         TabbedView::new(&mut s.page, &PAGES).closable(false).show(
                             ui,
@@ -95,7 +95,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 Panel::vstack()
                     .size((Sizing::fixed(320.0), Sizing::HUG))
                     .padding(10.0)
-                    .bg(support::well_bg())
+                    .chrome(support::well_chrome())
                     .show(ui, |ui| {
                         s.items.clear();
                         for (i, label) in MANY.iter().enumerate() {

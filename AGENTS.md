@@ -84,7 +84,7 @@ renders.
   constructor that takes one setting, as `Vec::with_capacity` is
   (`Mesh::with_capacity`, `TextShaper::with_fonts`).
 - **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
-  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Bg`, `Brush` and the
+  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Chrome`, `Brush` and the
   gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
   It is checked where it enters (**Input validation**, rule 3).
 - **Checked value** — a consumer relies on an invariant, so the fields are
@@ -126,9 +126,16 @@ renders.
   a position and `dir` a file-system directory, so a lookup index
   (`GradientIndex`), a registry (`WindowDirectory`), a `direction` and a
   `ContextMenu` keep the whole word.
+- **`Chrome` is what a node paints behind its content**: fill, border,
+  corner radii and shadow, set through `chrome` and `default_chrome`, and
+  recorded with the focus ring as `NodeChrome` and `ChromeRow`. `bg` is a
+  background color alone (`Palette::window_bg`). Refused: `bg` or
+  `background` for a `Chrome`, which holds more than the fill CSS and WPF
+  call a background; and "chrome" for a widget's scaffolding (`ToggleRow`)
+  or a stroke's join billboards.
 - **Constructors.** `new` is the primary one. A named constructor names the
   kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
-  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Bg::rounded`).
+  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Chrome::rounded`).
   `from_*` converts another representation (`Image::from_srgba8`,
   `Rect::from_min_max`, `ButtonTheme::from_palette`). `on(&snapshot)` attaches
   an overlay to a trigger, with the snapshot first and required text second;
@@ -140,7 +147,7 @@ renders.
   a common value may get a shorthand that takes nothing beside it
   (`visibility` / `hidden`, `bar_mode` / `hide_bars`, `zoom_config` /
   `zoomable`, `weight` / `bold`). `default_*` is a fallback used only where the
-  caller set nothing (`ThemeDefaults`, `default_bg`). `start_*` is a
+  caller set nothing (`ThemeDefaults`, `default_chrome`). `start_*` is a
   first-frame state the widget owns after that (`Expander::start_open`).
   Placement is the one setting named by a preposition: `at(rect)` on a shape,
   `at_origin(point)` for text, `fixed_at(point)` on a layer; its anchored
@@ -173,7 +180,7 @@ renders.
   widget type (`TabStrip::chip_id`, `DockView::pane_id`). A part's id is its
   owner's `id.with("part")`, documented on the owner.
 - **Sentinels.** `NONE` is a value that paints nothing or a set that holds
-  nothing (`Bg::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
+  nothing (`Chrome::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
   `Modifiers::NONE`, `TextStyleOverrides::NONE`). `ZERO` is a geometric zero
   (`Rect`, `Size`, `Spacing`, `Corners`). `TRANSPARENT` is a color or a brush
   that paints nothing. `ONE` and `IDENTITY` are the multiplicative identity.
@@ -233,7 +240,7 @@ renders.
   `impl Into<Option<&Theme>>`; a second slot is `<slot>_style`
   (`ComboBox::button_style`). An override of one axis of the resolved slot is
   a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
-  `bg(bg)` and `default_bg(bg)`; no trait
+  `chrome(chrome)` and `default_chrome(chrome)`; no trait
   holds them in step, a test in `widgets::tests` does.
 - **Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to
   it, and finishes it through that widget's public setters. It never reaches

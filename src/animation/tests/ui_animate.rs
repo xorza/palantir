@@ -116,7 +116,7 @@ fn animate_some_then_none_drops_stale_row() {
 #[test]
 fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::geometry::corners::Corners;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
     use crate::theme::look::WidgetLook;
@@ -127,14 +127,14 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 
     let AnimationUi { mut h, id } = support::setup_animation_ui("look-test");
 
-    let bg = Bg {
+    let chrome = Chrome {
         fill: RgbaF32::hex(0x336699).into(),
         border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
     let look = WidgetLook {
-        bg: bg.clone(),
+        chrome: chrome.clone(),
         text: TextStyleOverrides::NONE,
     };
     let fallback = TextStyle::default();
@@ -149,10 +149,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
-    assert_eq!(snap.bg.fill, bg.fill, "None: fill snaps to target");
-    assert_eq!(snap.bg.border.width, 2.0, "None: stroke width snaps");
-    assert_eq!(snap.bg.border.color, bg.border.color);
-    assert_eq!(snap.bg.corners, bg.corners);
+    assert_eq!(snap.chrome.fill, chrome.fill, "None: fill snaps to target");
+    assert_eq!(snap.chrome.border.width, 2.0, "None: stroke width snaps");
+    assert_eq!(snap.chrome.border.color, chrome.border.color);
+    assert_eq!(snap.chrome.corners, chrome.corners);
     assert_eq!(
         snap.text, fallback,
         "a look that overrides nothing takes the ambient style whole",
@@ -163,11 +163,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
 
-    // Retargeting the fill allocates a `Bg` row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
+    // Retargeting the fill allocates a `Chrome` row; text is unchanged, so the snap-if-close path leaves no TextStyle row.
     let look2 = WidgetLook {
-        bg: Bg {
+        chrome: Chrome {
             fill: RgbaF32::hex(0xff0000).into(),
-            ..bg
+            ..chrome
         },
         text: TextStyleOverrides::NONE,
     };
@@ -195,7 +195,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         ..fallback
     };
     let look3 = WidgetLook {
-        bg,
+        chrome,
         text: TextStyleOverrides::NONE
             .with_font_size(own_size)
             .with_color(own_color),

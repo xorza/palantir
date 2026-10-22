@@ -16,7 +16,7 @@ use glam::Vec2;
 use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Bg, Block, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing, Stroke,
+    Block, Chrome, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing, Stroke,
     Track, TranslateScale, Ui,
 };
 use std::rc::Rc;
@@ -74,7 +74,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Block::new()
                             .id_salt((r, c))
-                            .bg(Bg::fill(RgbaF32::WHITE))
+                            .chrome(Chrome::fill(RgbaF32::WHITE))
                             .grid_cell((r, c))
                             .show(ui);
                     }

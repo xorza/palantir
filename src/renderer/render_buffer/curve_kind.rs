@@ -13,7 +13,7 @@ impl CurveKind {
     pub(crate) const CUBIC: Self = Self(0);
     pub(crate) const ARC: Self = Self(1);
     pub(crate) const SEGMENT: Self = Self(2);
-    /// Joint chrome billboards (the three `LineJoin` looks), above every basis kind: `vs` takes the billboard path on `kind >= KIND_JOIN_ROUND`.
+    /// Join billboards (the three `LineJoin` looks), above every basis kind: `vs` takes the billboard path on `kind >= KIND_JOIN_ROUND`.
     pub(crate) const JOIN_ROUND: Self = Self(3);
     pub(crate) const JOIN_BEVEL: Self = Self(4);
     pub(crate) const JOIN_MITER: Self = Self(5);

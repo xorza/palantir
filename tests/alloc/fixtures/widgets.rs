@@ -5,7 +5,7 @@ use crate::harness::Audit;
 use std::time::Duration;
 
 use palantir::{
-    Anchor, AnimationSpec, Bg, Block, Button, Checkbox, ColorCoords, ColorField, ColorPicker,
+    Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
     Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel, Popup,
     ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
     Spinner, Switch, Text, TextEdit, Tooltip, Ui, Vec2, WidgetId,
@@ -130,7 +130,7 @@ fn damage_animated_rect_alloc_free() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Block::new()
                 .auto_id()
-                .bg(Bg::fill(RgbaF32::WHITE))
+                .chrome(Chrome::fill(RgbaF32::WHITE))
                 .size((Sizing::fixed(w), Sizing::fixed(40.0)))
                 .show(ui);
         });

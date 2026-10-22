@@ -7,7 +7,7 @@ use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
 /// A single drop or inset shadow, embedded in `Shape::Shadow` or used as
-/// `Bg::shadow`. `Shadow::NONE` (also `Default`) is the "no shadow"
+/// `Chrome::shadow`. `Shadow::NONE` (also `Default`) is the "no shadow"
 /// sentinel. `offset` is logical px; `blur` is the Gaussian σ (CSS
 /// `blur-radius / 2`), 0 a sharp edge; `spread` inflates (drop) or deflates
 /// (inset) the source rect. As in CSS a drop shadow is clipped inside the box
@@ -77,7 +77,7 @@ impl Shadow {
         self
     }
 
-    /// True when this shadow paints nothing: its color paints nothing or a scalar is NaN. Takes `&self` because `Bg` names it in a `skip_serializing_if`.
+    /// True when this shadow paints nothing: its color paints nothing or a scalar is NaN. Takes `&self` because `Chrome` names it in a `skip_serializing_if`.
     #[inline]
     pub const fn is_noop(&self) -> bool {
         self.color.is_noop() || self.has_nan()

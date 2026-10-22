@@ -3,7 +3,7 @@
 use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::internals::ui_harness::tests::support::SURFACE;
 use crate::internals::ui_harness::*;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -13,7 +13,7 @@ fn tile(ui: &mut Ui) {
     Block::new()
         .id_salt("tile")
         .size(20.0)
-        .bg(Bg::fill(RgbaF32::WHITE))
+        .chrome(Chrome::fill(RgbaF32::WHITE))
         .show(ui);
 }
 

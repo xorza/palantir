@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -61,7 +61,7 @@ impl DockTheme {
             preview_radius: 2.0,
             caret_width: 3.0,
             ghost: WidgetLook {
-                bg: Bg::rounded(p.element, Corners::all(4.0))
+                chrome: Chrome::rounded(p.element, Corners::all(4.0))
                     .with_border(Stroke::new(p.accent, 1.0)),
                 text: TextStyleOverrides::NONE,
             },

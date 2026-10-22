@@ -88,7 +88,7 @@ impl Spring {
     pub(super) fn step<T: Animatable>(self, offset: T, velocity: T, dt: f32) -> SpringStep<T> {
         debug_assert!(dt.is_finite() && (0.0..=MAX_ANIMATION_DT).contains(&dt));
         let transition = SpringTransition::new(self, dt);
-        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Bg`
+        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Chrome`
         // are only `Copy` when their fields are; scalar clones compile to noops.
         let moved = offset
             .clone()

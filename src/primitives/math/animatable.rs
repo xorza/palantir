@@ -12,7 +12,7 @@ use glam::Vec2;
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
 /// unchanged.
 ///
-/// `Clone`, not `Copy`: heavy types (`Bg`, `Brush`, `Stroke`) ride the
+/// `Clone`, not `Copy`: heavy types (`Chrome`, `Brush`, `Stroke`) ride the
 /// recording chain once per chromed widget per frame, where auto-`Copy` was
 /// measurably costly. A `Copy` supertrait would bring that back, so copies
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned

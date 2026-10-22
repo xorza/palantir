@@ -4,7 +4,7 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -124,42 +124,43 @@ impl ToggleTheme {
         } = geometry;
         let radius = Corners::all(corner);
         let edge = p.border_strong();
-        let bg = |fill: RgbaF32, stroke: Stroke| Bg::rounded(fill, radius).with_border(stroke);
+        let chrome =
+            |fill: RgbaF32, stroke: Stroke| Chrome::rounded(fill, radius).with_border(stroke);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                bg: bg(p.element_mid, Stroke::new(edge, 1.0)),
+                chrome: chrome(p.element_mid, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                bg: bg(p.element_strong, Stroke::new(edge, 1.0)),
+                chrome: chrome(p.element_strong, Stroke::new(edge, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                bg: bg(p.element_strong, Stroke::new(p.border_focused, 1.0)),
+                chrome: chrome(p.element_strong, Stroke::new(p.border_focused, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                bg: bg(p.element, Stroke::new(p.border_soft(), 1.0)),
+                chrome: chrome(p.element, Stroke::new(p.border_soft(), 1.0)),
                 text: disabled_text,
             },
         };
         let acc = p.accent;
         let checked = StatefulLook {
             normal: WidgetLook {
-                bg: bg(acc, Stroke::NONE),
+                chrome: chrome(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                bg: bg(acc, Stroke::NONE),
+                chrome: chrome(acc, Stroke::NONE),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                bg: bg(acc, Stroke::new(p.border_focused, 1.0)),
+                chrome: chrome(acc, Stroke::new(p.border_focused, 1.0)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                bg: bg(acc.with_alpha(0.45), Stroke::NONE),
+                chrome: chrome(acc.with_alpha(0.45), Stroke::NONE),
                 text: disabled_text,
             },
         };

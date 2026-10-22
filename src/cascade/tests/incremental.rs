@@ -7,7 +7,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 
 use crate::internals::ui_harness::UiHarness;
@@ -57,14 +57,14 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
 #[test]
 fn incremental_matches_full_across_cascade_input_classes() {
     use crate::primitives::layout::visibility::Visibility;
-    use crate::primitives::paint::bg::Bg;
+    use crate::primitives::paint::chrome::Chrome;
     use crate::widgets::block::Block;
 
     fn colored_frame(ui: &mut Ui, color: RgbaF32) {
         Block::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
-            .bg(Bg::fill(color))
+            .chrome(Chrome::fill(color))
             .show(ui);
     }
 
@@ -316,7 +316,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("body"))
                     .size((Sizing::fixed(s.size), Sizing::fixed(40.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .focusable(true)
                     .tab_idx(s.tab_idx)
                     .disabled(s.disabled)
@@ -451,7 +451,7 @@ fn refresh_recomputes_only_what_moved() {
                                     .id_salt((name, k))
                                     .size(size)
                                     .pos((f32::from(k) * 30.0, 0.0))
-                                    .bg(Bg::fill(RgbaF32::WHITE))
+                                    .chrome(Chrome::fill(RgbaF32::WHITE))
                                     .show(ui);
                             }
                         });

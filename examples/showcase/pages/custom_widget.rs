@@ -6,7 +6,7 @@ use crate::support;
 use crate::support::{Col, Section, api};
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Bg, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
+    Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
     Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
 };
 
@@ -100,7 +100,7 @@ fn surface(ui: &mut Ui) {
             "the stable id, resolved once and kept",
         ),
         (
-            api!(Widget::record as fn(Widget, &mut Ui, Option<&Bg>, Body)),
+            api!(Widget::record as fn(Widget, &mut Ui, Option<&Chrome>, Body)),
             "open the node, run the body, close it",
         ),
         (
@@ -236,7 +236,7 @@ impl<'a> Stepper<'a> {
         let label = fmt!(ui, "{}", self.value);
 
         // No fill of its own: the corners serve the framework's focus ring.
-        let chrome = Bg::rounded(
+        let chrome = Chrome::rounded(
             RgbaF32::TRANSPARENT,
             Corners::all(support::RADIUS + RING_ROOM),
         );
@@ -297,7 +297,7 @@ impl StepButton {
         } else {
             support::ELEMENT
         };
-        let chrome = Bg {
+        let chrome = Chrome {
             fill: fill.into(),
             border: Stroke::NONE,
             corners: Corners::all(support::RADIUS),

@@ -6,7 +6,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
@@ -131,7 +131,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
-                    .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     });

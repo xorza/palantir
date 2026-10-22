@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
 use crate::scene::layer::Layer;
@@ -32,12 +32,12 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .show(ui);
             });
         });
@@ -70,7 +70,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(20.0)
-                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 };
                 match wrap {
@@ -112,7 +112,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                         .id(WidgetId::from_hash(*key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
                         .pos(Vec2::new(*x, *y))
-                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 }
             });
@@ -230,7 +230,7 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
                         .id(WidgetId::from_hash("overflowing-child"))
                         .pos((60.0, 0.0))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });
@@ -271,7 +271,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                         .id(WidgetId::from_hash("neighbor"))
                         .pos(Vec2::new(100.0, 100.0))
                         .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                        .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                         .show(ui);
                 });
         });

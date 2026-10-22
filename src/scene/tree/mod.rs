@@ -2,7 +2,7 @@
 //! buffer, and subtree-rollup hashes for cross-frame caches.
 //!
 //! Noop filtering at this storage tier: `Shapes::add` drops `Shape::is_noop`
-//! shapes and `Tree::open_node` drops `Bg::is_noop` chrome rows (policy in
+//! shapes and `Tree::open_node` drops `Chrome::is_noop` chrome rows (policy in
 //! [`paint_sink`](crate::renderer::frontend::paint_sink)). Partial-noop chrome is
 //! dropped per emit downstream.
 
@@ -29,7 +29,7 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::node_cols::NodeCols;
@@ -69,7 +69,7 @@ pub(crate) struct Tree {
     pub(crate) bounds_table: Vec<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
     /// One row per node with chrome or `ClipMode::Rounded`; a rounded clip keeps its
-    /// row even for a noop paint so the encoder can read `bg.radius`.
+    /// row even for a noop paint so the encoder can read `chrome.radius`.
     pub(crate) chrome_table: Vec<ChromeRow>,
     /// The focus ring's stroke for the one chrome row that flags it ([`ChromeRow::ring`]).
     pub(crate) focus_ring: ShapeStroke,
@@ -97,11 +97,11 @@ pub(crate) struct Tree {
     rollup_check: RollupCheck,
 }
 
-/// The chrome half of a [`Tree::open_node`] call: the background and the store
+/// The chrome half of a [`Tree::open_node`] call: the chrome and the store
 /// its payloads land in.
 #[derive(Debug)]
 pub(crate) struct ChromeInput<'a> {
-    pub(crate) bg: &'a Bg,
+    pub(crate) chrome: &'a Chrome,
     /// Focus ring over the chrome; `Stroke::NONE` unless keyboard-focused.
     pub(crate) ring: Stroke,
     pub(crate) store: &'a mut RecordStore,
@@ -379,15 +379,15 @@ impl Tree {
     /// and make it the tip. Roots stamp `scratch.pending_placement` onto the new
     /// `RootSlot`.
     ///
-    /// `chrome` is `None` for nodes without a background; `ClipMode::Rounded` then
+    /// `input` is `None` for nodes without chrome; `ClipMode::Rounded` then
     /// downgrades to `Rect`. With chrome, `Rounded` keeps the row even if
-    /// `Bg::is_noop`, so the encoder can read `bg.radius`.
+    /// `Chrome::is_noop`, so the encoder can read `chrome.radius`.
     #[inline]
     pub(super) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
         mut cols: NodeCols,
-        chrome: Option<ChromeInput<'_>>,
+        input: Option<ChromeInput<'_>>,
     ) -> NodeId {
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
         let new_id = NodeId(self.records.len() as u32);
@@ -409,9 +409,9 @@ impl Tree {
         // A rounded clip with no radius is a plain scissor. Applied to the recorded
         // flags: only here are the request and the chrome both visible.
         if cols.attrs.clip_mode() == ClipMode::Rounded
-            && chrome
+            && input
                 .as_ref()
-                .is_none_or(|c| c.bg.corners.is_approx_zero())
+                .is_none_or(|i| i.chrome.corners.is_approx_zero())
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
@@ -441,25 +441,25 @@ impl Tree {
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput {
-            bg,
+            chrome,
             ring: focus_ring,
             store,
-        }) = chrome
+        }) = input
         {
             // A border paints inside the arranged rect, so `padding` grows by it. Done
             // here so layout columns carry the effective padding and the `LayoutCore`
             // hash invalidates `MeasureCache` when it shifts.
-            let ring = bg.border_inset();
+            let ring = chrome.border_inset();
             if ring != 0.0 {
                 let [l, t, r, b] = cols.layout.padding.as_array();
                 cols.layout.padding = Spacing::new(l + ring, t + ring, r + ring, b + ring);
             }
             // Storage noop gate for chrome; mirrors `Shapes::add`.
-            let needs_chrome_row = !bg.is_noop()
+            let needs_chrome_row = !chrome.is_noop()
                 || !focus_ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::bg(store, bg, focus_ring);
+                let row = lower::chrome(store, chrome, focus_ring);
                 if row.ring {
                     self.focus_ring = ShapeStroke::from(focus_ring);
                 }

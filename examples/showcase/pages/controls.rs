@@ -4,7 +4,7 @@ use crate::support;
 use crate::support::{Col, Section, api};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Align, AnimationSpec, Bg, Button, ButtonTheme, Checkbox, ComboBox, Configure, Corners,
+    Align, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure, Corners,
     DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator,
     Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit,
     TextStyleOverrides, TextWrap, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
@@ -157,7 +157,7 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
         .size((Sizing::fixed(360.0), Sizing::HUG))
         .padding(16.0)
         .gap(10.0)
-        .bg(support::well_bg())
+        .chrome(support::well_chrome())
         .show(ui, |ui| {
             group(ui, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
@@ -376,23 +376,24 @@ fn group(ui: &mut Ui, label: &'static str) {
 fn outlined_style() -> ButtonTheme {
     let accent = support::ACCENT;
     let stroke = Stroke::new(accent, 1.5);
-    let bg = |fill: RgbaF32, stroke| Bg::rounded(fill, Corners::all(4.0)).with_border(stroke);
+    let chrome =
+        |fill: RgbaF32, stroke| Chrome::rounded(fill, Corners::all(4.0)).with_border(stroke);
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                bg: bg(RgbaF32::TRANSPARENT, stroke),
+                chrome: chrome(RgbaF32::TRANSPARENT, stroke),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                bg: bg(accent.with_alpha(0.18), stroke),
+                chrome: chrome(accent.with_alpha(0.18), stroke),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                bg: bg(accent.with_alpha(0.35), stroke),
+                chrome: chrome(accent.with_alpha(0.35), stroke),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                bg: bg(
+                chrome: chrome(
                     RgbaF32::TRANSPARENT,
                     Stroke::new(accent.with_alpha(0.35), 1.5),
                 ),
@@ -406,7 +407,7 @@ fn outlined_style() -> ButtonTheme {
 fn danger_style() -> ButtonTheme {
     let red = support::E;
     let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
-        bg: Bg::rounded(fill, Corners::all(4.0)),
+        chrome: Chrome::rounded(fill, Corners::all(4.0)),
         text: TextStyleOverrides::NONE.with_color(ink),
     };
     ButtonTheme {

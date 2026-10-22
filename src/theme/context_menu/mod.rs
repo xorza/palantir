@@ -3,7 +3,7 @@
 pub(crate) mod menu_item;
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::theme::palette::Palette;
@@ -17,7 +17,7 @@ use crate::theme::separator::SeparatorTheme;
 #[must_use]
 pub struct ContextMenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.
-    pub panel: Bg,
+    pub panel: Chrome,
     /// Padding inside the container, around the items.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,

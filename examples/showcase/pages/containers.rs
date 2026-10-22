@@ -3,8 +3,8 @@
 use crate::support;
 use crate::support::{DemoCell, Section, api};
 use palantir::{
-    Align, Bg, Block, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing, Stroke,
-    Text, TextStyle, Track, Ui,
+    Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
+    Stroke, Text, TextStyle, Track, Ui,
 };
 use std::hash::Hash;
 
@@ -191,7 +191,7 @@ fn sw(w: f32, h: f32, c: RgbaF32) -> Block {
 }
 
 fn positioned(x: f32, y: f32, c: RgbaF32) -> Block {
-    Block::new().pos((x, y)).size(44.0).bg(Bg::fill(c))
+    Block::new().pos((x, y)).size(44.0).chrome(Chrome::fill(c))
 }
 
 fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
@@ -199,8 +199,10 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
     Panel::hstack()
         .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
-        .bg(Bg::rounded(a.with_alpha(0.20), Corners::all(10.0))
-            .with_border(Stroke::new(a.with_alpha(0.45), 1.0)))
+        .chrome(
+            Chrome::rounded(a.with_alpha(0.20), Corners::all(10.0))
+                .with_border(Stroke::new(a.with_alpha(0.45), 1.0)),
+        )
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt(("chip-label", &key))
@@ -248,7 +250,7 @@ impl GridTile {
             .auto_id()
             .padding(5.0)
             .grid_cell(self.cell)
-            .bg(support::swatch_bg(self.color));
+            .chrome(support::swatch_chrome(self.color));
         if let Some(size) = self.size {
             tile = tile.size(size);
         }

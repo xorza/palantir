@@ -3,7 +3,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -170,18 +170,18 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(40.0)
-                    .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("hid"))
                     .size(40.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .hidden()
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size(40.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .show(ui);
             })
             .response

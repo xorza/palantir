@@ -209,15 +209,15 @@ fn trigger_chrome_follows_button_style() {
     let id = WidgetId::from_hash("styled-combo");
     let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
     let mut restyled = ButtonTheme::default();
-    restyled.looks.normal.bg.fill = custom.into();
+    restyled.looks.normal.chrome.fill = custom.into();
     assert_ne!(
-        ButtonTheme::default().looks.normal.bg.fill,
+        ButtonTheme::default().looks.normal.chrome.fill,
         custom.into(),
         "premise: the custom fill differs from the stock one",
     );
     for style in [None, Some(&restyled)] {
         let mut h = UiHarness::new(SURFACE);
-        let themed = h.ui.theme().button.looks.normal.bg.fill.clone();
+        let themed = h.ui.theme().button.looks.normal.chrome.fill.clone();
         let mut selected = 0;
         h.frame(|ui| {
             ComboBox::new(&mut selected, &options)

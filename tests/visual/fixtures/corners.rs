@@ -2,7 +2,7 @@
 
 use glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{Bg, Block, Configure, Corners, Panel, Rect, RgbaF32, Sizing};
+use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Sizing};
 
 use crate::fixtures;
 use crate::harness::Harness;
@@ -29,13 +29,13 @@ fn oversized_radii_fit_their_box() {
                     .id_salt("clip")
                     .pos((10.0, 110.0))
                     .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                    .bg(Bg::rounded(RgbaF32::TRANSPARENT, Corners::all(9999.0)))
+                    .chrome(Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(9999.0)))
                     .clip_rounded()
                     .show(ui, |ui| {
                         Block::new()
                             .id_salt("clipped")
                             .size((Sizing::FILL, Sizing::FILL))
-                            .bg(Bg::fill(RgbaF32::WHITE))
+                            .chrome(Chrome::fill(RgbaF32::WHITE))
                             .show(ui);
                     });
             });

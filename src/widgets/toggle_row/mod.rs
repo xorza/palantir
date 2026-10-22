@@ -7,7 +7,7 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::look::look_plan::LookPlan;
 use crate::ui::Ui;
@@ -16,11 +16,11 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 
-/// One toggle row as [`ToggleChrome::record_row`] records it, all but the box's body.
+/// One toggle row as [`ToggleRow::record_row`] records it, all but the box's body.
 /// The theme arrives planned, not applied: only the caller knows which slot
 /// (`theme.checkbox`/`radio`/`switch`) is its own.
 #[derive(Debug)]
-pub(crate) struct ToggleChrome<'a> {
+pub(crate) struct ToggleRow<'a> {
     /// The row, from [`row`].
     pub(crate) row: Widget,
     /// The row's state, read before the caller decided whether it toggled.
@@ -65,11 +65,15 @@ pub(crate) const fn toggled(activated: bool, value: &mut bool) -> bool {
     *value
 }
 
-impl ToggleChrome<'_> {
+impl ToggleRow<'_> {
     /// Shared scaffolding behind [`crate::Checkbox`], [`crate::RadioButton`]
     /// and [`crate::Switch`]. `body` receives the box's resolved chrome, as
     /// `Switch` measures its knob inset against the animating stroke width.
-    pub(crate) fn record_row(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &Bg)) -> Response<'_> {
+    pub(crate) fn record_row(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &Chrome),
+    ) -> Response<'_> {
         let Self {
             row: mut widget,
             response,
@@ -82,7 +86,7 @@ impl ToggleChrome<'_> {
         let id = widget.resolve(ui);
         let mut look = widget.wear(ui, plan);
         if let Some(radius) = pill {
-            look.bg.corners = Corners::all(radius);
+            look.chrome.corners = Corners::all(radius);
         }
 
         widget
@@ -93,7 +97,7 @@ impl ToggleChrome<'_> {
         widget.record(ui, None, |ui| {
             boxed
                 .id(id.with("box"))
-                .record(ui, Some(&look.bg), |ui| body(ui, &look.bg));
+                .record(ui, Some(&look.chrome), |ui| body(ui, &look.chrome));
 
             if !label.is_empty() {
                 Text::new(label)

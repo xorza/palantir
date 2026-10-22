@@ -1,4 +1,4 @@
-//! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, joint chrome; see
+//! GPU side of native parametric strokes (cubic beziers, arcs, polyline segments, join billboards; see
 //! `CurveInstance::kind`). One `draw_indexed` per scissor group covers its `GroupBatch`; an immutable index
 //! buffer subdivides each instance into [`SEGMENTS_PER_INSTANCE`] chords. Same stencil-variant pattern as
 //! [`MeshPipeline`] / [`ImagePipeline`].
@@ -119,10 +119,10 @@ impl CurvePipeline {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
-        gradient_bg: &'a wgpu::BindGroup,
+        gradient_bind_group: &'a wgpu::BindGroup,
     ) {
         pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, gradient_bg, &[]);
+        pass.set_bind_group(0, gradient_bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(self.idx_buffer.slice(..), wgpu::IndexFormat::Uint16);
     }

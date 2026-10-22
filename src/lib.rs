@@ -67,8 +67,8 @@
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
-//! state, so those take the bundle. [`Bg`] follows the same rule: widgets
-//! with one panel behind them have `bg()` ([`Panel`], [`Grid`], [`Block`],
+//! state, so those take the bundle. [`Chrome`] follows the same rule: widgets
+//! with one panel behind them have `chrome()` ([`Panel`], [`Grid`], [`Block`],
 //! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`ContextMenu`]).
 //!
 //! # Feature flags
@@ -184,7 +184,7 @@ macro_rules! fmt {
 /// gradient builders stay at the root; widget authoring stays in [`widget`].
 pub mod prelude {
     pub use crate::{
-        Align, App, Axis, Bg, Block, Brush, Button, Checkbox, ComboBox, Configure, ContextMenu,
+        Align, App, Axis, Block, Brush, Button, Checkbox, Chrome, ComboBox, Configure, ContextMenu,
         Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify, Key,
         KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
         ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
@@ -320,7 +320,6 @@ pub use primitives::layout::justify::Justify;
 pub use primitives::layout::sizing::{SizeSpec, Sizing};
 pub use primitives::layout::track::Track;
 pub use primitives::layout::visibility::Visibility;
-pub use primitives::paint::bg::Bg;
 pub use primitives::paint::brush::Brush;
 pub use primitives::paint::brush::gradient::color_ramp::ColorRamp;
 pub use primitives::paint::brush::gradient::conic_geometry::{
@@ -335,6 +334,7 @@ pub use primitives::paint::brush::gradient::radial_geometry::{
 };
 pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interpolation, Spread};
+pub use primitives::paint::chrome::Chrome;
 pub use primitives::paint::color::RgbaF32;
 pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::{ColorModel, HueSlice};

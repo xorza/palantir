@@ -3,11 +3,11 @@
 //! group, blurb, key hints, scrolling and builder.
 
 use palantir::{
-    Align, AnimationSpec, App, Axis, Bg, Block, Button, ButtonTheme, Checkbox, Configure, Corners,
-    FocusPolicy, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll, Shortcut,
-    Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle, TextStyleOverrides,
-    TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook, WindowConfig, WindowToken,
-    fmt,
+    Align, AnimationSpec, App, Axis, Block, Button, ButtonTheme, Checkbox, Chrome, Configure,
+    Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll,
+    Shortcut, Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle,
+    TextStyleOverrides, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook,
+    WindowConfig, WindowToken, fmt,
 };
 
 use crate::pages;
@@ -319,7 +319,7 @@ impl Shell {
                 self.rail(ui);
                 Block::new()
                     .size((Sizing::fixed(1.0), Sizing::FILL))
-                    .bg(Bg::fill(support::HAIRLINE))
+                    .chrome(Chrome::fill(support::HAIRLINE))
                     .show(ui);
                 self.card(ui);
             });
@@ -337,7 +337,7 @@ impl Shell {
             .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
             .padding((12.0, 16.0, 12.0, 12.0))
             .gap(14.0)
-            .bg(Bg::fill(support::SIDEBAR))
+            .chrome(Chrome::fill(support::SIDEBAR))
             .show(ui, |ui| {
                 brand(ui);
                 Scroll::vertical()
@@ -386,8 +386,10 @@ impl Shell {
                     .size((Sizing::FILL, Sizing::FILL))
                     .padding(24.0)
                     .gap(20.0)
-                    .bg(Bg::rounded(support::CARD, Corners::all(10.0))
-                        .with_border(Stroke::new(support::BORDER, 1.0)))
+                    .chrome(
+                        Chrome::rounded(support::CARD, Corners::all(10.0))
+                            .with_border(Stroke::new(support::BORDER, 1.0)),
+                    )
                     .clip_rounded()
                     .show(ui, |ui| {
                         page_header(ui, &page);
@@ -477,7 +479,7 @@ fn group_heading(ui: &mut Ui, group: Group, top: f32) {
 fn debug_toggles(ui: &mut Ui) {
     Block::new()
         .size((Sizing::FILL, Sizing::fixed(1.0)))
-        .bg(Bg::fill(support::HAIRLINE))
+        .chrome(Chrome::fill(support::HAIRLINE))
         .show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
@@ -571,7 +573,7 @@ fn page_header(ui: &mut Ui, page: &Page) {
             Block::new()
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
                 .margin((0.0, 10.0, 0.0, 0.0))
-                .bg(Bg::fill(support::HAIRLINE))
+                .chrome(Chrome::fill(support::HAIRLINE))
                 .show(ui);
         });
 }
@@ -605,7 +607,7 @@ enum NavLook {
 /// nav items and the UI-scale stepper.
 fn nav_style(look: NavLook) -> ButtonTheme {
     let label = |c: RgbaF32| TextStyleOverrides::NONE.with_font_size(12.0).with_color(c);
-    let wash = |alpha: f32, c: RgbaF32| Bg::rounded(c.with_alpha(alpha), Corners::all(5.0));
+    let wash = |alpha: f32, c: RgbaF32| Chrome::rounded(c.with_alpha(alpha), Corners::all(5.0));
     let (rest, hover, press, ink, tint) = match look {
         NavLook::Idle => (0.0, 0.06, 0.10, support::INK_DIM, RgbaF32::WHITE),
         NavLook::Quiet => (0.0, 0.06, 0.10, support::INK_FAINT, RgbaF32::WHITE),
@@ -614,19 +616,19 @@ fn nav_style(look: NavLook) -> ButtonTheme {
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                bg: wash(rest, tint),
+                chrome: wash(rest, tint),
                 text: label(ink),
             },
             hovered: WidgetLook {
-                bg: wash(hover, tint),
+                chrome: wash(hover, tint),
                 text: label(support::INK),
             },
             active: WidgetLook {
-                bg: wash(press, tint),
+                chrome: wash(press, tint),
                 text: label(support::INK),
             },
             disabled: WidgetLook {
-                bg: Bg::NONE,
+                chrome: Chrome::NONE,
                 text: label(support::INK_FAINT),
             },
         },

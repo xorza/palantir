@@ -3,8 +3,8 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
@@ -29,28 +29,28 @@ pub struct ButtonTheme {
 impl ButtonTheme {
     /// The standard button recipe over `p`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`.
     pub fn from_palette(p: &Palette) -> Self {
-        let bg = |fill: RgbaF32| {
-            Bg::rounded(fill, Corners::all(4.0)).with_border(Stroke::new(p.border_soft(), 1.0))
+        let chrome = |fill: RgbaF32| {
+            Chrome::rounded(fill, Corners::all(4.0)).with_border(Stroke::new(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
-        let pressed_bg = Bg::rounded(p.element_strong, Corners::all(4.0))
+        let pressed_chrome = Chrome::rounded(p.element_strong, Corners::all(4.0))
             .with_border(Stroke::new(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    bg: bg(p.element_mid),
+                    chrome: chrome(p.element_mid),
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    bg: bg(p.element_strong),
+                    chrome: chrome(p.element_strong),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    bg: pressed_bg,
+                    chrome: pressed_chrome,
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    bg: bg(p.element),
+                    chrome: chrome(p.element),
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
@@ -68,13 +68,13 @@ impl ButtonTheme {
         looks.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset for menu-bar `Button`s: transparent at rest, hover-only background, no border or shadow. Deliberately a recipe, not a [`Theme`] slot, since no widget resolves against it; hand it to [`Button::style`].
+    /// Flat "menu-trigger" preset for menu-bar `Button`s: transparent at rest, hover-only fill, no border or shadow. Deliberately a recipe, not a [`Theme`] slot, since no widget resolves against it; hand it to [`Button::style`].
     ///
     /// [`Theme`]: crate::Theme
     /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
-            bg: Bg::rounded(fill, Corners::all(4.0)),
+            chrome: Chrome::rounded(fill, Corners::all(4.0)),
             text: TextStyleOverrides::NONE,
         };
         Self {

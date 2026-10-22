@@ -7,7 +7,8 @@
 use glam::{IVec2, UVec2, Vec2};
 use palantir::golden::image::{Rgba, RgbaImage};
 use palantir::{
-    Bg, Block, Button, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32, Sizing, Ui,
+    Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32, Sizing,
+    Ui,
 };
 
 use crate::fixtures;
@@ -109,7 +110,7 @@ fn button_scene(id_salt: &'static str, label: &'static str) -> impl FnMut(&mut U
             .padding(12.0)
             .gap(8.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .bg(Bg::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
+            .chrome(Chrome::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Button::new().id_salt(id_salt).label(label).show(ui);
             });
@@ -125,19 +126,19 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
-            .bg(Bg::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
+            .chrome(Chrome::fill(RgbaF32::srgb(0.15, 0.15, 0.18)))
             .show(ui, |ui| {
                 Block::new()
                     .id_salt(("tl", salt))
                     .pos(Vec2::new(0.0, 0.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .bg(Bg::fill(TOP_LEFT))
+                    .chrome(Chrome::fill(TOP_LEFT))
                     .show(ui);
                 Block::new()
                     .id_salt(("br", salt))
                     .pos(Vec2::new(180.0, 180.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .bg(Bg::fill(BOTTOM_RIGHT))
+                    .chrome(Chrome::fill(BOTTOM_RIGHT))
                     .show(ui);
             });
     }
@@ -284,13 +285,13 @@ fn damage_rect_overlay_outlines_thin_sliver() {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
-                .bg(Bg::fill(RgbaF32::srgb(0.12, 0.12, 0.15)))
+                .chrome(Chrome::fill(RgbaF32::srgb(0.12, 0.12, 0.15)))
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("sliver")
                         .pos(Vec2::new(60.0, 20.0))
                         .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))
-                        .bg(Bg::fill(if on {
+                        .chrome(Chrome::fill(if on {
                             RgbaF32::srgb(0.9, 0.5, 0.2)
                         } else {
                             RgbaF32::srgb(0.2, 0.3, 0.7)

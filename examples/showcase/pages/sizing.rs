@@ -50,7 +50,7 @@ fn sizing(ui: &mut Ui) {
                         .id_salt(i)
                         .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
-                        .bg(support::swatch_bg(support::C))
+                        .chrome(support::swatch_chrome(support::C))
                         .show(ui);
                 }
             });
@@ -86,7 +86,7 @@ fn justify(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(32.0)))
                     .padding((6.0, 4.0, 6.0, 4.0))
                     .justify(j)
-                    .bg(support::well_bg())
+                    .chrome(support::well_chrome())
                     .show(ui, |ui| {
                         for i in 0..3 {
                             support::swatch(support::A)
@@ -118,7 +118,7 @@ fn visibility(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(44.0)))
                     .padding(6.0)
                     .gap(12.0)
-                    .bg(support::well_bg())
+                    .chrome(support::well_chrome())
                     .show(ui, |ui| {
                         for (key, c, v) in [
                             ("a", support::A, Visibility::Visible),
@@ -129,7 +129,7 @@ fn visibility(ui: &mut Ui) {
                                 .id_salt((id, key))
                                 .size((Sizing::fixed(70.0), Sizing::fixed(28.0)))
                                 .visibility(v)
-                                .bg(support::swatch_bg(c))
+                                .chrome(support::swatch_chrome(c))
                                 .show(ui);
                         }
                     });
@@ -151,7 +151,7 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .show(ui, |ui| {
                     aligned_chip(support::A, Align::default())
                         .id_salt("a")
@@ -171,7 +171,7 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .show(ui, |ui| {
                     aligned_chip(support::A, Align::default())
                         .id_salt("a-vs")
@@ -199,7 +199,7 @@ fn spacing(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(20.0)
                 .gap(8.0)
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .show(ui, |ui| {
                     for i in 0..3 {
                         support::swatch(support::A)
@@ -211,24 +211,24 @@ fn spacing(ui: &mut Ui) {
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .gap(8.0)
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .show(ui, |ui| {
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
-                        .bg(support::swatch_bg(support::A))
+                        .chrome(support::swatch_chrome(support::A))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
-                        .bg(support::swatch_bg(support::A))
+                        .chrome(support::swatch_chrome(support::A))
                         .show(ui);
                 });
             // The orange box's left margin pulls it back 30 px so the two overlap.
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(8.0)
-                .bg(support::well_bg())
+                .chrome(support::well_chrome())
                 .show(ui, |ui| {
                     support::swatch(support::A)
                         .id_salt(("neg", "a"))
@@ -237,7 +237,7 @@ fn spacing(ui: &mut Ui) {
                     Block::new()
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
-                        .bg(support::swatch_bg(support::B))
+                        .chrome(support::swatch_chrome(support::B))
                         .show(ui);
                 });
         });
@@ -254,7 +254,7 @@ fn gap(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(40.0)))
                     .padding(6.0)
                     .gap(g)
-                    .bg(support::well_bg())
+                    .chrome(support::well_chrome())
                     .show(ui, |ui| {
                         for i in 0..5 {
                             support::swatch(support::A)

@@ -6,7 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::EPS;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
@@ -37,7 +37,7 @@ fn same_authoring_produces_same_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             })
             .response
@@ -52,7 +52,7 @@ fn same_authoring_produces_same_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size(50.0)
-                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .show(ui);
             })
             .response
@@ -117,7 +117,7 @@ fn changing_fill_color_changes_hash() {
                     Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size(50.0)
-                        .bg(Bg::fill(fill))
+                        .chrome(Chrome::fill(fill))
                         .show(ui)
                         .node(),
                 );
@@ -320,7 +320,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 Block::new()
                     .id(WidgetId::from_hash("c"))
                     .size(50.0)
-                    .bg(Bg::fill(fill))
+                    .chrome(Chrome::fill(fill))
                     .show(ui);
             })
             .response
@@ -339,7 +339,7 @@ fn shape_hashes_column_sized_to_shape_records() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -381,7 +381,7 @@ fn shape_hash_stable_across_frames() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -408,7 +408,7 @@ fn one_shape_change_only_flips_its_own_hash() {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
             .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+            .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
             .show(ui, |ui| {
                 ui.add_shape(Shape::line(
                     Vec2::new(0.0, 0.0),
@@ -533,7 +533,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .padding(edit.padding)
-                .bg(Bg::fill(edit.fill))
+                .chrome(Chrome::fill(edit.fill))
                 .show(ui, |ui| {
                     Text::new(edit.label)
                         .id(WidgetId::from_hash("label"))

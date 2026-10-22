@@ -4,7 +4,7 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::check_state::CheckState;
 use crate::theme::look::theme_slot::ThemeSlot;
@@ -14,8 +14,8 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_chrome;
-use crate::widgets::toggle_chrome::ToggleChrome;
+use crate::widgets::toggle_row;
+use crate::widgets::toggle_row::ToggleRow;
 use glam::Vec2;
 
 /// Boolean toggle drawn as a pill track with a sliding knob; takes a `&mut bool` and a click flips it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]). Layout mirrors [`crate::Checkbox`] (`HStack [track, label]`, one `Sense::CLICK` target); the track is a `Canvas` and the knob's x animates through [`Ui::animate`].
@@ -33,7 +33,7 @@ impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            widget: toggle_chrome::row(),
+            widget: toggle_row::row(),
             value,
             label: TextInput::default(),
             style: None,
@@ -58,8 +58,8 @@ impl<'a> Switch<'a> {
         let id = self.widget.resolve(ui);
 
         let before = *self.value;
-        let on = toggle_chrome::toggled(
-            toggle_chrome::activated(ui, &mut self.widget, &response),
+        let on = toggle_row::toggled(
+            toggle_row::activated(ui, &mut self.widget, &response),
             self.value,
         );
         let changed = on != before;
@@ -74,7 +74,7 @@ impl<'a> Switch<'a> {
         let knob_color = slot.indicator;
         let animation = slot.defaults.animation;
         let knob_id = id.with("knob");
-        let chrome = ToggleChrome {
+        let chrome = ToggleRow {
             row: self.widget,
             response,
             label: self.label,
@@ -97,12 +97,12 @@ impl<'a> Switch<'a> {
 
             let target_x = if on { geometry.on_x } else { geometry.off_x };
             let knob_x = ui.animate(AnimationRequest::new(knob_id, "x", target_x), animation);
-            let knob_bg = Bg::rounded(knob_color, Corners::all(geometry.knob * 0.5));
+            let knob_chrome = Chrome::rounded(knob_color, Corners::all(geometry.knob * 0.5));
             let knob = Widget::leaf()
                 .id(knob_id)
                 .size((Sizing::fixed(geometry.knob), Sizing::fixed(geometry.knob)))
                 .pos(Vec2::new(knob_x, geometry.knob_y));
-            knob.record(ui, Some(&knob_bg), |_| {});
+            knob.record(ui, Some(&knob_chrome), |_| {});
         });
         ValueResponse {
             response,

@@ -5,7 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -23,7 +23,7 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     h.frame(|ui| {
         Modal::new()
             .id(root_id)
-            .bg(Bg::NONE)
+            .chrome(Chrome::NONE)
             .padding(Spacing::ZERO)
             .min_size(Size::ZERO)
             .show(ui, |_, _| {});

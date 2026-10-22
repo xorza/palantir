@@ -166,7 +166,7 @@ impl<'a> Expander<'a> {
                 Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
-            header.record(ui, Some(&look.bg), |ui| {
+            header.record(ui, Some(&look.chrome), |ui| {
                 let arrow_box = Widget::leaf()
                     .id(header_id.with("arrow"))
                     .size((Sizing::fixed(t.arrow_size.x), Sizing::fixed(t.arrow_size.y)));

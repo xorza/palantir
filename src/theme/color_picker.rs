@@ -2,7 +2,7 @@
 //! behind translucent colors.
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::theme::ThemeText;
@@ -63,7 +63,7 @@ pub struct ColorPickerTheme {
     pub gap: f32,
     /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
     /// [`Palette::popup_panel`], as for menus and combo lists.
-    pub popup: Bg,
+    pub popup: Chrome,
     /// Padding inside the popup chrome; wider than [`Self::gap`] so the panel reads
     /// as set in a card.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]

@@ -19,7 +19,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::domain::{self, vec2};
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::scene::bar_geometry::BarGeometry;
 use crate::scene::node::Node;
 use crate::scene::scrollbars_def::ScrollbarsDef;
@@ -177,7 +177,7 @@ pub struct Scroll<'a> {
     axes: ScrollAxes,
     style: Option<&'a ScrollbarTheme>,
     zoom: Option<ZoomConfig>,
-    chrome: Option<Bg>,
+    chrome: Option<Chrome>,
     bar_mode: BarMode,
     content_margin: Spacing,
     pan_request: Vec2,
@@ -504,31 +504,31 @@ impl<'a> Scroll<'a> {
 }
 
 impl Scroll<'_> {
-    /// Paint `bg` as the inner surface's chrome, under children and bars.
+    /// Paint `chrome` as the inner surface's chrome, under children and bars.
     /// Unlike `Panel`/`Grid`/`Popup`, unset does not fall back to
-    /// `theme.panel_bg`.
+    /// `theme.panel_chrome`.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
+        self.chrome = Some(chrome);
         self
     }
 
-    /// Paint `bg` unless the caller set one. An explicit [`Self::bg`]
+    /// Paint `chrome` unless the caller set one. An explicit [`Self::chrome`]
     /// wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        bg.validate();
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(chrome);
         }
         self
     }

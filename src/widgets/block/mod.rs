@@ -1,18 +1,18 @@
-//! A decorated leaf rectangle: background, size, margin, no body.
+//! A decorated leaf rectangle: chrome, size, margin, no body.
 
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 
-/// A leaf rectangle with optional background, size, margin and `Sense`: dividers, hit areas, swatches, spacers. Content inside needs a [`Panel`](crate::Panel).
+/// A leaf rectangle with optional chrome, size, margin and `Sense`: dividers, hit areas, swatches, spacers. Content inside needs a [`Panel`](crate::Panel).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Block {
     widget: Widget,
-    chrome: Option<Bg>,
+    chrome: Option<Chrome>,
 }
 
 impl Block {
@@ -33,28 +33,28 @@ impl Block {
 }
 
 impl Block {
-    /// Paint `bg`. `Block` is unthemed, so unset paints nothing.
+    /// Paint `chrome`. `Block` is unthemed, so unset paints nothing.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        bg.validate();
-        self.chrome = Some(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
+        self.chrome = Some(chrome);
         self
     }
 
-    /// Paint `bg` unless the caller set one; for wrappers that theme a held widget after the caller's setters. An explicit [`Self::bg`] wins in either order.
+    /// Paint `chrome` unless the caller set one; for wrappers that theme a held widget after the caller's setters. An explicit [`Self::chrome`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        bg.validate();
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        chrome.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(bg);
+            self.chrome = Some(chrome);
         }
         self
     }

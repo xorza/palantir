@@ -4,7 +4,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -65,26 +65,26 @@ impl PopupTrigger {
         }
     }
 
-    /// Paint `bg` as the popup's background. See [`Popup::bg`].
+    /// Paint `chrome` behind the popup. See [`Popup::chrome`].
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn bg(mut self, bg: Bg) -> Self {
-        self.popup = self.popup.bg(bg);
+    pub const fn chrome(mut self, chrome: Chrome) -> Self {
+        self.popup = self.popup.chrome(chrome);
         self
     }
 
-    /// Paint `bg` as the popup's background unless the caller set one. See
-    /// [`Popup::default_bg`].
+    /// Paint `chrome` behind the popup unless the caller set one. See
+    /// [`Popup::default_chrome`].
     ///
     /// # Panics
     ///
-    /// Panics unless `bg` holds the kinds [`Bg`] lists.
+    /// Panics unless `chrome` holds the kinds [`Chrome`] lists.
     #[track_caller]
-    pub const fn default_bg(mut self, bg: Bg) -> Self {
-        self.popup = self.popup.default_bg(bg);
+    pub const fn default_chrome(mut self, chrome: Chrome) -> Self {
+        self.popup = self.popup.default_chrome(chrome);
         self
     }
 

@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::bg::Bg;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -56,13 +56,13 @@ fn interleaved_shapes_record_correct_order() {
                 ui.add_shape(pos_rect(0));
                 Block::new()
                     .id(WidgetId::from_hash("c0"))
-                    .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(1));
                 Block::new()
                     .id(WidgetId::from_hash("c1"))
-                    .bg(Bg::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
+                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .show(ui);
                 ui.add_shape(pos_rect(2));
@@ -127,7 +127,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                     child_id = Some(
                         Block::new()
                             .id(WidgetId::from_hash("only-child"))
-                            .bg(Bg::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                            .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
                             .node(),
