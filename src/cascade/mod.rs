@@ -46,7 +46,7 @@ pub(crate) struct Cascade {
     pub(crate) roots: Vec<RootRow>,
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
-    /// `WidgetId → Endpoint` lookup. **Invariant: equals the recorded entries of `SeenIds.curr` at the end of the latest `CascadeEngine::run`.** A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record` cleared `curr`, and a relayout's second pass must still see pass A's entries; `seen.prev` holds the previous frame, not pass.
+    /// `WidgetId → Endpoint` lookup. **Invariant: equals the recorded entries of `SeenIds.cur` at the end of the latest `CascadeEngine::run`.** A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record` cleared `cur`, and a relayout's second pass must still see pass A's entries; `seen.prev` holds the previous frame, not pass.
     pub(crate) by_id: WidgetIdMap<Endpoint>,
     /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
@@ -66,7 +66,7 @@ pub(crate) struct WidgetLocation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TabDirection {
     Next,
-    Previous,
+    Prev,
 }
 
 /// The stops one Tab press may reach; see
@@ -196,7 +196,7 @@ impl Cascade {
         targets
     }
 
-    /// The stop a Tab press moves focus to from `focused`, or `None` when `domain` holds no stop. Order is ascending `index`, ties in record order; `Next`/`Previous` wrap. A `focused` outside the domain enters at the first stop, or the last going back.
+    /// The stop a Tab press moves focus to from `focused`, or `None` when `domain` holds no stop. Order is ascending `idx`, ties in record order; `Next`/`Prev` wrap. A `focused` outside the domain enters at the first stop, or the last going back.
     pub(crate) fn next_tab_stop(
         &self,
         domain: TabDomain,
@@ -208,19 +208,18 @@ impl Cascade {
                 .iter()
                 .enumerate()
                 .filter(move |(_, row)| self.in_domain(domain, row))
-                .map(|(position, row)| ((row.index, position), row.id))
+                .map(|(pos, row)| ((row.idx, pos), row.id))
         };
-        let current =
-            focused.and_then(|id| stops().find(|&(_, stop)| stop == id).map(|(key, _)| key));
+        let cur = focused.and_then(|id| stops().find(|&(_, stop)| stop == id).map(|(key, _)| key));
         match direction {
-            TabDirection::Next => current
+            TabDirection::Next => cur
                 .and_then(|from| {
                     stops()
                         .filter(|&(key, _)| key > from)
                         .min_by_key(|&(key, _)| key)
                 })
                 .or_else(|| stops().min_by_key(|&(key, _)| key)),
-            TabDirection::Previous => current
+            TabDirection::Prev => cur
                 .and_then(|from| {
                     stops()
                         .filter(|&(key, _)| key < from)
@@ -255,7 +254,7 @@ impl Cascade {
             .iter()
             .enumerate()
             .filter(|(_, row)| self.is_within(row.id, ancestor))
-            .min_by_key(|&(position, row)| (row.index, position))
+            .min_by_key(|&(pos, row)| (row.idx, pos))
             .map(|(_, row)| row.id)
     }
 

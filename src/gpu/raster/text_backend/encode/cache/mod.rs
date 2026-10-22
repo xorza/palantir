@@ -98,7 +98,7 @@ impl EncodedCache {
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
     ) -> bool {
-        let current_frame = pass.atlas.current_frame;
+        let cur_frame = pass.atlas.cur_frame;
         let Some(entry) = self.map.get_mut(&run_key.key) else {
             return false;
         };
@@ -118,7 +118,7 @@ impl EncodedCache {
                 pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
                 ..g
             });
-            slot.last_use = current_frame;
+            slot.last_use = cur_frame;
         }
         if stale {
             // An eviction reused one of this run's slots, so the template is dead. Drop the
@@ -128,7 +128,7 @@ impl EncodedCache {
             }
             return false;
         }
-        entry.last_use = current_frame;
+        entry.last_use = cur_frame;
         true
     }
 
@@ -149,20 +149,20 @@ impl EncodedCache {
     /// [`Self::settle`] files tickets against it. Runs every frame for uniform cost; a
     /// `retain` would scale with the working set (~11 µs for 24k rows), while draining
     /// [`Self::expiry`] pays only for what came due.
-    pub(super) fn sweep(&mut self, current_frame: u64) {
+    pub(super) fn sweep(&mut self, cur_frame: u64) {
         let map = &mut self.map;
         let arena = &mut self.arena;
         let probe = &mut self.counters;
         // No stamp check: `last_use` only moves a deadline out, so every ticket that
         // fires is live.
-        self.expiry.retire(current_frame, |key, _| {
+        self.expiry.retire(cur_frame, |key, _| {
             // Gone already: `emit_cached` drops a row whose slot was reused, leaving its ticket.
             let Entry::Occupied(slot) = map.entry(key) else {
                 return None;
             };
             // A hit files no ticket; re-read the real `last_use` and re-file a live row.
             let dies_at = dies_at(slot.get().last_use);
-            if dies_at > current_frame {
+            if dies_at > cur_frame {
                 probe.refiles.bump();
                 return Some(dies_at);
             }

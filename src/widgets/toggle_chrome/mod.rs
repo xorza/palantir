@@ -7,7 +7,7 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::look::look_plan::LookPlan;
 use crate::ui::Ui;
@@ -69,11 +69,7 @@ impl ToggleChrome<'_> {
     /// Shared scaffolding behind [`crate::Checkbox`], [`crate::RadioButton`]
     /// and [`crate::Switch`]. `body` receives the box's resolved chrome, as
     /// `Switch` measures its knob inset against the animating stroke width.
-    pub(crate) fn record_row(
-        self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &Background),
-    ) -> Response<'_> {
+    pub(crate) fn record_row(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &Bg)) -> Response<'_> {
         let Self {
             row: mut widget,
             response,
@@ -86,7 +82,7 @@ impl ToggleChrome<'_> {
         let id = widget.resolve(ui);
         let mut look = widget.wear(ui, plan);
         if let Some(radius) = pill {
-            look.background.corners = Corners::all(radius);
+            look.bg.corners = Corners::all(radius);
         }
 
         widget
@@ -97,7 +93,7 @@ impl ToggleChrome<'_> {
         widget.record(ui, None, |ui| {
             boxed
                 .id(id.with("box"))
-                .record(ui, Some(&look.background), |ui| body(ui, &look.background));
+                .record(ui, Some(&look.bg), |ui| body(ui, &look.bg));
 
             if !label.is_empty() {
                 Text::new(label)

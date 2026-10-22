@@ -47,10 +47,10 @@ impl PaneGeometry<'_> {
             caret_width: _,
         } = *self;
         if strip.contains(p) {
-            let index = tab_strip::insertion_slot(chips.iter().copied(), p.x);
+            let idx = tab_strip::insertion_slot(chips.iter().copied(), p.x);
             return DropTarget {
-                drop: DockDrop::Into { group, index },
-                highlight: self.caret_rect(index),
+                drop: DockDrop::Into { group, idx },
+                highlight: self.caret_rect(idx),
             };
         }
 
@@ -63,7 +63,7 @@ impl PaneGeometry<'_> {
         let join = DropTarget {
             drop: DockDrop::Into {
                 group,
-                index: chips.len(),
+                idx: chips.len(),
             },
             highlight: content,
         };
@@ -93,15 +93,15 @@ impl PaneGeometry<'_> {
         }
     }
 
-    /// The insertion caret on the boundary of slot `index`; an empty strip degrades to the left inset.
-    fn caret_rect(&self, index: usize) -> Rect {
+    /// The insertion caret on the boundary of slot `idx`; an empty strip degrades to the left inset.
+    fn caret_rect(&self, idx: usize) -> Rect {
         let Self {
             strip,
             chips,
             caret_width,
             ..
         } = *self;
-        let x = match (chips.get(index), chips.last()) {
+        let x = match (chips.get(idx), chips.last()) {
             (Some(next), _) => next.min.x - 1.5,
             (None, Some(last)) => last.max().x + 1.5,
             (None, None) => strip.min.x + 6.0,

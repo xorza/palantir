@@ -25,10 +25,10 @@ static INSTALL: Once = Once::new();
 #[track_caller]
 pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
     INSTALL.call_once(|| {
-        let previous = panic::take_hook();
+        let prev = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
             if !QUIET.with(Cell::get) {
-                previous(info);
+                prev(info);
             }
         }));
     });

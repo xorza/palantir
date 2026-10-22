@@ -123,12 +123,12 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     /// fired under, hence separate from [`Self::schedule`].
     fn file(&mut self, ticket: Ticket<K>, due: u64) {
         let due = due.clamp(self.drained_through + 1, self.drained_through + self.mask);
-        let index = (due & self.mask) as usize;
-        let len = self.buckets[index].len();
-        if len == self.buckets[index].capacity() {
+        let idx = (due & self.mask) as usize;
+        let len = self.buckets[idx].len();
+        if len == self.buckets[idx].capacity() {
             self.grow_buckets(len + 1);
         }
-        self.buckets[index].push(ticket);
+        self.buckets[idx].push(ticket);
     }
 
     /// Give every bucket room for `len` tickets, doubling past it. All at once: tickets

@@ -1,4 +1,4 @@
-//! A two-byte arena index with room for `None`, so `Option<Index16>` is two bytes.
+//! A two-byte arena index with room for `None`, so `Option<Idx16>` is two bytes.
 
 use std::num::NonZeroU16;
 
@@ -7,9 +7,9 @@ use std::num::NonZeroU16;
 /// **[`Self::LAST`] is a real ceiling.** A table addressed this way holds at most 65 535 rows and a row past that panics in release, naming the table; see [`ExtrasIdx`](crate::scene::tree::extras_idx::ExtrasIdx).
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct Index16(NonZeroU16);
+pub(crate) struct Idx16(NonZeroU16);
 
-impl Index16 {
+impl Idx16 {
     /// The highest index held: one below `u16::MAX`, since the stored value is index plus one.
     pub(crate) const LAST: usize = u16::MAX as usize - 1;
 
@@ -17,12 +17,12 @@ impl Index16 {
     ///
     /// # Panics
     ///
-    /// Panics if `index` is above [`Self::LAST`].
+    /// Panics if `idx` is above [`Self::LAST`].
     #[inline]
-    pub(crate) fn new(index: usize, table: &'static str) -> Self {
-        match index.checked_add(1).and_then(|raw| u16::try_from(raw).ok()) {
+    pub(crate) fn new(idx: usize, table: &'static str) -> Self {
+        match idx.checked_add(1).and_then(|raw| u16::try_from(raw).ok()) {
             Some(raw) => Self(NonZeroU16::new(raw).unwrap()),
-            None => index16_overflow(index, table),
+            None => idx16_overflow(idx, table),
         }
     }
 
@@ -46,36 +46,36 @@ impl Index16 {
 
 #[cold]
 #[inline(never)]
-fn index16_overflow(index: usize, table: &'static str) -> ! {
+fn idx16_overflow(idx: usize, table: &'static str) -> ! {
     panic!(
-        "{table} exceeded its {} row ceiling at row {index}",
-        Index16::LAST + 1,
+        "{table} exceeded its {} row ceiling at row {idx}",
+        Idx16::LAST + 1,
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::common::index16::Index16;
+    use crate::common::idx16::Idx16;
 
     #[test]
-    fn index16_preserves_boundaries_and_option_niche() {
-        let first = Index16::new(0, "test_table");
-        let last = Index16::new(65_534, "test_table");
+    fn idx16_preserves_boundaries_and_option_niche() {
+        let first = Idx16::new(0, "test_table");
+        let last = Idx16::new(65_534, "test_table");
 
         assert_eq!(first.idx(), 0);
         assert_eq!(first.to_raw(), 1);
-        assert_eq!(Index16::from_raw(0), None);
+        assert_eq!(Idx16::from_raw(0), None);
         assert_eq!(last.idx(), 65_534);
         assert_eq!(last.to_raw(), u16::MAX);
-        assert_eq!(Index16::from_raw(u16::MAX), Some(last));
-        assert_eq!(size_of::<Index16>(), 2);
-        assert_eq!(size_of::<Option<Index16>>(), 2);
+        assert_eq!(Idx16::from_raw(u16::MAX), Some(last));
+        assert_eq!(size_of::<Idx16>(), 2);
+        assert_eq!(size_of::<Option<Idx16>>(), 2);
     }
 
-    /// The overflow names the caller's table, since a bare "Index16" leaves the reader to find which of five.
+    /// The overflow names the caller's table, since a bare "Idx16" leaves the reader to find which of five.
     #[test]
     #[should_panic(expected = "bounds_table exceeded its 65535 row ceiling at row 65535")]
-    fn index16_rejects_reserved_maximum() {
-        let _ = Index16::new(65_535, "bounds_table");
+    fn idx16_rejects_reserved_maximum() {
+        let _ = Idx16::new(65_535, "bounds_table");
     }
 }

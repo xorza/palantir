@@ -8,7 +8,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -27,7 +27,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         .size((Sizing::FILL, Sizing::HUG))
         .gap(6.0)
         .padding(8.0)
-        .background(Background {
+        .bg(Bg {
             fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
             border: Stroke::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),

@@ -3,7 +3,7 @@
 
 use crate::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
@@ -57,7 +57,7 @@ pub struct Tooltip<'a> {
     delay: Option<Duration>,
     when_disabled: bool,
     widget: Widget,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
     style: Option<&'a TooltipTheme>,
 }
 
@@ -194,32 +194,32 @@ impl<'a> Tooltip<'a> {
 }
 
 impl Tooltip<'_> {
-    /// Paint `background` as this widget's background; unset falls back to the
-    /// theme's. [`Background::NONE`] suppresses the chrome.
+    /// Paint `bg` as this widget's background; unset falls back to the
+    /// theme's. [`Bg::NONE`] suppresses the chrome.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`]
+    /// Panics unless `bg` holds the kinds [`Bg`]
     /// lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one, for a wrapper theming a widget
+    /// Paint `bg` unless the caller set one, for a wrapper theming a widget
     /// after the caller's setters.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`]
+    /// Panics unless `bg` holds the kinds [`Bg`]
     /// lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

@@ -4,9 +4,9 @@ use glam::{UVec2, Vec2};
 use palantir::golden::image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
-    Background, Block, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel, ProgressBar,
-    Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
+    Bg, Block, Button, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ComboBox,
+    Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel, ProgressBar, Rect,
+    RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
 };
 
 use crate::fixtures;
@@ -25,8 +25,8 @@ fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
 }
 
 /// A transparent fill rounded by `corners` under a green border `width` wide.
-fn green_rim(width: f32, corners: Corners) -> Background {
-    Background::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
+fn green_rim(width: f32, corners: Corners) -> Bg {
+    Bg::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
         RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)),
         width,
     ))
@@ -38,7 +38,7 @@ fn rounded_clip(ui: &mut Ui, panel: Panel) {
         Block::new()
             .id_salt("inner")
             .size((Sizing::FILL, Sizing::FILL))
-            .background(Background::fill(RgbaF32::BLACK))
+            .bg(Bg::fill(RgbaF32::BLACK))
             .show(ui);
     });
 }
@@ -62,8 +62,8 @@ fn frame_filled_with_border_matches_golden() {
             Block::new()
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(
-                    Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
+                .bg(
+                    Bg::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(16.0))
                         .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
                 )
                 .show(ui);
@@ -112,12 +112,12 @@ fn surface_rounded_clips_full_fill_child() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(20.0)
-            .background(Background::fill(RgbaF32::srgb(1.0, 0.42, 0.72)))
+            .bg(Bg::fill(RgbaF32::srgb(1.0, 0.42, 0.72)))
             .show(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(green_rim(5.0, Corners::new(4.0, 12.0, 20.0, 28.0)));
+                    .bg(green_rim(5.0, Corners::new(4.0, 12.0, 20.0, 28.0)));
                 rounded_clip(ui, panel);
             });
     });
@@ -137,9 +137,9 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
             fixtures::canvas(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
-                    .position(Vec2::new(-6.0, -6.0))
+                    .pos(Vec2::new(-6.0, -6.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
-                    .background(green_rim(4.0, Corners::all(24.0)));
+                    .bg(green_rim(4.0, Corners::all(24.0)));
                 rounded_clip(ui, panel);
             });
         })
@@ -191,10 +191,7 @@ fn rounded_clip_survives_surface_resize() {
             Panel::zstack()
                 .id_salt("rounded")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(Background::rounded(
-                    RgbaF32::srgb(0.2, 0.2, 0.3),
-                    Corners::all(8.0),
-                ))
+                .bg(Bg::rounded(RgbaF32::srgb(0.2, 0.2, 0.3), Corners::all(8.0)))
                 .clip_rounded()
                 .show(ui, |_| {});
         });
@@ -230,7 +227,7 @@ fn progress_bar_half_matches_golden() {
 }
 
 /// Switch on and off, animation disabled: knob rest positions and the
-/// `Canvas` track with `.position`ed knob.
+/// `Canvas` track with `.pos`ed knob.
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
@@ -310,7 +307,7 @@ fn modal_dialog_matches_golden() {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
-            .background(Background::fill(RgbaF32::srgb(0.35, 0.45, 0.65)))
+            .bg(Bg::fill(RgbaF32::srgb(0.35, 0.45, 0.65)))
             .show(ui, |_| {});
         Modal::new().id_salt("m").show(ui, |ui, _| {
             Text::new("Confirm?").id_salt("mt").show(ui);
@@ -381,8 +378,8 @@ fn focus_ring_matches_golden() {
                     .id_salt("ringed")
                     .size((Sizing::FILL, Sizing::FILL))
                     .focusable(true)
-                    .background(
-                        Background::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(10.0))
+                    .bg(
+                        Bg::rounded(RgbaF32::srgb(0.20, 0.30, 0.55), Corners::all(10.0))
                             .with_border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 1.0)),
                     )
                     .show(ui);

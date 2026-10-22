@@ -19,7 +19,7 @@ impl NodeMode {
         match self {
             Self::PendingGrid => matches!(mode, LayoutMode::Grid(_)),
             Self::PendingScrollbars => matches!(mode, LayoutMode::Scrollbars(_)),
-            Self::Resolved(current) => mem::discriminant(&current) == mem::discriminant(&mode),
+            Self::Resolved(cur) => mem::discriminant(&cur) == mem::discriminant(&mode),
         }
     }
 

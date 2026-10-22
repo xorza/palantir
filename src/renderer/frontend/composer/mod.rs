@@ -23,7 +23,7 @@ mod clip_stack;
 mod geometry;
 mod higher_kind_rects;
 mod occlusion_pruner;
-mod phys_map;
+mod physical_map;
 pub(crate) mod session;
 // `pub(crate)` only so `bench::driver` can name `rect_grid::bench`.
 pub(crate) mod rect_grid;
@@ -169,14 +169,14 @@ impl Composer {
     /// by the per-compose prologue and [`ComposeSession::discard_composed`],
     /// so a new field resets on both paths. Walk state (clip/transform stacks)
     /// is untouched: the discard path must preserve it.
-    fn reset_group_scratch(&mut self, viewport_phys: UVec2) {
-        self.batch.open_grid.start_frame(viewport_phys);
-        self.batch.closed_grid.start_frame(viewport_phys);
+    fn reset_group_scratch(&mut self, viewport_physical: UVec2) {
+        self.batch.open_grid.start_frame(viewport_physical);
+        self.batch.closed_grid.start_frame(viewport_physical);
         self.batch.pending_batch_cursor = 0;
-        self.higher_kinds.start_frame(viewport_phys);
+        self.higher_kinds.start_frame(viewport_physical);
         self.cursors = GroupCursors::default();
         self.batch.open = None;
-        self.occlusion.start_frame(viewport_phys);
+        self.occlusion.start_frame(viewport_physical);
     }
 }
 

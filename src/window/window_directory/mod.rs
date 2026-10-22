@@ -34,11 +34,11 @@ impl WindowDirectory {
     /// Retire a dropped driver's token.
     pub(crate) fn remove(&self, token: WindowToken) {
         let mut tokens = self.tokens.borrow_mut();
-        let index = tokens
+        let idx = tokens
             .iter()
             .position(|candidate| *candidate == token)
             .expect("a dropped window driver must be in the window directory");
-        tokens.swap_remove(index);
+        tokens.swap_remove(idx);
     }
 }
 

@@ -200,7 +200,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
                 let splitter = if row {
                     Splitter::row(ratio)
                 } else {
-                    Splitter::column(ratio)
+                    Splitter::col(ratio)
                 };
                 splitter
                     .id(split_id())
@@ -369,7 +369,7 @@ fn divider_requests_the_resize_cursor() {
     let mut ratio = 0.5;
     let frame = |h: &mut UiHarness, ratio: &mut f32| {
         h.frame(|ui| {
-            Splitter::column(ratio)
+            Splitter::col(ratio)
                 .id(split_id())
                 .size((Sizing::fixed(100.0), Sizing::fixed(201.0)))
                 .show(ui, |_, _| {});

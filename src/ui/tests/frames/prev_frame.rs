@@ -3,7 +3,7 @@
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -98,7 +98,7 @@ fn prev_frame_updates_on_authoring_change() {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background::fill(fill))
+                .bg(Bg::fill(fill))
                 .show(ui);
         }
     };

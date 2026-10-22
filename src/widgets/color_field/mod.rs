@@ -186,8 +186,8 @@ fn keyboard_travel(ui: &mut Ui, coords: &mut ColorCoords) -> bool {
 fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
     let size = image.size();
-    image.fill_with(|column, row| {
-        let sat = (column as f32 + 0.5) / size.x as f32;
+    image.fill_with(|col, row| {
+        let sat = (col as f32 + 0.5) / size.x as f32;
         let val = 1.0 - (row as f32 + 0.5) / size.y as f32;
         slice.color(sat, val).into()
     });

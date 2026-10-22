@@ -11,7 +11,7 @@ use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
-use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
@@ -212,7 +212,7 @@ fn split_move_and_collapse_roundtrip() {
         tab: viewer(1),
         to: DockDrop::Into {
             group: primary,
-            index: 1,
+            idx: 1,
         },
     });
     d.validate().unwrap();
@@ -231,16 +231,16 @@ fn split_move_and_collapse_roundtrip() {
 
 #[test]
 fn left_and_top_splits_put_the_new_pane_first() {
-    for (side, dir) in [
+    for (side, direction) in [
         (SplitSide::Left, SplitDirection::Row),
-        (SplitSide::Top, SplitDirection::Column),
+        (SplitSide::Top, SplitDirection::Col),
     ] {
         let mut d = seeded();
         let primary = d.primary().id;
         split_off(&mut d, viewer(1), primary, side);
         d.validate().unwrap();
         let root = root_split(&d);
-        assert_eq!(root.split.direction, dir);
+        assert_eq!(root.split.direction, direction);
         let DockNode::Group(first) = root.first else {
             panic!("the first child is the new pane");
         };
@@ -266,7 +266,7 @@ fn degenerate_and_forbidden_moves_change_nothing() {
         tab: Tab::Prefs,
         to: DockDrop::Into {
             group: gone,
-            index: 0,
+            idx: 0,
         },
     });
     assert_eq!(d, before, "an unknown drop target is ignored");
@@ -378,7 +378,7 @@ fn retain_tabs_never_drops_the_pinned_tab() {
 fn a_same_group_reorder_uses_pre_move_indices() {
     // Strip `[Main, Prefs, v1, v2]`; indices are slots in that strip, as
     // drop-zone arithmetic computes them.
-    let reordered = |from: Tab, index: usize| {
+    let reordered = |from: Tab, idx: usize| {
         let mut d = seeded();
         let primary = d.primary().id;
         d.find_or_insert(viewer(2), primary);
@@ -386,7 +386,7 @@ fn a_same_group_reorder_uses_pre_move_indices() {
             tab: from,
             to: DockDrop::Into {
                 group: primary,
-                index,
+                idx,
             },
         });
         d.validate().unwrap();
@@ -583,7 +583,7 @@ fn nested_splits_stay_canonical() {
         tab: viewer(2),
         to: DockDrop::Into {
             group: primary,
-            index: 99,
+            idx: 99,
         },
     });
     d.validate().unwrap();
@@ -699,8 +699,8 @@ fn loading_rejects_each_corruption() {
                 };
                 // The root points only at slot 1; slots 2.. are orphaned.
                 *s = DockSplit {
-                    first: NodeIndex(1),
-                    second: NodeIndex(1),
+                    first: NodeIdx(1),
+                    second: NodeIdx(1),
                     ..*s
                 };
             },
@@ -786,7 +786,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
 
     // Chip centers sit at x = 36 and 99; a pointer at 50 is between them.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(50.0, 15.0));
-    assert_eq!(hit.drop, DockDrop::Into { group, index: 1 });
+    assert_eq!(hit.drop, DockDrop::Into { group, idx: 1 });
     assert_eq!(
         hit.highlight.min.x,
         69.0 - 1.5 - 1.5,
@@ -797,7 +797,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
 
     // The inner box appends to the strip and highlights the whole content rect.
     let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(200.0, 165.0));
-    assert_eq!(hit.drop, DockDrop::Into { group, index: 2 });
+    assert_eq!(hit.drop, DockDrop::Into { group, idx: 2 });
     assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 400.0, 270.0));
 
     // Near the left edge, normalized distance picks Left over Top.
@@ -813,10 +813,10 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
 
     // At the cap, or where the policy forbids the nearest edge, wedges join.
     let capped = geometry(false, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
-    assert_eq!(capped.drop, DockDrop::Into { group, index: 2 });
-    let column_only = geometry(true, AllowedSplits::Column).classify(Vec2::new(20.0, 60.0));
+    assert_eq!(capped.drop, DockDrop::Into { group, idx: 2 });
+    let col_only = geometry(true, AllowedSplits::Col).classify(Vec2::new(20.0, 60.0));
     assert_eq!(
-        column_only.drop,
+        col_only.drop,
         DockDrop::Split {
             group,
             side: SplitSide::Top
@@ -824,7 +824,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         "the nearest *offered* edge wins when Left is refused"
     );
     let none = geometry(true, AllowedSplits::None).classify(Vec2::new(20.0, 60.0));
-    assert_eq!(none.drop, DockDrop::Into { group, index: 2 });
+    assert_eq!(none.drop, DockDrop::Into { group, idx: 2 });
 }
 
 /// The minimal viewer: every tab is a label and an empty body.

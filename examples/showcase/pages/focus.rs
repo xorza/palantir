@@ -234,22 +234,22 @@ fn form(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
 fn order_and_stops(ui: &mut Ui, seen: &mut Seen) {
     Section::new("Order and stops")
         .apis(&[
-            api!(Button::tab_index),
+            api!(Button::tab_idx),
             api!(Button::tab_stop),
             api!(Button::disabled),
         ])
         .show(ui, |ui| {
             support::note(
                 ui,
-                "Tab visits stops in ascending tab_index, record order breaking ties, over \
+                "Tab visits stops in ascending tab_idx, record order breaking ties, over \
                  the whole window: −1 goes ahead of every unindexed control, 1 behind them. \
                  A control out of the Tab order still takes focus from a click.",
             );
             support::row(ui, |ui| {
-                let r = Button::new().label("tab_index −1").tab_index(-1).show(ui);
-                seen.note("tab_index −1", r.focused);
-                let r = Button::new().label("tab_index 1").tab_index(1).show(ui);
-                seen.note("tab_index 1", r.focused);
+                let r = Button::new().label("tab_idx −1").tab_idx(-1).show(ui);
+                seen.note("tab_idx −1", r.focused);
+                let r = Button::new().label("tab_idx 1").tab_idx(1).show(ui);
+                seen.note("tab_idx 1", r.focused);
                 let r = Button::new()
                     .label("tab_stop(false)")
                     .tab_stop(false)
@@ -260,8 +260,8 @@ fn order_and_stops(ui: &mut Ui, seen: &mut Seen) {
             support::checklist(
                 ui,
                 &[
-                    "With nothing focused, Tab lands on 'tab_index −1' before the nav rail",
-                    "Shift+Tab from 'tab_index −1' wraps to 'tab_index 1', the last stop",
+                    "With nothing focused, Tab lands on 'tab_idx −1' before the nav rail",
+                    "Shift+Tab from 'tab_idx −1' wraps to 'tab_idx 1', the last stop",
                     "Tab never stops on 'tab_stop(false)', but a click focuses it",
                     "Tab never stops on 'disabled'",
                 ],
@@ -282,7 +282,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             Panel::hstack()
                 .gap(6.0)
                 .padding(6.0)
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .arrow_focus(Axis::X)
                 .show(ui, |ui| {
                     for label in ["Bold", "Italic", "Underline"] {
@@ -304,7 +304,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
                 .gap(2.0)
                 .padding(6.0)
                 .size((Sizing::fixed(200.0), Sizing::HUG))
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .arrow_focus(Axis::Y)
                 .show(ui, |ui| {
                     for (i, label) in LIST.iter().enumerate() {

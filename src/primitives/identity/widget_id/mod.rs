@@ -62,7 +62,7 @@ impl WidgetId {
 
     /// Avalanche a raw [`Hasher`] output into the final id, and keep it off all-zero so a zeroed or [`Default`] id never equals a derived one. Every constructor funnels through here.
     ///
-    /// A `WidgetId` is its own hash ([`IdHasher`] forwards it), so a map's bucket index is the id's low bits. `FxHasher` leaves those linear in the last word written, so sequential inputs (`parent.with(row_index)`) stride by a constant sharing a factor of two with the table size and half the buckets go unreachable (4096 sequential ids occupied ~2000 buckets, against ~2590 for uniform).
+    /// A `WidgetId` is its own hash ([`IdHasher`] forwards it), so a map's bucket index is the id's low bits. `FxHasher` leaves those linear in the last word written, so sequential inputs (`parent.with(row_idx)`) stride by a constant sharing a factor of two with the table size and half the buckets go unreachable (4096 sequential ids occupied ~2000 buckets, against ~2590 for uniform).
     ///
     /// The mix (splitmix64's finalizer) is a bijection, so distinctness arguments elsewhere survive and the zero check is exact. The one non-injective step is the displacement of zero to `1` (a 1-in-2^64 collision); `1` not `u64::MAX`, because [`Self::VIEWPORT`] holds that.
     ///
@@ -93,7 +93,7 @@ impl WidgetId {
         }
     }
 
-    /// The id [`Self::auto`] gives at `site`: its `(file, line, column)` through the crate's FxHash `Hasher`. It cannot alias [`Self::from_hash`]: `str`'s `Hash` appends a `0xff` terminator the raw byte write here never produces.
+    /// The id [`Self::auto`] gives at `site`: its `(file, line, col)` through the crate's FxHash `Hasher`. It cannot alias [`Self::from_hash`]: `str`'s `Hash` appends a `0xff` terminator the raw byte write here never produces.
     ///
     /// Hashing the file path costs a word at a time, so widgets keep the `Location` and hash it only when the id tracker cannot match the call site to last frame's (see `SeenIds::resolve_scoped`).
     pub(crate) fn from_location(site: &Location<'_>) -> Self {

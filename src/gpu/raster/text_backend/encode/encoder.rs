@@ -69,7 +69,7 @@ impl TextEncoder {
             placement,
             key: run_key,
         } = run;
-        let current_frame = pass.atlas.current_frame;
+        let cur_frame = pass.atlas.cur_frame;
         let Self {
             cache,
             placed,
@@ -125,7 +125,7 @@ impl TextEncoder {
         } else {
             EncodeCoverage::Complete
         };
-        cache.settle(run_key.key, current_frame, coverage);
+        cache.settle(run_key.key, cur_frame, coverage);
     }
 }
 

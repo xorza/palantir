@@ -5,7 +5,7 @@ pub(crate) mod popup_trigger;
 
 use crate::input::sense::Sense;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -37,7 +37,7 @@ pub struct Popup {
     click_outside: ClickOutside,
     layer: Layer,
     widget: Widget,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
 }
 
 impl Popup {
@@ -110,7 +110,7 @@ impl Popup {
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        let chrome = chrome.as_ref().or(theme.panel_background.as_ref());
+        let chrome = chrome.as_ref().or(theme.panel_bg.as_ref());
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
@@ -129,31 +129,31 @@ impl Popup {
 }
 
 impl Popup {
-    /// Paint `background` as this widget's background; unset falls back to
-    /// `panel_background`. [`Background::NONE`] suppresses the fallback.
+    /// Paint `bg` as this widget's background; unset falls back to
+    /// `panel_bg`. [`Bg::NONE`] suppresses the fallback.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one; an explicit
-    /// [`Self::background`] wins in either order. For wrappers that theme a held
+    /// Paint `bg` unless the caller set one; an explicit
+    /// [`Self::bg`] wins in either order. For wrappers that theme a held
     /// widget after the caller's setters ran.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

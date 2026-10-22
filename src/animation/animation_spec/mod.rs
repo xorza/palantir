@@ -28,7 +28,7 @@ use std::time::Duration;
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AnimationSpec {
-    pub(super) motion: AnimMotion,
+    pub(super) motion: AnimationMotion,
 }
 
 /// The motion model and parameters a spec was authored under. Module-private;
@@ -36,7 +36,7 @@ pub struct AnimationSpec {
 /// validation.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(super) enum AnimMotion {
+pub(super) enum AnimationMotion {
     Duration { secs: f32, ease: Easing },
     Spring(Spring),
 }
@@ -44,14 +44,14 @@ pub(super) enum AnimMotion {
 impl AnimationSpec {
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self {
-        motion: AnimMotion::Duration {
+        motion: AnimationMotion::Duration {
             secs: 0.12,
             ease: Easing::OutCubic,
         },
     };
     /// 200 ms ease-out-cubic. Popup reveal / panel slide default.
     pub const MEDIUM: Self = Self {
-        motion: AnimMotion::Duration {
+        motion: AnimationMotion::Duration {
             secs: 0.2,
             ease: Easing::OutCubic,
         },
@@ -62,7 +62,7 @@ impl AnimationSpec {
     pub const SNAP: Self = Self::duration_from_validated(0.0, Easing::Linear);
     /// Near-critically-damped spring tuned as a general-purpose default.
     pub const SPRING: Self = Self {
-        motion: AnimMotion::Spring(Spring::DEFAULT),
+        motion: AnimationMotion::Spring(Spring::DEFAULT),
     };
 
     /// Construct a duration animation of `length`; under `1e-4` seconds it
@@ -84,7 +84,7 @@ impl AnimationSpec {
     const fn duration_from_validated(secs: f32, ease: Easing) -> Self {
         let secs = if secs < EPS { 0.0 } else { secs };
         Self {
-            motion: AnimMotion::Duration { secs, ease },
+            motion: AnimationMotion::Duration { secs, ease },
         }
     }
 
@@ -106,7 +106,7 @@ impl AnimationSpec {
         let spring = Spring { stiffness, damping };
         assert!(spring.is_valid(), "{SPRING_ERROR}");
         Self {
-            motion: AnimMotion::Spring(spring),
+            motion: AnimationMotion::Spring(spring),
         }
     }
 
@@ -115,8 +115,8 @@ impl AnimationSpec {
     #[inline(always)]
     pub const fn is_instant(self) -> bool {
         match self.motion {
-            AnimMotion::Duration { secs, .. } => secs == 0.0,
-            AnimMotion::Spring(_) => false,
+            AnimationMotion::Duration { secs, .. } => secs == 0.0,
+            AnimationMotion::Spring(_) => false,
         }
     }
 }
@@ -138,19 +138,19 @@ impl<'de> Deserialize<'de> for AnimationSpec {
     where
         D: Deserializer<'de>,
     {
-        match AnimMotion::deserialize(deserializer)? {
-            AnimMotion::Duration { secs, ease } => {
+        match AnimationMotion::deserialize(deserializer)? {
+            AnimationMotion::Duration { secs, ease } => {
                 if !duration::is_valid(secs) {
                     return Err(D::Error::custom(DURATION_ERROR));
                 }
                 Ok(Self::duration_from_validated(secs, ease))
             }
-            AnimMotion::Spring(spring) => {
+            AnimationMotion::Spring(spring) => {
                 if !spring.is_valid() {
                     return Err(D::Error::custom(SPRING_ERROR));
                 }
                 Ok(Self {
-                    motion: AnimMotion::Spring(spring),
+                    motion: AnimationMotion::Spring(spring),
                 })
             }
         }

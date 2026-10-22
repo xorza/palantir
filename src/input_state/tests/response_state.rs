@@ -320,7 +320,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
             .show(ui, |ui| {
                 Block::new()
                     .id(id)
-                    .position(Vec2::new(-20.0, 0.0))
+                    .pos(Vec2::new(-20.0, 0.0))
                     .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .show(ui);
             });

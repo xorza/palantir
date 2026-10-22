@@ -90,10 +90,10 @@ fn the_hue_texture_follows_the_model() {
         let mut image = Image::blank(size);
         StripPaint::Hue(model).fill(&mut image);
         let texels = image.texels();
-        for column in 0..size.x {
-            let hue = (column as f32 + 0.5) / size.x as f32;
+        for col in 0..size.x {
+            let hue = (col as f32 + 0.5) / size.x as f32;
             let want = model.slice(hue).color(1.0, 1.0).to_srgba_u8();
-            assert_eq!(texels[column as usize], want, "{model:?} at hue {hue}");
+            assert_eq!(texels[col as usize], want, "{model:?} at hue {hue}");
         }
     }
 }

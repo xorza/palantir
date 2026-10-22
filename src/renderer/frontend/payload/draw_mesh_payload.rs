@@ -15,7 +15,7 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) origin: Vec2,
     pub(crate) tint: RgbaF16,
     pub(crate) vertices: Span,
-    pub(crate) indices: Span,
+    pub(crate) idxs: Span,
 }
 
 impl DrawMeshPayload {
@@ -35,8 +35,8 @@ impl DrawMeshPayload {
     #[inline]
     pub(crate) const fn is_noop(&self) -> bool {
         self.vertices.len == 0
-            || self.indices.len < 3
-            || !self.indices.len.is_multiple_of(3)
+            || self.idxs.len < 3
+            || !self.idxs.len.is_multiple_of(3)
             || self.tint.is_noop()
     }
 }

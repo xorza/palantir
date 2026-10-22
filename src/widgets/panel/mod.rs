@@ -1,7 +1,7 @@
 //! The container widget: every stack, wrap and canvas layout, over the one node layout drivers dispatch on.
 
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -11,13 +11,13 @@ use crate::widget_core::widget::Widget;
 use std::rc::Rc;
 
 /// The container widget: an h-, v- or z-stack chosen by constructor, with
-/// optional chrome ([`Self::background`]) and clip. Both default to `None`;
-/// `theme.panel_background` and `theme.panel_clip` supply fallbacks.
+/// optional chrome ([`Self::bg`]) and clip. Both default to `None`;
+/// `theme.panel_bg` and `theme.panel_clip` supply fallbacks.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Panel {
     widget: Widget,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
 }
 
 impl Panel {
@@ -32,7 +32,7 @@ impl Panel {
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let theme = Rc::clone(ui.theme());
         let widget = self.widget.default_clip(theme.panel_clip);
-        let chrome = self.chrome.as_ref().or(theme.panel_background.as_ref());
+        let chrome = self.chrome.as_ref().or(theme.panel_bg.as_ref());
         widget.show(ui, chrome, body)
     }
 
@@ -73,7 +73,7 @@ impl Panel {
         Self::auto(Widget::zstack())
     }
 
-    /// Children at their `.position(Vec2)`; hugs the bounding box of the placed children.
+    /// Children at their `.pos(Vec2)`; hugs the bounding box of the placed children.
     #[track_caller]
     pub fn canvas() -> Self {
         Self::auto(Widget::canvas())
@@ -81,29 +81,29 @@ impl Panel {
 }
 
 impl Panel {
-    /// Paints `background`. Unset, the theme's `panel_background` fills in; [`Background::NONE`] suppresses that.
+    /// Paints `bg`. Unset, the theme's `panel_bg` fills in; [`Bg::NONE`] suppresses that.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paints `background` unless the caller set one, for a wrapper theming a
-    /// widget after the caller's setters; an explicit [`Self::background`] wins in either order.
+    /// Paints `bg` unless the caller set one, for a wrapper theming a
+    /// widget after the caller's setters; an explicit [`Self::bg`] wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

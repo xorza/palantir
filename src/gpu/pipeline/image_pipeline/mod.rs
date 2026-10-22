@@ -201,7 +201,7 @@ mod tests {
         raw.iter().copied().map(TextureId).collect()
     }
 
-    /// Expand runs back into one `(instance index, texture)` per draw. Equality
+    /// Expand runs back into one `(instance idx, texture)` per draw. Equality
     /// with the input proves same textures, instances and order, and that spans
     /// tile the batch without gap or overlap.
     fn expand(ids: &[TextureId], first_instance: u32) -> Vec<(usize, TextureId)> {

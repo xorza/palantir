@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -40,9 +40,9 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                 for i in 0..n_children {
                     Block::new()
                         .id(WidgetId::from_hash(("child", i)))
-                        .position((10.0 + i as f32 * 50.0, 10.0))
+                        .pos((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
-                        .background(Background::fill(RED))
+                        .bg(Bg::fill(RED))
                         .show(ui);
                 }
             });
@@ -70,13 +70,10 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     fn node(ui: &mut Ui, key: &str, pos: (f32, f32)) {
         Panel::vstack()
             .id(WidgetId::from_hash(key))
-            .position(pos)
+            .pos(pos)
             .size((Sizing::fixed(30.0), Sizing::fixed(30.0)))
             .show(ui, |ui| {
-                Block::new()
-                    .size(10.0)
-                    .background(Background::fill(RED))
-                    .show(ui);
+                Block::new().size(10.0).bg(Bg::fill(RED)).show(ui);
             });
     }
     let canvas = |ui: &mut Ui, order: [(&str, (f32, f32)); 2]| {
@@ -118,7 +115,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size(size)
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
     }
     type Order<'a> = [(&'a str, Rect); 3];
     let canvas = |ui: &mut Ui, order: Order<'_>| {
@@ -127,7 +124,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (key, r) in order {
-                    block(key, r.size.w).position((r.min.x, r.min.y)).show(ui);
+                    block(key, r.size.w).pos((r.min.x, r.min.y)).show(ui);
                 }
             });
     };
@@ -184,7 +181,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
         Button::new()
             .id(WidgetId::from_hash(key))
             .label("Node label")
-            .position((-300.0, y))
+            .pos((-300.0, y))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, order: [(&str, f32); 2]| {
@@ -220,7 +217,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
         Block::new()
             .id(WidgetId::from_hash(key))
             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-            .background(Background::fill(fill))
+            .bg(Bg::fill(fill))
             .show(ui);
     }
     let stack = |ui: &mut Ui, order: [(&str, RgbaF32); 2]| {
@@ -267,9 +264,9 @@ fn shape_crossing_child_boundary_is_redamaged() {
     let child = |ui: &mut Ui| {
         Block::new()
             .id(WidgetId::from_hash("child"))
-            .position((CHILD.min.x, CHILD.min.y))
+            .pos((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
-            .background(Background::fill(RED))
+            .bg(Bg::fill(RED))
             .show(ui);
     };
     let over = |ui: &mut Ui| {
@@ -353,9 +350,9 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     fn node(ui: &mut Ui, key: &str, r: Rect) {
         Block::new()
             .id(WidgetId::from_hash(key))
-            .position((r.min.x, r.min.y))
+            .pos((r.min.x, r.min.y))
             .size(r.size.w)
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, with_b: bool| {
@@ -406,9 +403,9 @@ fn rekeying_a_child_damages_only_the_child() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash(key))
-                    .position((CHILD.min.x, CHILD.min.y))
+                    .pos((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
-                    .background(Background::fill(BLUE))
+                    .bg(Bg::fill(BLUE))
                     .show(ui);
                 ui.add_shape(
                     Shape::line(
@@ -537,7 +534,7 @@ fn shape_added_in_middle_damages_only_new() {
     let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
-    let curr_shapes: Vec<_> = h
+    let cur_shapes: Vec<_> = h
         .engines
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))
@@ -546,7 +543,7 @@ fn shape_added_in_middle_damages_only_new() {
     let rects: Vec<_> = region.iter_rects().collect();
     let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
 
-    let green_screen = curr_shapes
+    let green_screen = cur_shapes
         .iter()
         .find(|p| !prev_shapes.iter().any(|pp| pp == *p))
         .expect("inserted paint must appear in current span")
@@ -573,7 +570,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
         Block::new()
             .id(WidgetId::from_hash("L"))
             .size(30.0)
-            .background(Background::fill(BLUE))
+            .bg(Bg::fill(BLUE))
             .show(ui);
     };
     let parent = |ui: &mut Ui, id: &'static str, holds_leaf: bool| {
@@ -691,14 +688,10 @@ fn a_hidden_container_takes_no_snapshot() {
                     Block::new()
                         .id(hidden_child)
                         .size(20.0)
-                        .background(Background::fill(BLUE))
+                        .bg(Bg::fill(BLUE))
                         .show(ui);
                 });
-                Block::new()
-                    .id(shown)
-                    .size(20.0)
-                    .background(Background::fill(RED))
-                    .show(ui);
+                Block::new().id(shown).size(20.0).bg(Bg::fill(RED)).show(ui);
             });
     });
     assert!(
@@ -734,12 +727,12 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
                         Panel::zstack()
                             .id(child)
                             .size(50.0)
-                            .background(Background::fill(BLUE))
+                            .bg(Bg::fill(BLUE))
                             .show(ui, |ui| {
                                 Block::new()
                                     .id(grandchild)
                                     .size(20.0)
-                                    .background(Background::fill(RED))
+                                    .bg(Bg::fill(RED))
                                     .show(ui);
                             });
                     });
@@ -755,9 +748,9 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
                 "{vis:?}: the {what}'s old pixels must be damaged; region = {hide:?}",
             );
         }
-        for (wid, what) in [(child, "child"), (grandchild, "grandchild")] {
+        for (widget_id, what) in [(child, "child"), (grandchild, "grandchild")] {
             assert!(
-                !h.engines.damage.prev.contains_key(&wid),
+                !h.engines.damage.prev.contains_key(&widget_id),
                 "{vis:?}: the {what} paints nothing now, so its snapshot must go",
             );
         }
@@ -784,9 +777,9 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
                     let card = if reversed { 199 - i } else { i };
                     Block::new()
                         .id(WidgetId::from_hash(("card", card)))
-                        .position((CARD.min.x, CARD.min.y))
+                        .pos((CARD.min.x, CARD.min.y))
                         .size(CARD.size.w)
-                        .background(Background::fill(BLUE))
+                        .bg(Bg::fill(BLUE))
                         .show(ui);
                 }
             });

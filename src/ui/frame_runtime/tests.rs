@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use glam::UVec2;
 
-use crate::common::time::MAX_ANIM_DT;
+use crate::common::time::MAX_ANIMATION_DT;
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
@@ -15,7 +15,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 #[derive(Clone, Copy, Debug)]
 struct Case {
     label: &'static str,
-    previous: bool,
+    prev: bool,
     display_changed: bool,
     damage_baseline_valid: bool,
     wake: WakeReasons,
@@ -29,10 +29,10 @@ struct Case {
 /// A warm frame with only an animation wake pending paints without recording.
 const QUIET: Case = Case {
     label: "quiet",
-    previous: true,
+    prev: true,
     display_changed: false,
     damage_baseline_valid: true,
-    wake: WakeReasons::ANIM,
+    wake: WakeReasons::ANIMATION,
     repaint_requested: false,
     input_policy: InputPolicy::OnDelta,
     input_signal: InputSignal::None,
@@ -45,7 +45,7 @@ fn frame_classification_covers_external_entry_facts() {
     let cases = [
         Case {
             label: "first frame",
-            previous: false,
+            prev: false,
             wake: WakeReasons::default(),
             expected: FramePlan::FullRecord {
                 base: DamageBase::Discarded,
@@ -78,15 +78,15 @@ fn frame_classification_covers_external_entry_facts() {
             label: "real wake",
             wake: WakeReasons::REAL,
             expected: FramePlan::FullRecord {
-                base: DamageBase::Previous,
+                base: DamageBase::Prev,
             },
             ..QUIET
         },
         Case {
             label: "coalesced real and animation wake",
-            wake: WakeReasons::REAL.merge(WakeReasons::ANIM),
+            wake: WakeReasons::REAL.merge(WakeReasons::ANIMATION),
             expected: FramePlan::FullRecord {
-                base: DamageBase::Previous,
+                base: DamageBase::Prev,
             },
             ..QUIET
         },
@@ -95,7 +95,7 @@ fn frame_classification_covers_external_entry_facts() {
             input_policy: InputPolicy::Always,
             input_signal: InputSignal::Inert,
             expected: FramePlan::FullRecord {
-                base: DamageBase::Previous,
+                base: DamageBase::Prev,
             },
             ..QUIET
         },
@@ -103,7 +103,7 @@ fn frame_classification_covers_external_entry_facts() {
             label: "delta input policy",
             input_signal: InputSignal::Repaint,
             expected: FramePlan::FullRecord {
-                base: DamageBase::Previous,
+                base: DamageBase::Prev,
             },
             ..QUIET
         },
@@ -111,7 +111,7 @@ fn frame_classification_covers_external_entry_facts() {
             label: "close request",
             close_requested: true,
             expected: FramePlan::FullRecord {
-                base: DamageBase::Previous,
+                base: DamageBase::Prev,
             },
             ..QUIET
         },
@@ -127,7 +127,7 @@ fn frame_classification_covers_external_entry_facts() {
         let mut runtime = FrameRuntime {
             time: Duration::from_millis(10),
             prev_stamp: case
-                .previous
+                .prev
                 .then_some(FrameStamp::new(base_display, Duration::ZERO)),
             repaint_requested: case.repaint_requested,
             ..FrameRuntime::default()
@@ -148,7 +148,7 @@ fn frame_classification_covers_external_entry_facts() {
     }
 }
 
-/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `Spring::step` takes `MAX_ANIM_DT` as a contract.
+/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `Spring::step` takes `MAX_ANIMATION_DT` as a contract.
 ///
 /// One short frame, then a stall: 1 ms carries, 100 ms clamps, 101 ms is the unbounded sum.
 #[test]
@@ -168,7 +168,7 @@ fn a_spent_delta_stays_inside_the_animation_bound() {
 
     rt.advance_clock(Duration::from_millis(101));
     assert_eq!(
-        rt.dt, MAX_ANIM_DT,
+        rt.dt, MAX_ANIMATION_DT,
         "the carry may not push a spent delta past the bound",
     );
     assert_eq!(rt.dt_accum, 0.0, "a spending frame leaves nothing behind");

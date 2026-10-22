@@ -9,11 +9,8 @@ use glam::{I16Vec2, IVec2, UVec2};
 /// satisfies the bounds; nothing depends on what a key means.
 type TestKey = u16;
 
-fn evictable(content: ContentType, current_frame: u64) -> Evictable {
-    Evictable {
-        content,
-        current_frame,
-    }
+fn evictable(content: ContentType, cur_frame: u64) -> Evictable {
+    Evictable { content, cur_frame }
 }
 
 fn key(id: u16) -> TestKey {

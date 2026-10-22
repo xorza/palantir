@@ -29,12 +29,12 @@ impl InvertedOverlaps {
         };
         self.unions.clear();
         self.unions.resize(last as usize + 2, Rect::ZERO);
-        for (&position, &extent) in matched.iter().zip(extents) {
-            if position == ROW_UNMATCHED {
+        for (&pos, &extent) in matched.iter().zip(extents) {
+            if pos == ROW_UNMATCHED {
                 continue;
             }
             // Reversed, so items that came later last frame are a prefix.
-            let reversed = (last - position) as usize;
+            let reversed = (last - pos) as usize;
             damage::push_screen(out, extent.clamp_to(self.prefix(reversed)));
             self.add(reversed, extent);
         }

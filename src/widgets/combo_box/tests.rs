@@ -116,7 +116,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             .show(ui, |ui| {
                 ComboBox::new(selected, &options)
                     .id(id)
-                    .position(Vec2::new(120.0, 250.0))
+                    .pos(Vec2::new(120.0, 250.0))
                     .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
                     .show(ui);
             });
@@ -209,15 +209,15 @@ fn trigger_chrome_follows_button_style() {
     let id = WidgetId::from_hash("styled-combo");
     let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
     let mut restyled = ButtonTheme::default();
-    restyled.looks.normal.background.fill = custom.into();
+    restyled.looks.normal.bg.fill = custom.into();
     assert_ne!(
-        ButtonTheme::default().looks.normal.background.fill,
+        ButtonTheme::default().looks.normal.bg.fill,
         custom.into(),
         "premise: the custom fill differs from the stock one",
     );
     for style in [None, Some(&restyled)] {
         let mut h = UiHarness::new(SURFACE);
-        let themed = h.ui.theme().button.looks.normal.background.fill.clone();
+        let themed = h.ui.theme().button.looks.normal.bg.fill.clone();
         let mut selected = 0;
         h.frame(|ui| {
             ComboBox::new(&mut selected, &options)
@@ -266,7 +266,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
                 .show(ui, |ui| {
                     ComboBox::new(selected, &options)
                         .id(id)
-                        .position(Vec2::new(40.0, 40.0))
+                        .pos(Vec2::new(40.0, 40.0))
                         .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
                         .show(ui);
                 });

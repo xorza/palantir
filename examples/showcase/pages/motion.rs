@@ -4,8 +4,8 @@ use crate::support;
 use crate::support::{Section, api};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    AnimationSpec, Background, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense,
-    Sizing, Stroke, Text, Ui, Vec2, WidgetId,
+    AnimationSpec, Bg, Block, Button, Configure, Corners, Easing, Panel, RgbaF32, Sense, Sizing,
+    Stroke, Text, Ui, Vec2, WidgetId,
 };
 use std::time::Duration;
 
@@ -113,7 +113,7 @@ impl Bar {
                 Block::new()
                     .id(id)
                     .size((Sizing::fixed(width), Sizing::fixed(18.0)))
-                    .background(support::swatch_bg(support::A))
+                    .bg(support::swatch_bg(support::A))
                     .show(ui);
                 Text::new(self.label).style(&support::note_style()).show(ui);
             });
@@ -136,7 +136,7 @@ fn drag(ui: &mut Ui) {
         );
         Panel::canvas()
             .size((Sizing::FILL, Sizing::fixed(CANVAS_H)))
-            .background(support::well_bg())
+            .bg(support::well_bg())
             .clip_rounded()
             .show(ui, |ui| {
                 for (i, card) in CARDS.iter().enumerate() {
@@ -175,12 +175,10 @@ impl Card {
             let r = Block::new()
                 .id(id)
                 .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
-                .position(*pos)
+                .pos(*pos)
                 .sense(Sense::DRAG)
-                .background(
-                    Background::rounded(self.accent, Corners::all(6.0))
-                        .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
-                )
+                .bg(Bg::rounded(self.accent, Corners::all(6.0))
+                    .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)))
                 .show(ui);
             if r.left.drag.started() {
                 st.anchor = *pos;

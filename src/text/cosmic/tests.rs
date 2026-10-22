@@ -58,15 +58,15 @@ fn mono_and_inverted() -> [Arc<Font>; 2] {
     })
 }
 
-/// Coverage of `M` at `weight`, read through `context` as the rasterizer does.
-fn render(context: &mut ScaleContext, font: &Font, weight: u16) -> Vec<u8> {
+/// Coverage of `M` at `weight`, read through `ctx` as the rasterizer does.
+fn render(ctx: &mut ScaleContext, font: &Font, weight: u16) -> Vec<u8> {
     let glyph = font.as_swash().charmap().map('M');
     let mut scaler = ScalerSpec {
         size: 48.0,
         hinting: Hinting::Off,
         weight: Weight(weight),
     }
-    .scaler(context, font);
+    .scaler(ctx, font);
     Render::new(&GLYPH_SOURCES)
         .format(Format::Alpha)
         .render(&mut scaler, glyph)
@@ -109,7 +109,7 @@ fn a_glyph_without_a_weight_drops_the_last_glyphs_coordinates() {
     let [mono, inverted] = mono_and_inverted();
     let fresh = render(&mut ScaleContext::new(), &inverted, 400);
 
-    let mut context = ScaleContext::new();
-    render(&mut context, &mono, 800);
-    assert_eq!(render(&mut context, &inverted, 400), fresh);
+    let mut ctx = ScaleContext::new();
+    render(&mut ctx, &mono, 800);
+    assert_eq!(render(&mut ctx, &inverted, 400), fresh);
 }

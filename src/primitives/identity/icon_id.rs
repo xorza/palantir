@@ -8,12 +8,12 @@
 pub struct IconId(u16);
 
 impl IconId {
-    /// Icon `index` of a set: minted by its table, and by tests that name one without a table.
-    pub(crate) const fn new(index: u16) -> Self {
-        Self(index)
+    /// Icon `idx` of a set: minted by its table, and by tests that name one without a table.
+    pub(crate) const fn new(idx: u16) -> Self {
+        Self(idx)
     }
 
-    pub(crate) const fn index(self) -> u16 {
+    pub(crate) const fn idx(self) -> u16 {
         self.0
     }
 }

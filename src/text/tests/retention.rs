@@ -21,24 +21,21 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
         .halign(HAlign::Center);
     let mut wrap = CosmicMeasure::default();
     let original = wrap.measure(text, wrap_params);
-    let original_glyphs = glyph_positions(&wrap, original.buffer_key());
+    let original_glyphs = glyph_poss(&wrap, original.buffer_key());
     wrap.drop_all_buffers();
     assert!(wrap.shaped_run(original.buffer_key()).is_none());
     wrap.ensure_buffer(TextShapeRequest::for_key(text, original.buffer_key()).unwrap());
     let restored = wrap.measure(text, wrap_params);
     assert_eq!(restored.size, original.size);
     assert_eq!(restored.intrinsic_min, original.intrinsic_min);
-    assert_eq!(
-        glyph_positions(&wrap, restored.buffer_key()),
-        original_glyphs
-    );
+    assert_eq!(glyph_poss(&wrap, restored.buffer_key()), original_glyphs);
 
     for fit in [LineFit::Clip, LineFit::Ellipsis] {
         let mut truncated = CosmicMeasure::default();
         let params = wrap_params.width(84.003);
         let cut = truncated.truncate(text, params, fit);
         let (original, unbounded) = (cut.fitted, cut.unbounded);
-        let original_glyphs = glyph_positions(&truncated, original.buffer_key());
+        let original_glyphs = glyph_poss(&truncated, original.buffer_key());
         truncated.drop_all_buffers();
         assert!(
             truncated.shaped_run(original.buffer_key()).is_none(),
@@ -61,7 +58,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
             "fit: {fit:?}",
         );
         assert_eq!(
-            glyph_positions(&truncated, restored.buffer_key()),
+            glyph_poss(&truncated, restored.buffer_key()),
             original_glyphs,
             "fit: {fit:?}",
         );
@@ -94,8 +91,8 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     assert_eq!(actual.size, expected.size);
     assert_eq!(actual.intrinsic_min, expected.intrinsic_min);
     assert_eq!(
-        glyph_positions(&recycled, actual.buffer_key()),
-        glyph_positions(&fresh, expected.buffer_key()),
+        glyph_poss(&recycled, actual.buffer_key()),
+        glyph_poss(&fresh, expected.buffer_key()),
     );
 }
 
@@ -262,11 +259,11 @@ fn demote_and_promote_churn_keeps_the_ticket_count_flat() {
     let mut pending_at = Vec::new();
     for frame in 0..FRAMES {
         let width = frame % WIDTHS;
-        let previous = (frame + WIDTHS - 1) % WIDTHS;
+        let prev = (frame + WIDTHS - 1) % WIDTHS;
         for run in 0..RUNS {
             c.measure(BODY, distinct_width_shape(idx(run, width) as u32));
             if frame > 0 {
-                c.supersede(keys[idx(run, previous)]);
+                c.supersede(keys[idx(run, prev)]);
             }
         }
         c.tick_frame();

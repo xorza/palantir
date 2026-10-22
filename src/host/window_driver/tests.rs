@@ -498,7 +498,7 @@ mod record_store_tests {
     #[derive(Debug, PartialEq)]
     struct RecordPayloadSnapshot {
         mesh_vertices: Vec<MeshVertex>,
-        mesh_indices: Vec<u32>,
+        mesh_idxs: Vec<u32>,
         polyline_points: Vec<Vec2>,
         polyline_colors: Vec<RgbaF16>,
         text: String,
@@ -524,7 +524,7 @@ mod record_store_tests {
         let store = driver.ui.record_store();
         RecordPayloadSnapshot {
             mesh_vertices: store.meshes.vertices.clone(),
-            mesh_indices: store.meshes.indices.clone(),
+            mesh_idxs: store.meshes.idxs.clone(),
             polyline_points: store.polyline_points.clone(),
             polyline_colors: store.polyline_colors.clone(),
             text: store.interned_text().all().to_owned(),
@@ -753,7 +753,7 @@ mod cutout_census_tests {
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
@@ -804,9 +804,9 @@ mod cutout_census_tests {
                     };
                     Block::new()
                         .id_salt("tick")
-                        .position((500.0, 150.0))
+                        .pos((500.0, 150.0))
                         .size(10.0)
-                        .background(Background::fill(fill))
+                        .bg(Bg::fill(fill))
                         .show(ui);
                 });
         });

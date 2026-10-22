@@ -35,7 +35,7 @@ struct Occluder {
 #[derive(Debug, Default)]
 pub(super) struct OcclusionPruner {
     opaque_in_group: Vec<Occluder>,
-    drop_indices: Vec<u32>,
+    drop_idxs: Vec<u32>,
     last_tile: UVec2,
     /// Each tile's newest link in [`Self::cover_links`], or [`NO_LINK`]. Grow-only,
     /// reset through [`Self::touched_tiles`].
@@ -85,7 +85,7 @@ impl OcclusionPruner {
 
     pub(super) fn clear(&mut self) {
         self.opaque_in_group.clear();
-        self.drop_indices.clear();
+        self.drop_idxs.clear();
     }
 
     pub(super) fn record_opaque(&mut self, idx: u32, cover: Rect) {
@@ -104,7 +104,7 @@ impl OcclusionPruner {
             self.build_index();
         }
 
-        self.drop_indices.clear();
+        self.drop_idxs.clear();
         // Always at the first occluder with `idx > i`; both ascend.
         let mut cursor = 0;
         let occluders = self.opaque_in_group.len();
@@ -127,14 +127,14 @@ impl OcclusionPruner {
                 (cursor..occluders).any(|at| self.covers(at, shaded))
             };
             if covered {
-                self.drop_indices.push(i as u32);
+                self.drop_idxs.push(i as u32);
             }
         }
-        if self.drop_indices.is_empty() {
+        if self.drop_idxs.is_empty() {
             return;
         }
-        // Walk forward, copying survivors down; `drop_indices` is ascending.
-        let mut drop_iter = self.drop_indices.iter().copied().peekable();
+        // Walk forward, copying survivors down; `drop_idxs` is ascending.
+        let mut drop_iter = self.drop_idxs.iter().copied().peekable();
         let mut write = start;
         for read in start..out.quads.len() {
             let rel = (read - start) as u32;
@@ -166,7 +166,7 @@ impl OcclusionPruner {
             }
             for y in span.min.y..=span.max.y {
                 for x in span.min.x..=span.max.x {
-                    let tile = self.tile_index(UVec2::new(x, y));
+                    let tile = self.tile_idx(UVec2::new(x, y));
                     let head = &mut self.tile_heads[tile as usize];
                     if *head == NO_LINK {
                         self.touched_tiles.push(tile);
@@ -182,7 +182,7 @@ impl OcclusionPruner {
     }
 
     fn indexed_covers(&self, rect: Rect, cursor: usize) -> bool {
-        let tile = self.tile_index(self.tile_of(rect.min));
+        let tile = self.tile_idx(self.tile_of(rect.min));
         let mut link = self.tile_heads[tile as usize];
         while link != NO_LINK {
             let CoverLink { at, next } = self.cover_links[link as usize];
@@ -230,7 +230,7 @@ impl OcclusionPruner {
             .as_uvec2()
     }
 
-    const fn tile_index(&self, tile: UVec2) -> u32 {
+    const fn tile_idx(&self, tile: UVec2) -> u32 {
         tile.y * (self.last_tile.x + 1) + tile.x
     }
 }
@@ -249,7 +249,7 @@ pub(crate) mod internals {
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 opaque_in_group,
-                drop_indices,
+                drop_idxs,
                 last_tile: _,
                 tile_heads,
                 touched_tiles,
@@ -258,7 +258,7 @@ pub(crate) mod internals {
                 contains_tests: _,
             } = self;
             scratch_report::vec_bytes(opaque_in_group)
-                + scratch_report::vec_bytes(drop_indices)
+                + scratch_report::vec_bytes(drop_idxs)
                 + scratch_report::vec_bytes(tile_heads)
                 + scratch_report::vec_bytes(touched_tiles)
                 + scratch_report::vec_bytes(cover_links)

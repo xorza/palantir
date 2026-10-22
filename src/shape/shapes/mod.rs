@@ -48,7 +48,7 @@ impl Shapes {
     /// don't survive it. [`Lower`]'s `has_nan` is `O(1)`, so it stays in release,
     /// where NaN means no-op.
     ///
-    /// Chrome is gated by `lower::background`, which sanitizes rather than drops.
+    /// Chrome is gated by `lower::bg`, which sanitizes rather than drops.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
         if shape.is_noop() {
             return None;
@@ -65,13 +65,13 @@ impl Shapes {
         Some(self.push(record))
     }
 
-    /// Fold `anim` into shape `idx`'s stored hash, so starting, stopping or
+    /// Fold `animation` into shape `idx`'s stored hash, so starting, stopping or
     /// changing an animation reads as a change to every hash-keyed gate.
-    pub(crate) fn fold_paint_anim(&mut self, idx: u32, anim: &PaintAnimation) {
+    pub(crate) fn fold_paint_animation(&mut self, idx: u32, animation: &PaintAnimation) {
         let slot = &mut self.hashes[idx as usize];
         let mut h = Hasher::new();
         h.write_u64(slot.0);
-        anim.hash_static(&mut h);
+        animation.hash_static(&mut h);
         *slot = ContentHash(h.finish());
     }
 

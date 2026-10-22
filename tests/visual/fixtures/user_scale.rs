@@ -2,7 +2,7 @@
 
 use glam::UVec2;
 use palantir::golden::image::{Rgba, RgbaImage};
-use palantir::{Background, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
+use palantir::{Bg, Block, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::goldens;
 use crate::harness::Harness;
@@ -18,14 +18,14 @@ fn block(ui: &mut Ui) {
             Block::new()
                 .id_salt("block")
                 .size((Sizing::fixed(40.0), Sizing::fixed(24.0)))
-                .background(Background::fill(RgbaF32::WHITE))
+                .bg(Bg::fill(RgbaF32::WHITE))
                 .show(ui);
         });
 }
 
-/// How far the painted region reaches from the corner. `background` is read from an empty render on the same pipeline, so it is the exact bytes of an unpainted pixel.
-fn painted_extent(img: &RgbaImage, background: Rgba<u8>) -> UVec2 {
-    let painted = |p: &Rgba<u8>| *p != background;
+/// How far the painted region reaches from the corner. `bg` is read from an empty render on the same pipeline, so it is the exact bytes of an unpainted pixel.
+fn painted_extent(img: &RgbaImage, bg: Rgba<u8>) -> UVec2 {
+    let painted = |p: &Rgba<u8>| *p != bg;
     let mut extent = UVec2::ZERO;
     for (x, y, pixel) in img.enumerate_pixels() {
         if painted(pixel) {
@@ -52,15 +52,15 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
 fn a_larger_user_scale_paints_a_larger_block() {
     let mut h = Harness::new();
     // Read back, not converted: `DARK_BG` is linear and the target sRGB, so use what an empty render says.
-    let background = {
+    let bg = {
         let empty = h.size(SURFACE).frame(|_: &mut Ui| {}).image;
         *empty.get_pixel(SURFACE.x - 1, SURFACE.y - 1)
     };
 
     let plain = h.frame(block).image;
-    assert_eq!(painted_extent(&plain, background), UVec2::new(40, 24));
+    assert_eq!(painted_extent(&plain, bg), UVec2::new(40, 24));
 
     h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
     let doubled = h.frame(block).image;
-    assert_eq!(painted_extent(&doubled, background), UVec2::new(80, 48));
+    assert_eq!(painted_extent(&doubled, bg), UVec2::new(80, 48));
 }

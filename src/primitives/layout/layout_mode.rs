@@ -1,6 +1,6 @@
 //! Which driver lays out a node's children, and its per-mode settings.
 
-use crate::common::index16::Index16;
+use crate::common::idx16::Idx16;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
@@ -31,11 +31,11 @@ impl From<PackedLayoutMeta> for LayoutMode {
             3 => Self::ZStack,
             4 => Self::Canvas,
             5 => Self::Grid(GridDefId(
-                Index16::from_raw(payload).expect("packed grid mode has no definition id"),
+                Idx16::from_raw(payload).expect("packed grid mode has no definition id"),
             )),
             6 => Self::Scroll(ScrollAxes::from_bits(payload)),
             7 => Self::Scrollbars(ScrollbarsDefId(
-                Index16::from_raw(payload).expect("packed scrollbars mode has no definition id"),
+                Idx16::from_raw(payload).expect("packed scrollbars mode has no definition id"),
             )),
             _ => unreachable!("packed layout mode tag {tag} is invalid"),
         }
@@ -45,15 +45,15 @@ impl From<PackedLayoutMeta> for LayoutMode {
 /// Index into `Tree::grid_defs`; a type per side table, so a grid index can't reach the scrollbar table.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct GridDefId(Index16);
+pub(crate) struct GridDefId(Idx16);
 
 impl GridDefId {
     pub(crate) const fn to_raw(self) -> u16 {
         self.0.to_raw()
     }
 
-    pub(crate) fn from_index(index: usize) -> Self {
-        Self(Index16::new(index, "grid_defs"))
+    pub(crate) fn from_idx(idx: usize) -> Self {
+        Self(Idx16::new(idx, "grid_defs"))
     }
 }
 
@@ -66,15 +66,15 @@ impl From<GridDefId> for usize {
 /// Index into `Tree::scrollbar_defs`, a side table as the def exceeds the 16 bits `LayoutMode` packs.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct ScrollbarsDefId(Index16);
+pub(crate) struct ScrollbarsDefId(Idx16);
 
 impl ScrollbarsDefId {
     pub(crate) const fn to_raw(self) -> u16 {
         self.0.to_raw()
     }
 
-    pub(crate) fn from_index(index: usize) -> Self {
-        Self(Index16::new(index, "scrollbar_defs"))
+    pub(crate) fn from_idx(idx: usize) -> Self {
+        Self(Idx16::new(idx, "scrollbar_defs"))
     }
 }
 

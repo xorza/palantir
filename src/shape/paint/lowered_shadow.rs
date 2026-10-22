@@ -13,18 +13,18 @@ use std::hash;
 pub(crate) struct LoweredShadow {
     pub(crate) color: RgbaF16,
     /// `(offset.x, offset.y, blur, spread)` in the shared 4-lane [`F16x4`] core.
-    pub(crate) geom_f16: F16x4,
+    pub(crate) geometry_f16: F16x4,
     pub(crate) inset_flag: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ShadowGeom {
+pub(crate) struct ShadowGeometry {
     pub(crate) offset: Vec2,
     pub(crate) blur: f32,
     pub(crate) spread: f32,
 }
 
-impl ShadowGeom {
+impl ShadowGeometry {
     #[inline]
     pub(crate) const fn from_lanes([x, y, blur, spread]: [f32; 4]) -> Self {
         Self {
@@ -52,12 +52,12 @@ impl LoweredShadow {
     pub(crate) const fn is_noop(self) -> bool {
         // Geometry is screened for NaN, not magnitude: a zero-sigma zero-offset shadow still paints, so only the tint
         // decides visibility. Mirrors `Shadow::is_noop`; chrome reaches `DrawQuadPayload::shadow` through this form with no NaN gate.
-        self.color.is_noop() || self.geom_f16.has_nan()
+        self.color.is_noop() || self.geometry_f16.has_nan()
     }
 
     #[inline]
-    pub(crate) fn geom(self) -> ShadowGeom {
-        ShadowGeom::from_lanes(self.geom_f16.lanes())
+    pub(crate) fn geometry(self) -> ShadowGeometry {
+        ShadowGeometry::from_lanes(self.geometry_f16.lanes())
     }
 
     #[inline]
@@ -65,7 +65,7 @@ impl LoweredShadow {
         self.inset_flag != 0
     }
 
-    /// Owner-local paint bbox: a drop shadow is the offset source inflated by its [halo](ShadowGeom::halo), an inset
+    /// Owner-local paint bbox: a drop shadow is the offset source inflated by its [halo](ShadowGeometry::halo), an inset
     /// one stays inside the source. `local_rect = None` means the source covers the owner.
     pub(crate) fn paint_rect_local(self, local_rect: Option<Rect>, owner_size: Size) -> Rect {
         let source = local_rect.unwrap_or(Rect {
@@ -75,12 +75,12 @@ impl LoweredShadow {
         if self.inset() {
             return source;
         }
-        let geom = self.geom();
+        let geometry = self.geometry();
         Rect {
-            min: source.min + geom.offset,
+            min: source.min + geometry.offset,
             size: source.size,
         }
-        .inflated(geom.halo())
+        .inflated(geometry.halo())
     }
 }
 
@@ -89,7 +89,7 @@ impl From<Shadow> for LoweredShadow {
     fn from(shadow: Shadow) -> Self {
         Self {
             color: shadow.color.into(),
-            geom_f16: F16x4::from_lanes([
+            geometry_f16: F16x4::from_lanes([
                 shadow.offset.x,
                 shadow.offset.y,
                 shadow.blur,
@@ -105,7 +105,7 @@ impl hash::Hash for LoweredShadow {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.color.as_u64());
-        state.write_u64(self.geom_f16.as_u64());
+        state.write_u64(self.geometry_f16.as_u64());
         state.write_u16(self.inset_flag);
     }
 }
@@ -113,6 +113,6 @@ impl hash::Hash for LoweredShadow {
 impl NanCheck for LoweredShadow {
     #[inline]
     fn has_nan(&self) -> bool {
-        self.color.has_nan() || self.geom_f16.has_nan()
+        self.color.has_nan() || self.geometry_f16.has_nan()
     }
 }

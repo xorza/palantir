@@ -426,7 +426,7 @@ impl Card {
         let r = Block::new()
             .id(WidgetId::from_hash(self.label))
             .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
-            .position(self.pos)
+            .pos(self.pos)
             .sense(Sense::DRAG)
             .show(ui);
         self.fold(&r);
@@ -606,7 +606,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                     let r = Block::new()
                         .id(WidgetId::from_hash("a"))
                         .size((Sizing::fixed(CARD_SIZE), Sizing::fixed(CARD_SIZE)))
-                        .position(a.pos)
+                        .pos(a.pos)
                         .sense(Sense::DRAG)
                         .show(ui);
                     card_node = Some(r.node());

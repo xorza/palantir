@@ -1,7 +1,7 @@
 //! The WPF-style grid: explicit row and column tracks, children placed into named cells.
 
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -16,7 +16,7 @@ pub struct Grid<Rows = [Track; 0], Cols = [Track; 0]> {
     widget: Widget,
     rows: Rows,
     cols: Cols,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
 }
 
 impl Grid {
@@ -54,28 +54,28 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         }
     }
 
-    /// Paint chrome; `None` takes `ui.theme().panel_background`, [`Background::NONE`] suppresses that.
+    /// Paint chrome; `None` takes `ui.theme().panel_bg`, [`Bg::NONE`] suppresses that.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::background`] wins either order.
+    /// Paint `bg` unless the caller set one; for wrappers that theme a widget after the caller's setters. An explicit [`Self::bg`] wins either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }
@@ -92,7 +92,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         // See `Panel::show` for why the handle is what gets cloned.
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        let chrome = self.chrome.as_ref().or(theme.panel_background.as_ref());
+        let chrome = self.chrome.as_ref().or(theme.panel_bg.as_ref());
         widget.show(ui, chrome, body)
     }
 }

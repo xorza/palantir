@@ -264,12 +264,12 @@ impl<'a> Renderer<'a> {
             StructKind::Tuple(fields) => fields
                 .iter()
                 .enumerate()
-                .filter_map(|(index, id)| match id.and_then(|id| self.item(id)) {
+                .filter_map(|(idx, id)| match id.and_then(|id| self.item(id)) {
                     Some(Item {
                         visibility: Visibility::Public,
                         inner: ItemEnum::StructField(t),
                         ..
-                    }) => Some(format!("    pub {index}: {}", decl::ty(t))),
+                    }) => Some(format!("    pub {idx}: {}", decl::ty(t))),
                     _ => None,
                 })
                 .collect(),

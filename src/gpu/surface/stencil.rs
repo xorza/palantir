@@ -14,7 +14,7 @@ use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 #[derive(Debug)]
 pub(crate) struct Stencil {
     /// Held for its extent, which [`Self::ensure`] compares before reuse.
-    tex: wgpu::Texture,
+    texture: wgpu::Texture,
     view: wgpu::TextureView,
 }
 
@@ -87,7 +87,10 @@ impl Stencil {
         size: UVec2,
     ) -> &'s Self {
         let size = render_target::extent(size);
-        if slot.as_ref().is_some_and(|held| held.tex.size() != size) {
+        if slot
+            .as_ref()
+            .is_some_and(|held| held.texture.size() != size)
+        {
             *slot = None;
         }
         slot.get_or_insert_with(|| Self::new(device, size))
@@ -100,7 +103,7 @@ impl Stencil {
 
     /// Private: [`Self::ensure`] is the only way to one.
     fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
             size,
             mip_level_count: 1,
@@ -111,8 +114,8 @@ impl Stencil {
             view_formats: &[],
         });
         Self {
-            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
-            tex,
+            view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+            texture,
         }
     }
 }

@@ -13,14 +13,14 @@
 //!    turns the slot into [`IdSlot::Recorded`].
 //! 3. **Removed-widget diff and rollover.** [`SeenIds::rollover`] puts ids present
 //!    in the last painted frame but absent now into `removed` (for damage, text,
-//!    measure cache, state, animation), then swaps `curr` and `prev`, once per
+//!    measure cache, state, animation), then swaps `cur` and `prev`, once per
 //!    frame from `FrameCycle::finalize_frame`. Ids seen only in a discarded pass go
 //!    to `discarded` at the next `pre_record` and fold into `removed`, or their rows
 //!    would leak and resume stale.
 //!
 //! **In step with the last frame.** A frame usually resolves the same raw ids in
 //! the same order. While it does, each id is known without a probe (last frame's
-//! ids are distinct and this pass holds only earlier ones), so `curr` builds no
+//! ids are distinct and this pass holds only earlier ones), so `cur` builds no
 //! hash index until the first differing resolve, then indexes the entries so far
 //! and sets the counters. The rollover diff compares by position over the matching
 //! prefix. A steady frame hashes no id.
@@ -40,7 +40,7 @@ pub(crate) struct CollisionRecord {
     pub(crate) second: Endpoint,
 }
 
-/// What one id holds in [`SeenIds::curr`] this pass. One table, so resolve pays
+/// What one id holds in [`SeenIds::cur`] this pass. One table, so resolve pays
 /// one probe and record none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum IdSlot {
@@ -124,7 +124,7 @@ impl Recipe {
 }
 
 /// One pass's ids: a hash index over a dense run of entries in resolve order.
-/// `curr`'s index is empty while in step with `prev`.
+/// `cur`'s index is empty while in step with `prev`.
 #[derive(Debug, Default)]
 struct IdTable {
     index: WidgetIdMap<u32>,
@@ -184,15 +184,15 @@ pub(crate) struct SeenIds {
     /// Every id this pass handed out, with the endpoint of each that has opened.
     /// Reserved entries feed neither the [`Self::rollover`] diff nor the
     /// [`crate::cascade::Cascade::by_id`] snapshot.
-    curr: IdTable,
-    /// How many of `curr`'s entries match `prev`'s once the pass leaves step; `None`
+    cur: IdTable,
+    /// How many of `cur`'s entries match `prev`'s once the pass leaves step; `None`
     /// while all match.
     split: Option<usize>,
-    /// Last painted frame's `curr`; same type so the swap is alloc-free.
+    /// Last painted frame's `cur`; same type so the swap is alloc-free.
     /// [`Cascade::by_id`](crate::cascade::Cascade) can't serve this diff: it refreshes
     /// every cascade run, so a two-pass frame would compare pass A with pass B.
     prev: IdTable,
-    /// Widgets in `prev` but not `curr`. A public field so callers can hold
+    /// Widgets in `prev` but not `cur`. A public field so callers can hold
     /// `&seen.removed` across other `&forest` reads.
     pub(crate) removed: WidgetIdSet,
     /// Explicit collisions awaiting [`Self::record_endpoint`]. Cleared each frame.
@@ -206,14 +206,14 @@ pub(crate) struct SeenIds {
 
 impl SeenIds {
     /// Reset per-frame state at the top of a record pass. `prev` is untouched, since a
-    /// discarded pass never reaches `rollover`. A non-empty `curr` here is a discarded
+    /// discarded pass never reaches `rollover`. A non-empty `cur` here is a discarded
     /// pass: ids `prev` has never seen move to `discarded`.
     pub(crate) fn pre_record(&mut self) {
         self.counters.clear();
-        let matched = self.split.unwrap_or(self.curr.entries.len());
+        let matched = self.split.unwrap_or(self.cur.entries.len());
         let prev = &self.prev;
         // The matching prefix holds `prev`'s ids at their positions; only the rest is probed.
-        let (stepped, rest) = self.curr.entries.split_at(matched);
+        let (stepped, rest) = self.cur.entries.split_at(matched);
         let new_in_step = stepped.iter().zip(&prev.entries).filter(|(entry, last)| {
             entry.slot != IdSlot::Reserved && last.slot == IdSlot::Reserved
         });
@@ -225,7 +225,7 @@ impl SeenIds {
                 .map(|(entry, _)| entry.id)
                 .chain(new_past_step.map(|entry| entry.id)),
         );
-        self.curr.clear();
+        self.cur.clear();
         self.split = None;
         self.pending.clear();
     }
@@ -233,10 +233,10 @@ impl SeenIds {
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
         if self.split.is_some() {
-            return self.curr.slot(id).and_then(IdSlot::endpoint);
+            return self.cur.slot(id).and_then(IdSlot::endpoint);
         }
         let at = *self.prev.index.get(&id)? as usize;
-        let entry = self.curr.entries.get(at)?;
+        let entry = self.cur.entries.get(at)?;
         debug_assert_eq!(entry.id, id, "an in-step entry left its position");
         entry.slot.endpoint()
     }
@@ -245,10 +245,10 @@ impl SeenIds {
     /// newest entry of a pass in step, the usual case). Otherwise [`LastFrame::Unknown`].
     #[inline]
     pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
-        let newest = self.curr.entries.len().wrapping_sub(1);
+        let newest = self.cur.entries.len().wrapping_sub(1);
         if self.split.is_some()
             || self
-                .curr
+                .cur
                 .entries
                 .get(newest)
                 .is_none_or(|entry| entry.id != id)
@@ -263,13 +263,13 @@ impl SeenIds {
 
     #[inline]
     pub(crate) fn recorded(&self) -> impl Iterator<Item = (WidgetId, Endpoint)> + '_ {
-        self.curr.recorded_entries()
+        self.cur.recorded_entries()
     }
 
     #[inline]
     fn reserve(&mut self, id: WidgetId, origin: Origin) -> ResolvedId {
-        let entry = self.curr.entries.len() as u32;
-        self.curr.entries.push(IdEntry {
+        let entry = self.cur.entries.len() as u32;
+        self.cur.entries.push(IdEntry {
             id,
             slot: IdSlot::Reserved,
             origin,
@@ -281,9 +281,9 @@ impl SeenIds {
     /// continues with. Pays one insert per colliding raw id, once.
     #[cold]
     fn leave_step(&mut self) {
-        self.split = Some(self.curr.entries.len());
-        self.curr.index_entries();
-        for entry in &self.curr.entries {
+        self.split = Some(self.cur.entries.len());
+        self.cur.index_entries();
+        for entry in &self.cur.entries {
             if entry.origin.occurrence != 0 {
                 self.counters
                     .insert(entry.origin.raw, entry.origin.occurrence);
@@ -305,10 +305,10 @@ impl SeenIds {
         if self.split.is_some() {
             return None;
         }
-        let at = self.curr.entries.len();
+        let at = self.cur.entries.len();
         if kind == IdKind::Explicit
             && self
-                .curr
+                .cur
                 .entries
                 .last()
                 .is_some_and(|newest| newest.id == raw)
@@ -344,7 +344,7 @@ impl SeenIds {
 
     #[inline]
     fn claim(&self, holder: usize) -> Option<ResolvedId> {
-        let entry = &self.curr.entries[holder];
+        let entry = &self.cur.entries[holder];
         (entry.slot == IdSlot::Reserved).then_some(ResolvedId {
             id: entry.id,
             entry: holder as u32,
@@ -369,7 +369,7 @@ impl SeenIds {
         let recipe = Recipe { ident, parent };
         let kind = ident.kind();
         if self.split.is_none()
-            && let Some(last) = self.prev.entries.get(self.curr.entries.len())
+            && let Some(last) = self.prev.entries.get(self.cur.entries.len())
             && last.origin.recipe.is_some_and(|last| last.is(recipe))
             && (kind == IdKind::Auto || last.origin.occurrence == 0)
         {
@@ -398,8 +398,8 @@ impl SeenIds {
         if self.split.is_none() {
             self.leave_step();
         }
-        let next = self.curr.entries.len() as u32;
-        match self.curr.index.entry(raw_id) {
+        let next = self.cur.entries.len() as u32;
+        match self.cur.index.entry(raw_id) {
             // First occurrence. `counters` tracks only collided raw ids.
             Entry::Vacant(slot) => {
                 slot.insert(next);
@@ -418,7 +418,7 @@ impl SeenIds {
             // disambiguates against a reservation.
             Entry::Occupied(slot)
                 if kind == IdKind::Explicit
-                    && self.curr.entries[*slot.get() as usize].slot == IdSlot::Reserved =>
+                    && self.cur.entries[*slot.get() as usize].slot == IdSlot::Reserved =>
             {
                 return ResolvedId {
                     id: raw_id,
@@ -433,7 +433,7 @@ impl SeenIds {
                 .checked_add(1)
                 .expect("WidgetId occurrence counter overflowed");
             let candidate = raw_id.with(count);
-            if let Entry::Vacant(slot) = self.curr.index.entry(candidate) {
+            if let Entry::Vacant(slot) = self.cur.index.entry(candidate) {
                 slot.insert(next);
                 break candidate;
             }
@@ -467,7 +467,7 @@ impl SeenIds {
     ) -> Option<CollisionRecord> {
         let final_id = resolved.id();
         let entry = self
-            .curr
+            .cur
             .entries
             .get_mut(resolved.entry as usize)
             .filter(|entry| entry.id == final_id)
@@ -495,47 +495,47 @@ impl SeenIds {
         Some(record)
     }
 
-    /// Populate `self.removed` with widgets in `prev` but not `curr`, then swap. Returns
+    /// Populate `self.removed` with widgets in `prev` but not `cur`, then swap. Returns
     /// a borrow of `self.removed`, which stays populated until the next `rollover`.
     pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
         self.removed.clear();
-        let matched = self.split.unwrap_or(self.curr.entries.len());
+        let matched = self.split.unwrap_or(self.cur.entries.len());
         for (at, last) in self.prev.entries.iter().enumerate() {
             if last.slot == IdSlot::Reserved {
                 continue;
             }
-            // Past the matching prefix an in-step `curr` holds none of `prev`'s ids.
-            let kept = match self.curr.entries.get(at) {
+            // Past the matching prefix an in-step `cur` holds none of `prev`'s ids.
+            let kept = match self.cur.entries.get(at) {
                 Some(entry) if at < matched => entry.slot != IdSlot::Reserved,
-                _ => self.split.is_some() && self.curr.recorded(last.id),
+                _ => self.split.is_some() && self.cur.recorded(last.id),
             };
             if !kept {
                 self.removed.insert(last.id);
             }
         }
-        // Ids seen only in a discarded pass are in neither `prev` nor `curr`, but the rows
+        // Ids seen only in a discarded pass are in neither `prev` nor `cur`, but the rows
         // they created must be swept.
         #[expect(
             clippy::iter_over_hash_type,
             reason = "the ids go into a set, so the order changes nothing"
         )]
-        for &wid in &self.discarded {
-            if self.endpoint(wid).is_none() {
-                self.removed.insert(wid);
+        for &widget_id in &self.discarded {
+            if self.endpoint(widget_id).is_none() {
+                self.removed.insert(widget_id);
             }
         }
         self.discarded.clear();
         if self.split.is_some() {
-            mem::swap(&mut self.curr, &mut self.prev);
-            self.curr.clear();
+            mem::swap(&mut self.cur, &mut self.prev);
+            self.cur.clear();
         } else {
-            // In step `curr` is a prefix of `prev`, so `prev`'s index already holds every
+            // In step `cur` is a prefix of `prev`, so `prev`'s index already holds every
             // position needed; it only loses ids, so never rehashes.
             for last in &self.prev.entries[matched..] {
                 self.prev.index.remove(&last.id);
             }
-            mem::swap(&mut self.curr.entries, &mut self.prev.entries);
-            self.curr.entries.clear();
+            mem::swap(&mut self.cur.entries, &mut self.prev.entries);
+            self.cur.entries.clear();
         }
         self.split = None;
         &self.removed
@@ -563,7 +563,7 @@ pub(crate) mod internals {
         }
 
         /// [`Self::resolve`] then [`Self::record_endpoint`], as a widget's resolve and open
-        /// pair them; the in-step fast path needs `curr` filled between resolves.
+        /// pair them; the in-step fast path needs `cur` filled between resolves.
         pub(crate) fn open(
             &mut self,
             raw_id: WidgetId,

@@ -5,7 +5,7 @@ use std::fmt;
 use std::time::Duration;
 
 /// Handed to [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint) each painted frame.
-pub struct GpuFrameContext<'a> {
+pub struct GpuFrameCtx<'a> {
     /// The device.
     pub device: &'a wgpu::Device,
     /// The queue.
@@ -30,9 +30,9 @@ pub struct GpuFrameContext<'a> {
     pub dt: Duration,
 }
 
-impl fmt::Debug for GpuFrameContext<'_> {
+impl fmt::Debug for GpuFrameCtx<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GpuFrameContext")
+        f.debug_struct("GpuFrameCtx")
             .field("physical_size", &self.physical_size)
             .field("display_scale", &self.display_scale)
             .field("raster_scale", &self.raster_scale)

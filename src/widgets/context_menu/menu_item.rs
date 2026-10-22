@@ -130,7 +130,7 @@ impl<'a> MenuItem<'a> {
                     .show(ui);
             }
         };
-        self.widget.record(ui, Some(&look.background), body);
+        self.widget.record(ui, Some(&look.bg), body);
 
         // A shortcut or activation key is a click the pointer pipeline never saw; callers must not care which device produced it.
         if shortcut_fired {

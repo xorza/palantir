@@ -137,7 +137,7 @@ impl Scene<'_> {
                 for layer in 0..LAYERS {
                     Panel::zstack()
                         .id_salt(("image-pipeline-bench-layer", layer))
-                        .position(Vec2::ZERO)
+                        .pos(Vec2::ZERO)
                         .size((
                             Sizing::fixed(PHYSICAL.x as f32),
                             Sizing::fixed(PHYSICAL.y as f32),

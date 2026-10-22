@@ -100,7 +100,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
         Placement {
             margin: layout.margin,
             align: layout.meta.align(),
-            position: bounds.position,
+            pos: bounds.pos,
             max_size: bounds.max_size,
         }
     }
@@ -110,11 +110,11 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     struct Placement {
         margin: Spacing,
         align: Align,
-        position: Vec2,
+        pos: Vec2,
         max_size: Size,
     }
 
-    const POSITION: Vec2 = Vec2::new(23.0, 11.0);
+    const POS: Vec2 = Vec2::new(23.0, 11.0);
     let padding = Spacing::all(7.0);
     let margin = Spacing::all(3.0);
 
@@ -131,7 +131,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
                     .padding(padding)
                     .margin(margin)
                     .align(Align::CENTER)
-                    .position(POSITION)
+                    .pos(POS)
                     .min_size(Size::new(40.0, 20.0))
                     .max_size(Size::new(200.0, 60.0))
                     .show(ui);

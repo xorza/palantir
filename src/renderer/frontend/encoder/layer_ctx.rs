@@ -35,7 +35,7 @@ use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::paint_anims::PaintAnimCursor;
+use crate::scene::tree::paint_animations::PaintAnimationCursor;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::quad_shape::QuadShape;
@@ -52,7 +52,7 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug)]
 struct ShapeItem<'s> {
     owner: NodeId,
-    index: u32,
+    idx: u32,
     record: &'s ShapeRecord,
 }
 
@@ -64,7 +64,7 @@ pub(super) struct LayerCtx<'a, 'g> {
     pub(super) cascade_inputs: &'a [CascadeInputHash],
     pub(super) subtree_paint_rects: &'a [Rect],
     pub(super) gradients: &'a mut GradientPass<'g>,
-    pub(super) paint_anim_cursor: PaintAnimCursor<'a>,
+    pub(super) paint_animation_cursor: PaintAnimationCursor<'a>,
     /// Live `GpuView`s by owner `WidgetId`, one map across layers; an `ImageSource::GpuView` carries only its epoch.
     pub(super) gpu_views: &'a GpuViews,
     pub(super) damage_filter: Option<&'a DamageRegion>,
@@ -93,7 +93,7 @@ impl LayerCtx<'_, '_> {
     ) {
         let ShapeItem {
             owner: id,
-            index: shape_idx,
+            idx: shape_idx,
             record: shape,
         } = item;
         // `Shapes::add` is the single NaN gate, so nothing non-finite reaches here; later non-finite checks guard the transform stack only.
@@ -105,7 +105,7 @@ impl LayerCtx<'_, '_> {
         );
         let shaped = runs.shaped(shape, self.layout);
         // Early-out so a shape animated to nothing doesn't pay for its geometry; `paint_mod.rotation` rides the stroke arms via `StrokeBounds`.
-        let paint_mod = self.paint_anim_cursor.sample(shape_idx, self.now);
+        let paint_mod = self.paint_animation_cursor.sample(shape_idx, self.now);
         if is_invisible(paint_mod.alpha) {
             return;
         }
@@ -229,7 +229,7 @@ impl LayerCtx<'_, '_> {
                 local_rect,
                 tint,
                 vertices,
-                indices,
+                idxs,
                 bbox,
                 content_hash: _,
             } => {
@@ -240,7 +240,7 @@ impl LayerCtx<'_, '_> {
                         origin,
                         tint: *tint,
                         vertices: *vertices,
-                        indices: *indices,
+                        idxs: *idxs,
                     },
                     alpha,
                 );
@@ -301,8 +301,8 @@ impl LayerCtx<'_, '_> {
                 let (handle, view) = match source {
                     ImageSource::Texture { id, .. } => (*id, None),
                     ImageSource::GpuView { epoch } => {
-                        let wid = self.tree.records.widget_id()[id.idx()];
-                        let view = self.gpu_views.view(wid);
+                        let widget_id = self.tree.records.widget_id()[id.idx()];
+                        let view = self.gpu_views.view(widget_id);
                         let paint = ViewPaint {
                             paint: &view.paint,
                             epoch: *epoch,
@@ -451,10 +451,10 @@ impl LayerCtx<'_, '_> {
         let tree = self.tree;
         for item in tree.tree_items(id) {
             match item {
-                TreeItem::ShapeRecord(index, record) => {
+                TreeItem::ShapeRecord(idx, record) => {
                     let item = ShapeItem {
                         owner: id,
-                        index,
+                        idx,
                         record,
                     };
                     self.emit_one_shape(item, &mut runs, out);

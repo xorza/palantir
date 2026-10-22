@@ -12,7 +12,7 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
 
     let tree = ui.tree(Layer::Main);
     let now = ui.now();
-    let mut paint_anims = tree.paint_anims.cursor();
+    let mut paint_animations = tree.paint_animations.cursor();
     // The caret is on the block child carrying the field's alignment; see [`block_of`].
     tree.tree_items(block_of(ui, leaf))
         .filter_map(|item| match item {
@@ -28,7 +28,7 @@ fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
                     ..
                 })
             );
-            is_caret && paint_anims.sample(idx, now).alpha > 0.0
+            is_caret && paint_animations.sample(idx, now).alpha > 0.0
         })
 }
 
@@ -199,7 +199,7 @@ fn caret_motion_alone_resets_blink() {
 
 /// Between quantum boundaries the caret anim must not add damage, or an
 /// unrelated 60 Hz wake would repaint the caret every frame. `DamageEngine`
-/// gates it on `entry.anim.next_wake(prev_now) <= now`.
+/// gates it on `entry.animation.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // A single recording site keeps the Panel's auto-id stable, so structural

@@ -210,7 +210,7 @@ mod tests {
         let mut covered = [false; 12];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");
-            let index = match event {
+            let idx = match event {
                 InputEvent::PointerMoved(_) => 0,
                 InputEvent::PointerLeft => 1,
                 InputEvent::PointerPressed(_) => 2,
@@ -224,7 +224,7 @@ mod tests {
                 InputEvent::ImePreedit(_) => 10,
                 InputEvent::ImeCommit(_) => 11,
             };
-            covered[index] = true;
+            covered[idx] = true;
         }
         assert!(
             covered.iter().all(|&c| c),

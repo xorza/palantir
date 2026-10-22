@@ -4,7 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
@@ -20,7 +20,7 @@ use glam::Vec2;
 
 #[derive(Debug)]
 pub(super) struct PaintInput<'a> {
-    pub(super) chrome: Background,
+    pub(super) chrome: Bg,
     /// Identity of the text block's node, a child of the field so the layout engine places it; derived from the field's id, so stable across frames.
     pub(super) block_id: WidgetId,
     pub(super) text: &'a str,
@@ -42,7 +42,7 @@ pub(super) struct CaretPaint {
     pub(super) pos: Caret,
     pub(super) width: f32,
     pub(super) color: RgbaF32,
-    pub(super) anim: Option<PaintAnimation>,
+    pub(super) animation: Option<PaintAnimation>,
 }
 
 impl PaintInput<'_> {
@@ -107,8 +107,8 @@ impl PaintInput<'_> {
                         caret.pos.line_height,
                     );
                     let shape = Shape::rect(rect).fill(caret.color);
-                    match caret.anim {
-                        Some(anim) => ui.add_shape_animated(shape, anim),
+                    match caret.animation {
+                        Some(animation) => ui.add_shape_animated(shape, animation),
                         None => ui.add_shape(shape),
                     }
                 }

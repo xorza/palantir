@@ -3,7 +3,7 @@
 use crate::primitives::layout::offer;
 
 use crate::layout::drivers::grid::Grid;
-use crate::layout::drivers::grid::grid_context::GridContext;
+use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
@@ -20,7 +20,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let rows = grid.axis(tree, Axis::Y);
     let n_rows = rows.tracks.len();
     let n_cols = cols.tracks.len();
-    let scratch = pass.grid_mut().depth_stack.current();
+    let scratch = pass.grid_mut().depth_stack.cur();
     scratch.col.reset_for(n_cols);
     scratch.row.reset_for(n_rows);
     pass.grid_track_state_mut()
@@ -77,12 +77,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // they will arrange at.
     let grid_sizing_w = tree.records.layout()[node.idx()].size.w();
     {
-        let GridContext {
+        let GridCtx {
             depth_stack,
             track_state,
             ..
         } = pass.grid_mut();
-        let s = depth_stack.current();
+        let s = depth_stack.cur();
         s.col
             .resolve_axis(cols, track_state.ranges(cols.id), inner_avail.w);
         if !grid_sizing_w.is_hug() && inner_avail.w.is_finite() {
@@ -100,7 +100,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         let cell = tree.bounds(c).grid;
 
         let avail = {
-            let s = pass.grid_mut().depth_stack.current();
+            let s = pass.grid_mut().depth_stack.cur();
             // `known_span_size` returns INFINITY if any spanned col is unresolved.
             // Fill cols stay unresolved so their cells get INF: Fill is finalized
             // at arrange, and a different measure width would commit row heights
@@ -135,12 +135,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // marking is inert here (its reader already ran and arrange re-resolves);
     // only the recorded `sizes` matter.
     {
-        let GridContext {
+        let GridCtx {
             depth_stack,
             track_state,
             ..
         } = pass.grid_mut();
-        let s = depth_stack.current();
+        let s = depth_stack.cur();
         s.row
             .resolve_axis(rows, track_state.ranges(rows.id), inner_avail.h);
         track_state.record_resolution(rows.id, inner_avail.h, &s.row.sizes);
@@ -150,12 +150,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // arrange; `AxisSlot::resolve` floors this at the Grid intrinsic, which
     // includes Fill content. The floor sums each track at its least: a Fixed
     // track's size, a Hug track's content floor.
-    let GridContext {
+    let GridCtx {
         depth_stack,
         track_state,
         ..
     } = pass.grid_mut();
-    let s = depth_stack.current();
+    let s = depth_stack.cur();
     let col_gaps = cols.gap.gaps_between(n_cols);
     let row_gaps = rows.gap.gaps_between(n_rows);
     let total_w = sum_non_fill(cols.tracks, &s.col.sizes) + col_gaps;

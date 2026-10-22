@@ -81,7 +81,7 @@ impl DockTabs for Panes {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(14.0)
             .gap(6.0)
-            .background(support::well_bg())
+            .bg(support::well_bg())
             .show(ui, |ui| {
                 Text::new(tab.label())
                     .style(&support::body_style())

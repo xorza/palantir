@@ -3,7 +3,7 @@
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
@@ -23,7 +23,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(salt))
         .size(50.0)
-        .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+        .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
         .show(ui)
         .node()
 }

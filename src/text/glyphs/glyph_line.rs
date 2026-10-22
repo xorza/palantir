@@ -10,6 +10,6 @@ pub struct GlyphLine<'a> {
     /// The face and metrics the text is shaped in.
     pub font: GlyphFont,
     /// Logical→target scale the glyphs are rasterized at, as
-    /// [`GpuFrameContext::raster_scale`](crate::GpuFrameContext::raster_scale).
+    /// [`GpuFrameCtx::raster_scale`](crate::GpuFrameCtx::raster_scale).
     pub raster_scale: f32,
 }

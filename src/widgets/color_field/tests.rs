@@ -258,8 +258,8 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
     let mut worst = [(); 3].map(|()| SampleError::default());
     for row in 0..pixels.y {
         let v = (row as f32 + 0.5) / pixels.y as f32;
-        for column in 0..pixels.x {
-            let u = (column as f32 + 0.5) / pixels.x as f32;
+        for col in 0..pixels.x {
+            let u = (col as f32 + 0.5) / pixels.x as f32;
             let want = slice.color(u, 1.0 - v).to_srgba_u8();
             for ((size, texels), worst) in fields.iter().zip(&mut worst) {
                 let shown = sample(texels, *size, u, v).to_srgba_u8();

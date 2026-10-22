@@ -342,14 +342,14 @@ impl<'a> TextEdit<'a> {
             self.widget
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
-            self.widget.record(ui, Some(&look.background), |_| {});
+            self.widget.record(ui, Some(&look.bg), |_| {});
             return EditSignals::focus_only(focus, committed, response);
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored padding, and the
         // encoder's clip mask is `rect.deflated_by(post-inflate padding)`, so glyph and
         // caret coordinates must use that value or the top glyph row is scissored away.
-        let stroke_w = look.background.border_inset();
+        let stroke_w = look.bg.border_inset();
         let padding = Spacing::from_array(
             self.widget
                 .authored_padding()
@@ -357,7 +357,7 @@ impl<'a> TextEdit<'a> {
                 .as_array()
                 .map(|v| v + stroke_w),
         );
-        let previous_block_offset = state.view.block_offset;
+        let prev_block_offset = state.view.block_offset;
         let layout = TextLayout::resolve(LayoutInput {
             response_rect: response.layout_rect,
             padding,
@@ -365,7 +365,7 @@ impl<'a> TextEdit<'a> {
             font,
             multiline: self.multiline,
             text_align: self.text_align,
-            previous_block_offset,
+            prev_block_offset,
         });
         let ctx = layout.ctx;
         let rules = EditRules {
@@ -375,7 +375,7 @@ impl<'a> TextEdit<'a> {
         // Pre-input caret snapshot, before the input pass's clamp, so an external shrink that
         // displaces the caret still resets the blink.
         let caret_before = state.edit.caret;
-        let sel_before = state.edit.selection;
+        let selection_before = state.edit.selection;
         let InputResult {
             canceled,
             submitted,
@@ -441,9 +441,10 @@ impl<'a> TextEdit<'a> {
             canceled,
             disabled: response.disabled,
         });
-        let caret_moved = caret_before != state.edit.caret || sel_before != state.edit.selection;
+        let caret_moved =
+            caret_before != state.edit.caret || selection_before != state.edit.selection;
         let caret_byte = state.edit.caret;
-        let selection = state.edit.sel_range();
+        let selection = state.edit.selection_range();
 
         let wheel = if response.disabled {
             Vec2::ZERO
@@ -517,7 +518,7 @@ impl<'a> TextEdit<'a> {
             }));
         }
         let now = ui.now();
-        let caret_anim = state.view.update(ViewUpdateInput {
+        let caret_animation = state.view.update(ViewUpdateInput {
             geometry,
             wheel,
             caret_byte,
@@ -534,7 +535,7 @@ impl<'a> TextEdit<'a> {
             .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));
         let text_color = look.text.color;
         PaintInput {
-            chrome: look.background,
+            chrome: look.bg,
             block_id: id.with("text-block"),
             text,
             preedit_underline: composing.then_some(caret_width),
@@ -549,7 +550,7 @@ impl<'a> TextEdit<'a> {
                 pos: geometry.caret_pos,
                 width: caret_width,
                 color: caret_color,
-                anim: caret_anim,
+                animation: caret_animation,
             }),
         }
         .record(ui, self.widget);

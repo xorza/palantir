@@ -4,7 +4,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -13,7 +13,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
-/// `Surface::apply_to` (from `Panel::show`) writes the clip bit and records chrome in `Tree::chrome_table`. One fixture sweeps: no surface, paint-only `From<Background>`, `scissor`, `clipped`, `rounded` with radius, `rounded` with zero-radius downgrade.
+/// `Surface::apply_to` (from `Panel::show`) writes the clip bit and records chrome in `Tree::chrome_table`. One fixture sweeps: no surface, paint-only `From<Bg>`, `scissor`, `clipped`, `rounded` with radius, `rounded` with zero-radius downgrade.
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     let mut h = UiHarness::new(UVec2::new(200, 200));
@@ -31,7 +31,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("paint-only"))
                 .size(50.0)
-                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {})
                 .response
                 .node();
@@ -50,7 +50,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("clipped"))
                 .size(50.0)
-                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                .bg(Bg::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
@@ -60,7 +60,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded"))
                 .size(50.0)
-                .background(Background {
+                .bg(Bg {
                     fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     corners: Corners::all(4.0),
                     ..Default::default()
@@ -75,7 +75,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             let n = Panel::zstack()
                 .id(WidgetId::from_hash("rounded-zero"))
                 .size(50.0)
-                .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                .bg(Bg::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
@@ -98,12 +98,12 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = UiHarness::new(UVec2::new(200, 120));
-    h.ui.theme_mut().panel_background = Some(Background::fill(RgbaF32::WHITE));
+    h.ui.theme_mut().panel_bg = Some(Bg::fill(RgbaF32::WHITE));
     h.ui.theme_mut().panel_clip = ClipMode::Rect;
     let [explicit, inherited] = h.frame_value(|ui| {
         [
             Panel::vstack()
-                .background(Background::NONE)
+                .bg(Bg::NONE)
                 .clip(ClipMode::None)
                 .show(ui, |_| {})
                 .response
@@ -135,7 +135,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                 let panel = Panel::zstack()
                     .id(WidgetId::from_hash("card"))
                     .padding(10.0)
-                    .background(Background {
+                    .bg(Bg {
                         fill: RgbaF32::srgb(0.1, 0.1, 0.15).into(),
                         corners: Corners::all(8.0),
                         ..Default::default()
@@ -198,7 +198,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                         Block::new()
                             .id(WidgetId::from_hash("filler"))
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                            .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
                             .node()
                     })
@@ -251,7 +251,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .id(WidgetId::from_hash("locked"))
                     .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
                     .padding(20.0)
-                    .background(Background::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.2, 0.2)))
                     .disabled(disabled)
                     .show(ui, |ui| {
                         clicked = Button::new()
@@ -287,13 +287,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                         Block::new()
                             .id(WidgetId::from_hash("a"))
                             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                            .position(Vec2::new(10.0, 5.0))
+                            .pos(Vec2::new(10.0, 5.0))
                             .show(ui)
                             .node(),
                         Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
-                            .position(Vec2::new(80.0, 40.0))
+                            .pos(Vec2::new(80.0, 40.0))
                             .show(ui)
                             .node(),
                     ]
@@ -330,7 +330,7 @@ fn zstack_layers_children_without_painting_background() {
                             Block::new()
                                 .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
-                                .background(Background::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
+                                .bg(Bg::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
                                 .show(ui)
                                 .node(),
                             Button::new()
@@ -383,7 +383,7 @@ fn zstack_aligns_child_per_axis() {
                                 .id(WidgetId::from_hash("c"))
                                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                                 .align(*align)
-                                .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                                .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                                 .show(ui)
                                 .node()
                         })

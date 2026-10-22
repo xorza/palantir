@@ -176,9 +176,9 @@ impl LayoutEngine {
             // arrange, so it gets its own pass over the identified owners.
             let layouts = tree.records.layout();
             let mut pass = LayoutPass::new(&mut *self, input, &mut *layer_out);
-            for index in tree.container_text.ones() {
-                let layout = layouts[index];
-                let node = NodeId(index as u32);
+            for idx in tree.container_text.ones() {
+                let layout = layouts[idx];
+                let node = NodeId(idx as u32);
                 // The inner box `arrange` places children in.
                 let available_w = layout.inner_rect(pass.rect(node)).size.w;
                 let runs = TextShapeInput::on_container(tree, &interned_text, node);

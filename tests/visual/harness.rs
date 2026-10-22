@@ -25,7 +25,7 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
     text_disabled: RgbaF32::hex(0xd9a05e),
-    window_background: RgbaF32::hex(0x14141a),
+    window_bg: RgbaF32::hex(0x14141a),
     element: RgbaF32::hex(0x2e1f38),
     element_mid: RgbaF32::hex(0x1e4048),
     element_strong: RgbaF32::hex(0x3d4f1e),
@@ -168,8 +168,8 @@ impl Harness {
         self.frame(scene)
     }
 
-    /// `tex`'s pixels, in its own channel order.
-    fn readback(&self, tex: &wgpu::Texture, size: UVec2) -> RgbaImage {
+    /// `texture`'s pixels, in its own channel order.
+    fn readback(&self, texture: &wgpu::Texture, size: UVec2) -> RgbaImage {
         let device = &self.gpu.device;
         let row_bytes = (size.x * BYTES_PER_PIXEL) as usize;
         let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
@@ -185,7 +185,7 @@ impl Harness {
         });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: tex,
+                texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,

@@ -6,8 +6,8 @@ mod view_target;
 
 use crate::common::tracy;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::device::gpu_frame_context::GpuFrameContext;
-use crate::gpu::device::gpu_init_context::GpuInitContext;
+use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
+use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -80,7 +80,7 @@ impl GpuViewTargets {
             if !target.initialized {
                 tracy::zone!("GpuView::init");
                 debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
-                paint.init(&GpuInitContext {
+                paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: TARGET_FORMAT,
                     text,
@@ -93,7 +93,7 @@ impl GpuViewTargets {
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
             tracy::zone!("GpuView::paint");
             debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
-            paint.paint(&mut GpuFrameContext {
+            paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,
                 queue: ctx.queue,
                 encoder: ctx.encoder,

@@ -7,7 +7,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -198,7 +198,7 @@ fn the_popup_takes_the_picker_theme() {
     let stock = ColorPickerTheme::default();
     let custom = ColorPickerTheme {
         // Same stroke as stock, so the folded band matches on both sides.
-        popup: Background {
+        popup: Bg {
             corners: Corners::all(9.0),
             ..stock.popup.clone()
         },

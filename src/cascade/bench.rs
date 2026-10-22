@@ -28,9 +28,9 @@ const QUERY_MISS: Vec2 = Vec2::new(TILE - 1.0, TILE - 1.0);
 
 /// Inside the last-pushed tile, top of paint order, so `hits_under`'s reverse scan matches first. Pairs with [`QUERY_MISS`] to give a scan-length curve.
 fn topmost_query(interactive_count: usize) -> Vec2 {
-    let index = interactive_count.saturating_sub(1);
-    let x = (index % TILES_PER_ROW) as f32 * TILE;
-    let y = (index / TILES_PER_ROW) as f32 * TILE;
+    let idx = interactive_count.saturating_sub(1);
+    let x = (idx % TILES_PER_ROW) as f32 * TILE;
+    let y = (idx / TILES_PER_ROW) as f32 * TILE;
     Vec2::new(x + TILE * 0.5, y + TILE * 0.5)
 }
 const FRAME_SIZE: UVec2 = UVec2::new(3840, 4800);
@@ -62,13 +62,13 @@ fn fixture(density: Density) -> Cascade {
     let interactive_count = ENTRY_COUNT * density.percent / 100;
     let mut cascade = Cascade::default();
     cascade.entries.reserve(ENTRY_COUNT);
-    for index in 0..ENTRY_COUNT {
-        if index < interactive_count {
-            let x = (index % TILES_PER_ROW) as f32 * TILE;
-            let y = (index / TILES_PER_ROW) as f32 * TILE;
+    for idx in 0..ENTRY_COUNT {
+        if idx < interactive_count {
+            let x = (idx % TILES_PER_ROW) as f32 * TILE;
+            let y = (idx / TILES_PER_ROW) as f32 * TILE;
             cascade.hits.push(HitRow {
                 rect: Rect::new(x, y, TILE - 2.0, TILE - 2.0),
-                widget_id: WidgetId::from_hash(index),
+                widget_id: WidgetId::from_hash(idx),
                 sense: Sense::HOVER | Sense::CLICK | Sense::SCROLL | Sense::PINCH,
                 focusable: true,
                 disabled: false,

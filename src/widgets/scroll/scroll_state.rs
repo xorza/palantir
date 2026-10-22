@@ -296,14 +296,14 @@ impl ScrollState {
         let Some(page) = page else {
             return;
         };
-        let current = axis.main_v(self.offset);
+        let cur = axis.main_v(self.offset);
         // Both directions clamp through the bar domain so the thumb can follow.
         let next = if page.click_main < page.thumb_offset {
-            page.domain.clamp(current - page.page_step)
+            page.domain.clamp(cur - page.page_step)
         } else if page.click_main > page.thumb_offset + page.thumb_size {
-            page.domain.clamp(current + page.page_step)
+            page.domain.clamp(cur + page.page_step)
         } else {
-            current
+            cur
         };
         match axis {
             Axis::X => self.offset.x = next,

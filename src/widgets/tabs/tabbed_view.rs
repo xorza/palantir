@@ -21,16 +21,16 @@ use std::rc::Rc;
 /// to the caller's own collection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabsAction {
-    /// The visible page changed; the bound index already holds `index`.
+    /// The visible page changed; the bound index already holds `idx`.
     Activated {
         /// The page now visible.
-        index: usize,
+        idx: usize,
     },
     /// The page's close button was clicked: remove it and re-derive the bound
     /// index.
     Closed {
         /// The page to remove.
-        index: usize,
+        idx: usize,
     },
     /// A chip was dragged onto another slot: move `from` to `to` in the option
     /// collection. `to` addresses it **before** the move (`len` appends), so the
@@ -108,7 +108,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             selected,
             options,
             label,
-            key: index_key::<S>,
+            key: idx_key::<S>,
             closable: true,
             reorderable: false,
             overflow: TabOverflow::default(),
@@ -181,7 +181,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             overflow,
             style: _,
         } = self;
-        let mut shown = domain::index(*selected, options.len());
+        let mut shown = domain::idx(*selected, options.len());
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let strip_id = id.with("strip");
@@ -215,12 +215,12 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     drag_stopped: strip.drag_stopped,
                 }
             });
-            if let Some(index) = hit.closed {
-                action = Some(TabsAction::Closed { index });
-            } else if let Some(index) = hit.clicked {
-                *selected = index;
-                shown = Some(index);
-                action = Some(TabsAction::Activated { index });
+            if let Some(idx) = hit.closed {
+                action = Some(TabsAction::Closed { idx });
+            } else if let Some(idx) = hit.clicked {
+                *selected = idx;
+                shown = Some(idx);
+                action = Some(TabsAction::Activated { idx });
             }
             if let Some(from) = hit.drag_stopped
                 && reorderable
@@ -236,7 +236,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 && to != from + 1
                 && let Some(page) = shown
             {
-                *selected = moved_index(page, from, to);
+                *selected = moved_idx(page, from, to);
                 shown = Some(*selected);
                 action = Some(TabsAction::Reordered { from, to });
             }
@@ -287,18 +287,18 @@ fn dropped_slot(
     Some(tab_strip::insertion_slot(chips, pointer.x))
 }
 
-const fn index_key<S>(index: usize, _: &S) -> u64 {
-    index as u64
+const fn idx_key<S>(idx: usize, _: &S) -> u64 {
+    idx as u64
 }
 
-/// Where the page at `index` sits after [`TabsAction::Reordered`] moves `from` into
+/// Where the page at `idx` sits after [`TabsAction::Reordered`] moves `from` into
 /// gap `to`.
-const fn moved_index(index: usize, from: usize, to: usize) -> usize {
+const fn moved_idx(idx: usize, from: usize, to: usize) -> usize {
     let landing = if to > from { to - 1 } else { to };
-    if index == from {
+    if idx == from {
         return landing;
     }
-    let without = if index > from { index - 1 } else { index };
+    let without = if idx > from { idx - 1 } else { idx };
     if without >= landing {
         without + 1
     } else {
@@ -308,7 +308,7 @@ const fn moved_index(index: usize, from: usize, to: usize) -> usize {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    pub(crate) const fn moved_index(index: usize, from: usize, to: usize) -> usize {
-        super::moved_index(index, from, to)
+    pub(crate) const fn moved_idx(idx: usize, from: usize, to: usize) -> usize {
+        super::moved_idx(idx, from, to)
     }
 }

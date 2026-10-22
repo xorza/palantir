@@ -108,11 +108,11 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`Configure::position`](crate::widget_core::configure::Configure::position).
+    /// See [`Configure::pos`](crate::widget_core::configure::Configure::pos).
     #[inline]
     #[track_caller]
-    pub fn position(&mut self, p: impl Into<Vec2>) -> &mut Self {
-        self.widget.node.position = vec2::offset(p.into());
+    pub fn pos(&mut self, p: impl Into<Vec2>) -> &mut Self {
+        self.widget.node.pos = vec2::offset(p.into());
         self
     }
 
@@ -212,10 +212,10 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`Configure::tab_index`](crate::widget_core::configure::Configure::tab_index).
+    /// See [`Configure::tab_idx`](crate::widget_core::configure::Configure::tab_idx).
     #[inline]
-    pub const fn tab_index(&mut self, index: i16) -> &mut Self {
-        self.widget.node.tab_index = index;
+    pub const fn tab_idx(&mut self, idx: i16) -> &mut Self {
+        self.widget.node.tab_idx = idx;
         self
     }
 

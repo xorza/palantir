@@ -127,7 +127,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         local_rect: None,
         tint,
         vertices: Span::new(0, 3),
-        indices: Span::new(0, 3),
+        idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
         content_hash: 0xdead_beef,
     };
@@ -135,7 +135,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         local_rect: None,
         tint,
         vertices: Span::new(1234, 3),
-        indices: Span::new(5678, 3),
+        idxs: Span::new(5678, 3),
         bbox: Rect::ZERO,
         content_hash: 0xdead_beef,
     };
@@ -145,7 +145,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         local_rect: Some(rect),
         tint,
         vertices: Span::new(0, 3),
-        indices: Span::new(0, 3),
+        idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
         content_hash: 0xdead_beef,
     };

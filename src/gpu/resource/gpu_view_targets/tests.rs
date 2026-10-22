@@ -1,5 +1,5 @@
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::device::gpu_frame_context::GpuFrameContext;
+use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::test_gpu::headless_test_gpu;
@@ -20,7 +20,7 @@ use wgpu::util::StagingBelt;
 struct CountingPaint(Rc<Cell<u32>>);
 
 impl GpuPaint for CountingPaint {
-    fn paint(&mut self, _ctx: &mut GpuFrameContext<'_>) {
+    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {
         self.0.set(self.0.get() + 1);
     }
 }

@@ -1,6 +1,6 @@
 //! The one-widget harness an animation test drives, and the reads it asserts on.
 
-use crate::animation::anim_row::{AnimRow, MotionRow};
+use crate::animation::animation_row::{AnimationRow, MotionRow};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
@@ -17,7 +17,7 @@ const SURFACE: UVec2 = UVec2::new(100, 100);
 
 pub(super) const SLOT: AnimationSlot = AnimationSlot::new("test");
 
-pub(super) fn wid(s: &'static str) -> WidgetId {
+pub(super) fn widget_id(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
 }
 
@@ -27,7 +27,7 @@ pub(super) struct DurationMotionState<'a, T> {
     pub(super) elapsed: f32,
 }
 
-pub(super) fn duration_motion<T: Animatable>(row: &AnimRow<T>) -> DurationMotionState<'_, T> {
+pub(super) fn duration_motion<T: Animatable>(row: &AnimationRow<T>) -> DurationMotionState<'_, T> {
     let MotionRow::Duration {
         segment_start,
         elapsed,
@@ -42,7 +42,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimRow<T>) -> DurationMotion
     }
 }
 
-pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
+pub(super) fn spring_velocity<T: Animatable>(row: &AnimationRow<T>) -> &T {
     let MotionRow::Spring { velocity, .. } = &row.motion else {
         panic!("expected spring motion state");
     };
@@ -51,18 +51,18 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimRow<T>) -> &T {
 
 /// Prelude: pre-records the widget so its state row exists; per-frame bodies re-record it so state survives sweeps.
 #[derive(Debug)]
-pub(super) struct AnimUi {
+pub(super) struct AnimationUi {
     pub(super) h: UiHarness,
     pub(super) id: WidgetId,
 }
 
-pub(super) fn setup_anim_ui(salt: &'static str) -> AnimUi {
+pub(super) fn setup_animation_ui(salt: &'static str) -> AnimationUi {
     let mut h = UiHarness::new(SURFACE);
-    let id = wid(salt);
+    let id = widget_id(salt);
     h.frame(|ui| {
         Block::new().id(id).show(ui);
     });
-    AnimUi { h, id }
+    AnimationUi { h, id }
 }
 
 /// A spring released from rest `distance` from its target, judged settled inside `eps`.

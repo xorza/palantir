@@ -63,7 +63,7 @@ impl sealed::LowerShape for ShadowShape {
         self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 
-    /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeom::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree.
+    /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeometry::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_rect,

@@ -126,8 +126,8 @@ impl IconTable {
     /// Every icon with the id that names it, in table order.
     pub(crate) fn entries(&self) -> impl Iterator<Item = (IconId, &IconDefinition)> {
         self.icons.iter().enumerate().map(|(i, def)| {
-            let index = u16::try_from(i).expect("an IconId names every icon of a set");
-            (IconId::new(index), def)
+            let idx = u16::try_from(i).expect("an IconId names every icon of a set");
+            (IconId::new(idx), def)
         })
     }
 
@@ -146,14 +146,14 @@ impl IconTable {
     /// Panics if `icon` is not from this set: an id crossed sets.
     pub(crate) fn def(&self, icon: IconId) -> &IconDefinition {
         let icons = &self.icons;
-        let index = usize::from(icon.index());
+        let idx = usize::from(icon.idx());
         assert!(
-            index < icons.len(),
+            idx < icons.len(),
             "IconId({}) is not in this set ({} icons) — an id from another set?",
-            icon.index(),
+            icon.idx(),
             icons.len(),
         );
-        &icons[index]
+        &icons[idx]
     }
 
     pub(crate) fn svg_bytes(&self, icon: IconId) -> &[u8] {

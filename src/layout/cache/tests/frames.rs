@@ -10,7 +10,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -323,7 +323,7 @@ fn cache_hit_preserves_per_driver_rects() {
                             capture.push(
                                 Text::new(label)
                                     .id(WidgetId::from_hash(("pin", i)))
-                                    .position(pos)
+                                    .pos(pos)
                                     .font_size(14.0)
                                     .show(ui)
                                     .node(),
@@ -355,7 +355,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .clip_rect()
                     .size((Sizing::FILL, Sizing::HUG))
                     .padding(6.0)
-                    .background(Background {
+                    .bg(Bg {
                         fill: RgbaF32::srgb(0.16, 0.18, 0.22).into(),
                         border: Stroke::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                         corners: Corners::all(4.0),
@@ -400,7 +400,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Block::new()
                     .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::fixed(20.0)))
-                    .background(Background::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.4, 0.4, 0.5)))
                     .show(ui);
             });
     };
@@ -574,7 +574,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                             .show(ui, |ui| {
                                 Scroll::vertical()
                                     .id(WidgetId::from_hash("canvas-scroll"))
-                                    .position((20.0, 30.0))
+                                    .pos((20.0, 30.0))
                                     .show(ui, |ui| rows(ui, "canvas-row"));
                             });
                     });

@@ -18,7 +18,7 @@ use swash::scale::outline::Outline;
 pub(super) struct GlyphInk {
     bounds: FxHashMap<GlyphInkKey, EmBox>,
     /// Swash's per-face scratch, apart from the rasterizer's so shaping can read ink while holding the measurer.
-    context: ScaleContext,
+    ctx: ScaleContext,
     outline: Outline,
 }
 
@@ -117,7 +117,7 @@ impl GlyphInk {
             hinting: Hinting::Off,
             weight: fontdb::Weight(key.weight),
         }
-        .scaler(&mut self.context, &font);
+        .scaler(&mut self.ctx, &font);
         let outlined = scaler.scale_color_outline_into(key.glyph_id, &mut self.outline)
             || (!scaler.has_color_bitmaps()
                 && scaler.scale_outline_into(key.glyph_id, &mut self.outline));

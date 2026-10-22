@@ -1,14 +1,14 @@
 //! The spring transition: closed-form agreement, independence from frame
 //! partitioning, and row settling.
 
-use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped};
+use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_spec::AnimMotion;
+use crate::animation::animation_spec::AnimationMotion;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, Release, SLOT};
-use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::common::time::ANIMATION_SUBSTEP_DT;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -29,7 +29,7 @@ fn validated_springs_remain_finite_and_settle() {
     let dts = [0.1, 1.0 / 60.0, 0.0042, 0.033];
 
     for (label, spec, expected) in cases {
-        let AnimMotion::Spring(spring) = spec.motion else {
+        let AnimationMotion::Spring(spring) = spec.motion else {
             unreachable!("every case is a spring");
         };
         let release = Release {
@@ -42,8 +42,8 @@ fn validated_springs_remain_finite_and_settle() {
             expected,
             "{label}: closed form",
         );
-        let mut map = AnimMapTyped::<f32>::default();
-        let id = support::wid(label);
+        let mut map = AnimationMapTyped::<f32>::default();
+        let id = support::widget_id(label);
         let _ = map.step(AnimationRequest::new(id, SLOT, 400.0), spec, dts[0]);
         let mut settled_at = None;
         for i in 0..4_000_u32 {
@@ -55,11 +55,11 @@ fn validated_springs_remain_finite_and_settle() {
             let row = &map.rows[&(id, SLOT)];
             let velocity = *support::spring_velocity(row);
             assert!(
-                result.current.is_finite() && velocity.is_finite(),
+                result.cur.is_finite() && velocity.is_finite(),
                 "{label} became non-finite at step {i}: {row:?}",
             );
             if result.settled {
-                assert_eq!(result.current, -100.0, "{label} did not snap to target");
+                assert_eq!(result.cur, -100.0, "{label} did not snap to target");
                 assert_eq!(velocity, 0.0, "{label} retained settled velocity");
                 settled_at = Some(i);
                 break;
@@ -87,7 +87,7 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
             -0.334_367_46,
         ),
     ];
-    for (label, stiffness, damping, expect_pos, expect_vel) in cases {
+    for (label, stiffness, damping, expect_pos, expect_velocity) in cases {
         let spring = Spring { stiffness, damping };
         assert!(
             spring.is_valid(),
@@ -103,7 +103,7 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
         );
         domain::internals::assert_close(
             step.velocity,
-            expect_vel,
+            expect_velocity,
             1e-5,
             "f32 transition coefficients against the analytic velocity, \
              which the stiffness scales",
@@ -118,18 +118,18 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
     let spring = Spring::DEFAULT;
     let travel = |steps: u32| {
         let dt = 0.1 / steps as f32;
-        let mut current = 300.0_f32;
+        let mut cur = 300.0_f32;
         let mut velocity = 0.0_f32;
         for _ in 0..steps {
-            let step = spring.step(current, velocity, dt);
+            let step = spring.step(cur, velocity, dt);
             assert!(
                 !step.settled,
                 "fixture must stay in flight for the whole 0.1s"
             );
-            current = step.offset;
+            cur = step.offset;
             velocity = step.velocity;
         }
-        current
+        cur
     };
     let once = travel(1);
     // `(170, 26)` has ψ = 1: 300 px becomes ≈ 187 px after 0.1 s, still in flight.
@@ -168,9 +168,9 @@ fn the_critically_damped_boundary_has_no_seam() {
 
 #[test]
 fn spring_parameters_change_trajectory() {
-    let mut default_map = AnimMapTyped::<f32>::default();
-    let mut custom_map = AnimMapTyped::<f32>::default();
-    let id = support::wid("spring-parameters");
+    let mut default_map = AnimationMapTyped::<f32>::default();
+    let mut custom_map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("spring-parameters");
     let custom = AnimationSpec::spring(100.0, 15.0);
     let _ = default_map.step(
         AnimationRequest::new(id, SLOT, 0.0),
@@ -190,19 +190,19 @@ fn spring_parameters_change_trajectory() {
             AnimationSpec::SPRING,
             0.016,
         )
-        .current;
+        .cur;
     let custom = custom_map
         .step(AnimationRequest::new(id, SLOT, 1.0), custom, 0.016)
-        .current;
+        .cur;
     assert_ne!(default, custom);
 }
 
-/// `MAX_ANIM_DT` must not throw the value past its endpoints: one Euler step at `dt
+/// `MAX_ANIMATION_DT` must not throw the value past its endpoints: one Euler step at `dt
 /// = 0.1` with `(170, 26)` once overshot negative, tripping `Sizing::fixed`.
 #[test]
 fn spring_step_at_max_dt_stays_bounded() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("a");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("a");
     let _ = map.step(
         AnimationRequest::new(id, SLOT, 400.0),
         AnimationSpec::SPRING,
@@ -213,7 +213,7 @@ fn spring_step_at_max_dt_stays_bounded() {
         AnimationSpec::SPRING,
         0.1,
     );
-    assert_eq!(r.current, 400.0);
+    assert_eq!(r.cur, 400.0);
     let r = map.step(
         AnimationRequest::new(id, SLOT, 80.0),
         AnimationSpec::SPRING,
@@ -223,21 +223,21 @@ fn spring_step_at_max_dt_stays_bounded() {
     // 0.1 + 13 sin 0.1)` ≈ 279.96.
     let t = f64::from(0.1f32);
     let expected = 80.0 + 320.0 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
-    domain::internals::assert_close(r.current, expected, 1e-4, "a few f32 ulps at 280");
+    domain::internals::assert_close(r.cur, expected, 1e-4, "a few f32 ulps at 280");
 }
 
 /// A frame may run `build` twice; the guard on `render_frame_id` advances the
 /// integrator once. A pass B retarget still takes effect without another `dt`.
 #[test]
 fn second_tick_in_same_frame_does_not_double_advance() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("a");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("a");
     let frame = 42;
 
     let _ = map.tick(
         AnimationRequest::new(id, SLOT, 0.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame - 2,
         },
@@ -246,7 +246,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let from_rest_a = map.tick(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame - 1,
         },
@@ -254,36 +254,36 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let from_rest_b = map.tick(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame - 1,
         },
     );
-    assert_eq!((from_rest_a.current, from_rest_b.current), (0.0, 0.0));
+    assert_eq!((from_rest_a.cur, from_rest_b.cur), (0.0, 0.0));
 
     let pass_a = map.tick(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame,
         },
     );
     let eased = Easing::OutCubic.apply(0.016 / 0.12);
-    assert_eq!(pass_a.current, eased, "FAST: 16 ms of 120 ms, out-cubic");
-    let pass_a_current = pass_a.current;
+    assert_eq!(pass_a.cur, eased, "FAST: 16 ms of 120 ms, out-cubic");
+    let pass_a_cur = pass_a.cur;
     let pass_a_elapsed = support::duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
     let pass_b = map.tick(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame,
         },
     );
     assert_eq!(
-        pass_b.current, pass_a_current,
+        pass_b.cur, pass_a_cur,
         "pass B with same render_frame_id must not advance current",
     );
     assert_eq!(
@@ -295,32 +295,32 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     let pass_b_retarget = map.tick(
         AnimationRequest::new(id, SLOT, 5.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame,
         },
     );
     assert_eq!(
-        pass_b_retarget.current, pass_a_current,
+        pass_b_retarget.cur, pass_a_cur,
         "retargeting in pass B updates segment but doesn't re-step",
     );
     assert_eq!(map.rows[&(id, SLOT)].target, 5.0);
     assert_eq!(
         *support::duration_motion(&map.rows[&(id, SLOT)]).segment_start,
-        pass_a_current
+        pass_a_cur
     );
 
     let next = map.tick(
         AnimationRequest::new(id, SLOT, 5.0),
         AnimationSpec::FAST,
-        AnimClock {
+        AnimationClock {
             dt: 0.016,
             render_frame_id: frame + 1,
         },
     );
     assert_eq!(
-        next.current,
-        pass_a_current + (5.0 - pass_a_current) * eased,
+        next.cur,
+        pass_a_cur + (5.0 - pass_a_cur) * eased,
         "next frame eases 16 ms toward 5.0 from pass A's current",
     );
 }
@@ -329,9 +329,9 @@ fn second_tick_in_same_frame_does_not_double_advance() {
 /// is zeroed so the new segment cannot swing far past the target.
 #[test]
 fn spring_retarget_zeroes_opposing_velocity_only() {
-    let mut map = AnimMapTyped::<f32>::default();
+    let mut map = AnimationMapTyped::<f32>::default();
 
-    let id_aligned = support::wid("aligned");
+    let id_aligned = support::widget_id("aligned");
     let _ = map.step(
         AnimationRequest::new(id_aligned, SLOT, 0.0),
         AnimationSpec::SPRING,
@@ -354,7 +354,7 @@ fn spring_retarget_zeroes_opposing_velocity_only() {
     let v_after = *support::spring_velocity(&map.rows[&(id_aligned, SLOT)]);
     assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
 
-    let id_opposed = support::wid("opposed");
+    let id_opposed = support::widget_id("opposed");
     let _ = map.step(
         AnimationRequest::new(id_opposed, SLOT, 0.0),
         AnimationSpec::SPRING,
@@ -420,27 +420,27 @@ fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
     );
 }
 
-/// A spring at `ANIM_SUBSTEP_DT` settles exactly on its target on the closed form's
+/// A spring at `ANIMATION_SUBSTEP_DT` settles exactly on its target on the closed form's
 /// step. Near 400 an f32 ulp is 3e-5, so feeding the rounded value back stalled
 /// ~3e-4 short; the row steps its offset from the target instead.
 #[test]
 fn a_spring_at_the_substep_settles_on_its_target() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = support::wid("substep");
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("substep");
     let _ = map.step(
         AnimationRequest::new(id, SLOT, 80.0),
         AnimationSpec::SPRING,
-        ANIM_SUBSTEP_DT,
+        ANIMATION_SUBSTEP_DT,
     );
     let mut settled_at = None;
     for step in 0..600 {
         let r = map.step(
             AnimationRequest::new(id, SLOT, 400.0),
             AnimationSpec::SPRING,
-            ANIM_SUBSTEP_DT,
+            ANIMATION_SUBSTEP_DT,
         );
         if r.settled {
-            assert_eq!(r.current, 400.0);
+            assert_eq!(r.cur, 400.0);
             settled_at = Some(step);
             break;
         }
@@ -450,14 +450,14 @@ fn a_spring_at_the_substep_settles_on_its_target() {
         distance: 320.0,
         eps: 1e-4,
     };
-    let step = release.settle_step(|_| ANIM_SUBSTEP_DT);
+    let step = release.settle_step(|_| ANIMATION_SUBSTEP_DT);
     assert_eq!(settled_at, Some(step));
 }
 
 #[test]
 fn color_spring_converges_to_target() {
-    let mut map = AnimMapTyped::<RgbaF32>::default();
-    let id = support::wid("a");
+    let mut map = AnimationMapTyped::<RgbaF32>::default();
+    let id = support::widget_id("a");
     let start = RgbaF32::srgb(0.0, 0.0, 0.0);
     let target = RgbaF32::srgb(1.0, 0.5, 0.25);
     let _ = map.step(
@@ -473,7 +473,7 @@ fn color_spring_converges_to_target() {
             AnimationSpec::SPRING,
             0.016,
         );
-        last = r.current;
+        last = r.cur;
         if r.settled {
             settled_at = Some(i);
             break;
@@ -495,10 +495,10 @@ fn color_spring_converges_to_target() {
 fn solid_brush_spring_matches_color_trajectory() {
     use crate::primitives::paint::brush::Brush;
 
-    let mut color_map = AnimMapTyped::<RgbaF32>::default();
-    let mut brush_map = AnimMapTyped::<Brush>::default();
-    let color_id = support::wid("solid-color-trajectory");
-    let brush_id = support::wid("solid-brush-trajectory");
+    let mut color_map = AnimationMapTyped::<RgbaF32>::default();
+    let mut brush_map = AnimationMapTyped::<Brush>::default();
+    let color_id = support::widget_id("solid-color-trajectory");
+    let brush_id = support::widget_id("solid-brush-trajectory");
     let start = RgbaF32::srgba(0.1, 0.2, 0.3, 0.4);
     let target = RgbaF32::srgba(0.9, 0.7, 0.5, 0.8);
     let _ = color_map.step(
@@ -524,7 +524,7 @@ fn solid_brush_spring_matches_color_trajectory() {
             AnimationSpec::SPRING,
             0.016,
         );
-        assert_eq!(brush.current.as_solid(), Some(color.current));
+        assert_eq!(brush.cur.as_solid(), Some(color.cur));
         assert_eq!(brush.settled, color.settled);
         if brush.settled {
             settled_at = Some(i);

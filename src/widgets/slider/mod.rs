@@ -7,7 +7,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::theme::slider::SliderTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -118,9 +118,9 @@ impl<'a> Slider<'a> {
         let fraction = range.fraction_of(self.value.read().widen());
 
         let pill = Corners::all(track_h * 0.5);
-        let fill_bg = Background::rounded(fill_color, pill);
-        let track_bg = Background::rounded(track_color, pill);
-        let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
+        let fill_bg = Bg::rounded(fill_color, pill);
+        let track_bg = Bg::rounded(track_color, pill);
+        let knob_bg = Bg::rounded(knob_color, Corners::all(knob * 0.5));
 
         self.widget
             .configure()

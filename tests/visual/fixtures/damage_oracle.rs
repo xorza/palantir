@@ -7,7 +7,7 @@ use std::time::Duration;
 use glam::{UVec2, Vec2};
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Background, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
+    Bg, Block, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
     RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
 };
 
@@ -54,13 +54,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
-        .background(Background::fill(veil))
+        .bg(Bg::fill(veil))
         .gap(4.0)
         .show(ui, |ui| {
             Block::new()
                 .id_salt("swatch")
                 .size(30.0)
-                .background(Background::fill(k.fill))
+                .bg(Bg::fill(k.fill))
                 .show(ui);
             Text::new(k.label).id_salt("label").show(ui);
             Panel::canvas()
@@ -69,9 +69,9 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("mover")
-                        .position((k.nudge, 5.0))
+                        .pos((k.nudge, 5.0))
                         .size(20.0)
-                        .background(Background::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
+                        .bg(Bg::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);
                 });
             Panel::zstack()
@@ -111,13 +111,13 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id_salt("extra")
                     .size(20.0)
-                    .background(Background::fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.3, 0.8, 0.3)))
                     .show(ui);
             }
             let mut maybe = Block::new()
                 .id_salt("maybe-hidden")
                 .size(20.0)
-                .background(Background::fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
+                .bg(Bg::fill(RgbaF32::srgb(0.8, 0.8, 0.3)));
             if k.hidden {
                 maybe = maybe.hidden();
             }
@@ -140,7 +140,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 Block::new()
                     .id_salt(name)
                     .size(60.0)
-                    .background(Background::fill(color))
+                    .bg(Bg::fill(color))
                     .show(ui);
             });
     }
@@ -159,7 +159,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
     let cast = |ui: &mut Ui, id: usize, at: Rect, blur: f32, radius: f32| {
         Panel::canvas()
             .id_salt(("shadow", id))
-            .position(at.min)
+            .pos(at.min)
             .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
             .show(ui, |ui| {
                 ui.add_shape(

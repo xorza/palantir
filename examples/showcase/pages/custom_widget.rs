@@ -3,11 +3,11 @@
 //! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
 
 use crate::support;
-use crate::support::{Column, Section, api};
+use crate::support::{Col, Section, api};
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Background, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense,
-    Shadow, Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
+    Align, Bg, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
+    Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -50,9 +50,9 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 fn page(ui: &mut Ui, s: &mut State) {
-    support::columns(ui, |ui, column| match column {
-        Column::Left => demo(ui, s),
-        Column::Right => surface(ui),
+    support::cols(ui, |ui, col| match col {
+        Col::Left => demo(ui, s),
+        Col::Right => surface(ui),
     });
 }
 
@@ -100,7 +100,7 @@ fn surface(ui: &mut Ui) {
             "the stable id, resolved once and kept",
         ),
         (
-            api!(Widget::record as fn(Widget, &mut Ui, Option<&Background>, Body)),
+            api!(Widget::record as fn(Widget, &mut Ui, Option<&Bg>, Body)),
             "open the node, run the body, close it",
         ),
         (
@@ -236,7 +236,7 @@ impl<'a> Stepper<'a> {
         let label = fmt!(ui, "{}", self.value);
 
         // No fill of its own: the corners serve the framework's focus ring.
-        let chrome = Background::rounded(
+        let chrome = Bg::rounded(
             RgbaF32::TRANSPARENT,
             Corners::all(support::RADIUS + RING_ROOM),
         );
@@ -297,7 +297,7 @@ impl StepButton {
         } else {
             support::ELEMENT
         };
-        let chrome = Background {
+        let chrome = Bg {
             fill: fill.into(),
             border: Stroke::NONE,
             corners: Corners::all(support::RADIUS),

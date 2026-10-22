@@ -97,7 +97,7 @@ impl<'a> ColorButton<'a> {
         };
         let opened = PopupTrigger::on(&trigger)
             .id(id.with("panel"))
-            .background(slot.popup.clone())
+            .bg(slot.popup.clone())
             .padding(slot.popup_padding)
             .show(ui, |ui, _| {
                 let r = picker.show(ui);

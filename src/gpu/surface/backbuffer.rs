@@ -8,7 +8,7 @@ use crate::gpu::surface::render_target::RenderTarget;
 /// Recreated on resize or format change; owned per-window by `WindowDriver`.
 #[derive(Debug)]
 pub(crate) struct Backbuffer {
-    tex: wgpu::Texture,
+    texture: wgpu::Texture,
     view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
 }
@@ -22,26 +22,26 @@ pub(crate) struct EnsuredBackbuffer<'a> {
 }
 
 impl Backbuffer {
-    /// Copies this backbuffer's pixels onto `surface_tex`, which needs `COPY_DST` and must [`describe`](Self::describes) this backbuffer.
+    /// Copies this backbuffer's pixels onto `surface_texture`, which needs `COPY_DST` and must [`describe`](Self::describes) this backbuffer.
     pub(crate) fn copy_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        surface_tex: &wgpu::Texture,
+        surface_texture: &wgpu::Texture,
     ) {
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &self.tex,
+                texture: &self.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
-                texture: surface_tex,
+                texture: surface_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            self.tex.size(),
+            self.texture.size(),
         );
     }
 
@@ -52,7 +52,7 @@ impl Backbuffer {
         binding: &TextureBinding,
         target: RenderTarget<'_>,
     ) -> Self {
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
             size: target.texture().size(),
             mip_level_count: 1,
@@ -64,10 +64,10 @@ impl Backbuffer {
                 | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = binding.bind_group(device, &view, "palantir.renderer.backbuffer.bg");
         Self {
-            tex,
+            texture,
             view,
             bind_group,
         }
@@ -110,6 +110,6 @@ impl Backbuffer {
     /// Whether this backbuffer matches `target`'s size and format.
     pub(crate) fn describes(&self, target: RenderTarget<'_>) -> bool {
         let texture = target.texture();
-        self.tex.size() == texture.size() && self.tex.format() == texture.format()
+        self.texture.size() == texture.size() && self.texture.format() == texture.format()
     }
 }

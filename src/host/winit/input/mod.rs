@@ -66,7 +66,7 @@ fn logical_key(key: &WinitKey) -> Key {
 }
 
 /// Latin letter and digit positions, which exist only on the physical side.
-const fn latin_position(code: KeyCode) -> Option<Key> {
+const fn latin_pos(code: KeyCode) -> Option<Key> {
     let c = match code {
         KeyCode::KeyA => 'a',
         KeyCode::KeyB => 'b',
@@ -114,7 +114,7 @@ fn physical_key(physical: PhysicalKey) -> Key {
         return Key::Other;
     };
     // `or`, not `or_else`: the macro expands to a match, so nothing to defer.
-    latin_position(code)
+    latin_pos(code)
         .or(shared_key!(KeyCode, code))
         .unwrap_or(Key::Other)
 }

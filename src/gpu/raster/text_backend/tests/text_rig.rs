@@ -90,9 +90,9 @@ impl TextRig {
             let handles = self.lease.handles();
             let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
             let interned_text = self.store.interned_text();
-            for (index, runs) in batches.iter().enumerate() {
+            for (idx, runs) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {
-                    index,
+                    idx,
                     runs,
                     scale,
                     interned_text,

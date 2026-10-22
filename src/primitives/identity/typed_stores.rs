@@ -14,7 +14,7 @@ pub(crate) trait TypedStore: Any {
     fn is_empty(&self) -> bool;
 }
 
-/// One boxed store per distinct payload type; the shared half of `StateMap` and `AnimMap`, whose stores differ in shape but share the `TypeId` probe, downcast and end-of-frame sweep.
+/// One boxed store per distinct payload type; the shared half of `StateMap` and `AnimationMap`, whose stores differ in shape but share the `TypeId` probe, downcast and end-of-frame sweep.
 #[derive(Default)]
 pub(crate) struct TypedStores {
     by_type: FxHashMap<TypeId, Box<dyn TypedStore>>,

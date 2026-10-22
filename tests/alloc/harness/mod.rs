@@ -70,7 +70,7 @@ pub(crate) struct Audit {
 #[derive(Clone, Copy, Debug)]
 struct MeasuredFrame {
     at: &'static Location<'static>,
-    index: usize,
+    idx: usize,
     frames: usize,
     warmup: usize,
 }
@@ -80,7 +80,7 @@ impl fmt::Display for MeasuredFrame {
         write!(
             f,
             "alloc-audit {}: frame {}/{} (after {} warmup)",
-            self.at, self.index, self.frames, self.warmup,
+            self.at, self.idx, self.frames, self.warmup,
         )
     }
 }
@@ -199,10 +199,10 @@ impl Audit {
         };
 
         let mut counts = Vec::with_capacity(self.frames);
-        for index in 0..self.frames {
+        for idx in 0..self.frames {
             let measured = MeasuredFrame {
                 at,
-                index,
+                idx,
                 frames: self.frames,
                 warmup,
             };
@@ -298,7 +298,7 @@ impl Audit {
         );
         panic!(
             "alloc budget exceeded at {} on frame {} (budget {}/frame, got {})",
-            measured.at, measured.index, self.budget, result.allocs,
+            measured.at, measured.idx, self.budget, result.allocs,
         );
     }
 }

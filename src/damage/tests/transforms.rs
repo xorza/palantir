@@ -8,7 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -35,7 +35,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background::fill(fill))
+                            .bg(Bg::fill(fill))
                             .show(ui)
                             .node(),
                     );
@@ -82,7 +82,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -99,10 +99,10 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // distance stays split; see `transform_animation_keeps_far_positions_split`).
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
-    let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
+    let cur = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
         rects,
-        vec![prev.union(curr)],
+        vec![prev.union(cur)],
         "near transform animation → one merged bbox",
     );
     // The child is dirty: its screen rect moved. The parent is on the dirty
@@ -140,7 +140,7 @@ fn transform_animation_keeps_far_positions_split() {
                         Block::new()
                             .id(WidgetId::from_hash("c"))
                             .size(40.0)
-                            .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                            .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
                             .node(),
                     );
@@ -163,9 +163,9 @@ fn transform_animation_keeps_far_positions_split() {
     .iter_rects()
     .collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
-    let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
+    let cur = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
-    assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
+    assert!(rects.contains(&prev) && rects.contains(&cur), "{rects:?}");
 }
 
 /// Soundness pin: when an ancestor's transform changes, a node whose own
@@ -228,7 +228,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
 }
 
 /// Sister test: the "cascade_input shift on a direct-paint node → push
-/// `curr_rect`" branch must not trip `FULL_REPAINT_THRESHOLD` for a pan of a
+/// `cur_rect`" branch must not trip `FULL_REPAINT_THRESHOLD` for a pan of a
 /// modestly sized clip-saturated node. Same setup, several pan ticks; each
 /// step's damage stays `Partial` and bounded to the inner clipped area.
 #[test]
@@ -279,7 +279,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 /// `Panel::transform` and direct shapes shifts its own transform every pan
 /// frame. Those shapes paint inside the self-transform so their pixels move,
 /// but `cascade_input` tracks only ancestor state. The fix: own transform
-/// folds into `node_hash`, so the diff's `e.get().hash == curr_node_hash`
+/// folds into `node_hash`, so the diff's `e.get().hash == cur_node_hash`
 /// guard fails and the Occupied arm pushes both prev and curr rects.
 #[test]
 fn self_transform_shift_damages_direct_shapes() {
@@ -321,7 +321,7 @@ fn self_transform_shift_damages_direct_shapes() {
 }
 
 /// Pin the moved-subtree tier: a transformed parent over an
-/// authoring-identical subtree damages exactly `prev extent ∪ curr extent`,
+/// authoring-identical subtree damages exactly `prev extent ∪ cur extent`,
 /// and the bulk snapshot refresh leaves next frame's baseline intact:
 ///
 /// - a second tick's damage is anchored at the refreshed positions (a refresh
@@ -344,7 +344,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
                                 Block::new()
                                     .id(WidgetId::from_hash(key))
                                     .size(40.0)
-                                    .background(Background::fill(BLUE))
+                                    .bg(Bg::fill(BLUE))
                                     .show(ui);
                             }
                         });
@@ -408,12 +408,12 @@ fn content_change_under_constant_transform_stays_row_tight() {
                             Block::new()
                                 .id(WidgetId::from_hash("a"))
                                 .size(40.0)
-                                .background(Background::fill(fill))
+                                .bg(Bg::fill(fill))
                                 .show(ui);
                             Block::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size(40.0)
-                                .background(Background::fill(BLUE))
+                                .bg(Bg::fill(BLUE))
                                 .show(ui);
                         });
                 });

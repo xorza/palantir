@@ -10,7 +10,7 @@ use crate::layout::tests::support::two_hug_cols_with_wrap;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -73,7 +73,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                     Block::new()
                         .id(WidgetId::from_hash("fill-child"))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                        .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                     Block::new()
                         .id(WidgetId::from_hash("fixed-child"))

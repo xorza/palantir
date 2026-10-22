@@ -1,13 +1,11 @@
 //! Drop shadows pushed as `Shape::Shadow` and as widget chrome
-//! (`Background { shadow }`), side by side. Tiles sit on a bright surface;
+//! (`Bg { shadow }`), side by side. Tiles sit on a bright surface;
 //! black-on-dark shadows don't read.
 
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Section, Surface, api};
 use palantir::widget::{ShadowShape, Shape};
-use palantir::{
-    Background, Block, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, Vec2,
-};
+use palantir::{Bg, Block, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, Vec2};
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
 const CARD_INK: RgbaF32 = RgbaF32::hex(0xf2f2f7);
@@ -60,12 +58,12 @@ pub(crate) fn build(ui: &mut Ui) {
         });
 
     Section::new("Shape or chrome")
-        .apis(&[api!(Background::with_shadow), api!(Shadow::inset)])
+        .apis(&[api!(Bg::with_shadow), api!(Shadow::inset)])
         .show(ui, |ui| {
             support::note(
                 ui,
                 "Each pair paints one shadow two ways: pushed as a shape with the card, and \
-                 set on a widget's Background, which paints a drop shadow under its fill and \
+                 set on a widget's Bg, which paints a drop shadow under its fill and \
                  an inset one over it, as CSS does. The two should match.",
             );
             support::tiles(ui, |ui| {
@@ -186,26 +184,26 @@ fn stacked(ui: &mut Ui) {
     card_fill(ui);
 }
 
-/// The card via `Background`: drop shadow emitted before the chrome rect, inset after. Placed on [`CARD`] exactly, so it lines up with its shape twin.
-fn chrome_card(ui: &mut Ui, bg: Background) {
+/// The card via `Bg`: drop shadow emitted before the chrome rect, inset after. Placed on [`CARD`] exactly, so it lines up with its shape twin.
+fn chrome_card(ui: &mut Ui, bg: Bg) {
     Panel::canvas()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             Block::new()
-                .position((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
+                .pos((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
                 .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
-                .background(bg)
+                .bg(bg)
                 .show(ui);
         });
 }
 
-fn chrome(shadow: Shadow) -> Background {
-    Background::rounded(CARD_INK, card_corners()).with_shadow(shadow)
+fn chrome(shadow: Shadow) -> Bg {
+    Bg::rounded(CARD_INK, card_corners()).with_shadow(shadow)
 }
 
 /// Semi-transparent fill: the drop shadow is clipped inside the casting box (as CSS does), so the halo shows around, not through.
-fn chrome_translucent() -> Background {
-    Background::rounded(CARD_INK.with_alpha(0.4), card_corners()).with_shadow(Shadow::drop(
+fn chrome_translucent() -> Bg {
+    Bg::rounded(CARD_INK.with_alpha(0.4), card_corners()).with_shadow(Shadow::drop(
         RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
         Vec2::new(0.0, 6.0),
         12.0,

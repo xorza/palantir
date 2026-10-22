@@ -125,7 +125,7 @@ impl DamageEngine {
             return self.note_presented(baseline, Some(Damage::Full));
         }
 
-        // Predamaged anim rects: the structural diff is content-only and misses phase flips (bumping `node_hash` would invalidate MeasureCache for no layout change); the encoder's `PaintAnimCursor::sample` decides per rect.
+        // Predamaged anim rects: the structural diff is content-only and misses phase flips (bumping `node_hash` would invalidate MeasureCache for no layout change); the encoder's `PaintAnimationCursor::sample` decides per rect.
         self.extend_predamaged(&input);
 
         // Removed-widget eviction tail: every remaining `prev` entry painted last frame. Pushed decomposed (chrome plus per-shape) so a multi-shape owner doesn't push the gaps.
@@ -133,8 +133,8 @@ impl DamageEngine {
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the eviction rects repeat from run to run"
         )]
-        for wid in removed {
-            if let Some(snap) = self.prev.remove(wid) {
+        for widget_id in removed {
+            if let Some(snap) = self.prev.remove(widget_id) {
                 self.raw_rects
                     .extend(self.paints.slots[snap.paint_span.range()].screens());
                 self.paints.release(snap.paint_span);
@@ -193,8 +193,8 @@ impl DamageEngine {
             let arena = &cascade.layers[layer].paint_arena;
             let paints = &arena.rows;
             let node_spans = &arena.node_spans;
-            for e in &tree.paint_anims.entries {
-                if e.anim.next_wake(prev).is_none_or(|wake| wake > now) {
+            for e in &tree.paint_animations.entries {
+                if e.animation.next_wake(prev).is_none_or(|wake| wake > now) {
                     continue;
                 }
                 let node_span = node_spans[e.node.idx()];
@@ -242,15 +242,18 @@ pub(crate) mod internals {
                 + root_order.scratch_bytes()
         }
 
-        /// Union of the paint screens retained for `wid` last frame; `None` if it didn't paint, [`Rect::ZERO`] if its rows painted nothing.
-        pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
-            let snap = self.prev.get(&wid)?;
+        /// Union of the paint screens retained for `widget_id` last frame; `None` if it didn't paint, [`Rect::ZERO`] if its rows painted nothing.
+        pub(crate) fn prev_paint_rect(&self, widget_id: WidgetId) -> Option<Rect> {
+            let snap = self.prev.get(&widget_id)?;
             Some(self.paints.slots[snap.paint_span.range()].union_screens())
         }
 
-        /// The paint rows retained for `wid` last frame, in row order: chrome first, then direct shapes.
-        pub(crate) fn prev_paint_rows(&self, wid: WidgetId) -> &[Paint] {
-            let snap = self.prev.get(&wid).expect("the widget painted last frame");
+        /// The paint rows retained for `widget_id` last frame, in row order: chrome first, then direct shapes.
+        pub(crate) fn prev_paint_rows(&self, widget_id: WidgetId) -> &[Paint] {
+            let snap = self
+                .prev
+                .get(&widget_id)
+                .expect("the widget painted last frame");
             &self.paints.slots[snap.paint_span.range()]
         }
     }

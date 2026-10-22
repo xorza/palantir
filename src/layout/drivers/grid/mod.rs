@@ -1,5 +1,5 @@
 //! Grid driver: the measure / arrange / intrinsic entry points for a `LayoutMode::Grid` node; the track solve
-//! is [`AxisScratch`](axis_scratch::AxisScratch), its state [`GridContext`](grid_context::GridContext).
+//! is [`AxisScratch`](axis_scratch::AxisScratch), its state [`GridCtx`](grid_ctx::GridCtx).
 
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::drivers::grid::axis_scratch::GridAxis;
@@ -19,7 +19,7 @@ use crate::scene::tree::node_id::NodeId;
 
 mod arrange;
 mod axis_scratch;
-pub(crate) mod grid_context;
+pub(crate) mod grid_ctx;
 mod grid_depth_stack;
 mod grid_scratch;
 pub(crate) mod grid_track_store;

@@ -10,28 +10,28 @@ use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BoundsExtras {
-    pub(crate) position: Vec2,
+    pub(crate) pos: Vec2,
     pub(crate) grid: GridCell,
     pub(crate) min_size: Size,
     pub(crate) max_size: Size,
-    /// The Tab order key — see [`Configure::tab_index`](crate::Configure::tab_index).
-    pub(crate) tab_index: i16,
+    /// The Tab order key — see [`Configure::tab_idx`](crate::Configure::tab_idx).
+    pub(crate) tab_idx: i16,
 }
 
 impl Hash for BoundsExtras {
     #[inline]
     fn hash<H: hash::Hasher>(&self, h: &mut H) {
-        self.position.hash_visual(h);
+        self.pos.hash_visual(h);
         self.grid.hash(h);
         self.min_size.hash_visual(h);
         self.max_size.hash_visual(h);
-        self.tab_index.hash(h);
+        self.tab_idx.hash(h);
     }
 }
 
 impl BoundsExtras {
     pub(crate) const DEFAULT: Self = Self {
-        position: Vec2::ZERO,
+        pos: Vec2::ZERO,
         grid: GridCell {
             row: 0,
             col: 0,
@@ -40,17 +40,17 @@ impl BoundsExtras {
         },
         min_size: Size::ZERO,
         max_size: Size::INF,
-        tab_index: 0,
+        tab_idx: 0,
     };
 
     #[inline]
     pub(crate) fn is_default(&self) -> bool {
-        domain::is_approx_zero(self.position.x)
-            && domain::is_approx_zero(self.position.y)
+        domain::is_approx_zero(self.pos.x)
+            && domain::is_approx_zero(self.pos.y)
             && self.grid == Self::DEFAULT.grid
             && self.min_size.is_approx_zero()
             && self.max_size == Self::DEFAULT.max_size
-            && self.tab_index == 0
+            && self.tab_idx == 0
     }
 }
 

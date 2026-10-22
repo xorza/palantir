@@ -2,7 +2,7 @@
 //! buffer, and subtree-rollup hashes for cross-frame caches.
 //!
 //! Noop filtering at this storage tier: `Shapes::add` drops `Shape::is_noop`
-//! shapes and `Tree::open_node` drops `Background::is_noop` chrome rows (policy in
+//! shapes and `Tree::open_node` drops `Bg::is_noop` chrome rows (policy in
 //! [`paint_sink`](crate::renderer::frontend::paint_sink)). Partial-noop chrome is
 //! dropped per emit downstream.
 
@@ -10,7 +10,7 @@ pub(crate) mod extras_idx;
 pub(crate) mod iter;
 pub(crate) mod node_id;
 pub(crate) mod node_record;
-pub(crate) mod paint_anims;
+pub(crate) mod paint_animations;
 pub(crate) mod recording_scratch;
 mod rollup_inputs;
 pub(crate) mod root_slot;
@@ -20,7 +20,7 @@ pub(crate) mod tree_fingerprint;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::common::index16::Index16;
+use crate::common::idx16::Idx16;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
@@ -29,10 +29,10 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::bounds_extras::BoundsExtras;
-use crate::scene::node::node_columns::NodeColumns;
+use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
 use crate::scene::scrollbars_def::ResolvedScrollbarsDef;
@@ -40,7 +40,7 @@ use crate::scene::tree::extras_idx::ExtrasIdx;
 use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
-use crate::scene::tree::paint_anims::PaintAnims;
+use crate::scene::tree::paint_animations::PaintAnimations;
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
@@ -85,7 +85,7 @@ pub(crate) struct Tree {
 
     /// Sparse shape-keyed paint animations, cleared in `pre_record`. Sampling is a
     /// pure function of `now`, so no timestamps are stored.
-    pub(crate) paint_anims: PaintAnims,
+    pub(crate) paint_animations: PaintAnimations,
 
     pub(crate) rollups: SubtreeRollups,
     pub(crate) fingerprint: TreeFingerprint,
@@ -101,7 +101,7 @@ pub(crate) struct Tree {
 /// its payloads land in.
 #[derive(Debug)]
 pub(crate) struct ChromeInput<'a> {
-    pub(crate) bg: &'a Background,
+    pub(crate) bg: &'a Bg,
     /// Focus ring over the chrome; `Stroke::NONE` unless keyboard-focused.
     pub(crate) ring: Stroke,
     pub(crate) store: &'a mut RecordStore,
@@ -138,13 +138,13 @@ impl Tree {
         self.last_inputs = last;
         self.focus_ring = ShapeStroke::default();
         self.shapes.records.clear();
-        self.paint_anims.clear();
+        self.paint_animations.clear();
         self.roots.clear();
     }
 
     pub(crate) fn post_record(&mut self) {
         debug_assert!(
-            self.paint_anims
+            self.paint_animations
                 .entries
                 .last()
                 .is_none_or(|entry| entry.shape_idx < self.shapes.records.len() as u32),
@@ -238,10 +238,10 @@ impl Tree {
             let mut ph = Hasher::new();
             layouts[i].hash_with_flags(attrs[i], &mut lh);
             let ex = extras[i];
-            let tab_index = if let Some(s) = ex.bounds {
+            let tab_idx = if let Some(s) = ex.bounds {
                 let bounds = &bounds_tab[s.idx()];
                 bounds.hash(&mut lh);
-                bounds.tab_index
+                bounds.tab_idx
             } else {
                 0
             };
@@ -267,10 +267,10 @@ impl Tree {
                 u64::from(subtree_ends[i].end())
                     | (u64::from(attrs[i].bits()) << 32)
                     | (u64::from(layouts[i].meta.visibility() as u8) << (32 + NodeFlags::WIDTH))
-                    | (u64::from(tab_index != 0) << 63),
+                    | (u64::from(tab_idx != 0) << 63),
             );
-            if tab_index != 0 {
-                cascade_static_hasher.write_u16(tab_index.cast_unsigned());
+            if tab_idx != 0 {
+                cascade_static_hasher.write_u16(tab_idx.cast_unsigned());
             }
             // A leading byte says which optional payloads follow (chrome, transform), so
             // no stream reads as another's.
@@ -356,13 +356,13 @@ impl Tree {
     }
 
     pub(crate) fn push_scrollbars_def(&mut self, def: ResolvedScrollbarsDef) -> ScrollbarsDefId {
-        let id = ScrollbarsDefId::from_index(self.scrollbar_defs.len());
+        let id = ScrollbarsDefId::from_idx(self.scrollbar_defs.len());
         self.scrollbar_defs.push(def);
         id
     }
 
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {
-        let id = GridDefId::from_index(self.grid_defs.len());
+        let id = GridDefId::from_idx(self.grid_defs.len());
         self.grid_tracks.reserve(rows.len() + cols.len());
         let row_start = self.grid_tracks.len();
         self.grid_tracks.extend_from_slice(rows);
@@ -381,12 +381,12 @@ impl Tree {
     ///
     /// `chrome` is `None` for nodes without a background; `ClipMode::Rounded` then
     /// downgrades to `Rect`. With chrome, `Rounded` keeps the row even if
-    /// `Background::is_noop`, so the encoder can read `bg.radius`.
+    /// `Bg::is_noop`, so the encoder can read `bg.radius`.
     #[inline]
     pub(super) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
-        mut cols: NodeColumns,
+        mut cols: NodeCols,
         chrome: Option<ChromeInput<'_>>,
     ) -> NodeId {
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
@@ -415,7 +415,7 @@ impl Tree {
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
-        // Decoded once; `meta` is immutable past `columns` except `padding`.
+        // Decoded once; `meta` is immutable past `cols` except `padding`.
         let mode = LayoutMode::from(cols.layout.meta);
         match mode {
             LayoutMode::Grid(id) => debug_assert!(
@@ -433,11 +433,11 @@ impl Tree {
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
-            ex.bounds = Some(Index16::new(self.bounds_table.len(), "bounds_table"));
+            ex.bounds = Some(Idx16::new(self.bounds_table.len(), "bounds_table"));
             self.bounds_table.push(cols.bounds);
         }
         if !cols.panel.is_default() {
-            ex.panel = Some(Index16::new(self.panel_table.len(), "panel_table"));
+            ex.panel = Some(Idx16::new(self.panel_table.len(), "panel_table"));
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput {
@@ -459,11 +459,11 @@ impl Tree {
                 || !focus_ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::background(store, bg, focus_ring);
+                let row = lower::bg(store, bg, focus_ring);
                 if row.ring {
                     self.focus_ring = ShapeStroke::from(focus_ring);
                 }
-                ex.chrome = Some(Index16::new(self.chrome_table.len(), "chrome_table"));
+                ex.chrome = Some(Idx16::new(self.chrome_table.len(), "chrome_table"));
                 self.chrome_table.push(row);
             }
         }

@@ -19,7 +19,7 @@ use palantir_anim_derive::Animatable;
 /// `is_noop` filtering catches authored and animation-decayed no-ops.
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
-/// `background` and `default_background` check it where it enters and panic unless
+/// `bg` and `default_bg` check it where it enters and panic unless
 /// every color is a [color](crate::widget::domain::color), gradient angles are
 /// [angles](crate::widget::domain::angle), centers
 /// [offsets](crate::widget::domain::offset), radial radii and the border width
@@ -31,7 +31,7 @@ use palantir_anim_derive::Animatable;
 // by reference.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 #[must_use]
-pub struct Background {
+pub struct Bg {
     /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
     pub fill: Brush,
     /// The edge ring, painted inside the rect. Layout adds its width to the
@@ -53,7 +53,7 @@ pub struct Background {
     pub shadow: Shadow,
 }
 
-impl Background {
+impl Bg {
     /// Panics unless its fill, border, corners and shadow each pass their own
     /// check.
     #[inline]
@@ -131,9 +131,9 @@ impl Background {
 }
 
 /// Every field can carry a NaN (the fill through a gradient's geometry, the rest
-/// through scalars); `lower::background` screens it, as a `Background` never passes
+/// through scalars); `lower::bg` screens it, as a `Bg` never passes
 /// through `Shapes::add`.
-impl NanCheck for Background {
+impl NanCheck for Bg {
     fn has_nan(&self) -> bool {
         self.fill.has_nan()
             || self.border.has_nan()
@@ -142,7 +142,7 @@ impl NanCheck for Background {
     }
 }
 
-impl Default for Background {
+impl Default for Bg {
     fn default() -> Self {
         Self::NONE
     }
@@ -156,13 +156,11 @@ mod tests {
 
     // `with_border`/`with_shadow` chained in a const context fail to compile if
     // they stop being const.
-    const _CONST_BUILDER: Background = Background::NONE
-        .with_border(Stroke::NONE)
-        .with_shadow(Shadow::NONE);
+    const _CONST_BUILDER: Bg = Bg::NONE.with_border(Stroke::NONE).with_shadow(Shadow::NONE);
 
     #[test]
     fn with_border_and_with_shadow_set_the_named_field_only() {
-        let base = Background::rounded(RgbaF32::WHITE, Corners::all(4.0));
+        let base = Bg::rounded(RgbaF32::WHITE, Corners::all(4.0));
         let border = Stroke::new(RgbaF32::BLACK, 2.0);
         let shadow = Shadow::drop(RgbaF32::BLACK, glam::Vec2::ZERO, 4.0);
 
@@ -181,7 +179,7 @@ mod tests {
 
     #[test]
     fn none_is_the_default_noop_background() {
-        assert_eq!(Background::default(), Background::NONE);
-        assert!(Background::NONE.is_noop());
+        assert_eq!(Bg::default(), Bg::NONE);
+        assert!(Bg::NONE.is_noop());
     }
 }

@@ -8,16 +8,16 @@ use glam::Vec2;
 /// transform, display factor. Built once per draw, so the transform read sits
 /// outside callers' per-point loops.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct PhysMap {
-    xform: TranslateScale,
+pub(super) struct PhysicalMap {
+    transform: TranslateScale,
     origin: Vec2,
     display_scale: f32,
 }
 
-impl PhysMap {
-    pub(super) const fn new(xform: TranslateScale, origin: Vec2, display_scale: f32) -> Self {
+impl PhysicalMap {
+    pub(super) const fn new(transform: TranslateScale, origin: Vec2, display_scale: f32) -> Self {
         Self {
-            xform,
+            transform,
             origin,
             display_scale,
         }
@@ -26,7 +26,7 @@ impl PhysMap {
     /// An owner-local point in physical px.
     #[inline]
     pub(super) fn point(self, q: Vec2) -> Vec2 {
-        self.xform.apply_point(q + self.origin) * self.display_scale
+        self.transform.apply_point(q + self.origin) * self.display_scale
     }
 
     /// An owner-local bbox in physical px. Unsnapped, since mesh and stroked
@@ -34,7 +34,7 @@ impl PhysMap {
     /// [`StrokeBbox::urect`](crate::renderer::frontend::composer::stroke_bbox::StrokeBbox::urect)).
     #[inline]
     pub(super) fn bbox(self, bbox: Rect) -> Rect {
-        self.xform
+        self.transform
             .apply_rect(Rect {
                 min: bbox.min + self.origin,
                 size: bbox.size,

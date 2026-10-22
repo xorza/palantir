@@ -108,7 +108,7 @@ pub(super) struct RasterAtlas<K> {
     /// Latest reading of the shared text clock, mirrored by [`Self::advance_to`].
     /// Counting submits here would make `RENDERED_RUN_KEEP_FRAMES`'s two windows drift
     /// (a drawless recorded frame ages buffers only; a `PaintOnly` frame the atlas only).
-    pub(super) current_frame: u64,
+    pub(super) cur_frame: u64,
     /// Deadlines for non-drawing entries (see [`ExpiryWheel`]); `touch` files nothing.
     unallocated_expiry: ExpiryWheel<K>,
     /// Everything group 0 needs to read [`Self::sides`]; see [`BoundSides`]. Rebinding
@@ -179,7 +179,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             cache: FxHashMap::default(),
             free: FreeSlots::default(),
             hand: 0,
-            current_frame: 0,
+            cur_frame: 0,
             unallocated_expiry: ExpiryWheel::with_keep(UNALLOCATED_KEEP_FRAMES),
             bound,
             counters: AtlasCounters::default(),
@@ -211,7 +211,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
     pub(super) fn touch(&mut self, key: &K) -> Option<u32> {
         let &idx = self.cache.get(key)?;
-        self.slots[idx as usize].last_use = self.current_frame;
+        self.slots[idx as usize].last_use = self.cur_frame;
         Some(idx)
     }
 
@@ -239,7 +239,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                 alloc: alloc.id,
             }),
             generation: 0,
-            last_use: self.current_frame,
+            last_use: self.cur_frame,
             free: false,
         };
         Some(self.store(key, slot))
@@ -369,9 +369,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             .iter()
             .map(|c| u64::from(c.padded_bytes_per_row()) * u64::from(c.size.y))
             .sum();
-        let current_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
-        if bytes > current_cap {
-            let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
+        let cur_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
+        if bytes > cur_cap {
+            let new_cap = bytes.next_power_of_two().max(cur_cap * 2).max(4096);
             self.staging_buf = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&self.labels.staging),
                 size: new_cap,
@@ -385,11 +385,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// Cache a non-drawing glyph: a slab index but no packer rectangle or upload.
     pub(super) fn insert_unallocated(&mut self, key: K) -> u32 {
         self.unallocated_expiry
-            .schedule(key, unallocated_dies_at(self.current_frame));
+            .schedule(key, unallocated_dies_at(self.cur_frame));
         let slot = AtlasSlot {
             placement: None,
             generation: 0,
-            last_use: self.current_frame,
+            last_use: self.cur_frame,
             free: false,
         };
         self.store(key, slot)
@@ -399,10 +399,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// due. Not `end_frame`: this type owns no frame boundary.
     pub(super) fn advance_to(&mut self, frame: u64) {
         debug_assert!(
-            frame >= self.current_frame,
+            frame >= self.cur_frame,
             "the atlas frame clock ran backwards",
         );
-        self.current_frame = frame;
+        self.cur_frame = frame;
         let mut slab = Slab {
             cache: &mut self.cache,
             slots: &mut self.slots,
@@ -452,7 +452,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     const fn evictable(&self, content: ContentType) -> Evictable {
         Evictable {
             content,
-            current_frame: self.current_frame,
+            cur_frame: self.cur_frame,
         }
     }
 
@@ -471,7 +471,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// # What the clock protects
     ///
     /// What has been drawn so far this frame, not what it will draw
-    /// ([`Self::current_frame`] moves in [`Self::advance_to`] at the end of a submit). An
+    /// ([`Self::cur_frame`] moves in [`Self::advance_to`] at the end of a submit). An
     /// early batch's misses can therefore take rectangles a later batch was about to hit;
     /// that batch's `TextEncoder::try_emit_cached` sees the generation move and
     /// re-rasterizes. It costs work, never a wrong pixel.
@@ -479,7 +479,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// An intrusive MRU list is the wrong tool: this atlas refreshes a stamp with a
     /// single indexed store on the hottest text path (`TextEncoder::try_emit_cached`).
     fn evict_one(&mut self, target: ContentType) -> bool {
-        if self.sides[target as usize].dry_frame == Some(self.current_frame) {
+        if self.sides[target as usize].dry_frame == Some(self.cur_frame) {
             // A fourth write of `last_use` would break the invariant that doc rests on, silently
             // stopping reclaim; debug pays one rotation to check it.
             debug_assert!(
@@ -487,7 +487,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     .victim
                     .is_none(),
                 "{target:?} latched dry on frame {} still has an evictable slot",
-                self.current_frame,
+                self.cur_frame,
             );
             return false;
         }
@@ -497,7 +497,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             .evict_scans
             .edit(|n| *n += u64::from(sweep.examined));
         let Some(idx) = sweep.victim else {
-            self.sides[target as usize].dry_frame = Some(self.current_frame);
+            self.sides[target as usize].dry_frame = Some(self.cur_frame);
             return false;
         };
         self.counters.evictions.bump();

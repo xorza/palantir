@@ -28,7 +28,7 @@ const BLUE: usize = 4;
 /// Each cube corner is a fully saturated, full-value Okhsv color of the hue above.
 #[test]
 fn cube_corners_are_the_gamut_edge() {
-    for (index, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
+    for (idx, (corner, expected)) in CORNERS.iter().zip(CORNER_HUES).enumerate() {
         let coords = Okhsv::from_color(*corner, 0.0);
         assert_close(
             coords.h,
@@ -42,12 +42,12 @@ fn cube_corners_are_the_gamut_edge() {
         assert_close(coords.s, 1.0, 1e-5, edge);
         assert_close(coords.v, 1.0, 1e-5, edge);
 
-        if index == BLUE {
+        if idx == BLUE {
             continue;
         }
         let back = Okhsv::new(expected, 1.0, 1.0).to_color();
         let (got, want) = (back.to_srgba_u8(), corner.to_srgba_u8());
-        assert_eq!(got, want, "corner {index}");
+        assert_eq!(got, want, "corner {idx}");
     }
 }
 

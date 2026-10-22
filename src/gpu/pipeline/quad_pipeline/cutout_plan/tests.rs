@@ -47,7 +47,7 @@ fn plan(quads: &[Quad]) -> CutoutPlan {
 /// `plan` rebuilt as a full repaint, which is never stale.
 fn full(plan: &mut CutoutPlan, quads: &[Quad], viewport: UVec2) {
     let census = plan.build(quads, &RepaintScissors::Full, viewport);
-    assert_eq!(census, Census::Current, "a full repaint keeps no pixel");
+    assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
 }
 
 /// `n` drop shadows 100 px square, radius 8, σ = 2, 120 px apart from `x`.
@@ -193,7 +193,7 @@ fn corners_without_a_table_keep_the_shaded_cutout() {
         &RepaintScissors::Full,
         WIDE,
     );
-    assert_eq!(census, Census::Current);
+    assert_eq!(census, Census::Cur);
     assert!(off.tables().is_empty());
     assert_eq!(off.corners(), [none], "baking off");
     assert_eq!(off.entries(), [ShadowEntry::General], "baking off");
@@ -339,7 +339,7 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     );
     let sliver = RepaintScissors::partial(&[URect::new(0, 0, 4, 4)]);
     let census = plan.build(&quads[..1], &sliver, viewport);
-    assert_eq!(census, Census::Current);
+    assert_eq!(census, Census::Cur);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
     assert_eq!(plan.entries(), [ShadowEntry::Tables]);
     assert_eq!(plan.tables().len(), 1, "the sliver reads the table");
@@ -350,11 +350,11 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     );
     let elsewhere = RepaintScissors::partial(&[URect::new(1900, 150, 4, 4)]);
     let census = plan.build(&[], &elsewhere, viewport);
-    assert_eq!(census, Census::Current);
+    assert_eq!(census, Census::Cur);
     assert!(plan.tables().is_empty(), "no repainted pixel reads it");
     // The census survives the frame that drew no shadow.
     let census = plan.build(&quads[..1], &sliver, viewport);
-    assert_eq!(census, Census::Current);
+    assert_eq!(census, Census::Cur);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
 }
 
@@ -377,7 +377,7 @@ fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
     let code = CutoutPlan::code([0, 0], 87);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
     let band = RepaintScissors::partial(&[URect::new(0, 0, 35, 72)]);
-    assert_eq!(plan.build(&[quad], &band, WIDE), Census::Current);
+    assert_eq!(plan.build(&[quad], &band, WIDE), Census::Cur);
     assert_eq!(
         plan.tables(),
         [BakeTable {
@@ -420,14 +420,14 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
         })
         .collect();
     let below = RepaintScissors::partial(&[URect::new(0, 190, 1800, 120)]);
-    assert_eq!(plan.build(&others, &below, viewport), Census::Current);
+    assert_eq!(plan.build(&others, &below, viewport), Census::Cur);
     assert_eq!(plan.tables().len(), 1, "the new key pays");
     assert!(
         plan.entries().iter().all(|e| *e == ShadowEntry::Tables),
         "{:?}",
         plan.entries()
     );
-    for (from, census) in [(50, Census::Stale), (0, Census::Current)] {
+    for (from, census) in [(50, Census::Stale), (0, Census::Cur)] {
         let mut plan = plan_in(&row(14, 0.0), viewport);
         let repaint = RepaintScissors::partial(&[URect::new(from, 0, 1700 - from, 120)]);
         assert_eq!(

@@ -43,8 +43,8 @@ impl<T> DepthScratch<T> {
 impl<T: Copy> DepthScratch<T> {
     /// One entry by absolute index, copied out because drivers then call into `&mut LayoutEngine`, which a slice borrow would collide with.
     #[inline]
-    pub(super) fn at(&self, index: usize) -> T {
-        self.pool[index]
+    pub(super) fn at(&self, idx: usize) -> T {
+        self.pool[idx]
     }
 }
 

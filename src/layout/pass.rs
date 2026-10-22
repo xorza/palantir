@@ -11,7 +11,7 @@ use crate::common::span::Span;
 use crate::layout::axis_slot::NodeSlot;
 use crate::layout::cache::measure_snapshot::SubtreeKey;
 use crate::layout::cache::{Arranged, MeasureCache};
-use crate::layout::drivers::grid::grid_context::GridContext;
+use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
@@ -160,7 +160,7 @@ impl LayoutPass<'_> {
     /// Grid's per-depth track scratch and durable hug pool, handed back whole because
     /// `grid` disjoint-borrows the halves in one expression.
     #[inline]
-    pub(super) const fn grid_mut(&mut self) -> &mut GridContext {
+    pub(super) const fn grid_mut(&mut self) -> &mut GridCtx {
         &mut self.engine.scratch.grid
     }
 
@@ -259,29 +259,29 @@ impl LayoutPass<'_> {
         // guards a parent resize, since `Hug` and `Fill` can read their offer.
         if LayoutMode::from(layout.meta) != LayoutMode::Leaf {
             let key = SubtreeKey {
-                wid: tree.records.widget_id()[node.idx()],
+                widget_id: tree.records.widget_id()[node.idx()],
                 subtree_hash: tree.rollups.layout_subtree[node.idx()],
                 available_q,
             };
             if let Some(hit) = self.engine.cache.try_lookup(key, available) {
-                self.engine.scratch.counters.cache_hit(key.wid);
-                let curr_start = node.idx();
-                let curr_end = curr_start + hit.desired.len();
+                self.engine.scratch.counters.cache_hit(key.widget_id);
+                let cur_start = node.idx();
+                let cur_end = cur_start + hit.desired.len();
                 // The subtree hash includes child count, so a length mismatch means the rollup
                 // is broken.
-                debug_assert_eq!(curr_end, tree.subtree_end_of(curr_start));
+                debug_assert_eq!(cur_end, tree.subtree_end_of(cur_start));
                 self.engine.scratch.restore_after_cache_hit(
                     &hit,
                     RestoreTarget {
                         tree,
-                        subtree: curr_start..curr_end,
+                        subtree: cur_start..cur_end,
                         layer: self.out,
                     },
                 );
                 // The root is recorded under this offer, not the one restored with its subtree: a
                 // root slot keyed on a stale offer fails `MeasureCache::matches_forest` and
                 // rebuilds every frame.
-                self.engine.scratch.available_q[curr_start] = available_q;
+                self.engine.scratch.available_q[cur_start] = available_q;
                 return hit.root;
             }
         }
@@ -451,12 +451,12 @@ impl LayoutPass<'_> {
         available_w: f32,
         runs: impl Iterator<Item = TextShapeInput<'t>>,
     ) -> Measured {
-        let wid = self.tree.records.widget_id()[node.idx()];
+        let widget_id = self.tree.records.widget_id()[node.idx()];
         let span_start = self.out.text_shapes.len() as u32;
         let mut size = Size::ZERO;
         let mut stable_from_w = 0.0f32;
         for ts in runs {
-            let run = self.shape_text(wid, &ts, available_w);
+            let run = self.shape_text(widget_id, &ts, available_w);
             size = size.max(ts.wrap.content_size(run.shaped.extent.size));
             stable_from_w = stable_from_w.max(run.stable_from_w);
         }
@@ -468,7 +468,7 @@ impl LayoutPass<'_> {
         // Only this node knows the count it just recorded, so reuse rows above it are
         // dropped here; a node that filled every ordinal has none above.
         if let Ok(count) = u16::try_from(span_len) {
-            self.engine.text.trim_rows(wid, count);
+            self.engine.text.trim_rows(widget_id, count);
         }
         Measured {
             size,
@@ -479,12 +479,12 @@ impl LayoutPass<'_> {
 
     fn shape_text(
         &mut self,
-        wid: WidgetId,
+        widget_id: WidgetId,
         ts: &TextShapeInput<'_>,
         available_w: f32,
     ) -> RunMeasure {
         let slot = TextRunSlot {
-            widget_id: wid,
+            widget_id,
             ordinal: ts.ordinal,
         };
 

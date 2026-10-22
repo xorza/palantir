@@ -13,7 +13,7 @@ use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::domain;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::theme::splitter::SplitterTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -25,7 +25,7 @@ use crate::widgets::splitter::split_half::SplitHalf;
 use crate::window::cursor_icon::CursorIcon;
 
 /// Two panes split by a draggable divider: [`Splitter::row`] side by side,
-/// [`Splitter::column`] stacked (the words of
+/// [`Splitter::col`] stacked (the words of
 /// [`SplitDirection`](crate::SplitDirection)). The caller owns the split as
 /// `ratio`, the first pane's share of the free space, `0..1`. While dragging, the
 /// pointer target feeds layout at once and the content-constrained share is written
@@ -67,7 +67,7 @@ impl<'a> Splitter<'a> {
     /// Stacked panes with a horizontal divider bar; `ratio` is the top pane's
     /// share.
     #[track_caller]
-    pub fn column(ratio: &'a mut f32) -> Self {
+    pub fn col(ratio: &'a mut f32) -> Self {
         Self::new(ratio, Axis::Y)
     }
 
@@ -236,8 +236,8 @@ impl<'a> Splitter<'a> {
         if bar_fill.is_some() {
             ui.set_cursor(CursorIcon::resize_along(axis));
         }
-        let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
-        let rule_bg = Background::fill(rule_color);
+        let bar_bg = bar_fill.map(Bg::fill).unwrap_or_default();
+        let rule_bg = Bg::fill(rule_color);
 
         let main_tracks = [
             Track::fill(layout_ratio),

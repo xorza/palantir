@@ -89,7 +89,7 @@ impl SpecimenCell {
                 Panel::canvas()
                     .id_salt(("spec-canvas", id))
                     .size((Sizing::FILL, Sizing::fixed(96.0)))
-                    .background(tokens::well_bg())
+                    .bg(tokens::well_bg())
                     .show(ui, body);
             });
     }

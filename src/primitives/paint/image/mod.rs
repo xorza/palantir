@@ -139,8 +139,8 @@ impl Image {
     pub fn fill_with(&mut self, mut texel: impl FnMut(u32, u32) -> SrgbaU8) {
         let width = self.size.x as usize;
         for (row, line) in self.texels_mut().chunks_exact_mut(width).enumerate() {
-            for (column, out) in line.iter_mut().enumerate() {
-                *out = texel(column as u32, row as u32);
+            for (col, out) in line.iter_mut().enumerate() {
+                *out = texel(col as u32, row as u32);
             }
         }
     }

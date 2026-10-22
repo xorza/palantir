@@ -1,7 +1,7 @@
 //! One animated value's cross-frame row: position, target and motion model.
 
-use crate::animation::anim_map_typed::TickResult;
-use crate::animation::animation_spec::AnimMotion;
+use crate::animation::animation_map_typed::TickResult;
+use crate::animation::animation_spec::AnimationMotion;
 use crate::animation::duration;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
@@ -14,7 +14,7 @@ use crate::primitives::math::animatable::Animatable;
 pub(super) enum MotionRow<T: Animatable> {
     Duration {
         segment_start: T,
-        current: T,
+        cur: T,
         elapsed: f32,
         secs: f32,
         ease: Easing,
@@ -27,36 +27,36 @@ pub(super) enum MotionRow<T: Animatable> {
 }
 
 impl<T: Animatable> MotionRow<T> {
-    pub(super) fn new(motion: AnimMotion, current: &T, target: &T) -> Self {
+    pub(super) fn new(motion: AnimationMotion, cur: &T, target: &T) -> Self {
         match motion {
-            AnimMotion::Duration { secs, ease } => Self::Duration {
-                segment_start: current.clone(),
-                current: current.clone(),
+            AnimationMotion::Duration { secs, ease } => Self::Duration {
+                segment_start: cur.clone(),
+                cur: cur.clone(),
                 elapsed: 0.0,
                 secs,
                 ease,
             },
-            AnimMotion::Spring(spring) => Self::Spring {
+            AnimationMotion::Spring(spring) => Self::Spring {
                 velocity: T::zero(),
-                offset: current.clone().sub(target.clone()),
+                offset: cur.clone().sub(target.clone()),
                 spring,
             },
         }
     }
 
-    pub(super) fn current(&self, target: &T) -> T {
+    pub(super) fn cur(&self, target: &T) -> T {
         match self {
-            Self::Duration { current, .. } => current.clone(),
+            Self::Duration { cur, .. } => cur.clone(),
             Self::Spring { offset, .. } => target.clone().add(offset.clone()),
         }
     }
 
     /// Runs under `motion`: the same kind keeps its state, another starts fresh. Returns whether the kind changed.
-    pub(super) fn conform(&mut self, motion: AnimMotion, current: &T, target: &T) -> bool {
+    pub(super) fn conform(&mut self, motion: AnimationMotion, cur: &T, target: &T) -> bool {
         match (self, motion) {
             (
                 Self::Duration { secs, ease, .. },
-                AnimMotion::Duration {
+                AnimationMotion::Duration {
                     secs: new_secs,
                     ease: new_ease,
                 },
@@ -65,29 +65,29 @@ impl<T: Animatable> MotionRow<T> {
                 *ease = new_ease;
                 false
             }
-            (Self::Spring { spring, .. }, AnimMotion::Spring(new_spring)) => {
+            (Self::Spring { spring, .. }, AnimationMotion::Spring(new_spring)) => {
                 *spring = new_spring;
                 false
             }
             (this, motion) => {
-                *this = Self::new(motion, current, target);
+                *this = Self::new(motion, cur, target);
                 true
             }
         }
     }
 
-    /// Restarts from `current` toward `target`. A spring keeps its velocity
+    /// Restarts from `cur` toward `target`. A spring keeps its velocity
     /// only when it aids motion toward the new target, so a reversal doesn't overshoot.
-    pub(super) fn retarget(&mut self, current: &T, target: &T) {
+    pub(super) fn retarget(&mut self, cur: &T, target: &T) {
         match self {
             Self::Duration {
                 segment_start,
-                current: at,
+                cur: at,
                 elapsed,
                 ..
             } => {
-                *segment_start = current.clone();
-                *at = current.clone();
+                *segment_start = cur.clone();
+                *at = cur.clone();
                 *elapsed = 0.0;
             }
             Self::Spring {
@@ -95,7 +95,7 @@ impl<T: Animatable> MotionRow<T> {
                 offset,
                 spring,
             } => {
-                *offset = current.clone().sub(target.clone());
+                *offset = cur.clone().sub(target.clone());
                 let reach = spring.velocity_reach(velocity.clone());
                 if dot(reach, offset.clone()) > 0.0 {
                     *velocity = T::zero();
@@ -116,7 +116,7 @@ impl<T: Animatable> MotionRow<T> {
 
     pub(super) fn stop(&mut self, target: &T) {
         match self {
-            Self::Duration { current, .. } => *current = target.clone(),
+            Self::Duration { cur, .. } => *cur = target.clone(),
             Self::Spring {
                 velocity, offset, ..
             } => {
@@ -130,7 +130,7 @@ impl<T: Animatable> MotionRow<T> {
         match self {
             Self::Duration {
                 segment_start,
-                current,
+                cur,
                 elapsed,
                 secs,
                 ease,
@@ -138,13 +138,13 @@ impl<T: Animatable> MotionRow<T> {
                 *elapsed += dt;
                 let progress = *elapsed / *secs;
                 let settled = progress >= 1.0;
-                *current = if settled {
+                *cur = if settled {
                     target
                 } else {
                     T::lerp(segment_start.clone(), target, ease.apply(progress))
                 };
                 TickResult {
-                    current: current.clone(),
+                    cur: cur.clone(),
                     settled,
                 }
             }
@@ -157,7 +157,7 @@ impl<T: Animatable> MotionRow<T> {
                 *velocity = step.velocity;
                 *offset = step.offset;
                 TickResult {
-                    current: if step.settled {
+                    cur: if step.settled {
                         target
                     } else {
                         target.add(offset.clone())
@@ -180,7 +180,7 @@ fn dot<T: Animatable>(a: T, b: T) -> f32 {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct AnimRow<T: Animatable> {
+pub(crate) struct AnimationRow<T: Animatable> {
     pub(super) target: T,
     pub(super) motion: MotionRow<T>,
     /// Set by every `tick`, cleared by `post_record`; rows still `false` then are evicted.
@@ -193,8 +193,8 @@ pub(crate) struct AnimRow<T: Animatable> {
     pub(super) settled: bool,
 }
 
-impl<T: Animatable> AnimRow<T> {
-    pub(super) fn current(&self) -> T {
-        self.motion.current(&self.target)
+impl<T: Animatable> AnimationRow<T> {
+    pub(super) fn cur(&self) -> T {
+        self.motion.cur(&self.target)
     }
 }

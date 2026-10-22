@@ -39,7 +39,7 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
             Block::new()
                 .id(indexed)
                 .focusable(true)
-                .tab_index(-3)
+                .tab_idx(-3)
                 .show(ui);
         });
         ui.layer(Layer::Popup).show(|ui| {
@@ -59,19 +59,19 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
                 layer: Layer::Main,
                 root: main_root,
                 id: first,
-                index: 0,
+                idx: 0,
             },
             TabStopRow {
                 layer: Layer::Main,
                 root: main_root,
                 id: indexed,
-                index: -3,
+                idx: -3,
             },
             TabStopRow {
                 layer: Layer::Popup,
                 root: popup_root,
                 id: in_popup,
-                index: 0,
+                idx: 0,
             },
         ],
     );

@@ -47,8 +47,8 @@ common → primitives → {animation, text, input, display, window, image_regist
   serializes and knows no `Widget` or `Ui`; `Widget::wear` applies a look.
 - **`ui` records through `Node` and shapes**, never through `Widget` or a
   bundled widget, so the recorder core sits below the authoring layer.
-- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names `GpuFrameContext` and
-  `GpuInitContext`, which hold the `wgpu` types `clippy.toml` keeps in `gpu`;
+- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names `GpuFrameCtx` and
+  `GpuInitCtx`, which hold the `wgpu` types `clippy.toml` keeps in `gpu`;
   moving the trait into `gpu` would make `ui` depend on `gpu` for `GpuViews`.
 - **`app` ⇄ `ui` stays a cycle.** `App` is the callback contract of the frame
   cycle; the two are one concept.
@@ -84,7 +84,7 @@ renders.
   constructor that takes one setting, as `Vec::with_capacity` is
   (`Mesh::with_capacity`, `TextShaper::with_fonts`).
 - **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
-  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Background`, `Brush` and the
+  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Bg`, `Brush` and the
   gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
   It is checked where it enters (**Input validation**, rule 3).
 - **Checked value** — a consumer relies on an invariant, so the fields are
@@ -106,19 +106,29 @@ renders.
 
 ### Names
 
+`cargo drive vocabulary` lists every declared name and word for a review.
+
 - **Spelling.** American (`center`, `color`) and whole words
   (`AnimationSpec`, `Interpolation`, `SplitDirection`, `saturation`). The
-  abbreviations allowed are the ones geometry, color and input already use:
-  `id`, `x` `y` `w` `h`, `min` `max`, `pos`, `dt`, `bbox`, `col` (beside
-  `row`), `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab` `hex`,
-  `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt` after
+  abbreviations allowed are the fixed short forms below and the ones
+  geometry, color and input already use: `id`, `x` `y` `w` `h`, `min` `max`,
+  `dt`, `bbox`, `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab`
+  `hex`, `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt` after
   `format_args!`, and the words `config`, `spec` and `stats`. Parameter names
-  follow the rule too (`press`, `shortcut`, `context`, `top_left`), except a
+  follow the rule too (`press`, `shortcut`, `anchor`, `top_left`), except a
   single letter for a setter's one argument when its type names it
   (`padding(p)`, `style(s)`), and `px` for a length.
+- **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`,
+  `exec`, `desc`, `cur`, `prev`, and their plurals with `s` (`idxs`, `poss`),
+  in every name; prose, strings and test names keep whole words. A name a
+  foreign API sets keeps its own form (`Iterator::position`,
+  `wgpu::TextureDescriptor`), and so does a term of another meaning: `idx` is
+  a position and `dir` a file-system directory, so a lookup index
+  (`GradientIndex`), a registry (`WindowDirectory`), a `direction` and a
+  `ContextMenu` keep the whole word.
 - **Constructors.** `new` is the primary one. A named constructor names the
   kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
-  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Background::rounded`).
+  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Bg::rounded`).
   `from_*` converts another representation (`Image::from_srgba8`,
   `Rect::from_min_max`, `ButtonTheme::from_palette`). `on(&snapshot)` attaches
   an overlay to a trigger, with the snapshot first and required text second;
@@ -130,7 +140,7 @@ renders.
   a common value may get a shorthand that takes nothing beside it
   (`visibility` / `hidden`, `bar_mode` / `hide_bars`, `zoom_config` /
   `zoomable`, `weight` / `bold`). `default_*` is a fallback used only where the
-  caller set nothing (`ThemeDefaults`, `default_background`). `start_*` is a
+  caller set nothing (`ThemeDefaults`, `default_bg`). `start_*` is a
   first-frame state the widget owns after that (`Expander::start_open`).
   Placement is the one setting named by a preposition: `at(rect)` on a shape,
   `at_origin(point)` for text, `fixed_at(point)` on a layer; its anchored
@@ -163,14 +173,14 @@ renders.
   widget type (`TabStrip::chip_id`, `DockView::pane_id`). A part's id is its
   owner's `id.with("part")`, documented on the owner.
 - **Sentinels.** `NONE` is a value that paints nothing or a set that holds
-  nothing (`Background::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
+  nothing (`Bg::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
   `Modifiers::NONE`, `TextStyleOverrides::NONE`). `ZERO` is a geometric zero
   (`Rect`, `Size`, `Spacing`, `Corners`). `TRANSPARENT` is a color or a brush
   that paints nothing. `ONE` and `IDENTITY` are the multiplicative identity.
   `ALL` is a full set, and `EMPTY` is empty text.
 - **Units.** A length is in logical pixels, and its name carries no unit
   (`font_size`, `thickness`, `min_thumb`). A device-pixel quantity says
-  `physical` (`Display::physical`, `GpuFrameContext::physical_size`). An angle
+  `physical` (`Display::physical`, `GpuFrameCtx::physical_size`). An angle
   is in radians. A fraction of a full circle is a _turn_, named `turn` or
   `hue`.
   Time is `std::time::Duration`, never a float of seconds or milliseconds. Any
@@ -195,7 +205,7 @@ renders.
   or `fmt!` output) and for `String` where the text outlives the frame (window
   titles); `Option<T>` for an optional argument (`style`,
   `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme`,
-  `Ui::load_icons`); a pair or array for `Vec2` (`Configure::position`);
+  `Ui::load_icons`); a pair or array for `Vec2` (`Configure::pos`);
   `SrgbaU8` where a color is stored as bytes, so a linear `RgbaF32` encodes
   once at the boundary (`Mesh` vertices); a `&'static str` for a name
   (`AnimationSlot`); and a source enum (`FontSource`, `DragNum`, `PathBuf`).
@@ -223,7 +233,7 @@ renders.
   `impl Into<Option<&Theme>>`; a second slot is `<slot>_style`
   (`ComboBox::button_style`). An override of one axis of the resolved slot is
   a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
-  `background(background)` and `default_background(background)`; no trait
+  `bg(bg)` and `default_bg(bg)`; no trait
   holds them in step, a test in `widgets::tests` does.
 - **Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to
   it, and finishes it through that widget's public setters. It never reaches

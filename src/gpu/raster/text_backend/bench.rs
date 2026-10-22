@@ -42,7 +42,7 @@ const WARM_SCALE_CYCLE: u32 = 5;
 
 /// Rungs the churn arms cycle through, enough to put the mask atlas past `RasterAtlasConfig::eager_growth_bytes`, where it recycles rectangles (`RasterAtlas::evict_one`); eviction begins between rung 250 and 500. The only arm coverage of that regime, which `Fixture::assert_evicting` checks.
 const CHURN_SCALE_CYCLE: u32 = 512;
-const CHURN_INDEX_STRIDE: u32 = 37;
+const CHURN_IDX_STRIDE: u32 = 37;
 
 const ROWS: u32 = 32;
 
@@ -61,7 +61,7 @@ fn rung(step: u32, stride: f32) -> f32 {
 /// The `i`th rung of the churn arms' permuted walk.
 fn churn_rung(i: u32) -> f32 {
     rung(
-        i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE,
+        i.wrapping_mul(CHURN_IDX_STRIDE) % CHURN_SCALE_CYCLE,
         TEXT_SCALE_STEP,
     )
 }
@@ -113,16 +113,16 @@ impl BenchRun<'_> {
 
 /// A node-editor row repeated [`ROWS`] times: a label and three values.
 fn node_rows(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRow> {
-    const COLUMNS: [(&str, f32, f32, f32); 4] = [
+    const COLS: [(&str, f32, f32, f32); 4] = [
         ("node", 13.0, 16.0, LABEL),
         ("input: f32", 11.0, 80.0, VALUE),
         ("output: Vec3", 11.0, 220.0, VALUE),
         ("123.45", 11.0, 380.0, VALUE),
     ];
-    let mut runs = Vec::with_capacity(ROWS as usize * COLUMNS.len());
+    let mut runs = Vec::with_capacity(ROWS as usize * COLS.len());
     for row in 0..ROWS {
         let y = 16.0 + row as f32 * 18.0;
-        for (text, size, x, gray) in COLUMNS {
+        for (text, size, x, gray) in COLS {
             let run = BenchRun {
                 text,
                 font_size: size,
@@ -139,8 +139,8 @@ fn node_rows(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRow> {
 fn distinct_runs(store: &mut RecordStore, shaper: &TextShaper) -> Vec<TextDrawRow> {
     (0..DISTINCT_RUNS)
         .map(|i| {
-            let (row, column) = (i as u32 % ROWS, i as u32 / ROWS);
-            let origin = Vec2::new(16.0 + column as f32 * 80.0, 16.0 + row as f32 * 18.0);
+            let (row, col) = (i as u32 % ROWS, i as u32 / ROWS);
+            let origin = Vec2::new(16.0 + col as f32 * 80.0, 16.0 + row as f32 * 18.0);
             BenchRun {
                 text: &format!("field {i}: f32"),
                 font_size: 11.0,
@@ -206,9 +206,9 @@ impl Fixture {
         {
             let mut ctx = GpuCtx::new(&g.gpu, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
-            for (index, batch) in batches.iter().enumerate() {
+            for (idx, batch) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {
-                    index,
+                    idx,
                     runs: batch.runs,
                     scale: batch.scale,
                     interned_text,
@@ -236,8 +236,8 @@ impl Fixture {
             // `render_batch` binds neither pipeline nor viewport (the render loop owns both, see `Bound::Raster`), so a standalone pass binds its own.
             pass.set_pipeline(self.pipelines.select(StencilMode::Off));
             ViewportPush { size: Vec2::ZERO }.push_into(&mut pass);
-            for index in 0..batches.len() {
-                self.backend.render_batch(index, &mut pass);
+            for idx in 0..batches.len() {
+                self.backend.render_batch(idx, &mut pass);
             }
         }
         self.belt.finish();
@@ -250,7 +250,7 @@ impl Fixture {
     /// `prepare` alone at `scale`: no flush, draw or submit.
     fn prepare(&mut self, scale: f32) {
         self.backend.prepare_batch(TextBatchInput {
-            index: 0,
+            idx: 0,
             runs: &self.runs,
             scale,
             interned_text: self.store.interned_text(),

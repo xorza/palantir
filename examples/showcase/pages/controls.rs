@@ -1,10 +1,10 @@
 //! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, spinner sizing, and echoes the live form state.
 
 use crate::support;
-use crate::support::{Column, Section, api};
+use crate::support::{Col, Section, api};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Align, AnimationSpec, Background, Button, ButtonTheme, Checkbox, ComboBox, Configure, Corners,
+    Align, AnimationSpec, Bg, Button, ButtonTheme, Checkbox, ComboBox, Configure, Corners,
     DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator,
     Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit,
     TextStyleOverrides, TextWrap, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
@@ -70,8 +70,8 @@ pub(crate) fn build(ui: &mut Ui) {
     };
 
     ui.with_state::<State, _>(state_id, |ui, s| {
-        support::columns(ui, |ui, column| match column {
-            Column::Left => Section::new("Settings form")
+        support::cols(ui, |ui, col| match col {
+            Col::Left => Section::new("Settings form")
                 .apis(&[
                     api!(Panel::disabled),
                     api!(
@@ -80,7 +80,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     ),
                 ])
                 .show(ui, |ui| form(ui, s, &themes)),
-            Column::Right => side(ui, s, &themes),
+            Col::Right => side(ui, s, &themes),
         });
         Section::new("Disclosure")
             .apis(&[api!(Expander::start_open), api!(Expander::keep_body)])
@@ -98,8 +98,8 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
         },
         ..base
     };
-    support::columns(ui, |ui, column| match column {
-        Column::Left => {
+    support::cols(ui, |ui, col| match col {
+        Col::Left => {
             Expander::new("Open by default")
                 .start_open(true)
                 .show(ui, |ui| {
@@ -120,7 +120,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                     );
                 });
         }
-        Column::Right => {
+        Col::Right => {
             Expander::new("Skips its body")
                 .start_open(true)
                 .show(ui, |ui| {
@@ -157,7 +157,7 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
         .size((Sizing::fixed(360.0), Sizing::HUG))
         .padding(16.0)
         .gap(10.0)
-        .background(support::well_bg())
+        .bg(support::well_bg())
         .show(ui, |ui| {
             group(ui, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
@@ -376,24 +376,23 @@ fn group(ui: &mut Ui, label: &'static str) {
 fn outlined_style() -> ButtonTheme {
     let accent = support::ACCENT;
     let stroke = Stroke::new(accent, 1.5);
-    let bg =
-        |fill: RgbaF32, stroke| Background::rounded(fill, Corners::all(4.0)).with_border(stroke);
+    let bg = |fill: RgbaF32, stroke| Bg::rounded(fill, Corners::all(4.0)).with_border(stroke);
     ButtonTheme {
         looks: StatefulLook {
             normal: WidgetLook {
-                background: bg(RgbaF32::TRANSPARENT, stroke),
+                bg: bg(RgbaF32::TRANSPARENT, stroke),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                background: bg(accent.with_alpha(0.18), stroke),
+                bg: bg(accent.with_alpha(0.18), stroke),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                background: bg(accent.with_alpha(0.35), stroke),
+                bg: bg(accent.with_alpha(0.35), stroke),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                background: bg(
+                bg: bg(
                     RgbaF32::TRANSPARENT,
                     Stroke::new(accent.with_alpha(0.35), 1.5),
                 ),
@@ -407,7 +406,7 @@ fn outlined_style() -> ButtonTheme {
 fn danger_style() -> ButtonTheme {
     let red = support::E;
     let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
-        background: Background::rounded(fill, Corners::all(4.0)),
+        bg: Bg::rounded(fill, Corners::all(4.0)),
         text: TextStyleOverrides::NONE.with_color(ink),
     };
     ButtonTheme {

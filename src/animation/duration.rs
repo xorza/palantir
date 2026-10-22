@@ -17,7 +17,7 @@ pub(super) const fn is_valid(secs: f32) -> bool {
     secs.is_finite() && secs >= 0.0 && secs <= MAX_DURATION_SECS
 }
 
-/// `displacement` is under the settle tolerance: the caller can snap to target, the target having barely moved. Used by the duration arm of the snap-if-close path in `AnimMapTyped::tick`.
+/// `displacement` is under the settle tolerance: the caller can snap to target, the target having barely moved. Used by the duration arm of the snap-if-close path in `AnimationMapTyped::tick`.
 ///
 /// The spring's tolerance ([`Animatable::settle_distance_squared`]): any visible change runs the full curve; only sub-perceptual drift (ulp rounding in theme math) snaps. Duration rows carry no velocity, so this is position-only, checked on retarget; completion is `MotionRow::advance`'s `progress >= 1` arm.
 #[inline]

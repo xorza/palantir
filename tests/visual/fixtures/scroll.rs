@@ -2,8 +2,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Block, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme,
-    Sizing, Ui,
+    Bg, Block, Configure, Corners, FramePaint, Panel, RgbaF32, Scroll, ScrollbarTheme, Sizing, Ui,
 };
 
 use crate::golden_name::GoldenName;
@@ -38,7 +37,7 @@ fn assert_well_matches_golden(golden: GoldenName, size: UVec2, scene: impl Fn(&m
 
 /// A content block in [`ROW`], rounded by `radius`.
 fn row(radius: f32) -> Block {
-    Block::new().background(Background::rounded(ROW, Corners::all(radius)))
+    Block::new().bg(Bg::rounded(ROW, Corners::all(radius)))
 }
 
 /// Tall content in a fixed-height vertical scroll.
@@ -161,7 +160,7 @@ fn scroll_warm_cache_repaint_matches_the_cold_encode() {
                     Panel::vstack()
                         .id_salt(("card", tag))
                         .padding(6.0)
-                        .background(Background::rounded(CARD, Corners::all(6.0)))
+                        .bg(Bg::rounded(CARD, Corners::all(6.0)))
                         .clip_rect()
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {

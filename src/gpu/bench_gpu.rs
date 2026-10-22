@@ -128,7 +128,7 @@ impl BenchGpu {
             .offscreen_builder()
             .collect_gpu_stats(collect_gpu_stats)
             .build();
-        host.ui().theme_mut().panel_background = None;
+        host.ui().theme_mut().panel_bg = None;
         host
     }
 

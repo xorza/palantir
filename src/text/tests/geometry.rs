@@ -247,7 +247,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
 
 /// Byte offsets map to cosmic cursors through the shaped buffer's own lines,
 /// so every ending cosmic splits at (`\n`, `\r`, `\r\n`, `\n\r`) starts a
-/// line there. Rows are `(offset, line, index, back)`: the cursor an offset
+/// line there. Rows are `(offset, line, idx, back)`: the cursor an offset
 /// maps to and the offset it maps back to. An offset inside a two-byte ending
 /// sits at its line's end; one past the text clamps to the end.
 #[test]
@@ -285,11 +285,11 @@ fn byte_offsets_map_through_cosmic_lines() {
     for &(text, offsets) in rows {
         m.probe_layout(text, ui_shape(16.0), |layout| {
             let buffer = layout.buffer_for_test().unwrap();
-            for &(offset, line, index, back) in offsets {
+            for &(offset, line, idx, back) in offsets {
                 let cursor = probe::cursor_from_byte(buffer, text, offset);
                 assert_eq!(
                     (cursor.line, cursor.index),
-                    (line, index),
+                    (line, idx),
                     "{text:?} at {offset}"
                 );
                 assert_eq!(
@@ -530,10 +530,10 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
         false,
         [false, false, true, false],
     );
-    for (index, (label, text, slant, weight, tight, reaches)) in
+    for (idx, (label, text, slant, weight, tight, reaches)) in
         cases.into_iter().chain([synthetic]).enumerate()
     {
-        let (mut m, family) = if index == cases.len() {
+        let (mut m, family) = if idx == cases.len() {
             inter_regular_only()
         } else {
             (CosmicMeasure::default(), FontFamily::SANS)

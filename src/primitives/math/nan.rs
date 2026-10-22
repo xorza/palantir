@@ -4,7 +4,7 @@
 //!
 //!
 //! - **Shapes.** `Shapes::add` refuses to record an authored shape carrying a NaN.
-//! - **Chrome.** `lower::background` sanitizes each `Background` field rather than dropping the row, which a rounded clip's stencil mask needs.
+//! - **Chrome.** `lower::bg` sanitizes each `Bg` field rather than dropping the row, which a rounded clip's stencil mask needs.
 //!
 //! Impls are `O(1)`, so both gates run in release too. Bulk inputs (polyline points, mesh vertices) are covered by their `bbox` under the AABB NaN contract ([`Aabb`](crate::primitives::geometry::rect::aabb::Aabb)).
 

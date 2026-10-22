@@ -197,7 +197,7 @@ fn the_nan_gate_drops_every_shape_kind() {
                 store.polyline_points.is_empty()
                     && store.polyline_colors.is_empty()
                     && store.meshes.vertices.is_empty()
-                    && store.meshes.indices.is_empty()
+                    && store.meshes.idxs.is_empty()
                     && store.gradients.records.is_empty(),
                 "case {label}: a rejected shape left bytes in the arena",
             );

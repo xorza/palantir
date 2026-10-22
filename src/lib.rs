@@ -67,8 +67,8 @@
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
-//! state, so those take the bundle. [`Background`] follows the same rule: widgets
-//! with one panel behind them have `background()` ([`Panel`], [`Grid`], [`Block`],
+//! state, so those take the bundle. [`Bg`] follows the same rule: widgets
+//! with one panel behind them have `bg()` ([`Panel`], [`Grid`], [`Block`],
 //! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`ContextMenu`]).
 //!
 //! # Feature flags
@@ -184,9 +184,9 @@ macro_rules! fmt {
 /// gradient builders stay at the root; widget authoring stays in [`widget`].
 pub mod prelude {
     pub use crate::{
-        Align, App, Axis, Background, Block, Brush, Button, Checkbox, ComboBox, Configure,
-        ContextMenu, Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify,
-        Key, KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
+        Align, App, Axis, Bg, Block, Brush, Button, Checkbox, ComboBox, Configure, ContextMenu,
+        Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify, Key,
+        KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
         ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
         Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter, Stroke, Switch,
         TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui, VAlign,
@@ -320,7 +320,7 @@ pub use primitives::layout::justify::Justify;
 pub use primitives::layout::sizing::{SizeSpec, Sizing};
 pub use primitives::layout::track::Track;
 pub use primitives::layout::visibility::Visibility;
-pub use primitives::paint::background::Background;
+pub use primitives::paint::bg::Bg;
 pub use primitives::paint::brush::Brush;
 pub use primitives::paint::brush::gradient::color_ramp::ColorRamp;
 pub use primitives::paint::brush::gradient::conic_geometry::{
@@ -351,10 +351,10 @@ pub use scene::layer::Layer;
 pub use glam::IVec2;
 // Integer pixel extent (`Display.physical`, `WindowConfig` sizes); `.x` is width.
 pub use glam::UVec2;
-// Used by polyline points, `Configure::position` and `Canvas` placement.
+// Used by polyline points, `Configure::pos` and `Canvas` placement.
 pub use glam::Vec2;
-pub use gpu::device::gpu_frame_context::GpuFrameContext;
-pub use gpu::device::gpu_init_context::GpuInitContext;
+pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
+pub use gpu::device::gpu_init_ctx::GpuInitCtx;
 pub use icons::error::IconTableError;
 pub use icons::icon_set::IconSet;
 pub use icons::icon_table::{IconDefinition, IconTable};
@@ -425,7 +425,7 @@ pub use widgets::context_menu::ContextMenu;
 pub use widgets::context_menu::menu_item::MenuItem;
 pub use widgets::context_menu::menu_separator::MenuSeparator;
 pub use widgets::dock::allowed_splits::AllowedSplits;
-pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIndex};
+pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 pub use widgets::dock::dock_operation::{DockDrop, DockOperation};
 pub use widgets::dock::dock_path::DockPath;
 pub use widgets::dock::dock_state::{DockState, TabAddress};

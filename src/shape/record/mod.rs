@@ -76,7 +76,7 @@ pub(crate) enum ShapeRecord {
         local_rect: Option<Rect>,
         tint: RgbaF16,
         vertices: Span,
-        indices: Span,
+        idxs: Span,
         /// Owner-local AABB of the vertex positions, frozen from `Mesh::bbox()` so the encoder doesn't re-scan.
         bbox: Rect,
         content_hash: u64,
@@ -248,7 +248,7 @@ impl ShapeRecord {
                 tint,
                 content_hash,
                 vertices: _,
-                indices: _,
+                idxs: _,
                 bbox: _,
             } => {
                 hash_optional_rect(*local_rect, &mut h);
@@ -312,7 +312,7 @@ impl ShapeRecord {
                 hash_optional_rect(*local_rect, &mut h);
                 tint.hash(&mut h);
                 h.write_u32(handle.icon.set.bits());
-                h.write_u16(handle.icon.icon.index());
+                h.write_u16(handle.icon.icon.idx());
                 h.write_u8((*fit as u8) | (u8::from(*desaturate) << 2));
             }
             // Geometry + style are hashed inline (every input lives on the record).

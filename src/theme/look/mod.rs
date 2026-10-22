@@ -17,7 +17,7 @@ pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
 
 use crate::animation::animation_slot::AnimationSlot;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::theme::ThemeText;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
@@ -31,7 +31,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.
-    pub background: Background,
+    pub bg: Bg,
     /// Text axes this look sets over [`Theme::text`](crate::Theme); [`TextStyleOverrides::NONE`] inherits all.
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
@@ -48,17 +48,14 @@ impl WidgetLook {
     #[inline(always)]
     pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook {
         AnimatedLook {
-            background: self.background.clone(),
+            bg: self.bg.clone(),
             text: self.text.apply(&ambient_text),
         }
     }
 
     /// Visits this look's text overrides; destructured so a new field fails to compile.
     pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
-        let Self {
-            text,
-            background: _,
-        } = self;
+        let Self { text, bg: _ } = self;
         f(ThemeText::Overrides(text));
     }
 }

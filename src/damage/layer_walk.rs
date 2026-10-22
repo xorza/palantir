@@ -39,7 +39,7 @@ enum Tier {
 #[derive(Clone, Copy, Debug)]
 struct Visit {
     i: usize,
-    wid: WidgetId,
+    widget_id: WidgetId,
     parent_key: u64,
 }
 
@@ -67,7 +67,7 @@ impl LayerWalk<'_> {
         while i < n {
             let node = Visit {
                 i,
-                wid: self.frame.tree.records.widget_id()[i],
+                widget_id: self.frame.tree.records.widget_id()[i],
                 parent_key: self.parent_key(i),
             };
             let advance = match self.classify(node) {
@@ -103,8 +103,12 @@ impl LayerWalk<'_> {
 
     /// The map read is the classification; writing arms re-probe the bucket. Deliberate and cheap: `prev` hashes by identity.
     fn classify(&self, node: Visit) -> Tier {
-        let Visit { i, wid, parent_key } = node;
-        let Some(prev) = self.prev.get(&wid).copied() else {
+        let Visit {
+            i,
+            widget_id,
+            parent_key,
+        } = node;
+        let Some(prev) = self.prev.get(&widget_id).copied() else {
             let rows = self.frame.cascade.paint_arena.rows_of(i);
             if rows.is_empty() {
                 return Tier::Untracked;
@@ -131,14 +135,18 @@ impl LayerWalk<'_> {
     }
 
     fn on_added(&mut self, node: Visit) -> usize {
-        let Visit { i, wid, parent_key } = node;
+        let Visit {
+            i,
+            widget_id,
+            parent_key,
+        } = node;
         let rows = self.frame.cascade.paint_arena.rows_of(i);
         let paint_span = self.paints.store(rows);
         if !self.force_full {
             self.raw_rects.extend(rows.screens());
         }
         let snapshot = self.snapshot(i, parent_key, paint_span);
-        self.prev.insert(wid, snapshot);
+        self.prev.insert(widget_id, snapshot);
         self.counters.mark_dirty(NodeId(i as u32));
         1
     }
@@ -153,7 +161,7 @@ impl LayerWalk<'_> {
         // `classify` read this snapshot first, so the bucket exists; a miss would leave a stale subtree hash forever.
         let snap = self
             .prev
-            .get_mut(&node.wid)
+            .get_mut(&node.widget_id)
             .expect("DescendantChanged is classified from this node's own snapshot");
         snap.subtree_hash = self.frame.tree.rollups.subtree[node.i];
         1
@@ -163,19 +171,23 @@ impl LayerWalk<'_> {
         // Rows → rowless: push everything the node was painting, then drop it.
         self.raw_rects
             .extend(self.paints.slots[prev.paint_span.range()].screens());
-        self.prev.remove(&node.wid);
+        self.prev.remove(&node.widget_id);
         self.paints.release(prev.paint_span);
         self.counters.mark_dirty(NodeId(node.i as u32));
         1
     }
 
     fn on_paints_changed(&mut self, node: Visit, prev: NodeSnapshot) -> usize {
-        let Visit { i, wid, parent_key } = node;
+        let Visit {
+            i,
+            widget_id,
+            parent_key,
+        } = node;
         let node = NodeId(i as u32);
-        let curr = self.frame.cascade.paint_arena.rows_of(i);
+        let cur = self.frame.cascade.paint_arena.rows_of(i);
         let change = PaintsChange {
             prev: prev.paint_span,
-            curr,
+            cur,
         };
         let leg = self
             .matcher
@@ -199,7 +211,7 @@ impl LayerWalk<'_> {
         }
 
         let snapshot = self.snapshot(i, parent_key, leg.span);
-        self.prev.insert(wid, snapshot);
+        self.prev.insert(widget_id, snapshot);
         self.counters.mark_dirty(node);
         1
     }
@@ -211,10 +223,10 @@ impl LayerWalk<'_> {
         let end = self.frame.tree.subtree_end_of(i);
         let mut prev_extent = Rect::ZERO;
         for j in i..end {
-            let wid = self.frame.tree.records.widget_id()[j];
-            let curr = self.frame.cascade.paint_arena.rows_of(j);
-            if curr.is_empty() {
-                if let Some(snap) = self.prev.remove(&wid) {
+            let widget_id = self.frame.tree.records.widget_id()[j];
+            let cur = self.frame.cascade.paint_arena.rows_of(j);
+            if cur.is_empty() {
+                if let Some(snap) = self.prev.remove(&widget_id) {
                     prev_extent = prev_extent
                         .union(self.paints.slots[snap.paint_span.range()].union_screens());
                     self.paints.release(snap.paint_span);
@@ -222,26 +234,26 @@ impl LayerWalk<'_> {
                 }
                 continue;
             }
-            if let Some(snap) = self.prev.get_mut(&wid) {
+            if let Some(snap) = self.prev.get_mut(&widget_id) {
                 snap.cascade_input = self.frame.cascade.cascade_inputs[j];
                 let paint_span = snap.paint_span;
                 prev_extent =
                     prev_extent.union(self.paints.slots[paint_span.range()].union_screens());
-                self.paints.slots[paint_span.range()].copy_from_slice(curr);
+                self.paints.slots[paint_span.range()].copy_from_slice(cur);
             } else {
-                if !curr.any_on_surface(self.surface) {
+                if !cur.any_on_surface(self.surface) {
                     continue;
                 }
-                let paint_span = self.paints.store(curr);
+                let paint_span = self.paints.store(cur);
                 let snapshot = self.snapshot(j, self.parent_key(j), paint_span);
-                self.prev.insert(wid, snapshot);
+                self.prev.insert(widget_id, snapshot);
             }
             self.counters.mark_dirty(NodeId(j as u32));
         }
         damage::push_screen(self.raw_rects, prev_extent);
         // Rolled-up curr extent from the cascade; `Rect::ZERO` for an invisible subtree. The prev half cannot use the column, since last frame's is gone.
-        let curr_extent = self.frame.cascade.subtree_paint_rects[i];
-        damage::push_screen(self.raw_rects, curr_extent);
+        let cur_extent = self.frame.cascade.subtree_paint_rects[i];
+        damage::push_screen(self.raw_rects, cur_extent);
         end - i
     }
 
@@ -250,7 +262,7 @@ impl LayerWalk<'_> {
         self.build_row_extents(node);
         self.inversions.push(
             self.raw_rects,
-            self.matcher.matched_positions(),
+            self.matcher.matched_poss(),
             self.order_extents,
         );
     }

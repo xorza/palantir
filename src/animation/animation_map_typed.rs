@@ -1,7 +1,7 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
-use crate::animation::anim_row::{AnimRow, MotionRow};
 use crate::animation::animation_request::AnimationRequest;
+use crate::animation::animation_row::{AnimationRow, MotionRow};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::TypedStore;
@@ -10,14 +10,14 @@ use crate::primitives::math::animatable::Animatable;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
-/// Per-`T` animation table inside [`AnimMap`](crate::animation::AnimMap), a boxed
+/// Per-`T` animation table inside [`AnimationMap`](crate::animation::AnimationMap), a boxed
 /// trait object keyed by `TypeId`, allocated on first `Ui::animate::<T>`.
 #[derive(Debug)]
-pub(crate) struct AnimMapTyped<T: Animatable> {
-    pub(super) rows: FxHashMap<(WidgetId, AnimationSlot), AnimRow<T>>,
+pub(crate) struct AnimationMapTyped<T: Animatable> {
+    pub(super) rows: FxHashMap<(WidgetId, AnimationSlot), AnimationRow<T>>,
 }
 
-impl<T: Animatable> Default for AnimMapTyped<T> {
+impl<T: Animatable> Default for AnimationMapTyped<T> {
     fn default() -> Self {
         Self {
             rows: FxHashMap::default(),
@@ -28,24 +28,24 @@ impl<T: Animatable> Default for AnimMapTyped<T> {
 /// The frame's animation step: the seconds a row advances by, and the render frame spending
 /// them, so a second record pass of one frame does not spend them again.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct AnimClock {
+pub(crate) struct AnimationClock {
     pub(crate) dt: f32,
     pub(crate) render_frame_id: u64,
 }
 
 #[derive(Debug)]
 pub(crate) struct TickResult<T: Animatable> {
-    pub(crate) current: T,
+    pub(crate) cur: T,
     pub(crate) settled: bool,
 }
 
-impl<T: Animatable> AnimMapTyped<T> {
+impl<T: Animatable> AnimationMapTyped<T> {
     /// Forget `id`'s `slot`, so a later call starts fresh from its target.
     pub(super) fn drop_row(&mut self, id: WidgetId, slot: AnimationSlot) {
         self.rows.remove(&(id, slot));
     }
 
-    /// Insert-or-advance. First touch snaps `current = target` and returns settled:
+    /// Insert-or-advance. First touch snaps `cur = target` and returns settled:
     /// no animation on appearance. Later calls detect retarget vs steady state and
     /// advance by `clock.dt` seconds.
     ///
@@ -55,16 +55,16 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// `AnimationSpec::FAST` before anything painted. A row in flight spends `dt`
     /// as usual.
     ///
-    /// `AnimMap::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
+    /// `AnimationMap::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
     /// this assumes a real motion spec.
     pub(crate) fn tick(
         &mut self,
         request: AnimationRequest<T>,
         spec: AnimationSpec,
-        clock: AnimClock,
+        clock: AnimationClock,
     ) -> TickResult<T> {
         let AnimationRequest { id, slot, target } = request;
-        let AnimClock {
+        let AnimationClock {
             dt,
             render_frame_id,
         } = clock;
@@ -82,7 +82,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // `.clone()`, free for Copy types and a deliberate memcpy for heavy ones.
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
-                v.insert(AnimRow {
+                v.insert(AnimationRow {
                     target: target.clone(),
                     motion: MotionRow::new(spec.motion, &target, &target),
                     touched: true,
@@ -90,7 +90,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     settled: true,
                 });
                 return TickResult {
-                    current: target,
+                    cur: target,
                     settled: true,
                 };
             }
@@ -104,32 +104,29 @@ impl<T: Animatable> AnimMapTyped<T> {
         // skip the settle math. Retarget detection still runs so a new target unfreezes
         // the row.
         //
-        // Returns the caller's `target` instead of `row.current()`: every `settled`
+        // Returns the caller's `target` instead of `row.cur()`: every `settled`
         // site leaves the motion at rest on the target, so this skips a clone per
         // widget per frame. The assert is debug-only since the compare is the cost
         // this path avoids.
         if row.settled && row.target == target {
-            debug_assert!(
-                row.current() == target,
-                "settled row must sit at its target"
-            );
+            debug_assert!(row.cur() == target, "settled row must sit at its target");
             return TickResult {
-                current: target,
+                cur: target,
                 settled: true,
             };
         }
 
         let retargeted = row.target != target;
-        let mut current = row.current();
-        let switched = row.motion.conform(spec.motion, &current, &row.target);
+        let mut cur = row.cur();
+        let switched = row.motion.conform(spec.motion, &cur, &row.target);
         // Only a new target or motion can pair the value with a target it can't do
         // arithmetic against; otherwise every value is `target + offset` or a curve
         // sample.
         if retargeted || switched {
             if let MotionRow::Spring { velocity, .. } = &mut row.motion {
-                current.normalize_for_spring(&target, velocity);
+                cur.normalize_for_spring(&target, velocity);
             }
-            row.motion.retarget(&current, &target);
+            row.motion.retarget(&cur, &target);
         }
 
         if retargeted {
@@ -139,20 +136,17 @@ impl<T: Animatable> AnimMapTyped<T> {
             // Snap-if-close, on the retarget alone: a change too small to see settles at
             // once. A running motion ends by its own rule; checked mid-curve this floor cut
             // `OutBack` short where it crosses the target toward the overshoot.
-            if row
-                .motion
-                .close_enough(current.clone().sub(row.target.clone()))
-            {
+            if row.motion.close_enough(cur.clone().sub(row.target.clone())) {
                 row.motion.stop(&row.target);
                 row.settled = true;
                 return TickResult {
-                    current: row.target.clone(),
+                    cur: row.target.clone(),
                     settled: true,
                 };
             }
             if from_rest {
                 return TickResult {
-                    current,
+                    cur,
                     settled: false,
                 };
             }
@@ -163,7 +157,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // would double the speed on any input frame.
         if already_advanced {
             return TickResult {
-                current,
+                cur,
                 settled: false,
             };
         }
@@ -174,7 +168,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     }
 }
 
-impl<T: Animatable> TypedStore for AnimMapTyped<T> {
+impl<T: Animatable> TypedStore for AnimationMapTyped<T> {
     /// Drop rows for removed widgets and slots the caller stopped poking this
     /// frame; clear `touched` on survivors. One retain pass.
     fn sweep_removed(&mut self, removed: &WidgetIdSet) {
@@ -198,20 +192,20 @@ impl<T: Animatable> TypedStore for AnimMapTyped<T> {
 /// the count.
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::animation::anim_map_typed::{AnimClock, AnimMapTyped, TickResult};
+    use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped, TickResult};
     use crate::animation::animation_request::AnimationRequest;
     use crate::animation::animation_spec::AnimationSpec;
     use crate::primitives::math::animatable::Animatable;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     /// A render frame id no earlier call returned, so the multi-pass guard never
-    /// short-circuits a [`AnimMapTyped::step`].
+    /// short-circuits a [`AnimationMapTyped::step`].
     fn next_frame() -> u64 {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         COUNTER.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    impl<T: Animatable> AnimMapTyped<T> {
+    impl<T: Animatable> AnimationMapTyped<T> {
         pub(crate) fn len(&self) -> usize {
             self.rows.len()
         }
@@ -224,7 +218,7 @@ pub(crate) mod internals {
             spec: AnimationSpec,
             dt: f32,
         ) -> TickResult<T> {
-            let clock = AnimClock {
+            let clock = AnimationClock {
                 dt,
                 render_frame_id: next_frame(),
             };

@@ -30,7 +30,7 @@ use crate::text::shaper::TextShaper;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextBatchInput<'a> {
     /// The batch's index in the frame; batches arrive in order.
-    pub(crate) index: usize,
+    pub(crate) idx: usize,
     pub(crate) runs: &'a [TextDrawRow],
     pub(crate) scale: f32,
     pub(crate) interned_text: InternedText<'a>,
@@ -77,13 +77,13 @@ impl TextBackend {
     /// opens the exclusive glyph lease.
     pub(crate) fn prepare_batch(&mut self, batch: TextBatchInput<'_>) {
         let TextBatchInput {
-            index,
+            idx,
             runs,
             scale,
             interned_text,
         } = batch;
         self.encoder.sync_fonts(self.shaper.font_epoch());
-        self.pass.open_batch(index);
+        self.pass.open_batch(idx);
 
         // One walk: hits emit directly, misses encode through the lazily opened
         // lease, so an all-hit frame never touches cosmic.
@@ -111,7 +111,7 @@ impl TextBackend {
     }
 
     /// The shaper this backend encodes against, lent to a `GpuView` through
-    /// [`GpuInitContext`](crate::GpuInitContext).
+    /// [`GpuInitCtx`](crate::GpuInitCtx).
     pub(crate) const fn shaper(&self) -> &TextShaper {
         &self.shaper
     }

@@ -4,7 +4,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -41,7 +41,7 @@ fn clip_emits_balanced_push_pop() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(40.0)
-                        .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                        .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                         .show(ui);
                 });
         });
@@ -58,7 +58,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             Panel::zstack()
                 .id(WidgetId::from_hash("rounded"))
                 .size(80.0)
-                .background(Background {
+                .bg(Bg {
                     fill: RgbaF32::srgb(0.2, 0.2, 0.2).into(),
                     border: Stroke::new(RgbaF32::srgb(1.0, 1.0, 1.0), 2.0),
                     corners: Corners::all(8.0),

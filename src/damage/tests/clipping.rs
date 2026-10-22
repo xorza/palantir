@@ -6,7 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -43,7 +43,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 Block::new()
                                     .id(WidgetId::from_hash("overflow"))
                                     .size(child_size)
-                                    .background(Background::fill(fill))
+                                    .bg(Bg::fill(fill))
                                     .show(ui)
                                     .node(),
                             );
@@ -70,7 +70,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 
 /// A node painting a drop shadow contributes its **inflated** paint bounds
 /// (`rect + offset`, then `4*sigma + max(spread, 0)` per side) to damage. Both
-/// `Shape::Shadow` and `Background::shadow` chrome must reach the same
+/// `Shape::Shadow` and `Bg::shadow` chrome must reach the same
 /// `paint_rect`, so a tab swap clears the full halo.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
@@ -86,7 +86,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background::fill(BLUE))
+                .bg(Bg::fill(BLUE))
                 .show(ui, |ui| {
                     ui.add_shape(
                         Shape::shadow(Shadow {
@@ -104,7 +104,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
             Panel::hstack()
                 .id(WidgetId::from_hash("card"))
                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
-                .background(Background {
+                .bg(Bg {
                     fill: BLUE.into(),
                     shadow: Shadow {
                         color: RgbaF32::srgba(0.0, 0.0, 0.0, 0.5),
@@ -179,7 +179,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                             Panel::hstack()
                                 .id(WidgetId::from_hash("card"))
                                 .size((Sizing::fixed(card), Sizing::fixed(card)))
-                                .background(Background::fill(fill))
+                                .bg(Bg::fill(fill))
                                 .show(ui, |ui| {
                                     ui.add_shape(
                                         Shape::shadow(Shadow {
@@ -228,7 +228,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
             Panel::hstack()
                 .id(host_id)
                 .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                .background(Background::fill(BLUE))
+                .bg(Bg::fill(BLUE))
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
@@ -281,7 +281,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
             Panel::zstack()
                 .id(WidgetId::from_hash("rounded-host"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-                .background(Background {
+                .bg(Bg {
                     corners: Corners::all(12.0),
                     ..Default::default()
                 })
@@ -290,7 +290,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
                     Block::new()
                         .id(WidgetId::from_hash("inner"))
                         .size(CHILD)
-                        .background(Background::fill(BLUE))
+                        .bg(Bg::fill(BLUE))
                         .show(ui);
                 });
         });

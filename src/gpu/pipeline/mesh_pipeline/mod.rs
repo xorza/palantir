@@ -24,7 +24,7 @@ use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MeshUpload<'a> {
     pub(crate) vertices: &'a [MeshVertex],
-    pub(crate) indices: &'a [u32],
+    pub(crate) idxs: &'a [u32],
     pub(crate) instances: &'a [MeshInstance],
 }
 
@@ -39,7 +39,7 @@ pub(crate) struct MeshBatch<'a> {
 #[derive(Debug)]
 pub(crate) struct MeshPipeline {
     vertex_buffer: DynamicBuffer<MeshVertex>,
-    index_buffer: DynamicBuffer<u32>,
+    idx_buffer: DynamicBuffer<u32>,
     instance_buffer: DynamicBuffer<MeshInstance>,
     /// Mesh shader module, format-independent; [`Self::build_variants`] builds each
     /// format's pipelines from it.
@@ -56,13 +56,13 @@ impl MeshPipeline {
 
         let vertex_buffer =
             DynamicBuffer::<MeshVertex>::vertex(device, "palantir.mesh.vertices", 256);
-        let index_buffer = DynamicBuffer::<u32>::index(device, "palantir.mesh.indices", 1024);
+        let idx_buffer = DynamicBuffer::<u32>::idx(device, "palantir.mesh.indices", 1024);
         let instance_buffer =
             DynamicBuffer::<MeshInstance>::vertex(device, "palantir.mesh.instances", 64);
 
         Self {
             vertex_buffer,
-            index_buffer,
+            idx_buffer,
             instance_buffer,
             shader,
             // No bind groups: only the shared immediate region for the viewport.
@@ -107,17 +107,17 @@ impl MeshPipeline {
         ctx: &mut GpuCtx<'_>,
         MeshUpload {
             vertices,
-            indices,
+            idxs,
             instances,
         }: MeshUpload<'_>,
     ) {
-        if !mesh_upload_required(vertices.len(), indices.len(), instances.len()) {
+        if !mesh_upload_required(vertices.len(), idxs.len(), instances.len()) {
             return;
         }
 
         self.instance_buffer.upload_instances(ctx, instances);
         self.vertex_buffer.upload_instances(ctx, vertices);
-        self.index_buffer.upload_instances(ctx, indices);
+        self.idx_buffer.upload_instances(ctx, idxs);
     }
 
     /// Bind pipeline and vertex/instance/index buffers once per batch; [`Self::draw`]
@@ -131,10 +131,7 @@ impl MeshPipeline {
         pass.set_pipeline(pipeline);
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
-        pass.set_index_buffer(
-            self.index_buffer.buffer.slice(..),
-            wgpu::IndexFormat::Uint32,
-        );
+        pass.set_index_buffer(self.idx_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
     }
 
     /// Draw one mesh batch. `draws` is the frame's per-draw span column and `items`
@@ -150,12 +147,12 @@ impl MeshPipeline {
         MeshBatch { draws, items }: MeshBatch<'_>,
     ) {
         for (offset, draw) in draws[items.range()].iter().enumerate() {
-            if draw.indices.len == 0 {
+            if draw.idxs.len == 0 {
                 continue;
             }
             let instance = items.start + offset as u32;
             pass.draw_indexed(
-                draw.indices.into(),
+                draw.idxs.into(),
                 // Per-call vertex offset keeps a mesh's indices buffer-local.
                 draw.vertices.start as i32,
                 instance..instance + 1,
@@ -164,14 +161,14 @@ impl MeshPipeline {
     }
 }
 
-fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bool {
+fn mesh_upload_required(vertices: usize, idxs: usize, instances: usize) -> bool {
     if instances == 0 {
         return false;
     }
     // Debug: these counts come from the composer a pass ago, so this checks the
     // crate at frame rate rather than screening caller input.
     debug_assert!(vertices != 0, "mesh instances require vertices");
-    debug_assert!(indices != 0, "mesh instances require indices");
+    debug_assert!(idxs != 0, "mesh instances require indices");
     true
 }
 

@@ -15,14 +15,14 @@ pub(super) fn trigger_id() -> WidgetId {
 
 pub(super) fn menu_body(h: &UiHarness, for_id: WidgetId) -> NodeId {
     let body_id = for_id.with("body");
-    let index =
+    let idx =
         h.ui.tree(Layer::Menu)
             .records
             .widget_id()
             .iter()
             .position(|id| *id == body_id)
             .expect("context menu body recorded");
-    NodeId(index as u32)
+    NodeId(idx as u32)
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -32,7 +32,7 @@ pub(super) struct RollupInputs {
     rolled: bool,
     /// Whether the tree's rollups were computed from the columns it holds now; set by `Tree::post_record` and handed
     /// to [`Self::rolled`] by the next [`Self::take_from`], so a pass that never reached it leaves nothing to keep.
-    current_rolled: bool,
+    cur_rolled: bool,
 }
 
 impl RollupInputs {
@@ -54,11 +54,11 @@ impl RollupInputs {
         tree.grid_tracks.clear();
         tree.grid_defs.clear();
         tree.scrollbar_defs.clear();
-        self.rolled = mem::replace(&mut self.current_rolled, false);
+        self.rolled = mem::replace(&mut self.cur_rolled, false);
     }
 
     pub(super) const fn note_rolled(&mut self) {
-        self.current_rolled = true;
+        self.cur_rolled = true;
     }
 
     pub(super) fn hold_for(&self, tree: &Tree) -> bool {

@@ -60,7 +60,7 @@ impl Encoder {
                 cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
                 subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
                 gradients: &mut gradients,
-                paint_anim_cursor: tree.paint_anims.cursor(),
+                paint_animation_cursor: tree.paint_animations.cursor(),
                 gpu_views: scene.gpu_views,
                 damage_filter,
                 damage_cull_margin,

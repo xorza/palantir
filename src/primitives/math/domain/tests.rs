@@ -96,7 +96,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             .is_noop(),
         ),
         ("Mesh::is_noop", nan_mesh.is_noop()),
-        // Chrome skips `Shapes::add`, so these are all that guard a NaN `Background`.
+        // Chrome skips `Shapes::add`, so these are all that guard a NaN `Bg`.
         (
             "RgbaF16::is_noop/red",
             RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
@@ -359,7 +359,7 @@ fn coercing_kinds_are_total() {
         (0, 0, None),
         (5, 0, None),
     ] {
-        assert_eq!(domain::index(i, len), want, "index({i}, {len})");
+        assert_eq!(domain::idx(i, len), want, "index({i}, {len})");
     }
 }
 

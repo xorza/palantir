@@ -12,7 +12,7 @@ pub enum DockError<T> {
     /// A child index points past the end of the node vector.
     NodeOutOfRange {
         /// The offending child index.
-        index: u32,
+        idx: u32,
     },
     /// A root-to-leaf chain nests deeper than the cap allows.
     SplitNesting,
@@ -61,7 +61,7 @@ impl<T: fmt::Debug> fmt::Display for DockError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonCanonical => write!(f, "dock nodes are not in canonical pre-order"),
-            Self::NodeOutOfRange { index } => write!(f, "dock node index {index} out of range"),
+            Self::NodeOutOfRange { idx } => write!(f, "dock node index {idx} out of range"),
             Self::SplitNesting => write!(f, "split nesting exceeds the cap"),
             Self::SplitRatio { ratio } => write!(f, "split ratio {ratio} out of bounds"),
             Self::UnreachableSlots => write!(f, "dock tree has slots unreachable from the root"),

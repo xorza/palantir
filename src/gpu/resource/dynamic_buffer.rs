@@ -58,11 +58,7 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     }
 
     /// An index buffer for items of type `T`: `INDEX | COPY_DST`.
-    pub(crate) fn index(
-        device: &wgpu::Device,
-        label: &'static str,
-        initial_capacity: usize,
-    ) -> Self {
+    pub(crate) fn idx(device: &wgpu::Device, label: &'static str, initial_capacity: usize) -> Self {
         Self::new(
             device,
             BufferSpec {

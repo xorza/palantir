@@ -21,7 +21,7 @@
 //! 1. **Primitives** (`RgbaF32`, `Stroke`, `Shadow`, `Brush`, ...) answer
 //!    whether a value is invisible.
 //! 2. **Authoring shapes** (`Shape::is_noop` at `Shapes::add`;
-//!    `Background::is_noop` at `Tree::open_node`) skip lowering work, which a
+//!    `Bg::is_noop` at `Tree::open_node`) skip lowering work, which a
 //!    payload-level gate cannot, since the work has already happened.
 //! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from the `draw_*`
 //!    gates) are the single correctness gate; callers do not pre-check.

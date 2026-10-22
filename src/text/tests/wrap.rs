@@ -324,17 +324,17 @@ fn cosmic_intrinsic_min_tracks_the_widest_unbreakable_segment() {
 #[test]
 fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     let mut text = TextSystem::cosmic();
-    let wid = WidgetId::from_hash("wrap-floor");
+    let widget_id = WidgetId::from_hash("wrap-floor");
     let content = "a extraordinarily b";
     let request = shape(16.0).leading(19.2).unbounded_request(content);
 
-    let plain = text.root(slot_at(wid, 0), request, TextWrap::Wrap);
+    let plain = text.root(slot_at(widget_id, 0), request, TextWrap::Wrap);
     assert_eq!(
         plain.intrinsic_min, None,
         "Wrap must not pay for a floor it never reads",
     );
 
-    let overflow = text.root(slot_at(wid, 1), request, TextWrap::WrapWithOverflow);
+    let overflow = text.root(slot_at(widget_id, 1), request, TextWrap::WrapWithOverflow);
     let floor = overflow.wrap_floor();
     assert_eq!(overflow.extent.size.w, 137.0);
     assert_eq!(
@@ -344,12 +344,12 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
     );
 
     let fresh = TextSystem::cosmic()
-        .root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow)
+        .root(slot_at(widget_id, 0), request, TextWrap::WrapWithOverflow)
         .wrap_floor();
     assert_eq!(floor, fresh, "backfilled floor must equal a fresh scan");
 
     // A policy change on the same slot is picked up too: the row's key is unchanged, so only the floor's absence triggers the refill.
-    let same_slot = text.root(slot_at(wid, 0), request, TextWrap::WrapWithOverflow);
+    let same_slot = text.root(slot_at(widget_id, 0), request, TextWrap::WrapWithOverflow);
     assert_eq!(same_slot.wrap_floor(), fresh, "same-slot policy change");
 
     // WrapWithOverflow floors its shaping width at the floor, so a committed width below it must be raised; a zero floor would lose that.
@@ -365,7 +365,7 @@ fn the_wrap_floor_is_scanned_on_demand_and_backfilled_for_a_later_policy() {
 fn a_probe_shapes_under_the_key_the_paint_committed() {
     let content = "a extraordinarily b";
     let params = shape(16.0).leading(19.2);
-    let wid = WidgetId::from_hash("probe-key-parity");
+    let widget_id = WidgetId::from_hash("probe-key-parity");
     let probed_width = 1.0;
 
     for (ordinal, wrap) in [
@@ -385,7 +385,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
         let request = params.unbounded_request(text);
         let painted = system
             .measure(
-                slot_at(wid, ordinal as u16),
+                slot_at(widget_id, ordinal as u16),
                 request,
                 RunBinding {
                     wrap,

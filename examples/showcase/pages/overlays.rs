@@ -67,7 +67,7 @@ fn popup_section(ui: &mut Ui, s: &mut State) {
                     .padding(6.0)
                     .gap(4.0)
                     .min_size((180.0, 0.0))
-                    .background(support::raised_bg())
+                    .bg(support::raised_bg())
                     .show(ui, |ui, close| {
                         for label in ["Copy", "Paste", "Delete"] {
                             if Button::new()
@@ -132,11 +132,11 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                 .padding(8.0)
                 .justify(Justify::Center)
                 .child_align(Align::CENTER)
-                .background(support::well_bg())
+                .bg(support::well_bg())
                 .show(ui, |ui| {
                     let target = Block::new()
                         .size((Sizing::fixed(140.0), Sizing::fixed(48.0)))
-                        .background(support::swatch_bg(support::A))
+                        .bg(support::swatch_bg(support::A))
                         .show(ui);
                     if s.anchored
                         && let Some(rect) = target.rect
@@ -150,7 +150,7 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                         Popup::new(anchor.with_align(s.align).with_gap(6.0))
                             .click_outside(ClickOutside::PassThrough)
                             .padding((10.0, 6.0))
-                            .background(support::raised_bg())
+                            .bg(support::raised_bg())
                             .show(ui, |ui, _| {
                                 Text::new("popup").style(&support::note_style()).show(ui);
                             });
@@ -263,7 +263,7 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
                         .size((Sizing::fixed(260.0), Sizing::fixed(90.0)))
                         .child_align(Align::CENTER)
                         .sense(Sense::CLICK)
-                        .background(support::raised_bg())
+                        .bg(support::raised_bg())
                         .show(ui, |ui| {
                             Text::new(label).style(&support::note_style()).show(ui);
                         })

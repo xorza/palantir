@@ -19,7 +19,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::domain::{self, vec2};
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::scene::bar_geometry::BarGeometry;
 use crate::scene::node::Node;
 use crate::scene::scrollbars_def::ScrollbarsDef;
@@ -113,13 +113,13 @@ impl ScrollWrappers {
             justify,
             align,
             child_align,
-            position,
+            pos,
             grid,
-            // Interaction only: an authored clip stays in `clip` until `Node::columns`.
+            // Interaction only: an authored clip stays in `clip` until `Node::cols`.
             flags,
             visibility,
             transform,
-            tab_index,
+            tab_idx,
         } = widget.node;
         debug_assert!(
             transform == TranslateScale::IDENTITY,
@@ -133,11 +133,11 @@ impl ScrollWrappers {
             max_size,
             margin,
             align,
-            position,
+            pos,
             grid,
             flags,
             visibility,
-            tab_index,
+            tab_idx,
             ..outer.node
         };
         let mut inner = Widget::scroll(axes);
@@ -177,7 +177,7 @@ pub struct Scroll<'a> {
     axes: ScrollAxes,
     style: Option<&'a ScrollbarTheme>,
     zoom: Option<ZoomConfig>,
-    chrome: Option<Background>,
+    chrome: Option<Bg>,
     bar_mode: BarMode,
     content_margin: Spacing,
     pan_request: Vec2,
@@ -392,9 +392,13 @@ impl<'a> Scroll<'a> {
     /// Fold one frame of routed input into the retained offset and zoom. Order
     /// matters: the pivot-anchored zoom moves the offset, so it runs before the pan,
     /// and the settled clamp applies only to a non-zoomable scroll.
-    fn apply_input(&self, state: &mut ScrollState, input: ScrollInput, geom: ScrollGeometry) {
+    fn apply_input(&self, state: &mut ScrollState, input: ScrollInput, geometry: ScrollGeometry) {
         if let (Some(cfg), Some(pivot)) = (self.zoom.as_ref(), input.pivot) {
-            state.apply_zoom(&cfg.range, pivot - geom.content_origin(), input.zoom_delta);
+            state.apply_zoom(
+                &cfg.range,
+                pivot - geometry.content_origin(),
+                input.zoom_delta,
+            );
         }
         let band = if self.zoom.is_some() {
             PanBand::ZoomRubberBand
@@ -402,13 +406,13 @@ impl<'a> Scroll<'a> {
             PanBand::Natural
         };
         state.apply_wheel_pan(WheelPan {
-            bounds: geom.bounds(),
+            bounds: geometry.bounds(),
             axes: self.axes,
             delta: input.pan_delta,
             band,
         });
         if band == PanBand::Natural {
-            state.clamp_to_natural(geom.bounds());
+            state.clamp_to_natural(geometry.bounds());
         }
     }
 
@@ -418,7 +422,7 @@ impl<'a> Scroll<'a> {
     fn wrappers(
         &self,
         scroll_id: WidgetId,
-        geom: ScrollGeometry,
+        geometry: ScrollGeometry,
         state: ScrollState,
     ) -> ScrollWrappers {
         // Inner owns the clip, pan transform, padding and `Scroll` layout mode. A `Hug`
@@ -430,8 +434,8 @@ impl<'a> Scroll<'a> {
         let mut inner = inner.id(scroll_id);
         inner
             .configure()
-            .margin(geom.bars.reserve)
-            .transform(state.transform(geom.content_inset()));
+            .margin(geometry.bars.reserve)
+            .transform(state.transform(geometry.content_inset()));
         ScrollWrappers { outer, inner }
     }
 
@@ -445,15 +449,15 @@ impl<'a> Scroll<'a> {
         let scroll_id = Self::viewport_id(id);
 
         let response = ui.response_for(id);
-        let geom = self.measure(ui, id, &response);
+        let geometry = self.measure(ui, id, &response);
         let input = self.read_input(ui, &response);
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
 
         let state = ui.with_state::<ScrollState, _>(id, |_, state| {
-            self.apply_input(state, input, geom);
+            self.apply_input(state, input, geometry);
             if let Some(bars) = &bars {
-                bars.drive(state, geom);
+                bars.drive(state, geometry);
             }
             *state
         });
@@ -467,19 +471,19 @@ impl<'a> Scroll<'a> {
             declared.set(Sense::SCROLL_Y, self.axes.pans(Axis::Y));
             declared
         } else {
-            state.wheel_sense(geom.bounds(), self.axes)
+            state.wheel_sense(geometry.bounds(), self.axes)
         };
         let sense = self.widget.authored_sense();
         self.widget
             .configure()
             .sense(sense.difference(Sense::SCROLL.difference(pans)));
 
-        let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, geom, state);
+        let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, geometry, state);
         let inner_chrome = self.chrome;
         let inner_value = outer.id(id).record(ui, None, |ui| {
             let inner_value = inner.record(ui, inner_chrome.as_ref(), body);
             if let Some(bars) = &bars {
-                bars.record(ui, geom.bars_at(&state));
+                bars.record(ui, geometry.bars_at(&state));
             }
             inner_value
         });
@@ -500,31 +504,31 @@ impl<'a> Scroll<'a> {
 }
 
 impl Scroll<'_> {
-    /// Paint `background` as the inner surface's chrome, under children and bars.
+    /// Paint `bg` as the inner surface's chrome, under children and bars.
     /// Unlike `Panel`/`Grid`/`Popup`, unset does not fall back to
-    /// `theme.panel_background`.
+    /// `theme.panel_bg`.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn background(mut self, background: Background) -> Self {
-        background.validate();
-        self.chrome = Some(background);
+    pub const fn bg(mut self, bg: Bg) -> Self {
+        bg.validate();
+        self.chrome = Some(bg);
         self
     }
 
-    /// Paint `background` unless the caller set one. An explicit [`Self::background`]
+    /// Paint `bg` unless the caller set one. An explicit [`Self::bg`]
     /// wins in either order.
     ///
     /// # Panics
     ///
-    /// Panics unless `background` holds the kinds [`Background`] lists.
+    /// Panics unless `bg` holds the kinds [`Bg`] lists.
     #[track_caller]
-    pub const fn default_background(mut self, background: Background) -> Self {
-        background.validate();
+    pub const fn default_bg(mut self, bg: Bg) -> Self {
+        bg.validate();
         if self.chrome.is_none() {
-            self.chrome = Some(background);
+            self.chrome = Some(bg);
         }
         self
     }

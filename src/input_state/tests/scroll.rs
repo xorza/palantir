@@ -33,8 +33,8 @@ fn on_input_accumulates_scroll_delta() {
 fn end_frame_clears_target_deltas_without_releasing_capacity() {
     let mut state = InputState::default();
     let cascade = Cascade::default();
-    for index in 0..8 {
-        state.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("scroll", index)));
+    for idx in 0..8 {
+        state.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("scroll", idx)));
         state.feed(InputEvent::ScrollPixels(Vec2::ONE));
     }
     assert_eq!(state.frame_target_deltas.len(), 8);
@@ -44,8 +44,8 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     assert!(state.frame_target_deltas.is_empty());
     assert_eq!(state.frame_target_deltas.capacity(), capacity);
 
-    for index in 0..8 {
-        state.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("next", index)));
+    for idx in 0..8 {
+        state.scroll_targets = ScrollTargets::both(WidgetId::from_hash(("next", idx)));
         state.feed(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
     }
     assert_eq!(state.frame_target_deltas.len(), 8);

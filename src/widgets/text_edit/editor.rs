@@ -150,7 +150,7 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) fn has_selection(&self) -> bool {
-        self.state.sel_range().is_some()
+        self.state.selection_range().is_some()
     }
 
     pub(super) const fn has_text(&self) -> bool {
@@ -294,13 +294,13 @@ impl<'a> Editor<'a> {
             Some(max) => {
                 let selected_chars = self
                     .state
-                    .sel_range()
+                    .selection_range()
                     .map_or(0, |range| self.text[range].chars().count());
-                let current_chars = *self
+                let cur_chars = *self
                     .state
                     .char_count
                     .get_or_insert_with(|| self.text.chars().count());
-                let chars_after_delete = current_chars - selected_chars;
+                let chars_after_delete = cur_chars - selected_chars;
                 let room = max.saturating_sub(chars_after_delete);
                 match s.char_indices().nth(room) {
                     Some((byte, _)) => &s[..byte],
@@ -324,7 +324,7 @@ impl<'a> Editor<'a> {
         }
         let range = self
             .state
-            .sel_range()
+            .selection_range()
             .unwrap_or(self.state.caret..self.state.caret);
         self.replace_range(range, fit, kind);
     }
@@ -345,14 +345,14 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) fn cut_selection(&mut self) {
-        let Some(r) = self.state.sel_range() else {
+        let Some(r) = self.state.selection_range() else {
             return;
         };
         self.replace_range(r, "", EditKind::Other);
     }
 
     pub(super) fn selected_text(&self) -> Option<&str> {
-        self.state.sel_range().map(|range| &self.text[range])
+        self.state.selection_range().map(|range| &self.text[range])
     }
 
     pub(super) fn clear(&mut self) {
@@ -431,7 +431,7 @@ impl<'a> Editor<'a> {
     }
 
     pub(super) fn delete_to_line_start(&mut self) {
-        let range = if let Some(range) = self.state.sel_range() {
+        let range = if let Some(range) = self.state.selection_range() {
             range
         } else {
             let caret = self.state.caret;
@@ -447,7 +447,7 @@ impl<'a> Editor<'a> {
         if self.state.selection.is_none() && self.state.caret == 0 {
             return;
         }
-        let range = if let Some(range) = self.state.sel_range() {
+        let range = if let Some(range) = self.state.selection_range() {
             range
         } else {
             let prev = prev_grapheme_boundary(self.text, self.state.caret);
@@ -460,7 +460,7 @@ impl<'a> Editor<'a> {
         if self.state.selection.is_none() && self.state.caret == self.text.len() {
             return;
         }
-        let range = if let Some(range) = self.state.sel_range() {
+        let range = if let Some(range) = self.state.selection_range() {
             range
         } else {
             let next = next_grapheme_boundary(self.text, self.state.caret);
@@ -471,7 +471,7 @@ impl<'a> Editor<'a> {
 
     pub(super) fn move_grapheme_left(&mut self, motion: CaretMove) {
         let target = if motion == CaretMove::Collapse
-            && let Some(range) = self.state.sel_range()
+            && let Some(range) = self.state.selection_range()
         {
             range.start
         } else {
@@ -482,7 +482,7 @@ impl<'a> Editor<'a> {
 
     pub(super) fn move_grapheme_right(&mut self, motion: CaretMove) {
         let target = if motion == CaretMove::Collapse
-            && let Some(range) = self.state.sel_range()
+            && let Some(range) = self.state.selection_range()
         {
             range.end
         } else {

@@ -3,7 +3,7 @@
 //!
 //! Widgets register one via `Ui::add_shape_animated`; the encoder samples it at
 //! paint time and folds the [`PaintMod`] into the shape's brush.
-//! `Forest::min_paint_anim_wake` (called by `FrameCycle::run`) feeds each
+//! `Forest::min_paint_animation_wake` (called by `FrameCycle::run`) feeds each
 //! `next_wake` to the wake queue, so widgets never call `request_repaint_after`
 //! for them.
 //!
@@ -22,11 +22,11 @@ const CURSOR_END: u64 = u64::MAX;
 
 /// One row per registered paint animation.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PaintAnimEntry {
-    pub(crate) anim: PaintAnimation,
+pub(crate) struct PaintAnimationEntry {
+    pub(crate) animation: PaintAnimation,
     /// Index into `Tree::shapes.records`. Strictly increasing across
-    /// [`PaintAnims::entries`] (append-only recording), which enables
-    /// [`PaintAnims::rotates`]'s binary search and [`PaintAnimCursor`].
+    /// [`PaintAnimations::entries`] (append-only recording), which enables
+    /// [`PaintAnimations::rotates`]'s binary search and [`PaintAnimationCursor`].
     pub(crate) shape_idx: u32,
     /// Paint-arena row of the shape inside its owner's `node_spans` span, from
     /// `OpenFrame::paint_rows` at registration, so damage can index
@@ -38,19 +38,19 @@ pub(crate) struct PaintAnimEntry {
 
 /// Per-tree sparse paint-animation registry, cleared per frame.
 #[derive(Debug, Default)]
-pub(crate) struct PaintAnims {
+pub(crate) struct PaintAnimations {
     /// Live entries in registration (shape) order, so `shape_idx` increases.
-    pub(crate) entries: Vec<PaintAnimEntry>,
+    pub(crate) entries: Vec<PaintAnimationEntry>,
 }
 
-impl PaintAnims {
+impl PaintAnimations {
     /// Reset for a fresh recording frame; capacity retained.
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
     }
 
     /// Register one animation against the shape it was recorded on.
-    pub(crate) fn push_entry(&mut self, entry: PaintAnimEntry) {
+    pub(crate) fn push_entry(&mut self, entry: PaintAnimationEntry) {
         debug_assert!(
             self.entries
                 .last()
@@ -65,11 +65,11 @@ impl PaintAnims {
     pub(crate) fn rotates(&self, shape_idx: u32) -> bool {
         self.entries
             .binary_search_by_key(&shape_idx, |entry| entry.shape_idx)
-            .is_ok_and(|i| self.entries[i].anim.rotates())
+            .is_ok_and(|i| self.entries[i].animation.rotates())
     }
 
-    pub(crate) fn cursor(&self) -> PaintAnimCursor<'_> {
-        PaintAnimCursor {
+    pub(crate) fn cursor(&self) -> PaintAnimationCursor<'_> {
+        PaintAnimationCursor {
             entries: &self.entries,
             next: 0,
             next_shape: next_shape(&self.entries, 0),
@@ -81,7 +81,7 @@ impl PaintAnims {
 
 /// `entries[next]`'s shape index, or [`CURSOR_END`] past the last row.
 #[inline]
-fn next_shape(entries: &[PaintAnimEntry], next: usize) -> u64 {
+fn next_shape(entries: &[PaintAnimationEntry], next: usize) -> u64 {
     entries
         .get(next)
         .map_or(CURSOR_END, |entry| u64::from(entry.shape_idx))
@@ -89,8 +89,8 @@ fn next_shape(entries: &[PaintAnimEntry], next: usize) -> u64 {
 
 /// Monotonic encoder lookup over the sparse animation rows.
 #[derive(Debug)]
-pub(crate) struct PaintAnimCursor<'a> {
-    entries: &'a [PaintAnimEntry],
+pub(crate) struct PaintAnimationCursor<'a> {
+    entries: &'a [PaintAnimationEntry],
     next: usize,
     next_shape: u64,
     /// Previous [`Self::sample`] argument, checking monotonicity in debug. A
@@ -100,7 +100,7 @@ pub(crate) struct PaintAnimCursor<'a> {
     last_sampled: Option<u32>,
 }
 
-impl PaintAnimCursor<'_> {
+impl PaintAnimationCursor<'_> {
     /// `shape_idx` must increase between calls. Jumps are allowed because
     /// viewport and damage culling can skip whole shape ranges.
     #[inline]
@@ -128,7 +128,7 @@ impl PaintAnimCursor<'_> {
         }
         let entry = self.entries[self.next];
         self.advance();
-        entry.anim.sample(now)
+        entry.animation.sample(now)
     }
 
     #[inline]

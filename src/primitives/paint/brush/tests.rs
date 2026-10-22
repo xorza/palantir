@@ -121,16 +121,16 @@ fn solid_is_noop_iff_color_is_noop() {
 /// Two through `MAX_STOPS` stops hold at every door: `GradientStops::new`, a gradient's builder (rejects a ninth, too few at `build`), its `new`, and deserialization.
 #[test]
 fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
-    let offset = |index: usize, count: usize| index as f32 / count.max(1) as f32;
+    let offset = |idx: usize, count: usize| idx as f32 / count.max(1) as f32;
     let stops = |count: usize| {
         (0..count)
-            .map(|index| Stop::new(offset(index, count), RgbaF32::WHITE))
+            .map(|idx| Stop::new(offset(idx, count), RgbaF32::WHITE))
             .collect::<Vec<_>>()
     };
     let serialized = |count: usize| {
         let mut document = String::from("(stops: [");
-        for index in 0..count {
-            let offset = offset(index, count);
+        for idx in 0..count {
+            let offset = offset(idx, count);
             write!(document, "(offset: {offset}, color: \"#ffffff\"),").unwrap();
         }
         document.push_str("])");
@@ -138,8 +138,8 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
     };
     let built = |count: usize| {
         let mut builder = LinearGradient::builder(0.0);
-        for index in 0..count {
-            builder = builder.stop(offset(index, count), RgbaF32::WHITE);
+        for idx in 0..count {
+            builder = builder.stop(offset(idx, count), RgbaF32::WHITE);
         }
         builder.build()
     };
@@ -358,10 +358,10 @@ fn linear_brush_animatable_snaps_on_t_one() {
     assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
 }
 
-fn assert_spring_normalizes_to_target(mut current: Brush, target: &Brush) {
+fn assert_spring_normalizes_to_target(mut cur: Brush, target: &Brush) {
     let mut velocity = Brush::Solid(RgbaF32::srgba(0.25, -0.5, 0.75, 1.0));
-    current.normalize_for_spring(target, &mut velocity);
-    assert_eq!(current, *target);
+    cur.normalize_for_spring(target, &mut velocity);
+    assert_eq!(cur, *target);
     assert_eq!(velocity, Brush::TRANSPARENT);
 }
 

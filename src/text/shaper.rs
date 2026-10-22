@@ -282,7 +282,7 @@ impl TextShaper {
     /// [`GpuView`](crate::GpuView) labeling a 3D scene) take this one lease. Holding
     /// it across anything on [`Ui`](crate::Ui) that measures text borrows the
     /// `RefCell` twice and panics, so take it inside the view's paint and drop it
-    /// there. Reached through [`GpuInitContext`](crate::GpuInitContext).
+    /// there. Reached through [`GpuInitCtx`](crate::GpuInitCtx).
     pub fn glyphs(&self) -> TextGlyphs<'_> {
         TextGlyphs::new(RefMut::map(self.shared.inner.borrow_mut(), |inner| {
             &mut inner.cosmic

@@ -24,7 +24,7 @@ impl RepaintScissors {
             Damage::Partial(damage) => {
                 let mut rects = ArrayVec::new();
                 for r in damage.region.iter_rects() {
-                    if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
+                    if let Some(s) = logical_rect_to_physical_scissor(r, buffer) {
                         rects.push(s);
                     }
                 }
@@ -68,9 +68,9 @@ impl<'a> IntoIterator for &'a PartialScissors {
 }
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded by [`RenderPlan::AA_PADDING`] and clamped to the viewport; `None` if it clamps to zero area.
-fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
-    let phys = r.scaled_by(buffer.display.scale_factor(), EdgeRounding::WholePixels);
-    let padded = phys.inflated(RenderPlan::AA_PADDING as f32);
+fn logical_rect_to_physical_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
+    let scaled = r.scaled_by(buffer.display.scale_factor(), EdgeRounding::WholePixels);
+    let padded = scaled.inflated(RenderPlan::AA_PADDING as f32);
     let physical = buffer.display.physical;
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
 }

@@ -2,7 +2,7 @@
 
 /// How a node clips its descendants' paint.
 ///
-/// `Rounded` clips to the node's `Background.radius` and needs a backend stencil pass, so apps that never use it pay nothing.
+/// `Rounded` clips to the node's `Bg.radius` and needs a backend stencil pass, so apps that never use it pay nothing.
 #[derive(
     Clone,
     Copy,

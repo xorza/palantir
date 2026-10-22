@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use glam::UVec2;
 use palantir::{
-    Configure, GpuFrameContext, GpuInitContext, GpuPaint, GpuView, Panel, Sizing, TranslateScale,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale,
 };
 
 use crate::fixtures;
@@ -63,7 +63,7 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
-    fn init(&mut self, ctx: &GpuInitContext<'_>) {
+    fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),
@@ -109,13 +109,13 @@ impl GpuPaint for DepthTriangle {
         );
     }
 
-    fn paint(&mut self, ctx: &mut GpuFrameContext<'_>) {
+    fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         self.last_size = ctx.physical_size;
         self.last_display_scale = ctx.display_scale;
         self.last_raster_scale = ctx.raster_scale;
         // Depth matches the target size (`physical_size`), like the cube.
         if self.depth.is_none() || self.depth_size != ctx.physical_size {
-            let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("visual.gpu_view.tri.depth"),
                 size: wgpu::Extent3d {
                     width: ctx.physical_size.x.max(1),
@@ -129,7 +129,7 @@ impl GpuPaint for DepthTriangle {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             });
-            self.depth = Some(tex.create_view(&wgpu::TextureViewDescriptor::default()));
+            self.depth = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
             self.depth_size = ctx.physical_size;
         }
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

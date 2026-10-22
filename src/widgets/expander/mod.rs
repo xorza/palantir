@@ -166,7 +166,7 @@ impl<'a> Expander<'a> {
                 Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
-            header.record(ui, Some(&look.background), |ui| {
+            header.record(ui, Some(&look.bg), |ui| {
                 let arrow_box = Widget::leaf()
                     .id(header_id.with("arrow"))
                     .size((Sizing::fixed(t.arrow_size.x), Sizing::fixed(t.arrow_size.y)));
@@ -228,12 +228,12 @@ impl<'a> Expander<'a> {
         // Written only on a change, so an unopened section mints no row (the
         // probe-don't-insert path `ComboBox` takes); an absent row *is* the
         // resolved state, hence the comparison against it.
-        let current = stored.unwrap_or(ExpanderState {
+        let cur = stored.unwrap_or(ExpanderState {
             open: was_open,
             height: None,
             shown: false,
         });
-        if current != row {
+        if cur != row {
             ui.with_state::<ExpanderState, _>(header_id, |_, s| *s = row);
         }
 

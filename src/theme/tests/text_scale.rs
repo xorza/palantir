@@ -90,8 +90,8 @@ fn scale_text_reaches_every_font_size() {
             }
             (Value::Seq(before), Value::Seq(after)) => {
                 assert_eq!(before.len(), after.len(), "seq len changed at {path}");
-                for (index, (before, after)) in before.iter().zip(after).enumerate() {
-                    walk(&format!("{path}[{index}]"), before, after);
+                for (idx, (before, after)) in before.iter().zip(after).enumerate() {
+                    walk(&format!("{path}[{idx}]"), before, after);
                 }
             }
             (Value::Number(before), Value::Number(after)) if path.ends_with("font_size") => {

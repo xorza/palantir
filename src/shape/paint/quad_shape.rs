@@ -32,7 +32,7 @@ pub(crate) enum QuadShape {
     /// Gaussian-blurred rounded rect (drop or inset shadow). `local_rect =
     /// None` shadows the owner's arranged rect; the composer shifts a drop
     /// shadow by `offset` and inflates it by its
-    /// [halo](crate::shape::paint::lowered_shadow::ShadowGeom::halo).
+    /// [halo](crate::shape::paint::lowered_shadow::ShadowGeometry::halo).
     Shadow {
         local_rect: Option<Rect>,
         corners: Corners,

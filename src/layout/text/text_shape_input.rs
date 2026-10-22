@@ -105,8 +105,8 @@ fn text_shape_input<'a>(
     }
 }
 
-fn checked_text_ordinal(index: usize) -> u16 {
-    u16::try_from(index).expect(
+fn checked_text_ordinal(idx: usize) -> u16 {
+    u16::try_from(idx).expect(
         "more than 65536 direct ShapeRecord::Text runs on one node; \
          widen the within-node ordinal width if this trips",
     )

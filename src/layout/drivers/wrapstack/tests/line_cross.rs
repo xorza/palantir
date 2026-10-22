@@ -6,7 +6,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
@@ -131,7 +131,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 Block::new()
                     .id(WidgetId::from_hash("filler"))
                     .size((Sizing::fixed(100.0), Sizing::FILL))
-                    .background(Background::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                     .show(ui);
             });
     });
@@ -150,7 +150,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
     struct Case {
         label: &'static str,
         floors: &'static [f32],
-        expected_cross_positions: &'static [f32],
+        expected_cross_poss: &'static [f32],
         expected_cross_sizes: &'static [f32],
         expected_wrap_cross: f32,
     }
@@ -159,14 +159,14 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
         Case {
             label: "one_line",
             floors: &[20.0, 30.0],
-            expected_cross_positions: &[0.0, 0.0],
+            expected_cross_poss: &[0.0, 0.0],
             expected_cross_sizes: &[30.0, 30.0],
             expected_wrap_cross: 30.0,
         },
         Case {
             label: "two_lines",
             floors: &[20.0, 30.0, 40.0],
-            expected_cross_positions: &[0.0, 0.0, 37.0],
+            expected_cross_poss: &[0.0, 0.0, 37.0],
             expected_cross_sizes: &[30.0, 30.0, 40.0],
             expected_wrap_cross: 77.0,
         },
@@ -183,9 +183,9 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                     .gap(5.0)
                     .line_gap(7.0)
                     .show(ui, |ui| {
-                        for (index, floor) in case.floors.iter().enumerate() {
+                        for (idx, floor) in case.floors.iter().enumerate() {
                             FillCrossCell {
-                                id: ["fill-a", "fill-b", "fill-c"][index],
+                                id: ["fill-a", "fill-b", "fill-c"][idx],
                                 axis,
                                 main: 60.0,
                             }
@@ -207,7 +207,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                 "{axis:?} {} wrap cross",
                 case.label
             );
-            for (index, name) in ["fill-a", "fill-b", "fill-c"]
+            for (idx, name) in ["fill-a", "fill-b", "fill-c"]
                 .iter()
                 .enumerate()
                 .take(case.floors.len())
@@ -215,26 +215,26 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
                 let rect = h.arranged(WidgetId::from_hash(name));
                 assert_eq!(
                     axis.main_v(rect.min),
-                    [0.0, 65.0, 0.0][index],
-                    "{axis:?} {} child {index} main position",
+                    [0.0, 65.0, 0.0][idx],
+                    "{axis:?} {} child {idx} main position",
                     case.label
                 );
                 assert_eq!(
                     axis.cross_v(rect.min),
-                    case.expected_cross_positions[index],
-                    "{axis:?} {} child {index} cross position",
+                    case.expected_cross_poss[idx],
+                    "{axis:?} {} child {idx} cross position",
                     case.label
                 );
                 assert_eq!(
                     axis.main(rect.size),
                     60.0,
-                    "{axis:?} {} child {index} main size",
+                    "{axis:?} {} child {idx} main size",
                     case.label
                 );
                 assert_eq!(
                     axis.cross(rect.size),
-                    case.expected_cross_sizes[index],
-                    "{axis:?} {} child {index} cross size",
+                    case.expected_cross_sizes[idx],
+                    "{axis:?} {} child {idx} cross size",
                     case.label
                 );
             }

@@ -39,7 +39,7 @@ impl Table {
 #[derive(Debug, Default)]
 pub(super) struct Reference {
     counters: WidgetIdMap<u32>,
-    curr: Table,
+    cur: Table,
     prev: Table,
     pending: Vec<(WidgetId, WidgetId)>,
     discarded: WidgetIdSet,
@@ -50,17 +50,17 @@ impl Reference {
         self.counters.clear();
         let prev = &self.prev;
         self.discarded.extend(
-            self.curr
+            self.cur
                 .recorded()
                 .map(|(id, _)| id)
                 .filter(|&id| prev.endpoint(id).is_none()),
         );
-        self.curr.clear();
+        self.cur.clear();
         self.pending.clear();
     }
 
     pub(super) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
-        self.curr.endpoint(id)
+        self.cur.endpoint(id)
     }
 
     pub(super) fn last_frame_endpoint(&self, id: WidgetId) -> Option<Endpoint> {
@@ -68,12 +68,12 @@ impl Reference {
     }
 
     pub(super) fn recorded(&self) -> Vec<(WidgetId, Endpoint)> {
-        self.curr.recorded().collect()
+        self.cur.recorded().collect()
     }
 
     pub(super) fn resolve(&mut self, raw_id: WidgetId, kind: IdKind) -> ResolvedId {
-        if let Some(&entry) = self.curr.index.get(&raw_id) {
-            if kind == IdKind::Explicit && self.curr.entries[entry].endpoint.is_none() {
+        if let Some(&entry) = self.cur.index.get(&raw_id) {
+            if kind == IdKind::Explicit && self.cur.entries[entry].endpoint.is_none() {
                 return ResolvedId {
                     id: raw_id,
                     entry: entry as u32,
@@ -86,7 +86,7 @@ impl Reference {
         let final_id = loop {
             count += 1;
             let candidate = raw_id.with(count);
-            if !self.curr.index.contains_key(&candidate) {
+            if !self.cur.index.contains_key(&candidate) {
                 break candidate;
             }
         };
@@ -98,9 +98,9 @@ impl Reference {
     }
 
     fn reserve(&mut self, id: WidgetId) -> ResolvedId {
-        let entry = self.curr.entries.len();
-        self.curr.index.insert(id, entry);
-        self.curr.entries.push(Entry { id, endpoint: None });
+        let entry = self.cur.entries.len();
+        self.cur.index.insert(id, entry);
+        self.cur.entries.push(Entry { id, endpoint: None });
         ResolvedId {
             id,
             entry: entry as u32,
@@ -113,7 +113,7 @@ impl Reference {
         endpoint: Endpoint,
     ) -> Option<CollisionRecord> {
         let id = resolved.id();
-        let entry = &mut self.curr.entries[resolved.entry as usize];
+        let entry = &mut self.cur.entries[resolved.entry as usize];
         assert_eq!(*entry, Entry { id, endpoint: None });
         entry.endpoint = Some(endpoint);
         let (idx, record) =
@@ -139,7 +139,7 @@ impl Reference {
     pub(super) fn rollover(&mut self) -> WidgetIdSet {
         let mut removed = WidgetIdSet::default();
         for (id, _) in self.prev.recorded() {
-            if self.curr.endpoint(id).is_none() {
+            if self.cur.endpoint(id).is_none() {
                 removed.insert(id);
             }
         }
@@ -148,13 +148,13 @@ impl Reference {
             reason = "the ids go into a set, so the order changes nothing"
         )]
         for &id in &self.discarded {
-            if self.curr.endpoint(id).is_none() {
+            if self.cur.endpoint(id).is_none() {
                 removed.insert(id);
             }
         }
         self.discarded.clear();
-        mem::swap(&mut self.curr, &mut self.prev);
-        self.curr.clear();
+        mem::swap(&mut self.cur, &mut self.prev);
+        self.cur.clear();
         removed
     }
 }

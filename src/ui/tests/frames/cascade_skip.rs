@@ -2,7 +2,7 @@
 
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::text::font_scope::internals::INTER;
@@ -89,8 +89,8 @@ fn the_key_covers_authoring_input_classes() {
         );
     }
 
-    fn bg(r: f32, g: f32, b: f32) -> Background {
-        Background::fill(RgbaF32::srgb(r, g, b))
+    fn bg(r: f32, g: f32, b: f32) -> Bg {
+        Bg::fill(RgbaF32::srgb(r, g, b))
     }
 
     assert_reruns(
@@ -115,8 +115,8 @@ fn the_key_covers_authoring_input_classes() {
     );
     assert_reruns(
         "chrome",
-        |ui| probe(ui, |f| f.background(bg(0.2, 0.4, 0.8))),
-        |ui| probe(ui, |f| f.background(bg(0.8, 0.2, 0.2))),
+        |ui| probe(ui, |f| f.bg(bg(0.2, 0.4, 0.8))),
+        |ui| probe(ui, |f| f.bg(bg(0.8, 0.2, 0.2))),
     );
 }
 
@@ -156,7 +156,7 @@ fn the_key_covers_layer_and_root_identity() {
             Block::new()
                 .id(WidgetId::from_hash(key))
                 .size(20.0)
-                .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                 .show(ui);
         });
     }

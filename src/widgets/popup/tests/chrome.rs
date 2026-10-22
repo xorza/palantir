@@ -3,7 +3,7 @@
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
@@ -25,13 +25,13 @@ fn the_theme_panel_is_the_last_resort() {
         ("neither", |p| p, theme_fill),
         (
             "default only",
-            |p| p.default_background(Background::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
+            |p| p.default_bg(Bg::fill(RgbaF32::srgb(0.9, 0.1, 0.1))),
             default_fill,
         ),
     ];
     for (label, build, want) in cases {
         let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().panel_background = Some(Background::fill(theme_fill));
+        h.ui.theme_mut().panel_bg = Some(Bg::fill(theme_fill));
         h.frame(|ui| {
             build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });

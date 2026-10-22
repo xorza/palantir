@@ -136,7 +136,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
 
     h.ui().frame_runtime_mut().repaint_wakes.push(Wake {
         deadline: Duration::from_millis(32),
-        reasons: WakeReasons::ANIM,
+        reasons: WakeReasons::ANIMATION,
     });
     let processing = h
         .at(Duration::from_millis(32))

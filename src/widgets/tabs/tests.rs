@@ -467,9 +467,9 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
         TabbedView::new(page, &PAGES)
             .id(view)
             .closable(false)
-            .show(ui, |ui, index| {
-                *drawn = index;
-                Text::new(PAGES[index]).id_salt("body").show(ui);
+            .show(ui, |ui, idx| {
+                *drawn = idx;
+                Text::new(PAGES[idx]).id_salt("body").show(ui);
             })
             .action
     };
@@ -481,7 +481,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     let strip = view.with("strip");
     h.click_on(TabStrip::chip_id(strip, 2));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
-    assert_eq!(action, Some(TabsAction::Activated { index: 2 }));
+    assert_eq!(action, Some(TabsAction::Activated { idx: 2 }));
     assert_eq!(
         (page, drawn),
         (2, 2),
@@ -504,7 +504,7 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     h.frame(|ui| {
         TabbedView::new(&mut page, &PAGES)
             .id(view)
-            .show(ui, |_, index| drawn = Some(index));
+            .show(ui, |_, idx| drawn = Some(idx));
     });
     assert_eq!((page, drawn), (7, Some(2)));
 
@@ -513,7 +513,7 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     h.frame(|ui| {
         TabbedView::new(&mut page, &no_tabs)
             .id(view)
-            .show(ui, |_, index| drawn = Some(index));
+            .show(ui, |_, idx| drawn = Some(idx));
     });
     assert_eq!((page, drawn), (7, None));
     assert!(
@@ -666,18 +666,14 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
 /// Where an index lands when `from` moves into gap `to`, for pages [A, B, C, D].
 #[test]
 fn a_move_carries_every_index_with_its_page() {
-    use crate::widgets::tabs::tabbed_view::internals::moved_index;
+    use crate::widgets::tabs::tabbed_view::internals::moved_idx;
     for (from, to, before, after) in [
         (0, 4, [0, 1, 2, 3], [3, 0, 1, 2]),
         (3, 0, [0, 1, 2, 3], [1, 2, 3, 0]),
         (1, 3, [0, 1, 2, 3], [0, 2, 1, 3]),
     ] {
-        for (index, want) in before.into_iter().zip(after) {
-            assert_eq!(
-                moved_index(index, from, to),
-                want,
-                "{from} into {to}: {index}"
-            );
+        for (idx, want) in before.into_iter().zip(after) {
+            assert_eq!(moved_idx(idx, from, to), want, "{from} into {to}: {idx}");
         }
     }
 }

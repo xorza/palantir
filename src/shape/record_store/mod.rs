@@ -50,7 +50,7 @@ pub(crate) struct RecordStore {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MeshSpans {
     pub(crate) vertices: Span,
-    pub(crate) indices: Span,
+    pub(crate) idxs: Span,
 }
 
 /// Where [`RecordStore::stage_polyline`] put one polyline's geometry.
@@ -139,9 +139,9 @@ impl RecordStore {
         let meshes = &mut self.meshes;
         let vertices = Span::new(meshes.vertices.len() as u32, mesh.vertices.len() as u32);
         meshes.vertices.extend_from_slice(&mesh.vertices);
-        let indices = Span::new(meshes.indices.len() as u32, mesh.indices.len() as u32);
-        meshes.indices.extend_from_slice(&mesh.indices);
-        MeshSpans { vertices, indices }
+        let idxs = Span::new(meshes.idxs.len() as u32, mesh.idxs.len() as u32);
+        meshes.idxs.extend_from_slice(&mesh.idxs);
+        MeshSpans { vertices, idxs }
     }
 
     /// Copy one polyline's points and colors in, each color multiplied by `tint`

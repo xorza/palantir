@@ -53,7 +53,7 @@ const NAMES: &[tracy_client::FrameName] = &[
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameSet {
     #[cfg(feature = "profile-with-tracy")]
-    index: usize,
+    idx: usize,
 }
 
 #[cfg(feature = "winit")]
@@ -69,7 +69,7 @@ impl FrameSet {
     pub(crate) fn claim() -> Self {
         Self {
             #[cfg(feature = "profile-with-tracy")]
-            index: {
+            idx: {
                 static CLAIMED: std::sync::atomic::AtomicUsize =
                     std::sync::atomic::AtomicUsize::new(0);
                 CLAIMED
@@ -90,7 +90,7 @@ impl FrameSet {
         #[cfg(feature = "profile-with-tracy")]
         tracy_client::Client::running()
             .expect("secondary_frame_mark without a running Client")
-            .secondary_frame_mark(NAMES[self.index]);
+            .secondary_frame_mark(NAMES[self.idx]);
     }
 }
 

@@ -45,7 +45,7 @@ fn render(h: &mut Harness, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaI
 fn pane(ui: &mut Ui, at: Rect, image: ImageShape) {
     Panel::zstack()
         .id_salt(("pane", at.min.x as i32))
-        .position(at.min)
+        .pos(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| ui.add_shape(image));
 }
@@ -449,13 +449,13 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     let mut h = Harness::new();
     let handles = SOURCES.map(|texel| load(&mut h, &[texel]));
     let out = render(&mut h, UVec2::new(192, 32), |ui| {
-        for (pane_index, &source) in PATTERN.iter().enumerate() {
+        for (pane_idx, &source) in PATTERN.iter().enumerate() {
             let image = filled(&handles[source])
                 .min_filter(ImageFilter::Linear)
                 .mag_filter(ImageFilter::Linear);
             pane(
                 ui,
-                Rect::new(pane_index as f32 * PANE, 0.0, PANE, PANE),
+                Rect::new(pane_idx as f32 * PANE, 0.0, PANE, PANE),
                 image,
             );
         }

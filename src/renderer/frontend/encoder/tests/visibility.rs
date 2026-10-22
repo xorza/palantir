@@ -5,7 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
 use crate::ui::Ui;
@@ -19,7 +19,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let v_color = RgbaF32::srgb(1.0, 0.0, 0.0);
     let d_color = RgbaF32::srgb(0.0, 1.0, 0.0);
     let h_color = RgbaF32::srgb(0.0, 0.0, 1.0);
-    let xform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
+    let transform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
 
     let surface = UVec2::new(400, 400);
     let build = |ui: &mut Ui| {
@@ -30,22 +30,22 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .id(WidgetId::from_hash("mid"))
                     .size(200.0)
                     .clip_rect()
-                    .transform(xform)
+                    .transform(transform)
                     .show(ui, |ui| {
                         let v = Block::new()
                             .id(WidgetId::from_hash("V"))
-                            .position((0.0, 0.0))
+                            .pos((0.0, 0.0))
                             .size(30.0)
-                            .background(Background::fill(v_color))
+                            .bg(Bg::fill(v_color))
                             .sense(Sense::CLICK)
                             .show(ui)
                             .left
                             .clicked();
                         let d = Block::new()
                             .id(WidgetId::from_hash("D"))
-                            .position((40.0, 0.0))
+                            .pos((40.0, 0.0))
                             .size(30.0)
-                            .background(Background::fill(d_color))
+                            .bg(Bg::fill(d_color))
                             .sense(Sense::CLICK)
                             .disabled(true)
                             .show(ui)
@@ -53,9 +53,9 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .clicked();
                         let h = Block::new()
                             .id(WidgetId::from_hash("H"))
-                            .position((80.0, 0.0))
+                            .pos((80.0, 0.0))
                             .size(30.0)
-                            .background(Background::fill(h_color))
+                            .bg(Bg::fill(h_color))
                             .sense(Sense::CLICK)
                             .hidden()
                             .show(ui)
@@ -125,7 +125,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                 Block::new()
                     .auto_id()
                     .size(Sizing::fixed(40.0))
-                    .background(Background::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .bg(Bg::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui)
                     .node()
             })

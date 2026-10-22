@@ -6,7 +6,7 @@ use crate::display::user_scale::UserScale;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -42,7 +42,7 @@ pub(super) fn one_frame(ui: &mut Ui, color: RgbaF32) {
             Block::new()
                 .id(WidgetId::from_hash("a"))
                 .size(50.0)
-                .background(Background::fill(color))
+                .bg(Bg::fill(color))
                 .show(ui);
         });
 }

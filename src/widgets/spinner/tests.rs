@@ -74,14 +74,14 @@ fn arc_and_spin_follow_the_spinner_theme() {
             })
             .expect("spinner records one arc");
         let speed = tree
-            .paint_anims
+            .paint_animations
             .entries
             .iter()
             .find_map(|e| {
-                e.anim
+                e.animation
                     .channel
                     .turn
-                    .map(|_| TAU / e.anim.timing.period.as_secs_f32())
+                    .map(|_| TAU / e.animation.timing.period.as_secs_f32())
             })
             .expect("spinner registers a turning anim");
         Recorded {

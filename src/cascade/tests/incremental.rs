@@ -1,13 +1,13 @@
 //! The incremental walk against a full one, and the gates that bust reuse.
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
-use crate::cascade::engine::CascadeContext;
+use crate::cascade::engine::CascadeCtx;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::color::RgbaF32;
 
 use crate::internals::ui_harness::UiHarness;
@@ -30,9 +30,9 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
     use crate::primitives::math::domain::EPS;
 
     let hash = |transform, rect| {
-        let prefix = CascadeContext {
+        let prefix = CascadeCtx {
             transform,
-            ..CascadeContext::ROOT
+            ..CascadeCtx::ROOT
         }
         .prefix();
         CascadeInputHash::finish(&prefix, rect, false)
@@ -57,14 +57,14 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
 #[test]
 fn incremental_matches_full_across_cascade_input_classes() {
     use crate::primitives::layout::visibility::Visibility;
-    use crate::primitives::paint::background::Background;
+    use crate::primitives::paint::bg::Bg;
     use crate::widgets::block::Block;
 
     fn colored_frame(ui: &mut Ui, color: RgbaF32) {
         Block::new()
             .id(WidgetId::from_hash("paint"))
             .size(50.0)
-            .background(Background::fill(color))
+            .bg(Bg::fill(color))
             .show(ui);
     }
 
@@ -102,8 +102,8 @@ fn incremental_matches_full_across_cascade_input_classes() {
             .id(WidgetId::from_hash("shape-count"))
             .size(100.0)
             .show(ui, |ui| {
-                for index in 0..count {
-                    let offset = index as f32 * 10.0;
+                for idx in 0..count {
+                    let offset = idx as f32 * 10.0;
                     ui.add_shape(
                         Shape::line(
                             Vec2::splat(offset),
@@ -133,7 +133,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
                 Block::new()
                     .id(WidgetId::from_hash("overflow"))
                     .size(50.0)
-                    .position((80.0, 0.0))
+                    .pos((80.0, 0.0))
                     .show(ui);
             });
     }
@@ -296,13 +296,13 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         size: f32,
         transformed: bool,
         disabled: bool,
-        tab_index: i16,
+        tab_idx: i16,
     }
     const BASE: Scene = Scene {
         size: 100.0,
         transformed: false,
         disabled: false,
-        tab_index: 0,
+        tab_idx: 0,
     };
     fn scene(ui: &mut Ui, s: Scene) {
         Panel::vstack()
@@ -316,9 +316,9 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
                 Panel::vstack()
                     .id(WidgetId::from_hash("body"))
                     .size((Sizing::fixed(s.size), Sizing::fixed(40.0)))
-                    .background(Background::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
+                    .bg(Bg::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                     .focusable(true)
-                    .tab_index(s.tab_index)
+                    .tab_idx(s.tab_idx)
                     .disabled(s.disabled)
                     .show(ui, |_| {});
             });
@@ -345,10 +345,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         disabled: true,
         ..BASE
     };
-    const TAB_INDEXED: Scene = Scene {
-        tab_index: 3,
-        ..BASE
-    };
+    const TAB_INDEXED: Scene = Scene { tab_idx: 3, ..BASE };
     let mutations: &[Mutation] = &[
         ("resized child", Path::Refresh, |h| {
             h.frame(|ui| scene(ui, RESIZED));
@@ -453,8 +450,8 @@ fn refresh_recomputes_only_what_moved() {
                                 Block::new()
                                     .id_salt((name, k))
                                     .size(size)
-                                    .position((f32::from(k) * 30.0, 0.0))
-                                    .background(Background::fill(RgbaF32::WHITE))
+                                    .pos((f32::from(k) * 30.0, 0.0))
+                                    .bg(Bg::fill(RgbaF32::WHITE))
                                     .show(ui);
                             }
                         });
@@ -517,12 +514,12 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     for layer in Layer::PAINT_ORDER {
         let widget_ids = ui.tree(layer).records.widget_id();
         id_count += widget_ids.len();
-        for (index, wid) in widget_ids.iter().copied().enumerate() {
+        for (idx, widget_id) in widget_ids.iter().copied().enumerate() {
             assert_eq!(
-                ui.cascade().by_id[&wid],
+                ui.cascade().by_id[&widget_id],
                 Endpoint {
                     layer,
-                    node: NodeId(index as u32),
+                    node: NodeId(idx as u32),
                 },
                 "{label}: {layer:?} by-id endpoint"
             );

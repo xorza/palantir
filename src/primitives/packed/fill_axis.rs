@@ -11,7 +11,7 @@ use crate::primitives::packed::half_simd::F16x4;
 pub(crate) struct FillAxis(F16x4);
 
 impl From<F16x4> for FillAxis {
-    /// Adopts an already-packed word: the inset-shadow axis is `LoweredShadow::geom_f16`, skipping an f16 round trip.
+    /// Adopts an already-packed word: the inset-shadow axis is `LoweredShadow::geometry_f16`, skipping an f16 round trip.
     #[inline]
     fn from(lanes: F16x4) -> Self {
         Self(lanes)

@@ -15,7 +15,7 @@ pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 pub(super) struct ChangedLeg {
     /// Span covering this frame's paints: `prev_span` reused when the row count is stable, a fresh block otherwise.
     pub(super) span: Span,
-    /// True when some pair of matched rows swapped relative order. Answered here because [`RowMatcher::matched_positions`] is retained scratch and on the fast path still holds an earlier node's answer.
+    /// True when some pair of matched rows swapped relative order. Answered here because [`RowMatcher::matched_poss`] is retained scratch and on the fast path still holds an earlier node's answer.
     pub(super) order_inverted: bool,
 }
 
@@ -28,7 +28,7 @@ pub(super) struct RowMatcher {
     matched_pos: Vec<u32>,
     /// `(key, row)` for each side's unclaimed rows, sorted: sort-and-merge keeps the all-rows-shifted case at O(n log n).
     prev_keyed: Vec<(PaintKey, u32)>,
-    curr_keyed: Vec<(PaintKey, u32)>,
+    cur_keyed: Vec<(PaintKey, u32)>,
 }
 
 /// One node's paint rows across the frame boundary: the arena block holding last
@@ -36,17 +36,17 @@ pub(super) struct RowMatcher {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PaintsChange<'a> {
     pub(super) prev: Span,
-    pub(super) curr: &'a [Paint],
+    pub(super) cur: &'a [Paint],
 }
 
 impl RowMatcher {
     /// Prev row each curr row paired with on the last [`Self::diff_changed_leg`], `ROW_UNMATCHED` where none. Only read under [`ChangedLeg::order_inverted`], which no fast-path call sets.
     #[inline]
-    pub(super) fn matched_positions(&self) -> &[u32] {
+    pub(super) fn matched_poss(&self) -> &[u32] {
         &self.matched_pos
     }
 
-    /// Per-paint diff leg for the changed-paints arm, from the block `change.prev` names to `change.curr`.
+    /// Per-paint diff leg for the changed-paints arm, from the block `change.prev` names to `change.cur`.
     ///
     /// Fast path: a bit-identical positional match emits no damage and reuses the span.
     ///
@@ -61,30 +61,30 @@ impl RowMatcher {
     ) -> ChangedLeg {
         let PaintsChange {
             prev: prev_span,
-            curr: curr_paints,
+            cur: cur_paints,
         } = change;
         let prev_len = prev_span.len as usize;
         let prev = &paints.slots[prev_span.range()];
 
-        if prev_len == curr_paints.len() && prev.iter().zip(curr_paints).all(|(p, c)| p == c) {
+        if prev_len == cur_paints.len() && prev.iter().zip(cur_paints).all(|(p, c)| p == c) {
             return ChangedLeg {
                 span: prev_span,
                 order_inverted: false,
             };
         }
 
-        self.reset_for(prev, curr_paints);
-        self.claim_exact(prev, curr_paints);
-        self.emit_moves_and_adds(out, prev, curr_paints);
+        self.reset_for(prev, cur_paints);
+        self.claim_exact(prev, cur_paints);
+        self.emit_moves_and_adds(out, prev, cur_paints);
         self.emit_removals(out, prev);
 
-        let span = if prev_len == curr_paints.len() {
-            paints.slots[prev_span.range()].copy_from_slice(curr_paints);
+        let span = if prev_len == cur_paints.len() {
+            paints.slots[prev_span.range()].copy_from_slice(cur_paints);
             prev_span
         } else {
-            // Release before take so a count that moved within its size class reclaims its own block and a toggling shape never grows the arena. `curr_paints` is the cascade's buffer, so no aliasing.
+            // Release before take so a count that moved within its size class reclaims its own block and a toggling shape never grows the arena. `cur_paints` is the cascade's buffer, so no aliasing.
             paints.release(prev_span);
-            paints.store(curr_paints)
+            paints.store(cur_paints)
         };
         ChangedLeg {
             span,
@@ -95,49 +95,49 @@ impl RowMatcher {
     /// Phase 1: reset, claim every same-index bit-identical pair, and key the rest.
     ///
     /// Leaves both keyed lists sorted by `(key, row)`: ascending rows claim ascending indices, and hash-major `PaintKey` lets [`Self::emit_moves_and_adds`] re-merge on hash alone.
-    fn reset_for(&mut self, prev: &[Paint], curr: &[Paint]) {
+    fn reset_for(&mut self, prev: &[Paint], cur: &[Paint]) {
         self.prev_matched.clear();
         self.prev_matched.resize(prev.len(), false);
         self.matched_pos.clear();
-        self.matched_pos.resize(curr.len(), ROW_UNMATCHED);
+        self.matched_pos.resize(cur.len(), ROW_UNMATCHED);
         self.prev_keyed.clear();
-        self.curr_keyed.clear();
+        self.cur_keyed.clear();
 
-        let shared = prev.len().min(curr.len());
+        let shared = prev.len().min(cur.len());
         for row in 0..shared {
-            let (p, c) = (prev[row], curr[row]);
+            let (p, c) = (prev[row], cur[row]);
             if p == c {
                 self.prev_matched[row] = true;
                 self.matched_pos[row] = row as u32;
             } else {
                 self.prev_keyed.push((PaintKey::of(&p), row as u32));
-                self.curr_keyed.push((PaintKey::of(&c), row as u32));
+                self.cur_keyed.push((PaintKey::of(&c), row as u32));
             }
         }
         for (offset, p) in prev[shared..].iter().enumerate() {
             self.prev_keyed
                 .push((PaintKey::of(p), (shared + offset) as u32));
         }
-        for (offset, c) in curr[shared..].iter().enumerate() {
-            self.curr_keyed
+        for (offset, c) in cur[shared..].iter().enumerate() {
+            self.cur_keyed
                 .push((PaintKey::of(c), (shared + offset) as u32));
         }
         self.prev_keyed.sort_unstable();
-        self.curr_keyed.sort_unstable();
+        self.cur_keyed.sort_unstable();
     }
 
     /// Phase 2: exact `(screen, hash)` pairs anywhere in the span. Emits no damage. Needs the sorted lists from [`Self::reset_for`].
-    fn claim_exact(&mut self, prev: &[Paint], curr: &[Paint]) {
+    fn claim_exact(&mut self, prev: &[Paint], cur: &[Paint]) {
         let (mut pi, mut ci) = (0, 0);
-        while pi < self.prev_keyed.len() && ci < self.curr_keyed.len() {
+        while pi < self.prev_keyed.len() && ci < self.cur_keyed.len() {
             let (pk, prow) = self.prev_keyed[pi];
-            let (ck, crow) = self.curr_keyed[ci];
+            let (ck, crow) = self.cur_keyed[ci];
             match pk.cmp(&ck) {
                 Ordering::Less => pi += 1,
                 Ordering::Greater => ci += 1,
                 Ordering::Equal => {
                     // Key-equal means bit-equal (modulo -0.0), but NaN screens are never `==`.
-                    if prev[prow as usize] == curr[crow as usize] {
+                    if prev[prow as usize] == cur[crow as usize] {
                         self.prev_matched[prow as usize] = true;
                         self.matched_pos[crow as usize] = prow;
                         ci += 1;
@@ -150,10 +150,10 @@ impl RowMatcher {
 
     /// Phase 3: a curr row sharing a prev row's `hash` is the same shape moved, so both rects are damaged; one with no partner is an add and damages only its own rect.
     ///
-    /// Requires `curr_keyed` sorted hash-major, so one never-reset forward cursor over `prev_keyed` serves every curr row. Child markers have zero screens and are dropped by [`damage::push_screen`].
-    fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], curr: &[Paint]) {
+    /// Requires `cur_keyed` sorted hash-major, so one never-reset forward cursor over `prev_keyed` serves every curr row. Child markers have zero screens and are dropped by [`damage::push_screen`].
+    fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], cur: &[Paint]) {
         let mut pi = 0;
-        for &(ck, crow) in &self.curr_keyed {
+        for &(ck, crow) in &self.cur_keyed {
             if self.matched_pos[crow as usize] != ROW_UNMATCHED {
                 continue;
             }
@@ -168,11 +168,11 @@ impl RowMatcher {
             match self.prev_keyed.get(pi) {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
                     damage::push_screen(out, prev[prow as usize].screen);
-                    damage::push_screen(out, curr[crow as usize].screen);
+                    damage::push_screen(out, cur[crow as usize].screen);
                     self.prev_matched[prow as usize] = true;
                     pi += 1;
                 }
-                _ => damage::push_screen(out, curr[crow as usize].screen),
+                _ => damage::push_screen(out, cur[crow as usize].screen),
             }
         }
     }
@@ -230,12 +230,12 @@ pub(crate) mod internals {
                 prev_matched,
                 matched_pos,
                 prev_keyed,
-                curr_keyed,
+                cur_keyed,
             } = self;
             scratch_report::vec_bytes(prev_matched)
                 + scratch_report::vec_bytes(matched_pos)
                 + scratch_report::vec_bytes(prev_keyed)
-                + scratch_report::vec_bytes(curr_keyed)
+                + scratch_report::vec_bytes(cur_keyed)
         }
     }
 }

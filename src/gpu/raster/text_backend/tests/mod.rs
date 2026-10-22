@@ -52,7 +52,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
     rig.frame(2.0, &[&runs]);
     drop(shaper_borrow);
 
-    let cf = rig.backend.pass.atlas.current_frame;
+    let cf = rig.backend.pass.atlas.cur_frame;
     let stale: Vec<u64> = rig
         .backend
         .pass
@@ -64,7 +64,7 @@ fn cached_run_keeps_its_atlas_slots_live() {
         .collect();
     assert!(
         stale.is_empty(),
-        "cache-hit frame left slots stale: last_use {stale:?} != current_frame {cf}",
+        "cache-hit frame left slots stale: last_use {stale:?} != cur_frame {cf}",
     );
     for (_, span) in rig.backend.encoder.cache().resident_rows() {
         for glyph in rig.backend.encoder.cache().templates(span) {
@@ -293,7 +293,7 @@ fn both_caches_age_on_one_clock_including_text_free_frames() {
             "a text-free frame must still advance the shared clock",
         );
         assert_eq!(
-            rig.backend.pass.atlas.current_frame,
+            rig.backend.pass.atlas.cur_frame,
             rig.shaper.frame(),
             "the atlas must track the shaper's clock, not its own count",
         );
@@ -347,10 +347,10 @@ fn swept_empty_glyph_reinserts() {
         1,
         "the space rasterizes to one zero-area entry"
     );
-    let first_frame = rig.backend.pass.atlas.current_frame;
+    let first_frame = rig.backend.pass.atlas.cur_frame;
     rig.backend.tick_frame();
     assert_eq!(
-        rig.backend.pass.atlas.current_frame,
+        rig.backend.pass.atlas.cur_frame,
         first_frame + 1,
         "a prepared zero-instance batch must still advance cache aging",
     );
@@ -358,7 +358,7 @@ fn swept_empty_glyph_reinserts() {
     // The space was rasterized on frame 0, so its ticket falls due at
     // `unallocated_dies_at(0)`; advance one frame past it with text frames that
     // never touch the space.
-    while rig.backend.pass.atlas.current_frame < unallocated_dies_at(0) + 1 {
+    while rig.backend.pass.atlas.cur_frame < unallocated_dies_at(0) + 1 {
         rig.frame(1.0, &[&[]]);
         rig.backend.tick_frame();
     }

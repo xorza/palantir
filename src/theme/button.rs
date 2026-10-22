@@ -3,7 +3,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::background::Background;
+use crate::primitives::paint::bg::Bg;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
@@ -30,28 +30,27 @@ impl ButtonTheme {
     /// The standard button recipe over `p`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`.
     pub fn from_palette(p: &Palette) -> Self {
         let bg = |fill: RgbaF32| {
-            Background::rounded(fill, Corners::all(4.0))
-                .with_border(Stroke::new(p.border_soft(), 1.0))
+            Bg::rounded(fill, Corners::all(4.0)).with_border(Stroke::new(p.border_soft(), 1.0))
         };
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
-        let pressed_bg = Background::rounded(p.element_strong, Corners::all(4.0))
+        let pressed_bg = Bg::rounded(p.element_strong, Corners::all(4.0))
             .with_border(Stroke::new(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    background: bg(p.element_mid),
+                    bg: bg(p.element_mid),
                     text: TextStyleOverrides::NONE,
                 },
                 hovered: WidgetLook {
-                    background: bg(p.element_strong),
+                    bg: bg(p.element_strong),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    background: pressed_bg,
+                    bg: pressed_bg,
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
-                    background: bg(p.element),
+                    bg: bg(p.element),
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
@@ -75,7 +74,7 @@ impl ButtonTheme {
     /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
-            background: Background::rounded(fill, Corners::all(4.0)),
+            bg: Bg::rounded(fill, Corners::all(4.0)),
             text: TextStyleOverrides::NONE,
         };
         Self {

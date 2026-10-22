@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     let mut text = TextSystem::cosmic();
-    let wid = WidgetId::from_hash("fitting truncate");
+    let widget_id = WidgetId::from_hash("fitting truncate");
     let fitting = shape(16.0).width(200.0).halign(HAlign::Center);
 
     // `capped_w` is the run's Inter width once cut to the 20 px bound. Ellipsis is narrower than Truncate because its "…" must fit inside the same bound.
@@ -11,7 +11,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
         (0u16, TextWrap::Truncate, 17.0),
         (1, TextWrap::Ellipsis, 14.0),
     ] {
-        let run_slot = slot_at(wid, ordinal);
+        let run_slot = slot_at(widget_id, ordinal);
         let fit = wrap.line_fit().unwrap();
         let natural = text.shape_run(run_slot, "ok", fitting.unbounded(), wrap);
         let calls = text.shaper().measure_calls();
@@ -44,7 +44,7 @@ fn fitting_truncate_returns_the_unbounded_root_without_reshaping() {
     }
 
     // A multi-line source collapses to its first line under Clip/Ellipsis, so the unbounded root can't stand in even when its widest line fits.
-    let multiline = text.shape_run(slot_at(wid, 2), "a\nb", fitting, TextWrap::Ellipsis);
+    let multiline = text.shape_run(slot_at(widget_id, 2), "a\nb", fitting, TextWrap::Ellipsis);
     let bounded_key = fitting.request("a\nb", LineFit::Ellipsis).key();
     assert_eq!(
         multiline.buffer_key(),
@@ -494,7 +494,7 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
         );
         assert_eq!(r.size.w, width, "{fit:?}");
         let newline = text.find('\n').unwrap();
-        for g in glyph_positions(&c, r.buffer_key()) {
+        for g in glyph_poss(&c, r.buffer_key()) {
             assert!(
                 g.start < newline,
                 "{fit:?} kept a glyph from the second paragraph (byte {})",

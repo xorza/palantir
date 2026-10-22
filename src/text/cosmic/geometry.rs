@@ -100,11 +100,11 @@ impl SegmentScratch {
             order.clear();
             order.extend(0..run.glyphs.len());
             // The index breaks ties without the allocation a stable sort needs.
-            order.sort_unstable_by_key(|&index| (run.glyphs[index].start, index));
+            order.sort_unstable_by_key(|&idx| (run.glyphs[idx].start, idx));
             let mut segment_w = 0.0_f32;
             let mut trailing_ws_w = 0.0_f32;
-            for &index in order.iter() {
-                let g = &run.glyphs[index];
+            for &idx in order.iter() {
+                let g = &run.glyphs[idx];
                 if breaks.binary_search(&g.start).is_ok() {
                     intrinsic_min = intrinsic_min.max(segment_w);
                     segment_w = 0.0;

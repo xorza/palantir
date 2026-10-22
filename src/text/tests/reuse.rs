@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn identity_cache_is_keyed_by_actual_shaping_inputs() {
     let mut text = TextSystem::mono();
-    let wid = WidgetId::from_hash("a");
-    let run_slot = slot(wid);
+    let widget_id = WidgetId::from_hash("a");
+    let run_slot = slot(widget_id);
     let compact = shape(16.0);
     let r1 = text.shape_run(run_slot, "hi", compact, TextWrap::SingleLine);
     let calls = text.shaper().measure_calls();
@@ -53,22 +53,27 @@ fn identity_cache_is_keyed_by_actual_shaping_inputs() {
 #[test]
 fn identity_cache_refreshes_stale_unbounded_and_bounded_results() {
     let mut text = TextSystem::mono();
-    let wid = WidgetId::from_hash("a");
+    let widget_id = WidgetId::from_hash("a");
     let params = shape(16.0);
 
-    let old = text.shape_run(slot(wid), "hi", params, TextWrap::SingleLine);
+    let old = text.shape_run(slot(widget_id), "hi", params, TextWrap::SingleLine);
     assert_eq!(old.size, Size::new(16.0, 16.0));
     assert_eq!(
-        text.shape_run(slot(wid), "hi", params.width(32.0), TextWrap::Wrap)
+        text.shape_run(slot(widget_id), "hi", params.width(32.0), TextWrap::Wrap)
             .size,
         Size::new(16.0, 16.0),
     );
 
-    let current = text.shape_run(slot(wid), "abcdefgh", params, TextWrap::SingleLine);
-    assert_eq!(current.size, Size::new(64.0, 16.0));
+    let cur = text.shape_run(slot(widget_id), "abcdefgh", params, TextWrap::SingleLine);
+    assert_eq!(cur.size, Size::new(64.0, 16.0));
     assert_eq!(
-        text.shape_run(slot(wid), "abcdefgh", params.width(32.0), TextWrap::Wrap)
-            .size,
+        text.shape_run(
+            slot(widget_id),
+            "abcdefgh",
+            params.width(32.0),
+            TextWrap::Wrap
+        )
+        .size,
         Size::new(32.0, 32.0),
     );
 }
@@ -301,11 +306,11 @@ fn a_shrinking_widget_loses_the_rows_above_its_run_count() {
 #[test]
 fn scrolled_away_run_keeps_the_protected_window() {
     let mut text = TextSystem::cosmic();
-    let wid = WidgetId::from_hash("scrolled row");
-    let key = text.drive_visible(slot(wid), "row content", 200.0);
+    let widget_id = WidgetId::from_hash("scrolled row");
+    let key = text.drive_visible(slot(widget_id), "row content", 200.0);
     frame_end(&mut text);
 
-    frame_end_removing(&mut text, &WidgetIdSet::from_iter([wid]));
+    frame_end_removing(&mut text, &WidgetIdSet::from_iter([widget_id]));
     idle(&mut text, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 2);
     assert!(
         text.shaper().has_cosmic_buffer(key),
@@ -314,7 +319,7 @@ fn scrolled_away_run_keeps_the_protected_window() {
 
     // Back in view: the bounded buffer is still resident, so only the unbounded root reshapes (the reuse row caches its value, not a buffer).
     let before = text.shaper().cache_counts();
-    let again = text.drive(slot(wid), "row content", 200.0);
+    let again = text.drive(slot(widget_id), "row content", 200.0);
     assert_eq!(again, key);
     assert_eq!(
         (text.shaper().cache_counts() - before).shapes,
@@ -331,7 +336,10 @@ fn scrolled_away_run_keeps_the_protected_window() {
         "premise: the window lapsed"
     );
     let before = text.shaper().cache_counts();
-    assert_eq!(text.drive_visible(slot(wid), "row content", 200.0), key);
+    assert_eq!(
+        text.drive_visible(slot(widget_id), "row content", 200.0),
+        key
+    );
     assert_eq!(
         (text.shaper().cache_counts() - before).shapes,
         1,
