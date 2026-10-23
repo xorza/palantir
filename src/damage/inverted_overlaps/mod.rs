@@ -1,7 +1,7 @@
 //! Damage for items whose relative paint order flipped.
 
+use crate::common::non_max_u32::NonMaxU32;
 use crate::damage;
-use crate::damage::row_matcher::ROW_UNMATCHED;
 use crate::primitives::geometry::rect::Rect;
 
 /// For each item, damages where it overlaps the items that painted before it now but after it last frame, whose stacking flipped.
@@ -16,25 +16,25 @@ pub(crate) struct InvertedOverlaps {
 }
 
 impl InvertedOverlaps {
-    /// Damage into `out` the inversions among items whose last-frame positions are `matched` ([`ROW_UNMATCHED`] if absent) and whose extents are `extents`, both in this frame's paint order.
-    pub(crate) fn push(&mut self, out: &mut Vec<Rect>, matched: &[u32], extents: &[Rect]) {
+    /// Damage into `out` the inversions among items whose last-frame positions are `matched` (`None` if absent) and whose extents are `extents`, both in this frame's paint order.
+    pub(crate) fn push(
+        &mut self,
+        out: &mut Vec<Rect>,
+        matched: &[Option<NonMaxU32>],
+        extents: &[Rect],
+    ) {
         debug_assert_eq!(matched.len(), extents.len());
-        let Some(last) = matched
-            .iter()
-            .copied()
-            .filter(|&p| p != ROW_UNMATCHED)
-            .max()
-        else {
+        let Some(last) = matched.iter().flatten().map(|pos| pos.get()).max() else {
             return;
         };
         self.unions.clear();
         self.unions.resize(last as usize + 2, Rect::ZERO);
         for (&pos, &extent) in matched.iter().zip(extents) {
-            if pos == ROW_UNMATCHED {
+            let Some(pos) = pos else {
                 continue;
-            }
+            };
             // Reversed, so items that came later last frame are a prefix.
-            let reversed = (last - pos) as usize;
+            let reversed = (last - pos.get()) as usize;
             damage::push_screen(out, extent.clamp_to(self.prefix(reversed)));
             self.add(reversed, extent);
         }

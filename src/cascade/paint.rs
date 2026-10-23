@@ -4,6 +4,8 @@
 
 use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
+use crate::common::non_max_u32;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 
@@ -27,15 +29,15 @@ impl BlockSlot for Paint {
     /// measurably cost cache density on `damage/workload/shape_churn_*`.
     const GRANULE: u32 = 1;
 
-    fn free_link(next: u32) -> Self {
+    fn free_link(next: Option<NonMaxU32>) -> Self {
         Self {
             screen: Rect::ZERO,
-            hash: ContentHash(u64::from(next)),
+            hash: ContentHash(u64::from(non_max_u32::to_raw(next))),
         }
     }
 
-    fn next_free(self) -> u32 {
-        self.hash.0 as u32
+    fn next_free(self) -> Option<NonMaxU32> {
+        NonMaxU32::from_raw(self.hash.0 as u32)
     }
 }
 

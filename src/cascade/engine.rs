@@ -15,6 +15,7 @@ use crate::cascade::rows::root_row::RootRow;
 use crate::cascade::rows::scope_row::ScopeRow;
 use crate::cascade::rows::tab_stop_row::TabStopRow;
 use crate::common::hash::Hasher;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::tracy;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -110,7 +111,7 @@ impl RowSink for TreeSink<'_> {
                 idx: tree.bounds(NodeId(iu as u32)).tab_idx,
             });
         }
-        lc.hit_rows[iu] = if sense != Sense::NONE || focusable {
+        lc.hit_rows[iu] = (sense != Sense::NONE || focusable).then(|| {
             self.hits.push(HitRow {
                 rect: rows.visible_rect,
                 widget_id: id,
@@ -118,10 +119,8 @@ impl RowSink for TreeSink<'_> {
                 focusable,
                 disabled: rows.disabled,
             });
-            (self.hits.len() - 1) as u32
-        } else {
-            LayerCascade::NO_HIT_ROW
-        };
+            NonMaxU32::index(self.hits.len() - 1)
+        });
         let filter = if keyboard_off {
             KeyFilter::NONE
         } else {
@@ -153,9 +152,8 @@ impl RowSink for TreePatch<'_> {
     #[inline]
     fn emit(&mut self, _tree: &Tree, lc: &mut LayerCascade, rows: NodeRows) {
         self.entries[rows.node] = rows.entry();
-        let hit = lc.hit_rows[rows.node];
-        if hit != LayerCascade::NO_HIT_ROW {
-            self.hits[hit as usize].rect = rows.visible_rect;
+        if let Some(hit) = lc.hit_rows[rows.node] {
+            self.hits[hit.idx()].rect = rows.visible_rect;
         }
     }
 }

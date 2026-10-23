@@ -1,6 +1,6 @@
 //! Intrusive most-recently-used list over gradient atlas row ids.
 //!
-//! Two `u32` columns indexed by row. Rows `1..capacity` are members for the
+//! Two link columns indexed by row. Rows `1..capacity` are members for the
 //! atlas's whole life (only moved, never inserted or removed), so
 //! [`MruList::touch`] needs no "is it linked?" branch. Row 0 is the permanent
 //! magenta fallback and is never a member.
@@ -14,19 +14,16 @@
 //! [`CpuGradientAtlas::register`]:
 //!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
 
-/// Absent link; no real row id equals it because rows are bounded by
-/// [`MAX_ATLAS_ROWS`](crate::renderer::gradient_atlas::MAX_ATLAS_ROWS). See
-/// [`crate::common::block_arena`] for why its free lists use a separate constant.
-const NIL: u32 = u32::MAX;
+use crate::common::non_max_u32::NonMaxU32;
 
 #[derive(Debug)]
 pub(super) struct MruList {
-    /// Toward the head (more recently used), `NIL` at the head. Slot 0 unused.
-    prev: Vec<u32>,
-    /// Toward the tail (less recently used), `NIL` at the tail. Slot 0 unused.
-    next: Vec<u32>,
-    head: u32,
-    tail: u32,
+    /// Toward the head (more recently used), `None` at the head. Slot 0 unused.
+    prev: Vec<Option<NonMaxU32>>,
+    /// Toward the tail (less recently used), `None` at the tail. Slot 0 unused.
+    next: Vec<Option<NonMaxU32>>,
+    head: Option<NonMaxU32>,
+    tail: Option<NonMaxU32>,
 }
 
 impl MruList {
@@ -36,25 +33,24 @@ impl MruList {
         let mut list = Self {
             prev: Vec::new(),
             next: Vec::new(),
-            head: NIL,
-            tail: NIL,
+            head: None,
+            tail: None,
         };
         list.extend_to(1, capacity);
         list
     }
 
-    pub(super) fn tail(&self) -> u32 {
-        debug_assert_ne!(self.tail, NIL, "MRU list is empty");
-        self.tail
+    pub(super) const fn tail(&self) -> u32 {
+        self.tail.expect("MRU list is empty").get()
     }
 
     /// Link rows `first..end` behind the tail, largest id first. New rows hold no
     /// gradient, so they sit at the eviction end and are claimed first.
     pub(super) fn extend_to(&mut self, first: u32, end: u32) {
-        self.prev.resize(end as usize, NIL);
-        self.next.resize(end as usize, NIL);
+        self.prev.resize(end as usize, None);
+        self.next.resize(end as usize, None);
         for row in (first..end).rev() {
-            self.push_back(row);
+            self.push_back(NonMaxU32::index(row as usize));
         }
     }
 
@@ -64,33 +60,34 @@ impl MruList {
             row != 0 && (row as usize) < self.next.len(),
             "row {row} is not an MRU member",
         );
-        if self.head == row {
+        let row = NonMaxU32::index(row as usize);
+        if self.head == Some(row) {
             return;
         }
         self.unlink(row);
         self.push_front(row);
     }
 
-    fn unlink(&mut self, row: u32) {
-        let (prev, next) = (self.prev[row as usize], self.next[row as usize]);
+    fn unlink(&mut self, row: NonMaxU32) {
+        let (prev, next) = (self.prev[row.idx()], self.next[row.idx()]);
         match prev {
-            NIL => self.head = next,
-            prev => self.next[prev as usize] = next,
+            None => self.head = next,
+            Some(prev) => self.next[prev.idx()] = next,
         }
         match next {
-            NIL => self.tail = prev,
-            next => self.prev[next as usize] = prev,
+            None => self.tail = prev,
+            Some(next) => self.prev[next.idx()] = prev,
         }
     }
 
-    fn push_front(&mut self, row: u32) {
-        self.prev[row as usize] = NIL;
-        self.next[row as usize] = self.head;
+    fn push_front(&mut self, row: NonMaxU32) {
+        self.prev[row.idx()] = None;
+        self.next[row.idx()] = self.head;
         match self.head {
-            NIL => self.tail = row,
-            head => self.prev[head as usize] = row,
+            None => self.tail = Some(row),
+            Some(head) => self.prev[head.idx()] = Some(row),
         }
-        self.head = row;
+        self.head = Some(row);
     }
 
     /// Every `next` has a matching `prev`, the walk ends at the recorded tail and
@@ -102,30 +99,30 @@ impl MruList {
     pub(super) fn is_well_formed(&self) -> bool {
         let members = self.next.len().saturating_sub(1);
         let mut seen = 0usize;
-        let mut prev = NIL;
-        let mut row = self.head;
-        while row != NIL {
-            if row == 0 || self.prev[row as usize] != prev {
+        let mut prev = None;
+        let mut cursor = self.head;
+        while let Some(row) = cursor {
+            if row.get() == 0 || self.prev[row.idx()] != prev {
                 return false;
             }
             seen += 1;
             if seen > members {
                 return false;
             }
-            prev = row;
-            row = self.next[row as usize];
+            prev = Some(row);
+            cursor = self.next[row.idx()];
         }
         seen == members && self.tail == prev
     }
 
-    fn push_back(&mut self, row: u32) {
-        self.next[row as usize] = NIL;
-        self.prev[row as usize] = self.tail;
+    fn push_back(&mut self, row: NonMaxU32) {
+        self.next[row.idx()] = None;
+        self.prev[row.idx()] = self.tail;
         match self.tail {
-            NIL => self.head = row,
-            tail => self.next[tail as usize] = row,
+            None => self.head = Some(row),
+            Some(tail) => self.next[tail.idx()] = Some(row),
         }
-        self.tail = row;
+        self.tail = Some(row);
     }
 }
 
@@ -138,10 +135,10 @@ pub(crate) mod internals {
         /// [`MruList::is_well_formed`] to cover `prev`.
         pub(crate) fn to_vec(&self) -> Vec<u32> {
             let mut out = Vec::new();
-            let mut row = self.head;
-            while row != NIL {
-                out.push(row);
-                row = self.next[row as usize];
+            let mut cursor = self.head;
+            while let Some(row) = cursor {
+                out.push(row.get());
+                cursor = self.next[row.idx()];
             }
             out
         }

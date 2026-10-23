@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
+use crate::common::non_max_u32;
 
 /// The cheapest thing satisfying the trait: the link is the whole
 /// element, so a test can read a slot back and say what it holds.
@@ -13,12 +14,12 @@ impl BlockSlot for Slot {
     /// `Paint`'s granule of one is covered by the damage tests.
     const GRANULE: u32 = 4;
 
-    fn free_link(next: u32) -> Self {
-        Self(next)
+    fn free_link(next: Option<NonMaxU32>) -> Self {
+        Self(non_max_u32::to_raw(next))
     }
 
-    fn next_free(self) -> u32 {
-        self.0
+    fn next_free(self) -> Option<NonMaxU32> {
+        NonMaxU32::from_raw(self.0)
     }
 }
 

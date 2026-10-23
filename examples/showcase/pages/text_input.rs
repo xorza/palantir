@@ -6,7 +6,8 @@ use crate::support;
 use crate::support::{INK, Section, api};
 use palantir::widget::Span;
 use palantir::{
-    Align, Configure, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
+    Align, Configure, EditEnd, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign,
+    WidgetId, fmt,
 };
 
 #[derive(Debug)]
@@ -81,8 +82,8 @@ impl EventLog {
         for (fired, edge) in [
             (r.focus_gained, Edge::FocusGained),
             (r.changed, Edge::Changed),
-            (r.submitted, Edge::Submitted),
-            (r.canceled, Edge::Canceled),
+            (r.ended == Some(EditEnd::Submitted), Edge::Submitted),
+            (r.ended == Some(EditEnd::Canceled), Edge::Canceled),
             (r.committed, Edge::Committed),
             (r.focus_lost, Edge::FocusLost),
         ] {

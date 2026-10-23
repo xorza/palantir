@@ -7,6 +7,7 @@
 mod action;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+pub(crate) mod edit_end;
 mod edit_state;
 mod editor;
 mod input_pass;
@@ -41,6 +42,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
+use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::edit_state::{EditKind, EditState};
 use crate::widgets::text_edit::editor::{EditRules, Editor};
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
@@ -76,21 +78,21 @@ struct TextEditState {
 struct CommitPass {
     focus: FocusEdges,
     changed: bool,
-    submitted: bool,
-    canceled: bool,
+    ended: Option<EditEnd>,
     disabled: bool,
 }
 
 impl TextEditState {
     const fn roll_commit(&mut self, pass: CommitPass) -> bool {
-        if pass.disabled || pass.canceled {
+        if pass.disabled || matches!(pass.ended, Some(EditEnd::Canceled)) {
             self.commit_pending = false;
             return false;
         }
         if pass.focus.gained || pass.changed {
             self.commit_pending = true;
         }
-        let committed = pass.submitted || (pass.focus.lost && self.commit_pending);
+        let committed = matches!(pass.ended, Some(EditEnd::Submitted))
+            || (pass.focus.lost && self.commit_pending);
         if committed || pass.focus.lost {
             self.commit_pending = false;
         }
@@ -287,8 +289,7 @@ impl<'a> TextEdit<'a> {
             response: Response::new(id, ui, signals.state),
             changed: signals.changed,
             committed: signals.committed,
-            submitted: signals.submitted,
-            canceled: signals.canceled,
+            ended: signals.ended,
             focus_gained: signals.focus_gained,
             focus_lost: signals.focus_lost,
         }
@@ -334,8 +335,7 @@ impl<'a> TextEdit<'a> {
             let committed = state.roll_commit(CommitPass {
                 focus,
                 changed: false,
-                submitted: false,
-                canceled: false,
+                ended: None,
                 disabled: response.disabled,
             });
             let sense = self.widget.authored_sense();
@@ -376,11 +376,7 @@ impl<'a> TextEdit<'a> {
         // displaces the caret still resets the blink.
         let caret_before = state.edit.caret;
         let selection_before = state.edit.selection;
-        let InputResult {
-            canceled,
-            submitted,
-            edited,
-        } = InputPass {
+        let InputResult { ended, edited } = InputPass {
             resp_state: &response,
             is_focused,
             text: self.text,
@@ -393,7 +389,7 @@ impl<'a> TextEdit<'a> {
             state,
         }
         .run(ui);
-        if canceled {
+        if ended == Some(EditEnd::Canceled) {
             ui.clear_focus();
             is_focused = false;
             response.focused = false;
@@ -437,8 +433,7 @@ impl<'a> TextEdit<'a> {
         let committed = state.roll_commit(CommitPass {
             focus,
             changed,
-            submitted,
-            canceled,
+            ended,
             disabled: response.disabled,
         });
         let caret_moved =
@@ -557,8 +552,7 @@ impl<'a> TextEdit<'a> {
         EditSignals {
             changed,
             committed,
-            submitted,
-            canceled,
+            ended,
             focus_gained: focus.gained,
             focus_lost: focus.lost,
             state: response,
@@ -579,8 +573,7 @@ impl Configure for TextEdit<'_> {
 struct EditSignals {
     changed: bool,
     committed: bool,
-    submitted: bool,
-    canceled: bool,
+    ended: Option<EditEnd>,
     focus_gained: bool,
     focus_lost: bool,
     state: ResponseState,
@@ -591,8 +584,7 @@ impl EditSignals {
         Self {
             changed: false,
             committed,
-            submitted: false,
-            canceled: false,
+            ended: None,
             focus_gained: focus.gained,
             focus_lost: focus.lost,
             state,
@@ -613,12 +605,10 @@ pub struct TextEditResponse<'a> {
     /// single-line editor or on the blur ending a focus session, never on Escape or a
     /// blur because the editor turned disabled. A session commits once.
     pub committed: bool,
-    /// Enter pressed in a single-line editor (the accept signal). Always `false` in multi-line
-    /// mode.
-    pub submitted: bool,
-    /// Escape pressed with no selection left to collapse (the cancel signal). It
-    /// also blurs, so [`Self::focus_lost`] fires and [`Self::committed`] does not.
-    pub canceled: bool,
+    /// How the frame ended the edit, if it did: [`EditEnd::Submitted`] never in multi-line
+    /// mode, and [`EditEnd::Canceled`] blurs, so [`Self::focus_lost`] fires and
+    /// [`Self::committed`] does not.
+    pub ended: Option<EditEnd>,
     /// The editor took focus this frame.
     pub focus_gained: bool,
     /// The editor lost focus this frame (clicked away, another widget focused, or Escape).
@@ -628,6 +618,7 @@ pub struct TextEditResponse<'a> {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::widgets::text_edit::TextEditResponse;
+    use crate::widgets::text_edit::edit_end::EditEnd;
 
     /// A [`TextEditResponse`]'s edges, copied out of the record pass whose `ui` borrow the response
     /// holds.
@@ -635,7 +626,7 @@ pub(crate) mod internals {
     pub(crate) struct EditEdges {
         pub(crate) changed: bool,
         pub(crate) committed: bool,
-        pub(crate) submitted: bool,
+        pub(crate) ended: Option<EditEnd>,
         pub(crate) focus_gained: bool,
         pub(crate) focus_lost: bool,
     }
@@ -645,7 +636,7 @@ pub(crate) mod internals {
             EditEdges {
                 changed: self.changed,
                 committed: self.committed,
-                submitted: self.submitted,
+                ended: self.ended,
                 focus_gained: self.focus_gained,
                 focus_lost: self.focus_lost,
             }

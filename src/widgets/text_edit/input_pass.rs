@@ -9,6 +9,7 @@ use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
+use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::edit_state::EditKind;
 use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
@@ -19,10 +20,8 @@ use crate::widgets::text_edit::text_nav::TextNav;
 /// [`crate::widgets::text_edit::TextEditResponse`].
 #[derive(Debug)]
 pub(super) struct InputResult {
-    /// Escape canceled the edit; blurs before view recording.
-    pub(super) canceled: bool,
-    /// Enter accepted a single-line value this frame.
-    pub(super) submitted: bool,
+    /// How the frame ended the edit, if it did; a cancel blurs before view recording.
+    pub(super) ended: Option<EditEnd>,
     /// The buffer was mutated this frame. Set by the mutation choke points, so
     /// a same-length overwrite counts.
     pub(super) edited: bool,
@@ -73,8 +72,7 @@ impl InputPass<'_> {
             select_all_on_focus,
             filter,
         } = policy;
-        let mut canceled = false;
-        let mut submitted = false;
+        let mut ended = None;
         let clipboard = ui.clipboard();
 
         let TextEditState {
@@ -130,8 +128,7 @@ impl InputPass<'_> {
         if !is_focused {
             ed.normalize();
             return InputResult {
-                canceled,
-                submitted,
+                ended,
                 edited: ed.edited(),
             };
         }
@@ -145,7 +142,7 @@ impl InputPass<'_> {
             }
             // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
-                submitted = true;
+                ended = Some(EditEnd::Submitted);
                 assert_only_repeats_after(ui.keyboard_events(), i);
                 break;
             }
@@ -155,7 +152,7 @@ impl InputPass<'_> {
             }
             match apply_key(&mut ed, kp, TextNav::new(PLATFORM)) {
                 KeyOutcome::Blur => {
-                    canceled = true;
+                    ended = Some(EditEnd::Canceled);
                     assert_only_repeats_after(ui.keyboard_events(), i);
                     break;
                 }
@@ -166,8 +163,7 @@ impl InputPass<'_> {
 
         ed.normalize();
         InputResult {
-            canceled,
-            submitted,
+            ended,
             edited: ed.edited(),
         }
     }

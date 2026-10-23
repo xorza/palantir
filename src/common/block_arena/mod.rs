@@ -5,10 +5,8 @@
 //! A block is rounded up to a multiple of [`BlockSlot::GRANULE`] and reusable only within its class, so [`BlockArena::release`] recovers capacity from the span length alone. The cost: **the arena is bounded by the sum over classes of each class's peak block count, not the peak live set**; span lengths drifting upward strand a block per class, so keep the longest span bounded (`drifting_run_lengths_strand_a_block_in_every_class_they_leave`).
 
 use crate::common::counters::counter_snapshot;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
-
-/// End of a size class's free list; a start is an index bounded by the owner population, so never `u32::MAX`. The gradient atlas's `MruList` has a same-valued sentinel, kept separate since each is sound by its own population bound.
-const NIL: u32 = u32::MAX;
 
 /// Size class of a span of `len` entries; `len` must be non-zero.
 #[inline]
@@ -29,17 +27,18 @@ pub(crate) trait BlockSlot: Copy {
     /// Slot granularity: a span rounds up to a multiple of it. Coarse granules waste storage and cache density; fine ones mint a class per length, sharpening the drift bound. Short spans measured 3-7% slower coarse on `damage/workload/shape_churn_*`. One means exact fit.
     const GRANULE: u32;
 
-    fn free_link(next: u32) -> Self;
+    /// A free slot linking to the block that starts at `next`, `None` at the end of the list.
+    fn free_link(next: Option<NonMaxU32>) -> Self;
 
-    fn next_free(self) -> u32;
+    fn next_free(self) -> Option<NonMaxU32>;
 }
 
 /// Flat storage carved into size-classed blocks, each freed block returned to its class's intrusive free list. Owners hold only a [`Span`]; allocation-free after warm-up.
 #[derive(Debug)]
 pub(crate) struct BlockArena<T> {
     pub(crate) slots: Vec<T>,
-    /// Head of each class's free list, [`NIL`] when empty. LIFO, so the most recently freed (likely cached) block is reused.
-    free_heads: Vec<u32>,
+    /// Head of each class's free list, `None` when empty. LIFO, so the most recently freed (likely cached) block is reused.
+    free_heads: Vec<Option<NonMaxU32>>,
     pub(crate) counters: BlockArenaCounters,
 }
 
@@ -78,7 +77,7 @@ impl<T: BlockSlot> BlockArena<T> {
             "a live span's size class must already exist — it was allocated from",
         );
         self.slots[span.start as usize] = T::free_link(self.free_heads[class]);
-        self.free_heads[class] = span.start;
+        self.free_heads[class] = Some(NonMaxU32::index(span.start as usize));
     }
 
     /// Drops every block, live and free, keeping capacity.
@@ -91,19 +90,18 @@ impl<T: BlockSlot> BlockArena<T> {
     fn alloc_block(&mut self, len: u32) -> u32 {
         let class = block_class::<T>(len);
         if self.free_heads.len() <= class {
-            self.free_heads.resize(class + 1, NIL);
+            self.free_heads.resize(class + 1, None);
         }
-        let head = self.free_heads[class];
-        if head != NIL {
-            self.free_heads[class] = self.slots[head as usize].next_free();
+        if let Some(head) = self.free_heads[class] {
+            self.free_heads[class] = self.slots[head.idx()].next_free();
             self.counters.reuses.bump();
-            return head;
+            return head.get();
         }
         self.counters.allocs.bump();
         let start = self.slots.len() as u32;
         self.slots.resize(
             start as usize + block_capacity::<T>(class) as usize,
-            T::free_link(NIL),
+            T::free_link(None),
         );
         start
     }
@@ -129,7 +127,7 @@ pub(crate) mod internals {
     impl<T> BlockArena<T> {
         /// Size classes currently holding a free block; a count climbing with uptime means drifting lengths.
         pub(crate) fn classes_with_free_blocks(&self) -> usize {
-            self.free_heads.iter().filter(|&&head| head != NIL).count()
+            self.free_heads.iter().flatten().count()
         }
     }
 }

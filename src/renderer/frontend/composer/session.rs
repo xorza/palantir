@@ -267,7 +267,7 @@ impl PaintSink for ComposeSession<'_> {
             fill_lut_row: p.fill.lut_row,
             fill_axis: packed.fill_axis,
         });
-        self.record_opaque_cover(&p, &packed, fast);
+        self.record_opaque_cover(&p, &packed);
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -817,19 +817,25 @@ impl ComposeSession<'_> {
         true
     }
 
-    /// Opaque-cover annotation for the occlusion pruner, `SOLID` only: a shadow's blur and a
-    /// triangle's empty corners don't cover the whole `rect`.
-    fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad, fast: bool) {
+    /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. `SOLID` only: a
+    /// shadow's blur and a triangle's empty corners don't cover the whole `rect`. A quad on the
+    /// fast path has no anti-aliased edge to inset by.
+    fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) {
         if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
             return;
         }
+        let quad = self.out.quads.last().expect("the quad just pushed");
         let inscribed = packed.rect.physical.inscribed_for_corners(packed.corners);
         let stroke_inset = if is_invisible(packed.stroke_width) || p.stroke.color.is_opaque() {
             0.0
         } else {
             packed.stroke_width
         };
-        let aa_inset = if fast { 0.0 } else { AA_HALF_WIDTH };
+        let aa_inset = if quad.fill_kind.is_fast() {
+            0.0
+        } else {
+            AA_HALF_WIDTH
+        };
         let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
         if !cover.is_paint_empty() {
             let idx = self.out.quads.len() as u32 - 1 - self.composer.cursors.quads;

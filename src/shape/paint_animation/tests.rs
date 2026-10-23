@@ -313,7 +313,7 @@ fn hash_static_covers_channel_timing_and_curve() {
             "alpha range",
             PaintAnimation {
                 channel: PaintChannel {
-                    alpha: Some((0.0, 0.5)),
+                    alpha: Some(PaintRange { from: 0.0, to: 0.5 }),
                     turn: None,
                 },
                 ..base
@@ -324,7 +324,7 @@ fn hash_static_covers_channel_timing_and_curve() {
             PaintAnimation {
                 channel: PaintChannel {
                     alpha: None,
-                    turn: Some((0.0, 1.0)),
+                    turn: Some(PaintRange { from: 0.0, to: 1.0 }),
                 },
                 ..base
             },

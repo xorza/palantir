@@ -3,6 +3,7 @@
 use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
+use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::OnceLock;
@@ -17,6 +18,25 @@ use crate::gpu::surface::render_target::internals::TargetSpec;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// No headless test device: why the last request failed, and how long the lease tried.
+#[derive(Debug)]
+struct LeaseFailed {
+    /// How long the lease retried.
+    waited: Duration,
+    /// The last request's failure.
+    source: GpuRequestError,
+}
+
+impl Display for LeaseFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "lease headless test gpu after {:?}: {}",
+            self.waited, self.source
+        )
+    }
+}
 
 /// A headless device and its queue, waited idle when the lease drops.
 #[derive(Debug)]
@@ -65,8 +85,8 @@ impl HeadlessTestGpuLease {
             .expect("wait for the headless test device");
     }
 
-    /// A new device under this process's GPU lock, or why there is none, worded for the caller's panic.
-    fn request() -> Result<Self, String> {
+    /// A new device under this process's GPU lock.
+    fn request() -> Result<Self, LeaseFailed> {
         static PROCESS_LOCK: OnceLock<File> = OnceLock::new();
         PROCESS_LOCK.get_or_init(lock_gpu_process);
         let started = Instant::now();
@@ -81,11 +101,11 @@ impl HeadlessTestGpuLease {
                 {
                     thread::sleep(ADAPTER_RETRY_INTERVAL);
                 }
-                Err(error) => {
-                    return Err(format!(
-                        "lease headless test gpu after {:?}: {error}",
-                        started.elapsed()
-                    ));
+                Err(source) => {
+                    return Err(LeaseFailed {
+                        waited: started.elapsed(),
+                        source,
+                    });
                 }
             }
         };
@@ -110,7 +130,7 @@ impl Drop for HeadlessTestGpuLease {
 ///
 /// A failed request is cached: later leases panic with the same message at once.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
-    static GPU: OnceLock<Result<HeadlessTestGpuLease, String>> = OnceLock::new();
+    static GPU: OnceLock<Result<HeadlessTestGpuLease, LeaseFailed>> = OnceLock::new();
     match GPU.get_or_init(HeadlessTestGpuLease::request) {
         Ok(gpu) => HeadlessTestGpuLease {
             queue: gpu.queue.clone(),

@@ -101,6 +101,12 @@ impl FillKind {
         Self(self.0 | Self::FAST_BIT)
     }
 
+    /// Whether the fragment fast path draws this fill: its coverage is whole at every pixel.
+    #[inline]
+    pub(crate) const fn is_fast(self) -> bool {
+        self.0 & Self::FAST_BIT != 0
+    }
+
     #[inline]
     pub(crate) const fn with_window(self) -> Self {
         Self(self.0 | Self::WINDOW_BIT)

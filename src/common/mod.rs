@@ -11,6 +11,7 @@ pub(crate) mod flag_set;
 pub(crate) mod hash;
 pub(crate) mod id_counter;
 pub(crate) mod idx16;
+pub(crate) mod non_max_u32;
 pub(crate) mod platform;
 pub(crate) mod span;
 pub(crate) mod time;

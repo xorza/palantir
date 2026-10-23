@@ -1,8 +1,8 @@
 //! The paint order of a layer's roots between frames.
 
+use crate::common::non_max_u32::NonMaxU32;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::layer_frame::LayerFrame;
-use crate::damage::row_matcher::ROW_UNMATCHED;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::per_layer::PerLayer;
@@ -15,9 +15,9 @@ use crate::scene::tree::Tree;
 pub(super) struct RootOrder {
     prev: PerLayer<Vec<WidgetId>>,
     /// Scratch: last frame's roots of the layer being diffed with their positions, sorted by id.
-    poss: Vec<(WidgetId, u32)>,
-    /// Scratch: each current root's position last frame, or [`ROW_UNMATCHED`].
-    matched: Vec<u32>,
+    poss: Vec<(WidgetId, NonMaxU32)>,
+    /// Scratch: each current root's position last frame, `None` for a new root.
+    matched: Vec<Option<NonMaxU32>>,
     /// Scratch: each current root's painted extent.
     extents: Vec<Rect>,
     inversions: InvertedOverlaps,
@@ -38,8 +38,11 @@ impl RootOrder {
         }
         if !prev.is_empty() {
             self.poss.clear();
-            self.poss
-                .extend(prev.iter().enumerate().map(|(at, id)| (*id, at as u32)));
+            self.poss.extend(
+                prev.iter()
+                    .enumerate()
+                    .map(|(at, id)| (*id, NonMaxU32::index(at))),
+            );
             self.poss.sort_unstable_by_key(|(id, _)| id.0);
             self.matched.clear();
             self.extents.clear();
@@ -48,7 +51,8 @@ impl RootOrder {
                 let at = self
                     .poss
                     .binary_search_by_key(&id.0, |(id, _)| id.0)
-                    .map_or(ROW_UNMATCHED, |found| self.poss[found].1);
+                    .ok()
+                    .map(|found| self.poss[found].1);
                 self.matched.push(at);
                 self.extents
                     .push(cascade.subtree_paint_rects[slot.first_node.idx()]);

@@ -1,5 +1,6 @@
 use crate::input::keyboard::key_text::KeyText;
 use crate::internals::ui_harness::passes::Passes;
+use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::internals::EditEdges;
 use crate::widgets::text_edit::tests::*;
 
@@ -54,7 +55,10 @@ fn reports_changed_on_edit_but_not_submit() {
     h.key(Key::Char('x'));
     let s = frame(&mut h, &mut buf);
     assert_eq!(buf, "x");
-    assert!(s.a().changed && !s.a().submitted, "an edit is not a submit");
+    assert!(
+        s.a().changed && s.a().ended.is_none(),
+        "an edit is not a submit"
+    );
 }
 
 #[test]
@@ -67,7 +71,11 @@ fn reports_submitted_on_single_line_enter() {
     let _ = frame(&mut h, &mut buf); // settle focus
     h.key(Key::Enter);
     let s = frame(&mut h, &mut buf);
-    assert!(s.a().submitted, "single-line Enter submits");
+    assert_eq!(
+        s.a().ended,
+        Some(EditEnd::Submitted),
+        "single-line Enter submits"
+    );
     assert!(!s.a().changed, "Enter inserts nothing in single-line");
     assert_eq!(buf, "hi", "buffer untouched by the submit");
 }

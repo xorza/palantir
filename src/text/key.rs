@@ -2,6 +2,7 @@
 //! stable, purely integral cache key.
 
 use crate::common::hash;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::primitives::layout::align::HAlign;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
@@ -33,8 +34,8 @@ pub(crate) struct TextShapeKey {
     pub(crate) text_hash: NonZeroU64,
     /// `font_size * 64`, rounded.
     size_q: u32,
-    /// `max_width * 64`, rounded; `u32::MAX` is unbounded. Always a multiple of 64: [`WrapBound::new`] snaps to whole px first.
-    max_w_q: u32,
+    /// `max_width * 64`, rounded; `None` is unbounded. Always a multiple of 64: [`WrapBound::new`] snaps to whole px first.
+    max_w_q: Option<NonMaxU32>,
     /// `line_height * 64`, rounded.
     lh_q: u32,
     /// [`FontFamily`] index; meaningless outside the interning process, so keys are never persisted.
@@ -43,15 +44,16 @@ pub(crate) struct TextShapeKey {
     face_q: FaceBits,
 }
 
-const MAX_W_NONE: u32 = u32::MAX;
-
 impl TextShapeKey {
     /// Share of the shaped-buffer cache's retention spread, see [`RENDERED_RUN_KEEP_SPREAD_MASK`].
     ///
     /// Mixes width and size in: identical labels at different widths are one text but many keys. `max_w_q`'s low six bits are always zero, so it is shifted down.
     pub(crate) const fn keep_spread(self) -> u64 {
-        (self.text_hash.get() ^ (self.max_w_q as u64 >> 6) ^ self.size_q as u64)
-            & RENDERED_RUN_KEEP_SPREAD_MASK
+        let width = match self.max_w_q {
+            Some(max_w_q) => max_w_q.get() as u64 >> 6,
+            None => 0,
+        };
+        (self.text_hash.get() ^ width ^ self.size_q as u64) & RENDERED_RUN_KEEP_SPREAD_MASK
     }
 
     /// Content hash for a raw source hash; raw zero maps to one to fit [`NonZeroU64`].
@@ -92,7 +94,7 @@ impl TextShapeKey {
         Self {
             text_hash: Self::content_hash(text_hash),
             size_q: quantize_metric(font_size),
-            max_w_q: MAX_W_NONE,
+            max_w_q: None,
             lh_q: quantize_metric(line_height),
             family_q: family.raw(),
             face_q: FaceBits::new(weight, slant, LineAlign::Auto, LineFit::Wrap),
@@ -102,7 +104,7 @@ impl TextShapeKey {
     /// Binds this root to a committed width; also rebuilds a bounded key from a retained [`WrapBound`].
     pub(super) const fn with_bound(self, bound: WrapBound) -> Self {
         Self {
-            max_w_q: bound.max_w_q,
+            max_w_q: Some(bound.max_w_q),
             face_q: self.face_q.with_bound(bound.bound_q),
             ..self
         }
@@ -110,7 +112,7 @@ impl TextShapeKey {
 
     pub(super) const fn unbounded_version(self) -> Self {
         Self {
-            max_w_q: MAX_W_NONE,
+            max_w_q: None,
             face_q: self
                 .face_q
                 .with_bound(FaceBits::bound_bits(LineAlign::Auto, LineFit::Wrap)),
@@ -145,7 +147,7 @@ impl TextShapeKey {
     }
 
     pub(crate) fn max_width(self) -> Option<f32> {
-        (self.max_w_q != MAX_W_NONE).then(|| dequantize(self.max_w_q))
+        self.max_w_q.map(|max_w_q| dequantize(max_w_q.get()))
     }
 
     /// The family this key shapes in.
@@ -280,7 +282,7 @@ const _: () = {
 /// Owns width normalization: canonicalized to the whole-px grid, negatives clamp to zero. Non-finite widths must be screened first. Separate from the key so reuse rows keep eight bytes, not 24.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct WrapBound {
-    max_w_q: u32,
+    max_w_q: NonMaxU32,
     /// Align and fit pre-packed as [`FaceBits`] holds them.
     bound_q: u16,
 }
@@ -294,7 +296,7 @@ impl WrapBound {
             LineFit::Clip | LineFit::Ellipsis => LineAlign::Auto,
         };
         Self {
-            max_w_q: quantize(max_width.canonical_px()).min(MAX_W_NONE - 1),
+            max_w_q: NonMaxU32::saturating(quantize(max_width.canonical_px())),
             bound_q: FaceBits::bound_bits(align, fit),
         }
     }

@@ -185,7 +185,7 @@ macro_rules! fmt {
 pub mod prelude {
     pub use crate::{
         Align, App, Axis, Block, Brush, Button, Checkbox, Chrome, ComboBox, Configure, ContextMenu,
-        Corners, DragValue, Expander, Grid, GridCell, HAlign, InnerResponse, Justify, Key,
+        Corners, DragValue, EditEnd, Expander, Grid, GridCell, HAlign, InnerResponse, Justify, Key,
         KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
         ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
         Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter, Stroke, Switch,
@@ -225,7 +225,7 @@ pub mod widget {
     /// `fn(f32) -> f32`, see [`PaintCurve`].
     pub use crate::shape::paint_animation::curves;
     pub use crate::shape::paint_animation::{
-        PaintAnimation, PaintChannel, PaintCurve, PaintRepeat, PaintSteps, PaintTiming,
+        PaintAnimation, PaintChannel, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
     };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
@@ -461,6 +461,7 @@ pub use widgets::tabs::tab_item::{TabBadge, TabItem};
 pub use widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
 pub use widgets::tabs::tabbed_view::{TabbedView, TabbedViewResponse, TabsAction};
 pub use widgets::text::Text;
+pub use widgets::text_edit::edit_end::EditEnd;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::tooltip::TooltipResponse;

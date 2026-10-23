@@ -13,6 +13,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
+use crate::widgets::text_edit::edit_end::EditEnd;
 use glam::{UVec2, Vec2};
 use std::cell;
 use std::time::Duration;
@@ -139,7 +140,7 @@ fn field() -> WidgetId {
 
 #[derive(Clone, Copy, Debug)]
 struct FieldPass {
-    submitted: bool,
+    ended: Option<EditEnd>,
 }
 
 fn record_field(ui: &mut Ui, buffer: &mut String) -> FieldPass {
@@ -150,9 +151,7 @@ fn record_field(ui: &mut Ui, buffer: &mut String) -> FieldPass {
                 .id(field())
                 .size((Sizing::fixed(200.0), Sizing::fixed(30.0)))
                 .show(ui);
-            FieldPass {
-                submitted: r.submitted,
-            }
+            FieldPass { ended: r.ended }
         })
         .inner
 }
@@ -201,7 +200,7 @@ fn a_key_after_enter_is_typed_after_the_submit() {
     h.key(Key::Enter);
     h.key(Key::Char('x'));
     let enter = h.step_passes(|ui| record_field(ui, &mut buffer));
-    assert!(enter.a().submitted);
+    assert_eq!(enter.a().ended, Some(EditEnd::Submitted));
     assert_eq!(buffer, "hello", "the submitted value is the one before `x`");
     h.step(|ui| {
         record_field(ui, &mut buffer);

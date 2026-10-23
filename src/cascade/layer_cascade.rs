@@ -3,6 +3,7 @@
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::PaintArena;
 use crate::common::content_hash::ContentHash;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::primitives::geometry::rect::Rect;
 
 /// All per-layer cascade state. `cascade_inputs`, `subtree_paint_rects` and
@@ -77,10 +78,10 @@ pub(crate) struct LayerCascade {
     /// recomputing rows.
     pub(super) paint_rects: Vec<Rect>,
     /// Per-node index of the node's row in
-    /// [`Cascade::hits`](crate::cascade::Cascade::hits), or
-    /// [`Self::NO_HIT_ROW`]. Which nodes hold a row is structural, so the
-    /// incremental walk rewrites a moved node's row through this.
-    pub(super) hit_rows: Vec<u32>,
+    /// [`Cascade::hits`](crate::cascade::Cascade::hits), if it holds one. Which
+    /// nodes hold a row is structural, so the incremental walk rewrites a moved
+    /// node's row through this.
+    pub(super) hit_rows: Vec<Option<NonMaxU32>>,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
     /// layer's run and set at `reset_for`. A full rebuild pushes one entry per
@@ -92,9 +93,6 @@ pub(crate) struct LayerCascade {
 }
 
 impl LayerCascade {
-    /// The [`Self::hit_rows`] entry of a node that holds no hit row.
-    pub(super) const NO_HIT_ROW: u32 = u32::MAX;
-
     /// Reset all per-node columns for `n_nodes` and stamp `entries_base` in one
     /// call, so a caller cannot reset but forget the offset. Per-node columns
     /// are resized and overwritten in place during the walk, retaining
@@ -108,7 +106,7 @@ impl LayerCascade {
         self.paint_arena.reset_for(n_nodes);
         self.arena_hashes.resize(n_nodes, ContentHash::default());
         self.paint_rects.resize(n_nodes, Rect::ZERO);
-        self.hit_rows.resize(n_nodes, Self::NO_HIT_ROW);
+        self.hit_rows.resize(n_nodes, None);
         self.entries_base = entries_base;
     }
 }
