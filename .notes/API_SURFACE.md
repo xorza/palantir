@@ -5,7 +5,7 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 no features and one build per public feature; a tag names the builds an item needs or
 loses. `internals` is the crate's own test surface and is left out.
 
-`prelude` re-exports these root items: `Align`, `App`, `Axis`, `Block`, `Brush`, `Button`, `Checkbox`, `Chrome`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
+`prelude` re-exports these root items: `Align`, `App`, `Axis`, `Block`, `Brush`, `Button`, `Checkbox`, `Chrome`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `EditEnd`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
 ```text
 Align
@@ -652,6 +652,11 @@ Easing
         OutQuart
         OutBack
         pub const fn apply(self, t: f32) -> f32
+
+EditEnd
+    enum EditEnd: Clone, Copy, Debug, Eq, PartialEq
+        Submitted
+        Canceled
 
 Engagement
     enum Engagement: Clone, Copy, Debug, Eq, PartialEq
@@ -1997,8 +2002,7 @@ TextEditResponse
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
-        pub submitted: bool
-        pub canceled: bool
+        pub ended: Option<EditEnd>
         pub focus_gained: bool
         pub focus_lost: bool
 
@@ -2650,11 +2654,16 @@ widget::PaintAnimation
 
 widget::PaintChannel
     struct PaintChannel: Clone, Copy, Debug, PartialEq
-        pub alpha: Option<(f32, f32)>
-        pub turn: Option<(f32, f32)>
+        pub alpha: Option<PaintRange>
+        pub turn: Option<PaintRange>
 
 widget::PaintCurve
     type PaintCurve = fn(f32) -> f32
+
+widget::PaintRange
+    struct PaintRange: Clone, Copy, Debug, PartialEq
+        pub from: f32
+        pub to: f32
 
 widget::PaintRepeat
     enum PaintRepeat: Clone, Copy, Debug, Eq, PartialEq
