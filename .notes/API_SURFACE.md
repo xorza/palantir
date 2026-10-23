@@ -2,8 +2,8 @@
 
 Every item the crate exports, rendered as its declaration from rustdoc JSON
 (`cargo drive surface`), sorted by path. The surface is the union of a build with
-no features and one build per public feature; a tag names the builds an item needs or
-loses. `internals` is the crate's own test surface and is left out.
+no features and one build per public feature; a tag names the builds an item or a line
+needs or loses. `internals` is the crate's own test surface and is left out.
 
 `prelude` re-exports these root items: `Align`, `App`, `Axis`, `Block`, `Brush`, `Button`, `Checkbox`, `Chrome`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `EditEnd`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
 
@@ -801,13 +801,14 @@ GpuPassStats
         pub fn last_copy_out(&self) -> Option<Duration>
         pub fn last_main_pass_cpu(&self) -> Option<Duration>
 
-GpuRequestError  [shape differs by feature]
+GpuRequestError
     #[non_exhaustive]
     enum GpuRequestError: Debug, Display, Error
         NoBackend
         RequestAdapter { source: DriverError }
         Requirements { source: UnmetRequirements }
         RequestDevice { source: DriverError }
+        impl From<GpuRequestError> for SurfaceError  [features: winit]
 
 GpuView
     struct GpuView: Configure, Debug, ThemeDefaults (blanket)
@@ -1247,7 +1248,7 @@ OffscreenHost
         pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
 
-OffscreenHostBuilder  [shape differs by feature]
+OffscreenHostBuilder
     struct OffscreenHostBuilder: Debug
         pub fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
@@ -1255,6 +1256,7 @@ OffscreenHostBuilder  [shape differs by feature]
         pub fn clock(self, clock: impl Clock + 'static) -> Self
         pub const fn retained_target(self, retained: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
+        pub const fn system_clipboard(self, system: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
 
 Okhsv
