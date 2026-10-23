@@ -36,17 +36,13 @@ all-features = false
 # `cargo test` ran the first in 2.1 s where nextest took 4.9 s, as a GPU test under nextest opens
 # a device in a process of its own.
 [workspace.metadata.drive]
-version = "0.2.1"
+version = "0.2"
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 test-runner = "cargo-test"
 docs = true
 
 [workspace]
-members = ["api-surface", "palantir-anim-derive"]
-
-[workspace.dependencies]
-rustdoc-types = "=0.61.0"
-serde_json = "1.0"
+members = ["palantir-anim-derive"]
 
 [lints]
 workspace = true

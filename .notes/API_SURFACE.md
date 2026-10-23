@@ -1,7 +1,7 @@
 # Public API surface
 
 Every item the crate exports, rendered as its declaration from rustdoc JSON
-(`cargo run -p api-surface`), sorted by path. The surface is the union of a build with
+(`cargo drive surface`), sorted by path. The surface is the union of a build with
 no features and one build per public feature; a tag names the builds an item needs or
 loses. `internals` is the crate's own test surface and is left out.
 

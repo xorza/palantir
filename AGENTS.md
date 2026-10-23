@@ -65,12 +65,11 @@ common → primitives → {animation, text, input, display, window, image_regist
 
 ## Public API design
 
-An exported item that breaks a rule below is a bug. `cargo run -p
-api-surface` renders every exported declaration, over every public feature,
-into `.notes/API_SURFACE.md`; it needs a nightly toolchain, as rustdoc JSON is
-nightly-only. Regenerate the file with any change to the surface, and audit
-against it: CI fails when the committed file differs from what the tree
-renders.
+An exported item that breaks a rule below is a bug. `cargo drive surface`
+renders every exported declaration, over every public feature, into
+`.notes/API_SURFACE.md`. Regenerate the file with any change to the surface,
+and audit against it: CI fails when the committed file differs from what the
+tree renders.
 
 ### Kinds of type
 
