@@ -7,6 +7,8 @@
 
 use crate::common::block_arena::{BlockArena, BlockSlot};
 use crate::common::expiry_wheel::ExpiryWheel;
+use crate::common::non_max_u32;
+use crate::common::non_max_u32::NonMaxU32;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -39,7 +41,7 @@ impl BlockSlot for EncodedGlyph {
     /// its predecessor freed; exact fit would mint a class per count.
     const GRANULE: u32 = 4;
 
-    fn free_link(next: u32) -> Self {
+    fn free_link(next: Option<NonMaxU32>) -> Self {
         Self {
             instance: RasterQuad {
                 pos: [0, 0],
@@ -48,13 +50,13 @@ impl BlockSlot for EncodedGlyph {
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
-            atlas_slot: next,
+            atlas_slot: non_max_u32::to_raw(next),
             generation: 0,
         }
     }
 
-    fn next_free(self) -> u32 {
-        self.atlas_slot
+    fn next_free(self) -> Option<NonMaxU32> {
+        NonMaxU32::from_raw(self.atlas_slot)
     }
 }
 

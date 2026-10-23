@@ -22,7 +22,7 @@ use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::layer_input::LayerInput;
 use crate::layout::layer_layout::LayerLayout;
-use crate::layout::layout_scratch::{NO_ARRANGE_SRC, RestoreTarget};
+use crate::layout::layout_scratch::RestoreTarget;
 use crate::layout::measured::Measured;
 use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::text::text_shape_input::TextShapeInput;
@@ -372,15 +372,14 @@ impl LayoutPass<'_> {
     /// source is keyed by `WidgetId`, so a subtree that moved still replays.
     #[inline]
     fn replay_arranged(&mut self, node: NodeId, rendered: Rect) -> bool {
-        let base = self.engine.scratch.arrange_src[node.idx()];
-        if base == NO_ARRANGE_SRC {
+        let Some(base) = self.engine.scratch.arrange_src[node.idx()] else {
             return false;
-        }
+        };
         let tree = self.tree;
         let start = node.idx();
         let end = tree.subtree_end_of(start);
         let engine = &mut *self.engine;
-        let Arranged { rects, locals } = engine.cache.arranged(base as usize, end - start);
+        let Arranged { rects, locals } = engine.cache.arranged(base.idx(), end - start);
         if rects[0].size != rendered.size {
             return false;
         }

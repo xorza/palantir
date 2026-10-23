@@ -30,10 +30,26 @@ pub type PaintCurve = fn(f32) -> f32;
 /// What an animation's unit value drives. Both channels ride one curve, and a shape carries one animation.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PaintChannel {
-    /// Alpha multiplier, lerped `from` → `to`. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
-    pub alpha: Option<(f32, f32)>,
-    /// Full turns about the owner box's center, lerped `from` → `to`. `None` leaves orientation alone; non-finite reads as no turn. Honored on polylines, curves and arcs only.
-    pub turn: Option<(f32, f32)>,
+    /// Alpha multiplier over its range. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
+    pub alpha: Option<PaintRange>,
+    /// Full turns about the owner box's center over its range. `None` leaves orientation alone; non-finite reads as no turn. Honored on polylines, curves and arcs only.
+    pub turn: Option<PaintRange>,
+}
+
+/// The values a channel moves between as its curve goes from 0 to 1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaintRange {
+    /// The value at the curve's 0.
+    pub from: f32,
+    /// The value at the curve's 1.
+    pub to: f32,
+}
+
+impl PaintRange {
+    /// The value at the curve's output `t`.
+    fn at(self, t: f32) -> f32 {
+        f32::lerp(self.from, self.to, t)
+    }
 }
 
 /// How often the curve is read.
@@ -109,7 +125,7 @@ impl PaintAnimation {
         let PaintChannel { alpha, turn } = self.channel;
         for range in [alpha, turn] {
             match range {
-                Some((from, to)) => {
+                Some(PaintRange { from, to }) => {
                     h.write_u8(1);
                     from.hash_eq(h);
                     to.hash_eq(h);
@@ -156,7 +172,7 @@ impl PaintAnimation {
     /// Animate opacity from `from` to `to`. [`Self::with_alpha`] adds the channel to an existing animation; `turn` and [`Self::with_turn`] pair the same way.
     pub fn alpha(from: f32, to: f32) -> Self {
         Self::new(PaintChannel {
-            alpha: Some((from, to)),
+            alpha: Some(PaintRange { from, to }),
             turn: None,
         })
     }
@@ -165,19 +181,19 @@ impl PaintAnimation {
     pub fn turn(from: f32, to: f32) -> Self {
         Self::new(PaintChannel {
             alpha: None,
-            turn: Some((from, to)),
+            turn: Some(PaintRange { from, to }),
         })
     }
 
     /// Add an opacity range to an animation that already turns.
     pub const fn with_alpha(mut self, from: f32, to: f32) -> Self {
-        self.channel.alpha = Some((from, to));
+        self.channel.alpha = Some(PaintRange { from, to });
         self
     }
 
     /// Add a rotation range to an animation that already fades.
     pub const fn with_turn(mut self, from: f32, to: f32) -> Self {
-        self.channel.turn = Some((from, to));
+        self.channel.turn = Some(PaintRange { from, to });
         self
     }
 
@@ -223,15 +239,15 @@ impl PaintAnimation {
             return PaintMod::IDENTITY;
         };
         let t = (self.curve)(phase);
-        let rotation = |(a, b)| {
-            let radians = f32::lerp(a, b, t) * TAU;
+        let rotation = |range: PaintRange| {
+            let radians = range.at(t) * TAU;
             if radians.is_finite() { radians } else { 0.0 }
         };
         PaintMod {
             alpha: self
                 .channel
                 .alpha
-                .map_or(1.0, |(a, b)| domain::fraction(f32::lerp(a, b, t))),
+                .map_or(1.0, |range| domain::fraction(range.at(t))),
             rotation: self.channel.turn.map_or(0.0, rotation),
         }
     }

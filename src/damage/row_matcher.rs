@@ -2,13 +2,11 @@
 
 use crate::cascade::paint::Paint;
 use crate::common::block_arena::BlockArena;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::damage;
 use crate::primitives::geometry::rect::Rect;
 use std::cmp::Ordering;
-
-/// `matched_pos` sentinel for a curr row with no exact match in the prev span.
-pub(super) const ROW_UNMATCHED: u32 = u32::MAX;
 
 /// Result of [`RowMatcher::diff_changed_leg`].
 #[derive(Debug)]
@@ -24,8 +22,8 @@ pub(super) struct ChangedLeg {
 pub(super) struct RowMatcher {
     /// Prev rows claimed by some phase.
     prev_matched: Vec<bool>,
-    /// For each curr row, the prev row it paired with, or [`ROW_UNMATCHED`]. Survives the call for the caller's order-inversion work.
-    matched_pos: Vec<u32>,
+    /// For each curr row, the prev row it paired with, `None` with no exact match in the prev span. Survives the call for the caller's order-inversion work.
+    matched_pos: Vec<Option<NonMaxU32>>,
     /// `(key, row)` for each side's unclaimed rows, sorted: sort-and-merge keeps the all-rows-shifted case at O(n log n).
     prev_keyed: Vec<(PaintKey, u32)>,
     cur_keyed: Vec<(PaintKey, u32)>,
@@ -40,9 +38,9 @@ pub(super) struct PaintsChange<'a> {
 }
 
 impl RowMatcher {
-    /// Prev row each curr row paired with on the last [`Self::diff_changed_leg`], `ROW_UNMATCHED` where none. Only read under [`ChangedLeg::order_inverted`], which no fast-path call sets.
+    /// Prev row each curr row paired with on the last [`Self::diff_changed_leg`], `None` where none. Only read under [`ChangedLeg::order_inverted`], which no fast-path call sets.
     #[inline]
-    pub(super) fn matched_poss(&self) -> &[u32] {
+    pub(super) fn matched_poss(&self) -> &[Option<NonMaxU32>] {
         &self.matched_pos
     }
 
@@ -99,7 +97,7 @@ impl RowMatcher {
         self.prev_matched.clear();
         self.prev_matched.resize(prev.len(), false);
         self.matched_pos.clear();
-        self.matched_pos.resize(cur.len(), ROW_UNMATCHED);
+        self.matched_pos.resize(cur.len(), None);
         self.prev_keyed.clear();
         self.cur_keyed.clear();
 
@@ -108,7 +106,7 @@ impl RowMatcher {
             let (p, c) = (prev[row], cur[row]);
             if p == c {
                 self.prev_matched[row] = true;
-                self.matched_pos[row] = row as u32;
+                self.matched_pos[row] = Some(NonMaxU32::index(row));
             } else {
                 self.prev_keyed.push((PaintKey::of(&p), row as u32));
                 self.cur_keyed.push((PaintKey::of(&c), row as u32));
@@ -139,7 +137,7 @@ impl RowMatcher {
                     // Key-equal means bit-equal (modulo -0.0), but NaN screens are never `==`.
                     if prev[prow as usize] == cur[crow as usize] {
                         self.prev_matched[prow as usize] = true;
-                        self.matched_pos[crow as usize] = prow;
+                        self.matched_pos[crow as usize] = Some(NonMaxU32::index(prow as usize));
                         ci += 1;
                     }
                     pi += 1;
@@ -154,7 +152,7 @@ impl RowMatcher {
     fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], cur: &[Paint]) {
         let mut pi = 0;
         for &(ck, crow) in &self.cur_keyed {
-            if self.matched_pos[crow as usize] != ROW_UNMATCHED {
+            if self.matched_pos[crow as usize].is_some() {
                 continue;
             }
             while pi < self.prev_keyed.len() {
@@ -191,7 +189,8 @@ impl RowMatcher {
         !self
             .matched_pos
             .iter()
-            .filter(|&&pos| pos != ROW_UNMATCHED)
+            .flatten()
+            .map(|pos| pos.get())
             .is_sorted()
     }
 }

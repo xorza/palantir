@@ -24,6 +24,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::drag_num::limits::Limits;
 use crate::widgets::drag_num::{DragNum, Num, StoreRule};
 use crate::widgets::text_edit::TextEdit;
+use crate::widgets::text_edit::edit_end::EditEnd;
 use std::mem;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
@@ -46,12 +47,6 @@ struct Scrub {
     anchor: Num,
     speed: f64,
     travel: f32,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct EditEnd {
-    submitted: bool,
-    canceled: bool,
 }
 
 impl Scrub {
@@ -332,32 +327,28 @@ impl<'a> DragValue<'a> {
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
-            let resp = edit.adopt_placement(&self.widget).show(ui);
-            EditEnd {
-                submitted: resp.submitted,
-                canceled: resp.canceled,
-            }
+            edit.adopt_placement(&self.widget).show(ui).ended
         };
-        let changed = if ended.canceled {
+        let changed = if ended == Some(EditEnd::Canceled) {
             self.value.restore(original)
         } else {
             self.value
                 .parse_from(&buffer, Limits::of(self.min, self.max))
         };
         ui.with_state::<DragValueState, _>(id, |_, s| {
-            *s = if ended.submitted || ended.canceled {
+            *s = if ended.is_some() {
                 DragValueState::Idle
             } else {
                 DragValueState::Editing { buffer, original }
             }
         });
-        if ended.canceled {
+        if ended == Some(EditEnd::Canceled) {
             ui.set_focus(id);
         }
         ValueResponse {
             response: Response::lazy(id, ui),
             changed,
-            committed: ended.submitted,
+            committed: ended == Some(EditEnd::Submitted),
         }
     }
 }

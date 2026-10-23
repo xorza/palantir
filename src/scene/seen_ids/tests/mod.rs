@@ -336,16 +336,14 @@ fn matches_the_per_pass_tables_over_random_frames() {
                         }
                     };
                     assert_eq!(got, want, "resolve, {at}");
-                    let known = match ids.last_frame_endpoint(got.id()) {
-                        LastFrame::At(endpoint) => Some(Some(endpoint)),
-                        LastFrame::Absent => Some(None),
-                        LastFrame::Unknown => None,
-                    };
-                    if let Some(known) = known {
+                    let last = ids.last_frame_endpoint(got.id());
+                    if last != LastFrame::Unknown {
                         positional += 1;
                         assert_eq!(
-                            known,
-                            model.last_frame_endpoint(got.id()),
+                            last,
+                            model
+                                .last_frame_endpoint(got.id())
+                                .map_or(LastFrame::Absent, LastFrame::At),
                             "last frame's endpoint by position, {at}",
                         );
                     }

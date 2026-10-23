@@ -2,6 +2,7 @@
 
 use crate::primitives::layout::offer;
 
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
 use crate::layout::counters::LayoutCounters;
@@ -15,9 +16,6 @@ use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use glam::Vec2;
 use std::ops::Range;
-
-/// `LayoutScratch::arrange_src` entry for a node whose subtree measure did not restore from the cache, so arrange must run the drivers. `u32::MAX` cannot be an arena index.
-pub(super) const NO_ARRANGE_SRC: u32 = u32::MAX;
 
 /// Where a measure-cache hit lands: the live tree, the subtree's node range in it, and the layer's output columns.
 #[derive(Debug)]
@@ -58,8 +56,8 @@ pub(crate) struct LayoutScratch {
     pub(super) local: Vec<Vec2>,
     /// Inner-box origins of the nodes a translated replay is inside, innermost last. Drained by every replay.
     pub(super) replay_origins: Vec<ReplayOrigin>,
-    /// Snapshot arena row of each node whose subtree measure was restored from the cache this frame, or [`NO_ARRANGE_SRC`].
-    pub(super) arrange_src: Vec<u32>,
+    /// Snapshot arena row of each node whose subtree measure was restored from the cache this frame. `None` makes arrange run the drivers.
+    pub(super) arrange_src: Vec<Option<NonMaxU32>>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(super) available_q: Vec<AvailableKey>,
     /// Whether this frame rebuilds the measure snapshot rather than reusing the previous one. Decided at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run).
@@ -94,7 +92,7 @@ impl LayoutScratch {
         stable_from.clear();
         stable_from.resize(n, Size::new(offer::AT_OFFER_ONLY, offer::AT_OFFER_ONLY));
         arrange_src.clear();
-        arrange_src.resize(n, NO_ARRANGE_SRC);
+        arrange_src.resize(n, None);
         local.clear();
         local.resize(n, Vec2::ZERO);
         intrinsics.clear();
@@ -136,7 +134,7 @@ impl LayoutScratch {
         // Every node of the subtree, so a descendant arranged at its cached size replays
         // even when the root, at a new size, must dispatch.
         for (src, offset) in self.arrange_src[subtree.clone()].iter_mut().zip(0..) {
-            *src = nodes_base + offset;
+            *src = Some(NonMaxU32::index((nodes_base + offset) as usize));
         }
         layer.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
         // Append the snapshot's text-shape range to the live buffer, rebasing its spans by `dest_start`.
