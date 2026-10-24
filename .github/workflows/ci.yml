@@ -9,10 +9,10 @@ on:
 permissions:
   contents: read
 
-# master keeps a status per commit. A pull request only needs its latest push.
+# Only the latest push to a branch or a pull request needs a status.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
