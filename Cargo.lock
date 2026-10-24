@@ -1749,7 +1749,7 @@ dependencies = [
 
 [[package]]
 name = "palantir"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "arboard",
  "backtrace",
@@ -1785,7 +1785,7 @@ dependencies = [
 
 [[package]]
 name = "palantir-anim-derive"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "proc-macro2",
  "quote",
