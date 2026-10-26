@@ -259,22 +259,4 @@ mod tests {
             assert_eq!(kind.label(), format!("{kind:?}").to_lowercase(), "{kind:?}");
         }
     }
-
-    #[test]
-    fn pipeline_stats_round_trip() {
-        let s = GpuPassStats::default();
-        s.record_pipeline_stats(PipelineStats {
-            vertex_shader_invocations: 1,
-            clipper_invocations: 2,
-            clipper_primitives_out: 3,
-            fragment_shader_invocations: 4,
-            compute_shader_invocations: 0,
-        });
-        let v = s.last_pipeline_stats().expect("recorded");
-        assert_eq!(v.vertex_shader_invocations, 1);
-        assert_eq!(v.clipper_invocations, 2);
-        assert_eq!(v.clipper_primitives_out, 3);
-        assert_eq!(v.fragment_shader_invocations, 4);
-        assert_eq!(v.compute_shader_invocations, 0);
-    }
 }

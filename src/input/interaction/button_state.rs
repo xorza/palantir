@@ -8,7 +8,7 @@ use crate::input::interaction::drag::Drag;
 pub struct ButtonState {
     /// Press phase.
     pub phase: ButtonPhase,
-    /// Drag lifecycle (see [`Drag`]); with several buttons latched, the first in declaration order wins.
+    /// Drag lifecycle of this button's press (see [`Drag`]); each latched button reports its own.
     pub drag: Drag,
 }
 

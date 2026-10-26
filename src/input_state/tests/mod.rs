@@ -1,3 +1,4 @@
+mod capture;
 mod click;
 mod drag;
 mod ime;

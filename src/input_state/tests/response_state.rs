@@ -6,11 +6,11 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
-use crate::input::target_scroll_delta::TargetScrollDelta;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::InputState;
 use crate::input_state::arranged_frame::ArrangedFrame;
 use crate::input_state::capture::{Press, PressDrag, Release, ReleaseKind};
+use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
@@ -207,7 +207,7 @@ fn frame_quiescent_predicate() {
     });
 
     assert!(
-        quiescent(&|s| s.focused = Some(id)),
+        quiescent(&|s| s.set_focus(Some(id))),
         "focus alone must NOT break quiescence (read live on the fast path)",
     );
 }
@@ -353,10 +353,8 @@ fn quiescent_and_full_paths_agree_on_geometry() {
     h.frame(build_focusable_leaf);
 
     // Drives `InputState` directly against the frozen cascade, flipping only the quiescent bit.
-    let mut s = InputState {
-        focused: Some(focusable_id()),
-        ..InputState::default()
-    };
+    let mut s = InputState::default();
+    s.set_focus(Some(focusable_id()));
 
     let at = h.ui.cascade().locate(focusable_id());
     let frame = ArrangedFrame {

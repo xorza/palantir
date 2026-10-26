@@ -14,8 +14,8 @@ use std::time::Duration;
 /// as a drag. The latch holds for the press and the release emits no click.
 pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
-/// Maximum interval between two clicks on the same widget for a double-click.
-/// 500 ms matches the Windows / Chromium default; Linux has no system value.
+/// Maximum interval between two clicks on the same widget for a double-click:
+/// the Windows and Chromium default. The platforms' own settings are not read.
 pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for a double-click.

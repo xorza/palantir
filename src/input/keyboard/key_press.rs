@@ -12,7 +12,7 @@ pub struct KeyPress {
     pub key: Key,
     /// Modifiers when the event was pushed, not drained.
     pub mods: Modifiers,
-    /// `true` for OS key-repeat re-emissions; some commands (focus-cycle on Tab) fire only on `!repeat`.
+    /// `true` for OS key-repeat re-emissions; a command that must fire once per press checks it.
     pub repeat: bool,
     /// The key at this physical position, independent of layout (`Char('z')` for the physical Z key whatever the layout maps it to); lets [`crate::Shortcut`] match a chord whose logical [`key`](Self::key) is non-Latin (Cyrillic `'я'`, see [`crate::Shortcut::matches`]).
     pub physical: Key,

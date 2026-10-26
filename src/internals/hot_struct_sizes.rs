@@ -11,7 +11,7 @@ use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{CollapsedDamage, DamageRegion};
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::input::interaction::response_state::ResponseState;
-use crate::input::target_scroll_delta::TargetScrollDelta;
+use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::measure_snapshot::MeasureSnapshot;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::MeshVertex;
@@ -108,7 +108,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 
 /// Expected `size_of::<Ui>()` under `cfg(test)`, per profile: the scene's
 /// `cfg(debug_assertions)` check fields make a debug `Ui` the larger one.
-const UI_SIZE: usize = if cfg!(debug_assertions) { 9384 } else { 8808 };
+const UI_SIZE: usize = if cfg!(debug_assertions) { 9416 } else { 8840 };
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
@@ -194,7 +194,7 @@ const PINS: &[Pin] = &[
     pin::<Paint>("cascade::Paint", 24, 8),
     pin::<ResponseState>("input::ResponseState", 136, 4),
     pin::<Widget>("widget_core::Widget", 120, 8),
-    pin::<TargetScrollDelta>("input::TargetScrollDelta", 32, 8),
+    pin::<TargetScrollDelta>("input_state::TargetScrollDelta", 32, 8),
     pin::<DamageRegion>("damage::DamageRegion", 132, 4),
     pin::<CollapsedDamage>("damage::CollapsedDamage", 136, 4),
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),

@@ -239,6 +239,30 @@ impl Cascade {
         }
     }
 
+    /// The layer root `id` was recorded under, or `None` when `id` is not in the latest run.
+    fn root_of(&self, id: WidgetId) -> Option<&RootRow> {
+        let layer = self.endpoint(id)?.layer;
+        self.roots
+            .iter()
+            .rev()
+            .find(|row| row.layer == layer && self.is_within(id, row.id))
+    }
+
+    /// The overlay `id` sits in: its layer root, unless that layer is `Main`.
+    pub(crate) fn overlay_root_of(&self, id: WidgetId) -> Option<WidgetId> {
+        self.root_of(id)
+            .filter(|row| row.layer != Layer::Main)
+            .map(|row| row.id)
+    }
+
+    /// Whether `id` can hold focus: recorded in the latest run, focusable, and neither disabled
+    /// nor invisible.
+    pub(crate) fn is_focusable(&self, id: WidgetId) -> bool {
+        self.endpoint(id)
+            .and_then(|at| self.layers[at.layer].hit_rows[at.node.idx()])
+            .is_some_and(|hit| self.hits[hit.idx()].focusable)
+    }
+
     /// The innermost arrow group `focused` sits in, or `None`; groups are in pre-order, so the last match.
     pub(crate) fn arrow_group_of(&self, focused: WidgetId) -> Option<ArrowGroupRow> {
         self.arrow_groups
@@ -270,14 +294,7 @@ impl Cascade {
             .iter()
             .rev()
             .find(|row| row.layer == Layer::Modal);
-        let focus_root = focused.and_then(|id| {
-            let layer = self.endpoint(id)?.layer;
-            self.roots
-                .iter()
-                .rev()
-                .find(|row| row.layer == layer && self.is_within(id, row.id))
-        });
-        if let Some(root) = focus_root {
+        if let Some(root) = focused.and_then(|id| self.root_of(id)) {
             let traps = match root.layer {
                 Layer::Menu => true,
                 Layer::Modal => modal == Some(root),

@@ -1,20 +1,34 @@
-//! Input trickling: at most one state-changing event of each kind per frame.
+//! Input trickling: within a frame, every level a reader consults stays constant, so each
+//! event is read against the state it arrived in.
 
 use crate::common::span::Span;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Events held back for a later frame, and what the current frame already changed.
+///
+/// Widgets read keys, pointer edges and scroll deltas once a frame, at record, against the
+/// focus owner, the modifiers and each button's capture as they stand after every admitted
+/// event. An event that would change one of those levels under an earlier event of the frame
+/// waits, and so does everything behind it. A modifier change waits rather than each pointer
+/// event carrying its own set, because a frame's summed scroll delta has no single set.
 #[derive(Debug, Default)]
 pub(crate) struct InputQueue {
     /// Held events, oldest first; capacity retained.
     pending: VecDeque<HeldEvent>,
+    /// Buttons whose capture began or ended this frame.
     buttons: [bool; PointerButton::COUNT],
     /// This frame's command key (typed nothing, not a bare modifier); repeats ride along.
     command_key: Option<Key>,
+    /// The frame holds a key press, read by the widget focused at record: a focus move waits.
+    key_pressed: bool,
+    /// The frame holds a pointer edge or a scroll or pinch delta, read under the modifiers held
+    /// at record: a modifier change waits.
+    pointer_edge: bool,
     /// Text of every held IME event, end to end; each holds its span.
     text: String,
 }
@@ -27,41 +41,72 @@ pub(super) struct HeldEvent {
     pub(super) at: Duration,
 }
 
+/// A key press that names no key and types nothing: a modifier alone.
+pub(super) fn is_bare_modifier(key: Key, text: KeyText) -> bool {
+    key == Key::Other && text.is_empty()
+}
+
 impl InputQueue {
     pub(super) fn is_empty(&self) -> bool {
         self.pending.is_empty()
     }
 
-    /// Whether `event` may apply now: it changes nothing this frame already changed. Records nothing; the caller checks the queue is empty first.
+    /// Whether `event` may apply this frame: it changes no level an earlier event of the frame was
+    /// read against. Records nothing; the caller checks the queue is empty first, so held events
+    /// keep their order, and notes what the event changed once it applies.
     pub(super) fn admits(&self, event: &InputEvent<'_>) -> bool {
         match *event {
-            InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
-                !self.buttons[button.idx()]
+            // A left press moves focus, so keys already read this frame would reach the new owner.
+            InputEvent::PointerPressed(button) => {
+                !self.buttons[button.idx()] && (button != PointerButton::Left || !self.key_pressed)
             }
+            InputEvent::PointerReleased(button) => !self.buttons[button.idx()],
             InputEvent::KeyDown { key, repeat, .. } => match self.command_key {
                 Some(held) => repeat && key == held,
-                None => true,
+                // Tab moves focus before any widget reads the keys typed ahead of it.
+                None => key != Key::Tab || !self.key_pressed,
             },
+            // Committed text is typed text.
+            InputEvent::ImeCommit(_) => self.command_key.is_none(),
+            InputEvent::ModifiersChanged(_) => !self.pointer_edge,
+            // It ends every capture, so it waits for a frame that changed none.
+            InputEvent::SurfaceFocusLost => !self.buttons.contains(&true),
             InputEvent::PointerMoved(_)
             | InputEvent::PointerLeft
             | InputEvent::ScrollPixels(_)
             | InputEvent::ScrollLines(_)
             | InputEvent::Zoom(_)
-            | InputEvent::ModifiersChanged(_)
-            | InputEvent::SurfaceFocusLost
-            | InputEvent::ImePreedit(_)
-            | InputEvent::ImeCommit(_) => true,
+            | InputEvent::ImePreedit(_) => true,
         }
     }
 
-    /// `button`'s capture began or ended this frame; presses that hit nothing are not noted.
-    pub(super) const fn note_button(&mut self, button: PointerButton) {
+    /// `button`'s capture began or ended this frame; presses that hit nothing are not noted, so a
+    /// click on inert surface asks for no frame.
+    pub(super) const fn note_capture(&mut self, button: PointerButton) {
         self.buttons[button.idx()] = true;
+        self.pointer_edge = true;
     }
 
-    /// A reader received command key `key`; later key presses wait a frame, except repeats of it.
-    pub(super) fn note_command_key(&mut self, key: Key) {
-        self.command_key.get_or_insert(key);
+    /// A scroll or pinch delta reached a reader.
+    pub(super) const fn note_delta(&mut self) {
+        self.pointer_edge = true;
+    }
+
+    /// A reader received the press of `key`. One that typed nothing is a command key: later
+    /// presses wait a frame, except its repeats.
+    pub(super) fn note_key(&mut self, key: Key, text: KeyText) {
+        if is_bare_modifier(key, text) {
+            return;
+        }
+        self.key_pressed = true;
+        if text.is_empty() {
+            self.command_key.get_or_insert(key);
+        }
+    }
+
+    /// A reader received committed IME text.
+    pub(super) const fn note_text(&mut self) {
+        self.key_pressed = true;
     }
 
     pub(super) fn defer(&mut self, event: InputEvent<'_>, now: Duration) {
@@ -86,15 +131,17 @@ impl InputQueue {
     pub(super) const fn next_frame(&mut self) {
         self.buttons = [false; PointerButton::COUNT];
         self.command_key = None;
+        self.key_pressed = false;
+        self.pointer_edge = false;
     }
 
-    /// The oldest held event if the frame now admits it; applying it notes what it changes.
-    pub(super) fn pop_admitted(&mut self) -> Option<HeldEvent> {
-        let held = self.pending.front()?;
-        if !self.admits(&held.event) {
-            return None;
-        }
-        self.pending.pop_front()
+    /// The oldest held event.
+    pub(super) fn front(&self) -> Option<HeldEvent> {
+        self.pending.front().copied()
+    }
+
+    pub(super) fn pop_front(&mut self) {
+        self.pending.pop_front();
     }
 }
 

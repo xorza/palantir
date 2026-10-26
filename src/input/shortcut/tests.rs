@@ -83,7 +83,7 @@ fn extra_modifier_rejects_match() {
     let cut = Shortcut::ctrl('A');
     // Ctrl+Shift+A must not match plain Ctrl+A.
     let mods = primary_shift_mod();
-    assert_eq!(ShortcutMods::from(mods), ShortcutMods::CTRL_SHIFT);
+    assert_eq!(ShortcutMods::from_modifiers(mods), ShortcutMods::CTRL_SHIFT);
     assert!(!cut.matches(kp(mods, Key::Char('A'))));
     assert_eq!(cut.mods, ShortcutMods::CTRL);
     // macOS Control plus a bare key is a chord, so a bare-key shortcut rejects it, as it does Ctrl or Alt.
@@ -204,13 +204,16 @@ fn named_modifier_sets_convert_to_their_twins() {
         (Modifiers::ALT, ShortcutMods::ALT),
         (Modifiers::CTRL_SHIFT, ShortcutMods::CTRL_SHIFT),
     ] {
-        assert_eq!(ShortcutMods::from(held), declared, "{held:?}");
+        assert_eq!(ShortcutMods::from_modifiers(held), declared, "{held:?}");
     }
     let mac_control = Modifiers {
         mac_ctrl: true,
         ..Modifiers::SHIFT
     };
-    assert_eq!(ShortcutMods::from(mac_control), ShortcutMods::SHIFT);
+    assert_eq!(
+        ShortcutMods::from_modifiers(mac_control),
+        ShortcutMods::SHIFT
+    );
 }
 
 /// A Super chord converts to its shortcut twin. On Windows and Linux it fires under Super; on macOS, where Super is Command, under Command, which the host reports as `ctrl`, so there it is the same chord with or without `ctrl`. A bare key fires under neither.
@@ -224,7 +227,7 @@ fn the_meta_modifier_is_super_and_command_on_macos() {
         meta: true,
         ..ShortcutMods::NONE
     };
-    assert_eq!(ShortcutMods::from(held_super), declared);
+    assert_eq!(ShortcutMods::from_modifiers(held_super), declared);
     assert!(declared.has_command());
     let super_l = Shortcut::new(declared, Key::Char('L'));
     let ctrl_super_l = Shortcut::new(

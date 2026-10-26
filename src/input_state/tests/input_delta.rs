@@ -8,6 +8,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -220,10 +221,17 @@ fn press_on_inert_clears_focus_and_requests_repaint() {
 fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
     use crate::input::keyboard::key::Key;
 
+    let field = |ui: &mut Ui| {
+        Block::new()
+            .id(WidgetId::from_hash("field"))
+            .focusable(true)
+            .size(10.0)
+            .show(ui);
+    };
     let mut h = UiHarness::new(UVec2::new(200, 200));
-    h.frame(build_hover_target);
-    h.set_focus(WidgetId::from_hash("hot"));
-    h.frame(build_hover_target);
+    h.frame(field);
+    h.set_focus(WidgetId::from_hash("field"));
+    h.frame(field);
 
     let modifier = h.key(Key::Other);
     assert!(!modifier.repaint_requested, "a bare modifier wakes nothing");

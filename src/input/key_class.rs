@@ -21,7 +21,7 @@ pub enum KeyClass {
     Focus,
     /// Tab under a command modifier (Ctrl+Tab).
     Cycle,
-    /// Escape alone. A field that yields it
+    /// Escape, under any modifiers. A field that yields it
     /// ([`crate::TextEdit::escape_falls_through`]) drops the class.
     Escape,
     /// Command chords outside the edit family, and function keys.

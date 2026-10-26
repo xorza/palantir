@@ -1001,7 +1001,8 @@ impl Ui {
 
     /// Move keyboard focus to `id` now, bypassing [`FocusPolicy`]. Key-class routing
     /// moves next record pass, so a widget that blurs on Escape does not also hand it
-    /// to the overlay around it.
+    /// to the overlay around it. A widget that cannot take focus (not focusable,
+    /// disabled or hidden) loses it as the frame ends.
     #[inline]
     pub const fn set_focus(&mut self, id: WidgetId) {
         self.input.set_focus(Some(id));
@@ -1211,6 +1212,14 @@ pub(crate) mod internals {
         /// The whole layout table, for callers that walk every layer.
         pub(crate) const fn layout_tables(&self) -> &Layout {
             &self.layout
+        }
+
+        /// Close the input frame as the end of a frame does (dropping its edges, then applying
+        /// held events) and return whether input owes another. For a caller streaming input with
+        /// no frame recorded between.
+        pub(crate) fn end_input_frame(&mut self) -> bool {
+            self.input.end_frame(&self.cascade);
+            self.input.next_frame(&self.cascade)
         }
     }
 

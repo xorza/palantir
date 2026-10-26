@@ -12,6 +12,5 @@ pub(crate) mod policy;
 pub(crate) mod scroll_targets;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
-pub(crate) mod target_scroll_delta;
 pub(crate) mod watch;
 pub(crate) mod zoom_factor;

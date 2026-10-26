@@ -51,25 +51,6 @@ the measure-cache hit test.
 - **Window commands are one ordered list.** `WindowCommand::{Open, Close}`,
   folded in order against the live set, last operation per token wins.
 
-## Input
-
-- **The levels a frame's readers see are constant within the frame.**
-  `InputQueue` holds an event back when it would change a level that an
-  earlier event of the same frame was read against: a focus move after a key
-  press, a `ModifiersChanged` after a pointer edge or a scroll delta, and an
-  `ImeCommit` after a command key (as typed text already does). Refused:
-  stamping modifiers on every pointer event, because a summed `ScrollDelta`
-  still has no single modifier set.
-- **Focus has one owner.** A `Focus` sub-state owns `focused`,
-  `focus_visible`, the return rows, `focus_first`, `modal_root` and the IME
-  owner. It has one `move_to(next, cause)` and one `reconcile(&Cascade)` at
-  `end_frame`. `reconcile` evicts focus that is no longer focusable, derives
-  return rows from the overlay-root transition (whatever moved the focus),
-  and retires the preedit on any owner change.
-- **Every capture ending notes its button.** One `end_capture(button,
-  cause)`. Lost-release recovery runs when the press applies and abandons
-  the press; it does not synthesize a release.
-
 ## Widgets
 
 - **Overlay rank is relative to the opener.** `OverlayScope::claim`
@@ -216,78 +197,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 1: Input queue and focus
-
-Files: `src/input_state/{mod.rs, input_queue/, capture.rs, scope.rs, tests/}`,
-`src/input/`, `src/cascade/mod.rs` (one lookup).
-
-- [ ] **Keys before a focus move go to the new focus.**
-  `input_queue/mod.rs:41-44`, `input_state/mod.rs:137-155, 587-595`. `a b Tab`
-  in one frame types `ab` into the next field. Target: a left
-  `PointerPressed`, and a `KeyDown` of class `Focus`, are admitted only while
-  the frame holds no key press. Trickle tests `['a', Tab]` and
-  `['a', press elsewhere]`.
-- [ ] **Modifiers change under pointer edges.** `input_queue/mod.rs:50`;
-  readers `text_edit/input_pass.rs:120`, `scroll/mod.rs:328`. Target: hold a
-  `ModifiersChanged` while the frame has a pointer edge or a scroll or pinch
-  delta. Test: Shift released with the press.
-- [ ] **`ImeCommit` after Enter or Escape.** `input_queue/mod.rs:53`. Debug
-  panics in `assert_only_repeats_after`; release loses the text. Target:
-  `ImeCommit` waits after a command key, as typed `KeyDown` does. Test
-  `[Enter, ImeCommit]`.
-- [ ] **`Focus` sub-state.** `input_state/mod.rs:145-151, 190-200, 265-267,
-  283, 587-595, 800-805, 818-823, 841-843`. Seven writers of `focused`, each
-  with its own side effects. Target: `Focus { focused, focus_visible,
-  returns, focus_first, modal_root, ime_owner }` with `move_to` and
-  `reconcile(&Cascade)`.
-- [ ] **Pointer entry into an overlay records no focus return.**
-  `input_state/mod.rs:190-200`. Target: `reconcile` pushes the return row on
-  an overlay-root transition. Test: pointer entry into a popup, then close.
-- [ ] **A disabled or hidden focused widget keeps focus.**
-  `input_state/mod.rs:799-805`. Target: `reconcile` evicts when the focused id
-  is not focusable; add `Cascade::is_focusable(id)` from
-  `HitRow::focusable`. Test: disable the focused field.
-- [ ] **A refocus shows a stale preedit.** `input_state/mod.rs:211-217,
-  705-722`. Target: an owner change and `SurfaceFocusLost` clear
-  `ime_preedit`, `ime_cursor` and `ime_owner`. Test: refocus after a preedit.
-- [ ] **Lost-release synthesis reads the live capture.**
-  `input_state/mod.rs:478-483, 602-636`. `[P, R, P]` in one frame makes a
-  phantom `Up` for watchers and a settle pass. Target: recover when the press
-  applies, with `abandon_press`. Test: `[P, R, P]` with a `BUTTONS` watcher
-  that counts `Up`.
-- [ ] **Capture endings that do not note the button.**
-  `input_state/mod.rs:712-722, 788-798`; the comment at 377-378 is false.
-  Target: one `end_capture(button, cause)`. The noting rule moves into
-  `InputQueue::admit`, and the copy in `input_queue/tests.rs:32-47` goes.
-- [ ] **Drag ownership differs between the two collations.**
-  `input_state/mod.rs:924-961` vs 374-376. Target: each button slice has its
-  own drag; `drag_owned` goes.
-- [ ] **Two input benches measure queue growth.** `src/input/bench.rs:134-172`.
-  The queue never drains, so the cases time a `VecDeque` push and grow
-  without bound. Target: run `next_frame` between press and release, or bench
-  `InputState::apply` over a warm cascade. Remove the false memo comment at
-  `bench.rs:138`.
-- [ ] **Routed-target fields writable crate-wide.** `input_state/mod.rs:61-65`.
-  Target: private, with `#[cfg(test)]` accessors at the end of the file.
-- [ ] **`TargetScrollDelta` in the event vocabulary.**
-  `src/input/target_scroll_delta.rs`. Target: move to `input_state/`.
-- [ ] **Docs.** `key_press.rs:15` (Tab repeats do move focus),
-  `key_class.rs:24` (Escape under any modifiers), `input_state/mod.rs:56`
-  (`InputState` doc says nothing about the type), `capture.rs:18` ("Linux
-  has no system value" is wrong; the constants are a choice, see
-  "Decisions").
-- [ ] **Tests.** Merge the two `InputState` non-finite screens
-  (`tests/scroll.rs:56-85`, `tests/zoom.rs:19-38`) into one table. Drop the
-  long-pinch test (`tests/zoom.rs:50-66`, owned by `zoom_factor/tests.rs`).
-  Add a unit table over `Capture::begin_press` with the boundaries (exactly
-  the window, exactly the radius, `u8` saturation, a drag clearing the run).
-  Drop `pipeline_stats_round_trip` (`diagnostics/gpu_pass_stats.rs:263-279`).
-- [ ] **[public] `PointerEvent::Zoom` carries a raw `f32`.**
-  `src/input/pointer.rs:73-78`. Target: `factor: ZoomFactor`.
-- [ ] **[public] `From<Modifiers> for ShortcutMods` is lossy.**
-  `shortcut/mod.rs:99-118`. Target: a private `held(mods)` for `matches_key`;
-  the `From` goes.
 
 ## Batch 2: Overlay rank and trigger lifecycle
 
