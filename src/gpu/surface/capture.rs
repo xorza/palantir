@@ -2,6 +2,7 @@
 
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::iter;
 use std::sync::Arc;
@@ -32,11 +33,11 @@ struct Staging {
     state: Arc<AtomicU8>,
 }
 
-/// The pixels of a finished [`Capture`]: RGBA8, sRGB-encoded, row by row from the top.
+/// What a finished [`Capture`] holds.
 #[derive(Debug)]
-pub(crate) struct CapturedPixels {
-    pub(crate) pixels: Vec<u8>,
-    pub(crate) size: UVec2,
+pub(crate) struct Captured {
+    /// `None` for an empty region.
+    pub(crate) image: Option<Image>,
 }
 
 impl Capture {
@@ -143,12 +144,9 @@ impl Capture {
     /// # Panics
     ///
     /// When the copy failed to map, which only a lost device does.
-    pub(crate) fn take(&self) -> Option<CapturedPixels> {
+    pub(crate) fn take(&self) -> Option<Captured> {
         let Some(staging) = &self.staging else {
-            return Some(CapturedPixels {
-                pixels: Vec::new(),
-                size: UVec2::ZERO,
-            });
+            return Some(Captured { image: None });
         };
         match staging.state.load(Ordering::Acquire) {
             MAP_PENDING => return None,
@@ -168,9 +166,8 @@ impl Capture {
             }
         }
         staging.buffer.unmap();
-        Some(CapturedPixels {
-            pixels,
-            size: self.size,
-        })
+        let image = Image::from_srgba8(self.size, pixels)
+            .expect("a copy of a non-empty region holds four bytes per pixel");
+        Some(Captured { image: Some(image) })
     }
 }

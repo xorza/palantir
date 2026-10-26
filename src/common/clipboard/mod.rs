@@ -1,9 +1,13 @@
 //! Cloneable clipboard capability with an in-memory fallback.
 
+#[cfg(feature = "system-clipboard")]
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::error;
 use std::fmt;
 use std::rc::Rc;
+
+use crate::primitives::paint::image::Image;
 
 /// No clipboard backend could answer. Distinct from an empty clipboard, which is why [`Clipboard::text`] returns a `Result`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +24,7 @@ impl error::Error for ClipboardUnavailable {}
 trait Backend: fmt::Debug {
     fn get_text(&mut self) -> Result<String, ClipboardUnavailable>;
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable>;
+    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardUnavailable>;
 }
 
 #[cfg(feature = "system-clipboard")]
@@ -57,6 +62,16 @@ impl Backend for SystemBackend {
             .set_text(text.to_owned())
             .map_err(|_| ClipboardUnavailable)
     }
+
+    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardUnavailable> {
+        self.0
+            .set_image(arboard::ImageData {
+                width: image.size().x as usize,
+                height: image.size().y as usize,
+                bytes: Cow::Borrowed(&image.pixels),
+            })
+            .map_err(|_| ClipboardUnavailable)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -72,6 +87,13 @@ impl Backend for MemoryBackend {
     fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
         self.text.clear();
         self.text.push_str(text);
+        Ok(())
+    }
+
+    /// Nothing in the process reads an image back, so the buffer keeps only what a text read
+    /// answers after a copy of one: nothing, as a system clipboard holding an image does.
+    fn set_image(&mut self, _image: &Image) -> Result<(), ClipboardUnavailable> {
+        self.text.clear();
         Ok(())
     }
 }
@@ -132,8 +154,13 @@ impl ClipboardState {
         }
     }
 
-    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        let fallback_written = self.fallback.set_text(text).is_ok();
+    /// One write through both backends: the fallback always, so a refused primary leaves the
+    /// copy readable in process.
+    fn write(
+        &mut self,
+        mut write_one: impl FnMut(&mut dyn Backend) -> Result<(), ClipboardUnavailable>,
+    ) -> Result<(), ClipboardUnavailable> {
+        let fallback_written = write_one(self.fallback.as_mut()).is_ok();
         let Some(primary) = self.primary.as_mut() else {
             return if fallback_written {
                 Ok(())
@@ -142,7 +169,7 @@ impl ClipboardState {
             };
         };
 
-        if primary.set_text(text).is_ok() {
+        if write_one(primary.as_mut()).is_ok() {
             self.authority = Authority::Primary;
             self.fallback_cur = fallback_written;
             Ok(())
@@ -160,7 +187,8 @@ impl ClipboardState {
 
 /// The host's clipboard, a cheap `Rc` clone a widget can hold.
 ///
-/// Obtained only from [`Ui::clipboard`](crate::Ui::clipboard); a clipboard belongs to a host. Text only.
+/// Obtained only from [`Ui::clipboard`](crate::Ui::clipboard); a clipboard belongs to a host. It
+/// reads text, and writes text or an image.
 #[derive(Clone, Debug)]
 pub struct Clipboard {
     state: Rc<RefCell<ClipboardState>>,
@@ -193,13 +221,24 @@ impl Clipboard {
 
     /// Replace the clipboard's text. An action that deletes what it copied (cut) must check the result first.
     pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable> {
-        self.state.borrow_mut().set_text(text)
+        self.state
+            .borrow_mut()
+            .write(|backend| backend.set_text(text))
+    }
+
+    /// Replace the clipboard's contents with `image`, which other applications paste as a
+    /// picture. A text read answers empty after it.
+    pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable> {
+        self.state
+            .borrow_mut()
+            .write(|backend| backend.set_image(image))
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable};
+    use crate::primitives::paint::image::Image;
 
     #[derive(Debug)]
     struct RejectingBackend;
@@ -210,6 +249,10 @@ pub(crate) mod internals {
         }
 
         fn set_text(&mut self, _text: &str) -> Result<(), ClipboardUnavailable> {
+            Err(ClipboardUnavailable)
+        }
+
+        fn set_image(&mut self, _image: &Image) -> Result<(), ClipboardUnavailable> {
             Err(ClipboardUnavailable)
         }
     }

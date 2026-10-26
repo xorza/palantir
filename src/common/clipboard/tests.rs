@@ -2,6 +2,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
+use crate::primitives::paint::image::Image;
+use glam::UVec2;
 use std::error;
 
 #[derive(Debug)]
@@ -10,6 +12,7 @@ struct PrimaryState {
     reject_writes: bool,
     reject_reads: bool,
     reads: usize,
+    image: Option<UVec2>,
 }
 
 #[derive(Clone, Debug)]
@@ -34,6 +37,18 @@ impl Backend for StaleBackend {
         }
         state.text.clear();
         state.text.push_str(text);
+        state.image = None;
+        Ok(())
+    }
+
+    /// As a system clipboard holding an image: no text to read.
+    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardUnavailable> {
+        let mut state = self.state.borrow_mut();
+        if state.reject_writes {
+            return Err(ClipboardUnavailable);
+        }
+        state.text.clear();
+        state.image = Some(image.size());
         Ok(())
     }
 }
@@ -72,6 +87,7 @@ fn primary(text: &str) -> Rc<RefCell<PrimaryState>> {
         reject_writes: false,
         reject_reads: false,
         reads: 0,
+        image: None,
     }))
 }
 
@@ -168,4 +184,32 @@ fn unreadable_primary_answers_from_a_current_fallback() {
 
     clipboard.set_text("copied").unwrap();
     assert_eq!(clipboard.text().unwrap(), "copied");
+}
+
+/// An image copy replaces the text: in memory, through a primary that takes it, and through one
+/// that refuses it, where the fallback answers empty until another application copies.
+#[test]
+fn an_image_copy_leaves_no_text() {
+    let image = Image::blank(UVec2::new(2, 3));
+
+    let memory = Clipboard::memory();
+    memory.set_text("text").unwrap();
+    memory.set_image(&image).unwrap();
+    assert_eq!(memory.text().unwrap(), "");
+
+    let taking = primary("text");
+    let clipboard = over(&taking);
+    clipboard.set_image(&image).unwrap();
+    assert_eq!(taking.borrow().image, Some(UVec2::new(2, 3)));
+    assert_eq!(clipboard.text().unwrap(), "");
+
+    let refusing = primary("stale");
+    let clipboard = over(&refusing);
+    clipboard.set_text("copied").unwrap();
+    refusing.borrow_mut().reject_writes = true;
+    clipboard.set_image(&image).unwrap();
+    assert_eq!(refusing.borrow().image, None);
+    assert_eq!(clipboard.text().unwrap(), "");
+    refusing.borrow_mut().text = String::from("external");
+    assert_eq!(clipboard.text().unwrap(), "external");
 }

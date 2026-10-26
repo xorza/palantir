@@ -862,12 +862,12 @@ mod screenshot_tests {
     /// 64 × 48 physical pixels: logical 64 × 48 at scale 1, 32 × 24 at scale 2.
     const PHYSICAL: UVec2 = UVec2::new(64, 48);
 
-    /// What one [`Scene::frame`] did: whether it asks the host for another, and the size of the
-    /// screenshot its record pass saw, if one landed.
-    #[derive(Clone, Copy, Debug)]
+    /// What one [`Scene::frame`] did: whether it asks the host for another, and the screenshot
+    /// its record pass saw, if one landed.
+    #[derive(Clone, Debug)]
     struct FrameRun {
         repaint: bool,
-        recorded: Option<UVec2>,
+        recorded: Option<Screenshot>,
     }
 
     /// What one frame of [`Scene`] records beside its blocks.
@@ -913,7 +913,7 @@ mod screenshot_tests {
             let seen = Cell::new(None);
             let mut app = RecordApp::new(|ui: &mut Ui| {
                 if let Some(shot) = ui.screenshot_taken() {
-                    seen.set(Some(shot.size()));
+                    seen.set(Some(shot.clone()));
                 }
                 Block::new()
                     .id_salt("red")
@@ -937,7 +937,7 @@ mod screenshot_tests {
                 .repaint_requested;
             FrameRun {
                 repaint,
-                recorded: seen.get(),
+                recorded: seen.take(),
             }
         }
 
@@ -962,8 +962,8 @@ mod screenshot_tests {
                 .expect("a finished copy lands in the next frame")
                 .clone();
             assert_eq!(
-                run.recorded,
-                Some(shot.size()),
+                run.recorded.as_ref(),
+                Some(&shot),
                 "the frame it lands in records, and the app reads it there"
             );
             assert!(!run.repaint, "nothing is pending once it landed");
@@ -989,14 +989,11 @@ mod screenshot_tests {
         ] {
             let mut scene = Scene::new(format, 1.0);
             let shot = scene.capture(None);
-            assert_eq!(shot.size(), PHYSICAL, "{format:?}");
+            let image = shot.image().unwrap();
+            assert_eq!(image.size(), PHYSICAL, "{format:?}");
             assert_eq!(shot.scale(), 1.0);
             assert_eq!(shot.region(), Rect::new(0.0, 0.0, 64.0, 48.0));
-            assert_eq!(
-                shot.pixels(),
-                scene.target().as_raw().as_slice(),
-                "{format:?}"
-            );
+            assert_eq!(image.pixels, scene.target().into_raw(), "{format:?}");
             reference.get_or_insert(shot);
         }
         let float = Scene::new(wgpu::TextureFormat::Rgba16Float, 1.0).capture(None);
@@ -1027,18 +1024,18 @@ mod screenshot_tests {
             let shot = scene.capture(Some(region));
             let target = scene.target();
             assert_eq!(shot.region(), clamped);
-            assert_eq!(shot.size(), size, "{region:?}");
+            let image = shot.image().unwrap();
+            assert_eq!(image.size(), size, "{region:?}");
             assert_eq!(shot.scale(), 2.0);
             let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
-            assert_eq!(shot.pixels(), crop.as_raw().as_slice(), "{region:?}");
+            assert_eq!(image.pixels, crop.into_raw(), "{region:?}");
         }
         let empty = Rect {
             min: Vec2::new(4.0, 4.0),
             size: Size::new(0.0, 3.0),
         };
         let shot = scene.capture(Some(empty));
-        assert_eq!(shot.size(), UVec2::ZERO);
-        assert!(shot.pixels().is_empty());
+        assert_eq!(shot.image(), None);
     }
 
     /// A still scene skips its frames; one that asks paints in full anyway, so the image is the
@@ -1050,6 +1047,6 @@ mod screenshot_tests {
             scene.frame(Frame::Still);
         }
         let shot = scene.capture(None);
-        assert_eq!(shot.pixels(), scene.target().as_raw().as_slice());
+        assert_eq!(shot.image().unwrap().pixels, scene.target().into_raw());
     }
 }
