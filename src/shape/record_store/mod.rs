@@ -164,5 +164,18 @@ impl RecordStore {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::primitives::text::recorded_text::RecordedText;
+    use crate::shape::record_store::RecordStore;
+
+    impl RecordStore {
+        /// The characters of a text shape this pass recorded, for the widget inspection.
+        pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
+            &self.text.bytes()[text.span.range()]
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

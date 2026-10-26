@@ -58,7 +58,7 @@ fn format_changes_render_identically() {
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
-    // `Harness::frame` swizzles the BGRA readback to RGBA.
+    // `Gpu::read_back` returns a BGRA target in RGBA order.
     let swapped = h.format(TextureFormat::Bgra8UnormSrgb).frame(scene).image;
     goldens::assert_same("format_change_scene", &swapped, &before);
     let restored = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;

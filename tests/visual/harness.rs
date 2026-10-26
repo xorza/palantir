@@ -5,8 +5,6 @@
     reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
 )]
 
-use std::iter;
-use std::sync::mpsc;
 use std::time::Duration;
 
 use glam::UVec2;
@@ -34,8 +32,6 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
 };
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-const BYTES_PER_PIXEL: u32 = 4;
 
 #[derive(Debug)]
 pub(crate) struct Capture {
@@ -109,7 +105,7 @@ impl Harness {
         self
     }
 
-    /// The target format, `Rgba8UnormSrgb` until set; pixels come back in RGBA order (BGRA is swizzled on readback).
+    /// The target format, `Rgba8UnormSrgb` until set; pixels come back in RGBA order either way.
     pub(crate) const fn format(&mut self, format: wgpu::TextureFormat) -> &mut Self {
         self.format = format;
         self
@@ -140,15 +136,7 @@ impl Harness {
             &mut RecordApp::new(scene),
         );
 
-        let mut image = self.readback(&target, physical);
-        if matches!(
-            self.format,
-            wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm
-        ) {
-            for px in image.pixels_mut() {
-                px.0.swap(0, 2);
-            }
-        }
+        let image = self.gpu.handles().read_back(&target);
         Capture {
             image,
             paint: report.paint(),
@@ -166,66 +154,6 @@ impl Harness {
     pub(crate) fn settled_frame(&mut self, n: u32, mut scene: impl FnMut(&mut Ui)) -> Capture {
         self.prime(n, &mut scene);
         self.frame(scene)
-    }
-
-    /// `texture`'s pixels, in its own channel order.
-    fn readback(&self, texture: &wgpu::Texture, size: UVec2) -> RgbaImage {
-        let device = &self.gpu.device;
-        let row_bytes = (size.x * BYTES_PER_PIXEL) as usize;
-        let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.visual_test.readback"),
-            size: u64::from(padded * size.y),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("palantir.visual_test.copy"),
-        });
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded),
-                    rows_per_image: Some(size.y),
-                },
-            },
-            wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
-                depth_or_array_layers: 1,
-            },
-        );
-        self.gpu.queue.submit(iter::once(encoder.finish()));
-
-        let slice = buffer.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("poll");
-        rx.recv().expect("map_async result").expect("map ok");
-
-        let data = slice.get_mapped_range().expect("map readback range");
-        let mut out = Vec::with_capacity(row_bytes * size.y as usize);
-        for y in 0..size.y as usize {
-            let row_start = y * padded as usize;
-            out.extend_from_slice(&data[row_start..row_start + row_bytes]);
-        }
-        drop(data);
-        buffer.unmap();
-        RgbaImage::from_raw(size.x, size.y, out).expect("buffer length matches dimensions")
     }
 }
 
