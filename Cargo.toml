@@ -49,19 +49,19 @@ workspace = true
 
 
 [dependencies]
-palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3" }
+palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3", default-features = false }
 arboard = { version = "3.7", default-features = false, features = ["image-data"], optional = true }
-bytemuck = { version = "1.25", features = ["derive"] }
-cosmic-text = "0.19"
-fixedbitset = "0.5"
+bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
+cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "fontconfig"] }
+fixedbitset = { version = "0.5", default-features = false }
 glam = { version = "0.34", default-features = false, features = ["std", "i16", "i32", "u16", "u32", "bytemuck", "serde"] }
-etagere = "0.3"
+etagere = { version = "0.3", default-features = false }
 resvg = { version = "0.49", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
-half = { version = "2.7", features = ["bytemuck"] }
-rustc-hash = "2.1"
+half = { version = "2.7", default-features = false, features = ["std", "bytemuck"] }
+rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-pollster = "1.0"
+pollster = { version = "1.0", default-features = false }
 wgpu = { version = "30.0", default-features = false, features = [
     "std",
     "parking_lot",
@@ -71,24 +71,35 @@ wgpu = { version = "30.0", default-features = false, features = [
     "dx12",
     "gles",
 ] }
-winit = { version = "0.30", optional = true }
-padding-struct = "0.2"
-soa-rs = "1.0"
-strum = { version = "0.28", features = ["derive"] }
-swash = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-tinyvec = { version = "1.13", features = ["serde"] }
-unicode-linebreak = "0.1"
-unicode-segmentation = "1.13"
-criterion = { version = "0.8", optional = true }
-tracy-client = { version = "0.19", optional = true }
+winit = { version = "0.30", default-features = false, features = [
+    "rwh_06",
+    "x11",
+    "wayland",
+    "wayland-dlopen",
+    "wayland-csd-adwaita",
+], optional = true }
+padding-struct = { version = "0.2", default-features = false }
+soa-rs = { version = "1.0", default-features = false }
+strum = { version = "0.28", default-features = false, features = ["derive"] }
+swash = { version = "0.2", default-features = false, features = ["std", "scale", "render"] }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
+unicode-linebreak = { version = "0.1", default-features = false }
+unicode-segmentation = { version = "1.13", default-features = false }
+criterion = { version = "0.8", default-features = false, optional = true }
+tracy-client = { version = "0.19", default-features = false, features = ["enable"], optional = true }
 
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
-backtrace = "0.3"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-static_assertions = "1.1"
-ron = "0.12"
+backtrace = { version = "0.3", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "fmt",
+    "env-filter",
+    "tracing-log",
+] }
+static_assertions = { version = "1.1", default-features = false }
+ron = { version = "0.12", default-features = false }
 
 
 [features]
