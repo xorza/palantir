@@ -495,8 +495,8 @@ fn a_viewport_senses_the_wheel_only_on_the_axes_it_can_pan() {
         let mut h = UiHarness::new(SURFACE);
         h.frame(build);
         h.move_to(Vec2::new(50.0, 50.0));
-        assert_eq!(h.ui.input().scroll_targets, first, "{label}: first frame");
+        assert_eq!(h.ui.input().scroll_targets(), first, "{label}: first frame");
         h.frame(build);
-        assert_eq!(h.ui.input().scroll_targets, settled, "{label}: settled");
+        assert_eq!(h.ui.input().scroll_targets(), settled, "{label}: settled");
     }
 }

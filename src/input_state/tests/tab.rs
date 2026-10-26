@@ -3,6 +3,7 @@
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -375,6 +376,52 @@ fn a_dialog_takes_focus_as_it_opens_and_gives_it_back() {
     );
     h.frame(dialog_scene(false, false));
     assert_eq!(h.focus(), Some(id("a")));
+}
+
+fn popup_scene(open: bool) -> impl FnMut(&mut Ui) {
+    move |ui: &mut Ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Block::new().id(id("a")).focusable(true).size(20.0).show(ui);
+        });
+        if open {
+            ui.layer(Layer::Popup).show(|ui| {
+                Panel::vstack().auto_id().show(ui, |ui| {
+                    Block::new()
+                        .id(id("p1"))
+                        .focusable(true)
+                        .sense(Sense::CLICK)
+                        .size(20.0)
+                        .show(ui);
+                });
+            });
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Entry {
+    Pointer,
+    Program,
+}
+
+/// Focus that enters an overlay by a press or from the app, not only by the keyboard, returns
+/// where it came from as the overlay closes, as WAI-ARIA asks of a popup whatever opened it.
+#[test]
+fn focus_entering_an_overlay_by_any_path_returns_as_it_closes() {
+    for entry in [Entry::Pointer, Entry::Program] {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(popup_scene(false));
+        h.set_focus(id("a"));
+        h.frame(popup_scene(true));
+        match entry {
+            Entry::Pointer => h.click_on(id("p1")),
+            Entry::Program => h.set_focus(id("p1")),
+        }
+        h.frame(popup_scene(true));
+        assert_eq!(h.focus(), Some(id("p1")), "{entry:?}: focus entered");
+        h.frame(popup_scene(false));
+        assert_eq!(h.focus(), Some(id("a")), "{entry:?}: and came back");
+    }
 }
 
 /// Arrows along an arrow group walk and wrap its stops; across it, or with a modifier, they move nothing. A scope

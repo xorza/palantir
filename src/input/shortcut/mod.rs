@@ -46,6 +46,25 @@ impl ShortcutMods {
         self.ctrl || self.alt || self.meta
     }
 
+    /// The chord modifiers of a held set. Lossy, so not a `From`: raw macOS Control has no twin,
+    /// and [`Shortcut::matches`] reads it off the press.
+    const fn from_modifiers(m: Modifiers) -> Self {
+        // Exhaustive, so a new `Modifiers` field is a compile error here.
+        let Modifiers {
+            ctrl,
+            shift,
+            alt,
+            mac_ctrl: _,
+            meta,
+        } = m;
+        Self {
+            ctrl,
+            shift,
+            alt,
+            meta,
+        }
+    }
+
     /// The set a press holds to fire this chord on `platform`: on macOS the host reports
     /// Command as `ctrl`, so a declared `meta` folds into it.
     const fn held_on(self, platform: Platform) -> Self {
@@ -94,27 +113,6 @@ impl ShortcutMods {
         alt: false,
         meta: false,
     };
-}
-
-impl From<Modifiers> for ShortcutMods {
-    fn from(m: Modifiers) -> Self {
-        // Exhaustive, so a new `Modifiers` field is a compile error here;
-        // `mac_ctrl` is dropped on purpose, [`Shortcut::matches`] reads it off the
-        // press.
-        let Modifiers {
-            ctrl,
-            shift,
-            alt,
-            mac_ctrl: _,
-            meta,
-        } = m;
-        Self {
-            ctrl,
-            shift,
-            alt,
-            meta,
-        }
-    }
 }
 
 /// A keyboard shortcut: modifier set + key; the `const fn` constructors let
@@ -192,7 +190,7 @@ impl Shortcut {
     /// Logical-key match with **no** layout fallback; [`Self::matches`] layers that
     /// on.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
-        if ShortcutMods::from(mods) != self.mods {
+        if ShortcutMods::from_modifiers(mods) != self.mods {
             return false;
         }
         match (self.key, key) {

@@ -1,5 +1,6 @@
 //! Raw pointer vocabulary: [`PointerButton`] and the [`PointerEvent`] stream watchers read.
 
+use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Which pointer button an event came from; the discriminants index the
@@ -73,8 +74,8 @@ pub enum PointerEvent {
     Zoom {
         /// Pinch centroid, logical px.
         pos: Vec2,
-        /// Multiplicative zoom delta; `1.0` is no change.
-        factor: f32,
+        /// Multiplicative zoom delta; [`ZoomFactor::ONE`] is no change.
+        factor: ZoomFactor,
     },
     /// Pointer left the surface; no position.
     Leave,

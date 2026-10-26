@@ -70,7 +70,7 @@ fn a_commit_splits_between_characters_and_types_whole() {
     assert_eq!(buf, format!("{text}z"));
 }
 
-/// The preedit belongs to the focused widget: read as the last event left it, its cursor a byte range, gone once committed or when focus is lost.
+/// The preedit belongs to the focused widget: read as the last event left it, its cursor a byte range, gone once committed or when focus is lost, and for good once focus settles elsewhere.
 #[test]
 fn the_preedit_is_a_level_for_the_focused_widget() {
     let FocusedField { mut h, mut buf } = focused_field();
@@ -100,6 +100,9 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
     h.clear_focus();
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(h.ui.ime_preedit(), None, "it is the focused widget's alone");
+    h.set_focus(field());
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(h.ui.ime_preedit(), None, "focus that left retired it");
 }
 
 /// A commit behind a held key waits with it, keeping its text (the queue copied it, the host's string being gone), and types after the key.

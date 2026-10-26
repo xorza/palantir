@@ -217,7 +217,7 @@ fn warmup_keeps_focus_requests() {
             }
             records += 1;
             seen.push(ui.focus());
-            Block::new().id(target).size(10.0).show(ui);
+            Block::new().id(target).focusable(true).size(10.0).show(ui);
         });
         assert_eq!(records, 2, "warmup + real");
         assert_eq!(seen, [request, request], "{before:?} → {request:?}");

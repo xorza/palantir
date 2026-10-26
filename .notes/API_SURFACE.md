@@ -1235,7 +1235,6 @@ Modifiers
         pub const ALT: Self
         pub const CTRL_SHIFT: Self
         pub const fn has_command(self) -> bool
-        impl From<Modifiers> for ShortcutMods
 
 NodeIdx
     struct NodeIdx: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1353,7 +1352,7 @@ PointerEvent
         Down { pos: Vec2, button: PointerButton }
         Up { pos: Vec2, button: PointerButton }
         Scroll { pos: Vec2, pixels: Vec2, lines: Vec2 }
-        Zoom { pos: Vec2, factor: f32 }
+        Zoom { pos: Vec2, factor: ZoomFactor }
         Leave
 
 PointerWake
@@ -1624,7 +1623,7 @@ Shortcut
         pub fn matches(self, press: KeyPress) -> bool
 
 ShortcutMods
-    struct ShortcutMods: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<Modifiers>, Hash, PartialEq
+    struct ShortcutMods: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub ctrl: bool
         pub shift: bool
         pub alt: bool

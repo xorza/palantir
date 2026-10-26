@@ -305,10 +305,10 @@ fn right_button_drag_also_latches() {
     assert!(r.right.drag.started());
 }
 
+/// Each latched button reports its own drag: two latched together each measure from their own
+/// press, and one's release leaves the other's drag as it was, with no second latch edge.
 #[test]
-fn left_wins_over_simultaneously_latched_middle() {
-    // Left and middle are both latched; only the priority-first in
-    // `PointerButton::ALL` (left) is reported.
+fn each_latched_button_reports_its_own_drag() {
     let s = UVec2::new(300, 300);
     let mut h = UiHarness::new(s);
     h.frame(build_draggable);
@@ -318,37 +318,16 @@ fn left_wins_over_simultaneously_latched_middle() {
     h.drag_to(Vec2::new(100.0, 60.0)); // latches middle
 
     let r = h.response_in(id(), build_draggable);
-    let d = r.left.drag.delta().expect("a drag must be active");
-    assert_eq!(d, Vec2::new(80.0, 40.0));
-    assert!(r.left.drag.is_live());
-    assert!(
-        !r.middle.drag.is_live(),
-        "left has priority: middle is captured but not the active drag",
-    );
-}
-
-#[test]
-fn releasing_priority_button_promotes_lower_priority() {
-    // Releasing left while middle is held and latched moves the active drag to
-    // middle.
-    let s = UVec2::new(300, 300);
-    let mut h = UiHarness::new(s);
-    h.frame(build_draggable);
-    h.press_at(Vec2::new(20.0, 20.0));
-    h.press_button(PointerButton::Middle);
-    h.drag_to(Vec2::new(80.0, 60.0)); // both latch
-
-    assert!(h.response_in(id(), build_draggable).left.drag.is_live());
+    // Left travels (100, 60) - (20, 20); middle (100, 60) - (40, 20).
+    assert_eq!(r.left.drag.delta(), Some(Vec2::new(80.0, 40.0)));
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
+    assert!(r.middle.drag.started(), "middle's own latch edge");
 
     h.release();
     let r = h.response_in(id(), build_draggable);
-    assert!(
-        r.middle.drag.is_live(),
-        "releasing left must promote middle to the active drag",
-    );
-    assert!(!r.left.drag.is_live());
-    // Middle's anchor is its own press position (20, 20); delta = current (80, 60)
-    // - press.
+    assert!(r.left.drag.stopped());
+    assert!(r.middle.drag.is_live());
+    assert!(!r.middle.drag.started(), "no second latch edge");
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
 }
 

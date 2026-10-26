@@ -281,6 +281,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash("editor"))
+                    .focusable(true)
                     .size(10.0)
                     .show(ui);
                 Block::new()
@@ -458,20 +459,28 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         ("hidden", Mode::Hidden, None),
         ("disabled", Mode::Disabled, None),
     ];
+    let record = |ui: &mut Ui, mode: &Mode| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let b = fixed_button(editable).focusable(true);
+            match mode {
+                Mode::Shown => b.show(ui),
+                Mode::Hidden => b.visibility(Visibility::Hidden).show(ui),
+                Mode::Disabled => b.disabled(true).show(ui),
+            };
+        });
+    };
     for (label, mode, expected) in cases {
         let mut h = UiHarness::new(BUTTON_SURFACE);
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                let b = fixed_button(WidgetId::from_hash("editable")).focusable(true);
-                match mode {
-                    Mode::Shown => b.show(ui),
-                    Mode::Hidden => b.visibility(Visibility::Hidden).show(ui),
-                    Mode::Disabled => b.disabled(true).show(ui),
-                };
-            });
-        });
+        h.frame(|ui| record(ui, mode));
         h.click_at(glam::Vec2::new(50.0, 20.0));
         assert_eq!(h.focus(), *expected, "case {label}");
+
+        // A holder that turns hidden or disabled drops focus, so keys stop routing to it.
+        let mut h = UiHarness::new(BUTTON_SURFACE);
+        h.frame(|ui| record(ui, &Mode::Shown));
+        h.click_at(glam::Vec2::new(50.0, 20.0));
+        h.frame(|ui| record(ui, mode));
+        assert_eq!(h.focus(), *expected, "case {label}, after focus");
     }
 }
 

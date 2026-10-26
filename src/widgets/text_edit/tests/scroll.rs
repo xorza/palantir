@@ -226,7 +226,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
     h.prime(2, |ui| body(ui, &mut long));
     h.move_to(Vec2::new(50.0, 20.0));
     assert_eq!(
-        h.ui.input().scroll_targets,
+        h.ui.input().scroll_targets(),
         ScrollTargets {
             x: Some(ed_id),
             y: Some(page),
@@ -270,7 +270,7 @@ fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
     h.prime(2, |ui| body(ui, &mut short));
     h.move_to(Vec2::new(50.0, 20.0));
     assert_eq!(
-        h.ui.input().scroll_targets,
+        h.ui.input().scroll_targets(),
         ScrollTargets::default(),
         "five glyphs fit, so the field leaves the wheel to what is behind it",
     );
@@ -278,7 +278,7 @@ fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
     let mut long = "a".repeat(100);
     h.prime(2, |ui| body(ui, &mut long));
     assert_eq!(
-        h.ui.input().scroll_targets,
+        h.ui.input().scroll_targets(),
         ScrollTargets {
             x: Some(ed_id),
             y: None,

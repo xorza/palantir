@@ -1,10 +1,12 @@
-//! Pure-input dispatch throughput: a dense UI with overlapping clickable/focusable regions, warmed through two frames, then `on_input` events streamed without a frame per iteration. Overlap density dominates, since `Cascade::hit_test` is a reverse linear scan.
+//! Pure-input dispatch throughput: a dense UI with overlapping clickable/focusable regions, warmed through two frames, then `on_input` events streamed without recording a frame. Overlap density dominates, since `Cascade::hit_test` is a reverse linear scan.
+//!
+//! A press and its release never share a frame (see `InputQueue`), so a case that clicks closes the input frame between them, as a frame's end does; otherwise every later event would queue behind the release.
 //!
 //! Cases:
 //! - `input/pointer_move_stream`: oscillating cursor, the per-frame burst of coalesced `CursorMoved`.
-//! - `input/click_stream`: press/release pairs.
+//! - `input/click_stream`: press, input frame, release, input frame.
 //! - `input/scroll_stream`: `ScrollPixels` against a scroll target.
-//! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
+//! - `input/mixed_stream` — interleaved moves / clicks / scrolls, one input frame per burst.
 
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::input::input_event::InputEvent;
@@ -135,9 +137,11 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut ui = warmed_ui();
         let mut i: u32 = 0;
         b.iter(|| {
-            // Move first so the press hits a fresh cell, or the focus hit-test is memoized into the warm path.
+            // Each press lands on a different cell, so focus moves every click.
             ui.press_at(pointer_at(i));
+            ui.ui.end_input_frame();
             let d = ui.release();
+            ui.ui.end_input_frame();
             i = i.wrapping_add(1);
             black_box(d);
         });
@@ -164,8 +168,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
             ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
             if i.is_multiple_of(16) {
                 ui.press();
+                ui.ui.end_input_frame();
                 ui.release();
             }
+            ui.ui.end_input_frame();
             i = i.wrapping_add(3);
             black_box(&ui);
         });
