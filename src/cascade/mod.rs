@@ -299,6 +299,7 @@ impl Cascade {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::cascade::Cascade;
+    use crate::cascade::rows::hit_row::HitRow;
     #[cfg(test)]
     use crate::common::content_hash::ContentHash;
     use crate::input::sense::Sense;
@@ -321,6 +322,11 @@ pub(crate) mod internals {
     }
 
     impl Cascade {
+        /// Every interactive row in paint order, for the widget inspection.
+        pub(crate) fn hit_rows(&self) -> &[HitRow] {
+            &self.hits
+        }
+
         /// Every interactive row's widget in paint order, for tests asserting what reached the hit table.
         #[cfg(test)]
         pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {

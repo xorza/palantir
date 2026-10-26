@@ -1085,6 +1085,7 @@ pub(crate) mod internals {
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
     use crate::input_state::InputState;
+    use crate::internals::inspected_widget::InspectedWidget;
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::layer_layout::LayerLayout;
@@ -1132,6 +1133,14 @@ pub(crate) mod internals {
         /// Replace the display the next frame lays out at, as the window driver does.
         pub(crate) const fn set_display(&mut self, display: Display) {
             self.display = display;
+        }
+    }
+
+    /// Read by tools that drive a `Ui` from outside.
+    impl Ui {
+        /// The last frame's interactive widgets, in paint order, into `out`.
+        pub fn inspect(&self, out: &mut Vec<InspectedWidget>) {
+            InspectedWidget::collect(&self.forest, &self.cascade, out);
         }
     }
 

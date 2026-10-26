@@ -10,6 +10,7 @@ pub mod demo_swatches;
 pub mod frame_fixture;
 #[cfg(test)]
 mod hot_struct_sizes;
+pub mod inspected_widget;
 pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;
