@@ -248,6 +248,7 @@ mod tests {
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
     use glam::UVec2;
+    use image::imageops;
 
     /// The CPU half leaves a frame's output pending and the GPU half completes it.
     #[test]
@@ -327,21 +328,15 @@ mod tests {
         let mut still = RecordApp::new(|ui: &mut Ui| scene(ui, false));
         host.frame(RenderTarget::new(&small), 1.0, &mut still);
         let target = gpu.handles().read_back(&small);
-        for _ in 0..8 {
-            host.frame(RenderTarget::new(&small), 1.0, &mut still);
-            if let Some(shot) = host.ui().screenshot_taken() {
-                assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
-                assert_eq!(shot.size(), UVec2::new(12, 14));
-                let mut crop = Vec::new();
-                for y in 10..24 {
-                    for x in 20..32 {
-                        crop.extend_from_slice(&target.get_pixel(x, y).0);
-                    }
-                }
-                assert_eq!(shot.pixels(), crop.as_slice());
-                return;
-            }
-        }
-        panic!("the carried request never landed");
+        gpu.wait();
+        host.frame(RenderTarget::new(&small), 1.0, &mut still);
+        let shot = host
+            .ui()
+            .screenshot_taken()
+            .expect("the carried request lands once the device finishes its copy");
+        assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
+        assert_eq!(shot.size(), UVec2::new(12, 14));
+        let crop = imageops::crop_imm(&target, 20, 10, 12, 14).to_image();
+        assert_eq!(shot.pixels(), crop.as_raw().as_slice());
     }
 }

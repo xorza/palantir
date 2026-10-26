@@ -842,6 +842,7 @@ mod screenshot_tests {
     use std::cell::Cell;
 
     use glam::{UVec2, Vec2};
+    use image::imageops;
 
     use crate::gpu::surface::render_target::RenderTarget;
     use crate::gpu::surface::render_target::internals::TargetSpec;
@@ -860,8 +861,6 @@ mod screenshot_tests {
 
     /// 64 × 48 physical pixels: logical 64 × 48 at scale 1, 32 × 24 at scale 2.
     const PHYSICAL: UVec2 = UVec2::new(64, 48);
-    /// Frames a screenshot may take to land: the asking frame, then a poll per frame.
-    const LANDING_FRAMES: u32 = 8;
 
     /// What one [`Scene::frame`] did: whether it asks the host for another, and the size of the
     /// screenshot its record pass saw, if one landed.
@@ -947,45 +946,35 @@ mod screenshot_tests {
             self.gpu.handles().read_back(&self.texture)
         }
 
-        /// Ask for `region`, then run frames until the image lands.
+        /// Ask for `region`, wait for the device, and run the frame the image lands in. Without
+        /// the wait, landing is a race between the frame loop and the adapter's copy.
         fn capture(&mut self, region: Option<Rect>) -> Screenshot {
             assert!(
                 self.frame(Frame::Asking(region)).repaint,
                 "an asking frame asks for the next"
             );
-            for _ in 0..LANDING_FRAMES {
-                let run = self.frame(Frame::Still);
-                if let Some(shot) = self.host.ui().screenshot_taken() {
-                    let shot = shot.clone();
-                    assert_eq!(
-                        run.recorded,
-                        Some(shot.size()),
-                        "the frame it lands in records, and the app reads it there"
-                    );
-                    assert!(!run.repaint, "nothing is pending once it landed");
-                    let after = self.frame(Frame::Still);
-                    assert_eq!(
-                        (after.recorded, self.host.ui().screenshot_taken()),
-                        (None, None),
-                        "a screenshot is an edge of the one frame it lands in"
-                    );
-                    return shot;
-                }
-                assert!(run.repaint, "a pending screenshot keeps asking for frames");
-            }
-            panic!("no screenshot within {LANDING_FRAMES} frames");
+            self.gpu.wait();
+            let run = self.frame(Frame::Still);
+            let shot = self
+                .host
+                .ui()
+                .screenshot_taken()
+                .expect("a finished copy lands in the next frame")
+                .clone();
+            assert_eq!(
+                run.recorded,
+                Some(shot.size()),
+                "the frame it lands in records, and the app reads it there"
+            );
+            assert!(!run.repaint, "nothing is pending once it landed");
+            let after = self.frame(Frame::Still);
+            assert_eq!(
+                (after.recorded, self.host.ui().screenshot_taken()),
+                (None, None),
+                "a screenshot is an edge of the one frame it lands in"
+            );
+            shot
         }
-    }
-
-    /// `image`'s pixels inside `min..min + size`, row by row.
-    fn crop(image: &image::RgbaImage, min: UVec2, size: UVec2) -> Vec<u8> {
-        let mut out = Vec::new();
-        for y in min.y..min.y + size.y {
-            for x in min.x..min.x + size.x {
-                out.extend_from_slice(&image.get_pixel(x, y).0);
-            }
-        }
-        out
     }
 
     /// The whole window, in RGBA and in BGRA: the image is the target's pixels, at the target's
@@ -1040,11 +1029,8 @@ mod screenshot_tests {
             assert_eq!(shot.region(), clamped);
             assert_eq!(shot.size(), size, "{region:?}");
             assert_eq!(shot.scale(), 2.0);
-            assert_eq!(
-                shot.pixels(),
-                crop(&target, min, size).as_slice(),
-                "{region:?}"
-            );
+            let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
+            assert_eq!(shot.pixels(), crop.as_raw().as_slice(), "{region:?}");
         }
         let empty = Rect {
             min: Vec2::new(4.0, 4.0),
