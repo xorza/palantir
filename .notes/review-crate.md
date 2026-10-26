@@ -3,8 +3,7 @@
 Scope: the whole `palantir` crate and `palantir-anim-derive`, read in twelve
 slices. The host / window slice had a dedicated design pass. Items marked
 **[public]** change the exported surface and wait for a go-ahead (AGENTS.md
-"Public API"). Items marked **[decide]** need an owner decision first; they
-are listed in "Open decisions".
+"Public API"). The owner's decisions are in "Decisions".
 
 These bugs were checked against the code: the linear gradient axis, the
 nested-overlay panic, the window command order, the input queue admission,
@@ -154,8 +153,8 @@ the measure-cache hit test.
 
 ## Data identity and global state
 
-- **A cache hit on text is verified.** A keyed or 128-bit hash, or a byte
-  compare on a hit.
+- **A cache hit on text is verified** by a byte compare against the text
+  the cached buffer holds.
 - **Trusted tables are checked**: `IconTable::baked` checks order and spans
   in a `const` loop. An icon id is bound to its set.
 - **No process statics** that the outside world does not force: the
@@ -178,30 +177,40 @@ the measure-cache hit test.
   `primitives`, `text`, `theme` and `layout/cache` that drive `Ui` or widgets
   move to the layer they test.
 
-## Open decisions
+## Decisions
 
-- **[decide] Foreign re-exports.** `pub use wgpu`, the glam re-exports, the
-  second paths in `prelude`, `pub use image` in `golden`, and
-  `#![warn(missing_docs)]` break the global guide. Each has a stated reason.
-  Either the guide records the exceptions, or the crate removes them.
-- **[decide] Stroke `width` vs `thickness`.** AGENTS.md says the width of a
-  stroke is `width`, but cites `Spinner`'s `thickness_ratio` as a correct
-  example. The spinner arc is a stroke.
-- **[decide] Animation interruption.** A spring retarget zeroes velocity
-  that points away from the new target, and a duration retarget restarts the
-  full time. React-spring, SwiftUI and CSS Transitions §3.1 keep velocity and
-  shorten a reversed transition.
-- **[decide] `Platform` / `PLATFORM` public.** No widget uses it. Its doc
-  invites widget code to branch on the OS.
-- **[decide] Layout contract name.** AGENTS.md says "flex-shrink sizing", but
-  the solver uses the CSS 2.1 table-layout interpolation (§17.5.2.2), WPF
-  star grow and safe alignment.
-- **[decide] Text key identity.** A keyed hash (new dependency, for example
-  `foldhash` with a per-process seed) or a byte compare on each hit.
-- **[decide] `image` for tests/visual.** If `pub use image` goes, tests/visual
-  needs `image` as a dev-dependency.
-- **[decide] Double-click settings.** Reading the platform's double-click
-  time and radius needs a host-side platform query on each OS.
+Sources: `.notes/research/2026-10-26-review-decisions.md`.
+
+- **Foreign crates are re-exported whole, only when public signatures name
+  their types.** `pub use wgpu;` and `pub use glam;` stay. The partial glam
+  re-exports (`IVec2`, `UVec2`, `Vec2`) and the second paths of `prelude`
+  go. Refused: no re-exports (each caller must track palantir's exact wgpu
+  version by hand); the current partial set (two paths for about 60 items).
+  Source: Effective Rust Item 24, egui-wgpu and eframe practice.
+- **`golden` reads and writes palantir's `Image`.** Its `pub use image` goes,
+  and tests/visual takes `image` as a dev-dependency for its crops. Refused:
+  keeping `RgbaImage` in the `golden` signatures.
+- **`missing_docs` stays on for the library**, with its reason beside it: a
+  published crate documents every exported item. Refused: removing it.
+- **A stroke's line is `width`, also on a spinner.** Refused: a shape-based
+  exception for rings. Source: Compose Material 3 and Flutter `strokeWidth`.
+- **Interruption follows the canonical models.** A retargeted spring keeps
+  its velocity. A duration retarget back to the segment's start value uses
+  the CSS reversing-adjusted start and shortening factor. Refused: zeroing an
+  opposing velocity (a C¹ break); a full restart on reversal. Sources:
+  SwiftUI (WWDC23), CSS Transitions 2.
+- **`Platform` stays public as the input-convention selector**, for app
+  labels such as "⌘S" vs "Ctrl+S". Refused: making it crate-private.
+- **The solver keeps the table-layout shrink, and the docs name it.** Hug
+  shrink is the CSS 2.1 §17.5.2.2 interpolation, grow is WPF star, and
+  overflow aligns to the leading edge. Refused: CSS Flexbox §9.7 scaled
+  shrink.
+- **A shaped-text cache hit is verified by a byte compare** against the
+  text the cached buffer holds; the key stays a hash. Refused: std
+  `RandomState`, foldhash and FxHash, none of which is exact; a source copy in
+  the key, which would make it neither `Copy` nor small.
+- **Double-click time and radius stay constants** (500 ms, 5 px). Refused:
+  platform queries and an app-set option.
 
 # Part 2: Plan
 
@@ -265,7 +274,9 @@ Files: `src/input_state/{mod.rs, input_queue/, capture.rs, scope.rs, tests/}`,
   `src/input/target_scroll_delta.rs`. Target: move to `input_state/`.
 - [ ] **Docs.** `key_press.rs:15` (Tab repeats do move focus),
   `key_class.rs:24` (Escape under any modifiers), `input_state/mod.rs:56`
-  (`InputState` doc says nothing about the type).
+  (`InputState` doc says nothing about the type), `capture.rs:18` ("Linux
+  has no system value" is wrong; the constants are a choice, see
+  "Decisions").
 - [ ] **Tests.** Merge the two `InputState` non-finite screens
   (`tests/scroll.rs:56-85`, `tests/zoom.rs:19-38`) into one table. Drop the
   long-pinch test (`tests/zoom.rs:50-66`, owned by `zoom_factor/tests.rs`).
@@ -446,6 +457,10 @@ Files: `src/theme/`, `src/widgets/spinner/`, `src/theme/tests/`.
   `Duration::from_secs_f32(TAU / speed)` panics each frame; a code-built `0.0`
   panics too. Target: `SpinnerTheme::period: Duration`, checked non-zero on
   load. **[public]** and a theme-file format change.
+- [ ] **[public] The spinner's stroke is named `thickness`.**
+  `widgets/spinner/mod.rs:81-114`, `theme/spinner.rs:21-26`. Target:
+  `Spinner::width`, `SpinnerTheme::{width_ratio, min_width}`; AGENTS.md
+  cites another `*_ratio` example in place of `thickness_ratio`.
 - [ ] **The duration codec loses precision.** `theme/serde.rs:14, 22`. 300 ms
   reads back as 300 000 012 ns. Target: `f64`; the error text names a
   duration.
@@ -511,8 +526,11 @@ Rendering changes: run the golden suite first, then after. Files:
 - [ ] **Docs.** `rect/mod.rs:17-18` (hash is exact), `urect/mod.rs:155-158`
   (u32 → f32 is not exact above 2^24), `chrome.rs:18` (`corners`, not
   `radius`), `paint/mod.rs:1-2`.
-- [ ] **[decide] Animation interruption model.** `animation_row.rs:84-110`,
-  `animation_map_typed.rs:144-176`.
+- [ ] **Interruption breaks motion.** `animation_row.rs:81-104`,
+  `animation_map_typed.rs:144-176`. Target: a spring retarget keeps its
+  velocity; a duration retarget whose new target is the segment's start
+  value runs from the reversing-adjusted start over the shortened duration
+  (CSS Transitions 2). Tests in `animation/tests/retarget.rs`.
 
 ## Batch 10: Geometric facts computed once
 
@@ -574,8 +592,10 @@ Files: `src/layout/{cache/, drivers/grid/, axis_slot.rs, engine.rs, pass.rs}`,
   sizes at scale 1.5.
 - [ ] **Cache bench fixtures import `ui` and `widgets`.**
   `cache/mod.rs:384-497`. Target: move to `src/internals/`.
-- [ ] **[decide] The sizing contract.** AGENTS.md says "flex-shrink"; record
-  the policies the solver implements, with sources.
+- [ ] **The docs name the wrong sizing contract.** AGENTS.md says
+  "flex-shrink sizing". Target: AGENTS.md and the layout design name the
+  table-layout shrink (CSS 2.1 §17.5.2.2), WPF star grow and leading-edge
+  overflow alignment, with sources.
 
 ## Batch 12: Frame plan and `Ui` state
 
@@ -812,7 +832,15 @@ Files: `src/text/`, `src/shape/`, `src/icons/`,
 - [ ] **The recycle pool cap makes resize drags allocate.**
   `shaped_buffer_cache.rs:21, 251-255`. Target: size the pool from the
   observed peak; trim only on a cold signal.
-- [ ] **[decide] Text key identity.** `text/key.rs:33-34, 73-76`.
+- [ ] **A shaped-text hit is not verified.** `text/key.rs:33-34`,
+  `text/request.rs:33-40` (debug-only check). Target: `TextShapeKey` stays a
+  24-byte hash key. A hit compares the request's bytes (this pass's text
+  arena) with the text the cached cosmic `Buffer` already holds: for
+  unbounded and `Wrap` entries its lines plus endings are the source, as
+  `LineMap::new` (`probe/mod.rs:331-351`) already walks. Only a
+  `Clip`/`Ellipsis` entry, whose buffer holds `prefix + "…"`
+  (`cosmic/mod.rs:640-650`), keeps its source in a `String` recycled with
+  the buffer, so a miss allocates nothing after warmup.
 - [ ] **`IconTable::baked` checks nothing.** `icon_table.rs:44-54`. Target:
   `const` checks of order and spans under `# Panics`.
 - [ ] **Probe queries rescan the text.** `probe/mod.rs:331-351`. Target: scan
@@ -853,7 +881,9 @@ All **[public]**. Files: `src/primitives/`, `src/common/platform.rs`,
   `inverse_point`.
 - [ ] **Gaps.** `RgbaF32::hexa`; `IntoIterator for &GradientStops`.
 - [ ] **`#[animate(skip)]` aliases `snap`.** `anim-derive/src/lib.rs:228-233`.
-- [ ] **[decide] `Platform` / `PLATFORM` public.** `common/platform.rs:3, 14`.
+- [ ] **`Platform`'s doc invites widgets to branch on the OS.**
+  `common/platform.rs:3, 14`. Target: the doc names it the input-convention
+  selector, for app labels such as "⌘S" vs "Ctrl+S".
 
 ## Batch 19: Test infrastructure and visibility
 
@@ -886,5 +916,16 @@ Files: `src/internals/`, `src/bench/`, `src/golden/`, `tests/`,
 - [ ] **Docs.** `tests/alloc/gates/on_gpu.rs:10` (no CI skip by name),
   `ui_harness/tests/fixtures.rs:26`.
 - [ ] **`[profile.dev] opt-level = 1` has no reason.** `Cargo.toml:106`.
-- [ ] **[decide] Foreign re-exports.** `lib.rs:9, 147, 186-194, 351-355`,
-  `golden/mod.rs:9`.
+- [ ] **[public] Partial glam re-exports and `prelude`.** `lib.rs:186-194,
+  351-355`. Target: `pub use glam;` whole beside `pub use wgpu;`; the three
+  glam items and `prelude` go; callers write `palantir::glam::Vec2`.
+- [ ] **[public] `golden` names `image` types.** `golden/mod.rs:9, 41, 88,
+  197, 214`. Target: `Goldens` and `DiffReport` take and hold palantir's
+  `Image`; `pub use image` goes; tests/visual takes `image` as a
+  dev-dependency for `imageops`.
+- [ ] **`missing_docs` has no reason.** `lib.rs:9`. Target: a one-line
+  reason beside it.
+- [ ] **The global guide forbids the re-exports the crate keeps.**
+  `~/.claude/CLAUDE.md` "No crate re-exports another crate". Target: one
+  exception, "a crate whose public signatures name a foreign type
+  re-exports that crate whole".
