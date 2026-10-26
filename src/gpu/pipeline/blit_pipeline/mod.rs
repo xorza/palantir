@@ -28,7 +28,7 @@ impl BlitPipeline {
     }
 
     /// The pipeline for one target format. No blend: the backbuffer holds the finished frame, so the draw replaces the target. No stencil twin: it runs after every clipped draw, in its own pass.
-    pub(super) fn build(
+    pub(crate) fn build(
         &self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,

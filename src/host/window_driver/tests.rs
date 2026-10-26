@@ -830,3 +830,240 @@ mod cutout_census_tests {
         );
     }
 }
+
+/// Screenshots through the public offscreen path: a frame asks, a later frame holds the image,
+/// and the image is the frame's pixels, which [`Gpu::read_back`](crate::Gpu::read_back) of the
+/// target gives independently.
+#[expect(
+    clippy::disallowed_types,
+    reason = "the targets are made in the formats under test, which only wgpu names"
+)]
+mod screenshot_tests {
+    use std::cell::Cell;
+
+    use glam::{UVec2, Vec2};
+
+    use crate::gpu::surface::render_target::RenderTarget;
+    use crate::gpu::surface::render_target::internals::TargetSpec;
+    use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    use crate::host::offscreen::OffscreenHost;
+    use crate::internals::record_app::RecordApp;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::paint::chrome::Chrome;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::text::shaper::TextShaper;
+    use crate::ui::Ui;
+    use crate::ui::screenshot::Screenshot;
+    use crate::widget_core::configure::Configure;
+    use crate::widgets::block::Block;
+
+    /// 64 × 48 physical pixels: logical 64 × 48 at scale 1, 32 × 24 at scale 2.
+    const PHYSICAL: UVec2 = UVec2::new(64, 48);
+    /// Frames a screenshot may take to land: the asking frame, then a poll per frame.
+    const LANDING_FRAMES: u32 = 8;
+
+    /// What one [`Scene::frame`] did: whether it asks the host for another, and the size of the
+    /// screenshot its record pass saw, if one landed.
+    #[derive(Clone, Copy, Debug)]
+    struct FrameRun {
+        repaint: bool,
+        recorded: Option<UVec2>,
+    }
+
+    /// What one frame of [`Scene`] records beside its blocks.
+    #[derive(Clone, Copy, Debug)]
+    enum Frame {
+        Still,
+        /// It asks for a screenshot of the region, or of the window for `None`.
+        Asking(Option<Rect>),
+    }
+
+    /// A host over one texture of `format`, drawing two blocks of different colors so a crop or
+    /// a swapped channel shows.
+    struct Scene {
+        gpu: HeadlessTestGpuLease,
+        host: OffscreenHost,
+        texture: wgpu::Texture,
+        scale: f32,
+    }
+
+    impl Scene {
+        fn new(format: wgpu::TextureFormat, scale: f32) -> Self {
+            let gpu = headless_test_gpu();
+            let host = OffscreenHost::builder(gpu.handles())
+                .shaper(TextShaper::test_mono())
+                .build();
+            let texture = gpu.target_with(TargetSpec {
+                label: "palantir.screenshot.test",
+                size: PHYSICAL,
+                format,
+                usage: HeadlessTestGpuLease::TARGET_USAGES,
+            });
+            Self {
+                gpu,
+                host,
+                texture,
+                scale,
+            }
+        }
+
+        /// One frame.
+        fn frame(&mut self, frame: Frame) -> FrameRun {
+            let asked = Cell::new(frame);
+            let seen = Cell::new(None);
+            let mut app = RecordApp::new(|ui: &mut Ui| {
+                if let Some(shot) = ui.screenshot_taken() {
+                    seen.set(Some(shot.size()));
+                }
+                Block::new()
+                    .id_salt("red")
+                    .pos((2.0, 2.0))
+                    .size(10.0)
+                    .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
+                    .show(ui);
+                Block::new()
+                    .id_salt("blue")
+                    .pos((14.0, 6.0))
+                    .size(8.0)
+                    .chrome(Chrome::fill(RgbaF32::hex(0x2f6fd0)))
+                    .show(ui);
+                if let Frame::Asking(region) = asked.get() {
+                    ui.request_screenshot(region);
+                }
+            });
+            let repaint = self
+                .host
+                .frame(RenderTarget::new(&self.texture), self.scale, &mut app)
+                .repaint_requested;
+            FrameRun {
+                repaint,
+                recorded: seen.get(),
+            }
+        }
+
+        /// The target's pixels; the scene is still, so every frame leaves the same ones.
+        fn target(&self) -> image::RgbaImage {
+            self.gpu.handles().read_back(&self.texture)
+        }
+
+        /// Ask for `region`, then run frames until the image lands.
+        fn capture(&mut self, region: Option<Rect>) -> Screenshot {
+            assert!(
+                self.frame(Frame::Asking(region)).repaint,
+                "an asking frame asks for the next"
+            );
+            for _ in 0..LANDING_FRAMES {
+                let run = self.frame(Frame::Still);
+                if let Some(shot) = self.host.ui().screenshot_taken() {
+                    let shot = shot.clone();
+                    assert_eq!(
+                        run.recorded,
+                        Some(shot.size()),
+                        "the frame it lands in records, and the app reads it there"
+                    );
+                    assert!(!run.repaint, "nothing is pending once it landed");
+                    let after = self.frame(Frame::Still);
+                    assert_eq!(
+                        (after.recorded, self.host.ui().screenshot_taken()),
+                        (None, None),
+                        "a screenshot is an edge of the one frame it lands in"
+                    );
+                    return shot;
+                }
+                assert!(run.repaint, "a pending screenshot keeps asking for frames");
+            }
+            panic!("no screenshot within {LANDING_FRAMES} frames");
+        }
+    }
+
+    /// `image`'s pixels inside `min..min + size`, row by row.
+    fn crop(image: &image::RgbaImage, min: UVec2, size: UVec2) -> Vec<u8> {
+        let mut out = Vec::new();
+        for y in min.y..min.y + size.y {
+            for x in min.x..min.x + size.x {
+                out.extend_from_slice(&image.get_pixel(x, y).0);
+            }
+        }
+        out
+    }
+
+    /// The whole window, in RGBA and in BGRA: the image is the target's pixels, at the target's
+    /// size and scale, over the whole logical window. A float target, which holds linear light,
+    /// gives the same sRGB bytes as the sRGB one.
+    #[test]
+    fn a_whole_window_screenshot_is_the_frame() {
+        let mut reference = None;
+        for format in [
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+        ] {
+            let mut scene = Scene::new(format, 1.0);
+            let shot = scene.capture(None);
+            assert_eq!(shot.size(), PHYSICAL, "{format:?}");
+            assert_eq!(shot.scale(), 1.0);
+            assert_eq!(shot.region(), Rect::new(0.0, 0.0, 64.0, 48.0));
+            assert_eq!(
+                shot.pixels(),
+                scene.target().as_raw().as_slice(),
+                "{format:?}"
+            );
+            reference.get_or_insert(shot);
+        }
+        let float = Scene::new(wgpu::TextureFormat::Rgba16Float, 1.0).capture(None);
+        assert_eq!(Some(&float), reference.as_ref(), "Rgba16Float");
+    }
+
+    /// At scale 2 the logical region (5.25, 3) + (10 × 6) covers physical x 10.5..30.5 and
+    /// y 6..18; rounded out, that is (10, 6) + (21 × 12). A region past the 32 × 24 logical
+    /// window is clamped first: (28, 20) + (10 × 10) becomes (28, 20) + (4 × 4), physical
+    /// (56, 40) + (8 × 8). An empty region gives an empty image.
+    #[test]
+    fn a_region_rounds_out_to_whole_physical_pixels() {
+        let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 2.0);
+        for (region, clamped, min, size) in [
+            (
+                Rect::new(5.25, 3.0, 10.0, 6.0),
+                Rect::new(5.25, 3.0, 10.0, 6.0),
+                UVec2::new(10, 6),
+                UVec2::new(21, 12),
+            ),
+            (
+                Rect::new(28.0, 20.0, 10.0, 10.0),
+                Rect::new(28.0, 20.0, 4.0, 4.0),
+                UVec2::new(56, 40),
+                UVec2::new(8, 8),
+            ),
+        ] {
+            let shot = scene.capture(Some(region));
+            let target = scene.target();
+            assert_eq!(shot.region(), clamped);
+            assert_eq!(shot.size(), size, "{region:?}");
+            assert_eq!(shot.scale(), 2.0);
+            assert_eq!(
+                shot.pixels(),
+                crop(&target, min, size).as_slice(),
+                "{region:?}"
+            );
+        }
+        let empty = Rect {
+            min: Vec2::new(4.0, 4.0),
+            size: Size::new(0.0, 3.0),
+        };
+        let shot = scene.capture(Some(empty));
+        assert_eq!(shot.size(), UVec2::ZERO);
+        assert!(shot.pixels().is_empty());
+    }
+
+    /// A still scene skips its frames; one that asks paints in full anyway, so the image is the
+    /// whole picture rather than what a partial frame touched.
+    #[test]
+    fn a_still_frame_that_asks_still_gives_the_whole_picture() {
+        let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 1.0);
+        for _ in 0..3 {
+            scene.frame(Frame::Still);
+        }
+        let shot = scene.capture(None);
+        assert_eq!(shot.pixels(), scene.target().as_raw().as_slice());
+    }
+}

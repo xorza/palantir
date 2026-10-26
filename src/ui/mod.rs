@@ -11,6 +11,7 @@ pub(crate) mod frame_runtime;
 mod frame_stats_readout;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
+pub(crate) mod screenshot;
 pub(crate) mod singletons;
 pub(crate) mod state;
 
@@ -53,6 +54,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
@@ -84,6 +86,7 @@ use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
+use crate::ui::screenshot::Screenshot;
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::window::cursor_icon::CursorIcon;
@@ -137,6 +140,12 @@ pub struct Ui {
     window_requests: WindowRequests,
     /// Host-to-recorder facts refreshed before each windowed frame.
     window_frame: WindowFrameState,
+    /// The logical region this frame asked an image of, clamped to the window; the driver takes
+    /// it once the frame is recorded.
+    screenshot_request: Option<Rect>,
+    /// The image that landed for this frame, if one did; replaced or cleared before every frame.
+    /// Boxed: a rare, cold value kept out of the fields every pass walks (`hot_struct_sizes`).
+    screenshot_taken: Option<Box<Screenshot>>,
 }
 
 /// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
@@ -169,6 +178,8 @@ impl Ui {
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
+            screenshot_request: None,
+            screenshot_taken: None,
         }
     }
 
@@ -342,6 +353,47 @@ impl Ui {
             "request_repaint",
         );
         self.frame_runtime.repaint_requested = true;
+    }
+
+    /// Ask for an image of this frame: the whole window for `None`, else `region` in logical
+    /// pixels, clamped to the window. The host copies the frame as it paints it, and the image
+    /// arrives through [`Self::screenshot_taken`] in a later frame. A frame paints in full when it
+    /// asks; a second request in one frame replaces the first.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `region` is not finite: its corner and its size are *offsets*. A negative size
+    /// is an empty region, as it paints nothing.
+    #[track_caller]
+    pub fn request_screenshot(&mut self, region: Option<Rect>) {
+        let window = self.display.logical_rect();
+        let region = region.map_or(window, |region| {
+            vec2::offset(region.min);
+            vec2::offset(Vec2::new(region.size.w, region.size.h));
+            region.clamp_to(window)
+        });
+        self.screenshot_request = Some(region);
+        self.frame_runtime.repaint_requested = true;
+    }
+
+    /// The image a [`Self::request_screenshot`] asked for, during the one frame it lands in, as a
+    /// response's `clicked` holds for the frame of the click; `None` in every other frame. Images
+    /// land in the order they were asked for, one per frame, and the frame one lands in records.
+    pub fn screenshot_taken(&self) -> Option<&Screenshot> {
+        self.screenshot_taken.as_deref()
+    }
+
+    /// The region this frame asked an image of, taken by the driver once the frame is recorded.
+    pub(crate) const fn take_screenshot_request(&mut self) -> Option<Rect> {
+        self.screenshot_request.take()
+    }
+
+    /// Hand the next frame the image that landed for it, or none.
+    pub(crate) fn set_screenshot_taken(&mut self, screenshot: Option<Screenshot>) {
+        if screenshot.is_some() {
+            self.frame_runtime.repaint_requested = true;
+        }
+        self.screenshot_taken = screenshot.map(Box::new);
     }
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.

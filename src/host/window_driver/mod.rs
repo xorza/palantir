@@ -13,11 +13,14 @@ use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
 use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::clock::{Clock, RealtimeClock};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -27,11 +30,13 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
+use crate::ui::screenshot::Screenshot;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
+use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
@@ -63,6 +68,44 @@ pub(super) struct WindowDriver {
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
     cutouts: CutoutPlan,
+    /// The logical region a recorded frame asked an image of, until a frame paints it: one the
+    /// host did not present (an outdated swapchain) carries to the next, and is resolved against
+    /// the display of the frame that paints it, so a resize in between cannot leave it outside.
+    capture_request: Option<Rect>,
+    /// Screenshots on their way back from the device, oldest first; one lands per frame.
+    captures: VecDeque<PendingScreenshot>,
+}
+
+/// The physical pixels of a logical `region` of `display`: edges rounded out, so every pixel
+/// the region touches is in, and held inside the surface.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "each coordinate is floored at zero first, and `as` saturates the far side"
+)]
+fn physical_region(region: Rect, display: Display) -> URect {
+    let scale = display.scale_factor();
+    let max = region.max();
+    let bound = display.physical;
+    let corner = |x: f32, y: f32| {
+        UVec2::new(
+            (x.max(0.0) as u32).min(bound.x),
+            (y.max(0.0) as u32).min(bound.y),
+        )
+    };
+    let min = corner(
+        (region.min.x * scale).floor(),
+        (region.min.y * scale).floor(),
+    );
+    let max = corner((max.x * scale).ceil(), (max.y * scale).ceil());
+    URect::from_min_max(min, max.max(min))
+}
+
+/// A [`Capture`] with the request it answers.
+#[derive(Debug)]
+struct PendingScreenshot {
+    capture: Capture,
+    region: Rect,
+    scale: f32,
 }
 
 /// Identity of the surface or texture a window renders into. The single gate on
@@ -223,6 +266,8 @@ impl WindowDriverBuilder<'_> {
             pixel_snap: self.pixel_snap,
             target: None,
             cutouts: CutoutPlan::new(self.cutout_mode),
+            capture_request: None,
+            captures: VecDeque::new(),
         }
     }
 }
@@ -320,8 +365,49 @@ impl WindowDriver {
         self.finish_cpu_frame(frontend, report)
     }
 
-    fn finish_cpu_frame(&mut self, frontend: &mut Frontend, report: FrameReport) -> CpuFrame {
-        let mut mode = present_path(report.plan, self.strategy, self.backbuffer_fresh);
+    /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
+    /// an edge of exactly that frame.
+    pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
+        let landed = if self.captures.is_empty() {
+            None
+        } else {
+            backend.poll();
+            self.captures
+                .front()
+                .and_then(|pending| pending.capture.take())
+        }
+        .map(|pixels| {
+            let pending = self
+                .captures
+                .pop_front()
+                .expect("the screenshot that landed is the front one");
+            Screenshot::new(pixels.pixels, pixels.size, pending.scale, pending.region)
+        });
+        self.ui.set_screenshot_taken(landed);
+    }
+
+    fn finish_cpu_frame(&mut self, frontend: &mut Frontend, mut report: FrameReport) -> CpuFrame {
+        if let Some(region) = self.ui.take_screenshot_request() {
+            self.capture_request = Some(region);
+        }
+        // A screenshot reads the backbuffer, so its frame paints all of it there, whatever
+        // damage or present strategy the frame had.
+        let capturing = self.capture_request.is_some();
+        if capturing {
+            report.plan = Some(report.plan.map_or(
+                RenderPlan {
+                    clear: self.ui.theme().window_clear,
+                    damage: Damage::Full,
+                },
+                RenderPlan::to_full,
+            ));
+        }
+        let strategy = self.strategy;
+        let path = |plan: Option<RenderPlan>, fresh: bool| match plan {
+            Some(plan) if capturing => PresentPath::ViaBackbuffer(plan.to_full()),
+            plan => present_path(plan, strategy, fresh),
+        };
+        let mut mode = path(report.plan, self.backbuffer_fresh);
         if !matches!(mode, PresentPath::SkipNoop) {
             self.output_valid = false;
         }
@@ -330,11 +416,15 @@ impl WindowDriver {
             if self.plan_cutouts(&frontend.buffer, plan) == Census::Stale {
                 // The pixels this partial frame keeps show a cutout form the frame no longer picks.
                 let full = plan.to_full();
-                mode = present_path(Some(full), self.strategy, self.backbuffer_fresh);
+                mode = path(Some(full), self.backbuffer_fresh);
                 frontend.build(self.ui.frame_scene(), full);
                 let census = self.plan_cutouts(&frontend.buffer, full);
                 debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
             }
+        }
+        // The host runs frames until each screenshot lands, as nothing else wakes it then.
+        if capturing || !self.captures.is_empty() {
+            report.repaint_requested = true;
         }
         CpuFrame { report, mode }
     }
@@ -465,6 +555,17 @@ impl WindowDriver {
                     debug_overlay,
                 });
                 self.output_valid = true;
+                if let Some(region) = self.capture_request.take() {
+                    let backbuffer = backbuffer
+                        .expect("a frame with a screenshot request paints through the backbuffer");
+                    let display = self.ui.display();
+                    let region = region.clamp_to(display.logical_rect());
+                    self.captures.push_back(PendingScreenshot {
+                        capture: backend.capture(backbuffer, physical_region(region, display)),
+                        region,
+                        scale: display.scale_factor(),
+                    });
+                }
             }
         }
     }

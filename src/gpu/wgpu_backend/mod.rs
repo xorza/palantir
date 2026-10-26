@@ -75,6 +75,7 @@ use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::{Backbuffer, EnsuredBackbuffer};
+use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
@@ -109,6 +110,8 @@ pub(crate) struct WgpuBackend {
     /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
     raster: RasterProgram,
     blit: BlitPipeline,
+    /// The blit into [`Capture::FORMAT`], built on the first screenshot.
+    capture_blit: Option<wgpu::RenderPipeline>,
     icon: IconBackend,
     curve: CurvePipeline,
     text: TextBackend,
@@ -193,6 +196,7 @@ impl WgpuBackend {
             gpu_view_targets,
             raster,
             blit,
+            capture_blit: None,
             icon,
             curve,
             text,
@@ -886,6 +890,19 @@ impl WgpuBackend {
             backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
         }
         self.gpu.queue.submit(iter::once(encoder.finish()));
+    }
+
+    /// Start copying `region` of `backbuffer`, which the last submit painted, for a screenshot.
+    pub(crate) fn capture(&mut self, backbuffer: &Backbuffer, region: URect) -> Capture {
+        let blit = self
+            .capture_blit
+            .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT));
+        Capture::start(&self.gpu.device, &self.gpu.queue, blit, backbuffer, region)
+    }
+
+    /// Run the map callbacks of the copies the device has finished, without waiting for the rest.
+    pub(crate) fn poll(&self) {
+        self.gpu.device.poll(wgpu::PollType::Poll).ok();
     }
 
     /// Release every `GpuView` target owned by a retired render stream (called as a

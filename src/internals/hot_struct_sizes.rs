@@ -108,7 +108,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 
 /// Expected `size_of::<Ui>()` under `cfg(test)`, per profile: the scene's
 /// `cfg(debug_assertions)` check fields make a debug `Ui` the larger one.
-const UI_SIZE: usize = if cfg!(debug_assertions) { 9360 } else { 8784 };
+const UI_SIZE: usize = if cfg!(debug_assertions) { 9384 } else { 8808 };
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
