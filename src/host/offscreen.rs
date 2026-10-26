@@ -242,6 +242,7 @@ mod tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::PresentPath;
     use crate::internals::record_app::RecordApp;
+    use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
     use crate::widget_core::configure::Configure;
@@ -288,5 +289,59 @@ mod tests {
                 "frame {frame}: {mode:?} is complete once submitted",
             );
         }
+    }
+    /// A frame asks for a region but is never presented, as an outdated swapchain leaves it, and
+    /// the window shrinks from 64 × 48 to 32 × 24 before a frame paints. The request carries to
+    /// that frame and is resolved against its window: (20, 10) + 30 × 20 clamps to
+    /// (20, 10) + 12 × 14, and the image is that crop of the small target.
+    #[test]
+    fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
+        let gpu = headless_test_gpu();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .shaper(TextShaper::test_mono())
+            .build();
+        let scene = |ui: &mut Ui, ask: bool| {
+            Block::new()
+                .id_salt("tile")
+                .pos((18.0, 8.0))
+                .size(10.0)
+                .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
+                .show(ui);
+            if ask {
+                ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0)));
+            }
+        };
+
+        let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
+        let key = TargetKey::of(RenderTarget::new(&large));
+        host.driver.note_target(key);
+        let display = host.driver.display(key.physical, 1.0, None);
+        let mut asking = RecordApp::new(|ui: &mut Ui| scene(ui, true));
+        let CpuFrame { report, .. } = host.core.cpu_frame(&mut host.driver, display, &mut asking);
+        assert!(
+            report.repaint_requested,
+            "the unpainted request asks for a frame"
+        );
+
+        let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
+        let mut still = RecordApp::new(|ui: &mut Ui| scene(ui, false));
+        host.frame(RenderTarget::new(&small), 1.0, &mut still);
+        let target = gpu.handles().read_back(&small);
+        for _ in 0..8 {
+            host.frame(RenderTarget::new(&small), 1.0, &mut still);
+            if let Some(shot) = host.ui().screenshot_taken() {
+                assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
+                assert_eq!(shot.size(), UVec2::new(12, 14));
+                let mut crop = Vec::new();
+                for y in 10..24 {
+                    for x in 20..32 {
+                        crop.extend_from_slice(&target.get_pixel(x, y).0);
+                    }
+                }
+                assert_eq!(shot.pixels(), crop.as_slice());
+                return;
+            }
+        }
+        panic!("the carried request never landed");
     }
 }

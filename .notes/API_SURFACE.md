@@ -1519,6 +1519,13 @@ RgbaF32
         impl From<RgbaF32> for Brush
         impl From<RgbaF32> for SrgbaU8
 
+Screenshot
+    struct Screenshot: Clone, Debug, PartialEq
+        pub fn pixels(&self) -> &[u8]
+        pub const fn size(&self) -> UVec2
+        pub const fn scale(&self) -> f32
+        pub const fn region(&self) -> Rect
+
 Scroll
     struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn vertical() -> Self
@@ -2194,6 +2201,8 @@ Ui
         pub const fn set_vsync(&mut self, vsync: Vsync)
         pub const fn vsync(&self) -> Vsync
         pub fn request_repaint(&mut self)
+        pub fn request_screenshot(&mut self, region: Option<Rect>)
+        pub fn screenshot_taken(&self) -> Option<&Screenshot>
         pub fn request_repaint_after(&mut self, after: Duration)
         pub fn open_window(&mut self, token: WindowToken, config: WindowConfig)
         pub fn close_window(&mut self, token: WindowToken)

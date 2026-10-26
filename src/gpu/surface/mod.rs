@@ -2,6 +2,7 @@
 //! manager, the retained backbuffer, the stencil attachment, and scissors.
 
 pub(crate) mod backbuffer;
+pub(crate) mod capture;
 pub(crate) mod render_target;
 pub(crate) mod stencil;
 #[cfg(feature = "winit")]

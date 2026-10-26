@@ -2,6 +2,7 @@
 
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::RenderTarget;
+use glam::UVec2;
 
 /// Persistent off-screen color target for the backbuffer-copy path; keeping
 /// last frame's pixels is what lets `LoadOp::Load` work for incremental damage.
@@ -105,6 +106,12 @@ impl Backbuffer {
 
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
+    }
+
+    /// Width and height in physical pixels.
+    pub(crate) fn size(&self) -> UVec2 {
+        let size = self.texture.size();
+        UVec2::new(size.width, size.height)
     }
 
     /// Whether this backbuffer matches `target`'s size and format.

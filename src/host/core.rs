@@ -113,6 +113,7 @@ impl HostCore {
         display: Display,
         app: &mut T,
     ) -> CpuFrame {
+        driver.deliver_screenshot(&self.backend);
         driver.cpu_frame(&mut self.frontend, display, app)
     }
 
