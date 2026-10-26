@@ -19,11 +19,16 @@ pub mod record_app;
 pub(crate) mod scratch_report;
 pub mod ui_harness;
 
+use crate::input_state::capture;
 use crate::text;
+use std::time::Duration;
 
 /// The bench device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
 /// benches outside the crate, which share its adapter check and its devices.
 pub use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
+/// The headless window lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
+/// harnesses outside the crate, which run an app on it without naming wgpu.
+pub use crate::gpu::headless_window::HeadlessWindow;
 /// What a test target is; [`HeadlessTestGpuLease::target_with`] takes it.
 pub use crate::gpu::surface::render_target::internals::TargetSpec;
 /// The GPU test device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for the suites.
@@ -39,3 +44,7 @@ pub const PROBATION_KEEP_FRAMES: u64 = text::internals::PROBATION_KEEP_FRAMES;
 
 /// Frames per revolution of the shaped-buffer expiry ring; audits warm and measure in whole revolutions.
 pub const SHAPED_BUFFER_RING_FRAMES: u64 = text::internals::SHAPED_BUFFER_RING_FRAMES;
+
+/// How soon a second press on the same target makes a double click; a driver that steps its own
+/// clock spaces separate clicks past it.
+pub const DOUBLE_CLICK_WINDOW: Duration = capture::DOUBLE_CLICK_WINDOW;
