@@ -376,12 +376,12 @@ impl WindowDriver {
                 .front()
                 .and_then(|pending| pending.capture.take())
         }
-        .map(|pixels| {
+        .map(|captured| {
             let pending = self
                 .captures
                 .pop_front()
                 .expect("the screenshot that landed is the front one");
-            Screenshot::new(pixels.pixels, pixels.size, pending.scale, pending.region)
+            Screenshot::new(captured.image, pending.scale, pending.region)
         });
         self.ui.set_screenshot_taken(landed);
     }

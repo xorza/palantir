@@ -2,44 +2,32 @@
 //! hands it over.
 
 use crate::primitives::geometry::rect::Rect;
-use glam::UVec2;
+use crate::primitives::paint::image::Image;
 
 /// An image of a frame the app asked for with
 /// [`Ui::request_screenshot`](crate::Ui::request_screenshot): the window or a region of it, as
 /// the frame painted it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Screenshot {
-    pixels: Vec<u8>,
-    size: UVec2,
+    image: Option<Image>,
     scale: f32,
     region: Rect,
 }
 
 impl Screenshot {
-    /// `pixels` of `size` physical pixels, taken at `scale` over the logical `region`.
-    pub(crate) fn new(pixels: Vec<u8>, size: UVec2, scale: f32, region: Rect) -> Self {
-        debug_assert_eq!(
-            pixels.len(),
-            size.x as usize * size.y as usize * 4,
-            "one RGBA8 pixel per physical pixel"
-        );
+    /// `image` of the logical `region`, taken at `scale`; `None` for an empty region.
+    pub(crate) const fn new(image: Option<Image>, scale: f32, region: Rect) -> Self {
         Self {
-            pixels,
-            size,
+            image,
             scale,
             region,
         }
     }
 
-    /// The pixels, row by row from the top, four bytes each: red, green, blue, alpha, encoded
-    /// sRGB as an image file holds them.
-    pub fn pixels(&self) -> &[u8] {
-        &self.pixels
-    }
-
-    /// Width and height in physical pixels.
-    pub const fn size(&self) -> UVec2 {
-        self.size
+    /// The pixels as the frame painted them, one texel per physical pixel; `None` when the region
+    /// was empty and painted nothing.
+    pub const fn image(&self) -> Option<&Image> {
+        self.image.as_ref()
     }
 
     /// Physical pixels per logical pixel when the frame was painted.

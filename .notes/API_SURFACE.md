@@ -190,6 +190,7 @@ Clipboard
     struct Clipboard: Clone, Debug
         pub fn text(&self) -> Result<String, ClipboardUnavailable>
         pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable>
+        pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable>
 
 ClipboardUnavailable
     struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -1521,8 +1522,7 @@ RgbaF32
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
-        pub fn pixels(&self) -> &[u8]
-        pub const fn size(&self) -> UVec2
+        pub const fn image(&self) -> Option<&Image>
         pub const fn scale(&self) -> f32
         pub const fn region(&self) -> Rect
 

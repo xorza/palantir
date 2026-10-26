@@ -335,8 +335,9 @@ mod tests {
             .screenshot_taken()
             .expect("the carried request lands once the device finishes its copy");
         assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
-        assert_eq!(shot.size(), UVec2::new(12, 14));
+        let image = shot.image().unwrap();
+        assert_eq!(image.size(), UVec2::new(12, 14));
         let crop = imageops::crop_imm(&target, 20, 10, 12, 14).to_image();
-        assert_eq!(shot.pixels(), crop.as_raw().as_slice());
+        assert_eq!(image.pixels, crop.into_raw());
     }
 }
