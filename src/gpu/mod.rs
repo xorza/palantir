@@ -14,6 +14,8 @@ pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod flag_names;
 pub(crate) mod frame;
+#[cfg(feature = "internals")]
+pub(crate) mod headless_window;
 pub(crate) mod pipeline;
 pub(crate) mod raster;
 pub(crate) mod resource;
