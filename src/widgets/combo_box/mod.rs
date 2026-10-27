@@ -113,8 +113,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let id = self.widget.resolve(ui);
         let mut stepped = false;
         if !response.disabled && ui.is_focus_within(id) {
-            // Every chord is sampled: `key_pressed` also keeps it subscribed for the wake gate.
-            let mut key = |shortcut| self.widget.key_pressed(ui, shortcut);
+            // Every chord is sampled: `shortcut_pressed` also keeps it subscribed for the wake gate.
+            let mut key = |shortcut| self.widget.shortcut_pressed(ui, shortcut);
             let space = key(Shortcut::key(Key::Char(' ')));
             let enter = key(Shortcut::key(Key::Enter));
             let alt_down = key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));

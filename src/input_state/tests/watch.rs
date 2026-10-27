@@ -9,7 +9,6 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::InputPolicy;
-use crate::input::shortcut::Shortcut;
 use crate::input::watch::PointerWake;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
@@ -43,7 +42,7 @@ fn empty_watch_move(ui: &mut Ui) {
 
 fn empty_watch_escape(ui: &mut Ui) {
     empty(ui);
-    ui.watch_key(Shortcut::key(Key::Escape));
+    ui.watch_shortcut(Key::Escape);
 }
 
 #[test]
@@ -341,7 +340,7 @@ fn key_chord_watcher_wakes_only_exact_chord() {
 
     h.frame(|ui| {
         empty_watch_escape(ui);
-        ui.watch_key(Shortcut::key(Key::Escape));
+        ui.watch_shortcut(Key::Escape);
     });
     let delta = h.key(Key::Enter);
     assert!(!delta.repaint_requested);

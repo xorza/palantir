@@ -644,33 +644,33 @@ fn nav_style(look: NavLook) -> ButtonTheme {
 /// the native ⌘Q). F8 mirrors the inspector button; F9 / F10 / F12 the rail's
 /// overlay switches; Ctrl+`-` / `=` / `0` the UI-scale stepper.
 fn handle_shortcuts(ui: &mut Ui) {
-    if ui.key_pressed(Shortcut::ctrl('Q')) {
+    if ui.shortcut_pressed(Shortcut::ctrl('Q')) {
         ui.close_window(MAIN_WINDOW);
     }
-    if ui.key_pressed(Shortcut::key(Key::F8)) {
+    if ui.shortcut_pressed(Key::F8) {
         toggle_inspector(ui);
     }
     // `^= pressed` toggles when the key fired.
     let mut overlay = ui.debug_overlay();
-    overlay.damage_rect ^= ui.key_pressed(Shortcut::key(Key::F12));
-    overlay.dim_undamaged ^= ui.key_pressed(Shortcut::key(Key::F10));
-    overlay.frame_stats ^= ui.key_pressed(Shortcut::key(Key::F9));
+    overlay.damage_rect ^= ui.shortcut_pressed(Key::F12);
+    overlay.dim_undamaged ^= ui.shortcut_pressed(Key::F10);
+    overlay.frame_stats ^= ui.shortcut_pressed(Key::F9);
     ui.set_debug_overlay(overlay);
 
     // Browser bindings. Ctrl+plus is three presses by layout (`=` on US, `+` on
     // German, shifted `+`), and `Shortcut::matches` compares modifiers exactly,
     // so each needs its own binding.
     let mut scale = ui.user_scale();
-    let up = ui.key_pressed(Shortcut::ctrl('='))
-        || ui.key_pressed(Shortcut::ctrl('+'))
-        || ui.key_pressed(Shortcut::ctrl_shift('+'));
+    let up = ui.shortcut_pressed(Shortcut::ctrl('='))
+        || ui.shortcut_pressed(Shortcut::ctrl('+'))
+        || ui.shortcut_pressed(Shortcut::ctrl_shift('+'));
     if up {
         scale = scale.stepped_up();
     }
-    if ui.key_pressed(Shortcut::ctrl('-')) {
+    if ui.shortcut_pressed(Shortcut::ctrl('-')) {
         scale = scale.stepped_down();
     }
-    if ui.key_pressed(Shortcut::ctrl('0')) {
+    if ui.shortcut_pressed(Shortcut::ctrl('0')) {
         scale = UserScale::ONE;
     }
     ui.set_user_scale(scale);

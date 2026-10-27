@@ -71,7 +71,11 @@ impl InputQueue {
             InputEvent::ModifiersChanged(_) => !self.pointer_edge,
             // It ends every capture, so it waits for a frame that changed none.
             InputEvent::SurfaceFocusLost => !self.buttons.contains(&true),
-            InputEvent::PointerMoved(_)
+            // A tap's press and release may share a frame, as they do in egui's: the key reads
+            // pressed and released, and not held. Holding a release back a frame would cost every
+            // fast typist a frame per key.
+            InputEvent::KeyUp { .. }
+            | InputEvent::PointerMoved(_)
             | InputEvent::PointerLeft
             | InputEvent::ScrollPixels(_)
             | InputEvent::ScrollLines(_)

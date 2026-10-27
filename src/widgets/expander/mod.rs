@@ -6,7 +6,6 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::arrow::Arrow;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -272,14 +271,14 @@ struct ExpanderState {
 }
 
 /// Whether an activation key fired on the focused header; both are sampled, not
-/// short-circuited, as `key_pressed` keeps the chord subscribed for the wake gate.
+/// short-circuited, as `shortcut_pressed` keeps the chord subscribed for the wake gate.
 fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
     let id = header.resolve(ui);
     if !ui.is_focus_within(id) {
         return false;
     }
-    let space = header.key_pressed(ui, Shortcut::key(Key::Char(' ')));
-    let enter = header.key_pressed(ui, Shortcut::key(Key::Enter));
+    let space = header.shortcut_pressed(ui, Key::Char(' '));
+    let enter = header.shortcut_pressed(ui, Key::Enter);
     space || enter
 }
 

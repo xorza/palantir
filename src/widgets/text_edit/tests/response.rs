@@ -286,7 +286,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
             .id(WidgetId::from_hash("app-root"))
             .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
-                let at_root = ui.key_pressed(probe);
+                let at_root = ui.shortcut_pressed(probe);
                 TextEdit::new(buf)
                     .id(field)
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))

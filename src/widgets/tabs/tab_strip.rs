@@ -519,13 +519,13 @@ impl StripPass<'_> {
             None if forward => 0,
             None => len - 1,
         };
-        // Every chord is sampled, not short-circuited, so `key_pressed` keeps each subscribed for the wake gate. Modifier sets match exactly: `Ctrl+Tab` never fires on `Ctrl+Shift+Tab`.
-        let back = ui.key_pressed(Shortcut::key(Key::ArrowLeft));
-        let forward = ui.key_pressed(Shortcut::key(Key::ArrowRight));
-        let first = ui.key_pressed(Shortcut::key(Key::Home));
-        let last = ui.key_pressed(Shortcut::key(Key::End));
-        let cycle = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
-        let cycle_back = ui.key_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
+        // Every chord is sampled, not short-circuited, so `shortcut_pressed` keeps each subscribed for the wake gate. Modifier sets match exactly: `Ctrl+Tab` never fires on `Ctrl+Shift+Tab`.
+        let back = ui.shortcut_pressed(Key::ArrowLeft);
+        let forward = ui.shortcut_pressed(Key::ArrowRight);
+        let first = ui.shortcut_pressed(Key::Home);
+        let last = ui.shortcut_pressed(Key::End);
+        let cycle = ui.shortcut_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
+        let cycle_back = ui.shortcut_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
         let target = if back || cycle_back {
             Some(step(false))
         } else if forward || cycle {

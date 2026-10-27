@@ -158,7 +158,7 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
     };
     let x = Shortcut::key(Key::Char('x'));
     let record = |ui: &mut Ui| {
-        let main_read = ui.key_pressed(x);
+        let main_read = ui.shortcut_pressed(x);
         let trigger = Button::new()
             .id(trigger_id())
             .label("open")

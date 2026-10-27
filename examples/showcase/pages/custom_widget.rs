@@ -7,7 +7,7 @@ use crate::support::{Col, Section, api};
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
     Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
-    Shortcut, Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
+    Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -214,10 +214,10 @@ impl<'a> Stepper<'a> {
         }
         if ui.is_focus_within(id) {
             // Sampled, not short-circuited: each read also subscribes its chord.
-            let up = widget.key_pressed(ui, Shortcut::key(Key::ArrowUp));
-            let down = widget.key_pressed(ui, Shortcut::key(Key::ArrowDown));
-            let home = widget.key_pressed(ui, Shortcut::key(Key::Home));
-            let end = widget.key_pressed(ui, Shortcut::key(Key::End));
+            let up = widget.shortcut_pressed(ui, Key::ArrowUp);
+            let down = widget.shortcut_pressed(ui, Key::ArrowDown);
+            let home = widget.shortcut_pressed(ui, Key::Home);
+            let end = widget.shortcut_pressed(ui, Key::End);
             if up {
                 *self.value = self.value.saturating_add(self.step).min(self.max);
             }

@@ -398,7 +398,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
             .id(WidgetId::from_hash("app-root"))
             .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
-                let at_root = ui.key_pressed(probe);
+                let at_root = ui.shortcut_pressed(probe);
                 let items = items(ui, TabBadge::None);
                 let keyed = TabStrip::new(&items)
                     .id(strip_id())

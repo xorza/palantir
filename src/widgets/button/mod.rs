@@ -4,7 +4,6 @@ use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::Align;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
@@ -83,9 +82,9 @@ impl<'a> Button<'a> {
         let mut response = self.widget.response(ui);
         let id = self.widget.resolve(ui);
         if !response.disabled && ui.is_focus_within(id) {
-            // `key_pressed` also keeps each chord subscribed for the wake gate, so sample both.
-            let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
-            let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+            // `shortcut_pressed` also keeps each chord subscribed for the wake gate, so sample both.
+            let space = self.widget.shortcut_pressed(ui, Key::Char(' '));
+            let enter = self.widget.shortcut_pressed(ui, Key::Enter);
             if space || enter {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             }

@@ -3,7 +3,6 @@
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -95,7 +94,7 @@ impl OverlayScope {
     ///
     /// Escape is read in here, before the layer closes: afterwards the ambient
     /// scope sits below this overlay's and would silence it. A backdrop-less scope
-    /// reports `false` without asking, as `key_pressed` would re-arm a wake every
+    /// reports `false` without asking, as `shortcut_pressed` would re-arm a wake every
     /// frame. An eater goes down first so it paints *under* the body (hit-testing
     /// runs in reverse, so the body still wins); it senses all four pointer
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
@@ -124,7 +123,7 @@ impl OverlayScope {
         let mut escape_pressed = false;
         let inner = scope.show(|ui| {
             let inner = body(ui);
-            escape_pressed = owns_input && ui.key_pressed(Shortcut::key(Key::Escape));
+            escape_pressed = owns_input && ui.shortcut_pressed(Key::Escape);
             inner
         });
         OverlayTurn {

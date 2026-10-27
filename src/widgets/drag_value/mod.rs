@@ -233,8 +233,8 @@ impl<'a> DragValue<'a> {
             for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
                 let coarse = self
                     .widget
-                    .key_pressed(ui, Shortcut::new(ShortcutMods::SHIFT, key));
-                let plain = self.widget.key_pressed(ui, Shortcut::key(key));
+                    .shortcut_pressed(ui, Shortcut::new(ShortcutMods::SHIFT, key));
+                let plain = self.widget.shortcut_pressed(ui, key);
                 if coarse {
                     moved += sign * step * 10.0;
                 } else if plain {
@@ -248,7 +248,7 @@ impl<'a> DragValue<'a> {
             }
         }
 
-        let enter = focused && self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
+        let enter = focused && self.widget.shortcut_pressed(ui, Key::Enter);
         if self.editable && !response.disabled && (response.clicked() || enter) {
             ui.set_focus(id);
             response.focused = true;

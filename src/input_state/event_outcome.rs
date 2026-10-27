@@ -10,7 +10,7 @@ pub(super) struct EventOutcome {
     ///
     /// Set by a `Click` or `DragStopped` release, a `KeyDown`, a drag latch crossing its threshold, and any event a
     /// `PointerWake::BUTTONS` subscriber saw. Clear for a press (a capture reaches only its own target and `focused` is
-    /// read live), `ReleaseKind::Miss`, scroll, pinch, `PointerLeft`, modifier changes and unrouted events: they reach
+    /// read live), `ReleaseKind::Miss`, scroll, pinch, `PointerLeft`, modifier changes, key releases and unrouted events: they reach
     /// at most one target that applies them in the pass that receives them. That lets a click-driven UI settle once
     /// per gesture; an app reacting to a press-driven focus change by writing state a *prefix* widget shows gains a
     /// one-frame lag and should handle it in [`crate::App::update`].

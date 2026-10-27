@@ -190,13 +190,15 @@ impl Shortcut {
     /// Logical-key match with **no** layout fallback; [`Self::matches`] layers that
     /// on.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
-        if ShortcutMods::from_modifiers(mods) != self.mods {
-            return false;
-        }
-        match (self.key, key) {
-            (Key::Char(a), Key::Char(b)) => a.eq_ignore_ascii_case(&b),
-            (a, b) => a == b,
-        }
+        ShortcutMods::from_modifiers(mods) == self.mods && self.key.same_key(key)
+    }
+}
+
+/// The bare key, no modifiers: `ui.shortcut_pressed(Key::Delete)` is
+/// `ui.shortcut_pressed(Key::Delete)`.
+impl From<Key> for Shortcut {
+    fn from(key: Key) -> Self {
+        Self::key(key)
     }
 }
 

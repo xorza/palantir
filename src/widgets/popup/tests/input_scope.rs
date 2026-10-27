@@ -111,8 +111,6 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
 /// a host that can be clicked but not typed into is just as dead.
 #[test]
 fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
-    use crate::input::shortcut::Shortcut;
-
     for (mode, main_reads_key) in [
         (ClickOutside::Block, false),
         (ClickOutside::Dismiss, false),
@@ -125,7 +123,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     // Read from `Main`; `F5`, not Esc, which the popup itself consumes.
-                    let saw = ui.key_pressed(Shortcut::key(Key::F5));
+                    let saw = ui.shortcut_pressed(Key::F5);
                     Popup::new(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)

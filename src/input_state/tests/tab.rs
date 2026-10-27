@@ -208,7 +208,7 @@ fn a_scope_that_takes_focus_keeps_tab() {
                 .show(ui, |ui| {
                     stop(ui, "a");
                     stop(ui, "b");
-                    ui.key_pressed(Shortcut::new(ShortcutMods::NONE, Key::Tab))
+                    ui.shortcut_pressed(Shortcut::new(ShortcutMods::NONE, Key::Tab))
                 })
                 .inner
         };

@@ -3,7 +3,6 @@
 use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::input::shortcut::Shortcut;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -247,7 +246,7 @@ fn warmup_keeps_scope_releases() {
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                let at_root = ui.key_pressed(Shortcut::key(Key::Escape));
+                let at_root = ui.shortcut_pressed(Key::Escape);
                 Panel::vstack()
                     .id(inner)
                     .input_scope(KeyFilter::ALL)

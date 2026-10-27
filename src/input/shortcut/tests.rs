@@ -271,3 +271,13 @@ fn the_meta_modifier_is_super_and_command_on_macos() {
     assert!(!super_l.matches_on(press(Modifiers::NONE), Platform::Mac));
     assert!(!bare_l.matches_on(press(Modifiers::CTRL), Platform::Mac));
 }
+
+/// A plain key converts to its bare chord, which matches it with no modifier held and not with
+/// one.
+#[test]
+fn a_key_converts_to_its_bare_chord() {
+    let enter = Shortcut::from(Key::Enter);
+    assert_eq!(enter, Shortcut::key(Key::Enter));
+    assert!(enter.matches(kp(Modifiers::NONE, Key::Enter)));
+    assert!(!enter.matches(kp(Modifiers::CTRL, Key::Enter)));
+}
