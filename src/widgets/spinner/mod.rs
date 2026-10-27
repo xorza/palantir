@@ -101,18 +101,24 @@ impl<'a> Spinner<'a> {
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
                 let ArcGeometry { center, radius } = ArcGeometry::new(diameter, width);
+                let arc = Shape::arc(
+                    CircularArc {
+                        center,
+                        radius,
+                        start_angle: 0.0,
+                        sweep,
+                    },
+                    Stroke::new(color, width),
+                )
+                .ramp(comet())
+                .cap(LineCap::Round);
+                // An arc of no length paints its cap as a dot, which a turn cannot rotate yet
+                // (`.notes/TODO.md`), so it paints nothing, as before dots existed.
+                if !arc.has_length() {
+                    return;
+                }
                 ui.add_shape_animated(
-                    Shape::arc(
-                        CircularArc {
-                            center,
-                            radius,
-                            start_angle: 0.0,
-                            sweep,
-                        },
-                        Stroke::new(color, width),
-                    )
-                    .ramp(comet())
-                    .cap(LineCap::Round),
+                    arc,
                     PaintAnimation::turn(0.0, 1.0)
                         .with_period(period)
                         .with_repeat(PaintRepeat::Forever)

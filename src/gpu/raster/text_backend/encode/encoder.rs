@@ -45,8 +45,9 @@ impl TextEncoder {
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
+        text: &str,
     ) -> bool {
-        self.cache.emit_cached(pass, run_key)
+        self.cache.emit_cached(pass, run_key, text)
     }
 
     /// Sweeps the encoded-run cache against the shaper's `frame` clock.
@@ -124,7 +125,7 @@ impl TextEncoder {
         } else {
             EncodeCoverage::Complete
         };
-        cache.settle(run_key.key, cur_frame, coverage);
+        cache.settle(run_key.key, request.text(), cur_frame, coverage);
     }
 }
 

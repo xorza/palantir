@@ -3,16 +3,22 @@
 //! `FxHasher::default()`.
 //! FxHasher beat foldhash and ahash in the per-frame micro-shootout (~2.4-3.3x
 //! on the node+shape mix) because our writes are many and small.
+//!
+//! Text is the exception, as text comes from outside the program and FxHash's fixed seed lets
+//! its author pick a collision: [`str()`] is foldhash under a seed drawn once per process.
 
+use foldhash::SharedSeed;
+use foldhash::quality::SeedableRandomState;
 use rustc_hash::FxHasher;
 use std::fmt;
-use std::hash::{self, Hash as _, Hasher as _};
+use std::hash::{self, BuildHasher as _, Hasher as _};
 
-/// Canonical FxHash of a `str`'s bytes, the content hash stored by `RecordedText`.
+/// The content hash of a text, stored by `RecordedText` and carried by a text cache key: foldhash
+/// under the process's random seed, so no text can be written to collide with another on
+/// purpose; two texts still meet by chance about once in 2^64. Stable within a process, which is
+/// as long as a hash is kept.
 pub(crate) fn str(s: &str) -> u64 {
-    let mut h = Hasher::new();
-    s.hash(&mut h);
-    h.finish()
+    SeedableRandomState::with_seed(0, SharedSeed::global_random()).hash_one(s)
 }
 
 /// `FxHasher` plus an inherent [`Self::pod_slice`]; implements `Hasher`.

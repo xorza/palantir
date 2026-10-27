@@ -42,7 +42,7 @@ impl EncodedCache {
         for tag in tags {
             self.stage(glyph(tag));
         }
-        self.settle(k, at, EncodeCoverage::Complete);
+        self.settle(k, "row", at, EncodeCoverage::Complete);
     }
 }
 
@@ -186,7 +186,7 @@ fn only_complete_encodes_become_templates() {
             cache.stage(glyph(tag));
         }
 
-        cache.settle(key(2), 9, coverage);
+        cache.settle(key(2), "row", 9, coverage);
         assert!(cache.pending.is_empty(), "settle consumes the pending row");
 
         assert_eq!(
@@ -394,4 +394,35 @@ fn drifting_run_lengths_strand_a_block_in_every_class_they_leave() {
         (0, 10),
         "the first row takes frame 5's parked block and the rest take their own",
     );
+}
+
+/// A row replays only for the text it was encoded from: the key carries a hash, which two texts
+/// can share. Twenty bytes span three chunks, so the last chunk's padding and the length both
+/// count; a re-encode under the same key stores the new text in the old text's block.
+#[test]
+fn a_row_holds_only_its_own_text() {
+    const TEXT: &str = "twenty bytes of text";
+    let mut cache = EncodedCache::default();
+    for tag in 0..2 {
+        cache.stage(glyph(tag));
+    }
+    cache.settle(key(1), TEXT, 3, EncodeCoverage::Complete);
+    let row = cache.map[&key(1)];
+    assert_eq!((row.text.len, row.text_len), (3, 20));
+    assert!(holds(&cache.texts, &row, TEXT));
+    for other in [
+        "twenty bytes of texT",
+        "twenty bytes of tex",
+        "twenty bytes of text!",
+        "",
+    ] {
+        assert!(!holds(&cache.texts, &row, other), "{other:?}");
+    }
+
+    cache.stage(glyph(9));
+    cache.settle(key(1), "other", 4, EncodeCoverage::Complete);
+    let row = cache.map[&key(1)];
+    assert_eq!(row.text.start, 0, "the old text's block, reused");
+    assert!(holds(&cache.texts, &row, "other"));
+    assert!(!holds(&cache.texts, &row, TEXT));
 }

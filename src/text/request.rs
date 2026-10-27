@@ -39,6 +39,10 @@ impl<'a> TextShapeRequest<'a> {
         (!text.is_empty()).then_some(Self { text, key })
     }
 
+    pub(crate) const fn text(self) -> &'a str {
+        self.text
+    }
+
     pub(super) const fn with_bound(self, bound: WrapBound) -> Self {
         Self {
             key: self.key.with_bound(bound),
@@ -75,11 +79,7 @@ pub(crate) mod internals {
     }
 
     /// Field reads for assertions; production forwards a request whole.
-    impl<'a> TextShapeRequest<'a> {
-        pub(crate) fn text(self) -> &'a str {
-            self.text
-        }
-
+    impl TextShapeRequest<'_> {
         pub(crate) fn key(self) -> TextShapeKey {
             self.key
         }

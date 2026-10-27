@@ -126,6 +126,11 @@ impl CurveShape {
         self.style.cap = cap;
         self
     }
+
+    /// Whether the curve has length: one without paints its cap alone, as a rect.
+    pub(crate) fn has_length(&self) -> bool {
+        self.geometry.point().is_none()
+    }
 }
 
 impl sealed::LowerShape for CurveShape {
