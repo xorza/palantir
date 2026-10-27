@@ -166,7 +166,7 @@ impl<'a> ColorPicker<'a> {
 
         // As wide as the field; every row is `FILL` inside, keeping the value
         // grid's columns a fixed width.
-        let mut widget = self.widget.gap(gap).default_size((
+        let mut widget = self.widget.default_gap(gap).default_size((
             Sizing::fixed(domain::length_at_least(slot.field_width, 1.0)),
             Sizing::HUG,
         ));

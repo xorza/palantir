@@ -149,44 +149,59 @@ fn the_channel_boxes_are_one_fixed_width() {
 struct Measured {
     field: f32,
     swatch: f32,
+    /// The panel's gap, read between the field and the bars row under it.
+    gap: f32,
 }
 
-/// `.style(..)` reaches the arranged field and swatches: each equals its styled size, not stock.
+/// `.style(..)` reaches the arranged field, swatches and panel gap: each equals its styled value,
+/// not stock, and a caller's `.gap(..)` wins over either.
 #[test]
-fn the_style_reaches_the_field_and_the_swatches() {
+fn the_style_reaches_the_panel_and_a_caller_gap_wins() {
     let stock = ColorPickerTheme::default();
     let custom = ColorPickerTheme {
         field_height: stock.field_height + 30.0,
         swatch_size: stock.swatch_size + 7.0,
+        gap: stock.gap + 5.0,
         ..stock.clone()
     };
-    let measure = |style: Option<&ColorPickerTheme>| {
+    let measure = |style: Option<&ColorPickerTheme>, caller_gap: Option<f32>| {
         let id = WidgetId::from_hash("picker-style");
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
         let given = [color];
         h.frame(|ui| {
-            ColorPicker::new(&mut color)
+            let mut picker = ColorPicker::new(&mut color)
                 .swatches(&given)
                 .style(style)
-                .id(id)
-                .show(ui);
+                .id(id);
+            if let Some(g) = caller_gap {
+                picker = picker.gap(g);
+            }
+            picker.show(ui);
         });
         let rect = |id: WidgetId| h.rect(id).expect("arranged");
+        let field = rect(id.with("field"));
         Measured {
-            field: rect(id.with("field")).size.h,
+            field: field.size.h,
             swatch: rect(id.with("swatch").with(0_usize)).size.w,
+            gap: rect(id.with("bars")).min.y - field.max().y,
         }
     };
 
-    let plain = measure(None);
-    let styled = measure(Some(&custom));
+    let plain = measure(None, None);
+    let styled = measure(Some(&custom), None);
     assert_eq!(plain.field, stock.field_height);
     assert_eq!(styled.field, custom.field_height);
     assert_eq!(plain.swatch, stock.swatch_size);
     assert_eq!(styled.swatch, custom.swatch_size);
+    assert_eq!(plain.gap, stock.gap);
+    assert_eq!(styled.gap, custom.gap);
     assert_ne!(styled.field, plain.field);
     assert_ne!(styled.swatch, plain.swatch);
+    assert_ne!(styled.gap, plain.gap);
+
+    let caller = measure(Some(&custom), Some(1.0));
+    assert_eq!(caller.gap, 1.0, "a caller's gap wins over the style's");
 }
 
 /// Readouts show the bound color, not the axes' clamped reading, and a channel edit keeps the others.
