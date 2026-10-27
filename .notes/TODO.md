@@ -6,6 +6,3 @@
 - flexbox
 - platform time doubleclick
 - turn paint animation on every shape kind (quads, text, images, icons, meshes, a curve's dot); `add_shape_animated` panics with `unimplemented!` on them today
-- per-node layout state in one copy per frame: forest-wide columns measure and arrange write directly, indexed by a layer base; a cache hit copies prev to cur once, and `end_frame` swaps
-- atlas growth by pages, if `atomic/raster_atlas/gpu/grow` passes 2 ms on a target adapter: Skia-style fixed pages, all bound at once, eviction once every page exists (`.notes/research/2026-10-28-atlas-growth-and-reexports.md`)
-- suites below `ui` that drive `Ui`: `text/probe/tests.rs`, `theme/tests/file_values.rs`, `layout/cache/tests/`; move each to the layer it asserts, or keep it where the frame is the subject

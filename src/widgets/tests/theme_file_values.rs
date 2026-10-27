@@ -1,4 +1,5 @@
-//! Every number a theme file can carry is rejected on load or safe to render.
+//! Every number a theme file can carry is rejected on load or safe for the bundled widgets to
+//! render.
 //!
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
@@ -12,7 +13,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::Theme;
-use crate::theme::tests::pretty;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
@@ -24,9 +24,15 @@ use crate::widgets::modal::Modal;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
+use ron::ser::{self, PrettyConfig};
 use std::ops::Range;
 use std::panic;
 use std::time::Duration;
+
+/// The default theme as RON text, the document each number is edited in.
+fn default_theme_text() -> String {
+    ser::to_string_pretty(&Theme::default(), PrettyConfig::default()).expect("serialize")
+}
 
 /// The values each number is set to in turn. `8192.0` is the largest length a file holds
 /// (`domain::MAX_FILE_LENGTH`), and `1e30` one far past it.
@@ -141,7 +147,7 @@ fn line_of(ron: &str, at: usize) -> &str {
 
 /// Every `SHARDS`-th number.
 fn walk(shard: usize) {
-    let base = pretty(&Theme::default());
+    let base = default_theme_text();
     for span in numbers(&base).into_iter().skip(shard).step_by(SHARDS) {
         for suspect in SUSPECTS {
             let document = format!("{}{suspect}{}", &base[..span.start], &base[span.end..]);
@@ -163,7 +169,7 @@ fn walk(shard: usize) {
 #[test]
 fn every_number_at_the_length_bound_at_once_renders() {
     const BOUND: &str = "8192.0";
-    let base = pretty(&Theme::default());
+    let base = default_theme_text();
     let splice = |document: &mut String, span: &Range<usize>| {
         document.replace_range(span.clone(), BOUND);
     };
@@ -203,7 +209,7 @@ fn the_probe_draws_the_overlays() {
 
 #[test]
 fn the_walk_finds_the_theme_numbers() {
-    let base = pretty(&Theme::default());
+    let base = default_theme_text();
     let spans = numbers(&base);
     assert!(spans.len() > 100, "found only {} numbers", spans.len());
     assert!(
