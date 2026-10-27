@@ -2,13 +2,7 @@
 //! interpolation between stops are premultiplied (CSS Color 4 §12.3), as the
 //! shaders filter in the same space.
 
-use crate::primitives::math::animatable::Animatable;
-use crate::primitives::math::domain;
-use crate::primitives::paint::brush::gradient::Interpolation;
-use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS};
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::oklab;
+use crate::primitives::paint::brush::gradient::color_ramp::{ColorRamp, RampColors};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
@@ -16,112 +10,31 @@ pub(crate) type LutRowTexels = [RgbaF16; LUT_ROW_TEXELS];
 
 /// Bake `ramp` into one row of texels.
 pub(crate) fn row(ramp: &ColorRamp, out: &mut LutRowTexels) {
-    let ColorRamp {
-        stops,
-        interpolation,
-    } = ramp;
-    let interpolation = *interpolation;
-    let count = stops.len();
-    debug_assert!(stops.is_ascending(), "GradientStops must arrive sorted");
-
-    let mut linear_stops = [RgbaF32::TRANSPARENT; MAX_STOPS];
-    for idx in 0..count {
-        linear_stops[idx] = stops[idx].color().premultiplied();
-    }
-    let mut oklab_stops = [[0.0; 3]; MAX_STOPS];
-    let oklab: &[[f32; 3]] = match interpolation {
-        Interpolation::Oklab => {
-            for idx in 0..count {
-                let color = stops[idx].color();
-                oklab_stops[idx] = oklab::from_linear(color.r, color.g, color.b);
-            }
-            &oklab_stops[..count]
-        }
-        Interpolation::Linear => &[],
-    };
-
-    for (texel, color) in out
-        .iter_mut()
-        .zip(RampTexels::new(ramp, &linear_stops[..count], oklab))
-    {
+    debug_assert!(
+        ramp.stops.is_ascending(),
+        "GradientStops must arrive sorted"
+    );
+    for (texel, color) in out.iter_mut().zip(RampTexels::new(ramp)) {
         *texel = color;
     }
 }
 
-/// The stop list plus a cursor, yielding one row of texels in order. An
+/// A ramp's colors plus a cursor, yielding one row of texels in order. An
 /// iterator because the resume-in-place search needs `t` never to decrease.
 #[derive(Debug)]
 struct RampTexels<'a> {
-    stops: &'a GradientStops,
-    linear: &'a [RgbaF32],
-    /// Oklab coordinates of the straight stop colors; empty under [`Interpolation::Linear`].
-    oklab: &'a [[f32; 3]],
-    interpolation: Interpolation,
+    colors: RampColors<'a>,
     /// Index of the segment's upper stop.
     upper: usize,
     texel: usize,
 }
 
 impl<'a> RampTexels<'a> {
-    /// `ramp`'s texels from its premultiplied `linear` stops and, under
-    /// [`Interpolation::Oklab`], their straight colors' `oklab` coordinates.
-    const fn new(ramp: &'a ColorRamp, linear: &'a [RgbaF32], oklab: &'a [[f32; 3]]) -> Self {
+    fn new(ramp: &'a ColorRamp) -> Self {
         Self {
-            stops: &ramp.stops,
-            linear,
-            oklab,
-            interpolation: ramp.interpolation,
+            colors: RampColors::of(ramp),
             upper: 1,
             texel: 0,
-        }
-    }
-
-    fn color_at(&mut self, t: f32) -> RgbaF32 {
-        if t <= self.stops[0].offset() {
-            return self.linear[0];
-        }
-        let last = self.stops.len() - 1;
-        if t >= self.stops[last].offset() {
-            return self.linear[last];
-        }
-        while self.stops[self.upper].offset() < t {
-            self.upper += 1;
-        }
-        let upper = self.upper;
-        let lower_offset = self.stops[upper - 1].offset();
-        let upper_offset = self.stops[upper].offset();
-        let denominator = upper_offset - lower_offset;
-        if domain::is_approx_zero(denominator) {
-            return self.linear[upper];
-        }
-        let amount = (t - lower_offset) / denominator;
-        match self.interpolation {
-            Interpolation::Linear => {
-                RgbaF32::lerp(self.linear[upper - 1], self.linear[upper], amount)
-            }
-            Interpolation::Oklab => self.lerp_oklab(upper, amount),
-        }
-    }
-
-    /// Interpolates the premultiplied stops `upper - 1` and `upper` in Oklab,
-    /// weighing coordinates by alpha.
-    fn lerp_oklab(&self, upper: usize, amount: f32) -> RgbaF32 {
-        let (lower, upper_color) = (self.linear[upper - 1], self.linear[upper]);
-        let (lower_lab, upper_lab) = (self.oklab[upper - 1], self.oklab[upper]);
-        let a = <f32 as Animatable>::lerp(lower.a, upper_color.a, amount);
-        if a <= 0.0 {
-            return RgbaF32::TRANSPARENT;
-        }
-        let lab = [0, 1, 2].map(|i| {
-            let (l, u) = (lower_lab[i] * lower.a, upper_lab[i] * upper_color.a);
-            (l + (u - l) * amount) / a
-        });
-        let rgb = oklab::to_linear(lab);
-        RgbaF32 {
-            r: rgb[0] * a,
-            g: rgb[1] * a,
-            b: rgb[2] * a,
-            a,
         }
     }
 }
@@ -136,7 +49,7 @@ impl Iterator for RampTexels<'_> {
         }
         self.texel += 1;
         let t = texel as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        Some(RgbaF16::from(self.color_at(t)))
+        Some(self.colors.at(t, &mut self.upper).to_f16())
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -169,8 +82,7 @@ mod tests {
             stops,
             interpolation: Interpolation::Linear,
         };
-        let linear = [RgbaF32::BLACK, RgbaF32::WHITE];
-        let ramp = RampTexels::new(&color_ramp, &linear, &[]);
+        let ramp = RampTexels::new(&color_ramp);
 
         assert_eq!(ramp.len(), LUT_ROW_TEXELS);
         assert_eq!(ramp.count(), LUT_ROW_TEXELS);
@@ -212,7 +124,7 @@ mod tests {
 
         let hard = GradientStops::new([Stop::new(0.5, red), Stop::new(0.5, clear_blue)]);
         let row = bake(&hard, Interpolation::Linear);
-        assert_eq!(row[128], RgbaF16::from(red));
+        assert_eq!(row[128], red.to_f16());
         assert_eq!(row[129], RgbaF16::TRANSPARENT);
     }
 }

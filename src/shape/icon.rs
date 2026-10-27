@@ -120,7 +120,7 @@ impl sealed::LowerShape for IconShape {
             local_rect,
             handle,
             fit,
-            tint: tint.into(),
+            tint: tint.to_f16(),
             desaturate,
         }
     }

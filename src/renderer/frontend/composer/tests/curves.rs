@@ -178,7 +178,7 @@ fn a_join_between_colors_averages_them_premultiplied() {
         .filter(|c| c.kind == CurveKind::JOIN_ROUND)
         .map(|c| c.color0)
         .collect();
-    let half_red = RgbaF16::from(RgbaF32::new(1.0, 0.0, 0.0, 0.5));
+    let half_red = RgbaF32::new(1.0, 0.0, 0.0, 0.5).to_f16();
     assert_eq!(joins, [half_red, half_red]);
 }
 
@@ -234,9 +234,9 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let red = RgbaF32::srgb(1.0, 0.0, 0.0);
     let green = RgbaF32::srgb(0.0, 1.0, 0.0);
     let blue = RgbaF32::srgb(0.0, 0.0, 1.0);
-    let red16 = RgbaF16::from(red);
-    let green16 = RgbaF16::from(green);
-    let blue16 = RgbaF16::from(blue);
+    let red16 = red.to_f16();
+    let green16 = green.to_f16();
+    let blue16 = blue.to_f16();
 
     let pts = [
         Vec2::new(10.0, 10.0),
@@ -315,7 +315,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
                             p3: Vec2::new(offset + 100.0, 0.0),
                         }),
                         fill: GpuFill {
-                            color: RgbaF32::WHITE.into(),
+                            color: RgbaF32::WHITE.to_f16(),
                             ..Default::default()
                         },
                         width: 2.0,
@@ -363,7 +363,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                         p3: Vec2::new(100.0, 0.0),
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -383,7 +383,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                         p3: Vec2::new(50.0, 0.0),
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -414,7 +414,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
-    let tint = RgbaF16::from(RgbaF32::new(0.25, 0.5, 1.0, 0.75));
+    let tint = RgbaF32::new(0.25, 0.5, 1.0, 0.75).to_f16();
     let buf = run(
         |b, _arena| {
             b.draw_curve(
@@ -481,7 +481,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
                         sweep,
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -537,7 +537,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
                         sweep: PI,
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -579,7 +579,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                     p3: Vec2::new(800.0, 5.0),
                 }),
                 fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+                    color: RgbaF32::WHITE.to_f16(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -600,7 +600,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
                     p3: Vec2::new(800.0, 5.0),
                 }),
                 fill: GpuFill {
-                    color: RgbaF32::WHITE.into(),
+                    color: RgbaF32::WHITE.to_f16(),
                     ..Default::default()
                 },
                 width: 2.0,
@@ -648,7 +648,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
                         p3: Vec2::new(50.0, 30.0),
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -685,7 +685,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                         sweep: 1.0,
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -704,7 +704,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                         p3: Vec2::new(200.0, 0.0),
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -797,7 +797,7 @@ fn degenerate_polyline_emits_nothing_rather_than_panicking() {
         let buf = run(
             |b, arena| {
                 arena.polyline_points.push(Vec2::ZERO);
-                arena.polyline_colors.push(RgbaF16::from(RgbaF32::WHITE));
+                arena.polyline_colors.push(RgbaF32::WHITE.to_f16());
                 b.polyline(DrawPolylinePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 4.0, 4.0)),
                     origin: Vec2::ZERO,

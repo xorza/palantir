@@ -39,8 +39,8 @@ impl Submission<'_> {
         let clear = self
             .buffer
             .clear_override
-            .map_or(self.plan.clear, RgbaF16::unpack);
-        RgbaF16::from(RgbaF32 { a: 1.0, ..clear })
+            .map_or(self.plan.clear, RgbaF32::from);
+        RgbaF32 { a: 1.0, ..clear }.to_f16()
     }
 
     /// The debug dim flag, only on frames with an undamaged region.

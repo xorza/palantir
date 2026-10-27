@@ -54,7 +54,7 @@ impl From<&Stroke> for ShapeStroke {
     fn from(stroke: &Stroke) -> Self {
         Self {
             width: stroke.width,
-            color: RgbaF16::from(stroke.color),
+            color: stroke.color.to_f16(),
         }
         .normalized()
     }
@@ -101,7 +101,7 @@ mod tests {
             ShapeStroke::from(&visible),
             ShapeStroke {
                 width: 2.0,
-                color: RgbaF32::WHITE.into(),
+                color: RgbaF32::WHITE.to_f16(),
             },
         );
     }

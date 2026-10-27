@@ -7,7 +7,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::context_menu::ContextMenuTheme;
@@ -148,7 +147,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the menu rule paints a solid fill");
     };
-    assert_eq!(fill, RgbaF16::from(rule), "rule color comes off the menu");
+    assert_eq!(fill, rule.to_f16(), "rule color comes off the menu");
 }
 
 /// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve through `WidgetTheme::plan`, so theme `padding`/`margin` fill where the builder was silent and an explicit value wins.

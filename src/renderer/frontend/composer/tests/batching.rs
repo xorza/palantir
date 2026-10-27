@@ -302,7 +302,7 @@ fn compose_spins_polyline_about_bbox_center() {
         store.polyline_points.push(Vec2::new(15.0, 50.0));
         store.polyline_points.push(Vec2::new(85.0, 50.0));
         let c_start = store.polyline_colors.len() as u32;
-        store.polyline_colors.push(RgbaF32::WHITE.into());
+        store.polyline_colors.push(RgbaF32::WHITE.to_f16());
         buffer.draw_polyline(
             DrawPolylinePayload {
                 alpha: 1.0,
@@ -531,7 +531,7 @@ fn quad_fast_path_flag_cases() {
     use crate::primitives::paint::brush::gradient::Spread;
     use crate::primitives::paint::lut_row::LutRow;
 
-    let solid = |c: RgbaF32| BrushSource::Solid(c.into());
+    let solid = |c: RgbaF32| BrushSource::Solid(c.to_f16());
     let opaque = RgbaF32::srgb(0.5, 0.5, 0.5);
 
     let gradient = BrushSource::Gradient(ResolvedGradient {

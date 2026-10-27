@@ -135,7 +135,7 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
                         ColorSource::Single => slice::from_ref(&tint),
                         ColorSource::PerPoint | ColorSource::PerSegment => &tinted[..colors_len],
                     };
-                    let expected: Vec<RgbaF16> = expected.iter().map(|&c| c.into()).collect();
+                    let expected: Vec<RgbaF16> = expected.iter().map(|&c| c.to_f16()).collect();
                     assert_eq!(
                         &store.polyline_colors[color_span.range()],
                         expected.as_slice(),

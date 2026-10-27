@@ -644,7 +644,7 @@ impl PaintSink for ComposeSession<'_> {
             let color = if ca == cb {
                 ca
             } else {
-                RgbaF16::from(premultiplied_midpoint(ca.into(), cb.into()))
+                premultiplied_midpoint(ca.into(), cb.into()).to_f16()
             };
             self.out.curves.push(CurveInstance {
                 p0: pt(k),

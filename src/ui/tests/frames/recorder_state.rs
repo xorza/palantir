@@ -12,7 +12,6 @@ use glam::Vec2;
 /// `response_for`'s interaction half routes against the one-frame-stale cascade, so on the frame a subtree becomes disabled a widget could see `hovered`/`clicked` with `disabled == true`, which steady state never produces (disabled entries carry `Sense::NONE`).
 #[test]
 fn freshly_disabled_subtree_masks_stale_interactions() {
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::shape::paint::shape_brush::ShapeBrush;
 
     let target = WidgetId::from_hash("target");
@@ -70,7 +69,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     };
     assert_eq!(
         actual_fill,
-        RgbaF16::from(disabled_fill),
+        disabled_fill.to_f16(),
         "fresh self-disable must pick disabled visuals before cascade catches up",
     );
 }

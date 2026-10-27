@@ -40,7 +40,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
         })
         .image;
     // Premultiplied white at alpha 1 − 99.5 / 200 = 0.5025, over black.
-    let midway = RgbaF32::new(0.5025, 0.5025, 0.5025, 1.0).to_srgba_u8();
+    let midway = RgbaF32::new(0.5025, 0.5025, 0.5025, 1.0).to_srgba();
     for (label, y) in [("mesh", 20), ("polyline", 60), ("gradient", 100)] {
         fixtures::assert_px(
             img.get_pixel(99, y).0,

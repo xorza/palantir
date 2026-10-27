@@ -80,6 +80,7 @@ use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_owner_id::RenderOwnerId;
@@ -278,7 +279,7 @@ impl WgpuBackend {
         self.upload_frame(&mut encoder, &submission);
         let draws_damage_rects = self.debug.has_damage_rects();
 
-        let clear = clear.unpack();
+        let clear = RgbaF32::from(clear);
         let clear_color = wgpu::Color {
             r: f64::from(clear.r),
             g: f64::from(clear.g),

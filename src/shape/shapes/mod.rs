@@ -5,7 +5,6 @@ use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::Lower;
 use crate::shape::paint::image_source::ImageSource;
@@ -93,7 +92,7 @@ impl Shapes {
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         let record = ShapeRecord::Image {
             local_rect: None,
-            tint: RgbaF16::from(RgbaF32::WHITE),
+            tint: RgbaF32::WHITE.to_f16(),
             source: ImageSource::GpuView { epoch },
             fit: ImageFit::Fill,
             min_filter: ImageFilter::Linear,

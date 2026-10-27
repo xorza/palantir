@@ -156,7 +156,7 @@ impl RecordStore {
         self.polyline_points.extend_from_slice(points);
         let staged_colors = Span::new(self.polyline_colors.len() as u32, colors.len() as u32);
         self.polyline_colors
-            .extend(colors.iter().map(|&c| RgbaF16::from(c.tinted(tint))));
+            .extend(colors.iter().map(|&c| c.tinted(tint).to_f16()));
         PolylineSpans {
             points: staged_points,
             colors: staged_colors,

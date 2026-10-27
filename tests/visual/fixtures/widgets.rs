@@ -202,8 +202,8 @@ fn rounded_clip_survives_surface_resize() {
     // A stale stencil would mismatch the pass and panic. Each render must still
     // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc center (18, 18),
     // outside the 8 px arc, so it reads clear; the center reads the fill.
-    let clear = DARK_BG.to_srgba_u8();
-    let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba_u8();
+    let clear = DARK_BG.to_srgba();
+    let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba();
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
         let img = h.size(size).frame(scene).image;
         fixtures::assert_px(

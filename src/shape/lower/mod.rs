@@ -60,7 +60,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
         "NaN gradient geometry reached lowering: {b:?}"
     );
     match b {
-        Brush::Solid(color) => ShapeBrush::Solid((*color).into()),
+        Brush::Solid(color) => ShapeBrush::Solid(color.to_f16()),
         Brush::Linear(g) => gradient_brush(store, FillKind::linear(g.spread), g),
         Brush::Radial(g) => gradient_brush(store, FillKind::radial(g.spread), g),
         Brush::Conic(g) => gradient_brush(store, FillKind::conic(g.spread), g),

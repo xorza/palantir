@@ -121,7 +121,7 @@ impl sealed::LowerShape for TriangleShape {
             b,
             c,
             radius,
-            fill: fill.into(),
+            fill: fill.to_f16(),
             border: ShapeStroke::from(border),
             bbox,
         })

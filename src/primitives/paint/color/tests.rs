@@ -7,24 +7,24 @@ use ron::ser;
 fn srgb_bytes_survive_the_trip_through_every_wider_form() {
     for byte in 0u8..=255 {
         let srgb = SrgbaU8::new(byte, byte, byte, byte);
+        assert_eq!(RgbaF32::from(srgb).to_srgba(), srgb, "sRGB {byte} via f32");
         assert_eq!(
-            SrgbaU8::from(RgbaF32::from(srgb)),
-            srgb,
-            "sRGB {byte} via f32"
-        );
-        assert_eq!(
-            SrgbaU8::from(RgbaF16::from(srgb)),
+            RgbaF32::from(RgbaF32::from(srgb).to_f16()).to_srgba(),
             srgb,
             "sRGB {byte} via f16"
         );
     }
 }
 
-/// Fails to compile if `RgbaF32::srgb` or `hex` stops being const.
+/// Fails to compile if `RgbaF32::srgb`, `hex` or `hexa` stops being const. Both literals read
+/// as the bytes they spell: `hexa` puts alpha last, and `hex` is `hexa` with alpha `ff`.
 #[test]
 fn rgb_is_const_constructible() {
     const _LITERAL: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
-    const _HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
+    const HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
+    const HEXA: RgbaF32 = RgbaF32::hexa(0x3366CC80);
+    assert_eq!(HEXA.to_srgba(), SrgbaU8::new(0x33, 0x66, 0xCC, 0x80));
+    assert_eq!(HEX, RgbaF32::hexa(0x3366CCFF));
 }
 
 #[derive(Debug)]
@@ -149,8 +149,8 @@ fn lerp_spans_both_endpoints_and_overshoots() {
 #[test]
 fn faded_scales_only_the_alpha_lane() {
     let f16 = RgbaF16::new(0.25, 0.5, 0.75, 0.8);
-    let full = f16.unpack();
-    let half = f16.faded(0.5).unpack();
+    let full = RgbaF32::from(f16);
+    let half = RgbaF32::from(f16.faded(0.5));
     assert_eq!((half.r, half.g, half.b), (full.r, full.g, full.b));
     assert_eq!(full.a, 1638.0 / 2048.0);
     assert_eq!(half.a, 1638.0 / 4096.0, "alpha is half of the packed 0.8");

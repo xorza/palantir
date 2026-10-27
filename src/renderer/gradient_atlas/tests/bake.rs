@@ -12,10 +12,9 @@ use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::oklab;
+use crate::primitives::paint::color::oklab::Oklab;
 use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
-use std::array;
 use std::collections::HashSet;
 
 /// `Interpolation::Linear`: the black-to-white midpoint is exactly linear 0.5,
@@ -44,12 +43,11 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
     // brought back to linear: a warm yellow, not a dip through dark brown.
     let t = 127.0 / 255.0;
     let (from, to) = (
-        oklab::from_linear(1.0, 0.0, 0.0),
-        oklab::from_linear(0.0, 1.0, 0.0),
+        Oklab::from_color(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
+        Oklab::from_color(RgbaF32::new(0.0, 1.0, 0.0, 1.0)),
     );
-    let [r, g, b] = oklab::to_linear(array::from_fn(|i| from[i] + (to[i] - from[i]) * t));
     let mid = texel(&out, 127);
-    assert_stored(mid, RgbaF32::new(r, g, b, 1.0), "Oklab midpoint");
+    assert_stored(mid, from.lerp(to, t).to_color(), "Oklab midpoint");
 }
 
 /// First and last texels hold the stops' stored colors (catches off-by-one in
@@ -143,7 +141,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     bake::row(&g.ramp, &mut out);
     for (i, got) in out.iter().enumerate() {
         let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        let want = RgbaF16::from(restart_scan(&g.ramp.stops, t));
+        let want = restart_scan(&g.ramp.stops, t).to_f16();
         assert_eq!(*got, want, "texel {i} at t={t}");
     }
 }
@@ -239,13 +237,13 @@ fn dark_gradient_row_has_no_banding() {
 
 /// What the f16 store holds for `color`: its rounding, decoded.
 fn stored(color: RgbaF32) -> RgbaF32 {
-    RgbaF16::from(color).unpack()
+    RgbaF32::from(color.to_f16())
 }
 
 /// One baked texel decoded to a linear `RgbaF32`; `≈` comparisons hold well
 /// under a u8 LSB (1/255).
 fn texel(out: &LutRowTexels, i: usize) -> RgbaF32 {
-    out[i].unpack()
+    RgbaF32::from(out[i])
 }
 
 /// An opaque stop color whose channels are `byte / 255` in linear

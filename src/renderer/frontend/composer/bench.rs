@@ -77,7 +77,7 @@ impl ComposeBench {
                         p3: Vec2::new(112.0, 64.0),
                     }),
                     fill: GpuFill {
-                        color: RgbaF32::WHITE.into(),
+                        color: RgbaF32::WHITE.to_f16(),
                         ..Default::default()
                     },
                     width: 2.0,
@@ -222,7 +222,7 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
-            tint: RgbaF32::WHITE.into(),
+            tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
         },
@@ -245,7 +245,7 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
         DrawTextPayload {
             rect,
             ink: Spacing::ZERO,
-            color: RgbaF32::WHITE.into(),
+            color: RgbaF32::WHITE.to_f16(),
             text: ShapedTextRef {
                 key: TextShapeKey::fixture(),
                 span: Span::default(),
@@ -262,7 +262,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 rect,
                 uv_min: Vec2::ZERO,
                 uv_size: Vec2::ONE,
-                tint: RgbaF32::WHITE.into(),
+                tint: RgbaF32::WHITE.to_f16(),
                 handle: TextureId(1),
                 flags: ImageFlags::NONE,
             },

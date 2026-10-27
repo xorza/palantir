@@ -55,7 +55,7 @@ fn the_hue_bar_writes_only_the_hue() {
 #[test]
 fn the_alpha_texture_is_the_color_at_every_alpha() {
     let color = RgbaF32::hex(0x4cd3ff);
-    let want = color.to_srgba_u8();
+    let want = color.to_srgba();
     let mut image = Image::blank(UVec2::new(4, 2));
     StripPaint::Alpha(color).fill(&mut image);
     let texels = image.texels();
@@ -92,7 +92,7 @@ fn the_hue_texture_follows_the_model() {
         let texels = image.texels();
         for col in 0..size.x {
             let hue = (col as f32 + 0.5) / size.x as f32;
-            let want = model.slice(hue).color(1.0, 1.0).to_srgba_u8();
+            let want = model.slice(hue).color(1.0, 1.0).to_srgba();
             assert_eq!(texels[col as usize], want, "{model:?} at hue {hue}");
         }
     }

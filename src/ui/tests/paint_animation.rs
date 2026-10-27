@@ -38,7 +38,7 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
         .calls
         .iter()
         .filter_map(|call| match call {
-            PaintCall::Quad(p) => Some(p.fill.color.unpack().a),
+            PaintCall::Quad(p) => Some(RgbaF32::from(p.fill.color).a),
             _ => None,
         })
         .collect();

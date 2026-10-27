@@ -17,7 +17,7 @@ use crate::text::font_weight::FontWeight;
 /// Same rectangle payload, different paint kind (a windowed rect inverts the painted region), and all three quad shapes share [`ShapeRecord::Quad`]'s discriminant, so `QuadShape`'s own must separate them and each shape's fields must reach the hasher. A collision makes damage diff skip a repaint.
 #[test]
 fn quad_shapes_hash_apart() {
-    let fill = ShapeBrush::Solid(RgbaF16::from(RgbaF32::WHITE));
+    let fill = ShapeBrush::Solid(RgbaF32::WHITE.to_f16());
     let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));
     let corners = Corners::all(8.0);
     let rect = |kind| {
@@ -47,7 +47,7 @@ fn quad_shapes_hash_apart() {
         b: Vec2::ZERO,
         c: Vec2::ZERO,
         radius: 0.0,
-        fill: RgbaF16::from(RgbaF32::WHITE),
+        fill: RgbaF32::WHITE.to_f16(),
         border: stroke,
         bbox: Rect::ZERO,
     });
@@ -117,12 +117,13 @@ fn curve_and_arc_bases_hash_apart() {
 
 #[test]
 fn shape_mesh_hash_excludes_span_offsets() {
-    let tint = RgbaF16::from(RgbaF32 {
+    let tint = RgbaF32 {
         r: 0.0,
         g: 1.0,
         b: 0.0,
         a: 1.0,
-    });
+    }
+    .to_f16();
     let a = ShapeRecord::Mesh {
         local_rect: None,
         tint,
@@ -165,7 +166,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
 fn image_source_hashes_apart_by_source() {
     let image = |source| ShapeRecord::Image {
         local_rect: None,
-        tint: RgbaF16::from(RgbaF32::WHITE),
+        tint: RgbaF32::WHITE.to_f16(),
         source,
         fit: ImageFit::Fill,
         min_filter: ImageFilter::Linear,
@@ -218,7 +219,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
                 mag_filter: ImageFilter| {
         ShapeRecord::Image {
             local_rect: None,
-            tint: RgbaF16::from(tint),
+            tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id,
                 size,
@@ -318,7 +319,7 @@ fn text_face(font: GlyphFont, local_origin: Option<Vec2>) -> ShapeRecord {
     ShapeRecord::Text {
         local_origin,
         text: RecordedText::new(Span::default(), hash::str("hi")),
-        color: RgbaF32::WHITE.into(),
+        color: RgbaF32::WHITE.to_f16(),
         font,
         wrap: TextWrap::Truncate,
         align: Align::default(),

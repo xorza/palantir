@@ -7,7 +7,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
@@ -226,7 +225,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                     .chrome(node.node)
                     .unwrap_or_else(|| panic!("{} {case:?}: paints chrome", kind.name))
                     .fill;
-            let want = RgbaF16::from(case.want());
+            let want = case.want().to_f16();
             assert!(
                 matches!(fill, ShapeBrush::Solid(got) if got == want),
                 "{} {case:?}: {fill:?}, want {want:?}",

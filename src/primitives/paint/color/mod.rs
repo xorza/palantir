@@ -199,7 +199,7 @@ impl RgbaF32 {
 
     /// Decode sRGB-encoded bytes; alpha is `a / 255`. `const`, so a hex literal
     /// can be a constant. Exact: a compile-time table lookup, so
-    /// [`Self::to_srgba_u8`] returns every byte.
+    /// [`Self::to_srgba`] returns every byte.
     pub const fn from_srgba(bytes: SrgbaU8) -> Self {
         Self {
             r: srgb_transfer::DECODED_BYTES[bytes.r as usize],
@@ -214,8 +214,20 @@ impl RgbaF32 {
         Self::from_srgba(SrgbaU8::hex(rgb))
     }
 
+    /// Packed `0xRRGGBBAA` sRGB literal, alpha last as CSS orders it: [`SrgbaU8::hexa`],
+    /// decoded.
+    pub const fn hexa(rgba: u32) -> Self {
+        Self::from_srgba(SrgbaU8::hexa(rgba))
+    }
+
+    /// Pack to four f16 lanes, rounding each channel to f16: what a draw lane carries.
+    #[inline]
+    pub(crate) fn to_f16(self) -> RgbaF16 {
+        RgbaF16::new(self.r, self.g, self.b, self.a)
+    }
+
     /// Encode to sRGB 8-bit bytes. Inverts [`Self::from_srgba`] exactly.
-    pub fn to_srgba_u8(self) -> SrgbaU8 {
+    pub fn to_srgba(self) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::encode_byte(self.r),
             g: srgb_transfer::encode_byte(self.g),
@@ -232,18 +244,11 @@ impl From<SrgbaU8> for RgbaF32 {
     }
 }
 
-impl From<RgbaF16> for RgbaF32 {
-    #[inline]
-    fn from(c: RgbaF16) -> Self {
-        c.unpack()
-    }
-}
-
 /// Wire format: a CSS-style hex string, `#rrggbb`, or `#rrggbbaa` when alpha
 /// is not fully opaque.
 impl Serialize for RgbaF32 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let SrgbaU8 { r, g, b, a } = self.to_srgba_u8();
+        let SrgbaU8 { r, g, b, a } = self.to_srgba();
         let hex = if a == 0xff {
             format!("#{r:02x}{g:02x}{b:02x}")
         } else {

@@ -14,7 +14,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::shadow::Shadow;
     use crate::primitives::paint::stroke::Stroke;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
@@ -42,7 +41,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             Rect::new(N, 0.0, 4.0, 4.0).is_paint_empty(),
         ),
         ("RgbaF32::is_noop", nan_color.is_noop()),
-        ("RgbaF16::is_noop", RgbaF16::from(nan_color).is_noop()),
+        ("RgbaF16::is_noop", nan_color.to_f16().is_noop()),
         (
             "Stroke::is_noop/width",
             Stroke::new(RgbaF32::WHITE, N).is_noop(),
@@ -99,7 +98,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         // Chrome skips `Shapes::add`, so these are all that guard a NaN `Chrome`.
         (
             "RgbaF16::is_noop/red",
-            RgbaF16::from(RgbaF32::srgba(N, 0.0, 0.0, 1.0)).is_noop(),
+            RgbaF32::srgba(N, 0.0, 0.0, 1.0).to_f16().is_noop(),
         ),
         (
             "RgbaF32::is_noop/red",

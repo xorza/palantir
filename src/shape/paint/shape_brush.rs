@@ -54,7 +54,6 @@ impl NanCheck for ShapeBrush {
 #[cfg(test)]
 mod tests {
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::shape::paint::shape_brush::ShapeBrush;
     use crate::shape::record_store::recorded_gradients::GradientId;
 
@@ -75,8 +74,8 @@ mod tests {
         assert_eq!(a, b, "the id is frame-local and excluded");
         assert_ne!(a, c, "the stops decide");
 
-        let solid = ShapeBrush::Solid(RgbaF32::WHITE.into()).hash_parts();
+        let solid = ShapeBrush::Solid(RgbaF32::WHITE.to_f16()).hash_parts();
         assert_ne!(solid.tag, a.tag, "a solid and a gradient never collide");
-        assert_eq!(solid.payload, RgbaF16::from(RgbaF32::WHITE).as_u64());
+        assert_eq!(solid.payload, RgbaF32::WHITE.to_f16().as_u64());
     }
 }

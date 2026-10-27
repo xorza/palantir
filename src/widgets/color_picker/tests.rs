@@ -32,8 +32,8 @@ fn the_hue_survives_black() {
     frame(&mut h, id, &mut color);
     h.drag_to(Vec2::new(1.0, 300.0));
     frame(&mut h, id, &mut color);
-    assert_eq!(color.to_srgba_u8().r, 0, "dragged past the bottom is black");
-    assert_eq!(color.to_srgba_u8().b, 0);
+    assert_eq!(color.to_srgba().r, 0, "dragged past the bottom is black");
+    assert_eq!(color.to_srgba().b, 0);
 
     h.drag_to(Vec2::new(190.0, 4.0));
     frame(&mut h, id, &mut color);
@@ -62,11 +62,11 @@ fn an_outside_edit_re_seeds_the_axes() {
         !edges.changed,
         "the picker does not rewrite what it was handed"
     );
-    assert_eq!(color.to_srgba_u8().r, 0xff, "and it keeps the color intact");
+    assert_eq!(color.to_srgba().r, 0xff, "and it keeps the color intact");
 
     h.press_at(Vec2::new(206.0, 1.0));
     frame(&mut h, id, &mut color);
-    let picked = color.to_srgba_u8();
+    let picked = color.to_srgba();
     assert!(
         picked.r > picked.g && picked.g > picked.b,
         "an orange: {picked:?}"
@@ -80,11 +80,11 @@ fn opacity_leaves_the_color_alone() {
     let mut h = harness();
     let mut color = RgbaF32::hex(0x0000ff);
     frame(&mut h, id, &mut color);
-    let before = color.to_srgba_u8();
+    let before = color.to_srgba();
 
     h.press_at(Vec2::new(120.0, 160.0 + 6.0 + 14.0 + 6.0 + 7.0));
     frame(&mut h, id, &mut color);
-    let after = color.to_srgba_u8();
+    let after = color.to_srgba();
     assert_eq!(
         (after.r, after.g, after.b),
         (before.r, before.g, before.b),
@@ -208,7 +208,7 @@ fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     frame(&mut h, id, &mut color);
     h.release();
     frame(&mut h, id, &mut color);
-    let got = color.to_srgba_u8();
+    let got = color.to_srgba();
     assert!(got.r > 0, "R moved: {got:?}");
     assert_eq!((got.g, got.b), (0, 255), "G and B kept: {got:?}");
 }

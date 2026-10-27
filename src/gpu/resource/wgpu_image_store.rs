@@ -185,7 +185,7 @@ fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
                     b: 0.0,
                     a: 1.0,
                 }
-                .to_srgba_u8()
+                .to_srgba()
                 .r;
             }
         }
@@ -251,7 +251,7 @@ mod tests {
                     b: straight.b * straight.a,
                     a: straight.a,
                 }
-                .to_srgba_u8(),
+                .to_srgba(),
             };
             assert_eq!(*got, want, "premultiplied {texel:?}");
         }

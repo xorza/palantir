@@ -83,7 +83,7 @@ impl DebugOverlay {
     pub(crate) fn upload_dim(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect::new(0.0, 0.0, viewport.x, viewport.y),
-            fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).into(),
+            fill: RgbaF32::new(0.0, 0.0, 0.0, DIM_ALPHA).to_f16(),
             ..Default::default()
         };
         self.dim.upload(ctx, q);
@@ -106,7 +106,7 @@ impl DebugOverlay {
     ) {
         let scale = buffer.display.scale_factor();
         let gap_px = (DAMAGE_OVERLAY_GAP * scale).max(1.0);
-        let stroke_color = RgbaF16::from(DAMAGE_OVERLAY_COLOR);
+        let stroke_color = DAMAGE_OVERLAY_COLOR.to_f16();
         let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * scale;
         let outline = |rect: Rect| Quad {
             rect,

@@ -1,7 +1,6 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::mesh::*;
 use crate::primitives::math::domain;
-use crate::primitives::paint::color::RgbaF32;
 
 #[test]
 fn mesh_vertex_pod_roundtrip() {

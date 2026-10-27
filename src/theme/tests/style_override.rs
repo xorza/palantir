@@ -150,7 +150,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
     let face = face_of(&h, plain);
     assert_eq!(face.font.size, AMBIENT);
     assert_eq!(face.font.weight, FontWeight::REGULAR);
-    assert_eq!(face.color, ambient_color.into());
+    assert_eq!(face.color, ambient_color.to_f16());
 
     let face = face_of(&h, axes);
     assert_eq!(face.font.size, PER_AXIS);
@@ -158,7 +158,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
     assert_eq!(face.font.line_height, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
     assert_eq!(face.font.slant, FontSlant::Italic);
-    assert_eq!(face.color, axis_color.into());
+    assert_eq!(face.color, axis_color.to_f16());
 
     assert_eq!(
         face_of(&h, over_bundle).font.size,
@@ -170,7 +170,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
     assert_eq!(plain_face.font.size, AMBIENT);
     let axes_face = face_of(&h, edit_axes.with("text-block"));
     assert_eq!(axes_face.font.size, PER_AXIS);
-    assert_eq!(axes_face.color, axis_color.into());
+    assert_eq!(axes_face.color, axis_color.to_f16());
 }
 
 /// What one `Shape::Text` was recorded with.

@@ -2,7 +2,7 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::oklab;
+use crate::primitives::paint::color::oklab::Oklab;
 use std::f32::consts::TAU;
 
 /// Hue, saturation and value in Björn Ottosson's Okhsv space
@@ -64,9 +64,9 @@ impl Okhsv {
     /// The axes naming `color`, ignoring alpha; `fallback_hue` answers gray, which
     /// has no hue.
     pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
-        let lab = oklab::from_linear(color.r, color.g, color.b);
-        let lightness = lab[0];
-        let chroma = lab[1].hypot(lab[2]);
+        let lab = Oklab::from_color(color);
+        let lightness = lab.l;
+        let chroma = lab.a.hypot(lab.b);
         if chroma < GRAY_CHROMA || lightness <= 0.0 {
             return Self {
                 h: domain::turn(fallback_hue),
@@ -74,7 +74,7 @@ impl Okhsv {
                 v: toe(lightness).clamp(0.0, 1.0),
             };
         }
-        let slice = OkhsvSlice::from_direction(lab[1] / chroma, lab[2] / chroma);
+        let slice = OkhsvSlice::from_direction(lab.a / chroma, lab.b / chroma);
         let CuspSlopes { t, .. } = slice.slopes;
 
         let at_top = t / (chroma + lightness * t);
@@ -83,7 +83,7 @@ impl Okhsv {
         let toed = toe(lightness / slice.top_scale(l_v, c_v));
 
         Self {
-            h: (lab[2].atan2(lab[1]) / TAU).rem_euclid(1.0),
+            h: (lab.b.atan2(lab.a) / TAU).rem_euclid(1.0),
             s: ((ANCHOR_S + t) * c_v / (t * ANCHOR_S + t * slice.k * c_v)).clamp(0.0, 1.0),
             v: (toed / l_v).clamp(0.0, 1.0),
         }
@@ -114,7 +114,11 @@ impl OkhsvSlice {
     fn top_scale(self, l_v: f32, c_v: f32) -> f32 {
         let l_vt = toe_inv(l_v);
         let c_vt = c_v * l_vt / l_v;
-        peak_scale([l_vt, self.cos * c_vt, self.sin * c_vt])
+        peak_scale(Oklab {
+            l: l_vt,
+            a: self.cos * c_vt,
+            b: self.sin * c_vt,
+        })
     }
 
     /// The opaque color at `s` and `v` on this hue; both clamp to `0..1`.
@@ -136,17 +140,18 @@ impl OkhsvSlice {
         };
         let scale = self.top_scale(l_v, c_v);
 
-        let rgb = oklab::to_linear([
-            toed * scale,
-            chroma * scale * self.cos,
-            chroma * scale * self.sin,
-        ]);
+        let rgb = Oklab {
+            l: toed * scale,
+            a: chroma * scale * self.cos,
+            b: chroma * scale * self.sin,
+        }
+        .to_color();
         // The gamut edge lands a hair outside (the reference gives -1/255 on red);
         // clamping makes the whole cube in-gamut.
         RgbaF32::new(
-            rgb[0].clamp(0.0, 1.0),
-            rgb[1].clamp(0.0, 1.0),
-            rgb[2].clamp(0.0, 1.0),
+            rgb.r.clamp(0.0, 1.0),
+            rgb.g.clamp(0.0, 1.0),
+            rgb.b.clamp(0.0, 1.0),
             1.0,
         )
     }
@@ -161,7 +166,11 @@ struct Cusp {
 impl Cusp {
     fn find(cos: f32, sin: f32) -> Self {
         let s = max_saturation(cos, sin);
-        let l = peak_scale([1.0, s * cos, s * sin]);
+        let l = peak_scale(Oklab {
+            l: 1.0,
+            a: s * cos,
+            b: s * sin,
+        });
         Self { l, c: l * s }
     }
 
@@ -249,9 +258,9 @@ fn max_saturation(a: f32, b: f32) -> f32 {
 
 /// Cube-root scale bringing `lab`'s brightest linear channel to one, pinning the
 /// cusp and curved top onto the gamut.
-fn peak_scale(lab: [f32; 3]) -> f32 {
-    let rgb = oklab::to_linear(lab);
-    let peak = rgb[0].max(rgb[1]).max(rgb[2]);
+fn peak_scale(lab: Oklab) -> f32 {
+    let rgb = lab.to_color();
+    let peak = rgb.r.max(rgb.g).max(rgb.b);
     debug_assert!(peak > 0.0, "a hue slice always has a positive peak");
     (1.0 / peak).cbrt()
 }

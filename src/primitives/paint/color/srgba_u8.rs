@@ -1,9 +1,6 @@
 //! sRGB-encoded bytes: what a hex code, an image texel, or a number shown
 //! to a person means.
 
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
-
 /// A 4-byte **sRGB-encoded** color with straight 8-bit alpha.
 ///
 /// The one non-linear color form, a distinct type so encoded bytes are never
@@ -47,19 +44,5 @@ impl SrgbaU8 {
     #[inline]
     pub(crate) const fn to_u32(self) -> u32 {
         u32::from_be_bytes([self.r, self.g, self.b, self.a])
-    }
-}
-
-impl From<RgbaF32> for SrgbaU8 {
-    #[inline]
-    fn from(c: RgbaF32) -> Self {
-        c.to_srgba_u8()
-    }
-}
-
-impl From<RgbaF16> for SrgbaU8 {
-    #[inline]
-    fn from(c: RgbaF16) -> Self {
-        c.unpack().to_srgba_u8()
     }
 }

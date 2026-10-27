@@ -5,7 +5,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::widget_core::configure::Configure;
@@ -42,7 +41,7 @@ fn the_theme_panel_is_the_last_resort() {
                 .chrome(body.node)
                 .expect("the body paints chrome")
                 .fill;
-        let want = RgbaF16::from(want);
+        let want = want.to_f16();
         assert!(
             matches!(fill, ShapeBrush::Solid(got) if got == want),
             "{label}: {fill:?}, want {want:?}",

@@ -19,7 +19,7 @@ fn writes_only_a_changed_quad() {
     let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
     let quad = |w: f32, alpha: f32| Quad {
         rect: Rect::new(0.0, 0.0, w, 100.0),
-        fill: RgbaF32::new(0.0, 0.0, 0.0, alpha).into(),
+        fill: RgbaF32::new(0.0, 0.0, 0.0, alpha).to_f16(),
         ..Default::default()
     };
 

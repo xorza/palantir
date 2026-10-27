@@ -209,9 +209,9 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let [solid, ramp] = [2, 3].map(|i| cmds.calls[i].as_curve().unwrap().fill);
     assert_eq!(
         (solid.kind, solid.color),
-        (FillKind::SOLID, RgbaF32::srgb(1.0, 0.0, 0.0).into()),
+        (FillKind::SOLID, RgbaF32::srgb(1.0, 0.0, 0.0).to_f16()),
     );
-    assert_eq!((ramp.kind, ramp.color), (FillKind::RAMP, tint.into()));
+    assert_eq!((ramp.kind, ramp.color), (FillKind::RAMP, tint.to_f16()));
     assert_ne!(
         ramp.lut_row,
         LutRow::FALLBACK,
@@ -273,10 +273,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     assert_eq!(drop.fill.kind, FillKind::SHADOW_DROP);
     assert_eq!(drop_rect, inset_rect, "both carry the one source rect");
     assert_eq!(drop.fill_axis.lanes(), [2.0, 4.0, 8.0, -1.0]);
-    assert_eq!(
-        drop.fill.color,
-        RgbaF16::from(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5))
-    );
+    assert_eq!(drop.fill.color, RgbaF32::srgba(0.0, 0.0, 0.0, 0.5).to_f16());
     // A shadow's whole edge is its blur: the payload must carry no stroke, or the shared quad path would paint one.
     assert_eq!(drop.stroke.color, RgbaF16::TRANSPARENT);
     assert_eq!(drop.stroke.width, 0.0);

@@ -3,7 +3,6 @@
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
 /// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and the full f32 range). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
 #[repr(transparent)]
@@ -42,13 +41,6 @@ impl RgbaF16 {
         self.0.lane_is_opaque(3)
     }
 
-    /// All four lanes unpacked to f32 at once.
-    #[inline]
-    pub(crate) fn unpack(self) -> RgbaF32 {
-        let [r, g, b, a] = self.0.lanes();
-        RgbaF32 { r, g, b, a }
-    }
-
     /// The 8 storage bytes as one `u64`, for the record store's solid-fill payload slot.
     #[inline]
     pub(crate) const fn as_u64(self) -> u64 {
@@ -56,19 +48,12 @@ impl RgbaF16 {
     }
 }
 
-impl From<RgbaF32> for RgbaF16 {
-    /// Four-lane f32→f16 pack.
+impl From<RgbaF16> for RgbaF32 {
+    /// All four lanes unpacked to f32 at once; every f16 is an f32.
     #[inline]
-    fn from(c: RgbaF32) -> Self {
-        Self::new(c.r, c.g, c.b, c.a)
-    }
-}
-
-impl From<SrgbaU8> for RgbaF16 {
-    /// The exact decode, packed; every byte survives the round trip.
-    #[inline]
-    fn from(bytes: SrgbaU8) -> Self {
-        RgbaF32::from_srgba(bytes).into()
+    fn from(c: RgbaF16) -> Self {
+        let [r, g, b, a] = c.0.lanes();
+        Self { r, g, b, a }
     }
 }
 

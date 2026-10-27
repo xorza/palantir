@@ -431,11 +431,10 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::primitives::packed::fill_axis::FillAxis;
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
 
     let vp = UVec2::new(200, 200);
     let bg = RgbaF32::srgb(0.14, 0.16, 0.22);
-    let folded = RgbaF16::from(bg);
+    let folded = bg.to_f16();
 
     let cases: &[(&str, Build, usize, Option<RgbaF32>)] = &[
         (
@@ -536,7 +535,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
             *want_quads,
             "{name}: quad count after fold decision",
         );
-        let want = want_override.map(RgbaF16::from);
+        let want = want_override.map(RgbaF32::to_f16);
         assert_eq!(buf.clear_override, want, "{name}: clear_override");
     }
 
@@ -555,8 +554,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
 /// A mid-stream cover discards the whole hidden underlay (text, clipped groups, batches), not just quads; a transform in flight survives.
 #[test]
 fn clear_fold_discards_hidden_underlay_mid_stream() {
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
-
     let vp = UVec2::new(200, 200);
 
     let buf = run(
@@ -575,7 +572,7 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
         &params(1.0, vp),
     );
 
-    let folded = RgbaF16::from(RgbaF32::srgb(1.0, 1.0, 1.0));
+    let folded = RgbaF32::srgb(1.0, 1.0, 1.0).to_f16();
     assert_eq!(buf.clear_override, Some(folded), "the cover folds");
     assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
     assert_eq!(
