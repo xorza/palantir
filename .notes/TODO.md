@@ -5,4 +5,4 @@
 - mesh once registrations
 - flexbox
 - platform time doubleclick
-- turn paint animation on every shape kind (quads, text, images, icons, meshes, a curve's dot); `add_shape_animated` panics with `unimplemented!` on them today
+- turn paint animation on every shape kind (quads, text, images, icons, meshes, a curve's dot); `add_shape_animated` panics with `unimplemented!` on them today (`.notes/proposal-turn-every-shape.md`)
