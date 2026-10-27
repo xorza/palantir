@@ -291,15 +291,15 @@ fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
         (r#"Linear({"angle":inf,"#, domain::ANGLE_RULE),
         (
             r#"Radial({"center":(NaN,0.5),"radius":(0.5,0.5),"#,
-            domain::OFFSET_RULE,
+            domain::FILE_OFFSET_RULE,
         ),
         (
             r#"Radial({"center":(0.5,0.5),"radius":(-0.5,0.5),"#,
-            domain::LENGTH_RULE,
+            domain::FILE_LENGTH_RULE,
         ),
         (
             r#"Conic({"center":(0.5,inf),"start_angle":0.0,"#,
-            domain::OFFSET_RULE,
+            domain::FILE_OFFSET_RULE,
         ),
         (
             r#"Conic({"center":(0.5,0.5),"start_angle":NaN,"#,

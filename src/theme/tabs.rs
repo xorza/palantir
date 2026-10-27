@@ -40,7 +40,7 @@ pub struct TabsTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub strip_padding: Spacing,
     /// Gutter between two chips.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Hairline under the band, drawn only when [`Self::rule_thickness`] is set.
     pub rule: RgbaF32,
@@ -73,7 +73,7 @@ pub struct TabsTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub badge_size: f32,
     /// Gutter between a chip's icon, label, badge and close button.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

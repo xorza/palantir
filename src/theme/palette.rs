@@ -47,17 +47,17 @@ impl Palette {
     // Border ladder: TEXT_MUTED tints, since surface grays are too close to `element` to read as 1 px edges.
     /// The faintest edge — a rule, a divider.
     pub const fn border_soft(&self) -> RgbaF32 {
-        self.text_muted.with_alpha(0.18)
+        self.text_muted.with_alpha8(46)
     }
 
     /// The default edge — a panel or a field outline.
     pub const fn border_mid(&self) -> RgbaF32 {
-        self.text_muted.with_alpha(0.22)
+        self.text_muted.with_alpha8(56)
     }
 
     /// The loudest edge, for chrome that has to separate two lit surfaces.
     pub const fn border_strong(&self) -> RgbaF32 {
-        self.text_muted.with_alpha(0.35)
+        self.text_muted.with_alpha8(89)
     }
 
     /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. Radius is the small-overlay step shared with [`TooltipTheme`](crate::TooltipTheme); the shadow separates it from what it opened over, since its fill matches the panels beneath.
@@ -65,7 +65,7 @@ impl Palette {
         Chrome::rounded(self.element, Corners::all(4.0))
             .with_border(Stroke::new(self.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
-                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
+                RgbaF32::BLACK.with_alpha8(128),
                 Vec2::new(0.0, 3.0),
                 6.0,
             ))

@@ -100,7 +100,7 @@ impl TextEditTheme {
         let disabled_chrome =
             Chrome::rounded(p.element, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
         // Selection = accent at ~25% alpha: a wash that leaves glyphs readable.
-        let selection = p.accent.with_alpha(0.25);
+        let selection = p.accent.with_alpha8(64);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {
             chrome: normal_chrome,

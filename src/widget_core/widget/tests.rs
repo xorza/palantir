@@ -1,5 +1,7 @@
 use crate::input::sense::Sense;
 use crate::internals::panic_probe;
+use crate::internals::ui_harness::UiHarness;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -14,6 +16,10 @@ use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain::{self, MAX_GAP};
+use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::scene::node::node_mode::NodeMode;
@@ -24,7 +30,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, text::Text};
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 fn node_of<W: Configure>(widget: &mut W) -> &mut Node {
     let Configurator { widget } = widget.configure();
@@ -394,32 +400,47 @@ fn auto_id_redirects_to_call_site() {
     assert_distinct("auto_id() at call site", a, b);
 }
 
-/// A themed fallback faces the same check as an authored value, in every build: padding edges are lengths, margin edges offsets.
+/// A themed fallback faces the same check as an authored value, in every build: padding edges are lengths, margin edges offsets. A non-finite edge never gets that far: `Spacing` refuses it where it is built.
 #[test]
 fn spacings_validate_their_kinds_authored_or_themed() {
     type Case = (&'static str, fn() -> Panel);
+    let lane = <Spacing as LaneCodec>::LANE_RULE;
     let cases: &[Case] = &[
         (domain::LENGTH_RULE, || {
-            Panel::vstack().default_padding(Spacing::all(f32::NAN))
+            Panel::vstack().default_padding(Spacing::all(-1.0))
         }),
         (domain::LENGTH_RULE, || {
-            Panel::vstack().padding(Spacing::all(-1.0))
-        }),
-        (domain::LENGTH_RULE, || {
-            Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, f32::INFINITY))
-        }),
-        (domain::OFFSET_RULE, || {
-            Panel::vstack().default_margin(Spacing::all(f32::NAN))
-        }),
-        (domain::OFFSET_RULE, || {
-            Panel::vstack().margin(Spacing::new(f32::NEG_INFINITY, 0.0, 0.0, 0.0))
+            Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, -2.0))
         }),
     ];
     for &(rule, build) in cases {
         panic_probe::assert_panics_with(rule, build);
     }
+    let unbuilt: &[fn() -> Panel] = &[
+        || Panel::vstack().default_padding(Spacing::all(f32::NAN)),
+        || Panel::vstack().padding(Spacing::new(0.0, 0.0, 0.0, f32::INFINITY)),
+        || Panel::vstack().margin(Spacing::new(f32::NEG_INFINITY, 0.0, 0.0, 0.0)),
+    ];
+    for &build in unbuilt {
+        panic_probe::assert_panics_with(lane, build);
+    }
     // A negative margin is an offset, so it is taken.
     let _ = Panel::vstack().margin(Spacing::all(-4.0));
+}
+
+/// A border wider than an f16 lane is a valid length, and the frame draws it: the padding it grows
+/// saturates, as do the inner corners and the cover the renderer derives from it.
+#[test]
+fn a_border_past_an_f16_lane_draws() {
+    let mut h = UiHarness::new(UVec2::new(64, 48));
+    h.frame(|ui| {
+        Panel::vstack()
+            .chrome(
+                Chrome::rounded(RgbaF32::WHITE, Corners::all(4.0))
+                    .with_border(Stroke::new(RgbaF32::BLACK, 70000.0)),
+            )
+            .show(ui, |_| {});
+    });
 }
 
 /// A canvas position is an offset per axis and a grid span a count: zero names no cell and panics.

@@ -34,7 +34,7 @@ pub struct ExpanderTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_open_angle: f32,
     /// Gap between arrow and label.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Indent of the body.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

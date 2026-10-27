@@ -56,6 +56,18 @@ pub const fn offset(v: Vec2) -> Vec2 {
     v
 }
 
+/// True if both axes are [file lengths](domain::is_file_length).
+#[inline]
+pub(crate) const fn is_file_length(v: Vec2) -> bool {
+    domain::is_file_length(v.x) && domain::is_file_length(v.y)
+}
+
+/// True if both axes are [file offsets](domain::is_file_offset).
+#[inline]
+pub(crate) const fn is_file_offset(v: Vec2) -> bool {
+    domain::is_file_offset(v.x) && domain::is_file_offset(v.y)
+}
+
 /// True if both axes are [lengths](domain::length).
 #[inline]
 pub const fn is_length(v: Vec2) -> bool {

@@ -390,7 +390,9 @@ impl PlaneCtx<'_, '_> {
                 }
                 .deflated(width);
                 let source = rect.resolve_local(Some(padding_box));
-                let corners = chrome.corners.inner(rect.size, Spacing::all(width));
+                let corners = chrome
+                    .corners
+                    .inner(rect.size, Spacing::saturating([width; 4]));
                 if let Some(shadow) = DrawQuadPayload::shadow(source, corners, chrome.shadow) {
                     out.draw_quad(shadow, 1.0);
                 }

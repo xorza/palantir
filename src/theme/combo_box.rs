@@ -8,7 +8,7 @@ use glam::Vec2;
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Chevron bounding box in logical px; a polyline, so font-independent.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]

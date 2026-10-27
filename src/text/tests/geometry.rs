@@ -1,5 +1,6 @@
 use super::*;
 use crate::common::hash;
+use crate::primitives::math::domain;
 use crate::text::font_scope::internals::INTER;
 use crate::text::font_source::FontSource;
 use crate::text::probe::Caret;
@@ -589,4 +590,21 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
             );
         }
     }
+}
+
+/// A font size has no upper bound, and the ink past the block saturates at 65504, the largest f16
+/// lane, rather than panicking: an italic `f` at 1e9 px reaches far past its left, right and
+/// bottom edges, and its top stays inside.
+#[test]
+fn ink_past_an_f16_lane_saturates() {
+    let mut m = CosmicMeasure::default();
+    let request = ui_shape(1e9)
+        .family(FontFamily::SANS)
+        .slant(FontSlant::Italic)
+        .unbounded_request("f");
+    let root = m.root(request, WrapFloor::Skip);
+    assert_eq!(
+        root.extent.ink.as_array(),
+        [domain::MAX_GAP, 0.0, domain::MAX_GAP, domain::MAX_GAP]
+    );
 }

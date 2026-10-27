@@ -77,12 +77,12 @@ impl GlyphInk {
         let past = |reach: f32| reach.max(0.0).ceil();
         TextExtent {
             size,
-            ink: Spacing::new(
+            ink: Spacing::saturating([
                 past(left - min.x),
                 past(-min.y),
                 past(max.x - (left + size.w)),
                 past(max.y - size.h),
-            ),
+            ]),
         }
     }
 

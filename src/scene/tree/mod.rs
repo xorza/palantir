@@ -463,7 +463,7 @@ impl Tree {
             let ring = chrome.border_inset();
             if ring != 0.0 {
                 let [l, t, r, b] = cols.layout.padding.as_array();
-                cols.layout.padding = Spacing::new(l + ring, t + ring, r + ring, b + ring);
+                cols.layout.padding = Spacing::saturating([l + ring, t + ring, r + ring, b + ring]);
             }
             // Storage noop gate for chrome; mirrors `Shapes::add`.
             let needs_chrome_row = !chrome.is_noop()

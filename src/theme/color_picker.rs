@@ -59,7 +59,7 @@ pub struct ColorPickerTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub border_width: f32,
     /// Gap between the panel's rows and between swatches, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
     /// [`Palette::popup_panel`], as for menus and combo lists.
@@ -155,8 +155,8 @@ impl ColorPickerTheme {
             swatch_size: 18.0,
             handle_radius: 6.0,
             handle_width: 1.5,
-            handle_outer: RgbaF32::new(0.0, 0.0, 0.0, 0.75),
-            handle_inner: RgbaF32::new(1.0, 1.0, 1.0, 0.95),
+            handle_outer: RgbaF32::BLACK.with_alpha8(191),
+            handle_inner: RgbaF32::WHITE.with_alpha8(242),
             checker_light: p.element_mid,
             checker_dark: p.element,
             checker_cell: 6.0,

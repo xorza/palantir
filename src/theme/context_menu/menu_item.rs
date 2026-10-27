@@ -24,7 +24,7 @@ pub struct MenuItemTheme {
     /// Shortcut hint color.
     pub shortcut: RgbaF32,
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Spacing and transition spec; `margin` is `ZERO` since [`ContextMenuTheme::gap`](crate::ContextMenuTheme::gap) spaces rows.
     #[serde(flatten)]

@@ -119,6 +119,7 @@ fn scale_text_reaches_every_font_size() {
 
 #[test]
 fn theme_deserialization_rejects_invalid_text_metrics() {
+    use crate::primitives::math::domain;
     use crate::text::glyph_font::GlyphFont;
 
     let valid = pretty(&Theme::default());
@@ -178,6 +179,27 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         assert!(
             error.to_string().contains(GlyphFont::METRICS_ERROR),
             "{label}: unexpected serde error: {error}",
+        );
+    }
+
+    // A font size in a file is a length there: 8192 loads, past it is refused, as the base size
+    // and as an override.
+    for (from, at, past) in [
+        ("font_size: 16.0", "font_size: 8192.0", "font_size: 8192.5"),
+        (
+            "font_size: Some(13.0)",
+            "font_size: Some(8192.0)",
+            "font_size: Some(8192.5)",
+        ),
+    ] {
+        assert!(
+            ron::from_str::<Theme>(&valid.replacen(from, at, 1)).is_ok(),
+            "{at}"
+        );
+        let error = ron::from_str::<Theme>(&valid.replacen(from, past, 1)).expect_err(past);
+        assert!(
+            error.to_string().contains(domain::FILE_LENGTH_RULE),
+            "{past}: {error}"
         );
     }
 }

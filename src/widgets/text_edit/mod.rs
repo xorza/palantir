@@ -350,7 +350,7 @@ impl<'a> TextEdit<'a> {
         // encoder's clip mask is `rect.deflated_by(post-inflate padding)`, so glyph and
         // caret coordinates must use that value or the top glyph row is scissored away.
         let stroke_w = look.chrome.border_inset();
-        let padding = Spacing::from_array(
+        let padding = Spacing::saturating(
             self.widget
                 .authored_padding()
                 .unwrap()

@@ -28,7 +28,7 @@ impl SplitterTheme {
             rule: p.border_soft(),
             rule_thickness: 1.0,
             hovered: p.element_mid,
-            active: p.accent.with_alpha(0.6),
+            active: p.accent.with_alpha8(153),
         }
     }
 }

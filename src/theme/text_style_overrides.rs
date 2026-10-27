@@ -1,6 +1,7 @@
 //! Per-axis overrides a text widget or a theme slot folds onto a resolved
 //! [`TextStyle`].
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -157,6 +158,12 @@ impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
         };
         if !overrides.metrics_valid() {
             return Err(GlyphFont::METRICS_ERROR);
+        }
+        if overrides
+            .font_size
+            .is_some_and(|px| !domain::is_file_length(px))
+        {
+            return Err(domain::FILE_LENGTH_RULE);
         }
         Ok(overrides)
     }
