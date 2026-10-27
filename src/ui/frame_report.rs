@@ -3,7 +3,6 @@
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
 use crate::damage::Damage;
-use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use std::time::Duration;
 
@@ -40,8 +39,6 @@ pub struct FrameReport {
     pub(crate) plan: Option<RenderPlan>,
     /// Which passes ran, see [`FrameProcessing`]; `FrameCycle::run` asserts it against the paint outcome and tests read it.
     pub(crate) processing: FrameProcessing,
-    /// Where IME text goes this frame: the caret rect (logical px) a widget asked for with [`Ui::request_ime`](crate::Ui::request_ime), else `None`. A host that embeds the UI enables its input method while `Some`; the winit host does it itself.
-    pub ime_area: Option<Rect>,
 }
 
 impl FrameReport {
@@ -98,7 +95,6 @@ mod tests {
                 repaint_after: None,
                 plan,
                 processing: FrameProcessing::SingleLayout,
-                ime_area: None,
             };
             assert_eq!(report.paint(), expected);
         }

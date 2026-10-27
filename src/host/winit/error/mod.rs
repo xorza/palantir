@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::gpu::error::SurfaceError;
+use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::window::window_token::WindowToken;
 use std::fmt;
 use winit::error;
@@ -45,6 +45,11 @@ pub enum WinitHostError {
         /// What the platform reported.
         source: error::OsError,
     },
+    /// No graphics device Palantir can run on was found for the first window.
+    Gpu {
+        /// Which of the four ways the request failed.
+        source: GpuRequestError,
+    },
     /// A native window has no surface Palantir can present through.
     Surface {
         /// The window whose surface failed.
@@ -62,6 +67,7 @@ impl Display for WinitHostError {
             Self::CreateWindow { token, source } => {
                 write!(f, "failed to create window {token:?}: {source}")
             }
+            Self::Gpu { source } => Display::fmt(source, f),
             Self::Surface { token, source } => {
                 write!(f, "window {token:?} surface failed: {source}")
             }
@@ -74,6 +80,8 @@ impl Error for WinitHostError {
         match self {
             Self::CreateEventLoop { source } | Self::RunEventLoop { source } => Some(source),
             Self::CreateWindow { source, .. } => Some(source),
+            // Skips the request error itself, which adds no words to the `Display` it forwards.
+            Self::Gpu { source } => source.source(),
             Self::Surface { source, .. } => Some(source),
         }
     }

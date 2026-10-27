@@ -7,9 +7,9 @@ use std::num::NonZeroU32;
 /// A graphics device and its queue.
 ///
 /// An application that opened its own wraps the pair here for
-/// [`OffscreenHost::builder`](crate::OffscreenHost::builder); a host that
-/// used [`RequestedGpu`](crate::RequestedGpu) finds it in
-/// [`gpu`](crate::RequestedGpu::gpu). Cloning
+/// [`OffscreenHost::builder`](crate::OffscreenHost::builder); one that used
+/// [`RequestedGpu`](crate::RequestedGpu) finds it in [`gpu`](crate::RequestedGpu::gpu).
+/// Either makes the textures the host renders into through [`Self::device`]. Cloning
 /// clones the handles, not the device.
 #[derive(Clone, Debug)]
 pub struct Gpu {
@@ -22,6 +22,16 @@ impl Gpu {
     /// [`DeviceRequirements`]; the host builders check that.
     pub const fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self { device, queue }
+    }
+
+    /// The device, to make the textures a host renders into.
+    pub const fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    /// The device's queue.
+    pub const fn queue(&self) -> &wgpu::Queue {
+        &self.queue
     }
 
     pub(crate) fn requirements_met(&self) -> Result<(), UnmetRequirements> {

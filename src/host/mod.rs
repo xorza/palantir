@@ -5,6 +5,7 @@
 pub(crate) mod clock;
 mod core;
 pub(crate) mod headless_window;
+mod host_options;
 pub(crate) mod offscreen;
 mod window_driver;
 #[cfg(feature = "winit")]

@@ -208,7 +208,7 @@ impl Window {
         self.maximized_stale = false;
         let facts = SystemFacts {
             placement: WindowPlacement {
-                pos: self
+                physical_pos: self
                     .window
                     .outer_position()
                     .ok()
@@ -376,7 +376,7 @@ impl Window {
             self.window.set_cursor(native::cursor(output.cursor));
         }
         self.set_vsync(output.vsync);
-        self.set_ime_area(output.ime);
+        self.set_ime_area(output.ime_area);
         self.close_requested = false;
     }
 

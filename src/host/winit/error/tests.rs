@@ -16,32 +16,39 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     );
     assert!(event_loop.source().is_some());
 
-    // A device request failing during a window's surface open arrives as that window's surface error; it hands on its cause, not itself, so chain printers never repeat a sentence.
+    // A device request failing during the first window's open reads as a device failure; it hands on its cause, not itself, so chain printers never repeat a sentence.
     let unmet = UnmetRequirements::Limit {
         name: "max_immediate_size",
         required: 16,
         available: 8,
     };
-    let capability = WinitHostError::Surface {
-        token: WindowToken(7),
-        source: SurfaceError::Device {
-            source: GpuRequestError::Requirements {
-                source: unmet.clone(),
-            },
+    let capability = WinitHostError::Gpu {
+        source: GpuRequestError::Requirements {
+            source: unmet.clone(),
         },
     };
-    let request = "the graphics adapter cannot run Palantir: \
-         graphics device limit max_immediate_size is 8, but Palantir requires 16";
     assert_eq!(
         capability.to_string(),
-        format!("window WindowToken(7) surface failed: {request}"),
+        "the graphics adapter cannot run Palantir: \
+         graphics device limit max_immediate_size is 8, but Palantir requires 16",
     );
-    let surface = capability.source().expect("the surface error");
-    assert_eq!(surface.to_string(), request);
+    assert_eq!(
+        capability.source().map(ToString::to_string),
+        Some(unmet.to_string()),
+        "the chain skips the request error, which added no words of its own",
+    );
+
+    let surface = WinitHostError::Surface {
+        token: WindowToken(7),
+        source: SurfaceError::MissingSrgb,
+    };
+    assert_eq!(
+        surface.to_string(),
+        "window WindowToken(7) surface failed: window surface has no sRGB format and color space",
+    );
     assert_eq!(
         surface.source().map(ToString::to_string),
-        Some(unmet.to_string()),
-        "the chain skips the device wrapper, which added no words of its own",
+        Some(SurfaceError::MissingSrgb.to_string()),
     );
 }
 

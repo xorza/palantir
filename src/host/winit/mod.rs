@@ -81,6 +81,7 @@ use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
 use crate::text::font_scope::FontScope;
+use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
@@ -91,11 +92,11 @@ use winit::error::EventLoopError;
 type AppFactory<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
 /// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the bootstrap window's token and config, and the app factory. Window, GPU and app construction wait for winit's event loop.
-pub(super) struct Bootstrap<T: 'static> {
-    pub(super) token: WindowToken,
-    pub(super) config: WinitHostConfig,
-    pub(super) create_app: Option<AppFactory<T>>,
-    pub(super) pending_tasks: Vec<MainTask<T>>,
+struct Bootstrap<T: 'static> {
+    token: WindowToken,
+    config: WinitHostConfig,
+    create_app: Option<AppFactory<T>>,
+    pending_tasks: Vec<MainTask<T>>,
 }
 
 impl<T: 'static> fmt::Debug for Bootstrap<T> {
@@ -167,9 +168,16 @@ where
         self
     }
 
-    /// Which faces every window shapes against. Defaults to [`FontScope::System`] for OS glyph fallback; see [`OffscreenHostBuilder::fonts`](crate::OffscreenHostBuilder::fonts).
+    /// Which faces every window shapes against. Defaults to [`FontScope::System`] for OS glyph fallback, scanned while the first window opens. A shaper set by [`Self::shaper`] wins over it.
     pub const fn fonts(mut self, scope: FontScope) -> Self {
-        self.config.fonts = scope;
+        self.config.options.fonts = scope;
+        self
+    }
+
+    /// Shape through `shaper` instead of one loaded from [`Self::fonts`], to share one
+    /// shaped-buffer cache or preloaded fonts.
+    pub fn shaper(mut self, shaper: TextShaper) -> Self {
+        self.config.options.shaper = Some(shaper);
         self
     }
 
@@ -187,13 +195,20 @@ where
 
     /// Opt into GPU timestamp and pipeline-statistics collection; off by default for its per-frame readback.
     pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.config.collect_gpu_stats = collect;
+        self.config.options.collect_gpu_stats = collect;
         self
     }
 
     /// Whether axis-aligned paint edges snap to physical pixels. On by default; turn off for continuous position animation.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.config.pixel_snap = pixel_snap;
+        self.config.options.pixel_snap = pixel_snap;
+        self
+    }
+
+    /// Backs every window's [`Clipboard`](crate::Clipboard) with the OS clipboard, over the
+    /// in-process buffer that stays underneath. On by default; see [`Ui::clipboard`].
+    pub const fn system_clipboard(mut self, system: bool) -> Self {
+        self.config.options.system_clipboard = system;
         self
     }
 

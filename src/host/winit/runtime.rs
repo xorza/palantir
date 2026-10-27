@@ -7,10 +7,10 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
 
 use crate::app::App;
-use crate::common::clipboard::Clipboard;
 use crate::common::tracy;
+use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{SurfaceManager, SurfaceStartup};
-use crate::host::core::{HostCore, HostCoreConfig};
+use crate::host::core::HostCore;
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
@@ -54,24 +54,25 @@ impl<T: App + 'static> WinitRuntime<T> {
     ) -> Result<Self, WinitHostError> {
         let token = bootstrap.token;
         let config = &bootstrap.config;
+        let options = &config.options;
         // Started before the window exists so the font scan overlaps window creation.
-        let fonts = FontScan::spawn(config.fonts);
+        let scan = options
+            .shaper
+            .is_none()
+            .then(|| FontScan::spawn(options.fonts));
         let window = native::create_window(event_loop, token, &config.window)?;
         let SurfaceStartup {
             surfaces,
             gpu,
             first_surface,
         } = SurfaceManager::start(&window, native::physical_size(&window), config.gpu_config())
-            .map_err(|source| WinitHostError::Surface { token, source })?;
-        let core = HostCore::new(
-            gpu,
-            HostCoreConfig {
-                shaper: fonts.join(),
-                clipboard: Clipboard::system_or_memory(),
-                collect_gpu_stats: config.collect_gpu_stats,
-                pixel_snap: config.pixel_snap,
-            },
-        );
+            .map_err(|error| match error {
+                SurfaceStartError::Gpu { source } => WinitHostError::Gpu { source },
+                SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
+            })?;
+        let shaper =
+            options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
+        let core = HostCore::new(gpu, options, shaper);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
         let create_app = bootstrap
             .create_app

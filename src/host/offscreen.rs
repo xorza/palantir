@@ -5,13 +5,13 @@
 //! Every rejection is a caller mistake, so `frame` panics rather than returning a `Result`.
 
 use crate::app::App;
-use crate::common::clipboard::Clipboard;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::RealtimeClock;
-use crate::host::core::{HostCore, HostCoreConfig};
+use crate::host::core::HostCore;
+use crate::host::host_options::HostOptions;
 use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
@@ -74,40 +74,28 @@ impl HostTime {
 #[must_use]
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
+    options: HostOptions,
     retained_target: bool,
-    fonts: FontChoice,
-    collect_gpu_stats: bool,
     time: OffscreenTime,
-    pixel_snap: bool,
-    #[cfg(feature = "system-clipboard")]
-    system_clipboard: bool,
-}
-
-/// Where the builder's shaper comes from: a scope loads its fonts in
-/// [`OffscreenHostBuilder::build`], so a later override never pays the load.
-#[derive(Debug)]
-enum FontChoice {
-    Scope(FontScope),
-    Shaper(TextShaper),
 }
 
 impl OffscreenHostBuilder {
-    /// Which faces this host shapes against. Defaults to [`FontScope::Bundled`], so measurement is machine-independent. Replaces a shaper set by [`Self::shaper`].
-    pub fn fonts(mut self, scope: FontScope) -> Self {
-        self.fonts = FontChoice::Scope(scope);
+    /// Which faces this host shapes against. Defaults to [`FontScope::Bundled`], so measurement is machine-independent. A shaper set by [`Self::shaper`] wins over it.
+    pub const fn fonts(mut self, scope: FontScope) -> Self {
+        self.options.fonts = scope;
         self
     }
 
-    /// Replaces the default [`TextShaper`], to share one shaped-buffer cache or preloaded fonts.
-    /// Replaces a scope set by [`Self::fonts`].
+    /// Shape through `shaper` instead of one loaded from [`Self::fonts`], to share one
+    /// shaped-buffer cache or preloaded fonts.
     pub fn shaper(mut self, shaper: TextShaper) -> Self {
-        self.fonts = FontChoice::Shaper(shaper);
+        self.options.shaper = Some(shaper);
         self
     }
 
     /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu features.
     pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.collect_gpu_stats = collect;
+        self.options.collect_gpu_stats = collect;
         self
     }
 
@@ -130,23 +118,15 @@ impl OffscreenHostBuilder {
 
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
-        self.pixel_snap = pixel_snap;
+        self.options.pixel_snap = pixel_snap;
         self
     }
 
-    /// Backs this host's [`Clipboard`] with the OS clipboard instead of the in-process buffer, which stays underneath. Off by default: thumbnailers and compositors never cut text. See [`Ui::clipboard`](crate::Ui::clipboard).
+    /// Backs this host's [`Clipboard`](crate::Clipboard) with the OS clipboard instead of the in-process buffer, which stays underneath. Off by default: thumbnailers and compositors never cut text. See [`Ui::clipboard`](crate::Ui::clipboard).
     #[cfg(feature = "system-clipboard")]
     pub const fn system_clipboard(mut self, system: bool) -> Self {
-        self.system_clipboard = system;
+        self.options.system_clipboard = system;
         self
-    }
-
-    fn clipboard(&self) -> Clipboard {
-        #[cfg(feature = "system-clipboard")]
-        if self.system_clipboard {
-            return Clipboard::system_or_memory();
-        }
-        Clipboard::memory()
     }
 
     /// Allocates the shared core and the window driver from the sealed settings.
@@ -158,16 +138,11 @@ impl OffscreenHostBuilder {
         if let Err(unmet) = self.gpu.requirements_met() {
             panic!("offscreen host device cannot run Palantir: {unmet}");
         }
-        let config = HostCoreConfig {
-            clipboard: self.clipboard(),
-            shaper: match self.fonts {
-                FontChoice::Scope(scope) => TextShaper::with_fonts(scope),
-                FontChoice::Shaper(shaper) => shaper,
-            },
-            collect_gpu_stats: self.collect_gpu_stats,
-            pixel_snap: self.pixel_snap,
-        };
-        let core = HostCore::new(self.gpu, config);
+        let fonts = self.options.fonts;
+        let shaper = self
+            .options
+            .shaper_or_else(|| TextShaper::with_fonts(fonts));
+        let core = HostCore::new(self.gpu, &self.options, shaper);
         let strategy = if self.retained_target {
             PresentStrategy::DirectAdaptive
         } else {
@@ -191,13 +166,16 @@ impl OffscreenHost {
     pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
+            options: HostOptions {
+                fonts: FontScope::Bundled,
+                shaper: None,
+                collect_gpu_stats: false,
+                pixel_snap: true,
+                #[cfg(feature = "system-clipboard")]
+                system_clipboard: false,
+            },
             retained_target: false,
-            fonts: FontChoice::Scope(FontScope::Bundled),
-            collect_gpu_stats: false,
             time: OffscreenTime::Realtime,
-            pixel_snap: true,
-            #[cfg(feature = "system-clipboard")]
-            system_clipboard: false,
         }
     }
 

@@ -162,7 +162,6 @@ impl<'a> FrameCycle<'a> {
                 .map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, baseline.clear),
             processing,
-            ime_area: self.ui.window_requests.levels.ime,
         };
         // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
         debug_assert!(
@@ -228,7 +227,7 @@ impl<'a> FrameCycle<'a> {
         self.ui.forest.pre_record();
         self.ui.input.pre_record(&self.ui.cascade);
         self.ui.window_requests.levels.cursor = CursorIcon::default();
-        self.ui.window_requests.levels.ime = None;
+        self.ui.window_requests.levels.ime_area = None;
     }
 
     /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.

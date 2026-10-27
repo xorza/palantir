@@ -451,7 +451,6 @@ Display
         pub user_scale: UserScale
         pub pixel_snap: bool
         pub refresh_millihertz: Option<u32>
-        pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self
         pub const fn scale_factor(&self) -> f32
         pub fn logical_size(&self) -> Size
         pub fn system_logical_size(&self) -> Size
@@ -758,7 +757,6 @@ FrameReport
     struct FrameReport: Debug
         pub repaint_requested: bool
         pub repaint_after: Option<Duration>
-        pub ime_area: Option<Rect>
         pub const fn paint(&self) -> FramePaint
 
 FrameSummary  [features: winit]
@@ -771,6 +769,8 @@ FrameSummary  [features: winit]
 Gpu
     struct Gpu: Clone, Debug
         pub const fn new(device: Device, queue: Queue) -> Self
+        pub const fn device(&self) -> &Device
+        pub const fn queue(&self) -> &Queue
 
 GpuFrameCtx
     struct GpuFrameCtx<'a>: Debug
@@ -811,7 +811,6 @@ GpuRequestError
         RequestAdapter { source: DriverError }
         Requirements { source: UnmetRequirements }
         RequestDevice { source: DriverError }
-        impl From<GpuRequestError> for SurfaceError  [features: winit]
 
 GpuView
     struct GpuView: Configure, Debug, ThemeDefaults (blanket)
@@ -1293,7 +1292,7 @@ OffscreenHost
 
 OffscreenHostBuilder
     struct OffscreenHostBuilder: Debug
-        pub fn fonts(self, scope: FontScope) -> Self
+        pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub const fn collect_gpu_stats(self, collect: bool) -> Self
         pub const fn time(self, time: OffscreenTime) -> Self
@@ -1855,9 +1854,8 @@ Stroke
 
 SurfaceError  [features: winit]
     #[non_exhaustive]
-    enum SurfaceError: Debug, Display, Error, From<GpuRequestError>
+    enum SurfaceError: Debug, Display, Error
         Create { source: DriverError }
-        Device { source: GpuRequestError }
         Incompatible
         MissingSrgb
         MissingUsages { missing: SurfaceUsages }
@@ -2294,6 +2292,7 @@ Ui
         pub const fn set_focus(&mut self, id: WidgetId)
         pub const fn clear_focus(&mut self)
         pub const fn request_ime(&mut self, caret: Rect)
+        pub const fn ime_area(&self) -> Option<Rect>
         pub fn ime_preedit(&self) -> Option<ImePreedit<'_>>
         pub const fn is_focus_visible(&self) -> bool
         pub const fn focus_first_within(&mut self, ancestor: WidgetId)
@@ -2379,7 +2378,7 @@ WindowConfig
         pub fn new(title: impl Into<String>) -> Self
         pub const fn with_inner_size(self, size: UVec2) -> Self
         pub const fn with_min_inner_size(self, size: UVec2) -> Self
-        pub const fn with_pos(self, pos: IVec2) -> Self
+        pub const fn with_physical_pos(self, pos: IVec2) -> Self
         pub const fn with_placement(self, placement: WindowPlacement) -> Self
         pub const fn with_maximized(self, maximized: bool) -> Self
         pub fn with_icon(self, icon: Image) -> Self
@@ -2392,7 +2391,7 @@ WindowGeometry
 
 WindowPlacement
     struct WindowPlacement: Clone, Copy, Debug, Default, Eq, PartialEq
-        pub pos: Option<IVec2>
+        pub physical_pos: Option<IVec2>
         pub maximized: bool
 
 WindowToken
@@ -2412,10 +2411,12 @@ WinitHostBuilder  [features: winit]
             pub fn window(self, window: WindowConfig) -> Self
             pub fn title(self, title: impl Into<String>) -> Self
             pub const fn fonts(self, scope: FontScope) -> Self
+            pub fn shaper(self, shaper: TextShaper) -> Self
             pub const fn vsync(self, vsync: Vsync) -> Self
             pub const fn power_preference(self, preference: PowerPreference) -> Self
             pub const fn collect_gpu_stats(self, collect: bool) -> Self
             pub const fn pixel_snap(self, pixel_snap: bool) -> Self
+            pub const fn system_clipboard(self, system: bool) -> Self
             pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
         impl<T: Debug> Debug for WinitHostBuilder<T>
 
@@ -2425,6 +2426,7 @@ WinitHostError  [features: winit]
         CreateEventLoop { source: EventLoopError }
         RunEventLoop { source: EventLoopError }
         CreateWindow { token: WindowToken, source: OsError }
+        Gpu { source: GpuRequestError }
         Surface { token: WindowToken, source: SurfaceError }
 
 ZoomConfig

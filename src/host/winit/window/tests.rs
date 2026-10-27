@@ -168,7 +168,6 @@ fn the_schedule_follows_each_acquire_outcome() {
         repaint_after,
         plan: None,
         processing: FrameProcessing::SingleLayout,
-        ime_area: None,
     };
     let due = Duration::from_secs(2);
     let ms = Duration::from_millis;

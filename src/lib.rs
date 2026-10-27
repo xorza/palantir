@@ -76,7 +76,7 @@
 //! | flag | default | what it does |
 //! | --- | --- | --- |
 //! | `winit` | yes | The winit-backed [`WinitHost`]; without it only [`OffscreenHost`] exists. Implies `system-clipboard`. |
-//! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
+//! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`], and [`WinitHost`] opts out via [`WinitHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
 //! | `gpu-debug-markers` | no | GPU debug groups around every draw step for RenderDoc / Xcode captures; costs two commands and a label copy per step. |
 //! | `profile-with-tracy` | no | A Tracy zone per frame pass and a frame set per window. Needs the Tracy viewer. |
 //! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
@@ -142,8 +142,9 @@ pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
 /// The `wgpu` Palantir was built against. Re-exported because the surface is not
 /// wgpu-free: [`GpuPaint`] hands out a `Device` and `CommandEncoder`, [`Gpu`] is
-/// built from a `Device` and `Queue`, and [`RenderTarget`] borrows a `Texture`. A
-/// consumer's own `wgpu` must match this version exactly or these types go foreign.
+/// built from and hands out a `Device` and `Queue`, and [`RenderTarget`] borrows a
+/// `Texture`. A consumer's own `wgpu` must match this version exactly or these types go
+/// foreign.
 pub use wgpu;
 
 /// Format text straight into the frame's record store with no `String`:

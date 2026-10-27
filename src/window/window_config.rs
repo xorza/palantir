@@ -51,8 +51,8 @@ impl WindowConfig {
     }
 
     /// Initial outer position in physical pixels.
-    pub const fn with_pos(mut self, pos: IVec2) -> Self {
-        self.placement.pos = Some(pos);
+    pub const fn with_physical_pos(mut self, pos: IVec2) -> Self {
+        self.placement.physical_pos = Some(pos);
         self
     }
 
@@ -92,7 +92,7 @@ mod tests {
         let config = WindowConfig::new("inspector")
             .with_inner_size(UVec2::new(800, 600))
             .with_min_inner_size(UVec2::new(320, 240))
-            .with_pos(IVec2::new(-40, 80))
+            .with_physical_pos(IVec2::new(-40, 80))
             .with_maximized(true)
             .with_app_id("org.example.Inspector");
 
@@ -102,7 +102,7 @@ mod tests {
         assert_eq!(
             config.placement,
             WindowPlacement {
-                pos: Some(IVec2::new(-40, 80)),
+                physical_pos: Some(IVec2::new(-40, 80)),
                 maximized: true,
             },
         );

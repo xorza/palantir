@@ -25,7 +25,7 @@ fn resize_and_set_display_move_the_surface_between_frames() {
     let dpi_move = Display {
         physical: bigger * 2,
         system_scale: 2.0,
-        ..harness.display
+        ..harness.ui.display()
     };
     assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
     assert_eq!(
@@ -43,7 +43,7 @@ fn resize_and_set_display_move_the_surface_between_frames() {
 #[test]
 fn scale_makes_the_surface_physical_and_positions_logical() {
     let harness = UiHarness::new(SURFACE).scale(2.0);
-    let display = harness.display;
+    let display = harness.ui.display();
 
     assert_eq!(display.physical, SURFACE);
     assert_eq!(display.scale_factor(), 2.0);
