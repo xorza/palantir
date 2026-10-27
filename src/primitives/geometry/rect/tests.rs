@@ -224,3 +224,14 @@ fn scaled_by_rounds_edges_only_when_snapping() {
         Rect::new(10.0, 0.0, 0.0, 1.0)
     );
 }
+
+/// No local rect is the whole owner; a local one moves by the owner's origin and keeps its size.
+#[test]
+fn resolve_local_places_a_local_rect_on_its_owner() {
+    let owner = Rect::new(10.0, 20.0, 100.0, 50.0);
+    assert_eq!(owner.resolve_local(None), owner);
+    assert_eq!(
+        owner.resolve_local(Some(Rect::new(3.0, -4.0, 8.0, 6.0))),
+        Rect::new(13.0, 16.0, 8.0, 6.0),
+    );
+}

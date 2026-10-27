@@ -15,7 +15,7 @@ use crate::scene::tree::node_id::NodeId;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::{self, ShapeRecord, TextAnchor};
 use crate::shape::stroke_bounds::{StrokeJoints, StrokeReach};
-use crate::text::TEXT_SCALE_STEP;
+use crate::text;
 use glam::Vec2;
 
 /// How an owner-local rect reaches screen space: translate by the owner's arranged `origin`, then apply `transform`, the parent's for chrome and the shape transform for shapes.
@@ -43,17 +43,14 @@ pub(super) fn clip_screen(screen: Rect, clip: Option<Rect>) -> Rect {
     clip.map_or(screen, |c| screen.clamp_to(c))
 }
 
-/// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its inked extent per side, then re-clamp to `clip`.
-///
-/// The composer paints at the ladder-snapped scale but the cascade lifts at the unsnapped one, so the painted block can be `inked × STEP/2` longer per side in screen pixels, independent of cascade scale. Padding in local coords would underflow below scale 1.
+/// Pad a text shape's screen rect by [`text::snap_slack`] of its local inked size, then re-clamp to `clip`: the composer paints at the ladder-snapped scale, the cascade lifts at the unsnapped one.
 #[inline]
 fn inflate_text_damage(screen: Rect, inked: Size, clip: Option<Rect>) -> Rect {
     // `screen` is already clipped, so a fully-off-clip run has collapsed to zero on an axis. Padding it would re-grow it across the clip edge and fabricate a damage sliver for offscreen text. Leave a non-paintable box empty; `is_paint_empty` also covers NaN and near-zero.
     if screen.is_paint_empty() {
         return screen;
     }
-    let pad_w = inked.w * (TEXT_SCALE_STEP * 0.5);
-    let pad_h = inked.h * (TEXT_SCALE_STEP * 0.5);
+    let Size { w: pad_w, h: pad_h } = text::snap_slack(inked);
     let inflated = Rect {
         min: Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
         size: Size {
@@ -289,7 +286,7 @@ impl PaintRectCtx<'_> {
                         fit,
                         ..
                     } => shape.to_screen(
-                        fit.resolve(local_rect.unwrap_or(owner_local), source.intrinsic())
+                        fit.resolve(owner_local.resolve_local(*local_rect), source.intrinsic())
                             .rect,
                         shape_clip,
                     ),
@@ -299,7 +296,7 @@ impl PaintRectCtx<'_> {
                         fit,
                         ..
                     } => shape.to_screen(
-                        fit.resolve(local_rect.unwrap_or(owner_local), handle.view_box()),
+                        fit.resolve(owner_local.resolve_local(*local_rect), handle.view_box()),
                         shape_clip,
                     ),
                 };

@@ -53,7 +53,7 @@ pub(crate) struct RenderBuffer {
     batches: [Vec<GroupBatch>; PaintTier::COUNT],
     /// Scene-wide image rows, SoA, mirroring [`Self::meshes`]; one quad draw per row. A `GpuView` is just an image row, its off-screen target listed in [`Self::frame_targets`].
     pub(crate) images: Soa<ImageDrawRow>,
-    /// `GpuView` off-screen targets to paint this frame, one per composited view row, filled by the composer from `DrawImage.target`.
+    /// `GpuView` off-screen targets of this frame, one per composited view row, filled by the composer from each row's `ImageDraw::view`. The backend repaints one only when its stamp changed.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
     /// Every `GpuView` recorded this frame, painted or not: the backend's retention roster. An undamaged view leaves [`Self::frame_targets`] but stays here, keeping its texture alive.
     pub(crate) live_targets: Vec<TextureId>,

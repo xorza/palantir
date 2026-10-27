@@ -1,8 +1,8 @@
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowEntry, fit_radii, spread_radius,
+    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowEntry, spread_radius,
 };
 use crate::gpu::surface::viewport::RepaintScissors;
-use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::corners::{self, Corners};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
@@ -78,11 +78,11 @@ fn radius_rules_follow_the_shader() {
     );
     let f = 10.0 / 26.0;
     assert_eq!(
-        fit_radii([12.0, 0.0, 8.0, 14.0], Vec2::new(10.0, 5.0)),
+        corners::fit([12.0, 0.0, 8.0, 14.0], Size::new(20.0, 10.0)),
         [12.0 * f, 0.0, 8.0 * f, 14.0 * f],
     );
     assert_eq!(
-        fit_radii([1.0; 4], Vec2::new(10.0, 5.0)),
+        corners::fit([1.0; 4], Size::new(20.0, 10.0)),
         [1.0; 4],
         "room to spare"
     );

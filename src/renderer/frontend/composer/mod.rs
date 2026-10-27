@@ -156,7 +156,7 @@ impl Composer {
 
         self.reset_group_scratch(stamp.display.physical);
         self.clip.clear();
-        self.transform.clear();
+        self.transform.clear(stamp.display.scale_factor());
 
         ComposeSession {
             composer: self,

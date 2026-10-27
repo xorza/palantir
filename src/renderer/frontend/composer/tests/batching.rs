@@ -5,6 +5,7 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
@@ -143,6 +144,30 @@ fn compose_flushes_when_later_quad_overlaps_prior_text() {
         buf.groups.len(),
         2,
         "overlapping quad-after-text must start a new group",
+    );
+}
+
+/// A quad over text still in the open batch, whose last group is already closed, closes the batch
+/// and nothing more: the text renders at the end of group 0, below the quad in group 1. The flush
+/// to group 1 comes from the quad over the image.
+#[test]
+fn a_quad_over_text_that_already_rendered_does_not_flush() {
+    let buf = run(
+        |b, _arena| {
+            text(b, Rect::new(0.0, 0.0, 50.0, 20.0));
+            image(b, Rect::new(100.0, 0.0, 40.0, 40.0));
+            draw(b, Rect::new(100.0, 0.0, 40.0, 40.0)); // over the image: flushes group 0
+            draw(b, Rect::new(0.0, 0.0, 50.0, 20.0)); // over the text of group 0
+        },
+        &params(1.0, UVec2::new(200, 100)),
+    );
+    assert_eq!(buf.groups.len(), 2, "no flush for the second quad");
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.text_batches[0].last_group, 0);
+    assert_eq!(
+        buf.groups[1].quads,
+        Span::new(0, 2),
+        "both quads draw in group 1"
     );
 }
 
@@ -803,4 +828,20 @@ fn a_text_scissor_covers_the_snapped_glyph_block() {
         assert_eq!(buf.texts[0].origin, Vec2::splat(origin), "{scale} {ink:?}");
         assert_eq!(buf.text_batches[0].scissor, scissor, "{scale} {ink:?}");
     }
+
+    // Zoomed out to 0.5 the slack is still a share of the local size: a block 101.6 x 20 spans
+    // 5..55.8 by 5..15, padded `101.6 · 0.0025 = 0.254` x `0.05` to 4.746..56.054 by 4.95..15.05,
+    // covered x 4..57, y 4..16. A share of the 50.8 on screen, 0.127, would end at 55.927 and cut
+    // the last column at 56.
+    let mut display = params(1.0, UVec2::new(200, 100));
+    display.pixel_snap = true;
+    let buf = run(
+        |b, _| {
+            b.push_transform(TranslateScale::from_scale(0.5));
+            inked_text(b, Rect::new(10.0, 10.0, 101.6, 20.0), Spacing::ZERO);
+            b.pop_transform();
+        },
+        &display,
+    );
+    assert_eq!(buf.text_batches[0].scissor, URect::new(4, 4, 53, 12));
 }

@@ -68,6 +68,25 @@ fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
     );
 }
 
+/// The inner radii fit first, then lose the larger adjacent inset. On 100×40 the radii 30, 10, 0,
+/// 40 fit by `40 / 70` to 17.1, 5.7, 0, 22.9 (in f16); padding left 4, top 6, right 2, bottom 8
+/// takes 6, 6, 8 and 8 from them, floored at zero.
+#[test]
+fn inner_fits_then_takes_the_larger_adjacent_inset() {
+    let size = Size::new(100.0, 40.0);
+    let corners = Corners::new(30.0, 10.0, 0.0, 40.0);
+    let [tl, tr, _, bl] = corners.fit_to(size, 1.0).as_array();
+    let inner = corners.inner(size, Spacing::new(4.0, 6.0, 2.0, 8.0));
+    let want = Corners::new(tl - 6.0, (tr - 6.0).max(0.0), 0.0, bl - 8.0);
+    assert_eq!(inner, want);
+    assert!(tr < 6.0, "premise: one corner floors at zero");
+    // A border is the uniform inset.
+    assert_eq!(
+        Corners::all(8.0).inner(size, Spacing::all(2.0)),
+        Corners::all(6.0)
+    );
+}
+
 #[test]
 fn scaled_by_multiplies_each_corner() {
     let c = Corners::new(2.0, 4.0, 6.0, 8.0).scaled_by(1.5);

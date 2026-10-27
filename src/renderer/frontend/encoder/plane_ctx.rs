@@ -4,15 +4,14 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::damage::region::DamageRegion;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::frontend::encoder::geometry;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -121,7 +120,7 @@ impl PlaneCtx<'_, '_> {
                     border,
                     ..
                 } => {
-                    let rect = geometry::resolve_local_rect(owner_rect, *local_rect);
+                    let rect = owner_rect.resolve_local(*local_rect);
                     let fill = self.brush_source(*fill);
                     out.draw_quad(
                         DrawQuadPayload::rect(RectQuad {
@@ -140,7 +139,7 @@ impl PlaneCtx<'_, '_> {
                     shadow,
                 } => {
                     // The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
-                    let source = geometry::resolve_local_rect(owner_rect, *local_rect);
+                    let source = owner_rect.resolve_local(*local_rect);
                     if let Some(shadow) = DrawQuadPayload::shadow(source, *corners, *shadow) {
                         out.draw_quad(shadow, alpha);
                     }
@@ -189,7 +188,7 @@ impl PlaneCtx<'_, '_> {
                     self.tree.records.layout()[id.idx()].padding,
                     shaped.extent.size,
                 );
-                let rect = geometry::resolve_local_rect(owner_rect, Some(local));
+                let rect = owner_rect.resolve_local(Some(local));
                 out.draw_text(
                     DrawTextPayload {
                         rect,
@@ -233,7 +232,7 @@ impl PlaneCtx<'_, '_> {
                 bbox,
                 content_hash: _,
             } => {
-                let origin = geometry::resolve_local_rect(owner_rect, *local_rect).min;
+                let origin = owner_rect.resolve_local(*local_rect).min;
                 out.draw_mesh(
                     DrawMeshPayload {
                         bbox: *bbox,
@@ -276,7 +275,7 @@ impl PlaneCtx<'_, '_> {
                 tint,
                 desaturate,
             } => {
-                let base = geometry::resolve_local_rect(owner_rect, *local_rect);
+                let base = owner_rect.resolve_local(*local_rect);
                 out.draw_icon(
                     DrawIconPayload {
                         rect: fit.resolve(base, handle.view_box()),
@@ -296,7 +295,7 @@ impl PlaneCtx<'_, '_> {
                 mag_filter,
                 downsample,
             } => {
-                let base = geometry::resolve_local_rect(owner_rect, *local_rect);
+                let base = owner_rect.resolve_local(*local_rect);
                 // A registered image carries its id; a `GpuView` is looked up in `Ui::gpu_views` and its paint callback rides with the payload, with the epoch telling the backend whether the target is current.
                 let (handle, view) = match source {
                     ImageSource::Texture { id, .. } => (*id, None),
@@ -390,8 +389,8 @@ impl PlaneCtx<'_, '_> {
                     size: rect.size,
                 }
                 .deflated(width);
-                let source = geometry::resolve_local_rect(rect, Some(padding_box));
-                let corners = chrome.corners.deflated(rect.size, width);
+                let source = rect.resolve_local(Some(padding_box));
+                let corners = chrome.corners.inner(rect.size, Spacing::all(width));
                 if let Some(shadow) = DrawQuadPayload::shadow(source, corners, chrome.shadow) {
                     out.draw_quad(shadow, 1.0);
                 }
@@ -420,21 +419,12 @@ impl PlaneCtx<'_, '_> {
             match mode {
                 ClipMode::Rect => out.push_clip(PushClipPayload::rect(mask_rect)),
                 ClipMode::Rounded => {
-                    // Per-corner reduction by the larger adjacent edge inset, keeping the mask curve inside both edges.
                     let painted = chrome.map(|row| row.corners).expect(
                         "ClipMode::Rounded without chrome row — open_node invariant violated",
                     );
-                    let [ptl, ptr_, pbr, pbl] = painted.as_array();
-                    let [pl, pt, pr, pb] = layout.padding.as_array();
-                    let mask_radius = Corners::new(
-                        (ptl - pt.max(pl)).max(0.0),
-                        (ptr_ - pt.max(pr)).max(0.0),
-                        (pbr - pb.max(pr)).max(0.0),
-                        (pbl - pb.max(pl)).max(0.0),
-                    );
                     out.push_clip(PushClipPayload {
                         rect: mask_rect,
-                        corners: mask_radius,
+                        corners: painted.inner(rect.size, layout.padding),
                     });
                 }
                 ClipMode::None => {}
