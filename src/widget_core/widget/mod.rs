@@ -387,7 +387,7 @@ impl Widget {
         self.node.clip
     }
 
-    /// Install this grid's tracks, interned into the current layer's tree. They live
+    /// Install this grid's tracks, interned into the tree this widget records in. They live
     /// there because a layout mode packs into 16 bits, so this needs the `Ui` and
     /// can't be a [`Configure`] setter.
     ///
@@ -399,7 +399,7 @@ impl Widget {
         self.node.set_mode(LayoutMode::Grid(id));
     }
 
-    /// Install this bar overlay's definition, interned into the current layer's tree;
+    /// Install this bar overlay's definition, interned into the current plane's tree;
     /// the overlay places its bars from it once the viewport `def.content` names has
     /// measured.
     ///

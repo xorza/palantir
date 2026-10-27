@@ -134,7 +134,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     let keys: Vec<_> = harness
         .ui
         .input()
-        .keyboard_events(Layer::Main)
+        .keyboard_events(Layer::Main.into())
         .iter()
         .map(|press| format!("{:?}", press.key))
         .collect();

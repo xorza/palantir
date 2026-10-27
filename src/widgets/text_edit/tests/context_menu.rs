@@ -28,7 +28,7 @@ fn context_menu_cut_copy_paste_clear() {
         let menu = h
             .node_of(editor_id().with("body"))
             .expect("context menu body recorded");
-        let tree = h.ui.tree(menu.layer);
+        let tree = h.ui.tree(menu.plane.layer);
         let row = tree
             .children(menu.node)
             .nth(row_idx)

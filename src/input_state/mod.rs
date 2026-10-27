@@ -46,7 +46,7 @@ use crate::input_state::watches::Watches;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use glam::Vec2;
 use std::mem;
 use std::time::Duration;
@@ -273,25 +273,25 @@ impl InputState {
         self.subs.watch_key(shortcut);
     }
 
-    /// The raw keyboard stream as seen from `reader`'s layer; layer-gated only, to keep arrival
+    /// The raw keyboard stream as seen from `reader`'s plane; plane-gated only, to keep arrival
     /// order.
-    pub(crate) fn keyboard_events(&self, reader: Layer) -> &[KeyPress] {
+    pub(crate) fn keyboard_events(&self, reader: Plane) -> &[KeyPress] {
         if self.silenced(reader) {
             return &[];
         }
         &self.frame_keyboard_events
     }
 
-    /// Whether an overlay's scope cuts `reader`'s layer off (strictly below, so its own body keeps
+    /// Whether an overlay's scope cuts `reader`'s plane off (strictly below, so its own body keeps
     /// reading).
-    fn silenced(&self, reader: Layer) -> bool {
+    fn silenced(&self, reader: Plane) -> bool {
         self.scopes.silences(reader)
     }
 
-    /// The pointer watch stream as seen from `reader`'s layer, gated like
+    /// The pointer watch stream as seen from `reader`'s plane, gated like
     /// [`Self::keyboard_events`]. Watches bypass hit-testing, so without this a
     /// `Main`-layer `SCROLL` watcher would keep receiving events under a modal.
-    pub(crate) fn pointer_events(&self, reader: Layer) -> &[PointerEvent] {
+    pub(crate) fn pointer_events(&self, reader: Plane) -> &[PointerEvent] {
         if self.silenced(reader) {
             return &[];
         }
@@ -306,7 +306,7 @@ impl InputState {
         shortcut: Shortcut,
     ) -> bool {
         self.subs.watch_key(shortcut);
-        if self.frame_keyboard_events.is_empty() || self.silenced(reader.layer) {
+        if self.frame_keyboard_events.is_empty() || self.silenced(reader.plane) {
             return false;
         }
         let scope = self.scopes.reader(reader.parent, cascade);

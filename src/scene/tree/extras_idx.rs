@@ -6,7 +6,7 @@ use crate::common::idx16::Idx16;
 ///
 /// # Ceiling
 ///
-/// [`Idx16`] caps each table at [`Idx16::LAST`]` + 1` rows **per layer, per frame**; a row past that
+/// [`Idx16`] caps each table at [`Idx16::LAST`]` + 1` rows **per plane, per frame**; a row past that
 /// panics in release rather than wrapping. 32-bit indices would double this per-node SoA column.
 ///
 /// A large scene fills `chrome` first (any node with a paintable [`Chrome`] or rounded clip).

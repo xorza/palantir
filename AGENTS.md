@@ -365,10 +365,9 @@ CI runs `cargo drive gate --ci` on each OS.
   `--tests` with `golden` would pull in `visual`; the second builds the
   library without `winit`, as a host that embeds the crate does.
 - **Rendering changes** (shaders, encoder/composer, atlases, color pipeline,
-  layout that moves pixels) also run the suite no lane holds, in the first
-  test lane's shape so it reuses that build:
-  `cargo test --workspace --locked --features golden,gpu-debug-markers --test visual`.
-  Its goldens in `tests/visual/golden/` are local and record their adapter in
+  layout that moves pixels) also run the golden suite, which no lane holds:
+  `cargo drive run visual [filter]`, in the first test lane's shape so it
+  reuses that build. Its goldens in `tests/visual/golden/` are local and record their adapter in
   `golden/adapter.txt`. Run the suite on the unchanged tree first, and
   rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1` before
   changing anything. A missing golden is written, then failed; a

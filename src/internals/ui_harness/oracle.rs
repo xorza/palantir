@@ -8,7 +8,7 @@ use crate::damage::Damage;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
-use crate::layout::layer_layout::LayerLayout;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::render_plan::RenderPlan;
 use crate::text::shaped_text::ShapedText;
@@ -102,10 +102,10 @@ fn assert_layout_matches_cold(h: &UiHarness) {
     let mut engine = LayoutEngine::new(h.ui.shaper().clone());
     let mut cold = Layout::default();
     engine.run(h.ui.forest(), h.ui.display().logical_rect(), &mut cold);
-    for (layer, tree) in h.ui.forest().trees.iter_paint_order() {
-        let (warm, cold) = (h.ui.layout(layer), &cold[layer]);
+    for (plane, tree) in h.ui.forest().trees.iter_paint_order() {
+        let (warm, cold) = (h.ui.layout(plane), &cold[plane]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
-            let at = || format!("{layer:?} node {node} ({id:?})");
+            let at = || format!("{plane:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
             assert_eq!(
                 warm.scroll_content[node],
@@ -113,7 +113,7 @@ fn assert_layout_matches_cold(h: &UiHarness) {
                 "scroll content of {}",
                 at(),
             );
-            let runs = |layout: &LayerLayout| {
+            let runs = |layout: &PlaneLayout| {
                 layout.text_shapes[layout.text_spans[node].range()]
                     .iter()
                     .map(|shaped: &ShapedText| (shaped.extent.size, shaped.key))

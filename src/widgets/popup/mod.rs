@@ -26,7 +26,7 @@ use std::rc::Rc;
 ///
 /// Outside clicks follow [`ClickOutside`]. Under the modal pair (`Block` /
 /// `Dismiss`, the default) a full-surface click-eater sits under the body and
-/// the popup owns keyboard and pointer watches for every layer below it.
+/// the popup owns keyboard and pointer watches for everything below it.
 /// Focus is unchanged. Use [`ClickOutside::PassThrough`] to take neither.
 ///
 /// Implements [`Configure`].
@@ -54,12 +54,8 @@ impl Popup {
     }
 
     /// Record into `layer` rather than [`Layer::Popup`]; a context menu uses
-    /// [`Layer::Menu`] so it can open from inside a popup.
-    ///
-    /// # Panics
-    ///
-    /// At `show`, when nested inside a layer not strictly below `layer`
-    /// ([`Ui::layer`]'s rule).
+    /// [`Layer::Menu`]. Opened inside another overlay, the popup paints above it
+    /// either way ([`Ui::layer`]).
     pub const fn layer(mut self, layer: Layer) -> Self {
         self.layer = layer;
         self

@@ -157,7 +157,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     h.key(Key::Escape);
     let seen = h.frame_value(|ui| {
         build(ui, false);
-        ui.input().keyboard_events(Layer::Main).len()
+        ui.input().keyboard_events(Layer::Main.into()).len()
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
 }

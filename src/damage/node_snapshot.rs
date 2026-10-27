@@ -24,8 +24,8 @@ pub(crate) struct NodeSnapshot {
     /// Fingerprint of last frame's cascade inputs at this node; see
     /// [`CascadeInputHash`]. This walk compares it and then overwrites it.
     pub(super) cascade_input: CascadeInputHash,
-    /// Paint-order position: the parent's `WidgetId` bits, or the layer
-    /// discriminant for a root. A reparented widget keeps every hash but its
+    /// Paint-order position: the parent's `WidgetId` bits, or the plane's
+    /// layer and depth for a root. A reparented widget keeps every hash but its
     /// compositing order flipped, so the skip tiers must not skip it.
     pub(super) parent_key: u64,
 }

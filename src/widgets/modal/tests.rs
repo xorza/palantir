@@ -31,7 +31,7 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
 
     let panel_id = root_id.with("panel");
     let panel = h.node_of(panel_id).expect("modal panel node");
-    assert_eq!(panel.layer, Layer::Modal);
+    assert_eq!(panel.plane.layer, Layer::Modal);
     let tree = h.ui.tree(Layer::Modal);
     assert_eq!(
         tree.records.layout()[panel.node.idx()].padding,
@@ -59,7 +59,7 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
         });
 
         let backdrop = h.node_of(id).expect("modal backdrop recorded");
-        assert_eq!(backdrop.layer, Layer::Modal);
+        assert_eq!(backdrop.plane.layer, Layer::Modal);
         assert_eq!(
             h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
             Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),

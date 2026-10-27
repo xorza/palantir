@@ -17,7 +17,7 @@ const STROKE: Stroke = Stroke::new(RgbaF32::srgb(1.0, 0.0, 1.0), 3.0);
 pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
     for record in &scene.forest.collisions {
         for ep in [record.first, record.second] {
-            let rect = scene.layout[ep.layer].rect[ep.node.idx()];
+            let rect = scene.layout[ep.plane].rect[ep.node.idx()];
             let screen = scene.cascade.entry_at(ep).transform.apply_rect(rect);
             out.draw_quad(
                 DrawQuadPayload::rect(RectQuad {

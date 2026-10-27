@@ -9,13 +9,13 @@ pub(crate) mod cascade_key;
 pub(crate) mod cascade_source;
 pub(crate) mod counters;
 pub(crate) mod engine;
-pub(crate) mod layer_cascade;
 pub(crate) mod paint;
 mod paint_rect;
+pub(crate) mod plane_cascade;
 pub(crate) mod rows;
 
 use crate::cascade::cascade_key::CascadeKey;
-use crate::cascade::layer_cascade::LayerCascade;
+use crate::cascade::plane_cascade::PlaneCascade;
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
 use crate::cascade::rows::hit_row::HitRow;
@@ -27,22 +27,23 @@ use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
-use crate::scene::per_layer::PerLayer;
+use crate::scene::per_plane::PerPlane;
+use crate::scene::plane::Plane;
 use glam::Vec2;
 
-/// Read-only artifact of `CascadeEngine::run`: per-layer state ([`LayerCascade`]) plus the [`Self::by_id`] snapshot.
+/// Read-only artifact of `CascadeEngine::run`: per-plane state ([`PlaneCascade`]) plus the [`Self::by_id`] snapshot.
 #[derive(Debug, Default)]
 pub(crate) struct Cascade {
-    pub(crate) layers: PerLayer<LayerCascade>,
-    /// One row per recorded node, node-aligned within each layer's block (`layers[l].entries_base + node.0`); layers append in paint order. See [`EntryRow`].
+    pub(crate) planes: PerPlane<PlaneCascade>,
+    /// One row per recorded node, node-aligned within each plane's block (`planes[p].entries_base + node.0`); planes append in paint order. See [`EntryRow`].
     pub(crate) entries: Vec<EntryRow>,
     /// Interactive rows only, in paint order, reverse-scanned by hit tests; see [`HitRow`].
     hits: Vec<HitRow>,
-    /// Declared input scopes in record order — see [`ScopeRow`].
+    /// Declared input scopes in paint order — see [`ScopeRow`].
     pub(crate) scopes: Vec<ScopeRow>,
-    /// Tab stops in record order — see [`TabStopRow`].
+    /// Tab stops in paint order — see [`TabStopRow`].
     pub(crate) tab_stops: Vec<TabStopRow>,
-    /// Layer roots in record order — see [`RootRow`].
+    /// Plane roots in paint order — see [`RootRow`].
     pub(crate) roots: Vec<RootRow>,
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
@@ -75,8 +76,8 @@ pub(crate) enum TabDirection {
 pub(crate) enum TabDomain {
     /// The stops recorded under one overlay root.
     Root(WidgetId),
-    /// Every stop of one layer.
-    Layer(Layer),
+    /// Every stop of ordinary content.
+    Main,
     /// The stops recorded under one arrow group.
     Group(WidgetId),
 }
@@ -102,7 +103,7 @@ pub(crate) struct HitTargets {
 }
 
 impl Cascade {
-    /// Where `id` was recorded in the latest run, as the `(layer, node)` pair layout columns are indexed by, or `None`.
+    /// Where `id` was recorded in the latest run, as the `(plane, node)` pair layout columns are indexed by, or `None`.
     #[inline]
     pub(crate) fn endpoint(&self, id: WidgetId) -> Option<Endpoint> {
         self.by_id.get(&id).copied()
@@ -112,7 +113,7 @@ impl Cascade {
     #[cfg(debug_assertions)]
     #[inline]
     pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
-        &self.entries[(self.layers[endpoint.layer].entries_base + endpoint.node.0) as usize]
+        &self.entries[(self.planes[endpoint.plane].entries_base + endpoint.node.0) as usize]
     }
 
     /// Both the entry index and the endpoint, from one `by_id` probe.
@@ -125,19 +126,19 @@ impl Cascade {
     #[inline]
     pub(crate) fn location(&self, endpoint: Endpoint) -> WidgetLocation {
         WidgetLocation {
-            entry_idx: self.layers[endpoint.layer].entries_base + endpoint.node.0,
+            entry_idx: self.planes[endpoint.plane].entries_base + endpoint.node.0,
             endpoint,
         }
     }
 
-    /// True when `descendant` sits inside `ancestor`'s subtree: same layer, within `[node, subtree_end)`. Self-inclusive; `false` if either id is missing from the latest run.
+    /// True when `descendant` sits inside `ancestor`'s subtree: same plane, within `[node, subtree_end)`. Self-inclusive; `false` if either id is missing from the latest run.
     pub(crate) fn is_within(&self, descendant: WidgetId, ancestor: WidgetId) -> bool {
         let (Some(d), Some(a)) = (self.by_id.get(&descendant), self.by_id.get(&ancestor)) else {
             return false;
         };
-        d.layer == a.layer
+        d.plane == a.plane
             && d.node.0 >= a.node.0
-            && d.node.0 < self.layers[a.layer].subtree_ends[a.node.idx()]
+            && d.node.0 < self.planes[a.plane].subtree_ends[a.node.idx()]
     }
 
     /// Interactive rows under `pos`, topmost first, by reverse scan of the paint-ordered table.
@@ -234,32 +235,40 @@ impl Cascade {
     fn in_domain(&self, domain: TabDomain, row: &TabStopRow) -> bool {
         match domain {
             TabDomain::Root(root) => row.root == root,
-            TabDomain::Layer(layer) => row.layer == layer,
+            TabDomain::Main => row.plane == Plane::MAIN,
             TabDomain::Group(group) => self.is_within(row.id, group),
         }
     }
 
-    /// The layer root `id` was recorded under, or `None` when `id` is not in the latest run.
+    /// The plane root `id` was recorded under, or `None` when `id` is not in the latest run.
     fn root_of(&self, id: WidgetId) -> Option<&RootRow> {
-        let layer = self.endpoint(id)?.layer;
+        let plane = self.endpoint(id)?.plane;
         self.roots
             .iter()
             .rev()
-            .find(|row| row.layer == layer && self.is_within(id, row.id))
+            .find(|row| row.plane == plane && self.is_within(id, row.id))
     }
 
-    /// The overlay `id` sits in: its layer root, unless that layer is `Main`.
+    /// The overlay `id` sits in: its plane root, unless that root is ordinary content.
     pub(crate) fn overlay_root_of(&self, id: WidgetId) -> Option<WidgetId> {
         self.root_of(id)
             .filter(|row| row.layer != Layer::Main)
             .map(|row| row.id)
     }
 
+    /// The topmost open dialog's root.
+    pub(crate) fn modal_root(&self) -> Option<&RootRow> {
+        self.roots
+            .iter()
+            .rev()
+            .find(|row| row.layer == Layer::Modal)
+    }
+
     /// Whether `id` can hold focus: recorded in the latest run, focusable, and neither disabled
     /// nor invisible.
     pub(crate) fn is_focusable(&self, id: WidgetId) -> bool {
         self.endpoint(id)
-            .and_then(|at| self.layers[at.layer].hit_rows[at.node.idx()])
+            .and_then(|at| self.planes[at.plane].hit_rows[at.node.idx()])
             .is_some_and(|hit| self.hits[hit.idx()].focusable)
     }
 
@@ -286,19 +295,17 @@ impl Cascade {
     ///
     /// - A `Menu` root holding the focus traps it.
     /// - Otherwise the topmost open `Modal` traps it, pulling focus in.
-    /// - Otherwise a `Popup` root holding the focus traps it; one that does not (an autocomplete list) takes nothing.
+    /// - Otherwise a `Popup` root holding the focus traps it, unless a dialog sits above it; one that does not hold focus (an autocomplete list) takes nothing.
     /// - Otherwise every stop in `Main`.
+    ///
+    /// Each root is read by the layer it asked for, not its plane's: a dropdown nested in a dialog records on a `Modal` plane and still traps as a popup.
     pub(crate) fn tab_domain(&self, focused: Option<WidgetId>) -> TabDomain {
-        let modal = self
-            .roots
-            .iter()
-            .rev()
-            .find(|row| row.layer == Layer::Modal);
+        let modal = self.modal_root();
         if let Some(root) = focused.and_then(|id| self.root_of(id)) {
             let traps = match root.layer {
                 Layer::Menu => true,
                 Layer::Modal => modal == Some(root),
-                Layer::Popup => modal.is_none(),
+                Layer::Popup => modal.is_none_or(|modal| modal.plane < root.plane),
                 Layer::Main | Layer::Tooltip | Layer::Debug => false,
             };
             if traps {
@@ -307,7 +314,7 @@ impl Cascade {
         }
         match modal {
             Some(root) => TabDomain::Root(root.id),
-            None => TabDomain::Layer(Layer::Main),
+            None => TabDomain::Main,
         }
     }
 }
@@ -353,9 +360,9 @@ pub(crate) mod internals {
         /// Append every painting row with its widget in encoder draw order. Child markers are left out.
         #[cfg(test)]
         pub(crate) fn owned_paints(&self, forest: &Forest, out: &mut Vec<OwnedPaint>) {
-            for (layer, tree) in forest.trees.iter_paint_order() {
+            for (plane, tree) in forest.trees.iter_paint_order() {
                 for slot in &tree.roots {
-                    self.layers[layer].owned_paints_of(tree, slot.first_node, out);
+                    self.planes[plane].owned_paints_of(tree, slot.first_node, out);
                 }
             }
         }
@@ -369,17 +376,17 @@ pub(crate) mod internals {
                 cascade
                     .scopes
                     .iter()
-                    .map(|row| (row.layer, row.id, row.filter))
+                    .map(|row| (row.plane, row.id, row.filter))
                     .collect::<Vec<_>>()
             };
             assert_eq!(scopes(self), scopes(cold), "scope rows");
             assert_eq!(self.tab_stops, cold.tab_stops, "tab stop rows");
             assert_eq!(self.roots, cold.roots, "root rows");
             assert_eq!(self.arrow_groups, cold.arrow_groups, "arrow group rows");
-            for (layer, tree) in forest.trees.iter_paint_order() {
-                let (warm, full) = (&self.layers[layer], &cold.layers[layer]);
+            for (plane, tree) in forest.trees.iter_paint_order() {
+                let (warm, full) = (&self.planes[plane], &cold.planes[plane]);
                 for (node, id) in tree.records.widget_id().iter().enumerate() {
-                    let at = || format!("{layer:?} node {node} ({id:?})");
+                    let at = || format!("{plane:?} node {node} ({id:?})");
                     assert_eq!(
                         warm.cascade_inputs[node],
                         full.cascade_inputs[node],

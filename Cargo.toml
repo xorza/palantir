@@ -41,6 +41,11 @@ test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-de
 test-runner = "cargo-test"
 docs = true
 
+# The golden suite, run after a rendering change: in the first test lane's shape so it reuses that
+# build. It joins no lane, as its goldens are local to each machine's adapter.
+[workspace.metadata.drive.commands.visual]
+steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-markers --test visual", args = true }]
+
 [workspace]
 members = ["palantir-anim-derive"]
 

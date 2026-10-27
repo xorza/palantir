@@ -220,7 +220,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
             let node = h
                 .node_of((kind.chrome_node)())
                 .unwrap_or_else(|| panic!("{}: chrome node recorded", kind.name));
-            assert_eq!(node.layer, kind.layer, "{}", kind.name);
+            assert_eq!(node.plane.layer, kind.layer, "{}", kind.name);
             let fill =
                 h.ui.tree(kind.layer)
                     .chrome(node.node)

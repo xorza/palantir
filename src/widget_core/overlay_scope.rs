@@ -75,7 +75,7 @@ pub struct OverlayScope {
 }
 
 impl OverlayScope {
-    /// Claim `spec.layer` for `root`, stamping it as the node taking the layer's key
+    /// Claim `spec.layer` for `root`, stamping it as the node taking its layer's key
     /// scope when there is a backdrop; the owner is the root's resolved id. Every
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own

@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::ui::Ui;
 use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
@@ -49,11 +49,11 @@ fn prev_frame_captures_nodes_with_rows() {
             .damage
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
-        h.ui.layout[Layer::Main].rect[frame_node.idx()],
+        h.ui.layout[Plane::MAIN].rect[frame_node.idx()],
     );
     assert_eq!(
         snap.hash,
-        h.ui.forest.trees[Layer::Main].rollups.node[frame_node.idx()],
+        h.ui.forest.trees[Plane::MAIN].rollups.node[frame_node.idx()],
     );
 }
 

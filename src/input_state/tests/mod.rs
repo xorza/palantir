@@ -73,8 +73,8 @@ fn sample_layers<R>(
         let input = ui.input();
         Sample {
             layers: Layer::PAINT_ORDER.map(|layer| match stream {
-                Stream::Keyboard => input.keyboard_events(layer).len(),
-                Stream::Pointer => input.pointer_events(layer).len(),
+                Stream::Keyboard => input.keyboard_events(layer.into()).len(),
+                Stream::Pointer => input.pointer_events(layer.into()).len(),
             }),
             value,
         }

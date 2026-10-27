@@ -1,4 +1,4 @@
-//! Per-layer arena tree: SoA `records` column, sparse side tables, flat shape
+//! Per-plane arena tree: SoA `records` column, sparse side tables, flat shape
 //! buffer, and subtree-rollup hashes for cross-frame caches.
 //!
 //! Noop filtering at this storage tier: `Shapes::add` drops `Shape::is_noop`
@@ -31,6 +31,7 @@ use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDe
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
+use crate::scene::layer::Layer;
 use crate::scene::node::bounds_extras::BoundsExtras;
 use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
@@ -59,7 +60,7 @@ use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
 
-/// A single layer's arena. Layers share no storage, so `Ui::layer` records
+/// A single plane's arena. Planes share no storage, so `Ui::layer` records
 /// straight into its destination tree. `records` is in pre-order paint order;
 /// reverse iteration is topmost-first.
 #[derive(Debug, Default)]
@@ -130,6 +131,15 @@ impl Tree {
     #[inline]
     pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
         self.records.subtree_end()[i].has_grid()
+    }
+
+    /// The layer the root at `root` asked for.
+    pub(crate) fn root_layer(&self, root: NodeId) -> Layer {
+        self.roots
+            .iter()
+            .find(|slot| slot.first_node == root)
+            .expect("a root node has its slot")
+            .layer
     }
 
     pub(crate) fn pre_record(&mut self) {
@@ -399,6 +409,7 @@ impl Tree {
             self.roots.push(RootSlot {
                 first_node: new_id,
                 placement: pending,
+                layer: scratch.pending_layer,
             });
         }
         // A root raised from a disabled scope is disabled, so the cascade disables the
@@ -588,7 +599,7 @@ impl Tree {
     }
 
     /// This node's transform, anchored so its scale pivots about the panel's own
-    /// origin instead of the layer's `(0, 0)`. `rect` is the arranged rect. Cascade
+    /// origin instead of the plane's `(0, 0)`. `rect` is the arranged rect. Cascade
     /// and encoder must both use this, or a scaled panel's body drifts from its
     /// damage rect.
     #[inline]

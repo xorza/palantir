@@ -1,6 +1,6 @@
-//! The per-layer structural diff: [`LayerWalk`] and the [`Tier`] it sorts each node into.
+//! The per-plane structural diff: [`PlaneWalk`] and the [`Tier`] it sorts each node into.
 //!
-//! [`NodeSnapshot`] is `Copy`, so [`LayerWalk::classify`] decides on a copy and returns a plain [`Tier`]; deciding on a live map `Entry` would cost each arm its `&mut self`.
+//! [`NodeSnapshot`] is `Copy`, so [`PlaneWalk::classify`] decides on a copy and returns a plain [`Tier`]; deciding on a live map `Entry` would cost each arm its `&mut self`.
 
 use crate::cascade::paint::{Paint, PaintRows};
 use crate::common::block_arena::BlockArena;
@@ -8,8 +8,8 @@ use crate::common::span::Span;
 use crate::damage;
 use crate::damage::counters::DamageCounters;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
-use crate::damage::layer_frame::LayerFrame;
 use crate::damage::node_snapshot::NodeSnapshot;
+use crate::damage::plane_frame::PlaneFrame;
 use crate::damage::row_matcher::{PaintsChange, RowMatcher};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
@@ -43,9 +43,9 @@ struct Visit {
     parent_key: u64,
 }
 
-/// One layer's structural diff, built per layer so mutable diff state is reborrowed from `DamageEngine`.
+/// One plane's structural diff, built per plane so mutable diff state is reborrowed from `DamageEngine`.
 #[derive(Debug)]
-pub(super) struct LayerWalk<'a> {
+pub(super) struct PlaneWalk<'a> {
     pub(super) prev: &'a mut WidgetIdMap<NodeSnapshot>,
     pub(super) paints: &'a mut BlockArena<Paint>,
     pub(super) matcher: &'a mut RowMatcher,
@@ -57,10 +57,10 @@ pub(super) struct LayerWalk<'a> {
     pub(super) surface: Rect,
     /// On a force-full frame the caller discards the region, so arms skip rect pushes.
     pub(super) force_full: bool,
-    pub(super) frame: LayerFrame<'a>,
+    pub(super) frame: PlaneFrame<'a>,
 }
 
-impl LayerWalk<'_> {
+impl PlaneWalk<'_> {
     pub(super) fn run(&mut self) {
         let n = self.frame.tree.records.len();
         let mut i = 0;
@@ -93,12 +93,13 @@ impl LayerWalk<'_> {
         }
     }
 
-    /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the layer discriminant for a root, so a subtree changing layers cannot read as unchanged.
+    /// The `parent_key` node `i` sits under: its parent's `WidgetId` bits, or the plane's layer and depth for a root, so a subtree changing planes cannot read as unchanged.
     fn parent_key(&self, i: usize) -> u64 {
-        match self.frame.tree.parent_of(i) {
-            Some(parent) => self.frame.tree.records.widget_id()[parent.idx()].0,
-            None => self.frame.layer as u64,
+        if let Some(parent) = self.frame.tree.parent_of(i) {
+            return self.frame.tree.records.widget_id()[parent.idx()].0;
         }
+        let plane = self.frame.plane;
+        (u64::from(plane.layer as u8) << 8) | u64::from(plane.depth)
     }
 
     /// The map read is the classification; writing arms re-probe the bucket. Deliberate and cheap: `prev` hashes by identity.
@@ -119,7 +120,7 @@ impl LayerWalk<'_> {
                 Tier::Added
             };
         };
-        // A reparent or layer move keeps every hash but flips compositing order, so it disqualifies every skip tier.
+        // A reparent or plane move keeps every hash but flips compositing order, so it disqualifies every skip tier.
         let same_parent = prev.parent_key == parent_key;
         let same_subtree = prev.subtree_hash == self.frame.tree.rollups.subtree[i];
         let same_cascade = prev.cascade_input == self.frame.cascade.cascade_inputs[i];
@@ -204,7 +205,7 @@ impl LayerWalk<'_> {
             damage::push_screen(self.raw_rects, union);
         }
 
-        // Reparent / layer move at identical content: damage the subtree's current extent; descendants keep their skip.
+        // Reparent / plane move at identical content: damage the subtree's current extent; descendants keep their skip.
         if prev.parent_key != parent_key {
             let extent = self.frame.cascade.subtree_paint_rects[i];
             damage::push_screen(self.raw_rects, extent);

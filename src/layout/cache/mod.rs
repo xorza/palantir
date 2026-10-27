@@ -21,7 +21,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::math::num::F32Px;
 use crate::scene::forest::Forest;
-use crate::scene::layer::Layer;
 use crate::scene::tree::Tree;
 use crate::text::shaped_text::ShapedText;
 use glam::{IVec2, Vec2};
@@ -124,14 +123,13 @@ impl MeasureCache {
             return false;
         }
         let mut root_idx = 0;
-        for layer in Layer::PAINT_ORDER {
-            let tree = &forest.trees[layer];
+        for tree in forest.trees.iter_paint_order().map(|(_, tree)| tree) {
             for slot in &tree.roots {
                 let root = slot.first_node;
                 let cur = SubtreeKey {
                     widget_id: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.layout_subtree[root.idx()],
-                    available_q: Self::available_key(slot.available(layer, surface)),
+                    available_q: Self::available_key(slot.available(surface)),
                 };
                 if snapshot.roots[root_idx] != cur {
                     return false;
@@ -234,7 +232,7 @@ impl MeasureCache {
         } = input;
         let node_count = tree.records.len();
         // Debug only: column-length agreement is an engine invariant, and this
-        // runs once per layer per frame.
+        // runs once per plane per frame.
         debug_assert_eq!(desired.len(), node_count);
         debug_assert_eq!(floor.len(), node_count);
         debug_assert_eq!(stable_from.len(), node_count);
@@ -354,7 +352,7 @@ impl MeasureCache {
             self.cur.desc_widget_ids.push(widget_id);
         }
 
-        // Copied for every layer, the first included: a swap for the first
+        // Copied for every plane, the first included: a swap for the first
         // would leave the engine's scratch columns empty while the
         // container-text pass still runs.
         self.cur.nodes.desired.extend_from_slice(desired);

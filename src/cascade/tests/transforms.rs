@@ -13,7 +13,7 @@ use crate::renderer::render_plan::RenderPlan;
 
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -218,7 +218,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
 
 fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
     let node = ui.cascade().by_id[&WidgetId::from_hash(key)].node;
-    let arena = &ui.cascade().layers[Layer::Main].paint_arena;
+    let arena = &ui.cascade().planes[Plane::MAIN].paint_arena;
     let span = arena.node_spans[node.idx()];
     arena.rows[span.start as usize].screen
 }

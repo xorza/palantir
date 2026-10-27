@@ -7,6 +7,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -41,9 +42,9 @@ fn node_spans_rows_mirror_chrome_and_children() {
         });
     });
 
-    let layer = Layer::Main;
+    let plane = Plane::MAIN;
     let cascade = h.ui.cascade();
-    let arena = &cascade.layers[layer].paint_arena;
+    let arena = &cascade.planes[plane].paint_arena;
     let chrome_idx = cascade.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascade.by_id[&WidgetId::from_hash("bare")].node.idx();
     let parent_idx = cascade.by_id[&WidgetId::from_hash("parent")].node.idx();
@@ -105,9 +106,9 @@ fn per_node_columns_track_tree_size() {
                     }
                 });
         });
-        let layer = Layer::Main;
-        let nodes = h.ui.tree(layer).records.len();
-        let cascade = &h.ui.cascade().layers[layer];
+        let plane = Plane::MAIN;
+        let nodes = h.ui.tree(plane).records.len();
+        let cascade = &h.ui.cascade().planes[plane];
         assert_eq!(cascade.cascade_inputs.len(), nodes);
         assert_eq!(cascade.subtree_paint_rects.len(), nodes);
         assert_eq!(cascade.subtree_ends.len(), nodes);
@@ -147,7 +148,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
         });
     });
     let ep = h.ui.cascade().by_id[&row];
-    let rollup = h.ui.cascade().layers[ep.layer].subtree_paint_rects[ep.node.idx()];
+    let rollup = h.ui.cascade().planes[ep.plane].subtree_paint_rects[ep.node.idx()];
     assert_eq!(
         rollup,
         Rect::new(50.0, 0.0, 50.0, 50.0),
@@ -155,7 +156,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     );
 }
 
-/// `LayerLayout::rect_hash` lets the incremental walk skip clean subtrees, so it must discriminate on geometry only: identical geometry hashes equal despite paint changes, any moved rect hashes differently.
+/// `PlaneLayout::rect_hash` lets the incremental walk skip clean subtrees, so it must discriminate on geometry only: identical geometry hashes equal despite paint changes, any moved rect hashes differently.
 #[test]
 fn rect_hash_tracks_geometry_and_ignores_paint() {
     fn build(size: f32, fill: RgbaF32) -> impl FnMut(&mut Ui) {

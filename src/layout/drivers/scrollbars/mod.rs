@@ -1,4 +1,4 @@
-//! Layout-side scrollbar driver: places the four bar leaves from geometry that exists only after measure, since a thumb's extent is a content/viewport ratio unknown while recording ([`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content)).
+//! Layout-side scrollbar driver: places the four bar leaves from geometry that exists only after measure, since a thumb's extent is a content/viewport ratio unknown while recording ([`PlaneLayout::scroll_content`](crate::layout::plane_layout::PlaneLayout::scroll_content)).
 //!
 //! Children are recorded in a fixed order (vertical track, vertical thumb, horizontal track, horizontal thumb) and an absent bar arranges zero-extent, so the child list and bar ids stay stable across an overflow toggle.
 
@@ -39,7 +39,7 @@ impl LayoutDriver for Scrollbars {
     /// Thumbs size from the sibling viewport's measured `scroll_content`, so content that stops overflowing leaves this subtree's hash and slot untouched.
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = false;
 
-    /// Bars never inflate their scroll: the overlay reports `ZERO`. The four leaves are still measured so their `desired` rows are written; `capture_tree` stores the layer's whole column and an unwritten row would replay stale scratch.
+    /// Bars never inflate their scroll: the overlay reports `ZERO`. The four leaves are still measured so their `desired` rows are written; `capture_tree` stores the plane's whole column and an unwritten row would replay stale scratch.
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
         // `tree` reborrows independently of `pass`, so the walk and the recursion coexist.
         let tree = pass.tree;

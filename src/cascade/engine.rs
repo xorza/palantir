@@ -5,9 +5,9 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::cascade_key::CascadeKey;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
-use crate::cascade::layer_cascade::LayerCascade;
 use crate::cascade::paint::Paint;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
+use crate::cascade::plane_cascade::PlaneCascade;
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
 use crate::cascade::rows::hit_row::HitRow;
@@ -19,13 +19,13 @@ use crate::common::non_max_u32::NonMaxU32;
 use crate::common::tracy;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
-use crate::layout::layer_layout::LayerLayout;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use std::hash::Hasher as _;
@@ -55,10 +55,10 @@ trait RowSink {
     /// Whether the walk repairs a retained cascade in place: only then may it skip nodes, and it must bail on a paint span that changed length.
     const INCREMENTAL: bool;
 
-    /// Whether a node whose own inputs held may be skipped with its subtree; sound only while every rect in the layer held.
+    /// Whether a node whose own inputs held may be skipped with its subtree; sound only while every rect in the plane held.
     fn skips_clean_subtrees(&self) -> bool;
 
-    fn emit(&mut self, tree: &Tree, lc: &mut LayerCascade, rows: NodeRows);
+    fn emit(&mut self, tree: &Tree, lc: &mut PlaneCascade, rows: NodeRows);
 }
 
 #[derive(Debug)]
@@ -69,7 +69,7 @@ struct TreeSink<'a> {
     tab_stops: &'a mut Vec<TabStopRow>,
     roots: &'a mut Vec<RootRow>,
     arrow_groups: &'a mut Vec<ArrowGroupRow>,
-    layer: Layer,
+    plane: Plane,
     root: WidgetId,
 }
 
@@ -81,14 +81,18 @@ impl RowSink for TreeSink<'_> {
     }
 
     #[inline]
-    fn emit(&mut self, tree: &Tree, lc: &mut LayerCascade, rows: NodeRows) {
+    fn emit(&mut self, tree: &Tree, lc: &mut PlaneCascade, rows: NodeRows) {
         let iu = rows.node;
         let id = tree.records.widget_id()[iu];
         let attrs = tree.records.attrs()[iu];
-        let layer = self.layer;
+        let plane = self.plane;
         if rows.root {
             self.root = id;
-            self.roots.push(RootRow { layer, id });
+            self.roots.push(RootRow {
+                plane,
+                layer: tree.root_layer(NodeId(iu as u32)),
+                id,
+            });
         }
         // Names the keyboard half alone; only `invisible` removes a node from pointer routing.
         let keyboard_off = rows.disabled || rows.invisible;
@@ -105,7 +109,7 @@ impl RowSink for TreeSink<'_> {
         }
         if focusable && attrs.is_tab_stop() {
             self.tab_stops.push(TabStopRow {
-                layer,
+                plane,
                 root: self.root,
                 id,
                 idx: tree.bounds(NodeId(iu as u32)).tab_idx,
@@ -127,13 +131,13 @@ impl RowSink for TreeSink<'_> {
             attrs.key_filter()
         };
         if filter.is_scope() {
-            self.scopes.push(ScopeRow { layer, id, filter });
+            self.scopes.push(ScopeRow { plane, id, filter });
         }
         self.entries.push(rows.entry());
     }
 }
 
-/// The rows a repair rewrites in place: one layer's block of [`Cascade::entries`] and the hit table; the key proved every other table unchanged.
+/// The rows a repair rewrites in place: one plane's block of [`Cascade::entries`] and the hit table; the key proved every other table unchanged.
 #[derive(Debug)]
 struct TreePatch<'a> {
     entries: &'a mut [EntryRow],
@@ -150,7 +154,7 @@ impl RowSink for TreePatch<'_> {
 
     /// Only the rect and inherited transform are rewritten.
     #[inline]
-    fn emit(&mut self, _tree: &Tree, lc: &mut LayerCascade, rows: NodeRows) {
+    fn emit(&mut self, _tree: &Tree, lc: &mut PlaneCascade, rows: NodeRows) {
         self.entries[rows.node] = rows.entry();
         if let Some(hit) = lc.hit_rows[rows.node] {
             self.hits[hit.idx()].rect = rows.visible_rect;
@@ -201,11 +205,11 @@ impl CascadeCtx {
     }
 }
 
-/// One layer's read-only input to [`CascadeEngine::run_tree`].
+/// One plane's read-only input to [`CascadeEngine::run_tree`].
 #[derive(Clone, Copy, Debug)]
 struct TreeSource<'a> {
     tree: &'a Tree,
-    layout: &'a LayerLayout,
+    layout: &'a PlaneLayout,
     display_scale: f32,
 }
 
@@ -237,32 +241,36 @@ impl CascadeEngine {
         if !ran {
             return;
         }
-        let Some(built) = cascade.key.filter(|built| built.keeps_structure(&key)) else {
+        if !cascade.key.is_some_and(|built| built.keeps_structure(&key)) {
             self.rebuild(source, key, cascade);
             return;
-        };
+        }
         debug_assert_retained_fits(source.forest, cascade);
 
-        for (layer, tree) in source.forest.trees.iter_paint_order() {
+        for (plane, tree) in source.forest.trees.iter_paint_order() {
             let n = tree.records.len();
-            let base = cascade.layers[layer].entries_base as usize;
+            let rects = source.layout[plane].rect_hash();
+            let lc = &mut cascade.planes[plane];
+            let base = lc.entries_base as usize;
+            let rects_kept = lc.rects == rects;
+            lc.rects = rects;
             self.stack.clear();
             let incremental_complete = self.run_tree(
                 TreeSource {
                     tree,
-                    layout: &source.layout[layer],
+                    layout: &source.layout[plane],
                     display_scale: source.display.scale_factor(),
                 },
-                &mut cascade.layers[layer],
+                &mut cascade.planes[plane],
                 &mut TreePatch {
                     entries: &mut cascade.entries[base..base + n],
                     hits: &mut cascade.hits,
-                    rects_kept: built.keeps_rects(&key, layer),
+                    rects_kept,
                 },
             );
             if !incremental_complete {
                 self.counters.abandoned_incremental();
-                // Restarts at layer zero: `rebuild` assigns per-layer bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
+                // Restarts at the first plane: `rebuild` assigns per-plane bases into one flat `entries` table as it walks, so it has no mid-way entry. Costs one extra paint repair.
                 self.rebuild(source, key, cascade);
                 return;
             }
@@ -281,19 +289,22 @@ impl CascadeEngine {
         cascade.tab_stops.clear();
         cascade.roots.clear();
         cascade.arrow_groups.clear();
+        cascade.planes.cover(&forest.trees);
 
-        for (layer, tree) in forest.trees.iter_paint_order() {
+        for (plane, tree) in forest.trees.iter_paint_order() {
             let n = tree.records.len();
             let entries_base = cascade.entries.len() as u32;
-            cascade.layers[layer].reset_for(n, entries_base);
+            let lc = &mut cascade.planes[plane];
+            lc.reset_for(n, entries_base);
+            lc.rects = source.layout[plane].rect_hash();
             self.stack.clear();
             let full_complete = self.run_tree(
                 TreeSource {
                     tree,
-                    layout: &source.layout[layer],
+                    layout: &source.layout[plane],
                     display_scale: source.display.scale_factor(),
                 },
-                &mut cascade.layers[layer],
+                &mut cascade.planes[plane],
                 &mut TreeSink {
                     entries: &mut cascade.entries,
                     hits: &mut cascade.hits,
@@ -301,12 +312,12 @@ impl CascadeEngine {
                     tab_stops: &mut cascade.tab_stops,
                     roots: &mut cascade.roots,
                     arrow_groups: &mut cascade.arrow_groups,
-                    layer,
+                    plane,
                     root: WidgetId::default(),
                 },
             );
             debug_assert!(full_complete);
-            cascade.layers[layer]
+            cascade.planes[plane]
                 .arena_hashes
                 .copy_from_slice(&tree.rollups.subtree);
             debug_assert_eq!(
@@ -325,18 +336,18 @@ impl CascadeEngine {
     }
 }
 
-/// A cascade whose key keeps its structure still has one entry per node and one arena column per layer, in `forest`'s layer order.
+/// A cascade whose key keeps its structure still has one entry per node and one arena column per plane, in `forest`'s paint order.
 fn debug_assert_retained_fits(forest: &Forest, cascade: &Cascade) {
     debug_assert_eq!(cascade.entries.len(), forest.total_nodes());
     let mut entries_base = 0u32;
-    for (layer, tree) in forest.trees.iter_paint_order() {
+    for (plane, tree) in forest.trees.iter_paint_order() {
         let n = tree.records.len();
-        let lc = &cascade.layers[layer];
+        let lc = &cascade.planes[plane];
         debug_assert_eq!(lc.entries_base, entries_base);
         debug_assert_eq!(
             lc.arena_hashes.len(),
             n,
-            "retained arena column outlived its layer",
+            "retained arena column outlived its plane",
         );
         entries_base += n as u32;
     }
@@ -354,11 +365,11 @@ const fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], p
 impl CascadeEngine {
     /// Walks one tree, writing its cascade columns. Returns whether it *completed*; only the incremental path returns `false`, when a node's repaired paint span changes length and the caller must fully rebuild.
     ///
-    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree while the layer's rects held; once one moved, every node is visited. Movement within `EPS` of zero reads as held.
+    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree while the plane's rects held; once one moved, every node is visited. Movement within `EPS` of zero reads as held.
     fn run_tree<S: RowSink>(
         &mut self,
         source: TreeSource<'_>,
-        lc: &mut LayerCascade,
+        lc: &mut PlaneCascade,
         sink: &mut S,
     ) -> bool {
         let TreeSource {

@@ -233,7 +233,7 @@ fn history_shows_the_preset_row_only_when_asked() {
         });
         let row = h
             .node_of(id.with("swatches"))
-            .map(|row| h.ui.tree(row.layer).children(row.node).count());
+            .map(|row| h.ui.tree(row.plane.layer).children(row.node).count());
         assert_eq!(row, swatches, "{label}");
     }
 }

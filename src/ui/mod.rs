@@ -258,17 +258,17 @@ impl Ui {
     }
 
     /// Pointer events captured this frame; empty without a [`PointerWake`] watcher.
-    /// Layer-gated like [`Self::keyboard_events`]: an overlay's scope empties it for
-    /// layers strictly below, since watches bypass hit-testing.
+    /// Gated like [`Self::keyboard_events`]: an overlay's scope empties it for
+    /// the planes strictly below, since watches bypass hit-testing.
     #[inline]
     pub fn pointer_events(&self) -> &[PointerEvent] {
-        self.input.pointer_events(self.forest.cur_layer())
+        self.input.pointer_events(self.forest.cur_plane())
     }
 
-    /// This frame's presses, in arrival order. Layer-gated like [`Self::pointer_events`].
+    /// This frame's presses, in arrival order. Gated like [`Self::pointer_events`].
     #[inline]
     pub fn keyboard_events(&self) -> &[KeyPress] {
-        self.input.keyboard_events(self.forest.cur_layer())
+        self.input.keyboard_events(self.forest.cur_plane())
     }
 
     /// `true` if any press this frame matches `shortcut`. Auto-watches the chord,
@@ -276,7 +276,7 @@ impl Ui {
     #[inline]
     pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
         let reader = KeyReader {
-            layer: self.forest.cur_layer(),
+            plane: self.forest.cur_plane(),
             parent: self.forest.cur_parent_id(),
         };
         self.input.key_pressed(reader, &self.cascade, shortcut)
@@ -286,7 +286,7 @@ impl Ui {
     #[inline]
     pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
         let reader = KeyReader {
-            layer: self.forest.cur_layer(),
+            plane: self.forest.cur_plane(),
             parent: Some(reader),
         };
         self.input.key_pressed(reader, &self.cascade, shortcut)
@@ -718,10 +718,10 @@ impl Ui {
     /// hit-tests on top. Configure on the returned [`LayerScope`] and finish with
     /// [`LayerScope::show`].
     ///
-    /// # Panics
-    ///
-    /// Panics unless a nested layer sits strictly above the current scope in
-    /// `Layer::PAINT_ORDER`; otherwise it would paint under its parent, un-hittable.
+    /// Called inside another layer's body, the new one paints and hit-tests above
+    /// the one it opened from, whatever their ranks: a [`Layer::Popup`] opened in a
+    /// [`Layer::Modal`] dialog sits over the dialog. Focus rules read the layer it
+    /// asked for, so a dropdown in a dialog still traps Tab as a popup does.
     #[inline]
     pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
         LayerScope::new(self, layer)
@@ -1141,14 +1141,14 @@ pub(crate) mod internals {
     use crate::internals::inspected_widget::InspectedWidget;
     use crate::layout::Layout;
     #[cfg(test)]
-    use crate::layout::layer_layout::LayerLayout;
+    use crate::layout::plane_layout::PlaneLayout;
     #[cfg(test)]
     use crate::primitives::geometry::rect::Rect;
     #[cfg(test)]
     use crate::scene::endpoint::Endpoint;
     use crate::scene::forest::Forest;
     #[cfg(test)]
-    use crate::scene::layer::Layer;
+    use crate::scene::plane::Plane;
     #[cfg(test)]
     use crate::scene::tree::Tree;
     #[cfg(test)]
@@ -1199,7 +1199,7 @@ pub(crate) mod internals {
 
     /// Read by benches as well as tests.
     impl Ui {
-        /// The whole forest, for callers that re-run a pass over every layer.
+        /// The whole forest, for callers that re-run a pass over every plane.
         pub(crate) const fn forest(&self) -> &Forest {
             &self.forest
         }
@@ -1209,7 +1209,7 @@ pub(crate) mod internals {
             self.resources.text().font_epoch()
         }
 
-        /// The whole layout table, for callers that walk every layer.
+        /// The whole layout table, for callers that walk every plane.
         pub(crate) const fn layout_tables(&self) -> &Layout {
             &self.layout
         }
@@ -1231,20 +1231,23 @@ pub(crate) mod internals {
             &mut self.input
         }
 
-        /// One layer's recorded tree.
-        pub(crate) fn tree(&self, layer: Layer) -> &Tree {
-            &self.forest.trees[layer]
+        /// One plane's recorded tree; a `Layer` names its base plane.
+        pub(crate) fn tree(&self, plane: impl Into<Plane>) -> &Tree {
+            &self.forest.trees[plane.into()]
         }
 
-        /// One layer's arranged columns. Callers wanting the whole table use
-        /// [`Self::layout_tables`].
-        pub(crate) fn layout(&self, layer: Layer) -> &LayerLayout {
-            &self.layout[layer]
+        /// One plane's arranged columns; a `Layer` names its base plane. Callers wanting the whole
+        /// table use [`Self::layout_tables`].
+        pub(crate) fn layout(&self, plane: impl Into<Plane>) -> &PlaneLayout {
+            &self.layout[plane.into()]
         }
 
-        /// `node`'s arranged rect on `layer`: pre-transform, unclipped, world coords.
-        pub(crate) fn arranged_rect(&self, layer: Layer, node: NodeId) -> Rect {
-            self.layout.arranged_rect(Endpoint { layer, node })
+        /// `node`'s arranged rect on `plane`: pre-transform, unclipped, world coords.
+        pub(crate) fn arranged_rect(&self, plane: impl Into<Plane>, node: NodeId) -> Rect {
+            self.layout.arranged_rect(Endpoint {
+                plane: plane.into(),
+                node,
+            })
         }
 
         /// The shaper the recorder measures and paints text with, for cache and measure-count

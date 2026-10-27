@@ -11,6 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -28,7 +29,7 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = h.ui.cascade().layers[Layer::Main]
+    let painting = h.ui.cascade().planes[Plane::MAIN]
         .paint_arena
         .node_spans
         .iter()
@@ -334,9 +335,9 @@ fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
 
     let owner = h.rect(owner_id).expect("the owner arranged");
     let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
-    let span = h.ui.cascade().layers[Layer::Main].paint_arena.node_spans[node_idx];
+    let span = h.ui.cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
     assert_eq!(span.len, 1, "the owner paints the one animated shape");
-    let row = h.ui.cascade().layers[Layer::Main].paint_arena.rows[span.start as usize].screen;
+    let row = h.ui.cascade().planes[Plane::MAIN].paint_arena.rows[span.start as usize].screen;
 
     let pivot = owner.min + Vec2::new(40.0, 20.0);
     let want = Rect::square_about(pivot, 30.0_f32.hypot(10.0)).inflated(1.0);
@@ -375,12 +376,12 @@ fn node_snapshot_decomposition_matches_cascade() {
                 ));
             });
     });
-    let layer = Layer::Main;
+    let plane = Plane::MAIN;
     let node_idx = h.ui.cascade().by_id[&WidgetId::from_hash("multi")]
         .node
         .idx();
-    let node_span = h.ui.cascade().layers[layer].paint_arena.node_spans[node_idx];
-    let layer_paints = &h.ui.cascade().layers[layer].paint_arena.rows;
+    let node_span = h.ui.cascade().planes[plane].paint_arena.node_spans[node_idx];
+    let layer_paints = &h.ui.cascade().planes[plane].paint_arena.rows;
 
     let chrome_paint = layer_paints[node_span.start as usize];
     assert!(
@@ -620,7 +621,7 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     }
 }
 
-/// Changing a `Shape::Text` with `local_origin: Some(_)` damages the shaped-text bbox, not just the origin point: prev and curr extents come from `LayerLayout::text_shapes`.
+/// Changing a `Shape::Text` with `local_origin: Some(_)` damages the shaped-text bbox, not just the origin point: prev and curr extents come from `PlaneLayout::text_shapes`.
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::shape::Shape;

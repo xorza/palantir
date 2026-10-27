@@ -3,7 +3,6 @@
 
 use crate::cascade::Cascade;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::scene::layer::Layer;
 
 /// What moved focus, which decides whether the focus ring shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,7 +27,7 @@ pub(super) struct Focus {
     settled: Option<WidgetId>,
     /// One row per overlay focus is inside.
     returns: Vec<FocusReturn>,
-    /// The topmost `Modal`-layer root the last cascade held, to notice a new dialog.
+    /// The topmost dialog root the last cascade held, to notice a new dialog.
     modal_root: Option<WidgetId>,
     /// The ancestor whose first Tab stop takes focus at the next reconcile.
     first_within: Option<WidgetId>,
@@ -93,14 +92,13 @@ impl Focus {
             self.focused = None;
         }
         self.return_from_closed_overlays(cascade);
-        // A dialog takes focus as it appears, like `<dialog>.showModal()`.
-        let modal_root = cascade
-            .roots
-            .iter()
-            .rev()
-            .find(|row| row.layer == Layer::Modal)
-            .map(|row| row.id);
-        if modal_root.is_some() && modal_root != self.modal_root {
+        // A dialog takes focus as it becomes the topmost, like `<dialog>.showModal()`, unless focus
+        // is inside it already: a dialog a nested one closed over got its focus back above.
+        let modal_root = cascade.modal_root().map(|row| row.id);
+        if let Some(root) = modal_root
+            && modal_root != self.modal_root
+            && !self.focused.is_some_and(|id| cascade.is_within(id, root))
+        {
             self.first_within = modal_root;
         }
         self.modal_root = modal_root;

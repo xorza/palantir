@@ -54,7 +54,7 @@ fn explicit_no_clip_overrides_scroll_default() {
         let viewport = h
             .node_of(id.with("viewport"))
             .expect("scroll viewport node");
-        h.ui.tree(viewport.layer).records.attrs()[viewport.node.idx()].clip_mode()
+        h.ui.tree(viewport.plane.layer).records.attrs()[viewport.node.idx()].clip_mode()
     };
     assert_eq!(clip_for(unclipped_id), ClipMode::None);
     assert_eq!(clip_for(clipped_id), ClipMode::Rect);
@@ -148,7 +148,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
     assert_eq!(state.offset.y, 26.0);
 }
 
-/// `LayerLayout::scroll_content`: V/H scrolls sum along the panned axis and max across, XY maxes per axis; an empty scroll records zero.
+/// `PlaneLayout::scroll_content`: V/H scrolls sum along the panned axis and max across, XY maxes per axis; an empty scroll records zero.
 #[test]
 fn scroll_records_content_extent() {
     #[derive(Debug)]

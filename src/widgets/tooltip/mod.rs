@@ -167,7 +167,7 @@ impl<'a> Tooltip<'a> {
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
             // `Backdrop::None`: a tooltip annotates, and a scope recorded every
-            // frame would cut off every layer below.
+            // frame would cut off every plane below.
             let spec = OverlaySpec {
                 layer: Layer::Tooltip,
                 anchor: Some(anchor),

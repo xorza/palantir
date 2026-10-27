@@ -4,22 +4,22 @@
 use crate::common::tracy;
 use crate::layout::Layout;
 use crate::layout::cache::{CaptureTreeInput, MeasureCache};
-use crate::layout::layer_input::LayerInput;
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
 use crate::layout::placed_child::{Placed, PlacedChild};
+use crate::layout::plane_input::PlaneInput;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::scene::forest::Forest;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::shaper::TextShaper;
 use crate::text::system::TextSystem;
 
 /// Persistent layout engine. Field groups by lifetime:
 ///
-/// - `scratch`: per-frame state (see [`LayoutScratch`]), reset per layer by
+/// - `scratch`: per-frame state (see [`LayoutScratch`]), reset per plane by
 ///   `LayoutScratch::resize_for`.
 /// - `text`: per-window text shaping and reuse slots.
 /// - `cache`: cross-frame measure cache, see [`crate::layout::cache`].
@@ -28,7 +28,7 @@ use crate::text::system::TextSystem;
 ///
 /// Per-frame output is not held here: `run` threads it through an
 /// `out: &mut Layout` owned by the caller. Recursive work receives only the
-/// current [`LayerLayout`](crate::layout::layer_layout::LayerLayout) slot.
+/// current [`PlaneLayout`](crate::layout::plane_layout::PlaneLayout) slot.
 #[derive(Debug)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
@@ -37,12 +37,12 @@ pub(crate) struct LayoutEngine {
     last_roots: Vec<RootRun>,
 }
 
-/// One root as a run laid it out: its layer, the exact extent it was measured
+/// One root as a run laid it out: its plane, the exact extent it was measured
 /// against, and the slot it was arranged into (outside its margin). Kept in
 /// paint order.
 #[derive(Clone, Copy, Debug)]
 struct RootRun {
-    layer: Layer,
+    plane: Plane,
     available: Size,
     slot: Rect,
 }
@@ -62,19 +62,19 @@ impl LayoutEngine {
     ///
     /// The snapshot match proves each root's subtree is the one last laid out.
     /// The offer, which the snapshot keeps only quantized, is compared exactly
-    /// here with the layer. Equal subtree and offer arrange to the same slot
+    /// here with the plane. Equal subtree and offer arrange to the same slot
     /// size, so the slot holds iff the origin placement resolves to is where
     /// the last run put it. Equal inputs give an equal run.
     fn keeps_last_run(&self, forest: &Forest, surface: Rect) -> bool {
         let mut last = self.last_roots.iter();
-        for (layer, tree) in forest.trees.iter_paint_order() {
+        for (plane, tree) in forest.trees.iter_paint_order() {
             for slot in &tree.roots {
                 let Some(run) = last.next() else {
                     return false;
                 };
-                if run.layer != layer
-                    || run.available != slot.available(layer, surface)
-                    || run.slot.min != slot.origin(layer, run.slot.size, surface)
+                if run.plane != plane
+                    || run.available != slot.available(surface)
+                    || run.slot.min != slot.origin(run.slot.size, surface)
                 {
                     return false;
                 }
@@ -83,17 +83,20 @@ impl LayoutEngine {
         last.next().is_none()
     }
 
-    /// Run measure and arrange for every root in every layer's tree against
-    /// `surface`, in `Layer::PAINT_ORDER`; each tree's recursive work gets a
-    /// [`LayoutPass`] bound to that layer's output slot.
+    /// Run measure and arrange for every root in every plane's tree against
+    /// `surface`, in paint order; each tree's recursive work gets a
+    /// [`LayoutPass`] bound to that plane's output slot.
     pub(crate) fn run(&mut self, forest: &Forest, surface: Rect, out: &mut Layout) {
         tracy::zone!();
+        // First, so a run kept whole still leaves a slot for a plane that grew empty: the
+        // cascade and the encoder index every plane the forest holds.
+        out.cover(forest);
         let interned_text = forest.record_store.interned_text();
         debug_assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        // Once per run: `resize_for` runs inside the layer loop and would wipe earlier counts.
+        // Once per run: `resize_for` runs inside the plane loop and would wipe earlier counts.
         self.scratch.counters.begin_pass();
         // Before the snapshot check, which cannot see what this answers:
         // `TextSystem::sync_fonts` drops the reuse rows and reports the frame
@@ -110,23 +113,22 @@ impl LayoutEngine {
             self.cache.begin_frame();
         }
         self.last_roots.clear();
-        for layer in Layer::PAINT_ORDER {
-            let tree = &forest.trees[layer];
-            let input = LayerInput {
+        for (plane, tree) in forest.trees.iter_paint_order() {
+            let input = PlaneInput {
                 tree,
                 interned_text: &interned_text,
             };
-            let layer_out = &mut out[layer];
-            layer_out.resize_for(tree);
+            let plane_out = &mut out[plane];
+            plane_out.resize_for(tree);
             if tree.records.is_empty() {
-                layer_out.hash_rects();
+                plane_out.hash_rects();
                 continue;
             }
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
-                let mut pass = LayoutPass::new(&mut *self, input, &mut *layer_out);
+                let mut pass = LayoutPass::new(&mut *self, input, &mut *plane_out);
                 let root = slot.first_node;
-                let available = slot.available(layer, surface);
+                let available = slot.available(surface);
                 // Two of the five passes that a Tracy capture couldn't tell
                 // apart. Per root, so the zone budget stays flat.
                 let measured = {
@@ -141,7 +143,7 @@ impl LayoutEngine {
                 .arrange_size(available);
                 // Overlay policies need the current measured body, not a retained response rect.
                 let arranged = Rect {
-                    min: slot.origin(layer, size, surface),
+                    min: slot.origin(size, surface),
                     size,
                 };
                 {
@@ -149,7 +151,7 @@ impl LayoutEngine {
                     pass.arrange(root, arranged);
                 }
                 self.last_roots.push(RootRun {
-                    layer,
+                    plane,
                     available,
                     slot: arranged,
                 });
@@ -161,21 +163,21 @@ impl LayoutEngine {
                         desired: &self.scratch.desired,
                         floor: &self.scratch.floor,
                         stable_from: &self.scratch.stable_from,
-                        rect: &layer_out.rect,
+                        rect: &plane_out.rect,
                         local: &self.scratch.local,
-                        scroll_content: &layer_out.scroll_content,
+                        scroll_content: &plane_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
                         available_q: &self.scratch.available_q,
                         grid_track_state: &self.scratch.grid.track_state,
-                        text_spans: &layer_out.text_spans,
-                        text_shapes: &layer_out.text_shapes,
+                        text_spans: &plane_out.text_spans,
+                        text_shapes: &plane_out.text_shapes,
                     },
                 );
             }
             // Container text is paint-only and its wrap width exists only after
             // arrange, so it gets its own pass over the identified owners.
             let layouts = tree.records.layout();
-            let mut pass = LayoutPass::new(&mut *self, input, &mut *layer_out);
+            let mut pass = LayoutPass::new(&mut *self, input, &mut *plane_out);
             for idx in tree.container_text.ones() {
                 let layout = layouts[idx];
                 let node = NodeId(idx as u32);
@@ -184,7 +186,7 @@ impl LayoutEngine {
                 let runs = TextShapeInput::on_container(tree, &interned_text, node);
                 pass.shape_text_runs(node, available_w, runs);
             }
-            out[layer].hash_rects();
+            out[plane].hash_rects();
         }
         if self.scratch.cache_rebuild {
             self.cache.end_frame();
@@ -208,11 +210,11 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::layout::intrinsic::len_req::SLOT_COUNT;
     #[cfg(test)]
-    use crate::layout::layer_input::LayerInput;
+    use crate::layout::plane_input::PlaneInput;
     #[cfg(test)]
     use crate::scene::forest::Forest;
     #[cfg(test)]
-    use crate::scene::layer::Layer;
+    use crate::scene::plane::Plane;
     #[cfg(test)]
     use crate::scene::tree::node_id::NodeId;
 
@@ -226,8 +228,8 @@ pub(crate) mod internals {
             query: IntrinsicQuery,
         ) -> IntrinsicRange {
             let interned_text = forest.record_store.interned_text();
-            let input = LayerInput {
-                tree: &forest.trees[Layer::Main],
+            let input = PlaneInput {
+                tree: &forest.trees[Plane::MAIN],
                 interned_text: &interned_text,
             };
             IntrinsicPass::new(self, input).query(node, query)

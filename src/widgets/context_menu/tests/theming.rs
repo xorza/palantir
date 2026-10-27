@@ -249,7 +249,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
 
     let derived = trigger_id().with("body");
     let menu = h.node_of(derived).expect("context menu body node");
-    assert_eq!(menu.layer, Layer::Menu);
+    assert_eq!(menu.plane.layer, Layer::Menu);
     let tree = h.ui.tree(Layer::Menu);
     let idx = menu.node.idx();
     assert_eq!(tree.records.layout()[idx].padding, Spacing::ZERO);
@@ -265,7 +265,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .show(ui, |_, _| {});
     });
     assert_eq!(
-        h.node_of(explicit).map(|at| at.layer),
+        h.node_of(explicit).map(|at| at.plane.layer),
         Some(Layer::Menu),
         "an explicit id must reach the recorded menu body",
     );

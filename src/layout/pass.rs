@@ -1,9 +1,9 @@
-//! [`LayoutPass`]: the borrows one layer's measure/arrange walk holds, and the
+//! [`LayoutPass`]: the borrows one plane's measure/arrange walk holds, and the
 //! recursion that rides them. Driver scratch is reached through the accessors
 //! below, so one driver can't grow a dependency on another's.
 //!
 //! The intrinsic query deliberately does not live here: it is pure and must not
-//! write the frame's text shapes, which [`IntrinsicPass`] (no `LayerLayout` in
+//! write the frame's text shapes, which [`IntrinsicPass`] (no `PlaneLayout` in
 //! reach) enforces by construction. [`LayoutPass::intrinsic`] and
 //! [`LayoutPass::intrinsic_range`] just forward.
 
@@ -20,11 +20,11 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::layer_input::LayerInput;
-use crate::layout::layer_layout::LayerLayout;
 use crate::layout::layout_scratch::RestoreTarget;
 use crate::layout::measured::Measured;
 use crate::layout::placed_child::{Placed, PlacedChild};
+use crate::layout::plane_input::PlaneInput;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -41,7 +41,7 @@ use glam::Vec2;
 use std::mem;
 
 /// One layer's measure/arrange walk: the engine it mutates, the tree it reads, the
-/// text arena and the column block it fills. Built per layer by
+/// text arena and the column block it fills. Built per plane by
 /// [`LayoutEngine::run`]. `tree` and `interned_text` are shared references to
 /// frozen input; `engine` and `out` stay private behind the accessors.
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub(crate) struct LayoutPass<'a> {
     engine: &'a mut LayoutEngine,
     pub(super) tree: &'a Tree,
     pub(super) interned_text: &'a InternedText<'a>,
-    out: &'a mut LayerLayout,
+    out: &'a mut PlaneLayout,
     /// The page position of the inner box whose children are being placed. Drivers
     /// place in local coordinates; [`Self::arrange`] adds this once.
     origin: Vec2,
@@ -126,8 +126,8 @@ impl<'a> LayoutPass<'a> {
 
     pub(super) const fn new(
         engine: &'a mut LayoutEngine,
-        input: LayerInput<'a>,
-        out: &'a mut LayerLayout,
+        input: PlaneInput<'a>,
+        out: &'a mut PlaneLayout,
     ) -> Self {
         Self {
             engine,
@@ -227,7 +227,7 @@ impl LayoutPass<'_> {
     const fn intrinsic_pass(&mut self) -> IntrinsicPass<'_> {
         IntrinsicPass::new(
             self.engine,
-            LayerInput {
+            PlaneInput {
                 tree: self.tree,
                 interned_text: self.interned_text,
             },
@@ -275,7 +275,7 @@ impl LayoutPass<'_> {
                     RestoreTarget {
                         tree,
                         subtree: cur_start..cur_end,
-                        layer: self.out,
+                        plane: self.out,
                     },
                 );
                 // The root is recorded under this offer, not the one restored with its subtree: a

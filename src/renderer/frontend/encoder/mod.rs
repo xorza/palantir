@@ -1,16 +1,16 @@
-//! The encode pass: walk the cascaded scene into paint calls, one layer at a time ([`layer_ctx`]);
+//! The encode pass: walk the cascaded scene into paint calls, one plane at a time ([`plane_ctx`]);
 //! [`geometry`] owns the shared rect math, [`gradient_resolver`] resolves each gradient once per frame.
 
 #[cfg(debug_assertions)]
 mod collision_overlay;
 mod geometry;
 mod gradient_resolver;
-mod layer_ctx;
+mod plane_ctx;
 
 use crate::damage::Damage;
 use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientResolver;
-use crate::renderer::frontend::encoder::layer_ctx::LayerCtx;
+use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
@@ -52,13 +52,13 @@ impl Encoder {
             .begin(scene.forest.record_store.gradients.records.as_slice());
         // Matches the backend's padded physical scissor; both derive from `RenderPlan::AA_PADDING`.
         let damage_cull_margin = RenderPlan::cull_margin(scene.stamp.display.scale_factor());
-        for (layer, tree) in scene.forest.trees.iter_paint_order() {
-            let layer_cascades = &scene.cascade.layers[layer];
-            let mut ctx = LayerCtx {
+        for (plane, tree) in scene.forest.trees.iter_paint_order() {
+            let plane_cascades = &scene.cascade.planes[plane];
+            let mut ctx = PlaneCtx {
                 tree,
-                layout: &scene.layout[layer],
-                cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
-                subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
+                layout: &scene.layout[plane],
+                cascade_inputs: plane_cascades.cascade_inputs.as_slice(),
+                subtree_paint_rects: plane_cascades.subtree_paint_rects.as_slice(),
                 gradients: &mut gradients,
                 paint_animation_cursor: tree.paint_animations.cursor(),
                 gpu_views: scene.gpu_views,

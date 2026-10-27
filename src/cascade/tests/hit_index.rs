@@ -7,6 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -49,26 +50,26 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
 
     // The frame records under the host's own `Main` root, so root ids are read back: one root per tree in record order, stops naming their own.
     let cascade = h.ui.cascade();
-    let layers: Vec<Layer> = cascade.roots.iter().map(|row| row.layer).collect();
+    let layers: Vec<Layer> = cascade.roots.iter().map(|row| row.plane.layer).collect();
     assert_eq!(layers, [Layer::Main, Layer::Popup]);
     let [main_root, popup_root] = [0, 1].map(|i| cascade.roots[i].id);
     assert_eq!(
         cascade.tab_stops,
         [
             TabStopRow {
-                layer: Layer::Main,
+                plane: Plane::from(Layer::Main),
                 root: main_root,
                 id: first,
                 idx: 0,
             },
             TabStopRow {
-                layer: Layer::Main,
+                plane: Plane::from(Layer::Main),
                 root: main_root,
                 id: indexed,
                 idx: -3,
             },
             TabStopRow {
-                layer: Layer::Popup,
+                plane: Plane::from(Layer::Popup),
                 root: popup_root,
                 id: in_popup,
                 idx: 0,

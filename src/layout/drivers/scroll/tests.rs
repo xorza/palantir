@@ -38,14 +38,14 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
         .by_id
         .get(&viewport_id)
         .expect("scroll viewport endpoint");
-    let viewport_tree = ui.tree(viewport.layer);
-    let viewport_rect = ui.arranged_rect(viewport.layer, viewport.node);
+    let viewport_tree = ui.tree(viewport.plane.layer);
+    let viewport_rect = ui.arranged_rect(viewport.plane.layer, viewport.node);
     ScrollLayoutSnapshot {
-        outer: ui.arranged_rect(outer.layer, outer.node).size,
+        outer: ui.arranged_rect(outer.plane.layer, outer.node).size,
         viewport: viewport_rect
             .deflated_by(viewport_tree.records.layout()[viewport.node.idx()].padding)
             .size,
-        content: ui.layout(viewport.layer).scroll_content[viewport.node.idx()],
+        content: ui.layout(viewport.plane.layer).scroll_content[viewport.node.idx()],
     }
 }
 

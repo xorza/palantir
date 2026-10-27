@@ -131,7 +131,7 @@ pub(crate) struct TextAnchor {
 }
 
 impl TextAnchor {
-    /// Tight owner-local paint bbox of a run that measured `measured` (`LayerLayout::text_shapes`), in an owner of `owner_size` padded by `padding`; the encoder uses the same [`Align::place_in`] formula in screen space, so damage and draw rects can't drift.
+    /// Tight owner-local paint bbox of a run that measured `measured` (`PlaneLayout::text_shapes`), in an owner of `owner_size` padded by `padding`; the encoder uses the same [`Align::place_in`] formula in screen space, so damage and draw rects can't drift.
     ///
     /// **Damage inflation lives in cascade**, not here: the ladder-snap overshoot is `measured × STEP/2` in absolute screen pixels, so it applies after the cascade lifts the rect to screen; locally it would scale by `cascade_scale`.
     ///

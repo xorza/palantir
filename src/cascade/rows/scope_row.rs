@@ -2,9 +2,9 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 
-/// One declared input scope, in record order across every layer; the table
+/// One declared input scope, in paint order across every plane; the table
 /// [`crate::input_state::InputState`] resolves a key press against.
 ///
 /// Not a column on [`EntryRow`](crate::cascade::rows::entry_row::EntryRow): scopes are a handful per frame, and
@@ -14,7 +14,7 @@ use crate::scene::layer::Layer;
 /// subtree hashes.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScopeRow {
-    pub(crate) layer: Layer,
+    pub(crate) plane: Plane,
     pub(crate) id: WidgetId,
     pub(crate) filter: KeyFilter,
 }
