@@ -9,6 +9,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::shape::record::ShapeRecord;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::drag_value::{DragValue, DragValueState};
@@ -263,4 +264,34 @@ fn the_suffix_copy_leaves_with_the_chip() {
         h.ui.state::<SuffixScratch>(id).is_none(),
         "swept with the chip"
     );
+}
+
+/// The chip records its value at the alignment `text_align` sets, centered by default.
+#[test]
+fn text_align_places_the_value_in_the_chip() {
+    let id = WidgetId::from_hash("dv-align");
+    let recorded = |align: Option<Align>| {
+        let mut h = UiHarness::new(UVec2::new(200, 60));
+        let mut v = 0.5_f64;
+        h.frame(|ui| {
+            let chip = DragValue::new(&mut v)
+                .id(id)
+                .size((Sizing::fixed(100.0), Sizing::HUG));
+            match align {
+                Some(align) => chip.text_align(align),
+                None => chip,
+            }
+            .show(ui);
+        });
+        let node = h.node_for_widget_id(id);
+        h.ui.tree(Layer::Main)
+            .shapes_of(node)
+            .find_map(|shape| match shape {
+                ShapeRecord::Text { align, .. } => Some(*align),
+                _ => None,
+            })
+            .expect("the chip records its value")
+    };
+    assert_eq!(recorded(None), Align::CENTER);
+    assert_eq!(recorded(Some(Align::LEFT)), Align::LEFT);
 }
