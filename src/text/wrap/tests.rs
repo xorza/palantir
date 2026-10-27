@@ -1,4 +1,3 @@
-use crate::layout::cache::MeasureCache;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::num::F32Px;
 use crate::text::extent::TextExtent;
@@ -106,16 +105,13 @@ fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
     );
 }
 
+/// The wrap width is on the whole-pixel grid, so a sub-pixel change of the offer keeps the wrap.
 #[test]
-fn wrap_target_matches_cache_grid() {
+fn wrap_target_is_on_the_whole_pixel_grid() {
     assert_eq!(100.1_f32.canonical_px(), 100.4_f32.canonical_px());
     assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px());
     assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px());
-    for width in [0.0_f32, 99.6, 100.1, 100.4, 250.4] {
-        let cache_width = MeasureCache::available_key(Size::new(width, 0.0)).x;
-        assert_eq!(width.canonical_px() as i32, cache_width, "width={width}");
-    }
-    // A negative committed width (over-constrained layout) clamps to zero; the cache would assert on it.
+    // A negative committed width (over-constrained layout) clamps to zero.
     for width in [-0.4_f32, -1.0, -1e9] {
         assert_eq!(width.canonical_px(), 0.0, "width={width}");
     }

@@ -27,6 +27,10 @@ pub(super) struct AxisScratch {
     /// at their preferred extent. Fill tracks read every total, which the
     /// caller answers for.
     pub(super) stable_from: f32,
+    /// What each Fill track's single-track cells measured at on this axis, read where the grid
+    /// hugs or its offer is indefinite: there a Fill track takes its max-content contribution,
+    /// as a Stack's Fill child does.
+    pub(super) fill_content: Vec<f32>,
     flexible: Vec<FillItem<usize>>,
     hugs: Vec<HugItem<usize>>,
 }
@@ -68,6 +72,8 @@ impl AxisScratch {
         self.resolved.grow(n);
         self.offsets.clear();
         self.offsets.resize(n, 0.0);
+        self.fill_content.clear();
+        self.fill_content.resize(n, 0.0);
     }
 
     /// Sum of spanned tracks' resolved sizes, or `∞` if any is not yet resolved
@@ -83,9 +89,8 @@ impl AxisScratch {
 
     /// Sum of the spanned tracks' sizes plus gaps between them: what arrange
     /// gives a cell, and the resolved half of [`Self::known_span_size`].
-    /// Indexes directly: debug builds range-check cells at record time
-    /// (`Tree::check_grid_cell`), release panics here, as
-    /// `Configure::grid_cell` documents.
+    /// Indexes directly: the driver coerces every cell into the tracks first
+    /// (`Grid::cell`).
     pub(super) fn span_size(&self, span: Span, gap: f32) -> f32 {
         self.sizes[span.range()].iter().sum::<f32>() + gap.gaps_between(span.len as usize)
     }
@@ -231,11 +236,13 @@ pub(crate) mod internals {
                 resolved,
                 offsets,
                 stable_from: _,
+                fill_content,
                 flexible,
                 hugs,
             } = self;
             // `FixedBitSet` exposes no capacity; its live blocks stand in.
             scratch_report::vec_bytes(sizes)
+                + scratch_report::vec_bytes(fill_content)
                 + size_of_val(resolved.as_slice())
                 + scratch_report::vec_bytes(offsets)
                 + scratch_report::vec_bytes(flexible)

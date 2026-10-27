@@ -6,6 +6,7 @@
 //! only the crate's own tests and benches do. A module only the crate's own
 //! tests use is gated `#[cfg(test)]`.
 
+pub(crate) mod cache_fixture;
 pub mod demo_swatches;
 pub mod frame_fixture;
 #[cfg(test)]

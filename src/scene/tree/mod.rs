@@ -439,8 +439,6 @@ impl Tree {
             ),
             _ => {}
         }
-        #[cfg(debug_assertions)]
-        self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
@@ -505,38 +503,6 @@ impl Tree {
             paint_rows: u32::from(ex.chrome.is_some()),
         });
         new_id
-    }
-
-    /// Range-check a child's `grid` cell against its parent's `GridDef`. Gated
-    /// whole: everything it does exists to reach the assert, and this runs on every
-    /// node open.
-    #[cfg(debug_assertions)]
-    fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
-        if let Some(parent_id) = parent {
-            let parent_layout = self.records.layout()[parent_id.0 as usize];
-            let LayoutMode::Grid(grid_def_id) = LayoutMode::from(parent_layout.meta) else {
-                return;
-            };
-            let def = &self.grid_defs[usize::from(grid_def_id)];
-            let n_rows = def.rows.len as usize;
-            let n_cols = def.cols.len as usize;
-            if n_rows > 0 && n_cols > 0 {
-                let c = bounds.grid;
-                let row = c.row as usize;
-                let col = c.col as usize;
-                let row_span = c.row_span as usize;
-                let col_span = c.col_span as usize;
-                debug_assert!(
-                    row < n_rows
-                        && col < n_cols
-                        && row_span >= 1
-                        && col_span >= 1
-                        && row + row_span <= n_rows
-                        && col + col_span <= n_cols,
-                    "grid cell out of range: {c:?} for {n_rows}x{n_cols}"
-                );
-            }
-        }
     }
 
     pub(super) fn close_node(&mut self, scratch: &mut RecordingScratch) {

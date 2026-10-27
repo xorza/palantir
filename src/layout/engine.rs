@@ -3,7 +3,7 @@
 
 use crate::common::tracy;
 use crate::layout::Layout;
-use crate::layout::cache::{CaptureTreeInput, MeasureCache};
+use crate::layout::cache::{self, CaptureTreeInput, MeasureCache};
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
 use crate::layout::placed_child::{Placed, PlacedChild};
@@ -60,9 +60,8 @@ impl LayoutEngine {
     /// Whether the last run's output is what this run would write, so `out`
     /// stands as it is.
     ///
-    /// The snapshot match proves each root's subtree is the one last laid out.
-    /// The offer, which the snapshot keeps only quantized, is compared exactly
-    /// here with the plane. Equal subtree and offer arrange to the same slot
+    /// The snapshot match proves each root's subtree is the one last laid out,
+    /// under the same offer; the plane is compared here. Equal subtree and offer arrange to the same slot
     /// size, so the slot holds iff the origin placement resolves to is where
     /// the last run put it. Equal inputs give an equal run.
     fn keeps_last_run(&self, forest: &Forest, surface: Rect) -> bool {
@@ -73,7 +72,7 @@ impl LayoutEngine {
                     return false;
                 };
                 if run.plane != plane
-                    || run.available != slot.available(surface)
+                    || !cache::same_offer(run.available, slot.available(surface))
                     || run.slot.min != slot.origin(run.slot.size, surface)
                 {
                     return false;
@@ -167,7 +166,7 @@ impl LayoutEngine {
                         local: &self.scratch.local,
                         scroll_content: &plane_out.scroll_content,
                         intrinsics: &self.scratch.intrinsics,
-                        available_q: &self.scratch.available_q,
+                        available: &self.scratch.available,
                         grid_track_state: &self.scratch.grid.track_state,
                         text_spans: &plane_out.text_spans,
                         text_shapes: &plane_out.text_shapes,

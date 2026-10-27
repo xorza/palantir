@@ -2,13 +2,14 @@
 
 use crate::primitives::layout::offer;
 
-use crate::layout::drivers::grid::Grid;
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
+use crate::layout::drivers::grid::{self, Grid};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::math::num::F32Px;
 
@@ -50,7 +51,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         .any(|t| t.size.is_hug() || t.size.fill_weight().is_some());
     if any_content_floor_col {
         for c in tree.active_children(node) {
-            let cell = tree.bounds(c).grid;
+            let cell = grid.cell(tree, c);
             if cell.col_span != 1 {
                 continue;
             }
@@ -66,6 +67,17 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
                 let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(min);
             }
+        }
+        // After every span-1 cell, so a spanning cell grows only what they leave short.
+        for c in tree.active_children(node) {
+            let span = grid.cell(tree, c).track_span(Axis::X);
+            if span.len < 2 {
+                continue;
+            }
+            let range = pass.intrinsic_range(c, Axis::X);
+            let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
+            grid::distribute_span(cols.tracks, span, cols.gap, range.min, col_ranges.min);
+            grid::distribute_span(cols.tracks, span, cols.gap, range.max, col_ranges.max);
         }
     }
 
@@ -97,7 +109,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // Fixed, so cells get INF on the row axis. Collapsed children are skipped:
     // `resize_for` zeroed `desired` and arrange anchors them via `zero_subtree`.
     for c in tree.active_children(node) {
-        let cell = tree.bounds(c).grid;
+        let cell = grid.cell(tree, c);
 
         let avail = {
             let s = pass.grid_mut().depth_stack.cur();
@@ -112,12 +124,24 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
 
         let d = pass.measure(c, avail);
 
+        {
+            let s = pass.grid_mut().depth_stack.cur();
+            if cell.col_span == 1 && cols.tracks[cell.col as usize].size.fill_weight().is_some() {
+                let i = cell.col as usize;
+                s.col.fill_content[i] = s.col.fill_content[i].max(d.size.w);
+            }
+            if cell.row_span == 1 && rows.tracks[cell.row as usize].size.fill_weight().is_some() {
+                let i = cell.row as usize;
+                s.row.fill_content[i] = s.row.fill_content[i].max(d.size.h);
+            }
+        }
+
         // A row's content range, read off the measure: min is the child's floor,
         // max what it wants. Both are *measured*, not Y intrinsics, because the
         // column solve already committed the width. The min is the floor, not
         // `d.size.h`: a scrollable child's desired height is not its minimum, and
         // unwritten (0.0) a cramped Hug row would collapse to `Track.min`.
-        // Multi-row spans are skipped, their height being distributed.
+        // Multi-row spans wait for the loop below.
         if cell.row_span == 1 {
             let row = cell.row as usize;
             let sizing = rows.tracks[row].size;
@@ -129,6 +153,18 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
                 }
             }
         }
+    }
+
+    // A multi-row cell grows the Hug rows it crosses by what the span-1 rows leave short.
+    for c in tree.active_children(node) {
+        let span = grid.cell(tree, c).track_span(Axis::Y);
+        if span.len < 2 {
+            continue;
+        }
+        let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
+        let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
+        grid::distribute_span(rows.tracks, span, rows.gap, floor, row_ranges.min);
+        grid::distribute_span(rows.tracks, span, rows.gap, size, row_ranges.max);
     }
 
     // Resolve row heights. Fill rows are left uncommitted: the row `resolved`
@@ -147,9 +183,11 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     }
 
     // Returned content size: non-Fill track sizes + gaps. Fill claims leftover at
-    // arrange; `AxisSlot::resolve` floors this at the Grid intrinsic, which
-    // includes Fill content. The floor sums each track at its least: a Fixed
-    // track's size, a Hug track's content floor.
+    // arrange, except where the grid hugs or its offer is indefinite: there no leftover
+    // exists to claim, so each Fill track adds its max-content contribution, as a Stack's
+    // Fill child does, and its cells fit. `AxisSlot::resolve` floors this at the Grid
+    // intrinsic. The floor sums each track at its least: a Fixed track's size, a Hug
+    // track's content floor.
     let GridCtx {
         depth_stack,
         track_state,
@@ -158,8 +196,11 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let s = depth_stack.cur();
     let col_gaps = cols.gap.gaps_between(n_cols);
     let row_gaps = rows.gap.gaps_between(n_rows);
-    let total_w = sum_non_fill(cols.tracks, &s.col.sizes) + col_gaps;
-    let total_h = sum_non_fill(rows.tracks, &s.row.sizes) + row_gaps;
+    let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
+    let fill_w = fill_contribution(grid_sizing_w, inner_avail.w, &s.col.fill_content);
+    let fill_h = fill_contribution(grid_sizing_h, inner_avail.h, &s.row.fill_content);
+    let total_w = sum_non_fill(cols.tracks, &s.col.sizes) + fill_w + col_gaps;
+    let total_h = sum_non_fill(rows.tracks, &s.row.sizes) + fill_h + row_gaps;
     let floor_w =
         floor_non_fill(cols.tracks, track_state.ranges(cols.id).min, &s.col.sizes) + col_gaps;
     let floor_h =
@@ -181,6 +222,17 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         size: Size::new(total_w, total_h),
         floor: Size::new(floor_w, floor_h),
         stable_from,
+    }
+}
+
+/// What an axis's Fill tracks add to a grid sized `sizing` on it: their cells' max-content where it
+/// hugs or its offer is indefinite, as no leftover exists there; elsewhere nothing, as they take
+/// the leftover.
+fn fill_contribution(sizing: Sizing, avail: f32, content: &[f32]) -> f32 {
+    if sizing.is_hug() || !avail.is_finite() {
+        content.iter().sum()
+    } else {
+        0.0
     }
 }
 

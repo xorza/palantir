@@ -44,7 +44,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
     for child in tree.children(node) {
         let c = child.id;
         let placed = pass.placed(c);
-        let cell = placed.bounds.grid;
+        let cell = grid.cell(tree, c);
 
         let slot = {
             let s = pass.grid_mut().depth_stack.cur();

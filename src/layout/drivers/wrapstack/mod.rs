@@ -54,14 +54,13 @@ struct LinePack {
 struct LinePacker {
     line: LinePack,
     gap: f32,
-    /// The main-axis budget a line breaks against, on the whole-pixel grid the
-    /// measure cache keys `available_q` on.
+    /// The main-axis budget a line breaks against, on the whole-pixel grid.
     ///
     /// Where a line breaks is this driver's one discontinuous output: a quarter
-    /// pixel decides between one line and two. The cache restores a subtree under
-    /// a whole-pixel key, so the break must use the same grid or a warm frame and
-    /// a cold one disagree for the same surface. Text wrapping pays the same
-    /// through [`F32Px::canonical_px`].
+    /// pixel decides between one line and two. The grid is this driver's policy, so
+    /// a sub-pixel jitter of the offer does not flip a line; the measure cache keys
+    /// on the exact offer. Text wrapping does the same through
+    /// [`F32Px::canonical_px`].
     ///
     /// Read once per node by measure and arrange alike so they break identically.
     /// Justify keeps the raw extent: leftover space is continuous.

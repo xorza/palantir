@@ -115,3 +115,40 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     assert_eq!(siblings[1].size.w, 100.0);
     assert_eq!(rigid.size.w, 200.0);
 }
+
+/// A hugging grid's Fill column takes its cells' max-content width, as a Stack's Fill child does:
+/// the wrapping label keeps one line, and the row that measured it at one line holds it. Before,
+/// the column shrank to the longest word, and the label wrapped out of its row.
+#[test]
+fn hug_grid_fill_column_holds_its_wrapping_text() {
+    use crate::text::wrap::TextWrap;
+    use crate::widgets::text::Text;
+
+    let mut h = UiHarness::with_text(UVec2::new(600, 200));
+    h.frame(|ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Grid::new()
+                .id(WidgetId::from_hash("hug-grid"))
+                .cols([Track::fixed(40.0), Track::FILL])
+                .rows([Track::HUG])
+                .size((Sizing::HUG, Sizing::HUG))
+                .show(ui, |ui| {
+                    Text::new("several words that fit on one line")
+                        .id(WidgetId::from_hash("label"))
+                        .grid_cell((0, 1))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .show(ui);
+                });
+        });
+    });
+    let grid = h.arranged(WidgetId::from_hash("hug-grid"));
+    let label = h.arranged(WidgetId::from_hash("label"));
+    let shaped = h.ui.layout(Layer::Main).text_shapes[0].extent.size;
+    assert_eq!(
+        label.size.w, shaped.w,
+        "the column is the label's one-line width"
+    );
+    assert_eq!(grid.size.w, 40.0 + shaped.w);
+    assert_eq!(grid.size.h, shaped.h, "the row holds the label it measured");
+    assert_eq!(label.size.h, shaped.h);
+}

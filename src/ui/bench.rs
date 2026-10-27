@@ -11,7 +11,7 @@
 //!
 //! - **`cached`**: fixed viewport, measure-cache hits, damage `Skip`.
 //! - **`partial`**: one fixture counter changes per frame, so damage is one small `Partial` rect.
-//! - **`resizing`**: rotates surface sizes so `available_q` busts the measure cache each frame.
+//! - **`resizing`**: rotates surface sizes so the offer busts the measure cache each frame.
 //! - **`scrolling`**: shifts a `Panel::transform` so only the cascade walk sees change.
 //! - **`alternating`**: a scroll step (full repaint) then a counter tick (small partial);
 //!   measures what a full frame costs the partial after it.

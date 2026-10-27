@@ -9,8 +9,8 @@
 
 use crate::common::span::Span;
 use crate::layout::axis_slot::NodeSlot;
+use crate::layout::cache::Arranged;
 use crate::layout::cache::measure_snapshot::SubtreeKey;
-use crate::layout::cache::{Arranged, MeasureCache};
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
@@ -157,6 +157,12 @@ impl LayoutPass<'_> {
         self.engine.scratch.desired[node.idx()]
     }
 
+    /// The floor `node`'s last measure this pass reported.
+    #[inline]
+    pub(super) fn floor(&self, node: NodeId) -> Size {
+        self.engine.scratch.floor[node.idx()]
+    }
+
     /// Grid's per-depth track scratch and durable hug pool, handed back whole because
     /// `grid` disjoint-borrows the halves in one expression.
     #[inline]
@@ -241,8 +247,11 @@ impl LayoutPass<'_> {
     pub(super) fn measure(&mut self, node: NodeId, available: Size) -> Measured {
         let tree = self.tree;
         let layout = tree.records.layout()[node.idx()];
-        let available_q = MeasureCache::available_key(available);
-        self.engine.scratch.available_q[node.idx()] = available_q;
+        debug_assert!(
+            available.w >= 0.0 && available.h >= 0.0,
+            "negative available: {available:?}"
+        );
+        self.engine.scratch.available[node.idx()] = available;
         // `is_collapsed`, not `!is_visible`: a `Hidden` node keeps its slot, so its extent
         // is still measured (a text leaf shapes its run). The container-text pass in
         // `LayoutEngine::run` is the opposite: its runs are paint-only.
@@ -261,9 +270,9 @@ impl LayoutPass<'_> {
             let key = SubtreeKey {
                 widget_id: tree.records.widget_id()[node.idx()],
                 subtree_hash: tree.rollups.layout_subtree[node.idx()],
-                available_q,
+                available,
             };
-            if let Some(hit) = self.engine.cache.try_lookup(key, available) {
+            if let Some(hit) = self.engine.cache.try_lookup(key) {
                 self.engine.scratch.counters.cache_hit(key.widget_id);
                 let cur_start = node.idx();
                 let cur_end = cur_start + hit.desired.len();
@@ -281,7 +290,7 @@ impl LayoutPass<'_> {
                 // The root is recorded under this offer, not the one restored with its subtree: a
                 // root slot keyed on a stale offer fails `MeasureCache::matches_forest` and
                 // rebuilds every frame.
-                self.engine.scratch.available_q[cur_start] = available_q;
+                self.engine.scratch.available[cur_start] = available;
                 return hit.root;
             }
         }

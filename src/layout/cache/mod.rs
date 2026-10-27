@@ -19,18 +19,21 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::primitives::math::num::F32Px;
 use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::text::shaped_text::ShapedText;
-use glam::{IVec2, Vec2};
+use glam::Vec2;
 use std::mem;
 
-/// An offer quantized to the grid [`MeasureCache::try_lookup`] matches on.
-pub(super) type AvailableKey = IVec2;
+/// The `available` of a node no measure reached this frame; no subtree is captured under it.
+pub(super) const UNMEASURED: Size = Size::new(f32::NAN, f32::NAN);
 
-/// The `available_q` of a node no measure reached this frame; no subtree is captured under it.
-pub(super) const INVALID_AVAILABLE: AvailableKey = IVec2::splat(i32::MIN);
+/// Whether two offers are the same one, bit for bit. The exact offer is the cache's identity: a
+/// grid would serve one offer's measure at another, and a driver that makes a discrete decision
+/// (a wrap width, a line break) decides it on its own grid. `UNMEASURED` matches itself.
+pub(super) const fn same_offer(a: Size, b: Size) -> bool {
+    a.w.to_bits() == b.w.to_bits() && a.h.to_bits() == b.h.to_bits()
+}
 
 /// Last frame's measure of one subtree, as a hit restores it.
 #[derive(Debug)]
@@ -44,7 +47,7 @@ pub(super) struct CachedSubtree<'a> {
     pub(super) scroll_content: &'a [Size],
     pub(super) text_spans: &'a [Span],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available_q: &'a [AvailableKey],
+    pub(super) available: &'a [Size],
     pub(super) tracks: &'a [f32],
     pub(super) text_shapes: &'a [ShapedText],
     pub(super) text_shapes_base: u32,
@@ -68,7 +71,7 @@ pub(super) struct CaptureTreeInput<'a> {
     pub(super) local: &'a [Vec2],
     pub(super) scroll_content: &'a [Size],
     pub(super) intrinsics: &'a [[f32; SLOT_COUNT]],
-    pub(super) available_q: &'a [AvailableKey],
+    pub(super) available: &'a [Size],
     pub(super) grid_track_state: &'a GridTrackStore,
     pub(super) text_spans: &'a [Span],
     pub(super) text_shapes: &'a [ShapedText],
@@ -99,22 +102,13 @@ pub(crate) struct MeasureCache {
 }
 
 impl MeasureCache {
-    /// The cache key for an available size: each axis quantized to the grid
-    /// `try_lookup` matches on. `pub(crate)` for
-    /// `text::wrap::tests::wrap_target_matches_cache_grid`.
-    #[inline]
-    pub(crate) fn available_key(s: Size) -> AvailableKey {
-        debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
-        IVec2::new(s.w.quantize_px(), s.h.quantize_px())
-    }
-
     pub(super) fn begin_frame(&mut self) {
         self.cur.clear_capture();
     }
 
     /// Whether last frame's capture still describes `forest` at `surface`:
     /// same node and root counts, and every root under the same widget id,
-    /// subtree hash and quantized available. `false` forces a rebuild.
+    /// subtree hash and offer. `false` forces a rebuild.
     pub(super) fn matches_forest(&self, forest: &Forest, surface: Rect) -> bool {
         let snapshot = &self.prev;
         if snapshot.nodes.desired.len() != forest.total_nodes()
@@ -129,9 +123,9 @@ impl MeasureCache {
                 let cur = SubtreeKey {
                     widget_id: tree.records.widget_id()[root.idx()],
                     subtree_hash: tree.rollups.layout_subtree[root.idx()],
-                    available_q: Self::available_key(slot.available(surface)),
+                    available: slot.available(surface),
                 };
-                if snapshot.roots[root_idx] != cur {
+                if !snapshot.roots[root_idx].matches(cur) {
                     return false;
                 }
                 root_idx += 1;
@@ -151,32 +145,23 @@ impl MeasureCache {
     }
 
     /// Last frame's measure of the subtree `key` names, if its authoring is
-    /// unchanged and it holds under `available` (which `key.available_q`
-    /// quantizes): the offer it was measured at (to the key's grid), or any
-    /// finite offer past [`Measured::stable_from`], per axis.
+    /// unchanged and it holds under `key.available`: per axis, the offer it was
+    /// measured at, bit for bit, or any finite offer past [`Measured::stable_from`].
     #[inline]
-    pub(super) fn try_lookup(&self, key: SubtreeKey, available: Size) -> Option<CachedSubtree<'_>> {
+    pub(super) fn try_lookup(&self, key: SubtreeKey) -> Option<CachedSubtree<'_>> {
         let snap = self.prev.desc(key.widget_id)?;
         if snap.subtree_hash != key.subtree_hash {
             return None;
         }
-        let available_q = key.available_q;
+        let available = key.available;
         let nodes = snap.nodes.range();
         let stable_from = self.prev.nodes.stable_from[nodes.start];
-        let holds = |measured_at: i32, key: i32, offer: f32, from: f32| {
-            measured_at == key || (offer.is_finite() && offer >= from)
+        let holds = |measured_at: f32, offer: f32, from: f32| {
+            measured_at.to_bits() == offer.to_bits() || (offer.is_finite() && offer >= from)
         };
-        if !(holds(
-            snap.available_q.x,
-            available_q.x,
-            available.w,
-            stable_from.w,
-        ) && holds(
-            snap.available_q.y,
-            available_q.y,
-            available.h,
-            stable_from.h,
-        )) {
+        if !(holds(snap.available.w, available.w, stable_from.w)
+            && holds(snap.available.h, available.h, stable_from.h))
+        {
             return None;
         }
         Some(CachedSubtree {
@@ -192,7 +177,7 @@ impl MeasureCache {
             scroll_content: &self.prev.nodes.scroll_content[nodes.clone()],
             text_spans: &self.prev.nodes.text_spans[nodes.clone()],
             intrinsics: &self.prev.nodes.intrinsics[nodes.clone()],
-            available_q: &self.prev.nodes.available_q[nodes],
+            available: &self.prev.nodes.available[nodes],
             tracks: &self.prev.tracks[snap.tracks.range()],
             text_shapes: &self.prev.text_shapes[snap.text_shapes.range()],
             text_shapes_base: snap.text_shapes.start,
@@ -225,7 +210,7 @@ impl MeasureCache {
             local,
             scroll_content,
             intrinsics,
-            available_q,
+            available,
             grid_track_state,
             text_spans,
             text_shapes,
@@ -240,7 +225,7 @@ impl MeasureCache {
         debug_assert_eq!(local.len(), node_count);
         debug_assert_eq!(scroll_content.len(), node_count);
         debug_assert_eq!(intrinsics.len(), node_count);
-        debug_assert_eq!(available_q.len(), node_count);
+        debug_assert_eq!(available.len(), node_count);
         debug_assert_eq!(text_spans.len(), node_count);
 
         let node_base = self.cur.nodes.desired.len() as u32;
@@ -317,13 +302,13 @@ impl MeasureCache {
             self.cur.roots.push(SubtreeKey {
                 widget_id: tree.records.widget_id()[idx],
                 subtree_hash: tree.rollups.layout_subtree[idx],
-                available_q: available_q[idx],
+                available: available[idx],
             });
         }
 
         for idx in 0..node_count {
             if LayoutMode::from(layouts[idx].meta) == LayoutMode::Leaf
-                || available_q[idx] == INVALID_AVAILABLE
+                || same_offer(available[idx], UNMEASURED)
             {
                 continue;
             }
@@ -344,7 +329,7 @@ impl MeasureCache {
                 .wrapping_mul(0x517c_c1b7_2722_0a95);
             self.cur.descs.push(ArenaSnapshot {
                 subtree_hash: tree.rollups.layout_subtree[idx],
-                available_q: available_q[idx],
+                available: available[idx],
                 nodes: Span::new(node_base + idx as u32, (end - idx) as u32),
                 tracks,
                 text_shapes,
@@ -358,7 +343,7 @@ impl MeasureCache {
         self.cur.nodes.desired.extend_from_slice(desired);
         self.cur.nodes.floor.extend_from_slice(floor);
         self.cur.nodes.stable_from.extend_from_slice(stable_from);
-        self.cur.nodes.available_q.extend_from_slice(available_q);
+        self.cur.nodes.available.extend_from_slice(available);
     }
 
     pub(super) fn end_frame(&mut self) {
@@ -379,113 +364,11 @@ impl MeasureCache {
 
 /// What the measure-cache tests reach, and the tree shapes the bench times:
 /// a deep chain and a balanced broad tree.
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
-    #[cfg(test)]
-    use super::*;
-    use crate::primitives::layout::sizing::Sizing;
-    use crate::ui::Ui;
-    use crate::widget_core::configure::Configure;
-    use crate::widgets::block::Block;
-    use crate::widgets::panel::Panel;
+    use crate::layout::cache::MeasureCache;
+    use crate::primitives::geometry::size::Size;
 
-    /// Nested panels in the deep chain, above its one leaf.
-    pub(crate) const DEEP_DEPTH: usize = 192;
-    /// Children per panel in the broad tree.
-    pub(crate) const BROAD_FANOUT: usize = 8;
-    /// Panel levels below the broad tree's root.
-    pub(crate) const BROAD_DEPTH: usize = 3;
-
-    pub(crate) fn build_deep(ui: &mut Ui) {
-        build_deep_level(ui, 0);
-    }
-
-    fn build_deep_level(ui: &mut Ui, depth: usize) {
-        if depth == DEEP_DEPTH {
-            Block::new()
-                .id_salt("deep-leaf")
-                .size((Sizing::FILL, Sizing::fixed(1.0)))
-                .show(ui);
-            return;
-        }
-
-        Panel::vstack()
-            .id_salt(("deep", depth))
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| build_deep_level(ui, depth + 1));
-    }
-
-    /// What a variant of the broad tree changes in its first leaf. Both are
-    /// layout authoring; a color is paint, which the cache does not key on.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(crate) enum BroadChange {
-        /// The leaf's fill weight, which an only child's geometry ignores.
-        FillWeight,
-        /// The leaf's height, which moves the minimum of every panel above it.
-        LeafHeight,
-    }
-
-    pub(crate) fn build_broad(ui: &mut Ui) {
-        build_broad_variant(ui, None);
-    }
-
-    pub(crate) fn build_broad_variant(ui: &mut Ui, change: Option<BroadChange>) {
-        BroadLevel {
-            depth: 0,
-            key: 0,
-            change,
-        }
-        .show(ui);
-    }
-
-    /// One panel of the broad tree: `depth` levels below the root, `key` its
-    /// pre-order index among its level's panels.
-    #[derive(Clone, Copy, Debug)]
-    struct BroadLevel {
-        depth: usize,
-        key: usize,
-        change: Option<BroadChange>,
-    }
-
-    impl BroadLevel {
-        fn show(self, ui: &mut Ui) {
-            let Self { depth, key, change } = self;
-            Panel::vstack()
-                .id_salt(("broad", depth, key))
-                .size((Sizing::FILL, Sizing::HUG))
-                .show(ui, |ui| {
-                    if depth == BROAD_DEPTH {
-                        let changed = |to| key == 0 && change == Some(to);
-                        let weight = if changed(BroadChange::FillWeight) {
-                            2.0
-                        } else {
-                            1.0
-                        };
-                        let height = if changed(BroadChange::LeafHeight) {
-                            2.0
-                        } else {
-                            1.0
-                        };
-                        Block::new()
-                            .id_salt(("broad-leaf", key))
-                            .size((Sizing::fill(weight), Sizing::fixed(height)))
-                            .show(ui);
-                        return;
-                    }
-
-                    for child in 0..BROAD_FANOUT {
-                        Self {
-                            depth: depth + 1,
-                            key: key * BROAD_FANOUT + child,
-                            change,
-                        }
-                        .show(ui);
-                    }
-                });
-        }
-    }
-
-    #[cfg(test)]
     impl MeasureCache {
         /// Last frame's measured `desired` column.
         pub(crate) fn captured_desired(&self) -> &[Size] {

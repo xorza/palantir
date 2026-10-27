@@ -4,7 +4,7 @@ use crate::primitives::layout::offer;
 
 use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
-use crate::layout::cache::{AvailableKey, CachedSubtree, INVALID_AVAILABLE};
+use crate::layout::cache::{CachedSubtree, UNMEASURED};
 use crate::layout::counters::LayoutCounters;
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
@@ -34,7 +34,7 @@ pub(super) struct RestoreTarget<'a> {
 ///
 /// 2. **Retained measure → arrange/record** — `desired`, `floor`, `PlaneLayout::scroll_content` and `grid.track_state`. The cache round-trips the node-indexed ones through [`CachedSubtree`]. `grid.track_state` is per-grid, so a hit must call [`Self::restore_after_cache_hit`] to splat [`CachedSubtree::tracks`] back, or every cell collapses to (0, 0).
 ///
-/// 3. **Node-indexed measure memos** — `intrinsics`, `available_q`, `stable_from`. Nothing truncates them, and [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads them after arrange, so a hit subtree must splat them back or its snapshot is silently uncacheable.
+/// 3. **Node-indexed measure memos** — `intrinsics`, `available`, `stable_from`. Nothing truncates them, and [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads them after arrange, so a hit subtree must splat them back or its snapshot is silently uncacheable.
 ///
 /// **Adding a field to category (2)** takes a snapshot column, a [`CachedSubtree`] field and a restore branch in [`Self::restore_after_cache_hit`]; exhaustive destructuring enforces all three.
 ///
@@ -59,7 +59,7 @@ pub(crate) struct LayoutScratch {
     /// Snapshot arena row of each node whose subtree measure was restored from the cache this frame. `None` makes arrange run the drivers.
     pub(super) arrange_src: Vec<Option<NonMaxU32>>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
-    pub(super) available_q: Vec<AvailableKey>,
+    pub(super) available: Vec<Size>,
     /// Whether this frame rebuilds the measure snapshot rather than reusing the previous one. Decided at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run).
     pub(super) cache_rebuild: bool,
 }
@@ -82,7 +82,7 @@ impl LayoutScratch {
             local,
             replay_origins: _,
             intrinsics,
-            available_q,
+            available,
         } = self;
         desired.clear();
         desired.resize(n, Size::ZERO);
@@ -97,8 +97,8 @@ impl LayoutScratch {
         local.resize(n, Vec2::ZERO);
         intrinsics.clear();
         intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
-        available_q.clear();
-        available_q.resize(n, INVALID_AVAILABLE);
+        available.clear();
+        available.resize(n, UNMEASURED);
         grid.track_state.reset_for(tree);
     }
 
@@ -124,7 +124,7 @@ impl LayoutScratch {
             scroll_content,
             text_spans,
             intrinsics,
-            available_q,
+            available,
             tracks,
             text_shapes,
             text_shapes_base,
@@ -160,7 +160,7 @@ impl LayoutScratch {
                     }
                 }
             }
-            self.available_q[subtree.clone()].copy_from_slice(available_q);
+            self.available[subtree.clone()].copy_from_slice(available);
             self.stable_from[subtree.clone()].copy_from_slice(stable_from);
         }
         // Gated on `Tree::subtree_has_grid` so grid-free subtrees pay nothing.
@@ -189,7 +189,7 @@ pub(crate) mod internals {
                 replay_origins,
                 arrange_src,
                 intrinsics,
-                available_q,
+                available,
                 cache_rebuild: _,
             } = self;
             grid.scratch_bytes()
@@ -202,7 +202,7 @@ pub(crate) mod internals {
                 + scratch_report::vec_bytes(replay_origins)
                 + scratch_report::vec_bytes(arrange_src)
                 + scratch_report::vec_bytes(intrinsics)
-                + scratch_report::vec_bytes(available_q)
+                + scratch_report::vec_bytes(available)
         }
     }
 }
