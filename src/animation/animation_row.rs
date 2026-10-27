@@ -10,6 +10,11 @@ use crate::primitives::math::animatable::Animatable;
 /// State carried only by the active motion model; the variant is also the mode
 /// tag. A duration holds the value; a spring holds only its `offset` from the
 /// target, since feeding a rounded value back would stall a decay short of it.
+///
+/// A retarget follows the canonical models: a spring keeps its velocity
+/// (SwiftUI), a duration turning back uses CSS Transitions' reversing-adjusted
+/// start and shortening. Refused: zeroing an opposing velocity, a C¹ break; a
+/// full restart on reversal.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum MotionRow<T: Animatable> {
     Duration {

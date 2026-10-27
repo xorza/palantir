@@ -30,7 +30,7 @@ pub(super) struct Side {
     pub(super) packer: ShelfPacker,
     /// On grow, the previous-frame texture is moved here so the shared-encoder
     /// flush can record the copy. `None` when no grow blit is pending.
-    pub(super) pending_grow: Option<PendingGrow>,
+    pending_grow: Option<PendingGrow>,
     texture_spec: TextureSpec,
 }
 
@@ -64,12 +64,11 @@ impl TextureSpec {
 }
 
 /// Old texture and its size (square edge length) preserved across the grow
-/// point; consumed by
-/// [`RasterAtlas::flush_pending_uploads`](crate::gpu::raster::raster_atlas::RasterAtlas::flush_pending_uploads).
+/// point; consumed by [`Side::record_grow_blit`].
 #[derive(Debug)]
-pub(super) struct PendingGrow {
-    pub(super) old_texture: wgpu::Texture,
-    pub(super) old_size: u32,
+struct PendingGrow {
+    old_texture: wgpu::Texture,
+    old_size: u32,
 }
 
 impl Side {
@@ -154,6 +153,32 @@ impl Side {
         self.size = new_size;
         self.packer.grow(edge(new_size));
         true
+    }
+
+    /// Whether a grow this frame still owes its blit.
+    pub(super) const fn has_pending_grow(&self) -> bool {
+        self.pending_grow.is_some()
+    }
+
+    /// Record the pending grow's copy of the old texture into the top-left of the new one, which
+    /// must precede any raster written this frame. A no-op with no grow pending.
+    pub(super) fn record_grow_blit(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let Some(PendingGrow {
+            old_texture,
+            old_size,
+        }) = self.pending_grow.take()
+        else {
+            return;
+        };
+        encoder.copy_texture_to_texture(
+            old_texture.as_image_copy(),
+            self.texture.as_image_copy(),
+            wgpu::Extent3d {
+                width: old_size,
+                height: old_size,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 }
 

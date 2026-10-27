@@ -121,6 +121,7 @@ profile-with-tracy = ["dep:tracy-client"]
 
 
 
+# 1, not the usual 0: the owner's choice, kept on the 2026-10 review.
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"

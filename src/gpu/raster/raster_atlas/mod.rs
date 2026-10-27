@@ -9,6 +9,8 @@
 //! victim selection on [`ClockSweep`].
 
 pub(crate) mod atlas_slot;
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 mod bound_sides;
 mod clock_sweep;
 pub(crate) mod counters;
@@ -295,25 +297,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// submit, so they would land under the grow blit, and wgpu allocates per call.
     pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: the old-to-new copy must complete before new glyph writes.
-        let mut any_grow = false;
-        for side in &mut self.sides {
-            if let Some(pg) = side.pending_grow.take() {
-                if !any_grow {
-                    debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
-                    any_grow = true;
-                }
-                ctx.encoder.copy_texture_to_texture(
-                    pg.old_texture.as_image_copy(),
-                    side.texture.as_image_copy(),
-                    wgpu::Extent3d {
-                        width: pg.old_size,
-                        height: pg.old_size,
-                        depth_or_array_layers: 1,
-                    },
-                );
+        if self.sides.iter().any(Side::has_pending_grow) {
+            debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
+            for side in &mut self.sides {
+                side.record_grow_blit(ctx.encoder);
             }
-        }
-        if any_grow {
             debug_marker::pop_encoder(ctx.encoder);
         }
 

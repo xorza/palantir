@@ -22,7 +22,7 @@ use crate::bench::backends::Backends;
 use crate::cascade;
 use crate::gpu::frame::schedule;
 use crate::gpu::pipeline::{curve_pipeline, image_pipeline};
-use crate::gpu::raster::text_backend;
+use crate::gpu::raster::{raster_atlas, text_backend};
 use crate::layout::cache as measure_cache;
 use crate::primitives::packed::half_simd;
 use crate::renderer::frontend;
@@ -50,6 +50,7 @@ pub fn run(c: &mut Criterion) {
     paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, backends);
     gpu::resource::bench::atomic(c, backends);
+    raster_atlas::bench::atomic(c, backends);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, backends);
     text_edit::bench::atomic(c);

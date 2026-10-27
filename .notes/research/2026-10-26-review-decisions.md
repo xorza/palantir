@@ -1,4 +1,4 @@
-# Research for the open decisions of `review-crate.md` (2026-10-26)
+# Research for the crate review decisions (2026-10-26)
 
 ## Foreign re-exports
 
