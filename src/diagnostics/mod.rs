@@ -1,4 +1,4 @@
-//! App-global diagnostic configuration, GPU measurement handles, and the counters the frame-stats readout draws. Backend collection lives in `gpu`, the readout in `ui`.
+//! App-global diagnostic configuration, the per-window GPU measurement handle, and the counters the frame-stats readout draws. Backend collection lives in `gpu`, the readout in `ui`.
 
 pub(crate) mod frame_stats;
 pub(crate) mod gpu_pass_stats;
@@ -6,7 +6,6 @@ pub(crate) mod gpu_pass_stats;
 use std::rc::Rc;
 
 use crate::common::app_setting::AppSetting;
-use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 
 /// Per-overlay flags, all off by default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -21,7 +20,6 @@ pub struct DebugOverlayConfig {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Diagnostics {
-    pub(crate) gpu_pass_stats: GpuPassStats,
     /// App-global, so a toggle must repaint the other windows via the [`AppSetting`] signal, which only [`Ui::set_debug_overlay`](crate::Ui::set_debug_overlay) raises.
     pub(crate) overlay: Rc<AppSetting<DebugOverlayConfig>>,
 }

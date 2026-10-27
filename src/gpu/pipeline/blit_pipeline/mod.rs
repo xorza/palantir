@@ -34,19 +34,44 @@ impl BlitPipeline {
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
         PipelineRecipe {
-            label: "palantir.blit.pipeline",
-            shader: &self.shader,
-            layout: &self.pipeline_layout,
-            vertex_entry: "vs",
-            constants: &[],
-            vertex_buffers: &[],
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            color_format: format,
-            fragment_entry: "fs",
-            color_writes: wgpu::ColorWrites::ALL,
             blend: None,
-            depth_stencil: None,
+            ..PipelineRecipe::color(
+                "palantir.blit.pipeline",
+                &self.shader,
+                &self.pipeline_layout,
+                format,
+            )
         }
         .build(device)
     }
+}
+
+/// Draw the texture `source` binds onto `target`, texel for texel, in a pass of its own since it
+/// replaces the target.
+pub(crate) fn draw(
+    encoder: &mut wgpu::CommandEncoder,
+    source: &wgpu::BindGroup,
+    target: &wgpu::TextureView,
+    pipeline: &wgpu::RenderPipeline,
+) {
+    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("palantir.renderer.blit"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: target,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                // Clear, though every texel is written: on tilers a clear skips loading tile memory.
+                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    pass.set_pipeline(pipeline);
+    pass.set_bind_group(0, source, &[]);
+    pass.draw(0..3, 0..1);
 }

@@ -2,15 +2,18 @@
 //! the byte budget.
 
 use super::*;
-use etagere::AllocId;
 use glam::{I16Vec2, IVec2, UVec2};
 
 /// The atlas is generic over its key, so its tests use the cheapest one that
 /// satisfies the bounds; nothing depends on what a key means.
 type TestKey = u16;
 
-fn evictable(content: ContentType, cur_frame: u64) -> Evictable {
-    Evictable { content, cur_frame }
+fn evictable(content: ContentType, cur_frame: u64) -> Evictable<impl Fn(&SlotPlacement) -> bool> {
+    Evictable {
+        content,
+        cur_frame,
+        takes: |_: &SlotPlacement| true,
+    }
 }
 
 fn key(id: u16) -> TestKey {
@@ -69,11 +72,11 @@ fn packed_metadata_checks_every_wire_boundary() {
 #[test]
 fn a_drained_ticket_retires_only_its_own_stale_empty() {
     let mut slots = vec![
-        AtlasSlot::for_test(None, 1),    // 1 + 121 = 122 <= 1024 -> reclaimed
-        AtlasSlot::for_test(None, 903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
-        AtlasSlot::for_test(None, 904),  // 904 + 121 = 1025 > 1024 -> re-filed
-        AtlasSlot::for_test(None, 1024), // freshly touched -> re-filed
-        AtlasSlot::for_test(Some(AllocId::deserialize(0)), 1), // allocated -> evict_one's job
+        AtlasSlot::for_test(false, 1),    // 1 + 121 = 122 <= 1024 -> reclaimed
+        AtlasSlot::for_test(false, 903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
+        AtlasSlot::for_test(false, 904),  // 904 + 121 = 1025 > 1024 -> re-filed
+        AtlasSlot::for_test(false, 1024), // freshly touched -> re-filed
+        AtlasSlot::for_test(true, 1),     // allocated -> evict_one's job
     ];
     let mut cache = FxHashMap::default();
     for i in 0..slots.len() as u32 {
@@ -176,18 +179,18 @@ fn growth_stops_at_the_byte_budget_not_the_device_limit() {
 #[test]
 fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
     let slots = vec![
-        AtlasSlot::for_test(Some(AllocId::deserialize(0)), 8),
-        AtlasSlot::for_test(Some(AllocId::deserialize(1)), 2),
-        AtlasSlot::for_test(None, 1), // never drew — nothing to deallocate
+        AtlasSlot::for_test(true, 8),
+        AtlasSlot::for_test(true, 2),
+        AtlasSlot::for_test(false, 1), // never drew — nothing to deallocate
         AtlasSlot {
             placement: Some(SlotPlacement {
                 content: ContentType::Color,
-                ..SlotPlacement::for_test(AllocId::deserialize(3))
+                ..SlotPlacement::for_test()
             }),
-            ..AtlasSlot::for_test(None, 0)
+            ..AtlasSlot::for_test(false, 0)
         },
-        AtlasSlot::for_test(Some(AllocId::deserialize(4)), 10), // touched this frame
-        AtlasSlot::for_test(Some(AllocId::deserialize(5)), 1),  // the true LRU
+        AtlasSlot::for_test(true, 10), // touched this frame
+        AtlasSlot::for_test(true, 1),  // the true LRU
     ];
 
     // From rest, the first eligible mask slot is 0, not the older 5. One step
@@ -197,6 +200,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         first,
         ClockSweep {
             victim: Some(0),
+            refused: false,
             hand: 1,
             examined: 1,
         },
@@ -207,6 +211,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         second,
         ClockSweep {
             victim: Some(1),
+            refused: false,
             hand: 2,
             examined: 1,
         },
@@ -218,6 +223,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         third,
         ClockSweep {
             victim: Some(5),
+            refused: false,
             hand: 0,
             examined: 4,
         },
@@ -235,6 +241,27 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         dry,
         ClockSweep {
             victim: None,
+            refused: false,
+            hand: 2,
+            examined: slots.len() as u32,
+        },
+    );
+    // A filter that takes nothing still tells, in the same rotation, that it passed an evictable
+    // slot: 5, past 3's color and 4's current stamp.
+    let refused = ClockSweep::over(
+        &slots,
+        2,
+        Evictable {
+            content: ContentType::Mask,
+            cur_frame: 10,
+            takes: |_: &SlotPlacement| false,
+        },
+    );
+    assert_eq!(
+        refused,
+        ClockSweep {
+            victim: None,
+            refused: true,
             hand: 2,
             examined: slots.len() as u32,
         },
@@ -244,6 +271,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         ClockSweep::over(&[], 7, evictable(ContentType::Mask, 10)),
         ClockSweep {
             victim: None,
+            refused: false,
             hand: 0,
             examined: 0,
         },
@@ -405,19 +433,56 @@ mod gpu {
                 .is_some(),
             "an aged-out tile is evictable again",
         );
-        // How many victims one tile costs is etagere's bucket granularity, so
-        // the count is read, not pinned. The atlas owes the conservation law:
-        // every entry that left did so through `evict_one`, so the resident set
-        // shrank by exactly the evictions.
+        // The packer reclaims per rectangle and every shelf takes the same tile, so one victim
+        // makes room: the evictions one insert costs stay at one, where a bucketed packer
+        // emptied a whole bucket first.
         let evicted = atlas.counters.evictions.count() - evicted_before;
-        assert!(
-            evicted > 0,
-            "the side was full — the tile had to displace something"
-        );
+        assert_eq!(evicted, 1, "one victim's rectangle is the tile's room");
+        assert_eq!(*atlas.counters.worst_insert_evictions.get(), 1);
         assert_eq!(
             atlas.cache.len(),
             placed as usize - evicted as usize + 1,
             "everything not evicted is still resident",
+        );
+    }
+
+    /// A raster taller than every shelf finds no victim whose rectangle it could reuse, so
+    /// shelves go whole from the bottom, whose rows return to the side: a 16 × 32 tile over a
+    /// 256² side of 16-row shelves empties the last two, 32 tiles, and lands where they were.
+    /// A shelf in the middle would free no rows, so none goes.
+    #[test]
+    fn a_raster_taller_than_every_shelf_frees_the_bottom_rows() {
+        let gpu = headless_test_gpu();
+        let mut atlas = small_atlas(&gpu.device);
+        let pixels = [0u8; 16 * 32];
+        let tile = PackedRaster {
+            metadata: PackedMetadata::new(UVec2::new(16, 16), IVec2::ZERO).unwrap(),
+            content: ContentType::Mask,
+            pixels: &pixels[..16 * 16],
+        };
+        let mut placed = 0u16;
+        while atlas.insert(key(placed), tile).is_some() {
+            placed += 1;
+        }
+        assert_eq!(placed, 256, "premise: 16 full shelves");
+        atlas.advance_to(1);
+
+        let tall = PackedRaster {
+            metadata: PackedMetadata::new(UVec2::new(16, 32), IVec2::ZERO).unwrap(),
+            content: ContentType::Mask,
+            pixels: &pixels,
+        };
+        let idx = atlas
+            .insert(key(5000), tall)
+            .expect("the bottom rows make room");
+        let placement = atlas.slots[idx as usize].placement.unwrap();
+        assert_eq!(placement.origin, U16Vec2::new(0, 224));
+        assert_eq!(atlas.counters.evictions.count(), 32);
+        assert_eq!(*atlas.counters.worst_insert_evictions.get(), 32);
+        assert_eq!(atlas.cache.len(), 256 - 32 + 1);
+        assert!(
+            (0..224).all(|i| atlas.touch(&key(i)).is_some()),
+            "every shelf above the bottom two kept its tiles"
         );
     }
 

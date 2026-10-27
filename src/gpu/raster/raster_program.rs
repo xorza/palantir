@@ -6,7 +6,7 @@
 
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::{ColorVariantSpec, StencilVariant};
+use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::resource::texture_binding::TextureBinding;
 
@@ -43,18 +43,17 @@ impl RasterProgram {
     ) -> StencilVariant {
         StencilVariant::build(
             device,
-            ColorVariantSpec {
-                label: "palantir.raster.pipeline",
-                stencil_label: "palantir.raster.pipeline.stencil_test",
-                shader: &self.shader,
-                vertex_entry: "vs",
-                fragment_entry: "fs",
-                constants: &[],
-                layout: &self.pipeline_layout,
+            PipelineRecipe {
                 vertex_buffers: &[Some(RasterQuad::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..PipelineRecipe::color(
+                    "palantir.raster.pipeline",
+                    &self.shader,
+                    &self.pipeline_layout,
+                    format,
+                )
             },
-            format,
+            "palantir.raster.pipeline.stencil_test",
         )
     }
 

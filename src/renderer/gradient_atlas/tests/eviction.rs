@@ -51,6 +51,10 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
 /// `LutRow` id is already captured in this frame's draw payloads, so evicting one
 /// would paint the wrong gradient.
 #[test]
+#[expect(
+    clippy::single_range_in_vec_init,
+    reason = "a flush of one run is a one-run slice"
+)]
 fn full_atlas_same_epoch_overflow_grows() {
     let mut atlas = CpuGradientAtlas::default();
     let mut rows: HashSet<_> = fill_rows(&mut atlas, INITIAL_ATLAS_ROWS - 1)
@@ -71,12 +75,8 @@ fn full_atlas_same_epoch_overflow_grows() {
     );
     assert_real_row(&atlas, overflow);
     let flushed = atlas.flush().expect("growth must dirty the atlas");
-    assert_eq!(flushed.first_row, 0);
+    assert_eq!(flushed.runs, [0..INITIAL_ATLAS_ROWS * 2]);
     assert_eq!(flushed.total_rows, INITIAL_ATLAS_ROWS * 2);
-    assert_eq!(
-        flushed.bytes.len(),
-        (INITIAL_ATLAS_ROWS * 2) as usize * size_of::<LutRowTexels>(),
-    );
 }
 
 /// The hit path stamps the epoch too: re-registering all 255 resident gradients

@@ -1,4 +1,4 @@
-//! The dirty span a flush hands the GPU, and how often a steady frame rebakes.
+//! The dirty runs a flush hands the GPU, and how often a steady frame rebakes.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -12,46 +12,50 @@ use std::collections::HashSet;
 
 /// An idle atlas flushes once for the magenta init (one 2048-byte row), then stays clean.
 #[test]
+#[expect(
+    clippy::single_range_in_vec_init,
+    reason = "a flush of one run is a one-run slice"
+)]
 fn freshly_constructed_atlas_flushes_magenta_once() {
     let mut atlas = CpuGradientAtlas::default();
     {
         let first = atlas.flush().expect("first flush carries magenta init");
-        assert_eq!(first.first_row, 0);
-        assert_eq!(first.bytes.len(), size_of::<LutRowTexels>());
+        assert_eq!(first.runs, [0..1]);
+        assert_eq!(first.len_bytes(), size_of::<LutRowTexels>());
     }
     assert!(atlas.flush().is_none());
 }
 
-/// The flush range covers exactly the touched rows: one row, the `min..=max`
-/// span for scattered rows, or `None` when clean.
+/// The flush covers exactly the touched rows: one row, one run per scattered row, or `None` when
+/// clean.
 #[test]
-fn flush_range_covers_min_to_max_dirty_rows() {
+#[expect(
+    clippy::single_range_in_vec_init,
+    reason = "a flush of one run is a one-run slice"
+)]
+fn flush_runs_cover_exactly_the_dirty_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
     let ra = atlas.register(&distinct_grad(10).ramp);
     {
         let f = atlas.flush().expect("one baked row must flush");
-        assert_eq!(f.first_row, ra.0);
-        assert_eq!(f.bytes.len(), size_of::<LutRowTexels>());
+        assert_eq!(f.runs, [ra.0..ra.0 + 1]);
+        assert_eq!(f.bytes(ra.0..ra.0 + 1).len(), size_of::<LutRowTexels>());
     }
     let rb = atlas.register(&distinct_grad(20).ramp);
     let rc = atlas.register(&distinct_grad(30).ramp);
-    let (min, max) = (rb.0.min(rc.0), rb.0.max(rc.0));
+    assert_eq!((rb.0, rc.0), (2, 3), "claims walk ascending");
     {
         let f = atlas.flush().expect("two baked rows must flush");
-        assert_eq!(f.first_row, min);
-        assert_eq!(
-            f.bytes.len(),
-            (max - min + 1) as usize * size_of::<LutRowTexels>(),
-        );
+        assert_eq!(f.runs, [2..4], "neighbors are one run");
     }
     assert!(atlas.flush().is_none());
 }
 
-/// Two rows re-baked around a resident one upload three; `rows_uploaded`
-/// against `bakes` is the only place that shows, as the tracker is a `(min, max)` pair.
+/// Two rows re-dirtied around a resident one upload two, in two runs: the clean row between them
+/// stays on the GPU as it is, while `MERGE_GAP_ROWS` holds no gap worth a merge.
 #[test]
-fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
+fn rows_uploaded_counts_the_rows_that_changed_not_the_span() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
 
@@ -65,16 +69,14 @@ fn rows_uploaded_counts_the_whole_span_not_the_rows_that_changed() {
     // Dirty the outer two directly through the one path that marks rows.
     atlas.mark_row_dirty(1);
     atlas.mark_row_dirty(3);
+    assert_eq!(MERGE_GAP_ROWS, 0, "premise: a one-row gap is not merged");
     let f = atlas.flush().expect("two dirtied rows must flush");
-    assert_eq!(f.first_row, 1);
-    assert_eq!(f.bytes.len(), 3 * size_of::<LutRowTexels>());
+    assert_eq!(f.runs, [1..2, 3..4]);
+    assert_eq!(f.len_bytes(), 2 * size_of::<LutRowTexels>());
 
     let delta = atlas.counters.counts() - before;
     assert_eq!(delta.bakes, 0, "nothing was re-baked, only re-uploaded");
-    assert_eq!(
-        delta.rows_uploaded, 3,
-        "row 2 rode along because it sits between the two that changed",
-    );
+    assert_eq!(delta.rows_uploaded, 2, "row 2 stays as it is");
 }
 
 /// A frame redrawing unchanged gradients bakes nothing, evicts nothing and holds the atlas size.

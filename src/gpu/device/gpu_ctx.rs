@@ -2,7 +2,8 @@
 //!
 //! - `device`: lazy buffer / texture regrow.
 //! - `queue`: `write_texture` for image-registry and gradient atlas paths (the belt covers `write_buffer` only).
-//! - `belt`: sub-allocates mapped staging memory.
+//! - `belt`: sub-allocates mapped staging memory, for buffers through [`GpuCtx::write`] and for any
+//!   other copy through [`GpuCtx::stage`].
 //! - `encoder`: records staging-to-destination copies and the user's render passes.
 //!
 //! Built right after the main encoder; dropping it releases the borrows.
@@ -39,6 +40,25 @@ impl<'a> GpuCtx<'a> {
         view.copy_from_slice(bytes);
     }
 
+    /// `bytes` of mapped belt staging at an offset aligned to `alignment`, for a copy the caller
+    /// records itself, as into a texture, which [`Self::write`] cannot reach. `None` for no bytes;
+    /// `bytes` must be a multiple of `COPY_BUFFER_ALIGNMENT` (4) and `alignment` a power of two.
+    pub(crate) fn stage(&mut self, bytes: u64, alignment: u64) -> Option<Staged<'_>> {
+        let size = wgpu::BufferSize::new(bytes)?;
+        let alignment =
+            wgpu::BufferSize::new(alignment).expect("a staging alignment is a power of two");
+        let slice = self.belt.allocate(size, alignment);
+        let view = slice
+            .get_mapped_range_mut()
+            .expect("a fresh belt allocation is mapped");
+        Some(Staged {
+            view,
+            buffer: slice.buffer(),
+            offset: slice.offset(),
+            encoder: self.encoder,
+        })
+    }
+
     /// [`Self::write`] without the source slice: the mapped staging bytes, for a caller composing in place (one memcpy, not two). Unwritten bytes keep the belt chunk's old contents and must never be read.
     pub(crate) fn write_view(
         &mut self,
@@ -49,4 +69,14 @@ impl<'a> GpuCtx<'a> {
         let size = wgpu::BufferSize::new(bytes)?;
         Some(self.belt.write_buffer(self.encoder, dst, offset, size))
     }
+}
+
+/// Belt staging [`GpuCtx::stage`] handed out: the mapped bytes, where they sit, and the encoder
+/// the copies out of them record on, submitted with the belt's own.
+#[derive(Debug)]
+pub(crate) struct Staged<'a> {
+    pub(crate) view: wgpu::BufferViewMut,
+    pub(crate) buffer: &'a wgpu::Buffer,
+    pub(crate) offset: u64,
+    pub(crate) encoder: &'a mut wgpu::CommandEncoder,
 }

@@ -26,8 +26,8 @@ struct StagedChain {
 /// decide whether a group keeps the stamped chain.
 #[derive(Debug, Default)]
 pub(crate) struct MaskPlan {
-    pub(crate) groups: Vec<Span>,
-    pub(crate) batches: Vec<Span>,
+    groups: Vec<Span>,
+    batches: Vec<Span>,
     staged: Vec<StagedChain>,
     quads: Vec<Quad>,
 }
@@ -503,3 +503,6 @@ pub(crate) mod internals {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

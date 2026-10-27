@@ -26,13 +26,16 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::gradient_atlas::bake::{LUT_ROW_TEXELS, LutRowTexels};
 use crate::renderer::gradient_atlas::counters::GradientAtlasCounters;
+use crate::renderer::gradient_atlas::dirty_rows::DirtyRows;
 use crate::renderer::gradient_atlas::mru_list::MruList;
 use rustc_hash::FxHashMap;
+use std::ops::Range;
 
 pub(crate) mod bake;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod counters;
+mod dirty_rows;
 mod mru_list;
 pub(crate) mod shared_gradient_atlas;
 
@@ -50,6 +53,11 @@ pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 /// pin 32 MB of rows plus a 32 MB texture for the process. Past it
 /// [`LutRow::FALLBACK`] paints magenta, without repainting what other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
+
+/// Clean rows a flush folds into the run around them rather than start another copy, where a
+/// gap costs less than the copy it saves. Zero, merging nothing, until a measurement of a copy
+/// against a staged 2 KiB row sets it.
+pub(crate) const MERGE_GAP_ROWS: u32 = 0;
 
 /// One row's bookkeeping. `baked` stays a separate `Vec<LutRowTexels>` so the
 /// upload is a single reinterpret to `&[u8]`.
@@ -96,28 +104,33 @@ pub(crate) struct CpuGradientAtlas {
     epoch: u64,
     /// How each registration resolved; zero-sized in a shipping build.
     counters: GradientAtlasCounters,
-    /// Contiguous row range changed since the last `flush`; uploaded in one
-    /// `write_texture` since per-call cost dominates. Scattered rows upload the
-    /// min..=max span.
-    dirty: Option<DirtyRows>,
+    /// Rows changed since the last `flush`, each uploaded once: two scattered bakes
+    /// upload two rows, not the span between them.
+    dirty: DirtyRows,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct DirtyRows {
-    first: u32,
-    last: u32,
-}
-
-/// A contiguous span of freshly baked rows for GPU upload; `bytes` starts at row
-/// `first_row` and covers whole rows.
+/// Freshly baked rows for GPU upload, as sorted runs: one copy each.
 #[derive(Debug)]
 pub(crate) struct FlushedRows<'a> {
-    pub(crate) first_row: u32,
-    pub(crate) bytes: &'a [u8],
+    pub(crate) runs: &'a [Range<u32>],
+    rows: &'a [LutRowTexels],
     /// The atlas's current row count. The backend recreates its texture when it
     /// differs; [`CpuGradientAtlas::grow`] dirties every row, so the same upload
     /// refills it.
     pub(crate) total_rows: u32,
+}
+
+impl FlushedRows<'_> {
+    /// The texels of `run`, one of [`Self::runs`], as bytes.
+    pub(crate) fn bytes(&self, run: Range<u32>) -> &[u8] {
+        bytemuck::cast_slice(&self.rows[run.start as usize..run.end as usize])
+    }
+
+    /// Every run's bytes together.
+    pub(crate) fn len_bytes(&self) -> usize {
+        let rows: u32 = self.runs.iter().map(|run| run.end - run.start).sum();
+        rows as usize * size_of::<LutRowTexels>()
+    }
 }
 
 impl Default for CpuGradientAtlas {
@@ -138,7 +151,7 @@ impl CpuGradientAtlas {
             mru: MruList::seeded(1),
             max_rows: max_rows.max(INITIAL_ATLAS_ROWS),
             epoch: 1,
-            dirty: None,
+            dirty: DirtyRows::default(),
             counters: GradientAtlasCounters::default(),
         };
         atlas.resize_rows(INITIAL_ATLAS_ROWS);
@@ -211,10 +224,7 @@ impl CpuGradientAtlas {
         self.counters.growths.bump();
         // The backend replaces its texture at the new height and wgpu zero-initializes
         // it, so every row must re-upload.
-        self.dirty = Some(DirtyRows {
-            first: 0,
-            last: grown - 1,
-        });
+        self.dirty.mark_below(grown);
         debug_assert!(self.mru.is_well_formed(), "growth corrupted the MRU list");
         true
     }
@@ -228,6 +238,7 @@ impl CpuGradientAtlas {
         self.baked
             .resize(to as usize, [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS]);
         self.mru.extend_to(from, to);
+        self.dirty.resize(to);
         debug_assert_eq!(
             self.slots.len(),
             self.baked.len(),
@@ -253,33 +264,26 @@ impl CpuGradientAtlas {
     }
 
     fn mark_row_dirty(&mut self, row: u32) {
-        self.dirty = Some(match self.dirty {
-            None => DirtyRows {
-                first: row,
-                last: row,
-            },
-            Some(d) => DirtyRows {
-                first: d.first.min(row),
-                last: d.last.max(row),
-            },
-        });
+        self.dirty.mark(row);
     }
 
-    /// Return the contiguous dirty row span for one-shot upload and clear it. Also
-    /// bumps the registration epoch: rows registered since the last flush are
-    /// eviction-exempt until after this one.
+    /// Return the dirty rows as runs for upload and clear them. Also bumps the
+    /// registration epoch: rows registered since the last flush are eviction-exempt
+    /// until after this one.
     pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
         self.epoch = self.epoch.wrapping_add(1);
-        let dirty = self.dirty.take()?;
         let total_rows = self.capacity();
-        let rows = &self.baked[dirty.first as usize..=dirty.last as usize];
-        let uploaded = rows.len() as u32;
+        let runs = self.dirty.take_runs(MERGE_GAP_ROWS);
+        if runs.is_empty() {
+            return None;
+        }
+        let uploaded: u32 = runs.iter().map(|run| run.end - run.start).sum();
         self.counters
             .rows_uploaded
             .edit(|n| *n = n.saturating_add(uploaded));
         Some(FlushedRows {
-            first_row: dirty.first,
-            bytes: bytemuck::cast_slice(rows),
+            runs,
+            rows: &self.baked,
             total_rows,
         })
     }

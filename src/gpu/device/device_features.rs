@@ -1,9 +1,6 @@
 //! The device features Palantir requires, by Palantir's own names.
 
-use std::fmt;
-use std::fmt::{Display, Formatter};
-
-use crate::gpu::flag_names;
+use crate::gpu::flag_names::wgpu_mirror;
 
 flag_set! {
     /// The device features Palantir cannot draw without, so an
@@ -17,43 +14,9 @@ flag_set! {
     }
 }
 
-impl DeviceFeatures {
-    /// Each flag beside the wgpu feature it stands for; every declared flag appears once.
-    const WGPU: [(Self, wgpu::Features); 1] = [(Self::IMMEDIATES, wgpu::Features::IMMEDIATES)];
-
-    pub(crate) const fn to_wgpu(self) -> wgpu::Features {
-        let mut features = wgpu::Features::empty();
-        let mut i = 0;
-        while i < Self::WGPU.len() {
-            let (flag, feature) = Self::WGPU[i];
-            if self.contains(flag) {
-                features = features.union(feature);
-            }
-            i += 1;
-        }
-        features
-    }
-
-    /// The flags whose features `features` holds; features Palantir does not require drop.
-    pub(crate) const fn from_wgpu_truncate(features: wgpu::Features) -> Self {
-        let mut set = Self::NONE;
-        let mut i = 0;
-        while i < Self::WGPU.len() {
-            let (flag, feature) = Self::WGPU[i];
-            if features.contains(feature) {
-                set.insert(flag);
-            }
-            i += 1;
-        }
-        set
-    }
-}
-
-impl Display for DeviceFeatures {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        flag_names::write(f, self.to_wgpu().iter_names())
-    }
-}
+wgpu_mirror!(DeviceFeatures => wgpu::Features {
+    IMMEDIATES => wgpu::Features::IMMEDIATES,
+});
 
 #[cfg(test)]
 mod tests {

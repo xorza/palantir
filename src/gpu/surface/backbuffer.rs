@@ -1,5 +1,6 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
+use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::RenderTarget;
 use glam::UVec2;
@@ -82,30 +83,15 @@ impl Backbuffer {
         target: &wgpu::TextureView,
         pipeline: &wgpu::RenderPipeline,
     ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("palantir.renderer.blit"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    // Clear, though every texel is written: on tilers a clear skips loading tile memory.
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.draw(0..3, 0..1);
+        blit_pipeline::draw(encoder, &self.bind_group, target, pipeline);
     }
 
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
+    }
+
+    pub(crate) const fn texture(&self) -> &wgpu::Texture {
+        &self.texture
     }
 
     /// Width and height in physical pixels.

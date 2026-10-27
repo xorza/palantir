@@ -1,6 +1,7 @@
 //! One frame of work handed to the backend, and the textures it writes into.
 
 use crate::diagnostics::DebugOverlayConfig;
+use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::RenderTarget;
@@ -25,6 +26,8 @@ pub(crate) struct SubmissionTargets<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Submission<'a> {
     pub(crate) owner: RenderOwnerId,
+    /// Where the owner's GPU timings publish.
+    pub(crate) stats: &'a GpuPassStats,
     pub(crate) targets: SubmissionTargets<'a>,
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,

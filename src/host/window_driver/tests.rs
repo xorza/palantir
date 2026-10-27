@@ -1001,7 +1001,8 @@ mod screenshot_tests {
     /// At scale 2 the logical region (5.25, 3) + (10 × 6) covers physical x 10.5..30.5 and
     /// y 6..18; rounded out, that is (10, 6) + (21 × 12). A region past the 32 × 24 logical
     /// window is clamped first: (28, 20) + (10 × 10) becomes (28, 20) + (4 × 4), physical
-    /// (56, 40) + (8 × 8). An empty region asks for no image.
+    /// (56, 40) + (8 × 8). Every target format gives the same bytes. An empty region asks for no
+    /// image.
     #[test]
     fn a_region_rounds_out_to_whole_physical_pixels() {
         let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 2.0);
@@ -1027,6 +1028,15 @@ mod screenshot_tests {
             assert_eq!(shot.scale(), 2.0);
             let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
             assert_eq!(image.pixels, crop.into_raw(), "{region:?}");
+            // A BGRA target's region is copied and swapped, a float one's blitted at the
+            // region's own size: both read as the sRGB one.
+            for format in [
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                wgpu::TextureFormat::Rgba16Float,
+            ] {
+                let other = Scene::new(format, 2.0).capture(Some(region));
+                assert_eq!(other.image(), image, "{format:?} {region:?}");
+            }
         }
         let empty = Rect {
             min: Vec2::new(4.0, 4.0),

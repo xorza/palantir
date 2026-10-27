@@ -3,7 +3,6 @@
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
-use etagere::AllocId;
 use glam::{I16Vec2, IVec2, U16Vec2};
 
 /// Where a packed raster sits on its side, its bearing and its packer rectangle; a non-drawing entry owns none.
@@ -16,7 +15,6 @@ pub(crate) struct SlotPlacement {
     pub(crate) bearing: I16Vec2,
     /// Which side holds the rectangle, also the sampling mode.
     pub(crate) content: ContentType,
-    pub(crate) alloc: AllocId,
 }
 
 impl SlotPlacement {
@@ -65,27 +63,25 @@ pub(crate) struct AtlasSlot {
 pub(super) mod internals {
     use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
     use crate::primitives::paint::content_type::ContentType;
-    use etagere::AllocId;
     use glam::{I16Vec2, U16Vec2};
 
     impl SlotPlacement {
-        /// A zero mask-side placement carrying only `alloc`.
-        pub(crate) fn for_test(alloc: AllocId) -> Self {
+        /// A zero mask-side placement.
+        pub(crate) const fn for_test() -> Self {
             Self {
                 origin: U16Vec2::ZERO,
                 size: U16Vec2::ZERO,
                 bearing: I16Vec2::ZERO,
                 content: ContentType::Mask,
-                alloc,
             }
         }
     }
 
     impl AtlasSlot {
-        /// A zero-placement mask entry carrying only the allocation and stamps.
-        pub(crate) fn for_test(alloc: Option<AllocId>, last_use: u64) -> Self {
+        /// A mask entry with a zero placement when `drawn`, none otherwise, and its stamps.
+        pub(crate) fn for_test(drawn: bool, last_use: u64) -> Self {
             Self {
-                placement: alloc.map(SlotPlacement::for_test),
+                placement: drawn.then(SlotPlacement::for_test),
                 generation: 0,
                 last_use,
                 free: false,

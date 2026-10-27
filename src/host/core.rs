@@ -53,7 +53,6 @@ impl HostCore {
                 image_store: &image_store,
                 icons: resources.icons(),
                 gradient_atlas: resources.gradient_atlas(),
-                gpu_pass_stats: &resources.diagnostics().gpu_pass_stats,
             },
             BackendConfig {
                 collect_gpu_stats: options.collect_gpu_stats,
@@ -133,5 +132,57 @@ impl HostCore {
     pub(super) fn close(&mut self, driver: WindowDriver) {
         self.backend.retire_render_owner(driver.render_owner);
         drop(driver);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::surface::owned_target::OwnedTarget;
+    use crate::gpu::surface::render_target::TargetFormat;
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::core::HostCore;
+    use crate::host::host_options::HostOptions;
+    use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy};
+    use crate::internals::record_app::RecordApp;
+    use crate::text::font_scope::FontScope;
+    use crate::text::shaper::TextShaper;
+    use crate::window::window_token::WindowToken;
+    use glam::UVec2;
+    use std::time::Duration;
+
+    /// Two windows on one host read their own GPU samples: a submit publishes into its own
+    /// window's handle, so a window that has not drawn reads nothing.
+    #[test]
+    fn each_window_reads_its_own_gpu_sample() {
+        let gpu = headless_test_gpu();
+        let options = HostOptions {
+            fonts: FontScope::Bundled,
+            shaper: None,
+            collect_gpu_stats: false,
+            pixel_snap: true,
+            #[cfg(feature = "system-clipboard")]
+            system_clipboard: false,
+        };
+        let mut core = HostCore::new(gpu.handles(), &options, TextShaper::test_mono());
+        let mut drawn = core.open(WindowToken(0), PresentStrategy::BackbufferCopy);
+        let idle = core.open(WindowToken(1), PresentStrategy::BackbufferCopy);
+        let size = UVec2::splat(16);
+        let target = OwnedTarget::window(
+            &gpu.handles(),
+            "palantir.test.core",
+            size,
+            TargetFormat::RGBA8_SRGB,
+        );
+        let spec = FrameSpec {
+            physical: size,
+            format: TargetFormat::RGBA8_SRGB,
+            system_scale: 1.0,
+            refresh_millihertz: None,
+            now: Duration::ZERO,
+        };
+        let CpuFrame { mode, .. } = core.record(&mut drawn, spec, &mut RecordApp::new(|_| {}));
+        core.submit(&mut drawn, target.as_target(), mode);
+        assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
+        assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);
     }
 }

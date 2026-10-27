@@ -8,6 +8,7 @@ pub(crate) mod image_pipeline;
 pub(crate) mod mesh_pipeline;
 pub(crate) mod pipeline_recipe;
 pub(crate) mod quad_pipeline;
+pub(crate) mod runs;
 pub(crate) mod shader_body;
 pub(crate) mod stencil_variant;
 

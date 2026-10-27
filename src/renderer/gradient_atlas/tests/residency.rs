@@ -34,7 +34,7 @@ fn register_same_gradient_twice_reuses_row() {
     let r2 = atlas.register(&g.ramp);
     assert_eq!(r1, r2);
     assert!(
-        atlas.dirty.is_none(),
+        atlas.flush().is_none(),
         "re-registering existing content must not dirty",
     );
 }
@@ -68,9 +68,13 @@ fn near_identical_keys_never_share_a_row() {
 
 /// Filling the atlas one distinct gradient at a time hands out every real row exactly once: no key
 /// aliases another's row and none is skipped, so the whole table is reachable. Each registration
-/// marks its row dirty and magenta row 0 still waits from construction, so the dirty span runs from
-/// row 0 to the last row.
+/// marks its row dirty and magenta row 0 still waits from construction, so the one dirty run is
+/// every row.
 #[test]
+#[expect(
+    clippy::single_range_in_vec_init,
+    reason = "a flush of one run is a one-run slice"
+)]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = CpuGradientAtlas::default();
     let mut seen = HashSet::new();
@@ -84,8 +88,8 @@ fn register_many_distinct_gradients_all_unique_rows() {
     }
     assert_eq!(seen.len(), INITIAL_ATLAS_ROWS as usize - 1);
     assert_eq!(
-        atlas.dirty.map(|d| (d.first, d.last)),
-        Some((0, INITIAL_ATLAS_ROWS - 1)),
+        atlas.flush().map(|f| f.runs.to_vec()),
+        Some(vec![0..INITIAL_ATLAS_ROWS]),
     );
 }
 
