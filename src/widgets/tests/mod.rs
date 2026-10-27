@@ -1,6 +1,8 @@
-//! Rules every chrome-bearing widget keeps alike; no trait holds them in step, so they are checked here.
+//! Rules the bundled widgets keep alike, as no trait holds them in step: chrome defaults here,
+//! `style` setters, and what a hostile theme file renders as.
 
 mod style_override;
+mod theme_file_values;
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::internals::ui_harness::UiHarness;

@@ -2,6 +2,12 @@
 //! reads only the previous snapshot; the completed layout is materialized once
 //! in pre-order, so each node, grid hug value and shaped text run is retained
 //! once.
+//!
+//! The snapshot is a copy of the engine's columns, taken on a frame that
+//! rebuilds it. Refused: measure and arrange writing the snapshot columns in
+//! place, which moves every reader of `Layout` onto forest-wide columns to save
+//! the copy, about 1 % of a resizing frame (2026-10-28, `sample` on
+//! `integration/frame/cpu/resizing`).
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
