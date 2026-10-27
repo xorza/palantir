@@ -99,7 +99,7 @@ impl BenchRun<'_> {
             max_width: None,
         };
         let key = run
-            .unbounded_key()
+            .unbounded_key(&shaper.family_keys())
             .expect("the bench fixture names a usable face");
         shaper.layout(&run);
         TextDrawRow {

@@ -18,8 +18,9 @@ pub enum FontLoadError {
     },
     /// The bytes parsed to no usable face.
     NoFaces,
-    /// The process-wide family table is full and none of the parsed families is in it.
-    FamilyTableFull,
+    /// Every family the font names is longer than
+    /// [`FontFamily::MAX_NAME_LEN`](crate::FontFamily::MAX_NAME_LEN) bytes.
+    FamilyNameTooLong,
 }
 
 impl Display for FontLoadError {
@@ -29,9 +30,9 @@ impl Display for FontLoadError {
                 write!(f, "cannot read the font file {}: {source}", path.display())
             }
             Self::NoFaces => f.write_str("the font data holds no usable face"),
-            Self::FamilyTableFull => f.write_str(
-                "the font family table is full, and the font names no family already in it",
-            ),
+            Self::FamilyNameTooLong => {
+                f.write_str("every family the font names is longer than a font family name holds")
+            }
         }
     }
 }
@@ -40,7 +41,7 @@ impl Error for FontLoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Io { source, .. } => Some(source),
-            Self::NoFaces | Self::FamilyTableFull => None,
+            Self::NoFaces | Self::FamilyNameTooLong => None,
         }
     }
 }

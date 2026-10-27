@@ -9,7 +9,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::glyphs::TextGlyphs;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
-use glam::IVec2;
 
 /// One run that missed the cache: what to shape, where it lands, and the key its template files under.
 #[derive(Clone, Copy, Debug)]
@@ -104,7 +103,7 @@ impl TextEncoder {
                 continue;
             };
 
-            let quad = placement.quad(IVec2::new(g.x, g.y), color);
+            let quad = placement.quad(g.physical, color);
             pass.instances.push(quad);
             cache.stage(EncodedGlyph {
                 instance: RasterQuad {

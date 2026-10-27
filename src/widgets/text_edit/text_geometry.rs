@@ -54,9 +54,9 @@ impl TextGeometry {
             text_hash,
         } = {
             let probe = ui.probe_text(layout.ctx.run(input.text));
-            selection_rects.clear();
-            if let Some(selection) = input.selection {
-                probe.selection_rects(selection, |rect| selection_rects.push(rect));
+            match input.selection {
+                Some(selection) => probe.selection_rects(selection, selection_rects),
+                None => selection_rects.clear(),
             }
             Probed {
                 measured: probe.size(),

@@ -2,17 +2,8 @@
 //! unknown family falls back to, and what the axes shape against.
 
 use super::*;
-use crate::common::clipboard::Clipboard;
-use crate::internals::ui_harness::UiHarness;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
-use crate::theme::text_style::TextStyle;
-use crate::ui::Ui;
-use crate::ui::frame_report::FramePaint;
-use crate::ui::resources::{UiDevice, UiResources};
-use crate::widget_core::configure::Configure;
-use crate::widgets::text::Text;
-use glam::UVec2;
 
 // No face file is unregistered by the bundled scope, so the load cases start
 // from an empty database and introduce a bundled face.
@@ -102,64 +93,6 @@ fn a_load_bumps_the_epoch_the_renderer_watches() {
     );
 }
 
-/// A load reaches the frame, not only the text caches. Two facts: `response_for`
-/// takes the entry rect from the cascade and the arranged rect from `Layout`,
-/// assuming the cascade rebuilds whenever an arranged rect moves, so a load
-/// that moves one must reach the cascade key; and a glyph redrawn in a new face
-/// inside an unmoved rect is invisible to per-widget diffs, so the load frame
-/// repaints in full.
-#[test]
-fn a_load_reaches_the_cascade_and_the_screen() {
-    let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
-    let mut h = UiHarness::from_resources(
-        UiResources::new(shaper, Clipboard::memory(), UiDevice::default()),
-        UVec2::new(400, 300),
-    );
-    h.ui.load_font(INTER).expect("the bundled Inter loads");
-    // `i` is where a proportional and a fixed-advance face disagree most; monospace
-    // resolves to Inter until the load below.
-    let id = WidgetId::from_hash("label");
-    let record = |ui: &mut Ui| {
-        Text::new("iiiiiiii")
-            .id(id)
-            .style(&TextStyle {
-                family: FontFamily::MONO,
-                ..TextStyle::default().with_font_size(16.0)
-            })
-            .show(ui);
-    };
-    h.prime(2, record);
-    let fallback = h.rect(id).expect("the label arranged");
-    assert_eq!(
-        h.layout_rect(id),
-        Some(fallback),
-        "premise: a warm frame's two rects describe one arrangement",
-    );
-
-    h.ui.load_font(MONO)
-        .expect("the bundled JetBrains Mono loads");
-    let report = h.frame(record);
-    let resolved = h.rect(id).expect("the label arranged");
-    assert!(
-        resolved.size.w > fallback.size.w,
-        "the run must re-measure in the face that just arrived: \
-         {} wide before, {} after",
-        fallback.size.w,
-        resolved.size.w,
-    );
-    assert_eq!(
-        h.layout_rect(id),
-        Some(resolved),
-        "the cascade skipped a load that moved an arranged rect, so the \
-         response geometry and the layout disagree",
-    );
-    assert_eq!(
-        report.paint(),
-        FramePaint::Full,
-        "a load repaints every glyph it may have changed",
-    );
-}
-
 /// A load changes what a run measures to **without changing its key**, so
 /// layout-side rows must be told out of band. A reuse row is validated against a
 /// [`TextShapeKey`] carrying the family *index*, not the resolved face, so a run
@@ -171,7 +104,7 @@ fn a_load_retires_the_reuse_rows_measured_before_it() {
     // A database holding Inter alone, so monospace is a real fallback before the
     // load and itself after. `i` differs most: narrow proportional in Inter, the
     // same fixed advance as other glyphs in JetBrains Mono.
-    let shaper = TextShaper::over(CosmicMeasure::with_no_fonts());
+    let shaper = TextShaper::with_no_fonts();
     shaper.load_font(INTER).expect("the bundled Inter loads");
     let mut text = TextSystem::new(shaper.clone());
     let run = slot(WidgetId::from_hash("label"));
@@ -269,18 +202,18 @@ fn italic_reaches_the_italic_file_at_every_weight() {
     }
 }
 
-/// The family index round-trips through the packed key untouched over the whole
-/// range. `u16::MAX` is past anything interned: the key is a carrier, and
+/// The family key round-trips through the packed key untouched over the whole
+/// range. `u16::MAX` is past anything keyed: the key is a carrier, and
 /// resolution happens later at `has_font`.
 #[test]
-fn the_key_carries_any_family_index() {
+fn the_key_carries_any_family_key() {
     for raw in [0, 1, 2, u16::MAX] {
-        let face = GlyphFont {
-            family: FontFamily::from_raw(raw),
-            ..GlyphFont::new(16.0)
+        let face = ShapingFont {
+            family: FamilyKey::from_raw(raw),
+            ..keyed(GlyphFont::new(16.0))
         };
         let key = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
-        assert_eq!(key.family().raw(), raw);
+        assert_eq!(key.family().get(), raw);
         // The neighbors in the packed word must survive it.
         assert_eq!(key.weight(), FontWeight::REGULAR);
         assert_eq!(key.slant(), FontSlant::Normal);
@@ -299,11 +232,11 @@ fn the_packed_face_word_keeps_every_axis_apart() {
         slant: FontSlant::Italic,
         ..GlyphFont::new(16.0)
     };
-    let unbounded = TextShapeKey::for_text("hi", face).expect("a fixture face is usable");
+    let unbounded = TextShapeKey::for_text("hi", keyed(face)).expect("a fixture face is usable");
     let bound = unbounded.with_bound(WrapBound::new(120.0, HAlign::Right, LineFit::Wrap));
 
     for (label, key) in [("unbounded", unbounded), ("bound", bound)] {
-        assert_eq!(key.family(), FontFamily::MONO, "{label}");
+        assert_eq!(key.family(), FamilyKey::from_raw(1), "{label}");
         assert_eq!(key.weight(), FontWeight::new(950), "{label}");
         assert_eq!(key.slant(), FontSlant::Italic, "{label}");
     }
@@ -319,8 +252,8 @@ fn the_packed_face_word_keeps_every_axis_apart() {
 }
 
 /// A load reports its failure by what the file named: no names is no face; names
-/// none of which fit the family table is a full table. The first that fits is
-/// the load's family.
+/// none of which a family holds are too long. The first that fits is the load's
+/// family.
 #[test]
 fn a_load_names_its_family_or_why_it_has_none() {
     use crate::text::cosmic::first_family;
@@ -331,11 +264,11 @@ fn a_load_names_its_family_or_why_it_has_none() {
         first_family(&[], none),
         Err(FontLoadError::NoFaces)
     ));
-    let names = ["Full".to_owned(), "Also Full".to_owned()];
+    let names = ["Long".to_owned(), "Also Long".to_owned()];
     assert!(matches!(
         first_family(&names, none),
-        Err(FontLoadError::FamilyTableFull)
+        Err(FontLoadError::FamilyNameTooLong)
     ));
-    let second = |name: &str| (name == "Also Full").then_some(FontFamily::MONO);
+    let second = |name: &str| (name == "Also Long").then_some(FontFamily::MONO);
     assert_eq!(first_family(&names, second).ok(), Some(FontFamily::MONO));
 }

@@ -9,6 +9,7 @@ use crate::shape::record_store::RecordStore;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::cosmic::cluster_glyph::{self, ClusterGlyph};
 use crate::text::cosmic::shaped_buffer_cache;
+use crate::text::family_keys::{FamilyKey, FamilyKeys};
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
 use crate::text::font_scope::internals::{ARABIC, HEBREW};
@@ -24,10 +25,11 @@ use crate::text::root::TextRoot;
 use crate::text::run::TextRun;
 use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use crate::theme::text_style::LINE_HEIGHT_FACTOR;
+use glam::Vec2;
 
 mod fonts;
 mod geometry;
@@ -49,9 +51,18 @@ fn shape(font_size: f32) -> TestShape {
     })
 }
 
-/// [`shape`] at production leading ([`LINE_HEIGHT_FACTOR`]), what the cosmic geometry cases pin.
+/// The leading a theme's text style defaults to, written out: the text layer knows no theme.
+const UI_LEADING: f32 = 1.2;
+
+/// [`shape`] at [`UI_LEADING`], what the cosmic geometry cases pin.
 fn ui_shape(font_size: f32) -> TestShape {
-    shape(font_size).leading(font_size * LINE_HEIGHT_FACTOR)
+    shape(font_size).leading(font_size * UI_LEADING)
+}
+
+/// `font` keyed in a table of its own: right for the bundled families, which every table keys
+/// first.
+fn keyed(font: GlyphFont) -> ShapingFont {
+    ShapingFont::new(font, &FamilyKeys::default())
 }
 
 /// Height of one line at `shape`'s leading (`Size` ceils fractional leading).
@@ -93,7 +104,7 @@ struct GlyphPos {
 
 /// Glyph geometry in the block-local space the renderer and probe see.
 fn glyph_poss(cosmic: &CosmicMeasure, key: TextShapeKey) -> Vec<GlyphPos> {
-    let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
+    let shaped = cosmic.resident_run(key).expect("shaped buffer must exist");
     let left = shaped.left;
     shaped
         .buffer

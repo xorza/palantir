@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::shadow::Shadow;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
@@ -57,10 +56,6 @@ impl ShadowShape {
 impl sealed::LowerShape for ShadowShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty) || self.shadow.is_noop()
-    }
-
-    fn has_nan(&self) -> bool {
-        self.local_rect.has_nan() || self.corners.has_nan() || self.shadow.has_nan()
     }
 
     /// Pure repacking: the f16 squeeze is in `LoweredShadow`'s `From<Shadow>`, and the paint extent comes from the same `ShadowGeometry::halo` the composer grows by ([`LoweredShadow::paint_rect_local`](crate::shape::paint::lowered_shadow::LoweredShadow::paint_rect_local)), so damage and paint agree.

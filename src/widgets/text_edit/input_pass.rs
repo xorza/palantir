@@ -16,6 +16,7 @@ use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use crate::widgets::text_edit::text_nav::TextNav;
 use crate::widgets::text_edit::view_state::ViewState;
+use glam::Vec2;
 
 /// Result of one frame's input pass: edge signals `show()` folds into
 /// [`crate::widgets::text_edit::TextEditResponse`].
@@ -103,9 +104,10 @@ impl InputPass<'_> {
             let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset().x;
             let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset().y;
             // Single-line probes at `y=0`.
-            let hit = ui
-                .probe_text(ctx.run(ed.text()))
-                .byte_at(local_x, if ctx.multiline { local_y } else { 0.0 });
+            let hit = ui.probe_text(ctx.run(ed.text())).byte_at(Vec2::new(
+                local_x,
+                if ctx.multiline { local_y } else { 0.0 },
+            ));
             let clicks = resp_state.left.press_count();
             if clicks > 0 {
                 ed.press(hit, clicks, CaretMove::from(ui.peek_modifiers()));
@@ -269,13 +271,16 @@ impl ProbeTarget {
     fn byte(self, probe: &TextProbe<'_>, pos: Caret) -> usize {
         match self {
             Self::Above if pos.y_top <= 0.5 => 0,
-            Self::Above => probe.byte_at(pos.x, pos.y_top - 1.0),
-            Self::Below => probe.byte_at(pos.x, pos.y_top + pos.line_height + 1.0),
+            Self::Above => probe.byte_at(Vec2::new(pos.x, pos.y_top - 1.0)),
+            Self::Below => probe.byte_at(Vec2::new(pos.x, pos.y_top + pos.line_height + 1.0)),
             // A soft-wrapped line has no `\n` to scan for, so hit-test past each end
             // of the caret's row, which `byte_at` clamps. Mid-row, so the hit cannot
             // fall to a neighboring line.
-            Self::RowStart => probe.byte_at(-1.0, pos.y_top + pos.line_height * 0.5),
-            Self::RowEnd => probe.byte_at(probe.size().w + 1.0, pos.y_top + pos.line_height * 0.5),
+            Self::RowStart => probe.byte_at(Vec2::new(-1.0, pos.y_top + pos.line_height * 0.5)),
+            Self::RowEnd => probe.byte_at(Vec2::new(
+                probe.size().w + 1.0,
+                pos.y_top + pos.line_height * 0.5,
+            )),
         }
     }
 }

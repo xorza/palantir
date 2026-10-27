@@ -171,8 +171,8 @@ impl Ui {
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
     pub(crate) fn new(resources: UiResources) -> Self {
         Self {
+            forest: Forest::new(resources.text().family_keys()),
             resources,
-            forest: Forest::default(),
             theme: Rc::default(),
             theme_epoch: 0,
             state: StateMap::default(),
@@ -702,8 +702,8 @@ impl Ui {
     /// # Errors
     ///
     /// [`FontLoadError::Io`] when the file cannot be read, [`FontLoadError::NoFaces`]
-    /// when it holds no parsable face, [`FontLoadError::FamilyTableFull`] when the
-    /// family table is full.
+    /// when it holds no parsable face, [`FontLoadError::FamilyNameTooLong`] when every
+    /// family it names is longer than a [`FontFamily`] holds.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)

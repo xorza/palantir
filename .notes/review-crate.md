@@ -12,34 +12,11 @@ the measure-cache hit test.
 
 # Part 1: Proposal
 
-## Paint and geometry
-
-- **Validation happens at the setter.** Every shape setter checks its input
-  with `#[track_caller]`. The release-silent `LowerShape::has_nan` gate goes.
-  `#[track_caller]` and `# Panics` follow each call chain down to its assert.
-
 ## Layout
 
 - **Per-node layout state has one copy per frame.** Forest-wide columns that
   measure and arrange write directly, indexed by a layer base. A hit copies
   prev → cur once, and `end_frame` swaps. (Structural: after the bugs.)
-
-## Resources
-
-- **Atlas eviction matches the allocator's unit of reclaim.** Evict whole
-  buckets, or use pages, or `etagere::AtlasAllocator`. Single-slot eviction
-  on `BucketedAtlasAllocator` frees no space until a bucket empties.
-- **GPU timing state is per render owner**, like `GpuViewTargets`.
-- **Uploads stage once**, through `StagingBelt::allocate`.
-
-## Data identity and global state
-
-- **A cache hit on text is verified** by a byte compare against the text
-  the cached buffer holds.
-- **Trusted tables are checked**: `IconTable::baked` checks order and spans
-  in a `const` loop. An icon id is bound to its set.
-- **No process statics** that the outside world does not force: the
-  `FontFamily` name table and the premultiply table move to their owners.
 
 ## Tests and visibility
 
@@ -99,55 +76,6 @@ Files: `src/gpu/{raster/, wgpu_backend/, resource/}`,
 - [ ] **Shelved: atlas growth by pages.** `raster_atlas/side.rs` `grow`. A
   grow frame clears and copies up to about 20 MiB. Structural, with no
   measured workload; the `text_atlas` bench is the trigger.
-
-## Batch 17: Text, shapes and icons
-
-Files: `src/text/`, `src/shape/`, `src/icons/`,
-`src/primitives/paint/image/mod.rs`.
-
-- [ ] **`ImageShape::fit` validates nothing.** `shape/image.rs:53-56`,
-  `paint/image/mod.rs:31-37`. NaN is dropped in release, ∞ reaches the
-  shader. Target: `ImageFit::validate` (offset kind, positive scale), called
-  with `#[track_caller]` under `# Panics`.
-- [ ] **Delete the `has_nan` gate.** `shape/mod.rs:72-73`,
-  `shapes/mod.rs:46-58, 109-121`, every shape's `has_nan`. Target: keep only
-  the debug assert on the lowered record; a per-setter `# Panics` table
-  replaces the gate test. Needs the item above.
-- [ ] **Polyline color counts panic at lowering.** `polyline.rs:51-67,
-  106-138, 170`. Target: `per_point` and `per_segment` assert the count.
-- [ ] **A zero-length curve with a round or square cap paints nothing.**
-  `curve.rs:99-115`. Target: emit the cap alone (disc or square).
-- [ ] **The recycle pool cap makes resize drags allocate.**
-  `shaped_buffer_cache.rs:21, 251-255`. Target: size the pool from the
-  observed peak; trim only on a cold signal.
-- [ ] **A shaped-text hit is not verified.** `text/key.rs:33-34`,
-  `text/request.rs:33-40` (debug-only check). Target: `TextShapeKey` stays a
-  24-byte hash key. A hit compares the request's bytes (this pass's text
-  arena) with the text the cached cosmic `Buffer` already holds: for
-  unbounded and `Wrap` entries its lines plus endings are the source, as
-  `LineMap::new` (`probe/mod.rs:331-351`) already walks. Only a
-  `Clip`/`Ellipsis` entry, whose buffer holds `prefix + "…"`
-  (`cosmic/mod.rs:640-650`), keeps its source in a `String` recycled with
-  the buffer, so a miss allocates nothing after warmup.
-- [ ] **`IconTable::baked` checks nothing.** `icon_table.rs:44-54`. Target:
-  `const` checks of order and spans under `# Panics`.
-- [ ] **Probe queries rescan the text.** `probe/mod.rs:331-351`. Target: scan
-  only for `Clip`/`Ellipsis`; one `LineMap` per probe.
-- [ ] **`FontFamily` is a process-global table.** `font_family.rs:8-10, 48,
-  77-95`. Target: a named family, mapped to a key index per shaper.
-  **[public]** (type semantics).
-- [ ] **Mono and cosmic disagree.** `text/mono.rs:38-83`. Target: mono splits
-  hard breaks and wraps on break offsets.
-- [ ] **[public] `IconTableError::Unreadable` drops its cause.**
-  `svg_facts.rs:108-109`, `icons/error.rs:11-15`.
-- [ ] **[public] A cross-set `IconId` draws the wrong icon.**
-  `icon_set.rs:50-66`. Target: `by_name` returns the set-bound handle.
-- [ ] **[public] Glyph and probe names.** `PlacedGlyph { x, y }` → physical;
-  `raster_scale` → `raster_factor` (and `GpuFrameCtx`); `byte_at(pos: Vec2)`;
-  `selection_rects(range, out: &mut Vec<Rect>)`.
-- [ ] **Tests at the wrong layer.** `text/tests/fonts.rs`,
-  `text/tests/mod.rs:30`, `text/wrap/tests.rs:115` move to `ui` and `layout`.
-  `a_scanned_shaper_arrives_usable` uses `FontScope::Bundled`.
 
 ## Batch 18: Primitives public surface
 

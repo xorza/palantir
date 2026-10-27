@@ -69,9 +69,6 @@ mod sealed {
         /// True if this shape paints nothing; checked before [`Self::lower`].
         fn is_noop(&self) -> bool;
 
-        /// True if any authored input carries a NaN; checked before lowering. `O(1)`: bulk inputs use their memoized bbox, where a NaN vertex yields a NaN bbox.
-        fn has_nan(&self) -> bool;
-
         /// Convert to the stored form. Every impl destructures `Self`, so an unrecorded authoring field is a build error.
         fn lower(self, store: &mut RecordStore) -> ShapeRecord;
     }

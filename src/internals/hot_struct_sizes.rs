@@ -109,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 2840;
+const UI_SIZE: usize = 2848;
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
@@ -167,8 +167,8 @@ const PINS: &[Pin] = &[
     ),
     pin::<DragValue<'static>>("widgets::DragValue", 208, 8),
     pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
-    pin::<TextEdit<'static>>("widgets::TextEdit", 232, 8),
-    pin::<Text<'static>>("widgets::Text", 208, 8),
+    pin::<TextEdit<'static>>("widgets::TextEdit", 296, 8),
+    pin::<Text<'static>>("widgets::Text", 264, 8),
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 152, 8),
@@ -187,7 +187,7 @@ const PINS: &[Pin] = &[
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 656, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 896, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

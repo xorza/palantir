@@ -4,9 +4,11 @@
 //! offsets to positions inside a run, for carets, clicks and selections.
 
 use crate::primitives::layout::align::Align;
+use crate::text::family_keys::FamilyKeys;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 
 /// One text run, described as [`Shape::Text`](crate::widget::Shape) describes one.
@@ -47,15 +49,15 @@ impl<'a> TextRun<'a> {
     /// fit that already fits keeps the unbounded buffer; `WrapWithOverflow` raises a
     /// narrow width to the wrap floor), which needs a shaping call, so
     /// [`TextShaper::layout`](crate::TextShaper) applies it.
-    pub(crate) fn unbounded_request(&self) -> Option<TextShapeRequest<'a>> {
-        TextShapeRequest::unbounded(self.text, self.font)
+    pub(crate) fn unbounded_request(&self, keys: &FamilyKeys) -> Option<TextShapeRequest<'a>> {
+        TextShapeRequest::unbounded(self.text, ShapingFont::new(self.font, keys))
     }
 
     /// The key this run's unbounded shape is cached under, even with nothing to
     /// shape: the probe's metrics live on it. `None` for a face the shaper can't be
     /// asked for, where a probe reports zero line height.
-    pub(crate) fn unbounded_key(&self) -> Option<TextShapeKey> {
-        TextShapeKey::for_text(self.text, self.font)
+    pub(crate) fn unbounded_key(&self, keys: &FamilyKeys) -> Option<TextShapeKey> {
+        TextShapeKey::for_text(self.text, ShapingFont::new(self.font, keys))
     }
 
     /// The width this run binds to, or `None`. [`Self::max_width`] is filled from a

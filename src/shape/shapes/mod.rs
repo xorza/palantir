@@ -11,7 +11,6 @@ use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
-use std::fmt;
 use std::hash::Hasher as _;
 
 /// Per-frame shape-record buffer for one [`crate::scene::tree::Tree`].
@@ -35,31 +34,23 @@ impl Shapes {
     /// Lower a user-facing [`Shape`](crate::widget::Shape) and append it to
     /// `records`; variable-length payloads land on the [`RecordStore`].
     ///
-    /// Drops any shape whose authoring inputs would emit no pixels, or that
-    /// carries a NaN, **before lowering** (tier 2; see
+    /// Drops any shape whose authoring inputs would emit no pixels **before
+    /// lowering** (tier 2; see
     /// [`paint_sink`](crate::renderer::frontend::paint_sink)), saving the lowering
     /// cost the emit-time gate can't.
     /// Returns the index of the pushed `ShapeRecord`, or `None` if dropped; the
     /// index keys `Forest::add_shape_animated`'s paint-anim row.
     ///
-    /// **The one NaN gate on the shape path**, on the *authored* shape: lowering
-    /// stages payloads, and some inputs (a triangle's `radius`, gradient geometry)
-    /// don't survive it. [`Lower`]'s `has_nan` is `O(1)`, so it stays in release,
-    /// where NaN means no-op.
-    ///
-    /// Chrome is gated by `lower::chrome`, which sanitizes rather than drops.
+    /// No NaN reaches here: every shape setter checks its input against its
+    /// kind and panics on a non-finite one.
     pub(crate) fn add<S: Lower>(&mut self, shape: S, store: &mut RecordStore) -> Option<u32> {
         if shape.is_noop() {
-            return None;
-        }
-        if shape.has_nan() {
-            nan_rejected(&shape);
             return None;
         }
         let record = shape.lower(store);
         debug_assert!(
             !record.has_nan(),
-            "a screened shape lowered to a NaN record: {record:?}",
+            "a checked shape lowered to a NaN record: {record:?}",
         );
         Some(self.push(record))
     }
@@ -103,20 +94,6 @@ impl Shapes {
         };
         self.push(record);
     }
-}
-
-/// Report a shape [`Shapes::add`] dropped: loud in debug, silent in release.
-/// Separate so the message sits `#[cold]`, off the per-shape path.
-#[cold]
-#[inline(never)]
-fn nan_rejected(shape: &impl fmt::Debug) {
-    debug_assert!(
-        false,
-        "NaN in a paint-shape input — an arithmetic bug on the calling \
-         side (0/0, ∞-∞, an unseeded layout value). It would not crash: \
-         the draw silently vanishes, or worse, poisons a damage bbox and \
-         leaves trails. {shape:?}",
-    );
 }
 
 #[cfg(test)]

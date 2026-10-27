@@ -102,7 +102,7 @@ impl GpuViewTargets {
                 physical_full_size: draw.full,
                 physical_offset: draw.offset,
                 display_scale,
-                raster_scale: draw.raster_scale,
+                raster_factor: draw.raster_factor,
                 dt,
             });
             debug_marker::pop_encoder(ctx.encoder);

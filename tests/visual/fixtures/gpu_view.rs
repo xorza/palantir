@@ -29,7 +29,7 @@ struct DepthTriangle {
     logical_square: Option<f32>,
     last_size: UVec2,
     last_display_scale: f32,
-    last_raster_scale: f32,
+    last_raster_factor: f32,
 }
 
 impl DepthTriangle {
@@ -41,7 +41,7 @@ impl DepthTriangle {
             logical_square,
             last_size: UVec2::ZERO,
             last_display_scale: 0.0,
-            last_raster_scale: 0.0,
+            last_raster_factor: 0.0,
         }
     }
 }
@@ -111,7 +111,7 @@ impl GpuPaint for DepthTriangle {
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         self.last_size = ctx.physical_size;
         self.last_display_scale = ctx.display_scale;
-        self.last_raster_scale = ctx.raster_scale;
+        self.last_raster_factor = ctx.raster_factor;
         // Depth matches the target texture, which can be larger than `physical_size`, like the cube.
         let target_size = ctx.target.texture().size();
         if self.depth.as_ref().map(|(_, size)| *size) != Some(target_size) {
@@ -157,7 +157,7 @@ impl GpuPaint for DepthTriangle {
         let viewport = self
             .logical_square
             .map_or(ctx.physical_size, |logical_side| {
-                UVec2::splat((logical_side * ctx.raster_scale).round().max(1.0) as u32)
+                UVec2::splat((logical_side * ctx.raster_factor).round().max(1.0) as u32)
                     .min(ctx.physical_size)
             });
         let (w, h) = (viewport.x.max(1), viewport.y.max(1));
@@ -222,7 +222,7 @@ fn gpu_view_magnified_composite_reads_no_slack() {
 }
 
 #[test]
-fn gpu_view_callback_receives_composed_raster_scale() {
+fn gpu_view_callback_receives_composed_raster_factor() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(Some(16.0))));
     let img = Harness::new()
         .size(UVec2::new(96, 96))
@@ -240,7 +240,7 @@ fn gpu_view_callback_receives_composed_raster_scale() {
 
     assert_eq!(paint.borrow().last_size, UVec2::new(96, 96));
     assert_eq!(paint.borrow().last_display_scale, 2.0);
-    assert_eq!(paint.borrow().last_raster_scale, 3.0);
+    assert_eq!(paint.borrow().last_raster_factor, 3.0);
 
     for &(x, y, expected) in &[(36, 36, [0, 255, 0, 255]), (60, 60, [0, 0, 255, 255])] {
         fixtures::assert_px(

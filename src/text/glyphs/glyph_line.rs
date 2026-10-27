@@ -2,7 +2,7 @@
 
 use crate::text::glyph_font::GlyphFont;
 
-/// Text laid out without wrapping, in `font`, for rasterizing at `raster_scale`.
+/// Text laid out without wrapping, in `font`, for rasterizing at `raster_factor`.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphLine<'a> {
     /// The characters to lay out; a `\n` still breaks lines.
@@ -10,6 +10,6 @@ pub struct GlyphLine<'a> {
     /// The face and metrics the text is shaped in.
     pub font: GlyphFont,
     /// Logical→target scale the glyphs are rasterized at, as
-    /// [`GpuFrameCtx::raster_scale`](crate::GpuFrameCtx::raster_scale).
-    pub raster_scale: f32,
+    /// [`GpuFrameCtx::raster_factor`](crate::GpuFrameCtx::raster_factor).
+    pub raster_factor: f32,
 }

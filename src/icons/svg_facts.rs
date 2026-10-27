@@ -17,15 +17,15 @@ pub(crate) fn parse_options() -> usvg::Options<'static> {
 }
 
 impl SvgFacts {
-    /// Parse `svg` and survey it; `None` when it does not parse.
-    pub(crate) fn of(svg: &[u8]) -> Option<Self> {
-        let tree = usvg::Tree::from_data(svg, &parse_options()).ok()?;
+    /// Parse `svg` and survey it.
+    pub(crate) fn of(svg: &[u8]) -> Result<Self, usvg::Error> {
+        let tree = usvg::Tree::from_data(svg, &parse_options())?;
         let mut survey = Survey {
             tintable: true,
             only: None,
         };
         survey.walk(tree.root());
-        Some(Self {
+        Ok(Self {
             view_box: Vec2::new(tree.size().width(), tree.size().height()),
             tintable: survey.tintable,
         })
@@ -114,6 +114,6 @@ mod tests {
 
     #[test]
     fn unparseable_source_has_no_facts() {
-        assert_eq!(SvgFacts::of(BROKEN.as_bytes()), None);
+        assert!(SvgFacts::of(BROKEN.as_bytes()).is_err());
     }
 }

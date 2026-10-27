@@ -2,9 +2,10 @@
 //! blob.
 
 use crate::common::span::Span;
-use crate::icons::error::IconTableError;
+use crate::icons::error::{IconTableError, SvgParseError};
 use crate::icons::svg_facts::SvgFacts;
 use crate::primitives::identity::icon_id::IconId;
+use crate::primitives::math::domain;
 use glam::Vec2;
 use std::borrow::Cow;
 
@@ -39,19 +40,47 @@ pub struct IconTable {
 
 impl IconTable {
     /// A set from data compiled into the binary, as a generated `icons.rs` calls
-    /// it; borrows both halves and parses nothing. `icons` must be sorted by
-    /// [`IconDefinition::name`] and each entry's [`IconDefinition::svg`] must span
-    /// its own slice of `svg`; the generator owes this, [`Self::from_svgs`]
-    /// establishes it.
+    /// it; borrows both halves and parses nothing, as [`Self::from_svgs`] would build
+    /// it.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `icons` holds at most 65 536 entries (the most one set
+    /// indexes) sorted by [`IconDefinition::name`] with no name twice, each
+    /// [`IconDefinition::svg`] lies inside `svg`, and each
+    /// [`IconDefinition::view_box`] is [positive](crate::widget::domain::positive) on
+    /// both axes. In a `const`, the panic is a build error.
+    #[track_caller]
     pub const fn baked(icons: &'static [IconDefinition], svg: &'static [u8]) -> Self {
+        assert!(
+            icons.len() <= u16::MAX as usize + 1,
+            "a baked icon set holds at most 65 536 icons",
+        );
+        let mut i = 0;
+        while i < icons.len() {
+            let def = &icons[i];
+            assert!(
+                def.svg.start as u64 + def.svg.len as u64 <= svg.len() as u64,
+                "a baked icon's svg span must lie inside the set's blob",
+            );
+            assert!(
+                domain::is_positive(def.view_box.x) && domain::is_positive(def.view_box.y),
+                "a baked icon's view box must be positive on both axes",
+            );
+            assert!(
+                i == 0 || name_precedes(&icons[i - 1], def),
+                "baked icons must be sorted by name, each name once",
+            );
+            i += 1;
+        }
         Self {
             icons: Cow::Borrowed(icons),
             svg: Cow::Borrowed(svg),
         }
     }
 
-    /// Build a set from SVG sources at runtime, deriving each icon's viewBox,
-    /// and tintability from one parse. It pays a parse per icon, so a
+    /// Build a set from SVG sources at runtime, deriving each icon's viewBox and
+    /// tintability from one parse. It pays a parse per icon, so a
     /// shipped set should use [`Self::baked`]. **That parse is paid twice for any
     /// icon later drawn** (`IconRasterizer` parses again); retaining the tree would
     /// put a parser type in a data type, which costs more than ~180 µs once.
@@ -60,7 +89,7 @@ impl IconTable {
     /// # Errors
     ///
     /// [`IconTableError`] when a source does not parse, there are more than 65 536
-    /// (the most an [`IconId`] can name), two share a name, or the sources total
+    /// (the most one set indexes), two share a name, or the sources total
     /// 4 GiB or more, past what a span's `u32` offsets address.
     pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(
         sources: impl IntoIterator<Item = (N, &'a str)>,
@@ -77,8 +106,14 @@ impl IconTable {
         let mut surveyed: Vec<(Cow<'static, str>, &str, SvgFacts)> =
             Vec::with_capacity(sources.len());
         for (name, svg) in sources {
-            let Some(facts) = SvgFacts::of(svg.as_bytes()) else {
-                return Err(IconTableError::Unreadable { name });
+            let facts = match SvgFacts::of(svg.as_bytes()) {
+                Ok(facts) => facts,
+                Err(error) => {
+                    return Err(IconTableError::Unreadable {
+                        name,
+                        source: SvgParseError::new(error),
+                    });
+                }
             };
             surveyed.push((name, svg, facts));
         }
@@ -149,6 +184,28 @@ impl IconTable {
     }
 }
 
+/// Whether `a`'s name sorts strictly before `b`'s, by bytes as `str`'s `Ord` and
+/// [`IconTable::by_name`]'s search compare. Over the definitions, as `Cow` derefs in no
+/// `const`.
+const fn name_precedes(a: &IconDefinition, b: &IconDefinition) -> bool {
+    let (a, b) = (name_bytes(a), name_bytes(b));
+    let mut i = 0;
+    while i < a.len() && i < b.len() {
+        if a[i] != b[i] {
+            return a[i] < b[i];
+        }
+        i += 1;
+    }
+    a.len() < b.len()
+}
+
+const fn name_bytes(def: &IconDefinition) -> &[u8] {
+    match &def.name {
+        Cow::Borrowed(name) => name.as_bytes(),
+        Cow::Owned(name) => name.as_bytes(),
+    }
+}
+
 /// The length of the blob that concatenates sources of `lens` bytes, while every
 /// span into it can end within `u32`; otherwise the exact total.
 fn blob_len(lens: impl IntoIterator<Item = usize>) -> Result<usize, u128> {
@@ -162,10 +219,13 @@ fn blob_len(lens: impl IntoIterator<Item = usize>) -> Result<usize, u128> {
 
 #[cfg(test)]
 mod tests {
-    use crate::icons::icon_table::{IconTable, blob_len};
+    use crate::common::span::Span;
+    use crate::icons::icon_table::{IconDefinition, IconTable, blob_len};
     use crate::icons::internals::{BROKEN, ONE_COLOR, TWO_COLORS};
+    use crate::internals::panic_probe;
     use crate::primitives::identity::icon_id::IconId;
     use glam::Vec2;
+    use std::borrow::Cow;
 
     /// `from_svgs` sorts by name, which `by_name`'s binary search rests on.
     #[test]
@@ -193,6 +253,49 @@ mod tests {
         assert_eq!(table.by_name("c"), None);
     }
 
+    /// A baked table is checked as it is built: sorted by name with each name once, every span
+    /// inside the blob, every view box positive. A blob of 4 bytes takes a span ending at 4, not 5.
+    #[test]
+    fn baked_tables_are_checked() {
+        const fn def(name: &'static str, svg: Span, view_box: Vec2) -> IconDefinition {
+            IconDefinition {
+                name: Cow::Borrowed(name),
+                view_box,
+                svg,
+                tintable: true,
+            }
+        }
+        const ONE: Vec2 = Vec2::ONE;
+        const GOOD: &[IconDefinition] = &[
+            def("a", Span::new(0, 2), ONE),
+            def("ab", Span::new(2, 2), ONE),
+            def("b", Span::new(0, 4), ONE),
+        ];
+        const UNSORTED: &[IconDefinition] = &[
+            def("b", Span::new(0, 1), ONE),
+            def("a", Span::new(0, 1), ONE),
+        ];
+        const TWICE: &[IconDefinition] = &[
+            def("a", Span::new(0, 1), ONE),
+            def("a", Span::new(1, 1), ONE),
+        ];
+        const PAST_BLOB: &[IconDefinition] = &[def("a", Span::new(1, 4), ONE)];
+        const FLAT: &[IconDefinition] = &[def("a", Span::new(0, 1), Vec2::new(1.0, 0.0))];
+        const BLOB: &[u8] = b"abcd";
+
+        let table = IconTable::baked(GOOD, BLOB);
+        assert_eq!(table.by_name("ab"), Some(IconId::new(1)));
+        assert_eq!(table.svg_bytes(IconId::new(2)), BLOB);
+        for (rule, icons) in [
+            ("sorted by name", UNSORTED),
+            ("sorted by name", TWICE),
+            ("inside the set's blob", PAST_BLOB),
+            ("positive on both axes", FLAT),
+        ] {
+            panic_probe::assert_panics_with(rule, || drop(IconTable::baked(icons, BLOB)));
+        }
+    }
+
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;
 
     /// Each flaw is its own error: an unparseable source names its icon, too many
@@ -201,26 +304,34 @@ mod tests {
     #[test]
     fn flawed_sources_are_errors() {
         use crate::icons::error::IconTableError;
+        use std::error;
 
+        let unreadable = IconTable::from_svgs([("good", ONE_COLOR), ("bad", BROKEN)]).unwrap_err();
+        let IconTableError::Unreadable { name, source } = &unreadable else {
+            panic!("{unreadable:?}");
+        };
+        assert_eq!(name, "bad");
+        let cause = error::Error::source(&unreadable).expect("the parser's cause rides along");
+        assert_eq!(cause.to_string(), source.to_string());
         assert_eq!(
-            IconTable::from_svgs([("good", ONE_COLOR), ("bad", BROKEN)]).err(),
-            Some(IconTableError::Unreadable { name: "bad".into() }),
+            unreadable.to_string(),
+            format!("icon \"bad\" is not a readable SVG: {source}"),
         );
-        assert_eq!(
-            IconTable::from_svgs([
-                ("twin", ONE_COLOR),
-                ("other", ONE_COLOR),
-                ("twin", ONE_COLOR),
-            ])
-            .err(),
-            Some(IconTableError::DuplicateName {
-                name: "twin".into()
-            }),
+        let twin = IconTable::from_svgs([
+            ("twin", ONE_COLOR),
+            ("other", ONE_COLOR),
+            ("twin", ONE_COLOR),
+        ])
+        .unwrap_err();
+        assert!(
+            matches!(&twin, IconTableError::DuplicateName { name } if name == "twin"),
+            "{twin:?}",
         );
         let count = usize::from(u16::MAX) + 2;
-        assert_eq!(
-            IconTable::from_svgs((0..count).map(|i| (format!("i{i}"), TINY))).err(),
-            Some(IconTableError::TooMany { count }),
+        let many = IconTable::from_svgs((0..count).map(|i| (format!("i{i}"), TINY))).unwrap_err();
+        assert!(
+            matches!(many, IconTableError::TooMany { count: got } if got == count),
+            "{many:?}",
         );
         let owned = IconTable::from_svgs([(String::from("owned"), TINY)]).unwrap();
         assert_eq!(owned.icons()[0].name, "owned");

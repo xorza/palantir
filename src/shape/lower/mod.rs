@@ -83,7 +83,7 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
 
 /// Lower a `Chrome` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `chrome` by reference: [`Chrome`] is deliberately not `Copy`.
 pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> ChromeRow {
-    // Chrome's NaN gate, the second of two (the shape path's is `Shapes::add`), before lowering because `fill` interns its gradient.
+    // Chrome's NaN gate, before lowering because `fill` interns its gradient. Shapes have none: their setters check every input.
     //
     // It sanitizes where the shape path drops: `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op, so the stencil mask can read `corners`, and dropping it would leave the mask reading the NaN. Each field falls back to what its NaN meant; sanitizing before the hash keeps `ChromeRow.hash` honest.
     debug_assert!(

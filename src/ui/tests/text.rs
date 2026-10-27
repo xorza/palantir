@@ -1,5 +1,6 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
+use crate::common::clipboard::Clipboard;
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -9,6 +10,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::renderer::frontend::Frontend;
+use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
@@ -17,13 +19,16 @@ use crate::shape::paint_animation::curves;
 use crate::shape::record::ShapeRecord;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::font_family::FontFamily;
+use crate::text::font_scope::internals::{INTER, MONO};
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
-use crate::ui::frame_report::FrameProcessing;
-use crate::ui::resources::UiResources;
+use crate::ui::frame_report::{FramePaint, FrameProcessing};
+use crate::ui::resources::{UiDevice, UiResources};
 use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -642,4 +647,114 @@ fn the_text_clock_ticks_once_per_host_frame() {
         start + 5,
         "A's two repeats tick twice, and B's frame not at all"
     );
+}
+
+/// A load reaches the frame, not only the text caches. Two facts: `response_for`
+/// takes the entry rect from the cascade and the arranged rect from `Layout`,
+/// assuming the cascade rebuilds whenever an arranged rect moves, so a load
+/// that moves one must reach the cascade key; and a glyph redrawn in a new face
+/// inside an unmoved rect is invisible to per-widget diffs, so the load frame
+/// repaints in full.
+#[test]
+fn a_load_reaches_the_cascade_and_the_screen() {
+    let shaper = TextShaper::with_no_fonts();
+    let mut h = UiHarness::from_resources(
+        UiResources::new(shaper, Clipboard::memory(), UiDevice::default()),
+        UVec2::new(400, 300),
+    );
+    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    // `i` is where a proportional and a fixed-advance face disagree most; monospace
+    // resolves to Inter until the load below.
+    let id = WidgetId::from_hash("label");
+    let record = |ui: &mut Ui| {
+        Text::new("iiiiiiii")
+            .id(id)
+            .style(&TextStyle {
+                family: FontFamily::MONO,
+                ..TextStyle::default().with_font_size(16.0)
+            })
+            .show(ui);
+    };
+    h.prime(2, record);
+    let fallback = h.rect(id).expect("the label arranged");
+    assert_eq!(
+        h.layout_rect(id),
+        Some(fallback),
+        "premise: a warm frame's two rects describe one arrangement",
+    );
+
+    h.ui.load_font(MONO)
+        .expect("the bundled JetBrains Mono loads");
+    let report = h.frame(record);
+    let resolved = h.rect(id).expect("the label arranged");
+    assert!(
+        resolved.size.w > fallback.size.w,
+        "the run must re-measure in the face that just arrived: \
+         {} wide before, {} after",
+        fallback.size.w,
+        resolved.size.w,
+    );
+    assert_eq!(
+        h.layout_rect(id),
+        Some(resolved),
+        "the cascade skipped a load that moved an arranged rect, so the \
+         response geometry and the layout disagree",
+    );
+    assert_eq!(
+        report.paint(),
+        FramePaint::Full,
+        "a load repaints every glyph it may have changed",
+    );
+}
+
+/// A recorded text shape keys its family in its shaper's table, so two windows over one shaper,
+/// meeting two families in opposite orders, name each by the one key the shaper mints for it.
+#[test]
+fn every_window_keys_a_family_in_its_shapers_table() {
+    let shaper = TextShaper::new();
+    let window = || {
+        UiHarness::from_resources(
+            UiResources::new(shaper.clone(), Clipboard::memory(), UiDevice::default()),
+            SURFACE,
+        )
+    };
+    let alpha = FontFamily::named("Palantir Alpha").unwrap();
+    let beta = FontFamily::named("Palantir Beta").unwrap();
+    let ids = [WidgetId::from_hash("first"), WidgetId::from_hash("second")];
+    let record = |families: [FontFamily; 2]| {
+        move |ui: &mut Ui| {
+            for (id, family) in ids.into_iter().zip(families) {
+                Text::new("a")
+                    .id(id)
+                    .style(&TextStyle {
+                        family,
+                        ..TextStyle::default()
+                    })
+                    .show(ui);
+            }
+        }
+    };
+    let mut first = window();
+    first.frame(record([alpha, beta]));
+    let mut second = window();
+    second.frame(record([beta, alpha]));
+
+    let keys = shaper.family_keys();
+    let (alpha_key, beta_key) = (keys.key(alpha), keys.key(beta));
+    assert_ne!(alpha_key, beta_key);
+    for (h, want) in [
+        (&first, [alpha_key, beta_key]),
+        (&second, [beta_key, alpha_key]),
+    ] {
+        let recorded = ids.map(|id| {
+            h.ui.tree(Layer::Main)
+                .shapes_of(h.node_for_widget_id(id))
+                .find_map(|shape| match shape {
+                    ShapeRecord::Text { font, .. } => Some(font.family),
+                    _ => None,
+                })
+                .expect("a label records its text")
+        });
+        assert_eq!(recorded, want);
+    }
 }

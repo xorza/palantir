@@ -1,18 +1,21 @@
 //! Why SVG sources cannot make an [`IconTable`](crate::IconTable).
 
+use resvg::usvg;
 use std::borrow::Cow;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 
 /// Why [`IconTable::from_svgs`](crate::IconTable::from_svgs) refused its sources; icon files are data, so each flaw is an error.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum IconTableError {
     /// A source does not parse as an SVG.
     Unreadable {
         /// The icon whose source failed.
         name: Cow<'static, str>,
+        /// What the SVG parser reported.
+        source: SvgParseError,
     },
-    /// More sources than an [`IconId`](crate::IconId) can name.
+    /// More than 65 536 sources, the most one set indexes.
     TooMany {
         /// How many sources there were.
         count: usize,
@@ -33,7 +36,9 @@ pub enum IconTableError {
 impl Display for IconTableError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unreadable { name } => write!(f, "icon {name:?} is not a readable SVG"),
+            Self::Unreadable { name, source } => {
+                write!(f, "icon {name:?} is not a readable SVG: {source}")
+            }
             Self::TooMany { count } => {
                 write!(f, "an icon set holds at most 65536 icons, got {count}")
             }
@@ -49,4 +54,33 @@ impl Display for IconTableError {
     }
 }
 
-impl error::Error for IconTableError {}
+impl error::Error for IconTableError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Unreadable { source, .. } => Some(source),
+            Self::TooMany { .. } | Self::DuplicateName { .. } | Self::TooLarge { .. } => None,
+        }
+    }
+}
+
+/// An SVG parser failure kept whole but unnamed, so no parser type reaches the published surface.
+#[derive(Debug)]
+pub struct SvgParseError(usvg::Error);
+
+impl SvgParseError {
+    pub(crate) const fn new(error: usvg::Error) -> Self {
+        Self(error)
+    }
+}
+
+impl Display for SvgParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+impl error::Error for SvgParseError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        self.0.source()
+    }
+}

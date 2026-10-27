@@ -3,7 +3,6 @@
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::is_invisible;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::quad_shape::QuadShape;
@@ -92,16 +91,6 @@ impl sealed::LowerShape for TriangleShape {
     fn is_noop(&self) -> bool {
         (self.fill.is_noop() && self.border.is_noop())
             || (is_invisible(self.radius) && self.area_is_paint_empty())
-    }
-
-    /// `radius` must be checked here: lowering launders NaN to `0.0`, so the record would hide it.
-    fn has_nan(&self) -> bool {
-        self.a.has_nan()
-            || self.b.has_nan()
-            || self.c.has_nan()
-            || self.radius.is_nan()
-            || self.fill.has_nan()
-            || self.border.has_nan()
     }
 
     /// `bbox` is the AABB of `a`/`b`/`c` inflated by `radius`. The AA fringe is added later in `cascade::paint_rect`, since it is half a physical pixel and this rect is logical.

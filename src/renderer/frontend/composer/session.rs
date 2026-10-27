@@ -391,7 +391,7 @@ impl PaintSink for ComposeSession<'_> {
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
-                raster_scale: self.composer.transform.physical_scale() * downsample,
+                raster_factor: self.composer.transform.physical_scale() * downsample,
                 paint: view.paint.clone(),
                 epoch: view.epoch,
             };

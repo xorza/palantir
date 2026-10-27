@@ -77,7 +77,7 @@ pub(crate) trait PaintSink {
 
     /// Paint a polyline against already-staged points and colors. The
     /// `color_mode`-dictated `colors.len` is checked upstream by
-    /// `PolylineColors::assert_matches` in `PolylineShape`'s lowering.
+    /// `PolylineShape::per_point` and `PolylineShape::per_segment`.
     fn polyline(&mut self, payload: DrawPolylinePayload);
 
     /// Paint a textured rect, with the `GpuView` callback when this

@@ -17,7 +17,7 @@ pub(crate) struct RenderTargetDraw {
     pub(crate) full: UVec2,
     /// Where `used` begins within `full`.
     pub(crate) offset: UVec2,
-    pub(crate) raster_scale: f32,
+    pub(crate) raster_factor: f32,
     pub(crate) paint: GpuPaintRef,
     /// The view's repaint version; see [`ViewStamp`].
     pub(crate) epoch: u64,
@@ -32,7 +32,7 @@ pub(crate) struct ViewStamp {
     full: UVec2,
     offset: UVec2,
     display_scale: f32,
-    raster_scale: f32,
+    raster_factor: f32,
 }
 
 /// The smallest bucket, Skia's `kMinScratchTextureSize`.
@@ -67,7 +67,7 @@ impl RenderTargetDraw {
             full: self.full,
             offset: self.offset,
             display_scale,
-            raster_scale: self.raster_scale,
+            raster_factor: self.raster_factor,
         }
     }
 }
@@ -134,7 +134,7 @@ mod tests {
             used,
             full,
             offset: UVec2::ZERO,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
             paint: GpuPaintRef::noop(),
             epoch: 0,
         };

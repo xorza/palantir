@@ -10,7 +10,7 @@ use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
-use crate::text::font_family::FontFamily;
+use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
@@ -385,10 +385,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         hash,
     };
     // A struct update varies one metric without restating the rest.
-    let face = GlyphFont {
+    let face = ShapingFont {
         size: 12.0,
         line_height: 14.0,
-        family: FontFamily::SANS,
+        family: FamilyKey::from_raw(0),
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,
     };
@@ -451,7 +451,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            GlyphFont { size: 13.0, ..face },
+            ShapingFont { size: 13.0, ..face },
             TextWrap::SingleLine,
             Align::CENTER,
         ),
@@ -463,7 +463,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            GlyphFont {
+            ShapingFont {
                 line_height: 15.0,
                 ..face
             },
@@ -502,8 +502,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            GlyphFont {
-                family: FontFamily::MONO,
+            ShapingFont {
+                family: FamilyKey::from_raw(1),
                 ..face
             },
             TextWrap::SingleLine,
@@ -517,7 +517,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             None,
             recorded(1),
             white,
-            GlyphFont {
+            ShapingFont {
                 weight: FontWeight::BOLD,
                 ..face
             },

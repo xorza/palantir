@@ -1,7 +1,6 @@
 //! The face a shaping call asks for: font and size parameters, named once so they travel together.
 
 use crate::primitives::math::domain::EPS;
-use crate::primitives::math::nan::NanCheck;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -49,13 +48,6 @@ impl GlyphFont {
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
         }
-    }
-}
-
-impl NanCheck for GlyphFont {
-    /// Only the two metrics can be NaN; the three face axes are integral.
-    fn has_nan(&self) -> bool {
-        self.size.is_nan() || self.line_height.is_nan()
     }
 }
 

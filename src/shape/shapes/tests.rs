@@ -5,7 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::primitives::paint::image::Image;
+use crate::primitives::paint::image::{Image, ImageFit};
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint::image_source::ImageSource;
@@ -51,11 +51,10 @@ impl ColorSource {
     }
 }
 
-/// The color-cardinality contract is checked at `PolylineShape`'s lowering: a polyline
-/// under two points is dropped whatever its color slice, and a wrong-length
-/// slice is never a no-op, so it lowers and is checked.
+/// The color-cardinality contract is checked by the color setter, whatever the point count; an
+/// accepted polyline under two points is dropped, and one of two or more lowers its colors.
 #[test]
-fn polyline_color_cardinality_is_enforced_at_lowering() {
+fn polyline_color_cardinality_is_enforced_at_the_setter() {
     let points = [Vec2::ZERO, Vec2::new(10.0, 10.0)];
     let tint = RgbaF32::new(0.5, 0.25, 1.0, 0.5);
     let colors = [
@@ -82,33 +81,26 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
             };
 
             for &colors_len in color_lengths {
-                let mut shapes = Shapes::default();
-                let mut store = RecordStore::default();
-                let shape = source.apply(
-                    Shape::polyline(&points[..points_len], Stroke::new(tint, 1.0)),
-                    &colors[..colors_len],
-                );
-                let result = catch_unwind(AssertUnwindSafe(|| shapes.add(shape, &mut store)));
-                // A wrong-length color slice (empty included) is never a no-op, so the cardinality assert panics.
-                let lowers = points_len >= 2;
-                let accepted = !lowers || source.accepts(points_len, colors_len);
-
+                let shape = catch_unwind(AssertUnwindSafe(|| {
+                    source.apply(
+                        Shape::polyline(&points[..points_len], Stroke::new(tint, 1.0)),
+                        &colors[..colors_len],
+                    )
+                }));
+                let accepted = source.accepts(points_len, colors_len);
                 assert_eq!(
-                    result.is_ok(),
+                    shape.is_ok(),
                     accepted,
                     "{source:?}, points_len={points_len}, colors_len={colors_len}",
                 );
-
-                if !accepted {
-                    assert!(shapes.records.is_empty());
-                    assert!(shapes.hashes.is_empty());
-                    assert!(store.polyline_points.is_empty());
-                    assert!(store.polyline_colors.is_empty());
+                let Ok(shape) = shape else {
                     continue;
-                }
+                };
 
-                let stored = lowers;
-                assert_eq!(result.unwrap(), stored.then_some(0));
+                let mut shapes = Shapes::default();
+                let mut store = RecordStore::default();
+                let stored = points_len >= 2;
+                assert_eq!(shapes.add(shape, &mut store), stored.then_some(0));
                 assert_eq!(shapes.records.len(), usize::from(stored));
                 assert_eq!(shapes.hashes.len(), usize::from(stored));
                 assert_eq!(
@@ -150,15 +142,10 @@ fn polyline_color_cardinality_is_enforced_at_lowering() {
 #[test]
 fn image_dimensions_above_u16_survive_lowering() {
     const WIDTH: u32 = u16::MAX as u32 + 1;
-    let handle = ImageHandle::new(
-        TextureId(1),
-        &Image::from_srgba8(UVec2::new(WIDTH, 1), vec![0; WIDTH as usize * 4]).unwrap(),
-        ImageRegistry::default(),
-    );
     let mut shapes = Shapes::default();
     let mut store = RecordStore::default();
 
-    assert_eq!(shapes.add(Shape::image(handle), &mut store), Some(0));
+    assert_eq!(shapes.add(Shape::image(handle(WIDTH)), &mut store), Some(0));
     let ShapeRecord::Image {
         source: ImageSource::Texture { size, .. },
         ..
@@ -167,139 +154,6 @@ fn image_dimensions_above_u16_survive_lowering() {
         panic!("image lowered to another record variant or source");
     };
     assert_eq!(size, UVec2::new(WIDTH, 1));
-}
-
-/// **The NaN contract**, through `Shapes::add` for every kind: a shape with a
-/// NaN input is never recorded, and its clean twin must record. Bulk NaNs are
-/// caught via the `bbox` they fold into, keeping the check `O(1)`. Which door
-/// drops it (the no-op gate or `Shapes::add`'s NaN gate) is not pinned.
-#[test]
-fn the_nan_gate_drops_every_shape_kind() {
-    // One generic helper per case: without the erased `Shape` enum the kinds share no type.
-    #[track_caller]
-    fn gate<T: Lower, C: Lower>(label: &str, tainted: T, clean: C) {
-        let mut shapes = Shapes::default();
-        let mut store = RecordStore::default();
-        let got = catch_unwind(AssertUnwindSafe(|| shapes.add(tainted, &mut store)));
-        assert_eq!(
-            got.unwrap_or(None),
-            None,
-            "case {label}: a NaN shape must never be recorded",
-        );
-        assert!(
-            shapes.records.is_empty(),
-            "case {label}: nothing may reach the record buffer",
-        );
-        // A rejected shape must leave nothing in the payload arena, so the
-        // screen runs before lowering copies vertices, interns rows or copies text.
-        {
-            assert!(
-                store.polyline_points.is_empty()
-                    && store.polyline_colors.is_empty()
-                    && store.meshes.vertices.is_empty()
-                    && store.meshes.idxs.is_empty()
-                    && store.gradients.records.is_empty(),
-                "case {label}: a rejected shape left bytes in the arena",
-            );
-        }
-
-        let mut shapes = Shapes::default();
-        let mut store = RecordStore::default();
-        assert_eq!(
-            shapes.add(clean, &mut store),
-            Some(0),
-            "case {label}: the clean twin must record — otherwise the \
-             tainted arm proves nothing",
-        );
-    }
-
-    use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
-    use crate::primitives::paint::stroke::Stroke;
-    use crate::shape::Lower;
-    use crate::shape::curve::{CurveGeometry, CurveShape};
-    use crate::shape::mesh::MeshShape;
-    use crate::shape::polyline::PolylineColors;
-    use crate::shape::rect::{RectKind, RectShape};
-    use crate::shape::triangle::TriangleShape;
-
-    // Public builders refuse non-finite input; the gate backstops a path that skipped one.
-    const N: f32 = f32::NAN;
-    let nan_pt = Vec2::new(1.0, N);
-    let ok_rect = Rect::new(0.0, 0.0, 8.0, 8.0);
-    let white = RgbaF32::WHITE;
-    let stroke = Stroke::new(white, 2.0);
-    let mesh = |pos| {
-        let mut m = Mesh::new();
-        m.vertices.push(MeshVertex::new(pos, white));
-        m.vertices.push(MeshVertex::new(Vec2::new(4.0, 0.0), white));
-        m.vertices.push(MeshVertex::new(Vec2::new(0.0, 4.0), white));
-        m.triangle(0, 1, 2);
-        m
-    };
-    let (mesh_nan, mesh_ok) = (mesh(nan_pt), mesh(Vec2::ZERO));
-    let pts_nan = [Vec2::ZERO, nan_pt, Vec2::new(4.0, 4.0)];
-    let pts_ok = [Vec2::ZERO, Vec2::new(2.0, 2.0), Vec2::new(4.0, 4.0)];
-    let tri = |c| TriangleShape::new(Vec2::ZERO, Vec2::new(4.0, 0.0), c).fill(white);
-    let rect = |r| RectShape::new(RectKind::Rounded, Some(r)).fill(white);
-    let line = |b| CurveShape::new(CurveGeometry::Line { a: Vec2::ZERO, b }, stroke);
-    let arc = |center| {
-        CurveShape::new(
-            CurveGeometry::Arc(CircularArc {
-                center,
-                radius: 4.0,
-                start_angle: 0.0,
-                sweep: 1.0,
-            }),
-            stroke,
-        )
-    };
-    gate(
-        "rect_local_rect",
-        rect(Rect::new(0.0, N, 8.0, 8.0)),
-        rect(ok_rect),
-    );
-    gate("triangle_corner", tri(nan_pt), tri(Vec2::new(0.0, 4.0)));
-    gate(
-        "curve_control_point",
-        line(nan_pt),
-        line(Vec2::new(4.0, 4.0)),
-    );
-    gate("arc_center", arc(nan_pt), arc(Vec2::ZERO));
-    gate(
-        "polyline_point",
-        PolylineShape::new(&pts_nan, stroke),
-        PolylineShape::new(&pts_ok, stroke),
-    );
-    let nan_red = RgbaF32::new(N, 0.0, 0.0, 1.0);
-    let colors_nan = [white, nan_red, white];
-    let colors_ok = [white; 3];
-    let colored = |colors| PolylineShape {
-        colors,
-        ..PolylineShape::new(&pts_ok, stroke)
-    };
-    gate(
-        "polyline_point_color",
-        colored(PolylineColors::PerPoint(&colors_nan)),
-        colored(PolylineColors::PerPoint(&colors_ok)),
-    );
-    gate(
-        "polyline_segment_color",
-        colored(PolylineColors::PerSegment(&colors_nan[1..])),
-        colored(PolylineColors::PerSegment(&colors_ok[1..])),
-    );
-    gate(
-        "mesh_vertex",
-        MeshShape::new(&mesh_nan),
-        MeshShape::new(&mesh_ok),
-    );
-    gate(
-        "mesh_local_rect",
-        MeshShape {
-            local_rect: Some(Rect::new(0.0, N, 8.0, 8.0)),
-            ..MeshShape::new(&mesh_ok)
-        },
-        MeshShape::new(&mesh_ok).at(ok_rect),
-    );
 }
 
 /// Inputs a builder checks never reach the record gate: each panics with its
@@ -446,6 +300,27 @@ fn builders_refuse_what_they_check() {
         drop(Shape::polyline(&[Vec2::ZERO, Vec2::X], thin()).per_point(&colors));
     });
     let _ = Shape::rect(Rect::new(0.0, 0.0, -4.0, 8.0));
+
+    // A tile's phase is an offset and each axis of its repeat count positive.
+    let tile = |offset, scale| drop(Shape::image(handle(1)).fit(ImageFit::Tile { offset, scale }));
+    panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+        tile(Vec2::new(f32::INFINITY, 0.0), Vec2::ONE);
+    });
+    for bad in [0.0, -1.0, N, f32::INFINITY] {
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+            tile(Vec2::ZERO, Vec2::new(1.0, bad));
+        });
+    }
+    tile(Vec2::new(-0.5, 3.0), Vec2::new(0.25, 4.0));
+}
+
+/// A handle to a blank `width` × 1 image.
+fn handle(width: u32) -> ImageHandle {
+    ImageHandle::new(
+        TextureId(1),
+        &Image::from_srgba8(UVec2::new(width, 1), vec![0; width as usize * 4]).unwrap(),
+        ImageRegistry::default(),
+    )
 }
 
 fn thin() -> Stroke {

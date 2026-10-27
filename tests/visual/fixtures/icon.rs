@@ -10,7 +10,7 @@
 
 use glam::{UVec2, Vec2};
 use palantir::golden::image::RgbaImage;
-use palantir::widget::{IconFit, IconShape};
+use palantir::widget::{IconFit, IconShape, Shape};
 use palantir::{Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::ops;
 use std::rc::Rc;
@@ -88,9 +88,7 @@ fn render(size: UVec2, scale: f32, mut scene: impl FnMut(&mut Ui, &IconSet)) -> 
 
 /// Icon `name` of `icons`, filling its pane.
 fn icon(icons: &IconSet, name: &str) -> IconShape {
-    icons
-        .shape(icons.by_name(name).expect("fixture icon"))
-        .fit(IconFit::Fill)
+    Shape::icon(icons.by_name(name).expect("fixture icon")).fit(IconFit::Fill)
 }
 
 /// `icon` in a pane over `at`.

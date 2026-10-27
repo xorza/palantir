@@ -68,7 +68,7 @@ impl TextRig {
             max_width: None,
         };
         let key = run
-            .unbounded_key()
+            .unbounded_key(&self.shaper.family_keys())
             .expect("the fixture face names a usable size");
         self.shaper.layout(&run);
         TextDrawRow {

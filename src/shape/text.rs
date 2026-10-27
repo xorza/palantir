@@ -2,7 +2,6 @@
 
 use crate::primitives::layout::align::Align;
 use crate::primitives::math::domain::{self, vec2};
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::shape::record::ShapeRecord;
@@ -12,6 +11,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
 
@@ -102,11 +102,6 @@ impl sealed::LowerShape for TextShape {
         self.text.is_empty() || self.color.is_noop() || !self.font.metrics_valid()
     }
 
-    /// `font` is not asked: `metrics_valid` in `is_noop` is stricter.
-    fn has_nan(&self) -> bool {
-        self.local_origin.has_nan() || self.color.has_nan()
-    }
-
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             local_origin,
@@ -120,7 +115,7 @@ impl sealed::LowerShape for TextShape {
             local_origin,
             text: store.record_text(text),
             color: color.to_f16(),
-            font,
+            font: ShapingFont::new(font, store.families()),
             wrap,
             align,
         }

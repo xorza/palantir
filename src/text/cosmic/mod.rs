@@ -17,9 +17,12 @@ use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
 use crate::text::cosmic::glyph_ink::GlyphInk;
-use crate::text::cosmic::shaped_buffer_cache::{ShapedBuffer, ShapedBufferCache, ShapedRun};
+use crate::text::cosmic::shaped_buffer_cache::{
+    Recycled, ShapedBuffer, ShapedBufferCache, ShapedRun,
+};
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
+use crate::text::family_keys::{FamilyKey, FamilyKeys};
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
 use crate::text::font_slant::FontSlant;
@@ -63,7 +66,7 @@ const fn metrics_of(key: TextShapeKey) -> Metrics {
 /// startup warm-up and the per-shape path share it. Fake italic is cosmic's
 /// (`override_fake_italic` sets `CacheKeyFlags::FAKE_ITALIC`, part of the glyph
 /// cache key, so the atlas keeps slanted rasters apart).
-const fn attrs_named(name: &'static str, weight: FontWeight, style: FontSlant) -> Attrs<'static> {
+const fn attrs_named(name: &str, weight: FontWeight, style: FontSlant) -> Attrs<'_> {
     // Skip TrueType hinting: skrifa's hint VM dominated zoom-frame CPU time and the difference is
     // imperceptible.
     let base = Attrs::new()
@@ -90,10 +93,10 @@ fn family_present(db: &fontdb::Database, name: &str) -> bool {
 pub(crate) fn warm_matches(font_system: &mut FontSystem, families: &[FontFamily]) {
     for &family in families {
         let present = family_present(font_system.db(), family.name());
-        let name = shaping_name(family, present);
+        let face = shaping_family(family, present);
         for weight in [FontWeight::REGULAR, FontWeight::BOLD] {
             for style in [FontSlant::Normal, FontSlant::Italic] {
-                font_system.get_font_matches(&attrs_named(name, weight, style));
+                font_system.get_font_matches(&attrs_named(face.name(), weight, style));
             }
         }
     }
@@ -112,12 +115,8 @@ enum FamilyResolution {
 /// The family a request shapes in: itself if a face answers, else
 /// [`FontFamily::SANS`]. Never cosmic's platform fallback, which would make a
 /// missing family look like whatever the machine has installed.
-fn shaping_name(family: FontFamily, present: bool) -> &'static str {
-    if present {
-        family.name()
-    } else {
-        FontFamily::SANS.name()
-    }
+const fn shaping_family(family: FontFamily, present: bool) -> FontFamily {
+    if present { family } else { FontFamily::SANS }
 }
 
 /// Map a stored align to cosmic's per-line align. `Auto` maps to `None`; `Justified` and `End` are
@@ -198,9 +197,12 @@ const fn subpixel_offset(key: CacheKey) -> Vector {
 /// Real-shaping text measurer: owns a [`FontSystem`] per [`FontScope`] and the shaped-buffer cache.
 pub(super) struct CosmicMeasure {
     font_system: FontSystem,
-    /// Whether a face answers to each [`FontFamily`] index, filled on demand (see
-    /// [`Self::has_font`]). The shaping name derives from it via [`shaping_name`] so they cannot
-    /// disagree.
+    /// The families this measurer's keys name, shared with every record store that records
+    /// text for it.
+    families: FamilyKeys,
+    /// Whether a face answers to each family, by [`FamilyKey`], filled on demand (see
+    /// [`Self::has_key`]). The shaping face derives from it via [`shaping_family`] so they
+    /// cannot disagree.
     resolved: Vec<FamilyResolution>,
     /// Swash's scaler caches, retained across glyphs.
     scale_ctx: ScaleContext,
@@ -233,6 +235,7 @@ impl CosmicMeasure {
     pub(super) fn over(font_system: FontSystem) -> Self {
         Self {
             font_system,
+            families: FamilyKeys::default(),
             resolved: Vec::new(),
             scale_ctx: ScaleContext::new(),
             glyph_image: SwashImage::new(),
@@ -252,7 +255,8 @@ impl CosmicMeasure {
     ///
     /// [`FontLoadError::Io`] when the file cannot be read or mapped,
     /// [`FontLoadError::NoFaces`] when the bytes hold no parsable face,
-    /// [`FontLoadError::FamilyTableFull`] when no named family fits the table.
+    /// [`FontLoadError::FamilyNameTooLong`] when every family it names is longer than a
+    /// [`FontFamily`] holds.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
         let source = match source {
             FontSource::Bytes(bytes) => fontdb::Source::Binary(Arc::new(bytes)),
@@ -267,8 +271,6 @@ impl CosmicMeasure {
             }
         };
         let ids = self.font_system.db_mut().load_font_source(source);
-        // Collected before interning: `FontFamily::named` takes the name table's write lock while
-        // the database borrow is live.
         let mut names: Vec<String> = Vec::new();
         for id in ids {
             let Some(face) = self.font_system.db().face(id) else {
@@ -281,16 +283,10 @@ impl CosmicMeasure {
         // Everything downstream of the database is stale: a family that resolved to SANS
         // may answer now. The families already resolved are the ones on screen, so the
         // re-warm covers them.
-        let mut warm: Vec<FontFamily> = self
-            .resolved
-            .iter()
-            .enumerate()
+        let mut warm: Vec<FontFamily> = (0u16..)
+            .zip(&self.resolved)
             .filter(|(_, answer)| **answer != FamilyResolution::Unasked)
-            .map(|(idx, _)| {
-                FontFamily::from_raw(
-                    u16::try_from(idx).expect("`resolved` is indexed by a u16 family index"),
-                )
-            })
+            .map(|(key, _)| self.families.family(FamilyKey::from_raw(key)))
             .collect();
         if !warm.contains(&loaded) {
             warm.push(loaded);
@@ -302,15 +298,22 @@ impl CosmicMeasure {
         Ok(loaded)
     }
 
-    /// Whether a face answers to `family`. Memoized, and the shaping path reads the
-    /// same memo so the answer and the shaped face cannot disagree.
+    /// Whether a face answers to `family`.
     pub(super) fn has_font(&mut self, family: FontFamily) -> bool {
-        let idx = usize::from(family.raw());
+        let key = self.families.key(family);
+        self.has_key(key)
+    }
+
+    /// Whether a face answers to the family `key` names. Memoized, and the shaping path reads
+    /// the same memo so the answer and the shaped face cannot disagree.
+    fn has_key(&mut self, key: FamilyKey) -> bool {
+        let idx = usize::from(key.get());
         match self.resolved.get(idx).copied().unwrap_or_default() {
             FamilyResolution::Present => return true,
             FamilyResolution::Missing => return false,
             FamilyResolution::Unasked => {}
         }
+        let family = self.families.family(key);
         let present = family_present(self.font_system.db(), family.name());
         if !present {
             tracing::warn!(
@@ -330,8 +333,8 @@ impl CosmicMeasure {
         present
     }
 
-    /// Every family the database knows, interned. A `Vec` because the database sits behind the
-    /// shaper's `RefCell`. Cold.
+    /// Every family the database knows whose name a [`FontFamily`] holds. A `Vec` because the
+    /// database sits behind the shaper's `RefCell`. Cold.
     pub(super) fn font_families(&self) -> Vec<FontFamily> {
         let mut names: Vec<&str> = self
             .font_system
@@ -348,14 +351,26 @@ impl CosmicMeasure {
         self.cache.drop_all();
     }
 
-    fn attrs_of(&mut self, key: TextShapeKey) -> Attrs<'static> {
-        let family = key.family();
-        let name = shaping_name(family, self.has_font(family));
-        attrs_named(name, key.weight(), key.slant())
+    pub(super) const fn families(&self) -> &FamilyKeys {
+        &self.families
     }
 
-    pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        self.cache.shaped_run(key)
+    /// The family `key` shapes in: its own where a face answers, else [`FontFamily::SANS`].
+    fn family_of(&mut self, key: TextShapeKey) -> FontFamily {
+        let present = self.has_key(key.family());
+        shaping_family(self.families.family(key.family()), present)
+    }
+
+    /// The resident shaped run of `request`, or `None` when none holds its text.
+    pub(super) fn shaped_run(&self, request: TextShapeRequest<'_>) -> Option<ShapedRun<'_>> {
+        self.cache.shaped_run(request.key, request.text)
+    }
+
+    /// The run resident under `key`, whatever text it holds: for a caller that shaped or
+    /// looked up the text through [`Self::root`] or [`Self::resolve`] and held the measurer
+    /// since.
+    pub(super) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
+        self.cache.resident_run(key)
     }
 
     /// The run's unbounded shape, the root every wrap policy reasons from. `floor`
@@ -370,7 +385,7 @@ impl CosmicMeasure {
         // One lookup for the whole hit path: a resident entry shaped without the floor still owes
         // it to a policy that wants it. The resize-drag path.
         let breaks = &mut self.break_scratch;
-        if let Some(entry) = self.cache.hit(key) {
+        if let Some(entry) = self.cache.hit(key, request.text) {
             let root = entry.extent.root_mut();
             if floor == WrapFloor::Scan && root.intrinsic_min.is_none() {
                 root.intrinsic_min = Some(breaks.intrinsic_min_width(&entry.buffer));
@@ -388,7 +403,7 @@ impl CosmicMeasure {
             key.max_width().is_some(),
             "an unbounded request commits no width to resolve against",
         );
-        if let Some(entry) = self.cache.hit(key) {
+        if let Some(entry) = self.cache.hit(key, request.text) {
             return entry.extent.extent();
         }
         match key.fit() {
@@ -400,11 +415,12 @@ impl CosmicMeasure {
     /// Shape `request` into a fresh buffer and file it under its key. The one wrapping shape path.
     fn shape_wrapped(&mut self, request: TextShapeRequest<'_>, floor: WrapFloor) -> CachedExtent {
         let key = request.key;
-        let mut buffer = self.acquire_buffer(metrics_of(key), key.max_width());
+        let Recycled { mut buffer, source } = self.acquire(metrics_of(key), key.max_width());
         // Per-line alignment goes through `set_text`'s `alignment` slot (setting it afterwards
         // tends to no-op). It needs a finite wrap target, else we pass `None`.
         let alignment = key.max_width().and_then(|_| cosmic_align(key.line_align()));
-        let attrs = self.attrs_of(key);
+        let family = self.family_of(key);
+        let attrs = attrs_named(family.name(), key.weight(), key.slant());
         buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
@@ -422,6 +438,7 @@ impl CosmicMeasure {
                 buffer,
                 extent,
                 left: geometry.left,
+                source,
             },
         );
         extent
@@ -439,17 +456,19 @@ impl CosmicMeasure {
                 self.root(request, WrapFloor::Skip);
             }
         }
-        self.shaped_run(request.key)
+        self.shaped_run(request)
             .expect("restored text buffer did not land under its own TextShapeKey")
     }
 
-    fn acquire_buffer(&mut self, metrics: Metrics, width: Option<f32>) -> Buffer {
-        let mut buffer = match self.cache.take_recycled() {
-            Some(buffer) => buffer,
-            None => Buffer::new(&mut self.font_system, metrics),
-        };
-        buffer.set_metrics_and_size(metrics, width, None);
-        buffer
+    /// A buffer at `metrics` and `width`, with an empty source string, recycled where the pool
+    /// holds one.
+    fn acquire(&mut self, metrics: Metrics, width: Option<f32>) -> Recycled {
+        let mut recycled = self.cache.take_recycled().unwrap_or_else(|| Recycled {
+            buffer: Buffer::new(&mut self.font_system, metrics),
+            source: String::new(),
+        });
+        recycled.buffer.set_metrics_and_size(metrics, width, None);
+        recycled
     }
 
     pub(super) fn supersede(&mut self, key: TextShapeKey) {
@@ -474,7 +493,7 @@ impl CosmicMeasure {
         placement: RunPlacement,
         out: &mut Vec<PlacedGlyph>,
     ) -> bool {
-        let ShapedRun { buffer, left } = self.ensure_buffer(request);
+        let ShapedRun { buffer, left, .. } = self.ensure_buffer(request);
 
         out.clear();
         let RunPlacement {
@@ -509,8 +528,7 @@ impl CosmicMeasure {
                 let physical = glyph.physical((origin_x, origin.y), scale);
                 out.push(PlacedGlyph {
                     raster_key: GlyphRasterKey(physical.cache_key),
-                    x: physical.x,
-                    y: line_y_px + physical.y,
+                    physical: IVec2::new(physical.x, line_y_px + physical.y),
                 });
             }
         }
@@ -596,7 +614,8 @@ impl CosmicMeasure {
         let unbounded = request.unbounded_version();
         // Residency and the measure from one lookup; this is the resize-drag path.
         let root = self.root(unbounded, WrapFloor::Skip);
-        let attrs = self.attrs_of(key);
+        let family = self.family_of(key);
+        let attrs = attrs_named(family.name(), key.weight(), key.slant());
         // Reserve the ellipsis width only when one will be appended; resolved before borrowing the
         // probe, since shaping "…" needs `&mut self`.
         let mut append_ellipsis = false;
@@ -612,7 +631,10 @@ impl CosmicMeasure {
 
         // Unbounded on one line: binding to `Some(w)` plus align would measure the aligned
         // position, inflating a fits-anyway label.
-        let mut buffer = self.acquire_buffer(metrics_of(key), None);
+        let Recycled {
+            mut buffer,
+            mut source,
+        } = self.acquire(metrics_of(key), None);
         let geometry = if fits_whole {
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
@@ -632,6 +654,8 @@ impl CosmicMeasure {
                         advance: g.w,
                     }));
             }
+            // The buffer holds a cut, so the entry keeps what it was cut from.
+            source.push_str(request.text);
             let mut max_end = usize::MAX;
             loop {
                 let cut = cluster_glyph::fitting_prefix(&mut self.cut_glyphs, avail, max_end);
@@ -666,6 +690,7 @@ impl CosmicMeasure {
                 buffer,
                 extent: CachedExtent::Bounded(extent),
                 left: geometry.left,
+                source,
             },
         );
         extent
@@ -679,12 +704,17 @@ impl CosmicMeasure {
         if let Some(advance) = self.ellipsis.iter().find_map(|memo| memo.advance_for(face)) {
             return advance;
         }
-        let attrs = self.attrs_of(key);
-        let mut buffer = self.acquire_buffer(metrics_of(key), None);
-        buffer.set_text("…", &attrs, Shaping::Advanced, None);
-        buffer.shape_until_scroll(&mut self.font_system, false);
-        let advance = first_line_right(&buffer);
-        self.cache.recycle(buffer);
+        let family = self.family_of(key);
+        let attrs = attrs_named(family.name(), key.weight(), key.slant());
+        let mut recycled = self.acquire(metrics_of(key), None);
+        recycled
+            .buffer
+            .set_text("…", &attrs, Shaping::Advanced, None);
+        recycled
+            .buffer
+            .shape_until_scroll(&mut self.font_system, false);
+        let advance = first_line_right(&recycled.buffer);
+        self.cache.recycle(recycled);
         self.cache.counters.ellipsis_misses.bump();
         if self.ellipsis.len() == ELLIPSIS_MEMO_SLOTS {
             self.ellipsis.pop();
@@ -704,23 +734,23 @@ impl fmt::Debug for CosmicMeasure {
     }
 }
 
-/// The first of a loaded file's family `names` that `intern` admits; a name that
+/// The first of a loaded file's family `names` that `named` admits; a name that
 /// does not fit is skipped. No names means [`FontLoadError::NoFaces`]; names of which
-/// none fits is [`FontLoadError::FamilyTableFull`].
+/// none fits is [`FontLoadError::FamilyNameTooLong`].
 pub(super) fn first_family(
     names: &[String],
-    intern: impl Fn(&str) -> Option<FontFamily>,
+    named: impl Fn(&str) -> Option<FontFamily>,
 ) -> Result<FontFamily, FontLoadError> {
     if names.is_empty() {
         return Err(FontLoadError::NoFaces);
     }
     let mut loaded = None;
     for name in names {
-        if let Some(family) = intern(name) {
+        if let Some(family) = named(name) {
             loaded.get_or_insert(family);
         }
     }
-    loaded.ok_or(FontLoadError::FamilyTableFull)
+    loaded.ok_or(FontLoadError::FamilyNameTooLong)
 }
 
 #[cfg(feature = "internals")]
@@ -729,13 +759,13 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::cosmic::counters::CacheCounts;
     #[cfg(test)]
-    use crate::text::cosmic::shaped_buffer_cache::internals::RecyclePoolStats;
-    #[cfg(test)]
     use crate::text::glyph_font::GlyphFont;
     #[cfg(test)]
     use crate::text::request::internals::TestShape;
     #[cfg(test)]
     use crate::text::root::internals::TestMeasure;
+    #[cfg(test)]
+    use crate::text::shaping_font::ShapingFont;
 
     /// A truncating measure and the unbounded probe it cuts from.
     #[cfg(test)]
@@ -754,7 +784,8 @@ pub(crate) mod internals {
     impl CosmicMeasure {
         #[cfg(test)]
         pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TestMeasure {
-            self.measure_with_fit_key(shape.request(text, LineFit::Wrap))
+            let request = shape.request_in(&self.families, text, LineFit::Wrap);
+            self.measure_with_fit_key(request)
         }
 
         #[cfg(test)]
@@ -778,9 +809,9 @@ pub(crate) mod internals {
             shape: TestShape,
             fit: LineFit,
         ) -> TestMeasure {
-            let request = shape.request(text, fit);
+            let request = shape.request_in(&self.families, text, fit);
             debug_assert!(
-                self.shaped_run(request.key.unbounded_version()).is_some(),
+                self.shaped_run(request.unbounded_version()).is_some(),
                 "measure the unbounded probe first",
             );
             self.measure_with_fit_key(request)
@@ -830,8 +861,8 @@ pub(crate) mod internals {
         }
 
         #[cfg(test)]
-        pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
-            self.cache.recycle_pool_stats()
+        pub(crate) fn recycle_pool_len(&self) -> usize {
+            self.cache.recycle_pool_len()
         }
 
         #[cfg(test)]
@@ -843,8 +874,10 @@ pub(crate) mod internals {
         /// mapping since two faces can share an advance.
         #[cfg(test)]
         fn shaped_face(&mut self, text: &str, face: GlyphFont) -> Option<fontdb::ID> {
+            let face = ShapingFont::new(face, &self.families);
             let key = TextShapeKey::for_text(text, face).expect("a fixture face is usable");
-            let attrs = self.attrs_of(key);
+            let family = self.family_of(key);
+            let attrs = attrs_named(family.name(), key.weight(), key.slant());
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
             buf.set_text(text, &attrs, Shaping::Advanced, None);
             buf.shape_until_scroll(&mut self.font_system, false);

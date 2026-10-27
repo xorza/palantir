@@ -21,6 +21,7 @@ pub(crate) mod bench;
 mod cosmic;
 pub(crate) mod error;
 pub(crate) mod extent;
+pub(crate) mod family_keys;
 pub(crate) mod font_family;
 // Gated with its only consumer, the winit host.
 #[cfg(feature = "winit")]
@@ -42,6 +43,7 @@ pub(crate) mod run;
 pub(crate) mod shaped_ref;
 pub(crate) mod shaped_text;
 pub(crate) mod shaper;
+pub(crate) mod shaping_font;
 pub(crate) mod system;
 pub(crate) mod wrap;
 

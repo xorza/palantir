@@ -10,7 +10,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::record::*;
 use crate::shape::rect::RectKind;
-use crate::text::font_family::FontFamily;
+use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 
@@ -304,10 +304,10 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
 
 fn text_shape(line_height: f32, weight: FontWeight, local_origin: Option<Vec2>) -> ShapeRecord {
     text_face(
-        GlyphFont {
+        ShapingFont {
             size: 16.0,
             line_height,
-            family: FontFamily::SANS,
+            family: FamilyKey::from_raw(0),
             weight,
             slant: FontSlant::Normal,
         },
@@ -315,7 +315,7 @@ fn text_shape(line_height: f32, weight: FontWeight, local_origin: Option<Vec2>) 
     )
 }
 
-fn text_face(font: GlyphFont, local_origin: Option<Vec2>) -> ShapeRecord {
+fn text_face(font: ShapingFont, local_origin: Option<Vec2>) -> ShapeRecord {
     ShapeRecord::Text {
         local_origin,
         text: RecordedText::new(Span::default(), hash::str("hi")),
@@ -337,7 +337,13 @@ fn text_shape_hash_distinguishes_each_authoring_field() {
     let (regular, bold) = (FontWeight::REGULAR, FontWeight::BOLD);
     let o_a = Some(Vec2::new(0.0, 0.0));
     let o_b = Some(Vec2::new(5.0, 5.0));
-    let upright = GlyphFont::new(16.0);
+    let upright = ShapingFont {
+        size: 16.0,
+        line_height: 16.0,
+        family: FamilyKey::from_raw(0),
+        weight: FontWeight::REGULAR,
+        slant: FontSlant::Normal,
+    };
     let cases: [(&str, ShapeRecord, ShapeRecord); 6] = [
         (
             "line_height",
@@ -363,8 +369,8 @@ fn text_shape_hash_distinguishes_each_authoring_field() {
             "family sans vs mono",
             text_face(upright, None),
             text_face(
-                GlyphFont {
-                    family: FontFamily::MONO,
+                ShapingFont {
+                    family: FamilyKey::from_raw(1),
                     ..upright
                 },
                 None,
@@ -374,7 +380,7 @@ fn text_shape_hash_distinguishes_each_authoring_field() {
             "style upright vs italic",
             text_face(upright, None),
             text_face(
-                GlyphFont {
+                ShapingFont {
                     slant: FontSlant::Italic,
                     ..upright
                 },

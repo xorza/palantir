@@ -120,10 +120,9 @@ fn byte_at_xy_cosmic_path_hits_each_caret_and_clamps() {
     );
 }
 
-/// An empty range emits nothing and leaves the caller's buffer alone;
-/// clearing belongs to the caller (`resolve_geometry`).
+/// An empty range emits nothing, and rewrites the caller's buffer to nothing.
 #[test]
-fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
+fn selection_rects_empty_range_rewrites_the_buffer_empty() {
     let m = TextShaper::new();
     let mut out: Vec<Rect> = Vec::new();
     let pre = Rect::new(1.0, 2.0, 3.0, 4.0);
@@ -133,13 +132,9 @@ fn selection_rects_empty_range_emits_nothing_and_touches_no_buffer() {
             layout.text_hash(),
             Some(TextShapeKey::content_hash(hash::str("hello"))),
         );
-        layout.selection_rects(5..5, &mut |rect| out.push(rect));
+        layout.selection_rects(5..5, &mut out);
     });
-    assert_eq!(
-        out.as_slice(),
-        [pre],
-        "empty range emits nothing and leaves the caller's buffer untouched",
-    );
+    assert!(out.is_empty(), "the stale rect {pre:?} is gone");
 }
 
 #[test]
@@ -219,7 +214,7 @@ fn selection_rects_match_cosmic_highlight_spans() {
 
         let mut actual: Vec<Rect> = Vec::new();
         m.probe_layout(case.text, params, |layout| {
-            layout.selection_rects(case.range, &mut |rect| actual.push(rect));
+            layout.selection_rects(case.range, &mut actual);
         });
         assert_eq!(
             actual.as_slice(),
@@ -232,9 +227,9 @@ fn selection_rects_match_cosmic_highlight_spans() {
         // round(19.2 × 64) / 64 = 19.203125; the lines sit at y = 0, lh, 2 · lh.
         let lh = 19.203125;
         assert_eq!(
-            16.0 * LINE_HEIGHT_FACTOR,
+            16.0 * UI_LEADING,
             19.2,
-            "premise: production leading"
+            "premise: the leading `ui_shape` sets"
         );
         let ys: Vec<f32> = actual.iter().map(|r| r.min.y).collect();
         let want: &[f32] = match case.label {
@@ -339,7 +334,7 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
     let mut x = -2.0;
     while x < width + 4.0 {
         let want = if x < 4.6640625 { 0 } else { 2 };
-        assert_eq!(probe.byte_at(x, 5.0), want, "x {x}");
+        assert_eq!(probe.byte_at(Vec2::new(x, 5.0)), want, "x {x}");
         x += 0.5;
     }
     assert_eq!(
@@ -555,7 +550,7 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
         m.extract_glyphs(
             request,
             RunPlacement {
-                origin: glam::Vec2::ZERO,
+                origin: Vec2::ZERO,
                 scale: 1.0,
                 bounds: None,
             },
@@ -566,7 +561,10 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
             let Some(image) = m.rasterize_glyph(glyph.raster_key) else {
                 continue;
             };
-            let top_left = glam::IVec2::new(glyph.x + image.bearing.x, glyph.y - image.bearing.y);
+            let top_left = glam::IVec2::new(
+                glyph.physical.x + image.bearing.x,
+                glyph.physical.y - image.bearing.y,
+            );
             lo = lo.min(top_left);
             hi = hi.max(top_left + image.size.as_ivec2());
         }

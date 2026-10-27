@@ -308,8 +308,8 @@ index that exists, a `min` below its `max`.
    A font is how theme text reaches paint, so a face the shaper cannot use
    shapes nothing, at `Shape::text` as in every text widget.
 5. **Indices and handles.** An index into a list that changes at run time
-   (options, pages, tabs) is coerced. A handle the crate minted (`IconId`,
-   `TabGroupId`) that names nothing is a caller bug and panics.
+   (options, pages, tabs) is coerced. A handle the crate minted
+   (`IconHandle`, `TabGroupId`) that names nothing is a caller bug and panics.
 
 The kinds live in `widget::domain`, public because a widget outside the crate
 validates its setters the same way; `domain::vec2` and `domain::f64` hold the

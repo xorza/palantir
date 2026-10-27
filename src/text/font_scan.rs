@@ -37,17 +37,17 @@ mod tests {
     use crate::text::font_scan::FontScan;
     use crate::text::font_scope::FontScope;
 
-    /// The scan thread hands back a usable shaper with bundled families resolvable (the contract `WinitRuntime::new` depends on). `System`, not `Bundled`, so it proves an off-thread database survives the move.
+    /// The scan thread hands back a usable shaper with bundled families resolvable (the contract `WinitRuntime::new` depends on): a database built on one thread survives the move to another. `Bundled`, so the case reads no disk and holds on every machine; what `System` adds is the directory walk, which is fontdb's.
     #[test]
     fn a_scanned_shaper_arrives_usable() {
-        let shaper = FontScan::spawn(FontScope::System).join();
+        let shaper = FontScan::spawn(FontScope::Bundled).join();
         assert!(shaper.has_font(FontFamily::SANS));
         assert!(shaper.has_font(FontFamily::MONO));
         assert_eq!(shaper.font_epoch(), 0);
-        // At least the bundled pair: a host may have no fonts of its own.
-        assert!(
-            shaper.font_families().len() >= 2,
-            "a system scan keeps the bundled pair",
+        assert_eq!(
+            shaper.font_families(),
+            [FontFamily::SANS, FontFamily::MONO],
+            "the bundled pair, and nothing else"
         );
     }
 }

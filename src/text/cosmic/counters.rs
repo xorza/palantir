@@ -24,6 +24,8 @@ counter_snapshot! {
     supersedes: u32,
     /// Buffers dropped by the end-of-frame sweep.
     expiries: u32,
+    /// Lookups that found another text's buffer under their key, which they evicted.
+    collisions: u32,
     /// Times the "…" advance was reshaped because no slot held that face; separate from `shapes`, since the probe shapes without inserting.
     ellipsis_misses: u32,
 }

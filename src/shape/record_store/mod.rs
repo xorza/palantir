@@ -24,6 +24,7 @@ use crate::primitives::text::text_input::TextInput;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use crate::shape::record_store::recorded_gradients::{GradientId, RecordedGradients};
 use crate::shape::record_store::text_store::TextStore;
+use crate::text::family_keys::FamilyKeys;
 use glam::Vec2;
 use std::fmt;
 
@@ -44,6 +45,9 @@ pub(crate) struct RecordStore {
     /// share one pool and the encoder needs only this store.
     pub(crate) gradients: RecordedGradients,
     text: TextStore,
+    /// The families of the shaper that shapes what this store records, keyed as a text shape
+    /// lowers. `Default` gives a table of its own, for a store no shaper reads.
+    families: FamilyKeys,
 }
 
 /// Where [`RecordStore::stage_mesh`] put one mesh's geometry.
@@ -61,6 +65,18 @@ pub(crate) struct PolylineSpans {
 }
 
 impl RecordStore {
+    /// A store that records text for the shaper keying families in `families`.
+    pub(crate) fn new(families: FamilyKeys) -> Self {
+        Self {
+            families,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) const fn families(&self) -> &FamilyKeys {
+        &self.families
+    }
+
     /// The characters of a text shape this pass recorded, for the widget inspection.
     pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
         &self.text.bytes()[text.span.range()]
@@ -75,6 +91,7 @@ impl RecordStore {
             polyline_colors,
             gradients,
             text,
+            families: _,
         } = self;
         meshes.clear();
         polyline_points.clear();

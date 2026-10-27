@@ -95,12 +95,11 @@ impl PlaneCtx<'_, '_> {
             idx: shape_idx,
             record: shape,
         } = item;
-        // `Shapes::add` is the single NaN gate, so nothing non-finite reaches here; later non-finite checks guard the transform stack only.
+        // Shape setters check every input, so nothing non-finite reaches here; later non-finite checks guard the transform stack only.
         // No "not a no-op" assert: that needs resolved geometry, which first exists in `Draw*Payload::is_noop`.
         debug_assert!(
             !shape.has_nan(),
-            "a NaN reached the encoder — `Shapes::add`'s gate should have \
-             dropped this shape: {shape:?}",
+            "a NaN reached the encoder past the shape setters' checks: {shape:?}",
         );
         let shaped = runs.shaped(shape, self.layout);
         // Early-out so a shape animated to nothing doesn't pay for its geometry; `paint_mod.rotation` rides the stroke arms via `StrokeBounds`.

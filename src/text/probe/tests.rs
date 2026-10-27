@@ -7,6 +7,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::run::TextRun;
 use crate::text::wrap::TextWrap;
+use glam::Vec2;
 
 /// The public probe surface against the mono shaper's exact metric (8 px per glyph at 16 px), written as a
 /// caller would, through `Ui::probe_text` alone.
@@ -44,20 +45,38 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
             );
         }
 
-        assert_eq!(probe.byte_at(3.0, 0.0), 0, "left half of glyph 0");
-        assert_eq!(probe.byte_at(5.0, 0.0), 1, "right half of glyph 0");
-        assert_eq!(probe.byte_at(3.0 * EM, 0.0), 3, "exactly on a boundary");
-        assert_eq!(probe.byte_at(999.0, 0.0), 5, "past the end clamps");
+        assert_eq!(
+            probe.byte_at(Vec2::new(3.0, 0.0)),
+            0,
+            "left half of glyph 0"
+        );
+        assert_eq!(
+            probe.byte_at(Vec2::new(5.0, 0.0)),
+            1,
+            "right half of glyph 0"
+        );
+        assert_eq!(
+            probe.byte_at(Vec2::new(3.0 * EM, 0.0)),
+            3,
+            "exactly on a boundary"
+        );
+        assert_eq!(
+            probe.byte_at(Vec2::new(999.0, 0.0)),
+            5,
+            "past the end clamps"
+        );
 
         let mut rects = Vec::new();
-        probe.selection_rects(1..4, |rect| rects.push(rect));
+        probe.selection_rects(1..4, &mut rects);
         assert_eq!(rects.len(), 1, "one visual line, one rect");
         assert_eq!(rects[0].min.x, EM);
         assert_eq!(rects[0].size.w, 3.0 * EM);
 
-        let mut none = Vec::new();
-        probe.selection_rects(2..2, |rect| none.push(rect));
-        assert!(none.is_empty(), "an empty selection has no rects");
+        probe.selection_rects(2..2, &mut rects);
+        assert!(
+            rects.is_empty(),
+            "an empty selection has no rects, and rewrites the buffer"
+        );
     }
 
     // A `SingleLine` run keeps its unbounded shape when given a width (the `TextWrap::line_fit` mapping).

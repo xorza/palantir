@@ -7,10 +7,10 @@ use crate::common::hash;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
-use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::key::TextShapeKey;
 use crate::text::run::TextRun;
 use crate::text::shaper::ShaperInner;
+use glam::Vec2;
 use std::cell::RefMut;
 use std::num::NonZeroU64;
 use std::ops::Range;
@@ -34,6 +34,9 @@ pub struct TextProbe<'a> {
     /// stores `Auto` for every alignment, which would put a right-aligned glyphless
     /// line's caret at the block's left edge.
     halign: HAlign,
+    /// Source bytes the shaped buffer shows from the start, found once per probe; `None` where
+    /// no shaped buffer backs the run.
+    shown: Option<usize>,
     inner: RefMut<'a, ShaperInner>,
 }
 
@@ -45,16 +48,32 @@ pub(super) struct ProbedShape {
 }
 
 impl<'a> TextProbe<'a> {
-    pub(super) const fn new(
+    /// `shape.key` is where [`TextShaper::layout`](crate::text::shaper::TextShaper::layout)
+    /// just shaped or found `run`'s text through a checked lookup, holding `inner` since, so the
+    /// buffer under it holds that text.
+    pub(super) fn new(
         run: &TextRun<'a>,
         shape: ProbedShape,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
+        let text = run.text;
+        let shown = shape
+            .key
+            .filter(|_| !text.is_empty() && !inner.is_mono())
+            .and_then(|key| inner.cosmic().resident_run(key))
+            .map(|run| {
+                if run.cut {
+                    LineMap::scan_shown(run.buffer, text)
+                } else {
+                    text.len()
+                }
+            });
         Self {
             size: shape.size,
-            text: run.text,
+            text,
             key: shape.key,
             halign: run.align.halign(),
+            shown,
             inner,
         }
     }
@@ -92,12 +111,17 @@ impl<'a> TextProbe<'a> {
     /// for a face the shaper can't be asked for. Mono is refused rather than missed:
     /// its key is real, so a buffer another caller shaped under it would give cosmic
     /// geometry against a mono extent. Every query reports in block-local coordinates,
-    /// so each subtracts [`ShapedRun::left`] from the buffer's x, or adds it back.
-    fn shaped(&self) -> Option<ShapedRun<'_>> {
-        if self.inner.is_mono() {
-            return None;
-        }
-        self.inner.cosmic().shaped_run(self.key?)
+    /// so each subtracts [`Shaped::left`] from the buffer's x, or adds it back.
+    fn shaped(&self) -> Option<Shaped<'_>> {
+        let shown = self.shown?;
+        let run = self.inner.cosmic().resident_run(self.key?)?;
+        Some(Shaped {
+            left: run.left,
+            lines: LineMap {
+                buffer: run.buffer,
+                shown,
+            },
+        })
     }
 
     /// True where this run had nothing to shape (no bytes, or a face with no usable
@@ -156,7 +180,7 @@ impl<'a> TextProbe<'a> {
     pub fn caret_at(&self, byte_offset: usize) -> Caret {
         let line_height = self.line_height();
         let halign = self.halign;
-        let Some(ShapedRun { buffer, left }) = self.shaped() else {
+        let Some(Shaped { left, lines }) = self.shaped() else {
             // No shaped buffer: empty text or the mono metric.
             return Caret {
                 x: self.unshaped_caret_x(byte_offset),
@@ -164,7 +188,8 @@ impl<'a> TextProbe<'a> {
                 line_height,
             };
         };
-        let target = LineMap::new(buffer, self.text).cursor(byte_offset);
+        let buffer = lines.buffer;
+        let target = lines.cursor(byte_offset);
 
         let mut last_in_line: Option<Caret> = None;
         for run in buffer.layout_runs() {
@@ -200,41 +225,41 @@ impl<'a> TextProbe<'a> {
         })
     }
 
-    /// The byte offset a point lands on, in run-local coordinates (click-to-caret),
+    /// The byte offset `pos` lands on, in run-local coordinates (click-to-caret),
     /// clamped to the run. Multi-line via `Buffer::hit`; the mono and empty-text path
     /// scans one dimension by `x ÷ 0.5·font_size` and ignores `y`.
-    pub fn byte_at(&self, x: f32, y: f32) -> usize {
+    pub fn byte_at(&self, pos: Vec2) -> usize {
         match self.shaped() {
             // `x` is block-local; add it back to buffer space (inverse of [`Self::caret_at`]).
-            Some(ShapedRun { buffer, left }) => {
-                buffer.hit(x + left, y).map_or(self.text.len(), |cursor| {
-                    LineMap::new(buffer, self.text).byte(cursor)
-                })
-            }
-            None => self.unshaped_byte_at(x),
+            Some(Shaped { left, lines }) => lines
+                .buffer
+                .hit(pos.x + left, pos.y)
+                .map_or(self.text.len(), |cursor| lines.byte(cursor)),
+            None => self.unshaped_byte_at(pos.x),
         }
     }
 
-    /// Every rect covering `range`, one per visual line, in run-local coordinates;
-    /// `range` is clamped. A callback so nothing allocates per frame
-    /// (`long_multiline_selection_alloc_free` pins it).
-    pub fn selection_rects(&self, range: Range<usize>, mut out: impl FnMut(Rect)) {
+    /// Every rect covering `range`, one per visual line, in run-local coordinates,
+    /// rewriting `out`; `range` is clamped. The caller keeps `out`, so nothing allocates
+    /// per frame (`long_multiline_selection_alloc_free` pins it).
+    pub fn selection_rects(&self, range: Range<usize>, out: &mut Vec<Rect>) {
+        out.clear();
         if range.is_empty() {
             return;
         }
-        let Some(ShapedRun { buffer, left }) = self.shaped() else {
+        let Some(Shaped { left, lines }) = self.shaped() else {
             // No shaped buffer: mono lays the band out 1D, empty text collapses it.
             let x0 = self.unshaped_caret_x(range.start);
             let x1 = self.unshaped_caret_x(range.end);
-            out(Rect::new(x0, 0.0, x1 - x0, self.line_height()));
+            out.push(Rect::new(x0, 0.0, x1 - x0, self.line_height()));
             return;
         };
-        let lines = LineMap::new(buffer, self.text);
+        let buffer = lines.buffer;
         let selection = lines.cursor(range.start)..lines.cursor(range.end);
         // Back from buffer space to block-local, as `caret_at` reports.
         let mut block_local = |mut rect: Rect| {
             rect.min.x -= left;
-            out(rect);
+            out.push(rect);
         };
         for run in buffer.layout_runs() {
             push_run_selection_rects(&run, &selection, &mut block_local);
@@ -316,11 +341,18 @@ fn push_run_selection_rects(
     flush(&mut selected);
 }
 
+/// A probe's shaped run: where its block starts in buffer space, and its line map.
+#[derive(Clone, Copy, Debug)]
+struct Shaped<'a> {
+    left: f32,
+    lines: LineMap<'a>,
+}
+
 /// Byte offsets into a run's source text and cosmic `Cursor`s into its buffer,
 /// mapped through the buffer's own lines (split at `\n`, `\r`, `\r\n`, `\n\r`).
 /// A truncated run shapes `prefix + "…"`, so the shown text matches the source
 /// only up to [`Self::shown`]; an offset past it maps to its end.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct LineMap<'a> {
     buffer: &'a cosmic_text::Buffer,
     /// Source bytes the buffer shows from the start; always a char boundary.
@@ -328,7 +360,9 @@ struct LineMap<'a> {
 }
 
 impl<'a> LineMap<'a> {
-    fn new(buffer: &'a cosmic_text::Buffer, text: &str) -> Self {
+    /// The source bytes a truncated `buffer` shows of `text` from the start, found by walking
+    /// its lines. An untruncated buffer shows all of `text`.
+    fn scan_shown(buffer: &'a cosmic_text::Buffer, text: &str) -> usize {
         let source = text.as_bytes();
         let mut shown = 0;
         'lines: for line in &buffer.lines {
@@ -347,7 +381,7 @@ impl<'a> LineMap<'a> {
         while !text.is_char_boundary(shown) {
             shown -= 1;
         }
-        Self { buffer, shown }
+        shown
     }
 
     /// The cursor at `byte_offset`, clamped to what the buffer shows.
@@ -387,7 +421,7 @@ pub(crate) mod internals {
     impl TextProbe<'_> {
         /// Raw shaped buffer for in-tree cross-checks; test-only so no cosmic types leak.
         pub(crate) fn buffer_for_test(&self) -> Option<&cosmic_text::Buffer> {
-            self.shaped().map(|shaped| shaped.buffer)
+            self.shaped().map(|shaped| shaped.lines.buffer)
         }
 
         /// The key a caller can replay this run through, or `None` where no buffer backs it.
@@ -402,7 +436,11 @@ pub(crate) mod internals {
         text: &str,
         byte_offset: usize,
     ) -> cosmic_text::Cursor {
-        LineMap::new(buffer, text).cursor(byte_offset)
+        LineMap {
+            buffer,
+            shown: LineMap::scan_shown(buffer, text),
+        }
+        .cursor(byte_offset)
     }
 
     pub(crate) fn cursor_to_byte(
@@ -410,7 +448,11 @@ pub(crate) mod internals {
         text: &str,
         cursor: cosmic_text::Cursor,
     ) -> usize {
-        LineMap::new(buffer, text).byte(cursor)
+        LineMap {
+            buffer,
+            shown: LineMap::scan_shown(buffer, text),
+        }
+        .byte(cursor)
     }
 }
 
