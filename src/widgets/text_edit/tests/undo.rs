@@ -1,4 +1,4 @@
-use crate::widgets::text_edit::edit_state::EditKind;
+use crate::widgets::text_edit::history::EditKind;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
@@ -75,7 +75,7 @@ fn redo_stack_changes_only_on_real_edit() {
     apply_key(&mut s, &mut state, press(Key::Backspace));
     apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(s, "a");
-    assert_eq!(state.redo.len(), 1);
+    assert_eq!(state.history.redo_len(), 1);
 
     let mut editor = Editor::new(
         &mut s,
@@ -115,7 +115,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
         NAV,
     );
     assert_eq!(s, "a");
-    assert_eq!(state.undo.len(), 1);
+    assert_eq!(state.history.undo_len(), 1);
 
     apply_editor_key(
         &mut Editor::new(
@@ -130,8 +130,8 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
         NAV,
     );
     assert_eq!(s, "a");
-    assert_eq!(state.undo.len(), 1);
-    assert_eq!(state.last_edit_kind, Some(EditKind::Delete));
+    assert_eq!(state.history.undo_len(), 1);
+    assert_eq!(state.history.last_kind(), Some(EditKind::Delete));
 
     apply_editor_key(
         &mut Editor::new(
@@ -146,7 +146,7 @@ fn rejected_capped_insert_preserves_delete_coalescing() {
         NAV,
     );
     assert_eq!(s, "");
-    assert_eq!(state.undo.len(), 1);
+    assert_eq!(state.history.undo_len(), 1);
 
     apply_key(&mut s, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(s, "ab", "both deletes remain one undo group");
@@ -159,12 +159,20 @@ fn external_replacement_discards_unrelated_history() {
     for c in ['a', 'b', 'c'] {
         apply_key(&mut text, &mut state, press(Key::Char(c)));
     }
-    assert_eq!(state.undo.len(), 1);
+    assert_eq!(state.history.undo_len(), 1);
 
     text = String::from("host value");
     state.observe_text_hash(Some(EditState::text_hash(&text)));
-    assert!(state.undo.is_empty(), "render observation drops stale undo");
-    assert!(state.redo.is_empty(), "render observation drops stale redo");
+    assert_eq!(
+        state.history.undo_len(),
+        0,
+        "render observation drops stale undo"
+    );
+    assert_eq!(
+        state.history.redo_len(),
+        0,
+        "render observation drops stale redo"
+    );
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(text, "host value", "undo must not cross a host replacement");
 

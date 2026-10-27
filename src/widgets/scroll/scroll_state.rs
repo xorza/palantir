@@ -10,8 +10,9 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::math::domain;
 use crate::scene::bar_geometry::BarGeometry;
+use crate::widgets::scroll::zoom_config::ZoomConfig;
 use glam::Vec2;
-use std::ops::RangeInclusive;
+use std::ops::Range;
 
 /// Where a viewport is scrolled to, and the interaction state that moves it.
 ///
@@ -20,8 +21,8 @@ use std::ops::RangeInclusive;
 /// in, and the content transform are one implementation.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
-    pub(crate) offset: Vec2,
-    pub(super) zoom: f32,
+    offset: Vec2,
+    zoom: f32,
     /// The live thumb drag's origin, or `None` between drags.
     drag_anchor: Option<DragAnchor>,
 }
@@ -128,30 +129,23 @@ impl ThumbTravel {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(super) struct TrackPage {
-    pub(super) click_main: f32,
-    pub(super) thumb_offset: f32,
-    pub(super) thumb_size: f32,
-    pub(super) page_step: f32,
-    pub(super) domain: BarDomain,
-}
-
-impl TrackPage {
-    /// A click at `click_main` along the track of the bar `thumb`; a page is
-    /// one track length.
-    pub(super) const fn at(thumb: BarGeometry, click_main: f32) -> Self {
-        Self {
-            click_main,
-            thumb_offset: thumb.thumb_offset,
-            thumb_size: thumb.thumb_size,
-            page_step: thumb.track,
-            domain: BarDomain::new(thumb.max_offset),
-        }
-    }
-}
-
 impl ScrollState {
+    /// The viewport's top-left in content pixels at [`Self::zoom`].
+    pub(crate) const fn offset(&self) -> Vec2 {
+        self.offset
+    }
+
+    /// The content's scale; `1` for a viewport that does not zoom.
+    pub(crate) const fn zoom(&self) -> f32 {
+        self.zoom
+    }
+
+    /// Pan to `offset`, read as [`Self::offset`] reads it. Unclamped: a settled viewport
+    /// clamps it on its next input step.
+    pub(crate) const fn set_offset(&mut self, offset: Vec2) {
+        self.offset = offset;
+    }
+
     /// How far the content reaches past the viewport at this zoom, per axis,
     /// before any fits-in-viewport policy. Both bands start here.
     #[inline]
@@ -191,15 +185,23 @@ impl ScrollState {
         }
     }
 
-    /// Scale by `zoom_delta`, clamped into `range`, holding the content point
-    /// under `pivot` (measured from the content origin) still.
-    pub(super) fn apply_zoom(&mut self, range: &RangeInclusive<f32>, pivot: Vec2, zoom_delta: f32) {
-        let new_zoom = (self.zoom * zoom_delta).clamp(*range.start(), *range.end());
-        let dz_eff = if self.zoom > 0.0 {
-            new_zoom / self.zoom
-        } else {
-            1.0
-        };
+    /// Bring the stored zoom inside what `config` allows, `1` without one, holding the
+    /// content point at the viewport's corner still. A zoom outlives the config it was
+    /// set under: the caller can narrow the range or drop it between frames.
+    pub(super) fn coerce_zoom(&mut self, config: Option<ZoomConfig>) {
+        let zoom = config.map_or(1.0, |config| config.clamp(self.zoom));
+        if zoom != self.zoom {
+            self.offset *= zoom / self.zoom;
+            self.zoom = zoom;
+        }
+    }
+
+    /// Scale by `zoom_delta`, clamped into `config`'s range, holding the content point
+    /// under `pivot` (measured from the content origin) still. The stored zoom is already
+    /// inside that range ([`Self::coerce_zoom`]), so positive.
+    pub(super) fn apply_zoom(&mut self, config: ZoomConfig, pivot: Vec2, zoom_delta: f32) {
+        let new_zoom = config.clamp(self.zoom * zoom_delta);
+        let dz_eff = new_zoom / self.zoom;
         if !domain::is_approx_zero(dz_eff - 1.0) {
             self.offset = (self.offset + pivot) * dz_eff - pivot;
             self.zoom = new_zoom;
@@ -241,6 +243,20 @@ impl ScrollState {
             let lo = self.offset.y.min(bounds.lo.y);
             let hi = self.offset.y.max(bounds.hi.y);
             self.offset.y = (self.offset.y + pan.delta.y).clamp(lo, hi);
+        }
+    }
+
+    /// Pan along `axis` by the least distance that brings `span` inside the `extent`
+    /// the viewport shows from the offset; a span longer than the extent shows its start.
+    pub(crate) fn reveal(&mut self, axis: Axis, span: Range<f32>, extent: f32) {
+        let offset = match axis {
+            Axis::X => &mut self.offset.x,
+            Axis::Y => &mut self.offset.y,
+        };
+        if span.start < *offset {
+            *offset = span.start;
+        } else if span.end > *offset + extent {
+            *offset = span.end - extent;
         }
     }
 
@@ -292,16 +308,16 @@ impl ScrollState {
         }
     }
 
-    pub(super) fn apply_track_page(&mut self, axis: Axis, page: Option<TrackPage>) {
-        let Some(page) = page else {
-            return;
-        };
+    /// A click at `click_main` along the track of the bar `thumb` pages toward it by one
+    /// track length; a click on the thumb does nothing.
+    pub(super) fn apply_track_page(&mut self, axis: Axis, thumb: BarGeometry, click_main: f32) {
         let cur = axis.main_v(self.offset);
         // Both directions clamp through the bar domain so the thumb can follow.
-        let next = if page.click_main < page.thumb_offset {
-            page.domain.clamp(cur - page.page_step)
-        } else if page.click_main > page.thumb_offset + page.thumb_size {
-            page.domain.clamp(cur + page.page_step)
+        let domain = BarDomain::new(thumb.max_offset);
+        let next = if click_main < thumb.thumb_offset {
+            domain.clamp(cur - thumb.track)
+        } else if click_main > thumb.thumb_offset + thumb.thumb_size {
+            domain.clamp(cur + thumb.track)
         } else {
             cur
         };
@@ -319,6 +335,11 @@ pub(crate) mod internals {
     impl ScrollState {
         pub(crate) fn drag_anchor_is_none(&self) -> bool {
             self.drag_anchor.is_none()
+        }
+
+        /// Park the zoom where no input put it.
+        pub(crate) const fn set_zoom(&mut self, zoom: f32) {
+            self.zoom = zoom;
         }
     }
 }

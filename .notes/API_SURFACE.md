@@ -1597,6 +1597,9 @@ Scroll
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
+        pub fn offset(ui: &Ui, id: WidgetId) -> Vec2
+        pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2)
+        pub fn zoom(ui: &Ui, id: WidgetId) -> f32
 
 ScrollDelta
     struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
@@ -2443,10 +2446,15 @@ WinitHostError  [features: winit]
         Surface { token: WindowToken, source: SurfaceError }
 
 ZoomConfig
-    struct ZoomConfig: Clone, Debug, Default
+    struct ZoomConfig: Clone, Copy, Debug, Default, PartialEq
         pub const fn new(range: RangeInclusive<f32>, step: f32) -> Self
         pub const fn with_modifier(self, modifier: ZoomModifier) -> Self
         pub const fn with_pivot(self, pivot: ZoomPivot) -> Self
+        pub const fn min(self) -> f32
+        pub const fn max(self) -> f32
+        pub const fn step(self) -> f32
+        pub const fn modifier(self) -> ZoomModifier
+        pub const fn pivot(self) -> ZoomPivot
 
 ZoomFactor
     struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd

@@ -4,6 +4,7 @@
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
@@ -104,27 +105,16 @@ impl ViewState {
             band: PanBand::Natural,
         });
         if follow_caret {
-            let offset = &mut self.scroll.offset;
             if ctx.multiline {
-                // The whole viewport: a caret's vertical extent is its line height,
-                // which `caret_bottom` carries. The X branch reserves caret room
-                // because the caret stands past the last glyph there; that
-                // thickness is slack on the wrong axis here.
-                let trailing = viewport.h;
-                let caret_bottom = caret.y_top + caret.line_height;
-                if caret.y_top < offset.y {
-                    offset.y = caret.y_top;
-                } else if caret_bottom > offset.y + trailing {
-                    offset.y = caret_bottom - trailing;
-                }
+                // The whole viewport: a caret's vertical extent is its line height. The
+                // X branch reserves caret room because the caret stands past the last
+                // glyph there; that thickness is slack on the wrong axis here.
+                let span = caret.y_top..caret.y_top + caret.line_height;
+                self.scroll.reveal(Axis::Y, span, viewport.h);
             } else {
-                let trailing = (viewport.w - layout.caret_room).max(0.0);
-                let caret_right = caret.x + layout.caret_room;
-                if caret.x < offset.x {
-                    offset.x = caret.x;
-                } else if caret_right > offset.x + trailing {
-                    offset.x = caret_right - trailing;
-                }
+                let span = caret.x..caret.x + layout.caret_room;
+                let extent = (viewport.w - layout.caret_room).max(0.0);
+                self.scroll.reveal(Axis::X, span, extent);
             }
         }
         self.scroll.clamp_to_natural(bounds);

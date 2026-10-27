@@ -57,8 +57,8 @@ impl ScrollGeometry {
 
     const fn bars_at(&self, state: &ScrollState) -> ScrollbarsDef {
         ScrollbarsDef {
-            offset: state.offset,
-            zoom: state.zoom,
+            offset: state.offset(),
+            zoom: state.zoom(),
             ..self.bars
         }
     }
@@ -100,6 +100,7 @@ impl ScrollWrappers {
     /// Split a user `Scroll` into outer/inner wrappers. The destructure is exhaustive,
     /// so a new `Node` field must be given a side. `Scroll::show` patches the
     /// per-frame inner fields and the ids.
+    #[track_caller]
     fn split(widget: &Widget, axes: ScrollAxes) -> Self {
         let Node {
             mode: _,
@@ -121,7 +122,7 @@ impl ScrollWrappers {
             transform,
             tab_idx,
         } = widget.node;
-        debug_assert!(
+        assert!(
             transform == TranslateScale::IDENTITY,
             "a `Scroll` owns its descendants' transform: transform a parent instead",
         );
@@ -324,15 +325,15 @@ impl<'a> Scroll<'a> {
         // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
-        // Ctrl is the zoom modifier on every platform (macOS Cmd is not honored).
+        // `ctrl` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
         let mods = ui.peek_modifiers();
-        let wheel_zooms = self.zoom.as_ref().is_some_and(|cfg| match cfg.modifier {
+        let wheel_zooms = self.zoom.is_some_and(|cfg| match cfg.modifier() {
             ZoomModifier::Ctrl => mods.ctrl,
             ZoomModifier::Always => true,
             ZoomModifier::PinchOnly => false,
         });
-        let (pan_delta, wheel_factor) = match self.zoom.as_ref().filter(|_| wheel_zooms) {
-            Some(cfg) => (Vec2::ZERO, ZoomFactor::from_wheel(cfg.step, notches.y)),
+        let (pan_delta, wheel_factor) = match self.zoom.filter(|_| wheel_zooms) {
+            Some(cfg) => (Vec2::ZERO, ZoomFactor::from_wheel(cfg.step(), notches.y)),
             None => (pan_raw, ZoomFactor::ONE),
         };
         // Authored requests join the pointer's; a zooming wheel leaves `pan_delta` zero.
@@ -345,7 +346,7 @@ impl<'a> Scroll<'a> {
         let zoom_changed = !domain::is_approx_zero(zoom_delta.get() - 1.0);
         let pivot = zoom_changed
             .then(
-                || match self.zoom.as_ref().map_or(ZoomPivot::Pointer, |c| c.pivot) {
+                || match self.zoom.map_or(ZoomPivot::Pointer, ZoomConfig::pivot) {
                     ZoomPivot::Pointer => response.pointer_local.or(center),
                     ZoomPivot::Center => center,
                 },
@@ -378,8 +379,8 @@ impl<'a> Scroll<'a> {
             content_margin: self.content_margin,
             bars: ScrollbarsDef {
                 content: viewport_id,
-                offset: start.offset,
-                zoom: start.zoom,
+                offset: start.offset(),
+                zoom: start.zoom(),
                 axes: self.axes,
                 reserve: self.bar_mode.gutter(self.axes, theme),
                 padding: self.widget.authored_padding().unwrap_or(Spacing::ZERO),
@@ -390,15 +391,13 @@ impl<'a> Scroll<'a> {
     }
 
     /// Fold one frame of routed input into the retained offset and zoom. Order
-    /// matters: the pivot-anchored zoom moves the offset, so it runs before the pan,
-    /// and the settled clamp applies only to a non-zoomable scroll.
+    /// matters: the stored zoom is brought inside this frame's config first, the
+    /// pivot-anchored zoom moves the offset, so it runs before the pan, and the settled
+    /// clamp applies only to a non-zoomable scroll.
     fn apply_input(&self, state: &mut ScrollState, input: ScrollInput, geometry: ScrollGeometry) {
-        if let (Some(cfg), Some(pivot)) = (self.zoom.as_ref(), input.pivot) {
-            state.apply_zoom(
-                &cfg.range,
-                pivot - geometry.content_origin(),
-                input.zoom_delta,
-            );
+        state.coerce_zoom(self.zoom);
+        if let (Some(cfg), Some(pivot)) = (self.zoom, input.pivot) {
+            state.apply_zoom(cfg, pivot - geometry.content_origin(), input.zoom_delta);
         }
         let band = if self.zoom.is_some() {
             PanBand::ZoomRubberBand
@@ -441,18 +440,28 @@ impl<'a> Scroll<'a> {
 
     /// Record the viewport, its `body`, and the scrollbars. The response is for the
     /// caller's node, wrapping both surface and bars.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the caller set a [`transform`](Configure::transform): a scroll owns its
+    /// descendants' transform.
+    #[track_caller]
     pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // The caller's salt names the outer wrapper but the arriving node is the
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
-        let id = self.widget.resolve(ui);
+        // Through `Widget::response`, so a scroll disabled this frame reads no wheel.
+        let snapshot = self.widget.response(ui);
+        let ResponseSnapshot {
+            id,
+            state: response,
+        } = snapshot;
         // Input routes by `Sense::SCROLL` on the outer ZStack, so wheel over the gutter pans.
         let scroll_id = Self::viewport_id(id);
 
-        let response = ui.response_for(id);
         let geometry = self.measure(ui, id, &response);
         let input = self.read_input(ui, &response);
         let bars = (self.bar_mode != BarMode::Hidden)
-            .then(|| Bars::read(ui, scroll_id, self.bars_theme(ui)));
+            .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
 
         let state = ui.with_state::<ScrollState, _>(id, |_, state| {
             self.apply_input(state, input, geometry);
@@ -533,6 +542,33 @@ impl Scroll<'_> {
             self.chrome = Some(chrome);
         }
         self
+    }
+}
+
+impl Scroll<'_> {
+    /// Where the scroll with id `id` is panned to: the viewport's top-left in content
+    /// pixels at its zoom. Zero before its first frame.
+    pub fn offset(ui: &Ui, id: WidgetId) -> Vec2 {
+        ui.state::<ScrollState>(id)
+            .map_or(Vec2::ZERO, ScrollState::offset)
+    }
+
+    /// Pan the scroll with id `id` to `offset`, read as [`Self::offset`] reads it, from its
+    /// next frame. A scroll that does not zoom clamps it into the range its content allows.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `offset` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
+    pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2) {
+        let offset = vec2::offset(offset);
+        ui.with_state::<ScrollState, _>(id, |_, state| state.set_offset(offset));
+    }
+
+    /// The zoom of the scroll with id `id`: one before its first frame, and for a scroll
+    /// that does not zoom.
+    pub fn zoom(ui: &Ui, id: WidgetId) -> f32 {
+        ui.state::<ScrollState>(id).map_or(1.0, ScrollState::zoom)
     }
 }
 

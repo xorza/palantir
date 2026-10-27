@@ -1,5 +1,6 @@
-//! The editable text leaf and the machinery one edit costs: buffer and selection
-//! ([`editor`], [`edit_state`]), keys and gestures ([`action`], [`input_pass`]),
+//! The editable text leaf and the machinery one edit costs: buffer, selection and undo
+//! ([`editor`], [`edit_state`], [`history`]), keys and gestures ([`action`], [`input_pass`]),
+//! the input method's composition ([`composition`]),
 //! placement and caret mapping ([`text_layout`], [`text_geometry`], [`shape_ctx`],
 //! [`paint_input`]), retained scroll and focus ([`view_state`]), and
 //! grapheme/word walks ([`unicode`]).
@@ -7,9 +8,11 @@
 mod action;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+mod composition;
 pub(crate) mod edit_end;
 mod edit_state;
 mod editor;
+mod history;
 mod input_pass;
 mod paint_input;
 mod shape_ctx;
@@ -19,7 +22,6 @@ mod text_nav;
 mod unicode;
 mod view_state;
 
-use crate::common::span::Span;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
@@ -41,9 +43,11 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
+use crate::widgets::text_edit::composition::{Composition, CompositionPass, Shown};
 use crate::widgets::text_edit::edit_end::EditEnd;
-use crate::widgets::text_edit::edit_state::{EditKind, EditState};
+use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::{EditRules, Editor};
+use crate::widgets::text_edit::history::EditKind;
 use crate::widgets::text_edit::input_pass::{AcceptPolicy, InputPass, InputResult};
 use crate::widgets::text_edit::paint_input::{CaretPaint, PaintInput};
 use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
@@ -64,13 +68,7 @@ struct TextEditState {
     placeholder: String,
     /// The focus session has an uncommitted result; stops a blur after Enter committing twice.
     commit_pending: bool,
-    /// The input method's live composition and cursor, copied out of `Ui`; empty when not
-    /// composing.
-    preedit: String,
-    preedit_cursor: Option<Span>,
-    /// What the field shows while composing: the buffer with the preedit spliced in at the caret.
-    display: String,
-    composing: bool,
+    composition: Composition,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -271,7 +269,7 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Text drawn in place of an empty, unfocused buffer.
+    /// Text drawn in place of an empty buffer, focused or not; an empty `Hug` field sizes to it.
     pub fn placeholder(mut self, text: impl Into<TextInput<'a>>) -> Self {
         self.placeholder = text.into();
         self
@@ -282,19 +280,26 @@ impl<'a> TextEdit<'a> {
         let id = self.widget.resolve(ui);
         // The state row is held for the whole pass because its stages are separated by
         // `&mut Ui` calls; `with_state` moves it out and back without allocating.
-        let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
-
+        let PassOutcome { edges, response } =
+            ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
+        let EditEdges {
+            changed,
+            committed,
+            ended,
+            focus_gained,
+            focus_lost,
+        } = edges;
         TextEditResponse {
-            response: Response::new(ui, signals.response),
-            changed: signals.changed,
-            committed: signals.committed,
-            ended: signals.ended,
-            focus_gained: signals.focus_gained,
-            focus_lost: signals.focus_lost,
+            response: Response::new(ui, response),
+            changed,
+            committed,
+            ended,
+            focus_gained,
+            focus_lost,
         }
     }
 
-    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> EditSignals {
+    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> PassOutcome {
         let mut is_focused = ui.focus() == Some(id);
         // The pass's one probe, handed back by `show`. Through `Widget::response`, so
         // `disabled` is folded in; a copy taken before the fold would report a freshly
@@ -342,7 +347,16 @@ impl<'a> TextEdit<'a> {
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
             self.widget.record(ui, Some(&look.chrome), |_| {});
-            return EditSignals::focus_only(focus, committed, response);
+            return PassOutcome {
+                edges: EditEdges {
+                    changed: false,
+                    committed,
+                    ended: None,
+                    focus_gained: focus.gained,
+                    focus_lost: focus.lost,
+                },
+                response,
+            };
         }
         let font = look.text.font();
         // `Tree::open_node` folds chrome stroke width into the stored padding, and the
@@ -385,7 +399,8 @@ impl<'a> TextEdit<'a> {
                 select_all_on_focus: self.select_all_on_focus,
                 filter,
             },
-            state,
+            edit: &mut state.edit,
+            view: &state.view,
         }
         .run(ui);
         if ended == Some(EditEnd::Canceled) {
@@ -402,20 +417,14 @@ impl<'a> TextEdit<'a> {
             let mut editor = Editor::new(self.text, &mut state.edit, rules);
             editor.show_menu(ui, &response, filter)
         };
-        // A composition types nothing until it commits; starting one over a selection deletes the
-        // selection first, as browsers do.
-        let composing = is_focused
-            && !response.disabled
-            && match ui.ime_preedit() {
-                Some(preedit) => {
-                    state.preedit.clear();
-                    state.preedit.push_str(preedit.text);
-                    state.preedit_cursor = preedit.cursor;
-                    true
-                }
-                None => false,
-            };
-        let cleared = composing && !state.composing && {
+        let preedit = if is_focused && !response.disabled {
+            ui.ime_preedit()
+        } else {
+            None
+        };
+        let CompositionPass { started, cursor } = state.composition.roll(preedit);
+        let composing = cursor.is_some();
+        let cleared = started && {
             let mut editor = Editor::new(self.text, &mut state.edit, rules);
             let had_selection = editor.has_selection();
             if had_selection {
@@ -423,7 +432,6 @@ impl<'a> TextEdit<'a> {
             }
             had_selection
         };
-        state.composing = composing;
         let changed = edited || menu_edited || cleared;
         let committed = state.roll_commit(CommitPass {
             focus,
@@ -451,28 +459,17 @@ impl<'a> TextEdit<'a> {
                 &state.placeholder
             }
         };
-        // While composing, the shaped run is the buffer with the preedit spliced in at the caret,
-        // and the washed range is the composition.
-        let (text, caret_byte, wash) = if composing {
-            state.display.clear();
-            state.display.push_str(&self.text[..caret_byte]);
-            state.display.push_str(&state.preedit);
-            state.display.push_str(&self.text[caret_byte..]);
-            let end = caret_byte + state.preedit.len();
-            let cursor = state
-                .preedit_cursor
-                .map_or(state.preedit.len(), |cursor| cursor.range().end);
-            (
-                state.display.as_str(),
-                caret_byte + cursor,
-                Some(caret_byte..end),
-            )
-        } else {
-            (
-                self.text.as_str(),
-                caret_byte,
-                is_focused.then_some(selection).flatten(),
-            )
+        let Shown {
+            text,
+            caret: caret_byte,
+            wash,
+        } = match cursor {
+            Some(cursor) => state.composition.splice(self.text, caret_byte, cursor),
+            None => Shown {
+                text: self.text,
+                caret: caret_byte,
+                wash: is_focused.then_some(selection).flatten(),
+            },
         };
         let geometry = TextGeometry::resolve(
             ui,
@@ -491,22 +488,6 @@ impl<'a> TextEdit<'a> {
         } else {
             geometry.text_hash
         });
-        if is_focused
-            && !response.disabled
-            && let Some(layout_rect) = response.layout_rect
-        {
-            // The caret in screen space for the platform's candidate list, using last arrange's box
-            // and block offset.
-            let caret = geometry.caret_pos;
-            let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
-            let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
-            let [left, top, _, _] = ctx.padding.as_array();
-            let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
-            ui.request_ime(response.transform.apply_rect(Rect {
-                min: scrolled.min + origin,
-                size: scrolled.size,
-            }));
-        }
         let now = ui.now();
         let caret_animation = state.view.update(ViewUpdateInput {
             geometry,
@@ -518,6 +499,22 @@ impl<'a> TextEdit<'a> {
             focus_gained: focus.gained,
             now,
         });
+        if is_focused
+            && !response.disabled
+            && let Some(layout_rect) = response.layout_rect
+        {
+            // The caret in screen space for the platform's candidate list, using last arrange's box
+            // and block offset, and the scroll the caret follow just settled.
+            let caret = geometry.caret_pos;
+            let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
+            let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
+            let [left, top, _, _] = ctx.padding.as_array();
+            let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
+            ui.request_ime(response.transform.apply_rect(Rect {
+                min: scrolled.min + origin,
+                size: scrolled.size,
+            }));
+        }
         // The wheel senses only the overflow axis; the other reaches the container behind.
         let sense = self.widget.authored_sense();
         self.widget
@@ -544,12 +541,14 @@ impl<'a> TextEdit<'a> {
             }),
         }
         .record(ui, self.widget);
-        EditSignals {
-            changed,
-            committed,
-            ended,
-            focus_gained: focus.gained,
-            focus_lost: focus.lost,
+        PassOutcome {
+            edges: EditEdges {
+                changed,
+                committed,
+                ended,
+                focus_gained: focus.gained,
+                focus_lost: focus.lost,
+            },
             response,
         }
     }
@@ -562,29 +561,22 @@ impl Configure for TextEdit<'_> {
     }
 }
 
-/// [`TextEditResponse`] minus its `Response`: what a pass can report while the state row is on
-/// loan.
-#[derive(Clone, Copy, Debug)]
-struct EditSignals {
+/// What one pass did to the edit: [`TextEditResponse`]'s edges, without the `Response` that
+/// borrows the `Ui`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct EditEdges {
     changed: bool,
     committed: bool,
     ended: Option<EditEnd>,
     focus_gained: bool,
     focus_lost: bool,
-    response: ResponseSnapshot,
 }
 
-impl EditSignals {
-    const fn focus_only(focus: FocusEdges, committed: bool, response: ResponseSnapshot) -> Self {
-        Self {
-            changed: false,
-            committed,
-            ended: None,
-            focus_gained: focus.gained,
-            focus_lost: focus.lost,
-            response,
-        }
-    }
+/// What a pass reports while the state row is on loan.
+#[derive(Clone, Copy, Debug)]
+struct PassOutcome {
+    edges: EditEdges,
+    response: ResponseSnapshot,
 }
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the edit signals computed inside
@@ -612,22 +604,11 @@ pub struct TextEditResponse<'a> {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::widgets::text_edit::TextEditResponse;
-    use crate::widgets::text_edit::edit_end::EditEnd;
-
-    /// A [`TextEditResponse`]'s edges, copied out of the record pass whose `ui` borrow the response
-    /// holds.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(crate) struct EditEdges {
-        pub(crate) changed: bool,
-        pub(crate) committed: bool,
-        pub(crate) ended: Option<EditEnd>,
-        pub(crate) focus_gained: bool,
-        pub(crate) focus_lost: bool,
-    }
+    use crate::widgets::text_edit::{EditEdges, TextEditResponse};
 
     impl TextEditResponse<'_> {
-        pub(crate) const fn edges(&self) -> EditEdges {
+        /// The edges, copied out of the record pass whose `ui` borrow the response holds.
+        pub(super) const fn edges(&self) -> EditEdges {
             EditEdges {
                 changed: self.changed,
                 committed: self.committed,

@@ -6,7 +6,8 @@ use std::ops::RangeInclusive;
 /// What kind of input triggers a zoom step. See [`ZoomConfig::with_modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
-    /// `Ctrl` + wheel (default); bare wheel pans. Cmd on macOS is not honored, matching the shortcut layer.
+    /// The primary command modifier + wheel (default): Cmd on macOS, Ctrl elsewhere, as
+    /// [`Modifiers::ctrl`](crate::Modifiers::ctrl) reads it. A bare wheel pans.
     Ctrl,
     /// Plain wheel always zooms (image viewers without pan).
     Always,
@@ -24,13 +25,14 @@ pub enum ZoomPivot {
 }
 
 /// Per-widget zoom configuration for a `Scroll::both`; see [`Scroll::zoomable`](crate::Scroll::zoomable) and [`Scroll::zoom_config`](crate::Scroll::zoom_config).
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[must_use]
 pub struct ZoomConfig {
-    pub(super) range: RangeInclusive<f32>,
-    pub(super) step: f32,
-    pub(super) modifier: ZoomModifier,
-    pub(super) pivot: ZoomPivot,
+    min: f32,
+    max: f32,
+    step: f32,
+    modifier: ZoomModifier,
+    pivot: ZoomPivot,
 }
 
 impl ZoomConfig {
@@ -45,7 +47,8 @@ impl ZoomConfig {
         let a = domain::positive(*range.start());
         let b = domain::positive(*range.end());
         Self {
-            range: a.min(b)..=a.max(b),
+            min: a.min(b),
+            max: a.max(b),
             step: domain::positive(step),
             modifier: ZoomModifier::Ctrl,
             pivot: ZoomPivot::Pointer,
@@ -62,6 +65,36 @@ impl ZoomConfig {
     pub const fn with_pivot(mut self, pivot: ZoomPivot) -> Self {
         self.pivot = pivot;
         self
+    }
+
+    /// The smallest zoom, positive.
+    pub const fn min(self) -> f32 {
+        self.min
+    }
+
+    /// The largest zoom, at least [`Self::min`].
+    pub const fn max(self) -> f32 {
+        self.max
+    }
+
+    /// The factor one wheel notch multiplies the zoom by, positive.
+    pub const fn step(self) -> f32 {
+        self.step
+    }
+
+    /// What input triggers a zoom step; see [`Self::with_modifier`].
+    pub const fn modifier(self) -> ZoomModifier {
+        self.modifier
+    }
+
+    /// Where a zoom step pivots; see [`Self::with_pivot`].
+    pub const fn pivot(self) -> ZoomPivot {
+        self.pivot
+    }
+
+    /// `zoom` held inside the range.
+    pub(super) const fn clamp(self, zoom: f32) -> f32 {
+        zoom.clamp(self.min, self.max)
     }
 }
 

@@ -13,7 +13,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::support::{
-    SURFACE, build, driven, fixed_block, read_state, scroll_content, scroll_viewport,
+    SURFACE, build, driven, fixed_block, read_state, scroll_viewport,
 };
 use glam::Vec2;
 
@@ -55,7 +55,7 @@ fn wheel_delta_advances_offset_with_clamp() {
             h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
-        assert_eq!(read_state(&h).offset.y, *expected, "case: {label}");
+        assert_eq!(read_state(&h).offset().y, *expected, "case: {label}");
     }
 }
 
@@ -81,70 +81,88 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
     // Pan left/up: a large negative delta clamps at `-m` on both axes.
     h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
     h.frame(build_m);
-    assert_eq!(read_state(&h).offset, Vec2::new(-m, -m));
+    assert_eq!(read_state(&h).offset(), Vec2::new(-m, -m));
     // Pan back: clamp at `raw_slack + m` = (400 - 200) + 100 = 300.
     h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
     h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
-        read_state(&h).offset,
+        read_state(&h).offset(),
         Vec2::new(raw_slack + m, raw_slack + m)
     );
 }
 
+/// A wheel pans the axes a scroll pans and no other, and a scroll disabled on the wheel's frame
+/// pans nothing, though its response read the wheel a frame before the cascade knew. A panned
+/// axis loses the Reserved gutter's `theme.thickness + theme.gap = 12` px across it, overflow or
+/// not, so `both`'s 200 px box shows 188.
 #[test]
-fn horizontal_scroll_pans_only_x() {
-    let mut h = UiHarness::new(SURFACE);
-    let build_h = |ui: &mut Ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Scroll::horizontal()
-                    .id(WidgetId::from_hash("hscroll"))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
-                    .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("hcontent"), 800.0, 40.0);
-                    });
-            });
-    };
-    h.frame(build_h);
-    h.scroll_pixels_at(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
-
-    h.frame(build_h);
-    let id = WidgetId::from_hash("hscroll");
-    let row = *h.state::<ScrollState>(id);
-    assert_eq!(row.offset, Vec2::new(75.0, 0.0));
+fn a_wheel_pans_only_the_scrolled_axes() {
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        scroll: fn() -> Scroll<'static>,
+        size: Vec2,
+        disabled: bool,
+        offset: Vec2,
+        viewport: Size,
+    }
+    let cases = [
+        Case {
+            label: "horizontal",
+            scroll: Scroll::horizontal,
+            size: Vec2::new(200.0, 40.0),
+            disabled: false,
+            offset: Vec2::new(75.0, 0.0),
+            viewport: Size::new(200.0, 28.0),
+        },
+        Case {
+            label: "both",
+            scroll: Scroll::both,
+            size: Vec2::new(200.0, 200.0),
+            disabled: false,
+            offset: Vec2::new(75.0, 200.0),
+            viewport: Size::new(188.0, 188.0),
+        },
+        Case {
+            label: "both, disabled on the wheel's frame",
+            scroll: Scroll::both,
+            size: Vec2::new(200.0, 200.0),
+            disabled: true,
+            offset: Vec2::ZERO,
+            viewport: Size::new(188.0, 188.0),
+        },
+    ];
+    let id = WidgetId::from_hash("scrolled");
+    for case in cases {
+        let build = |ui: &mut Ui, disabled: bool| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    (case.scroll)()
+                        .id(id)
+                        .size((Sizing::fixed(case.size.x), Sizing::fixed(case.size.y)))
+                        .disabled(disabled)
+                        .show(ui, |ui| {
+                            fixed_block(ui, WidgetId::from_hash("content"), 800.0, 800.0);
+                        });
+                });
+        };
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| build(ui, false));
+        h.scroll_pixels_at(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
+        h.frame(|ui| build(ui, case.disabled));
+        assert_eq!(
+            h.state::<ScrollState>(id).offset(),
+            case.offset,
+            "{}",
+            case.label
+        );
+        assert_eq!(scroll_viewport(&h.ui, id), case.viewport, "{}", case.label);
+    }
 }
 
-#[test]
-fn both_axis_scroll_pans_both_axes() {
-    let mut h = UiHarness::new(SURFACE);
-    let build_xy = |ui: &mut Ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Scroll::both()
-                    .id(WidgetId::from_hash("xy"))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-                    .show(ui, |ui| {
-                        fixed_block(ui, WidgetId::from_hash("xy-content"), 800.0, 800.0);
-                    });
-            });
-    };
-    h.frame(build_xy);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
-
-    h.frame(build_xy);
-    let id = WidgetId::from_hash("xy");
-    let row = *h.state::<ScrollState>(id);
-    assert_eq!(row.offset, Vec2::new(40.0, 60.0));
-    assert_eq!(scroll_content(&h.ui, id), Size::new(800.0, 800.0));
-    // The viewport reserves `theme.width + theme.gap = 12px` per panned axis when
-    // content overflows; 200 - 12 = 188.
-    assert_eq!(scroll_viewport(&h.ui, id), Size::new(188.0, 188.0));
-}
-
-/// Press on the V thumb and drag down: `ScrollState.offset.y` moves
+/// Press on the V thumb and drag down: `ScrollState.offset().y` moves
 /// `delta * (content - viewport) / (track - thumb)`, clamped to
 /// `[0, content - viewport]`.
 #[test]
@@ -178,7 +196,7 @@ fn drag_thumb_pans_proportionally() {
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-        let offset_y = h.state::<ScrollState>(outer_id).offset.y;
+        let offset_y = h.state::<ScrollState>(outer_id).offset().y;
         assert_eq!(
             offset_y, 120.0,
             "30 logical px at {scale}× should produce offset 120, got {offset_y}"
@@ -187,7 +205,7 @@ fn drag_thumb_pans_proportionally() {
         h.move_to(press + Vec2::new(0.0, 9_999.0 * scale));
         h.frame(build);
         assert_eq!(
-            h.state::<ScrollState>(outer_id).offset.y,
+            h.state::<ScrollState>(outer_id).offset().y,
             600.0,
             "drag past end at {scale}× clamps to max offset",
         );
@@ -251,7 +269,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             h.press_at(forward_press);
             h.release();
             h.frame(build_axis);
-            let offset = h.state::<ScrollState>(outer_id).offset;
+            let offset = h.state::<ScrollState>(outer_id).offset();
             let forward = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -266,7 +284,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             h.press_at(back_press);
             h.release();
             h.frame(build_axis);
-            let offset = h.state::<ScrollState>(outer_id).offset;
+            let offset = h.state::<ScrollState>(outer_id).offset();
             let back = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -291,7 +309,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 10_000.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         600.0,
         "precondition: scrolled to max (800 - 200)",
     );
@@ -301,7 +319,7 @@ fn shrinking_content_unstrands_offset_without_input() {
     // frame 2 records against it and clamps the stranded offset.
     h.prime(2, |ui| build(ui, 200.0, 300.0));
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         100.0,
         "offset must clamp to the new max (300 - 200) after a passive content shrink",
     );
@@ -331,7 +349,7 @@ fn content_margin_does_not_shift_content_that_fits() {
     };
     h.prime(2, build);
     assert_eq!(
-        read_state(&h).offset,
+        read_state(&h).offset(),
         Vec2::ZERO,
         "fitting content must rest at the origin, not at the leading margin",
     );
@@ -342,14 +360,14 @@ fn content_margin_does_not_shift_content_that_fits() {
     h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
     h.frame(build);
     assert_eq!(
-        read_state(&h).offset,
+        read_state(&h).offset(),
         Vec2::new(-m, -m),
         "the leading band is still reachable for content that fits",
     );
     h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
     h.frame(build);
     assert_eq!(
-        read_state(&h).offset,
+        read_state(&h).offset(),
         Vec2::new(m, m),
         "and so is the trailing band",
     );
@@ -364,24 +382,24 @@ fn pan_by_pans_without_a_pointer_and_clamps() {
     let mut h = UiHarness::new(SURFACE);
     h.frame(|ui| drive(ui, 0.0));
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         0.0,
         "premise: the viewport starts at the top",
     );
 
     h.frame(|ui| drive(ui, 50.0));
-    assert_eq!(read_state(&h).offset.y, 50.0, "one request, one step");
+    assert_eq!(read_state(&h).offset().y, 50.0, "one request, one step");
 
     h.frame(|ui| drive(ui, 50.0));
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         100.0,
         "and the steps accumulate, as a wheel's do",
     );
 
     h.frame(|ui| drive(ui, 9_999.0));
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         600.0,
         "clamped at content minus viewport, like every other pan",
     );
@@ -411,7 +429,7 @@ fn pan_by_composes_with_a_wheel_and_with_itself() {
             });
     });
     assert_eq!(
-        read_state(&h).offset.y,
+        read_state(&h).offset().y,
         50.0,
         "30 px of wheel and two requests of 12 and 8 are 50 px of pan",
     );

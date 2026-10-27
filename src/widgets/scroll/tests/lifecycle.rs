@@ -27,7 +27,7 @@ fn scroll_layout_records_viewport_and_content_after_arrange() {
     assert_eq!(scroll_viewport(&h.ui, id).h, 200.0);
     assert_eq!(scroll_content(&h.ui, id).h, 800.0);
     assert_eq!(
-        read_state(&h).offset,
+        read_state(&h).offset(),
         Vec2::ZERO,
         "no wheel input → offset stays at 0"
     );
@@ -78,8 +78,8 @@ fn state_is_swept_when_scroll_disappears() {
         "the scroll stored its row"
     );
     h.ui.with_state::<ScrollState, _>(id, |_, state| {
-        state.offset = Vec2::new(12.0, 34.0);
-        state.zoom = 2.0;
+        state.set_offset(Vec2::new(12.0, 34.0));
+        state.set_zoom(2.0);
     });
 
     h.frame(|_| {});
@@ -87,8 +87,8 @@ fn state_is_swept_when_scroll_disappears() {
 
     h.frame(build);
     let state = h.ui.state::<ScrollState>(id).unwrap();
-    assert_eq!(state.offset, Vec2::ZERO);
-    assert_eq!(state.zoom, 1.0);
+    assert_eq!(state.offset(), Vec2::ZERO);
+    assert_eq!(state.zoom(), 1.0);
     assert!(state.drag_anchor_is_none());
 }
 
@@ -100,7 +100,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
-    state.offset = Vec2::new(0.0, 10.0);
+    state.set_offset(Vec2::new(0.0, 10.0));
 
     state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
     state.apply_thumb_drag(
@@ -110,7 +110,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         },
         geometry,
     );
-    assert_eq!(state.offset.y, 20.0);
+    assert_eq!(state.offset().y, 20.0);
     assert!(!state.drag_anchor_is_none(), "the press is still held");
 
     state.apply_thumb_drag(
@@ -120,7 +120,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         },
         None,
     );
-    assert_eq!(state.offset.y, 20.0, "no geometry, no movement");
+    assert_eq!(state.offset().y, 20.0, "no geometry, no movement");
     assert!(
         state.drag_anchor_is_none(),
         "the anchor must not outlive the geometry it composes against",
@@ -134,7 +134,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         },
         geometry,
     );
-    assert_eq!(state.offset.y, 20.0, "a dead anchor must not resume");
+    assert_eq!(state.offset().y, 20.0, "a dead anchor must not resume");
 
     // A fresh press re-anchors against the current offset: 20 + 3 * 2 = 26.
     state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
@@ -145,7 +145,7 @@ fn thumb_drag_anchor_dies_with_its_geometry() {
         },
         geometry,
     );
-    assert_eq!(state.offset.y, 26.0);
+    assert_eq!(state.offset().y, 26.0);
 }
 
 /// `PlaneLayout::scroll_content`: V/H scrolls sum along the panned axis and max across, XY maxes per axis; an empty scroll records zero.
@@ -326,7 +326,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
 
     h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
-    assert_eq!(read_state(&h).offset.y, 50.0, "offset advanced");
+    assert_eq!(read_state(&h).offset().y, 50.0, "offset advanced");
     assert!(
         h.engines.cascade.counters.ran(),
         "scroll offset change must re-run the cascade (it moves the arranged rects)",
@@ -341,7 +341,7 @@ fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
         domain: BarDomain::new(100.0),
     });
     let mut state = ScrollState::default();
-    state.offset = Vec2::new(0.0, -30.0);
+    state.set_offset(Vec2::new(0.0, -30.0));
 
     state.apply_thumb_drag(Axis::Y, Drag::Started { delta: Vec2::ZERO }, geometry);
     // One pixel of thumb travel buys `factor` px of offset from the clamped anchor 0, not from -30.
@@ -353,7 +353,8 @@ fn thumb_drag_anchors_in_the_bar_domain_not_the_offset_domain() {
         geometry,
     );
     assert_eq!(
-        state.offset.y, 2.0,
+        state.offset().y,
+        2.0,
         "the first tracked pixel must move the thumb, not repay the band",
     );
 }

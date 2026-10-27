@@ -58,9 +58,9 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     h.frame(build);
     let state = *h.state::<ScrollState>(outer_id);
     assert_eq!(scroll_viewport(&h.ui, outer_id), Size::new(200.0, 200.0));
-    assert_eq!(state.zoom, 1.5);
+    assert_eq!(state.zoom(), 1.5);
     assert_eq!(
-        state.offset,
+        state.offset(),
         Vec2::new(65.0, 85.0),
         "pivot adds (25, 25), then wheel pan adds (40, 60)",
     );

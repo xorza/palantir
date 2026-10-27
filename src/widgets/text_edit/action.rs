@@ -1,9 +1,11 @@
 //! Host-backed editing actions shared by keyboard and menu dispatch.
 
 use crate::common::clipboard::Clipboard;
+use crate::common::platform::Platform;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
 use crate::widgets::text_edit::editor::Editor;
+use crate::widgets::text_edit::history::HistoryStep;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum EditAction {
@@ -77,6 +79,15 @@ impl EditAction {
         }
     }
 
+    /// The chord a platform binds beside [`Self::shortcut`], which the menu does not show:
+    /// Ctrl+Y redoes on Windows, as its text fields do.
+    pub(super) const fn alternate_shortcut(self, platform: Platform) -> Option<Shortcut> {
+        match (self, platform) {
+            (Self::Redo, Platform::Windows) => Some(Shortcut::ctrl('Y')),
+            _ => None,
+        }
+    }
+
     /// Every variant, so [`Self::from_keypress`] scans one list. Bound chords are [`Self::shortcut`]'s business alone: an unbound action returns `None` and never matches, keeping a second hand-curated subset out.
     const ALL: [Self; 7] = [
         Self::Undo,
@@ -88,18 +99,20 @@ impl EditAction {
         Self::Clear,
     ];
 
-    pub(super) fn from_keypress(keypress: KeyPress) -> Option<Self> {
+    /// The action `keypress` names on `platform`, through either of its chords.
+    pub(super) fn from_keypress(keypress: KeyPress, platform: Platform) -> Option<Self> {
         Self::ALL.into_iter().find(|action| {
-            action
-                .shortcut()
-                .is_some_and(|shortcut| shortcut.matches(keypress))
+            [action.shortcut(), action.alternate_shortcut(platform)]
+                .into_iter()
+                .flatten()
+                .any(|shortcut| shortcut.matches(keypress))
         })
     }
 
     pub(super) fn execute(self, editor: &mut Editor<'_>, clipboard: &Clipboard) {
         match self {
-            Self::Undo => editor.undo(),
-            Self::Redo => editor.redo(),
+            Self::Undo => editor.step_history(HistoryStep::Undo),
+            Self::Redo => editor.step_history(HistoryStep::Redo),
             Self::SelectAll => editor.select_all(),
             Self::Cut => {
                 if let Some(selected) = editor.selected_text()

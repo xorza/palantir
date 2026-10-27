@@ -14,9 +14,10 @@ use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widget_core::widget::Widget;
-use crate::widgets::scroll::ScrollGeometry;
-use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel, TrackPage};
+use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel};
+use crate::widgets::scroll::{Scroll, ScrollGeometry};
 
 /// One scrollbar axis: the two overlay leaves and last frame's interaction on
 /// each.
@@ -67,14 +68,24 @@ pub(super) struct Bars {
 }
 
 impl Bars {
-    pub(super) fn read(ui: &Ui, scroll_id: WidgetId, theme: &ScrollbarTheme) -> Self {
+    /// Last frame's responses of the bars of the scroll `scroll` answers for, with the
+    /// scroll's own `disabled` folded in: the cascade reaches the bars with it only a frame
+    /// later, so a scroll disabled mid-drag would still pan for one.
+    pub(super) fn read(ui: &Ui, scroll: &ResponseSnapshot, theme: &ScrollbarTheme) -> Self {
+        let scroll_id = Scroll::viewport_id(scroll.id);
+        let disabled = scroll.disabled;
         let axis = |track: &str, thumb: &str| {
             let (track_id, thumb_id) = (scroll_id.with(track), scroll_id.with(thumb));
+            let read = |id| {
+                let mut response = ui.response_for(id);
+                response.merge_disabled(disabled);
+                response
+            };
             BarAxis {
                 track_id,
                 thumb_id,
-                track: ui.response_for(track_id),
-                thumb: ui.response_for(thumb_id),
+                track: read(track_id),
+                thumb: read(thumb_id),
             }
         };
         Self {
@@ -107,13 +118,11 @@ impl Bars {
             if !axes.pans(axis) || !bar.track.clicked() {
                 continue;
             }
-            let Some(pointer_local) = bar.track.pointer_local else {
-                continue;
-            };
-            let page = geometry
-                .thumb(axis, state)
-                .map(|thumb| TrackPage::at(thumb, axis.main_v(pointer_local)));
-            state.apply_track_page(axis, page);
+            if let (Some(pointer_local), Some(thumb)) =
+                (bar.track.pointer_local, geometry.thumb(axis, state))
+            {
+                state.apply_track_page(axis, thumb, axis.main_v(pointer_local));
+            }
         }
     }
 

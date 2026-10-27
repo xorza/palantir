@@ -7,14 +7,15 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
-use crate::widgets::text_edit::TextEditState;
 use crate::widgets::text_edit::action::EditAction;
 use crate::widgets::text_edit::edit_end::EditEnd;
-use crate::widgets::text_edit::edit_state::EditKind;
+use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::editor::{CaretMove, EditRules, Editor};
+use crate::widgets::text_edit::history::EditKind;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use crate::widgets::text_edit::text_nav::TextNav;
+use crate::widgets::text_edit::view_state::ViewState;
 
 /// Result of one frame's input pass: edge signals `show()` folds into
 /// [`crate::widgets::text_edit::TextEditResponse`].
@@ -39,11 +40,11 @@ pub(super) struct AcceptPolicy {
     pub(super) filter: KeyFilter,
 }
 
-/// Everything one frame's input pass reads or writes.
+/// Everything one frame's input pass reads or writes: it edits the buffer and its
+/// semantic state, and reads the view only for last frame's scroll and focus.
 ///
-/// The state row is a plain `&mut` because `Editor` holds it across the
-/// keyboard drain, which hands `&mut Ui` to each handler. `TextEdit::show`
-/// moves the row out for the pass, so its write-back must be unconditional.
+/// The edit state is a plain `&mut` because `Editor` holds it across the
+/// keyboard drain, which hands `&mut Ui` to each handler.
 #[derive(Debug)]
 pub(super) struct InputPass<'a> {
     pub(super) resp_state: &'a ResponseState,
@@ -51,7 +52,8 @@ pub(super) struct InputPass<'a> {
     pub(super) text: &'a mut String,
     pub(super) layout: &'a TextLayout,
     pub(super) policy: AcceptPolicy,
-    pub(super) state: &'a mut TextEditState,
+    pub(super) edit: &'a mut EditState,
+    pub(super) view: &'a ViewState,
 }
 
 impl InputPass<'_> {
@@ -64,7 +66,8 @@ impl InputPass<'_> {
             text,
             layout,
             policy,
-            state,
+            edit,
+            view,
         } = self;
         let ctx = &layout.ctx;
         let AcceptPolicy {
@@ -75,18 +78,6 @@ impl InputPass<'_> {
         let mut ended = None;
         let clipboard = ui.clipboard();
 
-        let TextEditState {
-            edit,
-            view,
-            // Filled by the geometry pass after this one.
-            selection_rects: _,
-            placeholder: _,
-            commit_pending: _,
-            preedit: _,
-            preedit_cursor: _,
-            display: _,
-            composing: _,
-        } = state;
         let was_focused = view.was_focused();
         // Repair persisted byte offsets: application code may have replaced
         // `*text` with a string whose UTF-8 boundaries differ.
@@ -109,8 +100,8 @@ impl InputPass<'_> {
             // frame's scroll and block offset: the user clicked on what they saw.
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             let block = layout.prev_block_offset;
-            let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset.x;
-            let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset.y;
+            let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset().x;
+            let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset().y;
             // Single-line probes at `y=0`.
             let hit = ui
                 .probe_text(ctx.run(ed.text()))
@@ -146,7 +137,7 @@ impl InputPass<'_> {
                 assert_only_repeats_after(ui.keyboard_events(), i);
                 break;
             }
-            if let Some(action) = EditAction::from_keypress(kp) {
+            if let Some(action) = EditAction::from_keypress(kp, PLATFORM) {
                 action.execute(&mut ed, &clipboard);
                 continue;
             }
@@ -189,7 +180,9 @@ pub(super) fn apply_key(editor: &mut Editor<'_>, keypress: KeyPress, nav: TextNa
     let line_nav = nav.is_line(keypress.mods);
     match keypress.key {
         Key::Backspace if line_nav => editor.delete_to_line_start(),
+        Key::Backspace if nav.is_word(keypress.mods) => editor.delete_word_backward(),
         Key::Backspace => editor.delete_backward(),
+        Key::Delete if nav.is_word(keypress.mods) => editor.delete_word_forward(),
         Key::Delete => editor.delete_forward(),
         Key::ArrowLeft if nav.is_word(keypress.mods) => editor.move_word_left(motion),
         Key::ArrowRight if nav.is_word(keypress.mods) => editor.move_word_right(motion),

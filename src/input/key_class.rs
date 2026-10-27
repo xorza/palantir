@@ -3,6 +3,7 @@
 //! A scope declares which [`KeyClass`]es it takes via [`KeyFilter`], so a
 //! focused editor can own `Ctrl+Z` while `Ctrl+S` reaches the app.
 
+use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 
@@ -11,7 +12,7 @@ use crate::input::keyboard::key_press::KeyPress;
 pub enum KeyClass {
     /// Printable characters and bare Enter.
     Text,
-    /// Ctrl+Z/X/C/V/A, Delete, Backspace.
+    /// Ctrl+Z/X/C/V/A, Ctrl+Y on Windows, Delete, Backspace.
     Edit,
     /// Arrows, Home and End, under any modifiers.
     Caret,
@@ -28,9 +29,13 @@ pub enum KeyClass {
     Accel,
 }
 
-/// Keys forming an [`KeyClass::Edit`] chord under a command modifier. Kept in
-/// step with `EditAction::shortcut` by a test in `widgets::text_edit`.
-const EDIT_CHORDS: [char; 5] = ['z', 'x', 'c', 'v', 'a'];
+/// Keys forming an [`KeyClass::Edit`] chord under a command modifier: Windows
+/// redoes on Ctrl+Y too. Kept in step with `EditAction`'s chords by a test in
+/// `widgets::text_edit`.
+const EDIT_CHORDS: &[char] = match PLATFORM {
+    Platform::Windows => &['z', 'x', 'c', 'v', 'a', 'y'],
+    Platform::Mac | Platform::Linux => &['z', 'x', 'c', 'v', 'a'],
+};
 
 /// Whether `press` is one of [`EDIT_CHORDS`].
 ///

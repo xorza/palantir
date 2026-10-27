@@ -1,7 +1,8 @@
-//! Semantic state for the host-owned text buffer, plus its undo history.
+//! Semantic state for the host-owned text buffer: caret, selection, undo history, and the
+//! identity that tells a local edit from a host replacement.
 
 use crate::text::probe::TextProbe;
-use std::collections::VecDeque;
+use crate::widgets::text_edit::history::History;
 use std::num::NonZeroU64;
 use std::ops;
 use unicode_segmentation::GraphemeCursor;
@@ -15,122 +16,15 @@ pub(super) struct EditState {
     /// Byte the in-flight drag-select started from. Lives here so `normalize`
     /// repairs it with `caret` and `selection`.
     pub(super) drag_anchor: Option<usize>,
-    pub(super) undo: VecDeque<EditDelta>,
-    pub(super) redo: Vec<EditDelta>,
-    /// Kind of the last recorded edit, for coalescing; `None` after caret-only motion.
-    pub(super) last_edit_kind: Option<EditKind>,
+    pub(super) history: History,
     pub(super) expected_hash: Option<NonZeroU64>,
     pub(super) local_edit_pending: bool,
+    /// The buffer's characters, counted once a cap asks and kept exact by each edit's
+    /// delta; `None` until then and after a host replacement.
     pub(super) char_count: Option<usize>,
 }
 
-/// Caret + anchor as one comparable unit, stored either side of an edit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct SelectionState {
-    pub(super) caret: usize,
-    pub(super) selection: Option<usize>,
-}
-
-/// One edit as borrowed parts, so `record_edit` can extend the open group without copying.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct EditParts<'a> {
-    pub(super) start: usize,
-    pub(super) removed: &'a str,
-    pub(super) inserted: &'a str,
-    pub(super) before: SelectionState,
-    pub(super) after: SelectionState,
-}
-
-/// One undoable buffer edit, replayed by [`Editor`](crate::widgets::text_edit::editor::Editor).
-#[derive(Clone, Debug)]
-pub(super) struct EditDelta {
-    pub(super) start: usize,
-    pub(super) removed: String,
-    pub(super) inserted: String,
-    pub(super) before: SelectionState,
-    pub(super) after: SelectionState,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum EditKind {
-    Typing,
-    Delete,
-    /// Bulk edits (paste, cut, clear, newline insert); never coalesce.
-    Other,
-}
-
-/// Cap on retained undo entries; the oldest is dropped past it.
-const UNDO_LIMIT: usize = 128;
-
-impl EditDelta {
-    /// Own the strings of `parts`.
-    fn from_parts(parts: EditParts<'_>) -> Self {
-        Self {
-            start: parts.start,
-            removed: parts.removed.to_owned(),
-            inserted: parts.inserted.to_owned(),
-            before: parts.before,
-            after: parts.after,
-        }
-    }
-
-    /// Extend this delta with an abutting edit; reports whether it did.
-    fn coalesce(&mut self, next: EditParts<'_>, kind: EditKind) -> bool {
-        if self.after != next.before {
-            return false;
-        }
-        let merged = match kind {
-            EditKind::Typing
-                if next.removed.is_empty() && next.start == self.start + self.inserted.len() =>
-            {
-                self.inserted.push_str(next.inserted);
-                true
-            }
-            EditKind::Delete
-                if self.inserted.is_empty()
-                    && next.inserted.is_empty()
-                    && next.start + next.removed.len() == self.start =>
-            {
-                self.start = next.start;
-                self.removed.insert_str(0, next.removed);
-                true
-            }
-            EditKind::Delete
-                if self.inserted.is_empty()
-                    && next.inserted.is_empty()
-                    && next.start == self.start =>
-            {
-                self.removed.push_str(next.removed);
-                true
-            }
-            EditKind::Typing | EditKind::Delete | EditKind::Other => false,
-        };
-        if merged {
-            self.after = next.after;
-        }
-        merged
-    }
-}
-
 impl EditState {
-    /// Fold one edit into the undo history, coalescing into the open group when
-    /// it abuts one of the same kind. Redo is cleared either way.
-    pub(super) fn record_edit(&mut self, parts: EditParts<'_>, kind: EditKind) {
-        let coalesced = self.last_edit_kind == Some(kind)
-            && self
-                .undo
-                .back_mut()
-                .is_some_and(|prev| prev.coalesce(parts, kind));
-        if !coalesced {
-            if self.undo.len() == UNDO_LIMIT {
-                self.undo.pop_front();
-            }
-            self.undo.push_back(EditDelta::from_parts(parts));
-        }
-        self.redo.clear();
-        self.last_edit_kind = Some(kind);
-    }
-
     /// Wipe the history if `text_hash` is not the buffer it describes, then adopt it.
     fn adopt_text_hash(&mut self, text_hash: NonZeroU64) {
         if !self.local_edit_pending
@@ -138,9 +32,7 @@ impl EditState {
                 .expected_hash
                 .is_some_and(|expected| expected != text_hash)
         {
-            self.undo.clear();
-            self.redo.clear();
-            self.last_edit_kind = None;
+            self.history.clear();
             self.char_count = None;
         }
         self.expected_hash = Some(text_hash);
@@ -211,7 +103,8 @@ mod tests {
     use crate::common::hash;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
-    use crate::widgets::text_edit::edit_state::{EditKind, EditState};
+    use crate::widgets::text_edit::edit_state::EditState;
+    use crate::widgets::text_edit::history::{EditKind, EditParts, SelectionState};
 
     /// Both entry points must mint a buffer's identity alike; a mismatch reads as a
     /// host replacement and wipes undo. `content_hash` maps a raw zero to one, so a
@@ -274,10 +167,24 @@ mod tests {
         );
 
         state.local_edit_pending = false;
-        state.last_edit_kind = Some(EditKind::Typing);
+        let at = SelectionState {
+            caret: 0,
+            selection: None,
+        };
+        state.history.record(
+            EditParts {
+                start: 0,
+                removed: "",
+                inserted: "x",
+                before: at,
+                after: at,
+            },
+            EditKind::Typing,
+        );
         state.observe_text_hash(Some(EditState::text_hash("replaced by the host")));
-        assert!(
-            state.last_edit_kind.is_none(),
+        assert_eq!(
+            (state.history.undo_len(), state.history.last_kind()),
+            (0, None),
             "the kept expectation must still catch a host replacement",
         );
     }

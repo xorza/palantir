@@ -178,14 +178,14 @@ fn clipboard_shortcuts_apply_keypresses() {
     assert_eq!(rejected_text, "hello");
     assert_eq!(rejected_state.caret, 4);
     assert_eq!(rejected_state.selection, Some(1));
-    assert!(rejected_state.undo.is_empty());
+    assert_eq!(rejected_state.history.undo_len(), 0);
 
     // A clipboard that cannot answer is not empty: the paste is dropped whole and the selection stays.
     rejecting.apply(&mut rejected_text, &mut rejected_state, primary('v'));
     assert_eq!(rejected_text, "hello");
     assert_eq!(rejected_state.caret, 4);
     assert_eq!(rejected_state.selection, Some(1));
-    assert!(rejected_state.undo.is_empty());
+    assert_eq!(rejected_state.history.undo_len(), 0);
 }
 
 /// Multi-line clipboard content collapses every newline run into one space, for both menu Paste and the Cmd/Ctrl+V shortcut.
