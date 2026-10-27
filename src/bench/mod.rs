@@ -6,12 +6,13 @@
 //!
 //! A case's id is `<kind>/<group>/<backend>/<rest…>`, with the same depth across a group: the
 //! backend, `cpu` or `gpu`, comes first in every case, so `'/cpu/'` selects every case that opens
-//! no device and `'/gpu/'` every case that does. A GPU case runs only on a host with an adapter;
-//! the device opens in the first GPU case a run selects. A case builds its inputs in its own
-//! closure, so a filtered run builds only what it times, and checks what its name claims there:
-//! a fixture that stops doing what its name says fails the case rather than timing something
-//! else. Each case records one number: wall time, or, where the doc says so, the device or pass
-//! time it reads back through `iter_custom`.
+//! no device and `'/gpu/'` every case that does. A GPU case runs only on a host with an adapter,
+//! and a case that times one batch inside the pass only on an adapter that writes in-pass
+//! timestamps; the device opens in the first GPU case a run selects. A case builds its inputs in
+//! its own closure, so a filtered run builds only what it times, and checks what its name claims
+//! there: a fixture that stops doing what its name says fails the case rather than timing
+//! something else. Each case records one number: wall time, or, where the doc says so, the
+//! device or pass time it reads back through `iter_custom`.
 
 pub(crate) mod backends;
 pub(crate) mod fixture;

@@ -125,7 +125,7 @@ impl Fixture {
 /// `atomic/curve_pipeline/gpu/<workload>`: the curve batch of one frame on the device, from its
 /// timestamps. Per curve instance.
 pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
-    let Some(backend) = backends.gpu() else {
+    let Some(backend) = backends.batch_timed_gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "curve_pipeline", Scale::Sample);
@@ -147,7 +147,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
             });
             assert!(
                 timed,
-                "no curve batch timestamp: the adapter needs in-pass timestamps"
+                "no curve batch timestamp, though the adapter writes in-pass timestamps"
             );
             bencher.iter_custom(|iters| {
                 (0..iters)
