@@ -124,8 +124,12 @@ fn written_order_does_not_reach_identity() {
     };
     assert_eq!(ascending, shuffled, "reordered input is the same gradient");
     assert_eq!(digest(&ascending), digest(&shuffled));
-    // Sorted on the way in, whichever order it was written in.
-    let offsets: Vec<u8> = shuffled.iter().map(|s| s.offset_u8).collect();
+    // Sorted on the way in, whichever order it was written in, and a `for` over a borrow reads
+    // that order.
+    let mut offsets = Vec::new();
+    for stop in &shuffled {
+        offsets.push(stop.offset_u8);
+    }
     assert_eq!(offsets, vec![0, 128, 255]);
 
     let parsed = ron::from_str::<Document>(

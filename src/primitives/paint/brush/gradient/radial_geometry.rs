@@ -52,12 +52,22 @@ impl RadialGradient {
         GradientBuilder::new(RadialGeometry { center, radius })
     }
 
-    /// General constructor. Asserts two through eight stops.
+    /// General constructor.
+    ///
+    /// # Panics
+    ///
+    /// As [`GradientStops::new`](crate::GradientStops::new).
+    #[track_caller]
     pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self::from_stops(RadialGeometry { center, radius }, stops)
     }
 
     /// 2-stop centered shorthand: `center = (0.5, 0.5)`, `radius = (0.5, 0.5)` (the inscribed circle); `c0` at the center, `c1` at the edge.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    #[track_caller]
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

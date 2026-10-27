@@ -349,7 +349,7 @@ impl Inputs<'_> {
         // back through here, which lets black keep its hue.
         if state.written != Some(*color) {
             let model = pinned.unwrap_or_else(|| state.coords.model());
-            state.coords = ColorCoords::new(model, *color, state.coords.hue());
+            state.coords = ColorCoords::from_color(*color, model, state.coords.hue());
             state.written = Some(*color);
         }
         if let Some(model) = pinned {
@@ -664,7 +664,7 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> Edit {
         state.written = Some(next);
         if writes.exact.is_some() {
             let model = state.coords.model();
-            state.coords = ColorCoords::new(model, next, state.coords.hue());
+            state.coords = ColorCoords::from_color(next, model, state.coords.hue());
         }
     }
     if writes.remember {

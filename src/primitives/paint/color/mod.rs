@@ -9,6 +9,7 @@
 
 pub(crate) mod color_coords;
 pub(crate) mod color_model;
+pub(crate) mod error;
 pub(crate) mod hsv;
 pub(crate) mod okhsv;
 pub(crate) mod oklab;
@@ -21,6 +22,7 @@ use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num;
+use crate::primitives::paint::color::error::ParseColorError;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use ::serde::de::Error as _;
@@ -374,7 +376,7 @@ impl<'de> Deserialize<'de> for RgbaF32 {
 /// The forms the wire format reads, so `parse` and deserialize agree. Not
 /// trimmed: the caller decides what whitespace means.
 impl str::FromStr for RgbaF32 {
-    type Err = &'static str;
+    type Err = ParseColorError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         parse(value)
@@ -388,7 +390,7 @@ const fn alpha_of_byte(a: u8) -> f32 {
 }
 
 /// A hex color, or `color(srgb-linear …)`.
-fn parse(value: &str) -> Result<RgbaF32, &'static str> {
+fn parse(value: &str) -> Result<RgbaF32, ParseColorError> {
     match value.strip_prefix("color(") {
         Some(body) => parse_linear(body),
         None => parse_hex(value),
@@ -398,38 +400,42 @@ fn parse(value: &str) -> Result<RgbaF32, &'static str> {
 /// Parse the body of `color(srgb-linear r g b)` or `color(srgb-linear r g b / a)` after its
 /// `color(`: plain numbers, as [`Serialize`] writes them, every channel finite. CSS's
 /// percentages and `none` are not read, nor any space but `srgb-linear`.
-fn parse_linear(body: &str) -> Result<RgbaF32, &'static str> {
-    const FORM: &str = "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)";
+fn parse_linear(body: &str) -> Result<RgbaF32, ParseColorError> {
     let inner = body
         .strip_suffix(')')
         .and_then(|inner| inner.trim_start().strip_prefix("srgb-linear"))
         .filter(|channels| channels.starts_with(char::is_whitespace))
-        .ok_or(FORM)?;
+        .ok_or(ParseColorError::LinearForm)?;
     let (channels, alpha) = match inner.split_once('/') {
         Some((channels, alpha)) => (channels, Some(alpha)),
         None => (inner, None),
     };
-    let numbers = |text: &str, count: usize| -> Result<Vec<f32>, &'static str> {
-        let values = text
-            .split_whitespace()
-            .map(|word| word.parse::<f32>().map_err(|_| FORM))
-            .collect::<Result<Vec<_>, _>>()?;
-        if values.len() == count {
-            Ok(values)
-        } else {
-            Err(FORM)
-        }
+    let [r, g, b] = linear_numbers(channels)?;
+    let [a] = match alpha {
+        Some(alpha) => linear_numbers(alpha)?,
+        None => [1.0],
     };
-    let rgb = numbers(channels, 3)?;
-    let a = match alpha {
-        Some(alpha) => numbers(alpha, 1)?[0],
-        None => 1.0,
-    };
-    let color = RgbaF32::new(rgb[0], rgb[1], rgb[2], a);
+    let color = RgbaF32::new(r, g, b, a);
     if domain::is_color(color) {
         Ok(color)
     } else {
-        Err(domain::COLOR_RULE)
+        Err(ParseColorError::NonFinite)
+    }
+}
+
+/// Exactly `N` whitespace-separated numbers.
+fn linear_numbers<const N: usize>(text: &str) -> Result<[f32; N], ParseColorError> {
+    let mut words = text.split_whitespace();
+    let mut values = [0.0; N];
+    for value in &mut values {
+        *value = words
+            .next()
+            .and_then(|word| word.parse().ok())
+            .ok_or(ParseColorError::LinearForm)?;
+    }
+    match words.next() {
+        Some(_) => Err(ParseColorError::LinearForm),
+        None => Ok(values),
     }
 }
 
@@ -438,9 +444,9 @@ fn parse_linear(body: &str) -> Result<RgbaF32, &'static str> {
 /// bytes and digits are decoded by hand: indexing the `str` would panic on a
 /// char boundary for 6- or 8-byte non-ASCII input (`"日本"`), and
 /// `u8::from_str_radix` would accept a leading `+`.
-fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
+fn parse_hex(value: &str) -> Result<RgbaF32, ParseColorError> {
     let body = value.strip_prefix('#').unwrap_or(value).as_bytes();
-    let parse_byte = |idx: usize| -> Result<u8, &'static str> {
+    let parse_byte = |idx: usize| -> Result<u8, ParseColorError> {
         Ok((hex_nibble(body[idx])? << 4) | hex_nibble(body[idx + 1])?)
     };
     match body.len() {
@@ -455,17 +461,17 @@ fn parse_hex(value: &str) -> Result<RgbaF32, &'static str> {
             parse_byte(4)?,
             parse_byte(6)?,
         ))),
-        _ => Err("expected #rrggbb or #rrggbbaa"),
+        _ => Err(ParseColorError::Length),
     }
 }
 
 /// One hex digit's value, either case; anything else is a rejection.
-const fn hex_nibble(byte: u8) -> Result<u8, &'static str> {
+const fn hex_nibble(byte: u8) -> Result<u8, ParseColorError> {
     match byte {
         b'0'..=b'9' => Ok(byte - b'0'),
         b'a'..=b'f' => Ok(byte - b'a' + 10),
         b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err("invalid hex digit"),
+        _ => Err(ParseColorError::Digit),
     }
 }
 

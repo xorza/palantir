@@ -460,7 +460,7 @@ impl Tree {
             // hash invalidates `MeasureCache` when it shifts.
             let ring = chrome.border_inset();
             if ring != 0.0 {
-                let [l, t, r, b] = cols.layout.padding.as_array();
+                let [l, t, r, b] = cols.layout.padding.to_array();
                 cols.layout.padding = Spacing::saturating([l + ring, t + ring, r + ring, b + ring]);
             }
             // Storage noop gate for chrome; mirrors `Shapes::add`.

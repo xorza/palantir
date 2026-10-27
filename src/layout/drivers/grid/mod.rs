@@ -113,10 +113,11 @@ impl LayoutDriver for Grid {
         let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
         pass.grid_track_aggregator().resize(base + slot_count, 0.0);
         for (i, t) in tracks.iter().enumerate() {
+            let min = t.min();
             let initial = t
-                .size
+                .sizing()
                 .fixed_value()
-                .map_or(t.min, |value| value.clamp(t.min, t.max));
+                .map_or(min, |value| value.clamp(min, t.max()));
             if wants_min {
                 pass.grid_track_aggregator()[min_base + i] = initial;
             }
@@ -132,7 +133,7 @@ impl LayoutDriver for Grid {
             }
             let track_idx = cell_span.start as usize;
             let t = &tracks[track_idx];
-            if t.size.fixed_value().is_some() {
+            if t.sizing().fixed_value().is_some() {
                 continue;
             }
             let child = pass.query(c, query);
@@ -195,9 +196,9 @@ fn distribute_span(tracks: &[Track], span: Span, gap: f32, need: f32, extents: &
         .iter()
         .zip(extents.iter())
         .map(|(t, &extent)| {
-            t.size
+            t.sizing()
                 .fixed_value()
-                .map_or(extent, |v| v.clamp(t.min, t.max))
+                .map_or(extent, |v| v.clamp(t.min(), t.max()))
         })
         .sum::<f32>()
         + gap.gaps_between(crossed.len());
@@ -212,15 +213,15 @@ fn distribute_span(tracks: &[Track], span: Span, gap: f32, need: f32, extents: &
         let open = crossed
             .iter()
             .zip(extents.iter())
-            .filter(|(t, extent)| t.size.is_hug() && **extent < t.max)
+            .filter(|(t, extent)| t.sizing().is_hug() && **extent < t.max())
             .count();
         if open == 0 {
             return;
         }
         let share = shortfall / open as f32;
         for (t, extent) in crossed.iter().zip(extents.iter_mut()) {
-            if t.size.is_hug() && *extent < t.max {
-                let grown = (*extent + share).min(t.max);
+            if t.sizing().is_hug() && *extent < t.max() {
+                let grown = (*extent + share).min(t.max());
                 shortfall -= grown - *extent;
                 *extent = grown;
             }

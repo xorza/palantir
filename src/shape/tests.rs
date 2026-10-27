@@ -162,7 +162,7 @@ fn typed_builders_set_the_fields_they_name() {
     assert_eq!(rect_shape.local_rect, Some(rect));
     assert_eq!(rect_shape.fill, Brush::Linear(gradient));
     assert_eq!(rect_shape.border, stroke);
-    assert_eq!(rect_shape.corners.as_array(), [6.0; 4]);
+    assert_eq!(rect_shape.corners.to_array(), [6.0; 4]);
 
     let mesh = Mesh::new();
     let tint = RgbaF32::srgb(0.1, 0.2, 0.3);

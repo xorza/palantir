@@ -5,7 +5,7 @@ use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 #[test]
 fn lanes_round_trip_integer_values_exactly() {
     let c = Corners::new(1.0, 2.0, 3.0, 4.0);
-    assert_eq!(c.as_array(), [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(c.to_array(), [1.0, 2.0, 3.0, 4.0]);
 }
 
 /// The f16 precision contract; a silent storage switch (e.g. Q8.8) would trip these.
@@ -21,14 +21,14 @@ fn f16_precision_contract() {
         (4098.0, 4096.0),
         (4099.0, 4100.0),
     ] {
-        assert_eq!(Corners::all(value).as_array()[0], stored, "{value}");
+        assert_eq!(Corners::all(value).to_array()[0], stored, "{value}");
     }
 }
 
 #[test]
-fn as_array_reads_clockwise_from_the_top_left() {
+fn to_array_reads_clockwise_from_the_top_left() {
     assert_eq!(
-        Corners::new(1.0, 2.0, 3.0, 4.0).as_array(),
+        Corners::new(1.0, 2.0, 3.0, 4.0).to_array(),
         [1.0, 2.0, 3.0, 4.0]
     );
 }
@@ -57,13 +57,13 @@ fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
         ("sharp", Corners::ZERO, [0.0; 4]),
     ];
     for (label, corners, want) in rows {
-        assert_eq!(corners.fit_to(size, 1.0).as_array(), want, "{label}");
+        assert_eq!(corners.fit_to(size, 1.0).to_array(), want, "{label}");
     }
     // Scaled first, in f32: 9999 × 8 exceeds f16's 65504 yet a 100×40 box at 8× (800×320) fits it to 160.
     assert_eq!(
         Corners::all(9999.0)
             .fit_to(Size::new(800.0, 320.0), 8.0)
-            .as_array(),
+            .to_array(),
         [160.0; 4],
     );
 }
@@ -75,7 +75,7 @@ fn fit_to_scales_overlapping_radii_by_the_tightest_side() {
 fn inner_fits_then_takes_the_larger_adjacent_inset() {
     let size = Size::new(100.0, 40.0);
     let corners = Corners::new(30.0, 10.0, 0.0, 40.0);
-    let [tl, tr, _, bl] = corners.fit_to(size, 1.0).as_array();
+    let [tl, tr, _, bl] = corners.fit_to(size, 1.0).to_array();
     let inner = corners.inner(size, Spacing::new(4.0, 6.0, 2.0, 8.0));
     let want = Corners::new(tl - 6.0, (tr - 6.0).max(0.0), 0.0, bl - 8.0);
     assert_eq!(inner, want);
@@ -90,7 +90,7 @@ fn inner_fits_then_takes_the_larger_adjacent_inset() {
 #[test]
 fn scaled_by_multiplies_each_corner() {
     let c = Corners::new(2.0, 4.0, 6.0, 8.0).scaled_by(1.5);
-    assert_eq!(c.as_array(), [3.0, 6.0, 9.0, 12.0]);
+    assert_eq!(c.to_array(), [3.0, 6.0, 9.0, 12.0]);
 }
 
 /// The bit-trick path in `is_approx_zero`: ±0, sub-EPS, at-EPS, above-EPS and NaN lanes classify correctly.
@@ -123,12 +123,12 @@ fn approx_zero_handles_edge_lane_patterns() {
 fn tuples_map_to_lanes() {
     // The 2-tuple pairs by edge, like every other 2-value form here.
     assert_eq!(
-        Corners::from((3.0, 7.0)).as_array(),
+        Corners::from((3.0, 7.0)).to_array(),
         [3.0, 3.0, 7.0, 7.0],
         "(top, bottom) → (t,t,b,b)",
     );
     assert_eq!(
-        Corners::from((1, 2, 3, 4)).as_array(),
+        Corners::from((1, 2, 3, 4)).to_array(),
         [1.0, 2.0, 3.0, 4.0],
         "(tl, tr, br, bl) → lane order",
     );
@@ -143,10 +143,10 @@ fn as_u64_packs_the_four_lanes() {
 
 #[test]
 fn convenience_ctors() {
-    assert_eq!(Corners::top(4.0).as_array(), [4.0, 4.0, 0.0, 0.0]);
-    assert_eq!(Corners::bottom(4.0).as_array(), [0.0, 0.0, 4.0, 4.0]);
-    assert_eq!(Corners::left(4.0).as_array(), [4.0, 0.0, 0.0, 4.0]);
-    assert_eq!(Corners::right(4.0).as_array(), [0.0, 4.0, 4.0, 0.0]);
+    assert_eq!(Corners::top(4.0).to_array(), [4.0, 4.0, 0.0, 0.0]);
+    assert_eq!(Corners::bottom(4.0).to_array(), [0.0, 0.0, 4.0, 4.0]);
+    assert_eq!(Corners::left(4.0).to_array(), [4.0, 0.0, 0.0, 4.0]);
+    assert_eq!(Corners::right(4.0).to_array(), [0.0, 4.0, 4.0, 0.0]);
 }
 
 #[test]

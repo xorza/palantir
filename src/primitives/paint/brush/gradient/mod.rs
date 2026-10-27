@@ -129,6 +129,7 @@ impl<G> Gradient<G> {
 impl<G: GradientGeometry> Gradient<G> {
     /// The one general constructor the per-kind `new` shorthands land in; asserts
     /// two through eight stops.
+    #[track_caller]
     fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             geometry,

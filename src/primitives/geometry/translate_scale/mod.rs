@@ -20,8 +20,8 @@ use glam::Vec2;
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct TranslateScale {
-    pub(crate) translation: Vec2,
-    pub(crate) scale: f32,
+    translation: Vec2,
+    scale: f32,
 }
 
 impl TranslateScale {
@@ -79,14 +79,34 @@ impl TranslateScale {
         Self { translation, scale }
     }
 
-    /// Move by `t`, at unit scale.
+    /// Move by `t`, at unit scale. `t`: an *offset* per axis.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes of `t` are [offsets](crate::widget::domain::offset).
+    #[track_caller]
     pub const fn from_translation(t: Vec2) -> Self {
         Self::new(t, 1.0)
     }
 
-    /// Scale by `s` about the origin; see [`Self::anchored_at`] for a pivot.
+    /// Scale by `s` about the origin; see [`Self::anchored_at`] for a pivot. `s`: *positive*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `s` is [positive](crate::widget::domain::positive).
+    #[track_caller]
     pub const fn from_scale(s: f32) -> Self {
         Self::new(Vec2::ZERO, s)
+    }
+
+    /// The offset added after scaling.
+    pub const fn translation(self) -> Vec2 {
+        self.translation
+    }
+
+    /// The uniform scale factor, positive and finite.
+    pub const fn scale(self) -> f32 {
+        self.scale
     }
 
     /// Re-anchor `self` so its scale pivots about `origin` instead of (0, 0):
@@ -131,6 +151,14 @@ impl TranslateScale {
         Vec2::new(
             p.x * self.scale + self.translation.x,
             p.y * self.scale + self.translation.y,
+        )
+    }
+
+    /// Undo this transform for a point: the `q` that [`Self::apply_point`] maps to `p`.
+    pub const fn inverse_point(self, p: Vec2) -> Vec2 {
+        Vec2::new(
+            (p.x - self.translation.x) / self.scale,
+            (p.y - self.translation.y) / self.scale,
         )
     }
 

@@ -48,7 +48,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let any_content_floor_col = cols
         .tracks
         .iter()
-        .any(|t| t.size.is_hug() || t.size.fill_weight().is_some());
+        .any(|t| t.sizing().is_hug() || t.sizing().fill_weight().is_some());
     if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = grid.cell(tree, c);
@@ -57,12 +57,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
             }
             let i = cell.col as usize;
             let t = &cols.tracks[i];
-            if t.size.is_hug() {
+            if t.sizing().is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
                 let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(range.min);
                 col_ranges.max[i] = col_ranges.max[i].max(range.max);
-            } else if t.size.fill_weight().is_some() {
+            } else if t.sizing().fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
                 let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(min);
@@ -126,11 +126,21 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
 
         {
             let s = pass.grid_mut().depth_stack.cur();
-            if cell.col_span == 1 && cols.tracks[cell.col as usize].size.fill_weight().is_some() {
+            if cell.col_span == 1
+                && cols.tracks[cell.col as usize]
+                    .sizing()
+                    .fill_weight()
+                    .is_some()
+            {
                 let i = cell.col as usize;
                 s.col.fill_content[i] = s.col.fill_content[i].max(d.size.w);
             }
-            if cell.row_span == 1 && rows.tracks[cell.row as usize].size.fill_weight().is_some() {
+            if cell.row_span == 1
+                && rows.tracks[cell.row as usize]
+                    .sizing()
+                    .fill_weight()
+                    .is_some()
+            {
                 let i = cell.row as usize;
                 s.row.fill_content[i] = s.row.fill_content[i].max(d.size.h);
             }
@@ -144,7 +154,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         // Multi-row spans wait for the loop below.
         if cell.row_span == 1 {
             let row = cell.row as usize;
-            let sizing = rows.tracks[row].size;
+            let sizing = rows.tracks[row].sizing();
             if sizing.is_hug() || sizing.fill_weight().is_some() {
                 let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
                 row_ranges.min[row] = row_ranges.min[row].max(d.floor.h);
@@ -208,8 +218,11 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     // Cells are offered their column widths and, down, Fixed rows or nothing, so
     // the grid holds while its Fixed and Hug tracks do; Fill sizes reach neither,
     // except Fill columns a non-Hug grid commits.
-    let commits_fill_cols =
-        !grid_sizing_w.is_hug() && cols.tracks.iter().any(|t| t.size.fill_weight().is_some());
+    let commits_fill_cols = !grid_sizing_w.is_hug()
+        && cols
+            .tracks
+            .iter()
+            .any(|t| t.sizing().fill_weight().is_some());
     let stable_from = Size::new(
         if commits_fill_cols {
             offer::AT_OFFER_ONLY
@@ -243,9 +256,9 @@ fn floor_non_fill(tracks: &[Track], content_min: &[f32], sizes: &[f32]) -> f32 {
         .zip(content_min)
         .zip(sizes)
         .map(|((t, &min), &size)| {
-            if t.size.fill_weight().is_some() {
+            if t.sizing().fill_weight().is_some() {
                 0.0
-            } else if t.size.is_hug() {
+            } else if t.sizing().is_hug() {
                 t.content_floor(min)
             } else {
                 size
@@ -259,7 +272,7 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .iter()
         .zip(sizes.iter())
         .map(|(t, &s)| {
-            if t.size.fill_weight().is_some() {
+            if t.sizing().fill_weight().is_some() {
                 0.0
             } else {
                 s

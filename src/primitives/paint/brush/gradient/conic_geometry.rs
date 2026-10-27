@@ -63,7 +63,12 @@ impl ConicGradient {
         })
     }
 
-    /// General constructor. Asserts two through eight stops.
+    /// General constructor.
+    ///
+    /// # Panics
+    ///
+    /// As [`GradientStops::new`](crate::GradientStops::new).
+    #[track_caller]
     pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self::from_stops(
             ConicGeometry {
@@ -75,6 +80,11 @@ impl ConicGradient {
     }
 
     /// Centered shorthand: `center = (0.5, 0.5)`, start angle 0 (+x, clockwise), 2 stops at offsets 0/1.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    #[track_caller]
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
             Vec2::splat(0.5),

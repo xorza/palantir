@@ -1,7 +1,7 @@
 //! Per-side padding and margin: four f16 lanes in eight bytes, like `Corners` and `RgbaF16`.
 
 use crate::primitives::geometry::size::Size;
-use crate::primitives::math::num::Num;
+use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
 use std::ops;
@@ -59,7 +59,7 @@ impl Spacing {
         Self::from_array([left, top, right, bottom])
     }
 
-    /// Inverse of [`Self::as_array`]: the f32→f16 pack, for hot sites computing all four.
+    /// Inverse of [`Self::to_array`]: the f32→f16 pack, for hot sites computing all four.
     ///
     /// # Panics
     ///
@@ -93,7 +93,7 @@ impl Spacing {
     /// The size this spacing costs: `w = left + right`, `h = top + bottom`.
     #[inline]
     pub fn sums(self) -> Size {
-        let [l, t, r, b] = self.as_array();
+        let [l, t, r, b] = self.to_array();
         Size::new(l + r, t + b)
     }
 }
@@ -102,23 +102,23 @@ impl ops::Add for Spacing {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
-        let [al, at, ar, ab] = self.as_array();
-        let [bl, bt, br, bb] = rhs.as_array();
+        let [al, at, ar, ab] = self.to_array();
+        let [bl, bt, br, bb] = rhs.to_array();
         Self::from_array([al + bl, at + bt, ar + br, ab + bb])
     }
 }
 
 /// `(horizontal, vertical)` — both sides on each axis.
-impl<X: Num, Y: Num> From<(X, Y)> for Spacing {
+impl<X: Number, Y: Number> From<(X, Y)> for Spacing {
     fn from((x, y): (X, Y)) -> Self {
-        Self::xy(x.as_f32(), y.as_f32())
+        Self::xy(x.to_f32(), y.to_f32())
     }
 }
 
 /// `(left, top, right, bottom)` — matches struct field order.
-impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
+impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing {
     fn from((l, t, r, b): (L, T, R, B)) -> Self {
-        Self::new(l.as_f32(), t.as_f32(), r.as_f32(), b.as_f32())
+        Self::new(l.to_f32(), t.to_f32(), r.to_f32(), b.to_f32())
     }
 }
 
@@ -131,7 +131,7 @@ impl LaneCodec for Spacing {
     }
 
     fn to_lane_array(&self) -> [f32; 4] {
-        self.as_array()
+        self.to_array()
     }
 
     fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {

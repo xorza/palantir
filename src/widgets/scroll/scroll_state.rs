@@ -162,7 +162,7 @@ impl ScrollState {
     /// band collapse to `-left * zoom` once content fit, shoving it sideways
     /// by the margin.
     fn natural_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
-        let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
+        let [cml, cmt, cmr, cmb] = bounds.content_margin.to_array();
         let overflow = self.raw_overflow(bounds).max(Vec2::ZERO);
         OffsetBounds {
             lo: Vec2::new(-cml, -cmt) * self.zoom,
@@ -176,7 +176,7 @@ impl ScrollState {
     /// and the pair is taken as `min`/`max`: for content that fits, the band
     /// is the inverted interval, which `natural_bounds` must not inherit.
     fn zoom_rubber_band_bounds(&self, bounds: ScrollBounds) -> OffsetBounds {
-        let [cml, cmt, cmr, cmb] = bounds.content_margin.as_array();
+        let [cml, cmt, cmr, cmb] = bounds.content_margin.to_array();
         let leading = Vec2::new(-cml, -cmt) * self.zoom;
         let trailing = self.raw_overflow(bounds) + Vec2::new(cmr, cmb) * self.zoom;
         OffsetBounds {

@@ -1,6 +1,9 @@
-//! Compile-time platform tag.
+//! The input-convention selector.
 
-/// The host family the crate was compiled for, published so widgets branch on [`PLATFORM`] instead of restating `cfg`.
+/// Whose input conventions apply: which key is the command modifier, how a shortcut is labeled.
+/// Public so an app labels a command as the host does, such as "⌘S" against "Ctrl+S"; widgets read
+/// input through [`Modifiers`](crate::Modifiers) and [`Shortcut`](crate::Shortcut), which
+/// apply it already.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
     /// macOS, where Cmd is the command modifier [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
@@ -11,7 +14,8 @@ pub enum Platform {
     Linux,
 }
 
-/// The platform this build targets; const-evaluable. Anything but macOS and Windows reads as [`Platform::Linux`].
+/// The conventions of the platform this build targets; const-evaluable. Anything but macOS and
+/// Windows reads as [`Platform::Linux`].
 pub const PLATFORM: Platform = {
     #[cfg(target_os = "macos")]
     {

@@ -134,37 +134,54 @@ impl Vec2Ext for Vec2 {
     }
 }
 
-/// Primitive numeric types accepted by the `From` impls on `Sizing`,
-/// `Size`, `Corners`, `Spacing`.
-pub(crate) trait Num: Copy {
-    fn as_f32(self) -> f32;
-}
+/// A primitive number the shorthand `From` impls on [`Size`](crate::Size),
+/// [`Spacing`](crate::Spacing), [`Corners`](crate::Corners), [`Sizing`](crate::Sizing) and
+/// [`SizeSpec`](crate::SizeSpec) take: `f32`, so a length reads as written, and the integers up
+/// to 32 bits, so a literal `4` needs no `.0`. An `i32` or `u32` past `2^24` rounds to the nearest
+/// `f32`.
+///
+/// Sealed: the conversion lives on a crate-private supertrait.
+pub trait Number: sealed::Scalar {}
 
-impl Num for f32 {
-    fn as_f32(self) -> f32 {
-        self
+impl<T: sealed::Scalar> Number for T {}
+
+pub(crate) mod sealed {
+    /// The conversion behind [`Number`](crate::Number).
+    #[expect(
+        unnameable_types,
+        reason = "sealed: code outside the crate may use it, never name or implement it"
+    )]
+    pub trait Scalar: Copy {
+        /// The value as an `f32`, rounded to nearest where it has no exact form.
+        fn to_f32(self) -> f32;
     }
-}
 
-macro_rules! impl_num {
-    (lossless: $($t:ty),*) => {
-        $(
-            impl Num for $t {
-                fn as_f32(self) -> f32 { f32::from(self) }
-            }
-        )*
-    };
-    (rounding: $($t:ty),*) => {
-        $(
-            impl Num for $t {
-                fn as_f32(self) -> f32 { self as f32 }
-            }
-        )*
-    };
-}
+    impl Scalar for f32 {
+        fn to_f32(self) -> f32 {
+            self
+        }
+    }
 
-impl_num!(lossless: i8, i16, u8, u16);
-impl_num!(rounding: f64, i32, i64, isize, u32, u64, usize);
+    macro_rules! impl_scalar {
+        (lossless: $($t:ty),*) => {
+            $(
+                impl Scalar for $t {
+                    fn to_f32(self) -> f32 { f32::from(self) }
+                }
+            )*
+        };
+        (rounding: $($t:ty),*) => {
+            $(
+                impl Scalar for $t {
+                    fn to_f32(self) -> f32 { self as f32 }
+                }
+            )*
+        };
+    }
+
+    impl_scalar!(lossless: i8, i16, u8, u16);
+    impl_scalar!(rounding: i32, u32);
+}
 
 #[cfg(test)]
 mod tests;

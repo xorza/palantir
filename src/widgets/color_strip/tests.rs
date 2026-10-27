@@ -36,7 +36,7 @@ fn the_alpha_bar_writes_only_alpha() {
 fn the_hue_bar_writes_only_the_hue() {
     let id = WidgetId::from_hash("strip-hue-writes");
     let mut h = harness();
-    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
+    let mut coords = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), ColorModel::Okhsv, 0.0);
     let (sat, val) = (coords.saturation(), coords.value());
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
@@ -125,7 +125,7 @@ fn the_hue_bar_keeps_both_ends() {
 
     let id = WidgetId::from_hash("strip-hue-ends");
     let mut h = harness();
-    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x4cd3ff), 0.0);
+    let mut coords = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), ColorModel::Okhsv, 0.0);
     let show = |h: &mut UiHarness, coords: &mut ColorCoords| {
         h.frame(|ui| {
             ColorStrip::for_hue(coords).id(id).show(ui);

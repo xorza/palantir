@@ -367,7 +367,7 @@ impl<'a> TextEdit<'a> {
             self.widget
                 .authored_padding()
                 .unwrap()
-                .as_array()
+                .to_array()
                 .map(|v| v + stroke_w),
         );
         let prev_block_offset = state.view.block_offset;
@@ -508,7 +508,7 @@ impl<'a> TextEdit<'a> {
             let caret = geometry.caret_pos;
             let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
             let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
-            let [left, top, _, _] = ctx.padding.as_array();
+            let [left, top, _, _] = ctx.padding.to_array();
             let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
             ui.request_ime(response.transform.apply_rect(Rect {
                 min: scrolled.min + origin,

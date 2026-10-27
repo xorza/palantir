@@ -313,8 +313,8 @@ fn compose_rounded_clip_change_splits_text_batch() {
     }
     let r0 = buf.rounded_clips[buf.text_batches[0].rounded_clips.range()][0];
     let r1 = buf.rounded_clips[buf.text_batches[1].rounded_clips.range()][0];
-    assert_eq!(r0.corners.as_array()[0], 4.0);
-    assert_eq!(r1.corners.as_array()[0], 8.0);
+    assert_eq!(r0.corners.to_array()[0], 4.0);
+    assert_eq!(r1.corners.to_array()[0], 8.0);
 }
 
 /// The composer rotates each polyline point about `bbox.center()` before the ancestor transform: a 90 degree spin of a centered horizontal segment is vertical and centered.

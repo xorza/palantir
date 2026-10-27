@@ -12,7 +12,7 @@ macro_rules! f16x4_lanes {
 
             /// All four lanes unpacked at once (a single `vcvtph2ps` on x86-f16c), for hot sites reading 3+ lanes.
             #[inline]
-            pub fn as_array(self) -> [f32; 4] {
+            pub fn to_array(self) -> [f32; 4] {
                 self.0.lanes()
             }
 
@@ -27,7 +27,7 @@ macro_rules! f16x4_lanes {
 
         impl ::std::fmt::Debug for $t {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                let [$($lane),+] = self.as_array();
+                let [$($lane),+] = self.to_array();
                 f.debug_struct(stringify!($t))
                     $(.field(stringify!($lane), &$lane))+
                     .finish()
@@ -41,9 +41,9 @@ macro_rules! f16x4_lanes {
             }
         }
 
-        impl<T: $crate::primitives::math::num::Num> From<T> for $t {
+        impl<T: $crate::primitives::math::num::Number> From<T> for $t {
             fn from(v: T) -> Self {
-                Self::all(v.as_f32())
+                Self::all(v.to_f32())
             }
         }
 

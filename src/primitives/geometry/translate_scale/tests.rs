@@ -35,7 +35,8 @@ fn is_identity_within_eps() {
     }
 }
 
-/// The door a caller builds a transform at, screened in every build.
+/// The door a caller builds a transform at, screened in every build, and each constructor panics
+/// at the caller's line.
 #[test]
 fn construction_rejects_non_finite_translation_and_non_positive_or_non_finite_scale() {
     let invalid_translations = [
@@ -56,6 +57,21 @@ fn construction_rejects_non_finite_translation_and_non_positive_or_non_finite_sc
         panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
             TranslateScale::new(Vec2::ZERO, scale)
         });
+    }
+
+    let offset: [(u32, fn()); 2] = [
+        (line!(), || _ = TranslateScale::new(Vec2::NAN, 1.0)),
+        (line!(), || _ = TranslateScale::from_translation(Vec2::NAN)),
+    ];
+    let positive: [(u32, fn()); 1] = [(line!(), || _ = TranslateScale::from_scale(0.0))];
+    for (fragment, cases) in [
+        (domain::OFFSET_RULE, &offset[..]),
+        (domain::POSITIVE_RULE, &positive[..]),
+    ] {
+        for &(line, construct) in cases {
+            let site = panic_probe::panic_site(fragment, construct);
+            assert_eq!(site, format!("{}:{line}", file!()), "{fragment}");
+        }
     }
 }
 
@@ -86,18 +102,26 @@ fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
     });
 }
 
+/// `composed` maps `p` to `8p + (17, 27)`, so `inverse_point` takes `(33, 51)` back to `(2, 3)`
+/// and `(1, -5)` to `((1 - 17) / 8, (-5 - 27) / 8) = (-2, -4)`.
 #[test]
-fn composition_rect_application_and_inverse_vector_agree_exactly() {
+fn composition_rect_application_and_inverses_agree_exactly() {
     let parent = TranslateScale::new(Vec2::new(3.0, 5.0), 2.0);
     let child = TranslateScale::new(Vec2::new(7.0, 11.0), 4.0);
     let composed = parent.compose(child);
 
-    assert_eq!(composed.translation, Vec2::new(17.0, 27.0));
-    assert_eq!(composed.scale, 8.0);
+    assert_eq!(composed.translation(), Vec2::new(17.0, 27.0));
+    assert_eq!(composed.scale(), 8.0);
     let point = Vec2::new(2.0, 3.0);
+    assert_eq!(composed.apply_point(point), Vec2::new(33.0, 51.0));
     assert_eq!(
         composed.apply_point(point),
         parent.apply_point(child.apply_point(point))
+    );
+    assert_eq!(composed.inverse_point(Vec2::new(33.0, 51.0)), point);
+    assert_eq!(
+        composed.inverse_point(Vec2::new(1.0, -5.0)),
+        Vec2::new(-2.0, -4.0)
     );
     assert_eq!(
         composed.apply_rect(Rect::new(-2.0, 3.0, 4.0, 5.0)),

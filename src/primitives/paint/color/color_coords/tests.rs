@@ -10,7 +10,7 @@ use crate::primitives::paint::color::okhsv::Okhsv;
 #[test]
 fn switching_model_keeps_the_color() {
     for model in ColorModel::ALL {
-        let start = ColorCoords::new(model, RgbaF32::hex(0x4cd3ff), 0.0);
+        let start = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), model, 0.0);
         let other = start.with_model(match model {
             ColorModel::Okhsv => ColorModel::Hsv,
             ColorModel::Hsv => ColorModel::Okhsv,
@@ -24,7 +24,7 @@ fn switching_model_keeps_the_color() {
 /// Gray has no hue in either model, so a switch and back carries the retained hue through.
 #[test]
 fn switching_model_keeps_grays_hue() {
-    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0x808080), 0.0);
+    let mut coords = ColorCoords::from_color(RgbaF32::hex(0x808080), ColorModel::Okhsv, 0.0);
     coords.set_hue(0.42);
     let round_trip = coords
         .with_model(ColorModel::Hsv)
@@ -35,7 +35,7 @@ fn switching_model_keeps_grays_hue() {
 /// Switching to the model in use is the identity, axes included; re-deriving would move a gray's hue.
 #[test]
 fn switching_to_the_same_model_changes_nothing() {
-    let mut coords = ColorCoords::new(ColorModel::Okhsv, RgbaF32::BLACK, 0.0);
+    let mut coords = ColorCoords::from_color(RgbaF32::BLACK, ColorModel::Okhsv, 0.0);
     coords.set_hue(0.3);
     assert_eq!(coords.with_model(ColorModel::Okhsv), coords);
 }
@@ -116,7 +116,7 @@ fn both_models_round_trip_keep_grays_hue_and_wrap_or_clamp() {
             for si in 1..9 {
                 for vi in 1..9 {
                     let (h, s, v) = (hi as f32 / 9.0, si as f32 / 8.0, vi as f32 / 8.0);
-                    let back = ColorCoords::new(model, axes(model, h, s, v).to_color(), h);
+                    let back = ColorCoords::from_color(axes(model, h, s, v).to_color(), model, h);
                     worst = worst
                         .max(hue_gap(back.hue(), h))
                         .max((back.saturation() - s).abs())
@@ -132,7 +132,7 @@ fn both_models_round_trip_keep_grays_hue_and_wrap_or_clamp() {
         );
 
         for level in [0.0, 0.25, 0.5, 1.0] {
-            let gray = ColorCoords::new(model, RgbaF32::srgb(level, level, level), 0.618);
+            let gray = ColorCoords::from_color(RgbaF32::srgb(level, level, level), model, 0.618);
             assert_eq!(gray.hue(), 0.618, "{model:?}: gray at {level}");
             assert_close(
                 gray.saturation(),

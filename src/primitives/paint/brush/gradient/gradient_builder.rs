@@ -28,6 +28,10 @@ impl<G: GradientGeometry> GradientBuilder<G> {
     }
 
     /// Add a color stop at `offset`, clamped to the 0..=1 gradient range.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a ninth stop, or unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
     pub fn stop(mut self, offset: f32, color: RgbaF32) -> Self {
         self.stops.push(Stop::new(offset, color));
@@ -46,7 +50,12 @@ impl<G: GradientGeometry> GradientBuilder<G> {
         self
     }
 
-    /// Finish the gradient, requiring at least two stops.
+    /// Finish the gradient.
+    ///
+    /// # Panics
+    ///
+    /// Panics with fewer than two stops.
+    #[track_caller]
     pub fn build(self) -> Gradient<G> {
         Gradient {
             geometry: self.geometry,
@@ -59,7 +68,9 @@ impl<G: GradientGeometry> GradientBuilder<G> {
     }
 }
 
+/// [`GradientBuilder::build`], which panics with fewer than two stops.
 impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G> {
+    #[track_caller]
     fn from(builder: GradientBuilder<G>) -> Self {
         builder.build()
     }

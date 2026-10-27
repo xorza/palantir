@@ -453,7 +453,7 @@ impl CutoutPlan {
             return None;
         }
         let half = Vec2::new(quad.rect.size.w, quad.rect.size.h) * 0.5;
-        let radius = quad.corners.as_array();
+        let radius = quad.corners.to_array();
         // A drop shadow's box is centered on its quad; an inset hole is `offset` from its source's center.
         let (center, box_half, radii) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
             let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));

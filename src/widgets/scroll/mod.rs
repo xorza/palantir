@@ -64,14 +64,14 @@ impl ScrollGeometry {
     }
 
     fn content_inset(&self) -> Vec2 {
-        let [left, top, _, _] = self.bars.padding.as_array();
+        let [left, top, _, _] = self.bars.padding.to_array();
         Vec2::new(left, top)
     }
 
     /// Where the content starts inside the outer box (past the gutter): the origin a
     /// widget-local pivot is measured from.
     fn content_origin(&self) -> Vec2 {
-        let [left, top, _, _] = self.bars.reserve.as_array();
+        let [left, top, _, _] = self.bars.reserve.to_array();
         self.content_inset() + Vec2::new(left, top)
     }
 
@@ -290,7 +290,7 @@ impl<'a> Scroll<'a> {
     #[track_caller]
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         let m = m.into();
-        for edge in m.as_array() {
+        for edge in m.to_array() {
             domain::length(edge);
         }
         self.content_margin = m;

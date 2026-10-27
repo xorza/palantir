@@ -548,7 +548,7 @@ fn a_tap_places_the_caret() {
 
     // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
     let rect = h.arranged(ed_id);
-    let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
+    let inner_left = h.ui.theme().text_edit.defaults.padding.to_array()[0];
     let mid = rect.size.h * 0.5;
     h.click_in(ed_id, Vec2::new(inner_left + 14.0, mid));
     h.frame(Field::PADDED.scene(&mut buf));

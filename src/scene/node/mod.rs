@@ -112,7 +112,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn set_padding(&mut self, value: Spacing) {
-        for edge in value.as_array() {
+        for edge in value.to_array() {
             domain::length(edge);
         }
         self.padding = Some(value);
@@ -126,7 +126,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn set_margin(&mut self, value: Spacing) {
-        for edge in value.as_array() {
+        for edge in value.to_array() {
             domain::offset(edge);
         }
         self.margin = Some(value);

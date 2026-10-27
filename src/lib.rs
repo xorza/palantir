@@ -312,6 +312,7 @@ pub use primitives::layout::justify::Justify;
 pub use primitives::layout::sizing::{SizeSpec, Sizing};
 pub use primitives::layout::track::Track;
 pub use primitives::layout::visibility::Visibility;
+pub use primitives::math::num::Number;
 pub use primitives::paint::brush::Brush;
 pub use primitives::paint::brush::gradient::color_ramp::ColorRamp;
 pub use primitives::paint::brush::gradient::conic_geometry::{
@@ -330,6 +331,7 @@ pub use primitives::paint::chrome::Chrome;
 pub use primitives::paint::color::RgbaF32;
 pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
+pub use primitives::paint::color::error::ParseColorError;
 pub use primitives::paint::color::hsv::Hsv;
 pub use primitives::paint::color::okhsv::Okhsv;
 pub use primitives::paint::color::srgba_u8::SrgbaU8;

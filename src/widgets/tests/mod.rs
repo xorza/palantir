@@ -684,7 +684,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     });
     assert_eq!(value, 51.0, "Slider: a hundredth of the range");
 
-    let mut coords = ColorCoords::new(ColorModel::Hsv, RgbaF32::srgb(0.5, 0.25, 0.25), 0.0);
+    let mut coords = ColorCoords::from_color(RgbaF32::srgb(0.5, 0.25, 0.25), ColorModel::Hsv, 0.0);
     let before = coords.saturation();
     press(id, Key::ArrowRight, |ui| {
         under_arrows(ui, |ui| {

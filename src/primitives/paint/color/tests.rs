@@ -137,7 +137,7 @@ fn the_linear_form_parses_its_words_and_refuses_the_rest() {
     ] {
         assert_eq!(
             bad.parse::<RgbaF32>(),
-            Err("expected color(srgb-linear r g b) or color(srgb-linear r g b / a)"),
+            Err(ParseColorError::LinearForm),
             "{bad}"
         );
     }
@@ -145,7 +145,11 @@ fn the_linear_form_parses_its_words_and_refuses_the_rest() {
         "color(srgb-linear NaN 1 1)",
         "color(srgb-linear 1 1 1 / inf)",
     ] {
-        assert_eq!(bad.parse::<RgbaF32>(), Err(domain::COLOR_RULE), "{bad}");
+        assert_eq!(
+            bad.parse::<RgbaF32>(),
+            Err(ParseColorError::NonFinite),
+            "{bad}"
+        );
     }
 }
 
@@ -172,24 +176,43 @@ fn color_parse_accepts_with_and_without_hash() {
         RgbaF32::from_srgba(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
     );
     assert_eq!("#3266cc80".parse::<RgbaF32>(), parse_hex("#3266cc80"));
-    assert!("#3266c".parse::<RgbaF32>().is_err());
+    assert_eq!("#3266c".parse::<RgbaF32>(), Err(ParseColorError::Length));
 }
 
+/// A length outside six and eight digits is `Length` before any digit is read; a right length
+/// with a non-hex byte is `Digit`. Each error names its form in `Display`.
 #[test]
 fn color_parse_rejects_malformed_input() {
-    assert!(parse_hex("").is_err());
-    assert!(parse_hex("#").is_err());
-    assert!(parse_hex("#abc").is_err(), "3-digit not supported");
-    assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
-    assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
-    assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
-    // Regression: the length arms select on bytes; slicing the `str` for "日本" (6 bytes) or
-    // "αβγδ" (8) split a char boundary and panicked instead of rejecting.
-    assert!(parse_hex("日本").is_err(), "6-byte non-ASCII");
-    assert!(parse_hex("#日本").is_err(), "6-byte non-ASCII, hashed");
-    assert!(parse_hex("αβγδ").is_err(), "8-byte non-ASCII");
-    // `u8::from_str_radix` accepts a leading sign, so `"+a+b+c"` would read as rgb(10, 11, 12).
-    assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
+    for (bad, want, why) in [
+        ("", ParseColorError::Length, "empty"),
+        ("#", ParseColorError::Length, "hash alone"),
+        ("#abc", ParseColorError::Length, "3-digit not supported"),
+        ("#abcde", ParseColorError::Length, "5-digit not supported"),
+        ("#abcdefab12", ParseColorError::Length, "10-digit too long"),
+        ("#zzzzzz", ParseColorError::Digit, "non-hex digits"),
+        // Regression: the length arms select on bytes; slicing the `str` for "日本" (6 bytes) or
+        // "αβγδ" (8) split a char boundary and panicked instead of rejecting.
+        ("日本", ParseColorError::Digit, "6-byte non-ASCII"),
+        ("#日本", ParseColorError::Digit, "6-byte non-ASCII, hashed"),
+        ("αβγδ", ParseColorError::Digit, "8-byte non-ASCII"),
+        // `u8::from_str_radix` accepts a leading sign, so `"+a+b+c"` would read as rgb(10, 11, 12).
+        ("#+a+b+c", ParseColorError::Digit, "sign is not a hex digit"),
+    ] {
+        assert_eq!(parse_hex(bad), Err(want), "{why}");
+    }
+    assert_eq!(
+        ParseColorError::Length.to_string(),
+        "expected #rrggbb or #rrggbbaa"
+    );
+    assert_eq!(ParseColorError::Digit.to_string(), "invalid hex digit");
+    assert_eq!(
+        ParseColorError::LinearForm.to_string(),
+        "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)"
+    );
+    assert_eq!(
+        ParseColorError::NonFinite.to_string(),
+        "a color must have finite channels"
+    );
 }
 
 /// Colors blend premultiplied: `a` premultiplies to `(0.5, 0, 0.25 | 0.5)` and the transparent `b`

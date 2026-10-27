@@ -77,30 +77,6 @@ Files: `src/gpu/{raster/, wgpu_backend/, resource/}`,
   grow frame clears and copies up to about 20 MiB. Structural, with no
   measured workload; the `text_atlas` bench is the trigger.
 
-## Batch 18: Primitives public surface
-
-All **[public]**. Files: `src/primitives/`, `src/common/platform.rs`,
-`palantir-anim-derive/`.
-
-- [ ] **Panic chains lose the caller.** `stops/mod.rs:107-174`,
-  `gradient_builder.rs:35-63`, `color_ramp.rs:24-35`, the three geometries'
-  `new`/`two_stop`, `translate_scale/mod.rs:89-97`. Target: `#[track_caller]`
-  through each link and `# Panics` on each public item. (Attributes and docs
-  only; not a signature change.)
-- [ ] **`RgbaF32::from_str` errors with `&'static str`.**
-  `color/mod.rs:243-288`. Target: `ParseColorError { Length, Digit }`.
-- [ ] **A private `Num` bound and lossy `From`.** `math/num/mod.rs:146-170`.
-  Target: a sealed public marker; drop `f64` and the 64-bit and size types.
-- [ ] **`as_array` computes.** `primitives/mod.rs:9-14`. Target: `to_array`.
-- [ ] **`ColorCoords::new` is a conversion.** Target: `from_color`.
-- [ ] **Checked values without getters.** `TranslateScale`, `Track`; add
-  `inverse_point`.
-- [ ] **Gaps.** `RgbaF32::hexa`; `IntoIterator for &GradientStops`.
-- [ ] **`#[animate(skip)]` aliases `snap`.** `anim-derive/src/lib.rs:228-233`.
-- [ ] **`Platform`'s doc invites widgets to branch on the OS.**
-  `common/platform.rs:3, 14`. Target: the doc names it the input-convention
-  selector, for app labels such as "⌘S" vs "Ctrl+S".
-
 ## Batch 19: Test infrastructure and visibility
 
 Files: `src/internals/`, `src/bench/`, `src/golden/`, `tests/`,
