@@ -242,6 +242,13 @@ tree renders.
   a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
   `chrome(chrome)` and `default_chrome(chrome)`; no trait
   holds them in step, a test in `widgets::tests` does.
+- **Node values a widget supplies** go through `default_*` (`default_gap`,
+  `default_child_align`, `default_size`), in `show`, so a caller's setter
+  always wins over the theme.
+- **Activation.** A focused widget reads Space and Enter through
+  `Widget::activation_response`, which folds them in as one left click, so
+  `clicked()` reads the same from the pointer and the keyboard. A toggle takes
+  Space alone, as WAI-ARIA leaves Enter to the form.
 - **Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to
   it, and finishes it through that widget's public setters. It never reaches
   past them through a hook only it calls.

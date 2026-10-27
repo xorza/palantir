@@ -1,8 +1,5 @@
 //! The push button: a labeled, themed leaf reporting pointer-button clicks.
 
-use crate::input::interaction::button_phase::ButtonPhase;
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::layout::align::Align;
 use crate::primitives::text::text_input::TextInput;
@@ -11,6 +8,7 @@ use crate::text::wrap::TextWrap;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
@@ -41,11 +39,7 @@ impl<'a> Button<'a> {
     /// A button.
     pub fn new() -> Self {
         Self {
-            // Tab stop; a focused button takes Space and Enter (`KeyClass::Text`), so it claims that class.
-            widget: Widget::leaf()
-                .sense(Sense::CLICK)
-                .focusable(true)
-                .input_scope(KeyFilter::TEXT),
+            widget: Widget::leaf().sense(Sense::CLICK).focusable(true),
             style: None,
             label: TextInput::default(),
             label_align: Align::CENTER,
@@ -79,16 +73,7 @@ impl<'a> Button<'a> {
 
     /// Space and Enter on a focused button report one left click (WAI-ARIA), so `clicked()` covers keyboard.
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let mut response = self.widget.response(ui);
-        let id = self.widget.resolve(ui);
-        if !response.disabled && ui.is_focus_within(id) {
-            // `shortcut_pressed` also keeps each chord subscribed for the wake gate, so sample both.
-            let space = self.widget.shortcut_pressed(ui, Key::Char(' '));
-            let enter = self.widget.shortcut_pressed(ui, Key::Enter);
-            if space || enter {
-                response.left.phase = ButtonPhase::Up { click: Some(1) };
-            }
-        }
+        let response = self.widget.activation_response(ui, Activation::Button);
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
         let plan = slot.plan(&response, (), theme.text);
@@ -108,7 +93,7 @@ impl<'a> Button<'a> {
                 );
             }
         });
-        Response::new(id, ui, response)
+        Response::new(ui, response)
     }
 }
 

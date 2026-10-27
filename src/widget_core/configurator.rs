@@ -64,7 +64,9 @@ impl Configurator<'_> {
     #[inline]
     #[track_caller]
     pub fn default_size(&mut self, s: impl Into<SizeSpec>) -> &mut Self {
-        self.widget.node.size.get_or_insert_with(|| s.into());
+        // Converted first, so a bad fallback panics at the call site even where the caller set a size.
+        let s = s.into();
+        self.widget.node.size.get_or_insert(s);
         self
     }
 
@@ -295,6 +297,13 @@ impl Configurator<'_> {
     #[inline]
     pub const fn default_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.fill_align(a);
+        self
+    }
+
+    /// See [`ThemeDefaults::default_child_align`](crate::widget_core::configure::ThemeDefaults::default_child_align).
+    #[inline]
+    pub const fn default_child_align(&mut self, a: Align) -> &mut Self {
+        self.widget.node.fill_child_align(a);
         self
     }
 

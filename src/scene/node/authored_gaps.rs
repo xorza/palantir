@@ -27,12 +27,12 @@ impl AuthoredGaps {
     pub(crate) const UNSET_PAIR: Self = Self([Self::UNSET; 2]);
 
     #[inline]
-    pub(crate) fn gap(self) -> Option<f32> {
+    pub(crate) const fn gap(self) -> Option<f32> {
         Self::lane(self.0[0])
     }
 
     #[inline]
-    pub(crate) fn line_gap(self) -> Option<f32> {
+    pub(crate) const fn line_gap(self) -> Option<f32> {
         Self::lane(self.0[1])
     }
 
@@ -63,8 +63,13 @@ impl AuthoredGaps {
         self.0[1] = f16::from_f32(domain::gap(v)).to_bits();
     }
 
+    /// Through `to_f32_const`, the same conversion `to_f32` falls back to without F16C.
     #[inline]
-    fn lane(bits: u16) -> Option<f32> {
-        (bits != Self::UNSET).then(|| f16::from_bits(bits).to_f32())
+    const fn lane(bits: u16) -> Option<f32> {
+        if bits == Self::UNSET {
+            None
+        } else {
+            Some(f16::from_bits(bits).to_f32_const())
+        }
     }
 }

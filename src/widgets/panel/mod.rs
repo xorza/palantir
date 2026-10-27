@@ -67,6 +67,12 @@ impl Panel {
         Self::auto(Widget::wrap_vstack())
     }
 
+    /// A wrapping stack along `axis`, for a direction picked at run time.
+    #[track_caller]
+    pub fn wrap_stack(axis: Axis) -> Self {
+        Self::auto(Widget::wrap_stack(axis))
+    }
+
     /// Layered children at the parent's inner top-left; the last paints on top.
     #[track_caller]
     pub fn zstack() -> Self {

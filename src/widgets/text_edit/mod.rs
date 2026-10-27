@@ -20,7 +20,6 @@ mod unicode;
 mod view_state;
 
 use crate::common::span::Span;
-use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
@@ -286,7 +285,7 @@ impl<'a> TextEdit<'a> {
         let signals = ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
 
         TextEditResponse {
-            response: Response::new(id, ui, signals.state),
+            response: Response::new(ui, signals.response),
             changed: signals.changed,
             committed: signals.committed,
             ended: signals.ended,
@@ -306,7 +305,7 @@ impl<'a> TextEdit<'a> {
         if is_focused && response.disabled {
             ui.clear_focus();
             is_focused = false;
-            response.focused = false;
+            response.state.focused = false;
         }
         // A focused editor takes the classes it edits with, so an app-level Ctrl+Z undoes
         // this buffer. `ACCEL` stays out (see `KeyFilter::TEXT_FIELD`) so Ctrl+S still
@@ -392,20 +391,16 @@ impl<'a> TextEdit<'a> {
         if ended == Some(EditEnd::Canceled) {
             ui.clear_focus();
             is_focused = false;
-            response.focused = false;
+            response.state.focused = false;
         }
         let focus = state.view.roll_focus(is_focused);
 
-        let snapshot = ResponseSnapshot {
-            id,
-            state: response,
-        };
         // One editing session for the whole menu pass, so one session reconciles undo
         // history once. A disabled editor offers no menu; not recording it closes any open
         // one, else Cut / Paste / Clear would keep executing.
         let menu_edited = !response.disabled && {
             let mut editor = Editor::new(self.text, &mut state.edit, rules);
-            editor.show_menu(ui, &snapshot, filter)
+            editor.show_menu(ui, &response, filter)
         };
         // A composition types nothing until it commits; starting one over a selection deletes the
         // selection first, as browsers do.
@@ -555,7 +550,7 @@ impl<'a> TextEdit<'a> {
             ended,
             focus_gained: focus.gained,
             focus_lost: focus.lost,
-            state: response,
+            response,
         }
     }
 }
@@ -576,18 +571,18 @@ struct EditSignals {
     ended: Option<EditEnd>,
     focus_gained: bool,
     focus_lost: bool,
-    state: ResponseState,
+    response: ResponseSnapshot,
 }
 
 impl EditSignals {
-    const fn focus_only(focus: FocusEdges, committed: bool, state: ResponseState) -> Self {
+    const fn focus_only(focus: FocusEdges, committed: bool, response: ResponseSnapshot) -> Self {
         Self {
             changed: false,
             committed,
             ended: None,
             focus_gained: focus.gained,
             focus_lost: focus.lost,
-            state,
+            response,
         }
     }
 }

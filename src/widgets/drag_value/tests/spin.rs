@@ -37,7 +37,7 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     assert_eq!(canonical, 30.0, "20 px at speed 1");
 }
 
-/// A focused chip steps by its last decimal (0.01 at two decimals), ten with Shift, one commit each, held by the range: 5 → 5.01 → 5.11 → 5.10, then stops at 5.15. An integer binding steps by one.
+/// A focused chip steps by its last decimal (0.01 at two decimals), ten with Shift, one commit each, held by the range: 5 → 5.01 → 5.11 → 5.10, then stops at 5.15. An integer binding steps by one, exactly past 2^53; decimals past 15 step at 15.
 #[test]
 fn the_arrows_step_a_focused_chip() {
     let id = WidgetId::from_hash("dv-spin-step");
@@ -83,6 +83,35 @@ fn the_arrows_step_a_focused_chip() {
     h.key(Key::ArrowUp);
     record(&mut h, &mut count);
     assert_eq!(count, 8, "an integer steps by one");
+
+    // Through `f64`, 2^53 + 1 read back as 2^53, and the step stored a lower value than shown.
+    count = (1 << 53) + 1;
+    record(&mut h, &mut count);
+    h.key(Key::ArrowUp);
+    record(&mut h, &mut count);
+    assert_eq!(count, (1 << 53) + 2, "a step past 2^53 is exact");
+
+    // Decimals past what an `f64` holds are coerced to 15, so the step is `1e-15`.
+    let fine_id = WidgetId::from_hash("dv-spin-fine");
+    let mut fine = 0.5_f64;
+    let record = |h: &mut UiHarness, fine: &mut f64| {
+        h.frame(|ui| {
+            DragValue::new(&mut *fine)
+                .decimals(usize::MAX)
+                .id(fine_id)
+                .size(40.0)
+                .show(ui);
+        });
+    };
+    record(&mut h, &mut fine);
+    h.set_focus(fine_id);
+    record(&mut h, &mut fine);
+    h.key(Key::ArrowUp);
+    record(&mut h, &mut fine);
+    assert_eq!(
+        fine, 0.500_000_000_000_001,
+        "decimals(usize::MAX) steps at 15"
+    );
 }
 
 /// A typed character opens the editor and replaces the value; Enter commits and keeps focus.

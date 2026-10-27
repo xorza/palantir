@@ -2,7 +2,6 @@
 
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
@@ -15,14 +14,16 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::drag_num::{DragNum, StoreRule};
+use crate::widgets::axis_keys::{AxisEnd, AxisKeys, KeyPair, Travel};
+use crate::widgets::drag_num::{DragNum, MAX_DECIMALS, StoreRule};
 use std::ops::RangeInclusive;
 
 /// Horizontal value slider over a numeric range, binding the same [`DragNum`] as
 /// [`DragValue`](crate::DragValue). The knob sits between two `Fill` leaves
 /// weighted `fraction` and `1 − fraction`, so it tracks the resolved width without
-/// knowing it at record time; pointer mapping uses last frame's width. Visuals come
-/// from [`crate::SliderTheme`] (slot `slider`).
+/// knowing it at record time; pointer mapping uses last frame's width. The parts are
+/// `id.with("fill")`, `id.with("knob")` and `id.with("track")`. Visuals come from
+/// [`crate::SliderTheme`] (slot `slider`).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Slider<'a> {
@@ -43,11 +44,12 @@ impl<'a> Slider<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
         // An infinite end would make a click store `+inf`.
-        assert!(domain::f64::is_range(&range), "{}", domain::RANGE_RULE);
+        let range = domain::f64::range(range);
         Self {
             widget: Widget::hstack()
                 .sense(Sense::CLICK | Sense::DRAG)
-                .focusable(true),
+                .focusable(true)
+                .input_scope(AxisKeys::SCOPE),
             value: value.into(),
             range: SliderRange {
                 min: *range.start(),
@@ -72,9 +74,10 @@ impl<'a> Slider<'a> {
     }
 
     /// Digits after the decimal point a float target keeps when committed; ignored
-    /// by the integer target. Default `2`.
+    /// by the integer target. Default `2`. `n` is coerced to at most 15, the digits an `f64`
+    /// holds.
     pub const fn decimals(mut self, n: usize) -> Self {
-        self.decimals = n;
+        self.decimals = if n < MAX_DECIMALS { n } else { MAX_DECIMALS };
         self
     }
 
@@ -89,7 +92,7 @@ impl<'a> Slider<'a> {
     /// (a drag pinned at `min`/`max` keeps reporting).
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
-        let id = self.widget.resolve(ui);
+        let id = response.id;
 
         let theme = self.style.unwrap_or(&ui.theme().slider);
         let knob = domain::length_at_least(theme.knob_size, 1.0);
@@ -106,11 +109,10 @@ impl<'a> Slider<'a> {
             self.value
                 .commit_value(range.snapped(range.value_at(at.x)), rule)
         });
-        let keyed = !response.disabled
-            && ui.is_focus_within(id)
-            && range
-                .key_target(ui, self.value.read().widen())
-                .is_some_and(|to| self.value.commit_value(range.snapped(to), rule));
+        let keyed = !response.disabled && ui.is_focus_within(id) && {
+            let travel = KEYS.read(&mut self.widget, ui);
+            !travel.is_still() && self.commit_travel(travel, rule)
+        };
         let changed = pressed | keyed;
         // Edge, not level: a press and release on the track writes a value without
         // latching a drag, so read `left.released()`, not `drag.stopped()`.
@@ -125,7 +127,7 @@ impl<'a> Slider<'a> {
         self.widget
             .configure()
             .default_size((Sizing::FILL, Sizing::fixed(knob)))
-            .child_align(Align::v(VAlign::Center));
+            .default_child_align(Align::v(VAlign::Center));
 
         let [filled, remainder] = Sizing::split(fraction);
         self.widget.record(ui, None, |ui| {
@@ -145,9 +147,34 @@ impl<'a> Slider<'a> {
                 .record(ui, Some(&track_chrome), |_| {});
         });
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed,
             committed,
+        }
+    }
+}
+
+impl Slider<'_> {
+    /// Store where `travel` sends the value. Without a snap step the steps add to the stored
+    /// number through [`DragNum::commit_drag`], so an integer past 2^53 moves by whole steps
+    /// where a round trip through `f64` could store a lower value.
+    fn commit_travel(&mut self, travel: Travel, rule: StoreRule) -> bool {
+        let range = self.range;
+        match travel.end {
+            Some(AxisEnd::Start) => self.value.commit_value(range.snapped(range.min), rule),
+            Some(AxisEnd::End) => self.value.commit_value(range.snapped(range.max), rule),
+            None => {
+                let unit = range.key_unit(self.value.unit(self.decimals));
+                let by = f64::from(travel.steps) * unit
+                    + f64::from(travel.pages) * (range.max - range.min) / 10.0;
+                let at = self.value.read();
+                match range.step {
+                    Some(_) => self
+                        .value
+                        .commit_value(range.snapped(at.widen() + by), rule),
+                    None => self.value.commit_drag(at, by, rule),
+                }
+            }
         }
     }
 }
@@ -188,57 +215,67 @@ impl SliderRange {
         self.min + f64::from(fraction.clamp(0.0, 1.0)) * (self.max - self.min)
     }
 
-    /// Snap to the nearest multiple of `step` from `min`; no step passes the value
-    /// through.
+    /// Snap to the nearest multiple of `step` from `min` inside the range, so a span that is no
+    /// multiple of the step ends on its last grid value (`0..=10` by 4 takes 10 to 8); no step
+    /// passes the value through.
     fn snapped(self, value: f64) -> f64 {
-        match self.step {
-            Some(s) => self.min + ((value - self.min) / s).round() * s,
-            None => value,
-        }
+        let Some(s) = self.step else {
+            return value;
+        };
+        let span = self.max - self.min;
+        let count = span / s;
+        // A span that is a whole number of steps divides a few ulps off (`0.3 / 0.1` is
+        // `2.9999999999999996`). The span and the product each round by half an ulp of the span,
+        // so a product that close to it is the whole count.
+        let last = if (count.round() * s - span).abs() <= 2.0 * f64::EPSILON * span.abs() {
+            count.round()
+        } else {
+            count.trunc()
+        };
+        let k = ((value - self.min) / s).round();
+        let k = if last >= 0.0 {
+            k.clamp(0.0, last)
+        } else {
+            k.clamp(last, 0.0)
+        };
+        self.min + k * s
     }
 
-    /// Where this frame's keys send a slider now at `at`, or `None` when no key fired.
-    /// Arrows step toward `max` (right, up) or `min` (left, down) by `step`, or a
-    /// hundredth of the range; Shift makes it ten steps; Page Up/Down move a tenth;
-    /// Home/End jump to the ends. Direction comes from `max - min`, so a reversed range
-    /// steps the same way along the track. Every chord is sampled, not short-circuited,
-    /// as `shortcut_pressed` also keeps it subscribed for the wake gate.
-    fn key_target(self, ui: &mut Ui, at: f64) -> Option<f64> {
+    /// The value an arrow steps by: the snap step, else a hundredth of the range, but at least
+    /// `grain`, one unit of the bound number's last digit. So an integer slider over a range under
+    /// 100 still moves, and a half step on an integer cannot round back to where it started.
+    /// Signed to the range's direction, so a reversed range steps the same way along the track.
+    fn key_unit(self, grain: f64) -> f64 {
         let span = self.max - self.min;
-        let unit = self.step.map_or(span / 100.0, |s| s.copysign(span));
-        let mut to = at;
-        let mut moved = false;
-        for (key, sign) in [
-            (Key::ArrowLeft, -1.0),
-            (Key::ArrowDown, -1.0),
-            (Key::ArrowRight, 1.0),
-            (Key::ArrowUp, 1.0),
-        ] {
-            let coarse = ui.shortcut_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
-            let plain = ui.shortcut_pressed(key);
-            if coarse {
-                to += sign * unit * 10.0;
-                moved = true;
-            } else if plain {
-                to += sign * unit;
-                moved = true;
-            }
-        }
-        for (key, sign) in [(Key::PageDown, -1.0), (Key::PageUp, 1.0)] {
-            if ui.shortcut_pressed(key) {
-                to += sign * span / 10.0;
-                moved = true;
-            }
-        }
-        let home = ui.shortcut_pressed(Key::Home);
-        let end = ui.shortcut_pressed(Key::End);
-        if home || end {
-            to = if end { self.max } else { self.min };
-            moved = true;
-        }
-        moved.then_some(to)
+        self.step
+            .unwrap_or_else(|| span.abs() / 100.0)
+            .max(grain)
+            .copysign(span)
     }
 }
+
+/// Arrows step toward `max` (right, up) or `min` (left, down); Page Up and Down move a tenth of
+/// the range; Home and End jump to the ends.
+const KEYS: AxisKeys = AxisKeys {
+    steps: &[
+        KeyPair {
+            back: Key::ArrowLeft,
+            forward: Key::ArrowRight,
+        },
+        KeyPair {
+            back: Key::ArrowDown,
+            forward: Key::ArrowUp,
+        },
+    ],
+    page: Some(KeyPair {
+        back: Key::PageDown,
+        forward: Key::PageUp,
+    }),
+    ends: Some(KeyPair {
+        back: Key::Home,
+        forward: Key::End,
+    }),
+};
 
 #[cfg(test)]
 mod tests;

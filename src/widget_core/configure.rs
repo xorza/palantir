@@ -81,6 +81,10 @@ pub trait Configure: Sized {
 
     /// Both axes at once: a [`Sizing`](crate::Sizing), a bare number (fixed), a `(w, h)` pair or a
     /// [`Size`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless each bare number is a [length](crate::widget::domain::length).
     #[inline]
     #[must_use]
     #[track_caller]
@@ -394,6 +398,11 @@ pub trait ThemeDefaults: Configure {
     }
 
     /// The size to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless each bare number is a [length](crate::widget::domain::length), even where
+    /// the caller set a size.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -425,6 +434,14 @@ pub trait ThemeDefaults: Configure {
     #[must_use]
     fn default_align(mut self, a: Align) -> Self {
         self.configure().default_align(a);
+        self
+    }
+
+    /// Child alignment to fall back on, per axis.
+    #[inline]
+    #[must_use]
+    fn default_child_align(mut self, a: Align) -> Self {
+        self.configure().default_child_align(a);
         self
     }
 

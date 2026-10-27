@@ -1,32 +1,30 @@
 //! The box-and-label boolean toggle and its pair of click responses.
 
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::text::text_input::TextInput;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::theme::check_state::CheckState;
-use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::Theme;
 use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::toggle_row;
-use crate::widgets::toggle_row::ToggleRow;
+use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
 
 /// Boolean toggle over a `&mut bool` the owner controls (as egui). Clicking the row flips it.
 ///
-/// An HStack of [box, label], one `Sense::CLICK` target. Child ids derive via `WidgetId::with`, stable across sibling insertions. Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]): chrome via the slot's `plan` (`unchecked` / `checked`), glyph color from `indicator`, geometry from `box_size`.
+/// An HStack of [box, label], one `Sense::CLICK` target; the parts are `id.with("box")` and `id.with("label")`, stable across sibling insertions. Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]): chrome via the slot's `plan` (`unchecked` / `checked`), glyph color from `indicator`, geometry from `box_size`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Checkbox<'a> {
-    widget: Widget,
+    row: ToggleRow<'a>,
     value: &'a mut bool,
-    label: TextInput<'a>,
-    style: Option<&'a ToggleTheme>,
 }
 
 impl<'a> Checkbox<'a> {
@@ -34,73 +32,67 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         Self {
-            widget: toggle_row::row(),
+            row: ToggleRow::new(),
             value,
-            label: TextInput::default(),
-            style: None,
         }
     }
 
     /// The text drawn right of the box. Empty (default) records no text child.
     pub fn label(mut self, label: impl Into<TextInput<'a>>) -> Self {
-        self.label = label.into();
+        self.row.label = label.into();
         self
     }
 
     /// Per-instance override of [`crate::Theme`]'s `checkbox`.
     pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
-        self.style = s.into();
+        self.row.style = s.into();
         self
     }
 
     /// Record the row and report whether this frame flipped the bool. A flip commits at once (`committed == changed`).
-    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
-        let response = self.widget.response(ui);
-
-        let before = *self.value;
-        let checked = toggle_row::toggled(
-            toggle_row::activated(ui, &mut self.widget, &response),
-            self.value,
-        );
-        let changed = checked != before;
-
-        let theme = ui.theme();
-        let slot = self.style.unwrap_or(&theme.checkbox);
-        let box_size = domain::length_at_least(slot.box_size, 1.0);
-        let indicator = slot.indicator;
-        let indicator_width = domain::length_at_least(slot.indicator_width, 0.0);
-        let check = slot.check_polyline();
-        let chrome = ToggleRow {
-            row: self.widget,
-            response,
-            label: self.label,
-            plan: slot.plan(&response, CheckState::from(checked), theme.text),
-            gap: slot.gap,
-            boxed: Widget::leaf().size((Sizing::fixed(box_size), Sizing::fixed(box_size))),
-            // Square box: the theme's corner radius stands.
-            pill: None,
-        };
-        let response = chrome.record_row(ui, |ui, _| {
-            if checked {
-                ui.add_shape(
-                    Shape::polyline(&check, Stroke::new(indicator, indicator_width))
-                        .cap(LineCap::Round)
-                        .join(LineJoin::Round),
-                );
-            }
-        });
-        ValueResponse {
-            response,
-            changed,
-            committed: changed,
-        }
+    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+        self.row.show(ui, Check(self.value))
     }
 }
 
 impl Configure for Checkbox<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
-        self.widget.configure()
+        self.row.widget.configure()
+    }
+}
+
+/// A square box with a check mark while set.
+#[derive(Debug)]
+struct Check<'a>(&'a mut bool);
+
+impl ToggleKind for Check<'_> {
+    fn settle(self, activated: bool) -> Settled {
+        Settled::flip(self.0, activated)
+    }
+
+    fn slot(theme: &Theme) -> &ToggleTheme {
+        &theme.checkbox
+    }
+
+    fn boxed(slot: &ToggleTheme) -> Widget {
+        let side = Sizing::fixed(domain::length_at_least(slot.box_size, 1.0));
+        Widget::leaf().size((side, side))
+    }
+
+    fn pill(_: &ToggleTheme) -> Option<f32> {
+        None
+    }
+
+    fn paint(ui: &mut Ui, _: WidgetId, slot: &ToggleTheme, _: &Chrome, checked: bool) {
+        if checked {
+            let width = domain::length_at_least(slot.indicator_width, 0.0);
+            ui.add_shape(
+                Shape::polyline(&slot.check_polyline(), Stroke::new(slot.indicator, width))
+                    .cap(LineCap::Round)
+                    .join(LineJoin::Round),
+            );
+        }
     }
 }
 

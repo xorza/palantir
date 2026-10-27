@@ -292,10 +292,10 @@ fn compound_kinds_check_every_part() {
     });
 }
 
-/// A range's ends are validated and its order coerced.
+/// A range's ends are validated and its order kept.
 #[test]
-fn range_orders_finite_ends_and_refuses_the_rest() {
-    assert_eq!(domain::f64::range(3.0..=1.0), 1.0..=3.0);
+fn range_keeps_finite_ends_in_order_and_refuses_the_rest() {
+    assert_eq!(domain::f64::range(3.0..=1.0), 3.0..=1.0);
     assert_eq!(domain::f64::range(-1.0..=2.0), -1.0..=2.0);
     assert_eq!(domain::f64::range(5.0..=5.0), 5.0..=5.0);
     for bad in [f64::NAN..=1.0, 0.0..=f64::INFINITY, f64::NEG_INFINITY..=0.0] {

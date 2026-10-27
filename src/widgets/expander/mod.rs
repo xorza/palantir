@@ -3,12 +3,11 @@
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::arrow::Arrow;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
@@ -16,9 +15,10 @@ use crate::shape::Shape;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;
@@ -42,6 +42,9 @@ use std::rc::Rc;
 /// of a full record every frame. The open flag lives on the widget's id and is
 /// `false` until [`Self::start_open`] says otherwise, so an untouched section keeps
 /// no state row; an application owning the flag binds it with [`Self::open`].
+///
+/// Its parts are the header, [`Self::header_id`], with `arrow` and `label` under it, and the
+/// body, `id.with("body")`, inside `id.with("body").with("reveal")`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Expander<'a> {
@@ -61,7 +64,7 @@ impl<'a> Expander<'a> {
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
-            widget: Widget::vstack().size((Sizing::FILL, Sizing::HUG)),
+            widget: Widget::vstack(),
             label: label.into(),
             start_open: false,
             open: None,
@@ -99,6 +102,12 @@ impl<'a> Expander<'a> {
         self
     }
 
+    /// The header of the expander `expander`: the focusable click target that holds the open
+    /// state and reports [`ExpanderResponse::response`].
+    pub fn header_id(expander: WidgetId) -> WidgetId {
+        expander.with("header")
+    }
+
     /// Record the header, and the body under it while open.
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R> {
         let theme = Rc::clone(ui.theme());
@@ -113,8 +122,9 @@ impl<'a> Expander<'a> {
             style: _,
         } = self;
 
+        widget.configure().default_size((Sizing::FILL, Sizing::HUG));
         let id = widget.resolve(ui);
-        let header_id = id.with("header");
+        let header_id = Self::header_id(id);
         let body_id = id.with("body");
         let stored = ui.state::<ExpanderState>(header_id).copied();
         let was_open = match &open {
@@ -124,7 +134,10 @@ impl<'a> Expander<'a> {
         let height = stored.and_then(|s| s.height);
 
         let mut pass = Pass {
-            header: ResponseState::default(),
+            header: ResponseSnapshot {
+                id: header_id,
+                state: ResponseState::default(),
+            },
             toggled: false,
             openness: 0.0,
             inner: None,
@@ -136,18 +149,12 @@ impl<'a> Expander<'a> {
                 .gap(t.gap)
                 .child_align(Align::v(VAlign::Center))
                 .sense(Sense::CLICK)
-                .focusable(true)
-                // Enter and Space classify as `KeyClass::Text`, so taking them
-                // claims that class; right for a focused header, which is no typing
-                // target.
-                .input_scope(KeyFilter::TEXT);
-            let state = header.response(ui);
+                .focusable(true);
+            let state = header.activation_response(ui, Activation::Button);
             let plan = t.plan(&state, (), ambient);
             let look = header.wear(ui, plan);
 
-            // A disabled widget's button slices are already empty, but key events
-            // skip that fold.
-            let activated = state.clicked() || (!state.disabled && activation_key(ui, &mut header));
+            let activated = state.clicked();
             let now_open = was_open != activated;
             // With no measured height there is nothing to clip against: snap, then
             // animate every later reveal.
@@ -237,7 +244,7 @@ impl<'a> Expander<'a> {
         }
 
         ExpanderResponse {
-            response: Response::new(header_id, ui, pass.header),
+            response: Response::new(ui, pass.header),
             inner: pass.inner,
             changed: pass.toggled,
             openness: pass.openness,
@@ -254,7 +261,7 @@ impl Configure for Expander<'_> {
 
 #[derive(Debug)]
 struct Pass<R> {
-    header: ResponseState,
+    header: ResponseSnapshot,
     toggled: bool,
     openness: f32,
     inner: Option<R>,
@@ -268,18 +275,6 @@ struct ExpanderState {
     open: bool,
     height: Option<f32>,
     shown: bool,
-}
-
-/// Whether an activation key fired on the focused header; both are sampled, not
-/// short-circuited, as `shortcut_pressed` keeps the chord subscribed for the wake gate.
-fn activation_key(ui: &mut Ui, header: &mut Widget) -> bool {
-    let id = header.resolve(ui);
-    if !ui.is_focus_within(id) {
-        return false;
-    }
-    let space = header.shortcut_pressed(ui, Key::Char(' '));
-    let enter = header.shortcut_pressed(ui, Key::Enter);
-    space || enter
 }
 
 /// What one pass over an [`Expander`] produced.

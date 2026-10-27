@@ -1,8 +1,9 @@
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, VAlign};
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::checkbox::Checkbox;
@@ -10,95 +11,87 @@ use crate::widgets::radio::RadioButton;
 use crate::widgets::switch::Switch;
 use glam::{UVec2, Vec2};
 
-/// All three toggles resolve their box through `WidgetTheme::plan`: `ToggleTheme` `padding`/`margin` reach the row and an explicit builder value wins.
+/// Each toggle lays its row out from its own slot: `padding`, `margin` and `gap` reach the row,
+/// and the box centers on the cross axis; an explicit builder value wins each.
 ///
-/// Each toggle gets its own spacing, pinning which slot each reads (one value in all three could not tell a mix-up).
+/// Spacing is asymmetric and distinct per toggle, so no lane, axis or slot swap passes. The row is
+/// 120 tall, so a centered box `h` tall sits `(120 - pad.top - pad.bottom - h) / 2` below the
+/// padding, and a top-aligned one at the padding.
 #[test]
 fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
-    #[track_caller]
-    fn check(label: &str, h: &UiHarness, nodes: [NodeId; 2], padding: Spacing, margin: Spacing) {
-        let layouts = h.ui.tree(Layer::Main).records.layout();
-        let explicit = layouts[nodes[0].idx()];
-        let inherited = layouts[nodes[1].idx()];
-        assert_eq!(explicit.padding, Spacing::ZERO, "{label}: explicit padding");
-        assert_eq!(explicit.margin, Spacing::ZERO, "{label}: explicit margin");
-        assert_eq!(inherited.padding, padding, "{label}: theme padding");
-        assert_eq!(inherited.margin, margin, "{label}: theme margin");
-    }
-
-    // Asymmetric and distinct per toggle, so no padding/margin, axis or slot swap passes.
-    let spacing = |n: f32| (Spacing::xy(n, n + 2.0), Spacing::xy(n + 4.0, n + 6.0));
-    let (cb_padding, cb_margin) = spacing(7.0);
-    let (rb_padding, rb_margin) = spacing(23.0);
-    let (sw_padding, sw_margin) = spacing(41.0);
-
+    let spacing = |n: f32| {
+        (
+            Spacing::xy(n, n + 2.0),
+            Spacing::xy(n + 4.0, n + 6.0),
+            n + 8.0,
+        )
+    };
     let mut h = UiHarness::new(UVec2::new(400, 300));
     let theme = h.ui.theme_mut();
-    for (slot, (padding, margin)) in [
-        (&mut theme.checkbox, (cb_padding, cb_margin)),
-        (&mut theme.radio, (rb_padding, rb_margin)),
-        (&mut theme.switch, (sw_padding, sw_margin)),
-    ] {
+    let kinds = [
+        (Toggle::Checkbox, &mut theme.checkbox, spacing(7.0)),
+        (Toggle::Radio, &mut theme.radio, spacing(23.0)),
+        (Toggle::Switch, &mut theme.switch, spacing(41.0)),
+    ]
+    .map(|(kind, slot, (padding, margin, gap))| {
         slot.defaults.padding = padding;
         slot.defaults.margin = margin;
+        slot.gap = gap;
+        (kind, padding, margin, gap)
+    });
+
+    for (kind, padding, margin, gap) in kinds {
+        for explicit in [false, true] {
+            let id = WidgetId::from_hash(("row", explicit));
+            let mut value = false;
+            h.frame(|ui| {
+                record_spaced(ui, kind, id, &mut value, explicit);
+            });
+            let (padding, margin, gap, center) = if explicit {
+                (Spacing::ZERO, Spacing::ZERO, 0.0, false)
+            } else {
+                (padding, margin, gap, true)
+            };
+            let node = h.ui.forest().node_for_widget_id(Layer::Main, id);
+            let layout = h.ui.tree(Layer::Main).records.layout()[node.idx()];
+            let label = format!("{kind:?} explicit {explicit}");
+            assert_eq!(layout.padding, padding, "{label}: padding");
+            assert_eq!(layout.margin, margin, "{label}: margin");
+
+            let row = h.arranged(id);
+            let boxed = h.arranged(id.with("box"));
+            let text = h.arranged(id.with("label"));
+            assert_eq!(text.min.x - boxed.max().x, gap, "{label}: gap");
+            let [_, top, _, bottom] = padding.as_array();
+            let content_h = 120.0 - top - bottom;
+            let below = if center {
+                (content_h - boxed.size.h) / 2.0
+            } else {
+                0.0
+            };
+            assert_eq!(boxed.min.y - row.min.y - top, below, "{label}: child align");
+        }
     }
+}
 
-    let (mut a, mut b) = (false, false);
-    let rows = h.frame_value(|ui| {
-        [
-            Checkbox::new(&mut a)
-                .id(WidgetId::from_hash("cb-explicit"))
-                .padding(Spacing::ZERO)
+/// One `kind` 120 px tall under `id`; `explicit` sets every spacing the theme supplies.
+fn record_spaced(ui: &mut Ui, kind: Toggle, id: WidgetId, value: &mut bool, explicit: bool) {
+    fn spaced<C: Configure>(row: C, id: WidgetId, explicit: bool) -> C {
+        let row = row.id(id).size((Sizing::HUG, Sizing::fixed(120.0)));
+        if explicit {
+            row.padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
-                .show(ui)
-                .response
-                .node(),
-            Checkbox::new(&mut b)
-                .id(WidgetId::from_hash("cb-inherited"))
-                .show(ui)
-                .response
-                .node(),
-        ]
-    });
-    check("Checkbox", &h, rows, cb_padding, cb_margin);
-
-    let (mut c, mut d) = (0_u8, 0_u8);
-    let rows = h.frame_value(|ui| {
-        [
-            RadioButton::new(&mut c, 1)
-                .id(WidgetId::from_hash("rb-explicit"))
-                .padding(Spacing::ZERO)
-                .margin(Spacing::ZERO)
-                .show(ui)
-                .response
-                .node(),
-            RadioButton::new(&mut d, 1)
-                .id(WidgetId::from_hash("rb-inherited"))
-                .show(ui)
-                .response
-                .node(),
-        ]
-    });
-    check("RadioButton", &h, rows, rb_padding, rb_margin);
-
-    let (mut e, mut f) = (false, false);
-    let rows = h.frame_value(|ui| {
-        [
-            Switch::new(&mut e)
-                .id(WidgetId::from_hash("sw-explicit"))
-                .padding(Spacing::ZERO)
-                .margin(Spacing::ZERO)
-                .show(ui)
-                .response
-                .node(),
-            Switch::new(&mut f)
-                .id(WidgetId::from_hash("sw-inherited"))
-                .show(ui)
-                .response
-                .node(),
-        ]
-    });
-    check("Switch", &h, rows, sw_padding, sw_margin);
+                .gap(0.0)
+                .child_align(Align::v(VAlign::Top))
+        } else {
+            row
+        }
+    }
+    match kind {
+        Toggle::Checkbox => spaced(Checkbox::new(value).label("t"), id, explicit).show(ui),
+        Toggle::Radio => spaced(RadioButton::new(value, true).label("t"), id, explicit).show(ui),
+        Toggle::Switch => spaced(Switch::new(value).label("t"), id, explicit).show(ui),
+    };
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -176,13 +169,18 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
     }
 }
 
-/// Space activates a focused toggle like a click and commits; an unfocused one ignores it.
+/// Space activates a focused toggle as a click, which its response reports, and commits; an
+/// unfocused one ignores it, and Enter, which WAI-ARIA leaves to the form, moves none.
 #[test]
 fn space_activates_a_focused_toggle() {
     use crate::input::keyboard::key::Key;
 
     for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
-        for focused in [true, false] {
+        for (key, focused, acts) in [
+            (Key::Char(' '), true, true),
+            (Key::Char(' '), false, false),
+            (Key::Enter, true, false),
+        ] {
             let mut h = UiHarness::new(UVec2::new(300, 100));
             let mut value = false;
             h.frame(|ui| {
@@ -191,12 +189,12 @@ fn space_activates_a_focused_toggle() {
             if focused {
                 h.set_focus(WidgetId::from_hash("toggle"));
             }
-            h.key(Key::Char(' '));
-            let [_, changed] = h.frame_value(|ui| record_toggle(ui, kind, &mut value, false));
+            h.key(key);
+            let edges = h.frame_value(|ui| record_toggle(ui, kind, &mut value, false));
             assert_eq!(
-                (value, changed),
-                (focused, focused),
-                "{kind:?} focused {focused}"
+                (value, edges),
+                (acts, [acts, acts]),
+                "{kind:?} {key:?} focused {focused}"
             );
         }
     }

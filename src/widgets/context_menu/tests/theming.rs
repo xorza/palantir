@@ -59,6 +59,23 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
         6.0,
         "row pitch grows by the menu gap delta",
     );
+
+    // A caller's gap wins over the item theme's: `0.0` takes the whole themed gutter out.
+    h.frame(|ui| {
+        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
+            MenuItem::new("Copy")
+                .shortcut(Shortcut::ctrl('C'))
+                .gap(0.0)
+                .show(ui, popup);
+        });
+    });
+    let flush = menu_rows(&h, trigger_id());
+    let item_gap = h.ui.theme().context_menu.item.gap;
+    assert_eq!(
+        after[0].rect.size.w - flush[0].rect.size.w,
+        item_gap,
+        "caller gap"
+    );
 }
 
 /// An explicit `.gap(0.0)` differs from never setting one: flush rows at `0.0`, the theme gap otherwise.

@@ -13,6 +13,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::record::ShapeRecord;
+use crate::widget_core::configure::ThemeDefaults;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -79,13 +80,18 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
     }
 }
 
-/// Default sizing fills the parent; a viewport has no intrinsic size.
+/// Default sizing fills the parent, as a viewport has no intrinsic size; a wrapper's
+/// `default_size` replaces it.
 #[test]
 fn default_fills_parent() {
     let mut h = UiHarness::new(UVec2::new(160, 100));
     let node = h.frame_value(|ui| GpuView::new(&scene()).show(ui).node());
     let r = h.ui.arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
+
+    let node = h.frame_value(|ui| GpuView::new(&scene()).default_size(50.0).show(ui).node());
+    let r = h.ui.arranged_rect(Layer::Main, node);
+    assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }
 
 /// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster.

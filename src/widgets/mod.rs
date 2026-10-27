@@ -42,6 +42,7 @@ pub(crate) mod text;
 pub(crate) mod text_edit;
 pub(crate) mod toggle_row;
 pub(crate) mod tooltip;
+pub(crate) mod value_area;
 
 #[cfg(test)]
 mod tests;

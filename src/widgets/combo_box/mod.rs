@@ -1,7 +1,6 @@
 //! The drop-down selector: a trigger that opens a popup list, and the
 //! open/closed flag one trigger site keeps between frames.
 
-use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -18,9 +17,10 @@ use crate::theme::button::ButtonTheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -71,12 +71,11 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            // A Tab stop: Space, Enter and Alt+Down open it, and arrows step the pick
-            // while closed; `TEXT` and `CARET` are the key classes involved.
+            // Alt+Down and the arrows are `CARET`; the activation keys add `TEXT` in `show`.
             widget: Widget::hstack()
                 .sense(Sense::CLICK)
                 .focusable(true)
-                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
+                .input_scope(KeyFilter::CARET),
             selected,
             options,
             label,
@@ -109,20 +108,19 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     /// select-only combobox: Space, Enter and Alt+Down open, and while closed the
     /// Up and Down arrows step the pick, stopping at the ends.
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
-        let mut response = self.widget.response(ui);
-        let id = self.widget.resolve(ui);
+        let mut response = self.widget.activation_response(ui, Activation::Button);
+        let id = response.id;
         let mut stepped = false;
         if !response.disabled && ui.is_focus_within(id) {
             // Every chord is sampled: `shortcut_pressed` also keeps it subscribed for the wake gate.
             let mut key = |shortcut| self.widget.shortcut_pressed(ui, shortcut);
-            let space = key(Shortcut::key(Key::Char(' ')));
-            let enter = key(Shortcut::key(Key::Enter));
             let alt_down = key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
             let up = key(Shortcut::key(Key::ArrowUp));
             let down = key(Shortcut::key(Key::ArrowDown));
-            if space || enter || alt_down {
-                response.left.phase = ButtonPhase::Up { click: Some(1) };
-            } else if !PopupTrigger::is_open(ui, id)
+            if alt_down {
+                response.state.activate();
+            } else if !response.clicked()
+                && !PopupTrigger::is_open(ui, id)
                 && let Some(shown) = domain::idx(*self.selected, self.options.len())
             {
                 let last = self.options.len() - 1;
@@ -153,8 +151,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         self.widget
             .configure()
             .justify(Justify::SpaceBetween)
-            .child_align(Align::v(VAlign::Center))
-            .gap(geometry.gap);
+            .default_child_align(Align::v(VAlign::Center))
+            .default_gap(geometry.gap);
 
         let arrow_color = look.text.color;
         let text_style = look.text;
@@ -188,14 +186,10 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let options = self.options;
         let label = self.label;
         let selected = self.selected;
-        let trigger = ResponseSnapshot {
-            id,
-            state: response,
-        };
         // The same menu look as `ContextMenu`, except the minimum: a dropdown is at
         // least as wide as its trigger, an explicit set that outranks
         // `ContextMenuTheme::min_width`. Esc closes through the popup.
-        let resp = PopupTrigger::on(&trigger)
+        let resp = PopupTrigger::on(&response)
             .id(id.with("list"))
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .menu_look(ctx)
@@ -213,7 +207,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let changed = resp.inner.unwrap_or(false) || stepped;
 
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed,
             committed: changed,
         }

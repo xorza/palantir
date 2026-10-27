@@ -1,5 +1,6 @@
 //! Everything a widget asks about itself for one frame: where it arranged, and what the pointer and keyboard did to it.
 
+use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
@@ -53,6 +54,13 @@ impl ResponseState {
         if self.disabled {
             self.clear_interaction();
         }
+    }
+
+    /// Reports one left click the pointer never made: an activation key or a menu shortcut, so a
+    /// reader of `clicked()` need not know which device acted.
+    #[inline]
+    pub(crate) const fn activate(&mut self) {
+        self.left.phase = ButtonPhase::Up { click: Some(1) };
     }
 
     /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, so it agrees with [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local).

@@ -4,7 +4,6 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -33,9 +32,10 @@ use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::look_plan::LookPlan;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response};
+use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 use glam::Vec2;
 use std::panic::Location;
 
@@ -91,13 +91,19 @@ impl Widget {
     /// Wrapping horizontal stack container for custom widgets.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::X)))
+        Self::wrap_stack(Axis::X)
     }
 
     /// Wrapping vertical stack container for custom widgets.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(Axis::Y)))
+        Self::wrap_stack(Axis::Y)
+    }
+
+    /// Wrapping stack container along `axis`, for a direction picked at run time.
+    #[track_caller]
+    pub fn wrap_stack(axis: Axis) -> Self {
+        Self::new(NodeMode::Resolved(LayoutMode::WrapStack(axis)))
     }
 
     /// Layered stack container for custom widgets.
@@ -177,19 +183,39 @@ impl Widget {
 
     /// This frame's interaction state, folding in the widget's own `disabled` bit so a
     /// widget disabled this frame paints as disabled before the cascade catches up.
-    /// Resolves the identity if needed. Returns an owned [`ResponseState`], not a
+    /// Resolves the identity if needed. Returns an owned [`ResponseSnapshot`], not a
     /// [`Response`], which holds `&Ui` while the body needs `&mut Ui`; it becomes the
     /// widget's [`Response::new`] at the end.
-    pub fn response(&mut self, ui: &mut Ui) -> ResponseState {
+    pub fn response(&mut self, ui: &mut Ui) -> ResponseSnapshot {
         let id = self.resolve(ui);
         let mut state = ui.response_for(id);
         state.merge_disabled(self.node.flags.is_disabled());
-        state
+        ResponseSnapshot { id, state }
+    }
+
+    /// [`Self::response`] with `activation`'s keys on a focused widget folded in as one left
+    /// click, so `clicked()` reads the same from the pointer and the keyboard. Folds
+    /// [`KeyFilter::TEXT`], the class of bare Space and Enter, into the
+    /// [`input_scope`](Configure::input_scope), so an enclosing scope cannot take them.
+    pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> ResponseSnapshot {
+        let scope = self.authored_input_scope().union(KeyFilter::TEXT);
+        self.configure().input_scope(scope);
+        let mut response = self.response(ui);
+        if !response.disabled && ui.is_focus_within(response.id) {
+            // Each chord is sampled, not short-circuited: reading keeps it subscribed for the
+            // wake gate.
+            let space = self.shortcut_pressed(ui, Key::Char(' '));
+            let enter = activation == Activation::Button && self.shortcut_pressed(ui, Key::Enter);
+            if space || enter {
+                response.state.activate();
+            }
+        }
+        response
     }
 
     /// Fills the padding and margin the builder left unset from `plan`, then animates toward its
     /// look. The look is not stashed on the widget: a toggle paints it on its inner box (see
-    /// `ToggleRow::record_row`); widgets that wear it pass `Some(&look.chrome)` to
+    /// `ToggleRow::show`); widgets that wear it pass `Some(&look.chrome)` to
     /// [`Self::record`].
     // Forced inline across the theme/widget codegen-unit boundary: left outlined, the resolver cost
     // 3.9% self-time in the frame bench.
@@ -316,13 +342,13 @@ impl Widget {
 
     /// The sibling gap the caller authored, or `None`.
     #[inline]
-    pub fn authored_gap(&self) -> Option<f32> {
+    pub const fn authored_gap(&self) -> Option<f32> {
         self.node.gaps.gap()
     }
 
     /// The line gap the caller authored, or `None`.
     #[inline]
-    pub fn authored_line_gap(&self) -> Option<f32> {
+    pub const fn authored_line_gap(&self) -> Option<f32> {
         self.node.gaps.line_gap()
     }
 

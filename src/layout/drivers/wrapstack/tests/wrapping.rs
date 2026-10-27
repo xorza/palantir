@@ -4,6 +4,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -77,28 +78,32 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 }
 
 /// Pin: WrapVStack, same code via `Axis::Y`; children flow top-to-bottom and wrap to a new column.
+/// `Panel::wrap_stack(Axis::Y)` is the same container.
 #[test]
 fn wrap_vstack_wraps_columns_when_main_overflows() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    h.under_outer(|ui| {
-        Panel::wrap_vstack()
-            .id(WidgetId::from_hash("w"))
-            .size((Sizing::HUG, Sizing::fixed(100.0)))
-            .gap(10.0)
-            .line_gap(8.0)
-            .show(ui, |ui| {
-                cell(ui, "a", Size::new(20.0, 40.0));
-                cell(ui, "b", Size::new(20.0, 40.0));
-                // 40+10+40+10+40 = 140 > 100 → c wraps
-                cell(ui, "c", Size::new(20.0, 40.0));
-            });
-    });
-    let a = h.arranged(WidgetId::from_hash("a"));
-    let b = h.arranged(WidgetId::from_hash("b"));
-    let c = h.arranged(WidgetId::from_hash("c"));
-    assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
-    assert_eq!((b.min.x, b.min.y), (0.0, 50.0));
-    assert_eq!((c.min.x, c.min.y), (28.0, 0.0));
+    let makers: [fn() -> Panel; 2] = [Panel::wrap_vstack, || Panel::wrap_stack(Axis::Y)];
+    for (n, make) in makers.into_iter().enumerate() {
+        let mut h = UiHarness::new(UVec2::new(400, 400));
+        h.under_outer(|ui| {
+            make()
+                .id(WidgetId::from_hash("w"))
+                .size((Sizing::HUG, Sizing::fixed(100.0)))
+                .gap(10.0)
+                .line_gap(8.0)
+                .show(ui, |ui| {
+                    cell(ui, "a", Size::new(20.0, 40.0));
+                    cell(ui, "b", Size::new(20.0, 40.0));
+                    // 40+10+40+10+40 = 140 > 100 → c wraps
+                    cell(ui, "c", Size::new(20.0, 40.0));
+                });
+        });
+        let a = h.arranged(WidgetId::from_hash("a"));
+        let b = h.arranged(WidgetId::from_hash("b"));
+        let c = h.arranged(WidgetId::from_hash("c"));
+        assert_eq!((a.min.x, a.min.y), (0.0, 0.0), "maker {n}");
+        assert_eq!((b.min.x, b.min.y), (0.0, 50.0), "maker {n}");
+        assert_eq!((c.min.x, c.min.y), (28.0, 0.0), "maker {n}");
+    }
 }
 
 /// Pin: a Fixed-width Hug-height WrapHStack hugs to its packed cross extent: 4 cells of 60×20 in 200 → 3 on line 0, 1 on line 1, h = 20+8+20 = 48. A fully-Hug WrapHStack collapses to one line (intrinsic measure runs at `INF` main), so some ancestor must commit a finite main size.

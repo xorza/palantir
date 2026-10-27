@@ -7,6 +7,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -16,7 +17,7 @@ use crate::widgets::checkerboard::Checkerboard;
 
 /// A chip painting one color, over a checkerboard when it is translucent.
 ///
-/// Display only: it writes nothing and senses a click, read through [`clicked()`](crate::ResponseState::clicked). Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
+/// It writes nothing. It senses a click, read through [`clicked()`](crate::ResponseState::clicked), and takes focus, where Space and Enter click it; with the click sense removed it is display only and no Tab stop. Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorSwatch<'a> {
@@ -30,7 +31,7 @@ impl<'a> ColorSwatch<'a> {
     #[track_caller]
     pub fn new(color: RgbaF32) -> Self {
         Self {
-            widget: Widget::leaf().sense(Sense::CLICK),
+            widget: Widget::leaf().sense(Sense::CLICK).focusable(true),
             color,
             style: None,
         }
@@ -50,15 +51,17 @@ impl<'a> ColorSwatch<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let response = widget.response(ui);
-        let id = widget.resolve(ui);
+        if !widget.authored_sense().contains(Sense::CLICK) {
+            widget.configure().focusable(false);
+        }
+        let response = widget.activation_response(ui, Activation::Button);
         let size = response
             .layout_rect
             .map_or_else(|| Size::new(side, side), |r| r.size);
         let color = self.color;
 
         widget.record(ui, None, |ui| checker.paint_chip(ui, color, size));
-        Response::new(id, ui, response)
+        Response::new(ui, response)
     }
 }
 

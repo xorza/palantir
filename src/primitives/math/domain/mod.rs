@@ -16,7 +16,7 @@
 //! | [`color`] | every channel finite | panic |
 //! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
-//! | [`f64::range`] | both ends finite | panic; the order is coerced |
+//! | [`f64::range`] | both ends finite | panic; the order is kept |
 //! | [`fraction`] | `0..=1` | clamped; non-finite is `0` |
 //! | [`turn`] | `0..1` | wrapped; non-finite is `0` |
 //! | [`idx`] | `0..len` | clamped; no index when `len == 0` |

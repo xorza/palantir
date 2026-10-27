@@ -144,6 +144,7 @@ impl FloatHash for Sizing {
 }
 
 impl<T: Num> From<T> for Sizing {
+    #[track_caller]
     fn from(v: T) -> Self {
         Self::fixed(v.as_f32())
     }
@@ -265,18 +266,21 @@ impl hash::Hash for SizeSpec {
 }
 
 impl<T: Num> From<T> for SizeSpec {
+    #[track_caller]
     fn from(v: T) -> Self {
         Sizing::from(v).into()
     }
 }
 
 impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec {
+    #[track_caller]
     fn from((w, h): (W, H)) -> Self {
         Self::new(w.into(), h.into())
     }
 }
 
 impl From<Size> for SizeSpec {
+    #[track_caller]
     fn from(s: Size) -> Self {
         (s.w, s.h).into()
     }
@@ -285,8 +289,11 @@ impl From<Size> for SizeSpec {
 #[cfg(test)]
 mod tests {
     use crate::internals::panic_probe;
+    use crate::primitives::geometry::size::Size;
     use crate::primitives::layout::sizing::{SizeSpec, Sizing};
     use crate::primitives::math::domain;
+    use crate::widget_core::configure::{Configure, ThemeDefaults};
+    use crate::widget_core::widget::Widget;
 
     /// The two shares always partition 1.0, an out-of-range input clamps, and
     /// an endpoint is a zero-extent `Fixed`, not a zero-weight `Fill`.
@@ -377,6 +384,28 @@ mod tests {
         ];
         for &(expected, construct) in cases {
             panic_probe::assert_panics_with(expected, construct);
+        }
+    }
+
+    /// A bare number that is no length panics at the caller's line, through every conversion
+    /// `Configure::size` and `default_size` take, and `default_size` checks its fallback even
+    /// where the caller set a size.
+    #[test]
+    fn a_bad_size_panics_at_the_call_site() {
+        type Case = (u32, fn());
+        fn sized() -> Widget {
+            Widget::leaf().size(1.0)
+        }
+        let cases: [Case; 5] = [
+            (line!(), || drop(Widget::leaf().size(-1.0))),
+            (line!(), || drop(Widget::leaf().size((1.0, f32::NAN)))),
+            (line!(), || drop(Widget::leaf().size(Size::new(-1.0, 1.0)))),
+            (line!(), || drop(Widget::leaf().default_size(-1.0))),
+            (line!(), || drop(sized().default_size(-1.0))),
+        ];
+        for (n, (line, record)) in cases.into_iter().enumerate() {
+            let site = panic_probe::panic_site(domain::LENGTH_RULE, record);
+            assert_eq!(site, format!("{}:{line}", file!()), "case {n}");
         }
     }
 }

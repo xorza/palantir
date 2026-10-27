@@ -13,7 +13,7 @@ use std::ops;
 /// probe.
 ///
 /// It derefs to [`ResponseState`], so `r.hovered()`, `r.clicked()` etc. read
-/// like the state. Widgets that already probed pass their state to
+/// like the state. Widgets that already probed pass their snapshot to
 /// [`Response::new`] to avoid a second probe. [`Response::snapshot`] detaches
 /// from the `&Ui` borrow.
 ///
@@ -44,15 +44,15 @@ impl<'a> Response<'a> {
         }
     }
 
-    /// Pre-filled-cache constructor from an already-probed `state`, so the
+    /// Pre-filled-cache constructor from an already-probed `snapshot`, so the
     /// caller doesn't re-probe. For interactive widgets that need their
     /// response before recording.
     #[inline]
-    pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
+    pub fn new(ui: &'a Ui, snapshot: ResponseSnapshot) -> Self {
         Self {
-            id,
+            id: snapshot.id,
             ui,
-            cached: OnceCell::from(state),
+            cached: OnceCell::from(snapshot.state),
         }
     }
 

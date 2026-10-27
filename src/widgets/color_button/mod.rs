@@ -1,18 +1,16 @@
 //! The chip that opens a color picker popup.
 
-use crate::input::interaction::button_phase::ButtonPhase;
-use crate::input::key_class::KeyFilter;
-use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
+use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
@@ -24,7 +22,8 @@ use std::rc::Rc;
 ///
 /// The picker is configured as usual and handed over whole. Open state lives
 /// in the response map keyed off the trigger. Click outside or Esc closes it;
-/// there is no revert, since every gesture inside already committed.
+/// there is no revert, since every gesture inside already committed. The popup is
+/// `id.with("panel")`, and the picker defaults to `id.with("picker")`.
 ///
 /// ```
 /// # use palantir::{ColorButton, ColorPicker, RgbaF32, Ui};
@@ -45,10 +44,7 @@ impl<'a> ColorButton<'a> {
     #[track_caller]
     pub fn new(picker: ColorPicker<'a>) -> Self {
         Self {
-            widget: Widget::leaf()
-                .sense(Sense::CLICK)
-                .focusable(true)
-                .input_scope(KeyFilter::TEXT),
+            widget: Widget::leaf().sense(Sense::CLICK).focusable(true),
             picker,
             style: None,
         }
@@ -70,15 +66,8 @@ impl<'a> ColorButton<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let mut response = widget.response(ui);
-        let id = widget.resolve(ui);
-        if !response.disabled && ui.is_focus_within(id) {
-            let space = widget.shortcut_pressed(ui, Key::Char(' '));
-            let enter = widget.shortcut_pressed(ui, Key::Enter);
-            if space || enter {
-                response.left.phase = ButtonPhase::Up { click: Some(1) };
-            }
-        }
+        let response = widget.activation_response(ui, Activation::Button);
+        let id = response.id;
         let size = response
             .layout_rect
             .map_or_else(|| Size::new(side, side), |r| r.size);
@@ -90,11 +79,7 @@ impl<'a> ColorButton<'a> {
         if let Some(style) = self.style {
             picker = picker.style(style);
         }
-        let trigger = ResponseSnapshot {
-            id,
-            state: response,
-        };
-        let opened = PopupTrigger::on(&trigger)
+        let opened = PopupTrigger::on(&response)
             .id(id.with("panel"))
             .chrome(slot.popup.clone())
             .padding(slot.popup_padding)
@@ -105,7 +90,7 @@ impl<'a> ColorButton<'a> {
         let (changed, committed) = opened.inner.unwrap_or_default();
 
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed,
             committed,
         }
