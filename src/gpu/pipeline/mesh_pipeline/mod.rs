@@ -13,7 +13,6 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::mesh::MeshVertex;
@@ -87,18 +86,16 @@ impl MeshPipeline {
     ) -> StencilVariant {
         StencilVariant::build(
             device,
-            ColorVariantSpec {
-                label: "palantir.mesh.pipeline",
-                stencil_label: "palantir.mesh.pipeline.stencil_test",
-                shader: &self.shader,
-                vertex_entry: "vs",
-                fragment_entry: "fs",
-                constants: &[],
-                layout: &self.pipeline_layout,
+            PipelineRecipe {
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..PipelineRecipe::color(
+                    "palantir.mesh.pipeline",
+                    &self.shader,
+                    &self.pipeline_layout,
+                    format,
+                )
             },
-            format,
+            "palantir.mesh.pipeline.stencil_test",
         )
     }
 

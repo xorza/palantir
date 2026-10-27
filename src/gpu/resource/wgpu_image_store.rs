@@ -13,7 +13,6 @@ use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::array;
 use std::cell::{Ref, RefCell};
-use std::sync::OnceLock;
 
 /// The [`ImageStore`] a host's registry writes through and its backend draws
 /// from. They share one `Rc`, so the map sits behind a `RefCell`; a draw takes
@@ -30,9 +29,9 @@ pub(crate) struct WgpuImageStore {
     /// Staging for [`premultiply_into`], reused across updates. Opaque images skip
     /// it ([`Self::write`]).
     staged: RefCell<Vec<SrgbaU8>>,
-    /// Built at startup: the build takes milliseconds, which shouldn't land on the
-    /// frame that registers a soft-edged image.
-    premultiply: &'static [[u8; 256]; 256],
+    /// Built with the store, at startup: the build takes milliseconds, which shouldn't
+    /// land on the frame that registers a soft-edged image.
+    premultiply: Box<[[u8; 256]; 256]>,
 }
 
 #[derive(Debug)]
@@ -117,7 +116,7 @@ impl ImageStore for WgpuImageStore {
             return;
         }
         let mut staged = self.staged.borrow_mut();
-        premultiply_into(self.premultiply, texels, &mut staged);
+        premultiply_into(&self.premultiply, texels, &mut staged);
         region.write(&self.queue, bytemuck::cast_slice(&staged));
     }
 
@@ -160,40 +159,37 @@ fn premultiply_into(table: &[[u8; 256]; 256], texels: &[SrgbaU8], out: &mut Vec<
 /// `encode(decode(value) * alpha)` for every byte pair, indexed `[alpha][value]`.
 ///
 /// The arithmetic (an sRGB decode and an iterative encode) is what costs, so
-/// it runs 65536 times once instead of per channel per texel. 64 KiB, built
-/// with the first image store and kept for the process.
-fn premultiplied_bytes() -> &'static [[u8; 256]; 256] {
-    static TABLE: OnceLock<Box<[[u8; 256]; 256]>> = OnceLock::new();
-    TABLE.get_or_init(|| {
-        let decoded: [f32; 256] = array::from_fn(|value| {
-            RgbaF32::from(SrgbaU8 {
-                r: value as u8,
-                g: 0,
-                b: 0,
-                a: u8::MAX,
-            })
-            .r
-        });
-        let mut table: Box<[[u8; 256]; 256]> =
-            vec![[0u8; 256]; 256].into_boxed_slice().try_into().unwrap();
-        for (alpha, row) in table.iter_mut().enumerate() {
-            let coverage = alpha as f32 / 255.0;
-            for (value, out) in row.iter_mut().enumerate() {
-                *out = RgbaF32 {
-                    r: decoded[value] * coverage,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                }
-                .to_srgba()
-                .r;
+/// it runs 65536 times once instead of per channel per texel. 64 KiB, one per
+/// store.
+fn premultiplied_bytes() -> Box<[[u8; 256]; 256]> {
+    let decoded: [f32; 256] = array::from_fn(|value| {
+        RgbaF32::from(SrgbaU8 {
+            r: value as u8,
+            g: 0,
+            b: 0,
+            a: u8::MAX,
+        })
+        .r
+    });
+    let mut table: Box<[[u8; 256]; 256]> =
+        vec![[0u8; 256]; 256].into_boxed_slice().try_into().unwrap();
+    for (alpha, row) in table.iter_mut().enumerate() {
+        let coverage = alpha as f32 / 255.0;
+        for (value, out) in row.iter_mut().enumerate() {
+            *out = RgbaF32 {
+                r: decoded[value] * coverage,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
             }
+            .to_srgba()
+            .r;
         }
-        // Full coverage must reach the GPU as the bytes it was handed, but the
-        // round trip drifts by an LSB, so the identity is stated.
-        table[usize::from(u8::MAX)] = array::from_fn(|value| value as u8);
-        table
-    })
+    }
+    // Full coverage must reach the GPU as the bytes it was handed, but the
+    // round trip drifts by an LSB, so the identity is stated.
+    table[usize::from(u8::MAX)] = array::from_fn(|value| value as u8);
+    table
 }
 
 #[cfg(feature = "internals")]
@@ -239,7 +235,7 @@ mod tests {
             })
             .collect();
         let mut out = Vec::new();
-        premultiply_into(premultiplied_bytes(), &texels, &mut out);
+        premultiply_into(&premultiplied_bytes(), &texels, &mut out);
 
         for (texel, got) in texels.iter().zip(&out) {
             let straight = RgbaF32::from(*texel);

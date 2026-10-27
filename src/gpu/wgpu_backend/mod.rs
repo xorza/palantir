@@ -63,7 +63,7 @@ use crate::gpu::pipeline::format_pipelines::FormatPipelines;
 use crate::gpu::pipeline::format_pipelines::PipelineSources;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, ShadowEntry};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadBinding, QuadPipeline};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
@@ -75,7 +75,7 @@ use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::{Backbuffer, EnsuredBackbuffer};
-use crate::gpu::surface::capture::Capture;
+use crate::gpu::surface::capture::{Capture, CaptureSource};
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
@@ -111,7 +111,8 @@ pub(crate) struct WgpuBackend {
     /// The one shader and group-0 layout both raster tenants draw through; see [`RasterProgram`].
     raster: RasterProgram,
     blit: BlitPipeline,
-    /// The blit into [`Capture::FORMAT`], built on the first screenshot.
+    /// The blit into [`Capture::FORMAT`], built on the first screenshot of a backbuffer that is
+    /// not 8-bit sRGB.
     capture_blit: Option<wgpu::RenderPipeline>,
     icon: IconBackend,
     curve: CurvePipeline,
@@ -126,13 +127,19 @@ pub(crate) struct WgpuBackend {
     /// Render pipelines keyed by swapchain color format, built lazily by [`Self::ensure_format`].
     /// The surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<TargetFormat, FormatPipelines>,
-    /// Main-pass timestamp queries; `Some` when the host opted in and the device has
+    /// What timing this device can do; `Some` when the host opted in and the device has
     /// `TIMESTAMP_QUERY`.
-    gpu_timings: Option<GpuTimings>,
-    /// The one handle this backend publishes through. Record time is unconditional
-    /// (two `Instant::now()` calls and a `RefCell` write); making it opt-in would force
-    /// the in-pass timestamp writes that perturb the number.
-    pass_stats: GpuPassStats,
+    timing: Option<TimingSupport>,
+    /// Main-pass timestamp queries per render owner, made on its first submit: a readback
+    /// lands a frame late, so one shared set would publish a frame of another window.
+    gpu_timings: FxHashMap<RenderOwnerId, GpuTimings>,
+}
+
+/// The device's timestamp tick and the timing features it offers.
+#[derive(Clone, Copy, Debug)]
+struct TimingSupport {
+    period_ns: f32,
+    features: wgpu::Features,
 }
 
 /// What every pass of one submit draws with, fixed for the frame.
@@ -143,6 +150,14 @@ struct FrameDraw<'a> {
     viewport: ViewportPush,
     /// The frame's mask chains; `Some` exactly when the main pass has a stencil attachment.
     masks: Option<&'a MaskPlan>,
+    /// The frame's shadow cutouts, which pick each shadow's pipeline.
+    cutouts: &'a CutoutPlan,
+    /// The owner's timestamp queries, when timing is on.
+    timings: Option<&'a GpuTimings>,
+    /// Where the owner's samples publish. Record time is unconditional (two `Instant::now()`
+    /// calls and a `RefCell` write); making it opt-in would force the in-pass timestamp writes
+    /// that perturb the number.
+    stats: &'a GpuPassStats,
 }
 
 /// What [`WgpuBackend::run_main_pass`] draws into: color, optional stencil, the clear color and the
@@ -182,10 +197,13 @@ impl WgpuBackend {
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
-        let gpu_timings = (config.collect_gpu_stats
+        let timing = (config.collect_gpu_stats
             && features.contains(wgpu::Features::TIMESTAMP_QUERY)
             && timestamp_period > 0.0)
-            .then(|| GpuTimings::new(&device, timestamp_period, features));
+            .then_some(TimingSupport {
+                period_ns: timestamp_period,
+                features,
+            });
         Self {
             gpu: Gpu::new(device, queue),
             staging_belt,
@@ -205,8 +223,8 @@ impl WgpuBackend {
             texture_binding,
             mask_plan: MaskPlan::default(),
             pipelines,
-            gpu_timings,
-            pass_stats: resources.gpu_pass_stats.clone(),
+            timing,
+            gpu_timings: FxHashMap::default(),
         }
     }
 
@@ -247,7 +265,18 @@ impl WgpuBackend {
             backbuffer: via_backbuffer,
             stencil,
         } = submission.targets;
-        let Submission { buffer, plan, .. } = submission;
+        let Submission {
+            owner,
+            stats,
+            buffer,
+            plan,
+            ..
+        } = submission;
+        if let Some(support) = self.timing {
+            self.gpu_timings.entry(owner).or_insert_with(|| {
+                GpuTimings::new(&self.gpu.device, support.period_ns, support.features)
+            });
+        }
         let clear = submission.clear();
         let stencil_view = stencil.map(Stencil::view);
         tracing::trace!(
@@ -291,6 +320,9 @@ impl WgpuBackend {
             buffer,
             viewport,
             masks: stencil_view.map(|_| &self.mask_plan),
+            cutouts: submission.cutouts,
+            timings: self.gpu_timings.get(&owner),
+            stats,
         };
         // At most one surface view, only where a pass reads it; the normal backbuffer path avoids a
         // view per frame.
@@ -323,7 +355,7 @@ impl WgpuBackend {
         );
 
         if let Some(bb) = via_backbuffer {
-            if let Some(t) = &self.gpu_timings {
+            if let Some(t) = draw.timings {
                 t.copy_out_begin(&mut encoder);
             }
             if target.takes_copy() {
@@ -334,7 +366,7 @@ impl WgpuBackend {
                     .expect("a target that takes no copy builds the surface view");
                 bb.draw_onto(&mut encoder, view, &draw.fmt.blit);
             }
-            if let Some(t) = &self.gpu_timings {
+            if let Some(t) = draw.timings {
                 t.copy_out_end(&mut encoder);
             }
         }
@@ -346,15 +378,15 @@ impl WgpuBackend {
             self.run_overlay_pass(draw, view, &mut encoder);
         }
 
-        if let Some(t) = self.gpu_timings.as_mut() {
+        if let Some(t) = self.gpu_timings.get_mut(&owner) {
             t.resolve(&mut encoder);
         }
 
         self.staging_belt.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
 
-        if let Some(t) = self.gpu_timings.as_mut() {
-            t.after_submit(&self.gpu.device, &self.pass_stats);
+        if let Some(t) = self.gpu_timings.get_mut(&owner) {
+            t.after_submit(&self.gpu.device, stats);
         }
 
         let frame = self.text.end_frame();
@@ -365,6 +397,7 @@ impl WgpuBackend {
     fn upload_frame(&mut self, encoder: &mut wgpu::CommandEncoder, sub: &Submission<'_>) {
         let Submission {
             owner,
+            stats: _,
             targets,
             store,
             buffer,
@@ -378,8 +411,7 @@ impl WgpuBackend {
         let is_partial = plan.damage.is_partial();
         let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging_belt, encoder);
 
-        // Texture-only upload (the belt is buffer-only), first so draws see the right pixels.
-        self.gradient.upload(&ctx);
+        self.gradient.upload(&mut ctx);
 
         if dim_undamaged {
             self.debug
@@ -535,7 +567,7 @@ impl WgpuBackend {
         };
         // The descriptor covers basic mode; with `TIMESTAMP_QUERY_INSIDE_PASSES` we write inline
         // via `pass_begin` / `pass_end` for one gap-free stream.
-        let timestamp_writes = self.gpu_timings.as_ref().and_then(GpuTimings::pass_writes);
+        let timestamp_writes = draw.timings.and_then(GpuTimings::pass_writes);
         let started = Instant::now();
         // Scoped so `pass` drops, replaying its commands, inside the measured window.
         {
@@ -555,7 +587,7 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if let Some(t) = &self.gpu_timings {
+            if let Some(t) = draw.timings {
                 t.pass_begin(&mut pass);
                 t.begin_pipeline_stats(&mut pass);
             }
@@ -574,12 +606,12 @@ impl WgpuBackend {
                     }
                 }
             }
-            if let Some(t) = &self.gpu_timings {
+            if let Some(t) = draw.timings {
                 t.end_pipeline_stats(&mut pass);
                 t.pass_end(&mut pass);
             }
         }
-        self.pass_stats
+        draw.stats
             .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
     }
 
@@ -641,6 +673,9 @@ impl WgpuBackend {
             buffer,
             viewport,
             masks,
+            cutouts,
+            timings: _,
+            stats: _,
         } = draw;
         let images = self.image_store.read();
         let textures = ImageTextures {
@@ -663,7 +698,7 @@ impl WgpuBackend {
         };
 
         let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
-            if let Some(t) = self.gpu_timings.as_ref() {
+            if let Some(t) = draw.timings {
                 t.mark(pass, kind);
             }
         };
@@ -713,7 +748,7 @@ impl WgpuBackend {
             RenderStep::Quads { range } => {
                 mark(pass, BatchKind::Quads);
                 debug_marker::push(pass, "quads");
-                for run in self.quad.quad_runs(range) {
+                for run in QuadPipeline::quad_runs(&buffer.quads, range) {
                     binder.rebind(Bound::QuadInstance(run.key), pass, |pass| {
                         self.quad
                             .bind(pass, quad(fmt.quad.color(run.key).select(stencil)));
@@ -725,7 +760,7 @@ impl WgpuBackend {
             RenderStep::Shadows { range } => {
                 mark(pass, BatchKind::Shadows);
                 debug_marker::push(pass, "shadows");
-                for run in self.quad.shadow_runs(range) {
+                for run in self.quad.shadow_runs(cutouts, range) {
                     binder.rebind(Bound::ShadowInstance(run.key), pass, |pass| {
                         self.quad
                             .bind_shadows(pass, quad(fmt.quad.shadow(run.key).select(stencil)));
@@ -888,10 +923,17 @@ impl WgpuBackend {
 
     /// Start copying `region` of `backbuffer`, which the last submit painted, for a screenshot.
     pub(crate) fn capture(&mut self, backbuffer: &Backbuffer, region: URect) -> Capture {
-        let blit = self
-            .capture_blit
-            .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT));
-        Capture::start(&self.gpu.device, &self.gpu.queue, blit, backbuffer, region)
+        let blit = Capture::needs_blit(backbuffer.texture().format()).then(|| {
+            &*self
+                .capture_blit
+                .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT))
+        });
+        let source = CaptureSource {
+            backbuffer,
+            blit,
+            binding: &self.texture_binding,
+        };
+        Capture::start(&self.gpu.device, &self.gpu.queue, source, region)
     }
 
     /// Run the map callbacks of the copies the device has finished, without waiting for the rest.
@@ -911,6 +953,7 @@ impl WgpuBackend {
     )]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets.retire_owner(owner);
+        self.gpu_timings.remove(&owner);
     }
 }
 
@@ -971,6 +1014,3 @@ pub(crate) mod internals {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

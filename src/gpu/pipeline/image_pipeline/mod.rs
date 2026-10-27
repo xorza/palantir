@@ -9,8 +9,8 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
@@ -92,18 +92,17 @@ impl ImagePipeline {
     ) -> StencilVariant {
         StencilVariant::build(
             device,
-            ColorVariantSpec {
-                label: "palantir.image.pipeline",
-                stencil_label: "palantir.image.pipeline.stencil_test",
-                shader: &self.shader,
-                vertex_entry: "vs",
-                fragment_entry: "fs",
-                constants: &[],
-                layout: &self.pipeline_layout,
+            PipelineRecipe {
                 vertex_buffers: &[Some(Self::instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..PipelineRecipe::color(
+                    "palantir.image.pipeline",
+                    &self.shader,
+                    &self.pipeline_layout,
+                    format,
+                )
             },
-            format,
+            "palantir.image.pipeline.stencil_test",
         )
     }
 
@@ -124,7 +123,7 @@ impl ImagePipeline {
     /// `items` selects this batch's slice (see [`ImageBatch`]).
     ///
     /// Adjacent draws sharing a texture collapse into one `set_bind_group` +
-    /// instanced `draw` (see [`image_runs`]).
+    /// instanced `draw` (see [`Runs`]).
     ///
     /// An **absent id is skipped** silently: its owning
     /// [`ImageHandle`](crate::ImageHandle) was dropped. The check runs once per run.
@@ -134,38 +133,14 @@ impl ImagePipeline {
         ImageBatch { ids, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
-        for run in image_runs(&ids[items.range()], items.start) {
-            let Some(bind_group) = textures.bind_group(run.id) else {
+        for run in Runs::new(items, |i| ids[i as usize]) {
+            let Some(bind_group) = textures.bind_group(run.key) else {
                 continue;
             };
             pass.set_bind_group(0, bind_group, &[]);
             pass.draw(0..4, run.instances.into());
         }
     }
-}
-
-/// A maximal run of consecutive draws in a batch sharing a [`TextureId`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ImageRun {
-    id: TextureId,
-    instances: Span,
-}
-
-/// Split a batch's texture ids into maximal runs of *adjacent* equal ids.
-///
-/// Only neighbors merge, so paint order is preserved and nothing is sorted;
-/// `A B A` stays three runs. Instance indices are contiguous within a batch,
-/// so each run is one `Span`. Lazy; allocates nothing.
-fn image_runs(ids: &[TextureId], first_instance: u32) -> impl Iterator<Item = ImageRun> + '_ {
-    let mut next = first_instance;
-    ids.chunk_by(|a, b| a == b).map(move |run| {
-        let instances = Span::new(next, run.len() as u32);
-        next += run.len() as u32;
-        ImageRun {
-            id: run[0],
-            instances,
-        }
-    })
 }
 
 const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
@@ -192,72 +167,3 @@ const _: () = {
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn textures(raw: &[u64]) -> Vec<TextureId> {
-        raw.iter().copied().map(TextureId).collect()
-    }
-
-    /// Expand runs back into one `(instance idx, texture)` per draw. Equality
-    /// with the input proves same textures, instances and order, and that spans
-    /// tile the batch without gap or overlap.
-    fn expand(ids: &[TextureId], first_instance: u32) -> Vec<(usize, TextureId)> {
-        image_runs(ids, first_instance)
-            .flat_map(|run| {
-                run.instances
-                    .range()
-                    .map(move |instance| (instance, run.id))
-            })
-            .collect()
-    }
-
-    #[test]
-    fn adjacent_runs_coalesce_without_disturbing_draw_order() {
-        let cases: [(&str, &[u64], usize); 7] = [
-            ("empty", &[], 0),
-            ("single", &[7], 1),
-            ("all same", &[7, 7, 7, 7], 1),
-            ("adjacent groups", &[7, 7, 9, 9, 9, 4], 3),
-            // Controls that must NOT shrink: alternating ids never merge.
-            ("alternating", &[7, 9, 7, 9], 4),
-            ("all unique", &[1, 2, 3, 4], 4),
-            // Equal ids either side of a different one stay three runs.
-            ("non-adjacent repeat", &[7, 9, 7], 3),
-        ];
-        for (label, raw, expected_runs) in cases {
-            let ids = textures(raw);
-            let runs = image_runs(&ids, 0).count();
-            assert_eq!(runs, expected_runs, "{label}: bind + draw count");
-            let per_draw: Vec<_> = ids.iter().copied().enumerate().collect();
-            assert_eq!(expand(&ids, 0), per_draw, "{label}: draw sequence");
-        }
-    }
-
-    #[test]
-    fn runs_index_the_batch_slice_not_the_frame() {
-        // A batch starts partway into the shared instance buffer; the first run
-        // begins at `first_instance`.
-        let ids = textures(&[7, 7, 9]);
-        let runs: Vec<_> = image_runs(&ids, 5).collect();
-        assert_eq!(
-            runs,
-            [
-                ImageRun {
-                    id: TextureId(7),
-                    instances: Span::new(5, 2),
-                },
-                ImageRun {
-                    id: TextureId(9),
-                    instances: Span::new(7, 1),
-                },
-            ]
-        );
-        assert_eq!(
-            expand(&ids, 5),
-            [(5, TextureId(7)), (6, TextureId(7)), (7, TextureId(9)),]
-        );
-    }
-}

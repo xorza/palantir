@@ -1,21 +1,18 @@
 //! Device-side gradient LUT atlas, owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend)
 //! and lent to the quad and curve pipelines.
 
-use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::resource::texture_region::TextureRegion;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-use glam::UVec2;
 
 /// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
-// `write_texture` does not require the copy alignment, but wgpu passes an aligned
-// pitch through in one copy; any other pitch is re-packed row by row.
+// A buffer-to-texture copy reads rows at a 256-byte pitch, so packed rows stage as they are.
 const _: () = assert!(
     ROW_PITCH.is_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
-    "gradient atlas row pitch must stay 256-aligned to keep write_texture on its single-copy path"
+    "gradient atlas row pitch must stay 256-aligned to stage rows as packed"
 );
 
 /// Shared CPU gradient source plus the texture and bind group both pipelines consume. Format-independent.
@@ -67,11 +64,11 @@ impl GpuGradientAtlas {
         }
     }
 
-    /// Syncs the LUT atlas to the GPU if anything changed. A dirty frame
-    /// uploads the dirty row span in one `write_texture`. A grown atlas
-    /// replaces the texture and bind group first, and growth dirties every
-    /// row so the same upload refills it. Called from `WgpuBackend::submit`.
-    pub(crate) fn upload(&mut self, ctx: &GpuCtx<'_>) {
+    /// Syncs the LUT atlas to the GPU if anything changed: the dirty runs stage once in the
+    /// belt and copy one per run, on the frame's encoder ahead of every pass. A grown atlas
+    /// replaces the texture and bind group first, and growth dirties every row so the same
+    /// upload refills it. Called from `WgpuBackend::submit`.
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>) {
         // Destructured so the resize borrows the GPU fields while `flush_with` holds the CPU atlas.
         let Self {
             cpu,
@@ -85,14 +82,48 @@ impl GpuGradientAtlas {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bind_group = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
             }
-            let height = rows.bytes.len() as u32 / ROW_PITCH;
-            TextureRegion {
-                texture,
-                first_row: rows.first_row,
-                size: UVec2::new(LUT_ROW_TEXELS as u32, height),
-                bytes_per_row: ROW_PITCH,
+            let Staged {
+                mut view,
+                buffer,
+                offset,
+                encoder,
+            } = ctx
+                .stage(
+                    rows.len_bytes() as u64,
+                    u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+                )
+                .expect("a flush holds at least one row");
+            let mut at = 0;
+            for run in rows.runs {
+                let bytes = rows.bytes(run.clone());
+                view.slice(at..at + bytes.len()).copy_from_slice(bytes);
+                encoder.copy_buffer_to_texture(
+                    wgpu::TexelCopyBufferInfo {
+                        buffer,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: offset + at as u64,
+                            bytes_per_row: Some(ROW_PITCH),
+                            rows_per_image: None,
+                        },
+                    },
+                    wgpu::TexelCopyTextureInfo {
+                        texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: run.start,
+                            z: 0,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: LUT_ROW_TEXELS as u32,
+                        height: run.end - run.start,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                at += bytes.len();
             }
-            .write(ctx.queue, rows.bytes);
         });
     }
 }

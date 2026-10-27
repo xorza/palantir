@@ -1,7 +1,7 @@
 //! Where a text batch spanning several groups actually emits.
 
 use crate::common::span::Span;
-use crate::gpu::wgpu_backend::tests::support::{
+use crate::gpu::frame::schedule::tests::support::{
     DrawOp, buf_with_batches, collect, group, simplify, text_batch,
 };
 use crate::primitives::geometry::urect::URect;

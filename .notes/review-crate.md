@@ -92,54 +92,26 @@ comes after it. Delete an item when it is addressed.
 
 ## Batch 16: GPU resources
 
-Files: `src/gpu/{raster/, frame/, wgpu_backend/, pipeline/, resource/,
-surface/capture.rs, device/}`, `src/renderer/gradient_atlas/`,
+Files: `src/gpu/{raster/, wgpu_backend/, resource/}`,
+`src/renderer/gradient_atlas/`,
 `src/renderer/frontend/composer/{rect_grid/, occlusion_pruner.rs}`.
 
-- [ ] **Atlas eviction can empty a side for one raster.**
-  `raster_atlas/mod.rs:423-442, 481-513`. Target: eviction by the
-  allocator's reclaim unit, or `etagere::AtlasAllocator`; count evictions per
-  insert.
-- [ ] **GPU timings mix windows.** `wgpu_backend/mod.rs:128-134, 184-187,
-  348-357`, `gpu_timings.rs:245-252`. Target: slots and stats per
-  `RenderOwnerId`.
-- [ ] **Two scattered gradient bakes upload most of the atlas.**
-  `gradient_atlas/mod.rs:126-128, 253-285`. Target: a sorted run list of
-  dirty rows, merged only when a gap is cheaper than a call (measure).
-- [ ] **A screenshot allocates a full backbuffer texture.**
-  `surface/capture.rs:50-138`. 66 MB at 7680×2160 for any region. Target:
-  copy the region directly for 8-bit sRGB formats; a region-sized blit
-  otherwise; `take(self)`.
-- [ ] **Uploads stage twice and keep a peak-sized buffer.**
-  `raster_atlas/mod.rs:119-125, 282-284, 315-383`. Target:
-  `StagingBelt::allocate`; delete `staging_buf`.
+- [ ] **The gradient upload merges no gap.** `MERGE_GAP_ROWS` is `0`: every
+  dirty run is one copy. Target: measure a copy against a staged 2 KiB row
+  and set the gap where merging is cheaper.
 - [ ] **Icon prewarm warms keys the frame never draws.**
-  `icon_backend/mod.rs:82-103`. Target: warm the drawn keys; spread the
+  `icon_backend/mod.rs` `prewarm`. Target: warm the drawn keys; spread the
   rasters over frames.
 - [ ] **A quad form switch re-binds unchanged groups.**
-  `wgpu_backend/mod.rs:596-635, 712-735`. Target: `Binder` tracks group 0,
+  `wgpu_backend/mod.rs` `render_groups`. Target: `Binder` tracks group 0,
   vertex buffer 0 and the shadow pair apart from the pipeline. Measure with
-  `record_pass`.
+  `record_pass`; test the elision in `wgpu_backend/tests`.
 - [ ] **[public] A clipped `GpuView` reallocates while it scrolls.**
-  `gpu_view_targets/mod.rs:303-335`. Target: capacity buckets and a sub-rect;
+  `gpu_view_targets/mod.rs`. Target: capacity buckets and a sub-rect;
   changes the `GpuFrameCtx::target` doc contract.
-- [ ] **One pipeline recipe.** `pipeline_recipe.rs:7-21`,
-  `stencil_variant.rs:170-219`, the four families' `build_variants`.
-- [ ] **One run splitter.** Move `quad_pipeline/runs.rs` to `pipeline/`;
-  delete `image_runs` and `ImageRun`. Key quad runs from `buffer.quads` and
-  shadow runs from `&CutoutPlan` (drop the per-frame copies at
-  `quad_pipeline/mod.rs:96-97`, `cutout_tables.rs:136-137`).
-- [ ] **`DeviceFeatures` and `SurfaceUsages` mirror code.**
-  `device_features.rs:20-56`, `surface_usages.rs:20-59`. Target: one macro
-  arm (a generic cannot be `const`).
-- [ ] **One tile index.** `rect_grid/mod.rs:34-106`,
-  `occlusion_pruner.rs:36-180`. Target: one `TileIndex`; bench before.
-- [ ] **The premultiply table is a process static.**
-  `wgpu_image_store.rs:30-35, 165-197`. Target: owned by the store.
-- [ ] **Schedule tests under `wgpu_backend`.** Move to
-  `frame/schedule/tests/`; `MaskPlan` fields private; test binder elision in
-  `wgpu_backend/tests`.
-- [ ] **Shelved: atlas growth by pages.** `raster_atlas/side.rs:143-166`. A
+- [ ] **One tile index.** `rect_grid/mod.rs`, `occlusion_pruner.rs`. Target:
+  one `TileIndex`; bench before.
+- [ ] **Shelved: atlas growth by pages.** `raster_atlas/side.rs` `grow`. A
   grow frame clears and copies up to about 20 MiB. Structural, with no
   measured workload; the `text_atlas` bench is the trigger.
 

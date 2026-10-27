@@ -2,16 +2,16 @@
 //! the old texture preserved across a grow.
 
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
+use crate::gpu::raster::raster_atlas::shelf_packer::ShelfPacker;
 use crate::primitives::paint::content_type::ContentType;
-use etagere::{BucketedAtlasAllocator, size2};
 use glam::U16Vec2;
-use std::fmt;
 use std::mem;
 
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
 /// One per-content-type backing store, indexed by `ContentType as usize`; owns
 /// its texture through every doubling.
+#[derive(Debug)]
 pub(super) struct Side {
     pub(super) texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
@@ -27,7 +27,7 @@ pub(super) struct Side {
     /// starving entry. Each walk is wasted: `last_use` never moves down within a
     /// frame, so once walked dry nothing is evictable until the clock advances.
     pub(super) dry_frame: Option<u64>,
-    pub(super) packer: BucketedAtlasAllocator,
+    pub(super) packer: ShelfPacker,
     /// On grow, the previous-frame texture is moved here so the shared-encoder
     /// flush can record the copy. `None` when no grow blit is pending.
     pub(super) pending_grow: Option<PendingGrow>,
@@ -72,15 +72,6 @@ pub(super) struct PendingGrow {
     pub(super) old_size: u32,
 }
 
-// Manual: etagere's `BucketedAtlasAllocator` isn't `Debug`.
-impl fmt::Debug for Side {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Side")
-            .field("size", &self.size)
-            .finish_non_exhaustive()
-    }
-}
-
 impl Side {
     /// The `content` side of an atlas configured by `config`, at its initial size within the device's cap.
     pub(super) fn new(
@@ -106,7 +97,7 @@ impl Side {
             size,
             ceiling: Self::growth_ceiling(max, content, config.max_bytes),
             dry_frame: None,
-            packer: BucketedAtlasAllocator::new(size2(size as i32, size as i32)),
+            packer: ShelfPacker::new(edge(size)),
             pending_grow: None,
             texture_spec,
         }
@@ -125,8 +116,8 @@ impl Side {
     }
 
     /// Whether a rect of `size` can be placed as the side stands. Exact, so it can
-    /// gate: the packer uses one column and unit alignment, so its reject is
-    /// `w > edge || h > edge`, matching this texel for texel.
+    /// gate: the packer's shelves span the side, so its reject is `w > edge || h > edge`,
+    /// matching this texel for texel.
     pub(super) const fn fits_now(&self, size: U16Vec2) -> bool {
         fits_edge(size, self.size)
     }
@@ -138,8 +129,8 @@ impl Side {
     }
 
     /// Double this side's texture, stashing the old one for the grow blit. `false`
-    /// at the ceiling, where the atlas recycles rectangles. etagere preserves
-    /// rects on `packer.grow`, so no re-rasterization or uv invalidation.
+    /// at the ceiling, where the atlas recycles rectangles. The packer keeps every
+    /// placement through a grow, so nothing re-rasterizes and no uv moves.
     pub(super) fn grow(&mut self, device: &wgpu::Device) -> bool {
         if self.size >= self.ceiling {
             return false;
@@ -161,9 +152,14 @@ impl Side {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         self.size = new_size;
-        self.packer.grow(size2(new_size as i32, new_size as i32));
+        self.packer.grow(edge(new_size));
         true
     }
+}
+
+/// A side's edge as the packer counts it; a 2D texture is at most 16384 texels wide.
+fn edge(size: u32) -> u16 {
+    u16::try_from(size).expect("an atlas side fits a texture's 16-bit edge")
 }
 
 /// Whether a rect of `size` fits inside a square side of `edge` texels.

@@ -3,7 +3,7 @@
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, CornerTables, CutoutMode, CutoutPlan, ShadowEntry,
+    BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use std::slice;
@@ -19,8 +19,6 @@ pub(crate) struct CutoutTables {
     bake_pipeline: wgpu::RenderPipeline,
     tables: DynamicBuffer<BakeTable>,
     corners: DynamicBuffer<CornerTables>,
-    /// The uploaded plan's [`ShadowEntry`] per quad, beside `corners`.
-    entries: Vec<ShadowEntry>,
 }
 
 impl CutoutTables {
@@ -85,18 +83,18 @@ impl CutoutTables {
             attributes: &BAKE_ATTRS,
         });
         let bake_pipeline = PipelineRecipe {
-            label: "palantir.quad.cutouts.bake",
-            shader,
-            layout: &bake_layout,
             vertex_entry: "vs_cutout_bake",
-            constants: &[],
             vertex_buffers: slice::from_ref(&bake_buffer),
             topology: wgpu::PrimitiveTopology::TriangleStrip,
-            color_format: Self::FORMAT,
             fragment_entry: "fs_cutout_bake",
             color_writes: wgpu::ColorWrites::RED,
             blend: None,
-            depth_stencil: None,
+            ..PipelineRecipe::color(
+                "palantir.quad.cutouts.bake",
+                shader,
+                &bake_layout,
+                Self::FORMAT,
+            )
         }
         .build(device);
         Self {
@@ -107,7 +105,6 @@ impl CutoutTables {
             bake_pipeline,
             tables: DynamicBuffer::vertex(device, "palantir.quad.cutouts.tables", 16),
             corners: DynamicBuffer::vertex(device, "palantir.quad.cutouts.corners", 256),
-            entries: Vec::new(),
         }
     }
 
@@ -133,8 +130,6 @@ impl CutoutTables {
     /// Upload `plan`'s corner tables and bake its tables on `ctx`'s encoder before the shadow pass.
     pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, plan: &CutoutPlan) {
         self.corners.upload_instances(ctx, plan.corners());
-        self.entries.clear();
-        self.entries.extend_from_slice(plan.entries());
         let tables = plan.tables();
         if tables.is_empty() {
             return;
@@ -160,11 +155,6 @@ impl CutoutTables {
         pass.set_pipeline(&self.bake_pipeline);
         pass.set_vertex_buffer(0, self.tables.buffer.slice(..));
         pass.draw(0..4, 0..tables.len() as u32);
-    }
-
-    /// Each quad's [`ShadowEntry`] this frame, parallel to the quads.
-    pub(crate) fn entries(&self) -> &[ShadowEntry] {
-        &self.entries
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.

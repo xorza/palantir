@@ -3,7 +3,6 @@
 pub(crate) mod cutout_plan;
 mod cutout_tables;
 pub(crate) mod quad_form;
-pub(crate) mod runs;
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -11,9 +10,8 @@ use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
-use crate::gpu::pipeline::quad_pipeline::runs::{RunKeys, Runs};
+use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::ColorVariantSpec;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
@@ -93,8 +91,6 @@ pub(crate) struct QuadPipeline {
     shadow_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
-    /// [`QuadForm`] per uploaded quad.
-    forms: Vec<QuadForm>,
     /// Whether shadows draw as a grid of cells (`vs_shadow`). Off only in internals, which build the one-cell reference.
     shadow_grid: bool,
 }
@@ -178,7 +174,6 @@ impl QuadPipeline {
                 &[Some(textures.layout()), Some(cutouts.layout())],
             ),
             cutouts,
-            forms: Vec::new(),
             shadow_grid: true,
         }
     }
@@ -201,18 +196,13 @@ impl QuadPipeline {
         // The mask pair writes stencil only: `fs_mask` discards outside the SDF, color writes are off, the blend is inert.
         let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| {
             PipelineRecipe {
-                label,
-                shader: &self.shader,
-                layout: &self.pipeline_layout,
-                vertex_entry: "vs",
-                constants: &[],
                 vertex_buffers: slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: format,
                 fragment_entry: "fs_mask",
                 color_writes: wgpu::ColorWrites::empty(),
                 blend: None,
                 depth_stencil: Some(depth_stencil),
+                ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
             }
             .build(device)
         };
@@ -221,38 +211,29 @@ impl QuadPipeline {
         let shadow = |label, stencil_label, fragment_entry, series: bool| {
             StencilVariant::build(
                 device,
-                ColorVariantSpec {
-                    label,
-                    stencil_label,
-                    shader: &self.shader,
+                PipelineRecipe {
                     vertex_entry: "vs_shadow",
                     fragment_entry,
                     constants: &[
                         ("SHADOW_GRID", grid),
                         ("TABLES_SERIES", f64::from(u8::from(series))),
                     ],
-                    layout: &self.shadow_layout,
                     vertex_buffers: &shadow_buffers,
-                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..PipelineRecipe::color(label, &self.shader, &self.shadow_layout, format)
                 },
-                format,
+                stencil_label,
             )
         };
         let color = |label, stencil_label, form: QuadForm| {
             StencilVariant::build(
                 device,
-                ColorVariantSpec {
-                    label,
-                    stencil_label,
-                    shader: &self.shader,
-                    vertex_entry: "vs",
-                    fragment_entry: "fs",
+                PipelineRecipe {
                     constants: &[("QUAD_FORM", f64::from(form as u32))],
-                    layout: &self.pipeline_layout,
                     vertex_buffers: slice::from_ref(&instance),
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
                 },
-                format,
+                stencil_label,
             )
         };
         QuadVariants {
@@ -297,9 +278,6 @@ impl QuadPipeline {
     /// Upload the frame's quads and bake the cutout tables planned for them.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad], cutouts: &CutoutPlan) {
         self.instance_buffer.upload_instances(ctx, quads);
-        self.forms.clear();
-        self.forms
-            .extend(quads.iter().map(|quad| QuadForm::of(quad.fill_kind)));
         self.cutouts.prepare(ctx, cutouts);
     }
 
@@ -330,19 +308,31 @@ impl QuadPipeline {
         pass.draw(0..4, instances.into());
     }
 
-    /// The runs of `instances`, a shadow step's span, that draw through one [`ShadowEntry`], in paint order.
-    pub(crate) fn shadow_runs(&self, instances: Span) -> Runs<'_, ShadowEntry> {
-        let keys = if self.shadow_grid {
-            RunKeys::PerInstance(self.cutouts.entries())
-        } else {
-            RunKeys::Uniform(ShadowEntry::General)
-        };
-        Runs::new(instances, keys)
+    /// The runs of `instances`, a shadow step's span, that draw through one [`ShadowEntry`], in paint
+    /// order, read off the frame's `plan`.
+    pub(crate) fn shadow_runs<'a>(
+        &self,
+        plan: &'a CutoutPlan,
+        instances: Span,
+    ) -> Runs<impl Fn(u32) -> ShadowEntry + 'a> {
+        let grid = self.shadow_grid;
+        let entries = plan.entries();
+        Runs::new(instances, move |i| {
+            if grid {
+                entries[i as usize]
+            } else {
+                ShadowEntry::General
+            }
+        })
     }
 
-    /// The runs of `instances`, a quad step's span, that each draw through one [`QuadForm`], in paint order.
-    pub(crate) fn quad_runs(&self, instances: Span) -> Runs<'_, QuadForm> {
-        Runs::new(instances, RunKeys::PerInstance(&self.forms))
+    /// The runs of `instances`, a quad step's span, that each draw through one [`QuadForm`], in paint
+    /// order, read off the frame's `quads`.
+    pub(crate) fn quad_runs(
+        quads: &[Quad],
+        instances: Span,
+    ) -> Runs<impl Fn(u32) -> QuadForm + '_> {
+        Runs::new(instances, |i| QuadForm::of(quads[i as usize].fill_kind))
     }
 
     /// [`Self::draw`] for shadows from [`Self::bind_shadows`]: each instance is the eight cells around the hole, two triangles each.

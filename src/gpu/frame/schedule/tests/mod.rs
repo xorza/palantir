@@ -1,4 +1,4 @@
-//! What the backend schedules per frame: stencil masks, scissors, and the
+//! What a frame's schedule emits: stencil masks, scissors, and the
 //! batches that ride them.
 
 mod damage_replay;

@@ -25,7 +25,7 @@ impl FreeSlots {
                 .expect("glyph slot generation overflowed");
             sides[placement.content as usize]
                 .packer
-                .deallocate(placement.alloc);
+                .deallocate(placement.origin, placement.size.x);
         }
         self.0.push(idx);
     }
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn released_indices_are_claimed_newest_first() {
-        let mut slots = [AtlasSlot::for_test(None, 0), AtlasSlot::for_test(None, 0)];
+        let mut slots = [AtlasSlot::for_test(false, 0), AtlasSlot::for_test(false, 0)];
         let mut free = FreeSlots::default();
 
         free.release(&mut slots, &mut [], 0);
@@ -72,7 +72,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "released twice")]
     fn releasing_one_index_twice_panics() {
-        let mut slots = [AtlasSlot::for_test(None, 0)];
+        let mut slots = [AtlasSlot::for_test(false, 0)];
         let mut free = FreeSlots::default();
         free.release(&mut slots, &mut [], 0);
         free.release(&mut slots, &mut [], 0);

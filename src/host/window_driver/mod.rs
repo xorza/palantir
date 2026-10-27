@@ -324,21 +324,22 @@ impl WindowDriver {
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
     /// an edge of exactly that frame.
     pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
-        let landed = if self.captures.is_empty() {
-            None
-        } else {
+        if !self.captures.is_empty() {
             backend.poll();
-            self.captures
-                .front()
-                .and_then(|pending| pending.capture.take())
         }
-        .map(|image| {
-            let pending = self
-                .captures
-                .pop_front()
-                .expect("the screenshot that landed is the front one");
-            Screenshot::new(image, pending.scale, pending.region, pending.id)
-        });
+        let landed = self
+            .captures
+            .front()
+            .is_some_and(|pending| !pending.capture.is_pending())
+            .then(|| {
+                let pending = self.captures.pop_front().expect("the front one landed");
+                Screenshot::new(
+                    pending.capture.take(),
+                    pending.scale,
+                    pending.region,
+                    pending.id,
+                )
+            });
         self.ui.set_screenshot_taken(landed);
     }
 
@@ -471,6 +472,7 @@ impl WindowDriver {
                 let store = self.ui.record_store();
                 backend.submit(Submission {
                     owner: self.render_owner,
+                    stats: self.ui.gpu_pass_stats(),
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer,

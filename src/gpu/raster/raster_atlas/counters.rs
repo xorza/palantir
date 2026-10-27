@@ -11,6 +11,9 @@ counter_snapshot! {
     pub(crate) struct AtlasCounts;
 
     evictions: u32,
+    /// The most entries one insert evicted. Reclaim is per rectangle, so this stays near one; a
+    /// rise means victims sat on shelves the inserts could not use.
+    worst_insert_evictions: u32,
     /// Side doublings. A one-way ratchet, so a test proving the atlas held its size needs this flat.
     grows: u32,
     /// Slots the clock hand walked past, summed over every call. Over [`Self::evictions`] it is the average stride, the

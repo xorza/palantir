@@ -25,6 +25,7 @@ use crate::cascade::WidgetLocation;
 use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
+use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
@@ -144,6 +145,9 @@ pub struct Ui {
     window_requests: WindowRequests,
     /// Host-to-recorder facts refreshed before each windowed frame.
     window_frame: WindowFrameState,
+    /// This window's latest GPU timing sample, which the backend publishes into on each of the
+    /// window's submits: a window reads its own frames, not the last window's.
+    gpu_pass_stats: GpuPassStats,
 }
 
 /// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
@@ -181,6 +185,7 @@ impl Ui {
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
+            gpu_pass_stats: GpuPassStats::default(),
         }
     }
 
@@ -623,6 +628,11 @@ impl Ui {
         self.resources.diagnostics().overlay.set(overlay);
     }
 
+    /// The handle the backend publishes this window's GPU timings into.
+    pub(crate) const fn gpu_pass_stats(&self) -> &GpuPassStats {
+        &self.gpu_pass_stats
+    }
+
     /// This frame's diagnostic counters, for the [`frame_stats`] overlay.
     ///
     /// [`frame_stats`]: crate::diagnostics::frame_stats
@@ -632,7 +642,7 @@ impl Ui {
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames(),
-            gpu: self.resources.diagnostics().gpu_pass_stats.last_pass(),
+            gpu: self.gpu_pass_stats.last_pass(),
         }
     }
 

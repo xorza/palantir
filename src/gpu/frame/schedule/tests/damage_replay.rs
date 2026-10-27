@@ -2,7 +2,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::frame::schedule::RenderStep;
-use crate::gpu::wgpu_backend::tests::support::{
+use crate::gpu::frame::schedule::tests::support::{
     DrawOp, buf_with, buf_with_batches, buf_with_tier_anchors, collect, group, plain_steps,
     scissor_count, simplify, text_batch,
 };

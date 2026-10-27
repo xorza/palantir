@@ -253,9 +253,9 @@ impl OffscreenHost {
         }
     }
 
-    /// Handle to the most recent GPU instrumentation sample, as the debug overlay reads.
+    /// Handle to the window's most recent GPU instrumentation sample, as the debug overlay reads.
     pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.core.resources.diagnostics().gpu_pass_stats
+        self.driver.ui.gpu_pass_stats()
     }
 }
 

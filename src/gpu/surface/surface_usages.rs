@@ -1,9 +1,6 @@
 //! The window-surface texture usages Palantir's compositor requires, by Palantir's own names.
 
-use std::fmt;
-use std::fmt::{Display, Formatter};
-
-use crate::gpu::flag_names;
+use crate::gpu::flag_names::wgpu_mirror;
 
 flag_set! {
     /// The texture usages a window surface must offer Palantir's compositor, so a
@@ -17,46 +14,9 @@ flag_set! {
     }
 }
 
-impl SurfaceUsages {
-    /// Each flag beside the wgpu usage it stands for; every declared flag appears once.
-    const WGPU: [(Self, wgpu::TextureUsages); 1] = [(
-        Self::RENDER_ATTACHMENT,
-        wgpu::TextureUsages::RENDER_ATTACHMENT,
-    )];
-
-    pub(crate) const fn to_wgpu(self) -> wgpu::TextureUsages {
-        let mut usages = wgpu::TextureUsages::empty();
-        let mut i = 0;
-        while i < Self::WGPU.len() {
-            let (flag, usage) = Self::WGPU[i];
-            if self.contains(flag) {
-                usages = usages.union(usage);
-            }
-            i += 1;
-        }
-        usages
-    }
-
-    /// The flags whose usages `usages` holds; usages Palantir does not require drop.
-    pub(crate) const fn from_wgpu_truncate(usages: wgpu::TextureUsages) -> Self {
-        let mut set = Self::NONE;
-        let mut i = 0;
-        while i < Self::WGPU.len() {
-            let (flag, usage) = Self::WGPU[i];
-            if usages.contains(usage) {
-                set.insert(flag);
-            }
-            i += 1;
-        }
-        set
-    }
-}
-
-impl Display for SurfaceUsages {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        flag_names::write(f, self.to_wgpu().iter_names())
-    }
-}
+wgpu_mirror!(SurfaceUsages => wgpu::TextureUsages {
+    RENDER_ATTACHMENT => wgpu::TextureUsages::RENDER_ATTACHMENT,
+});
 
 #[cfg(test)]
 mod tests {

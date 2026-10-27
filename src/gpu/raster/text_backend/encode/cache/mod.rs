@@ -3,7 +3,7 @@
 //!
 //! A replay must re-check every glyph's recorded slot generation: eviction hands
 //! a slot rectangle to another glyph, and a template with the old uv would draw
-//! that glyph. Growth needs no check; `etagere::grow` preserves rectangles.
+//! that glyph. Growth needs no check; a side's grow keeps every rectangle.
 
 use crate::common::block_arena::{BlockArena, BlockSlot};
 use crate::common::expiry_wheel::ExpiryWheel;
