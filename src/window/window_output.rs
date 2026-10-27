@@ -10,5 +10,5 @@ pub(crate) struct WindowOutput {
     pub(crate) cursor: CursorIcon,
     pub(crate) vsync: Vsync,
     /// The IME caret in logical px, or `None` for off; a pass nobody asks in turns it off.
-    pub(crate) ime: Option<Rect>,
+    pub(crate) ime_area: Option<Rect>,
 }

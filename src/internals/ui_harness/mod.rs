@@ -60,6 +60,7 @@ use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::display::host_display::HostDisplay;
 use crate::display::user_scale::UserScale;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
@@ -104,8 +105,7 @@ pub struct UiHarness {
     /// The engines this harness's frames run on; `pub(crate)` for in-crate damage and layout tests.
     pub(crate) engines: FrameEngines,
     /// What every frame stamps with. `physical` is physical pixels; pointer positions are logical.
-    /// Its `user_scale` is not read: a frame takes [`Ui::user_scale`].
-    display: Display,
+    display: HostDisplay,
     /// Absolute; moves only on [`Self::advance`] / [`Self::at`].
     time: Duration,
     /// Buttons pressed and not released, with the press position; written only in
@@ -180,7 +180,7 @@ impl UiHarness {
 
     /// Swap the whole display between frames (DPI move, pixel-snap flip). Same no-re-warm contract.
     pub fn set_display(&mut self, display: Display) -> &mut Self {
-        self.display = display;
+        self.display = HostDisplay::from_display(display);
         self.ui.set_user_scale(display.user_scale);
         self.sync_display();
         self
@@ -628,7 +628,12 @@ impl UiHarness {
         let mut harness = Self {
             engines: FrameEngines::new(&resources),
             ui: Ui::new(resources),
-            display: Display::from_physical(surface, 1.0),
+            display: HostDisplay {
+                physical: surface,
+                system_scale: 1.0,
+                pixel_snap: true,
+                refresh_millihertz: None,
+            },
             time: Duration::ZERO,
             held: [None; PointerButton::COUNT],
         };
@@ -638,21 +643,20 @@ impl UiHarness {
     }
 
     fn drive(&mut self, baseline: DamageBaseline, app: &mut impl App) -> FrameReport {
-        let stamp = FrameStamp::new(self.frame_display(), self.time);
-        let input = FrameInput::new(stamp, baseline == DamageBaseline::Kept, WindowToken(0));
+        let input = FrameInput::new(
+            self.stamp(),
+            baseline == DamageBaseline::Kept,
+            WindowToken(0),
+        );
         self.ui.frame(&mut self.engines, input, app)
     }
 
-    /// The display a frame runs at, derived as the window driver does.
-    fn frame_display(&self) -> Display {
-        Display {
-            user_scale: self.ui.user_scale(),
-            ..self.display
-        }
+    fn stamp(&self) -> FrameStamp {
+        self.ui.frame_stamp(self.display, self.time)
     }
 
     fn sync_display(&mut self) {
-        self.ui.set_display(self.frame_display());
+        self.ui.set_display(self.stamp().display);
     }
 
     /// Re-seed `prev_stamp` after a builder moved the display, so frame 1 does not read a display
@@ -664,8 +668,7 @@ impl UiHarness {
     }
 
     fn mark_warm(&mut self) {
-        self.ui
-            .set_prev_stamp(Some(FrameStamp::new(self.frame_display(), self.time)));
+        self.ui.set_prev_stamp(Some(self.stamp()));
     }
 }
 

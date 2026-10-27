@@ -56,7 +56,7 @@ pub(super) fn create_window(
     }
     attrs = platform::with_app_id(attrs, cfg.app_id.as_deref());
     // Restore a saved position only if it lands on a connected monitor; winit does not clamp.
-    if let Some(p) = cfg.placement.pos
+    if let Some(p) = cfg.placement.physical_pos
         && pos_on_monitor(event_loop, p)
     {
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));

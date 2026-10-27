@@ -10,7 +10,7 @@ use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
-use crate::gpu::error::{DriverError, SurfaceError};
+use crate::gpu::error::{DriverError, SurfaceError, SurfaceStartError};
 use crate::gpu::surface::surface_usages::SurfaceUsages;
 use crate::gpu::surface::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
@@ -59,7 +59,7 @@ impl SurfaceManager {
         window: &Arc<W>,
         size: UVec2,
         cfg: HostGpuConfig,
-    ) -> Result<SurfaceStartup, SurfaceError>
+    ) -> Result<SurfaceStartup, SurfaceStartError>
     where
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {

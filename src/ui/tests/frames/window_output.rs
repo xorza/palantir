@@ -47,7 +47,7 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(!h.ui.is_window_open(close), "only `open` is live");
 
     let placed = WindowPlacement {
-        pos: Some(IVec2::new(-120, 48)),
+        physical_pos: Some(IVec2::new(-120, 48)),
         maximized: true,
     };
     h.ui.window_frame.placement = placed;
@@ -138,11 +138,16 @@ fn request_ime_is_a_per_pass_level() {
 
     let caret = Rect::new(10.0, 20.0, 2.0, 16.0);
     let mut h = UiHarness::new(SURFACE);
-    let report = h.frame(|ui| ui.request_ime(caret));
-    assert_eq!(report.ime_area, Some(caret));
-    let report = h.frame(|_| {});
+    h.frame(|ui| {
+        assert_eq!(ui.ime_area(), None, "each pass starts with it off");
+        ui.request_ime(caret);
+        assert_eq!(ui.ime_area(), Some(caret));
+    });
+    assert_eq!(h.ui.ime_area(), Some(caret), "it outlives the frame");
+    h.frame(|_| {});
     assert_eq!(
-        report.ime_area, None,
+        h.ui.ime_area(),
+        None,
         "a pass that does not ask turns it off"
     );
 

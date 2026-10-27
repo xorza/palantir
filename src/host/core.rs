@@ -3,13 +3,13 @@
 //! texture-dimension cap. It does not own the [`WindowDriver`]s; each host pairs its own.
 
 use crate::app::App;
-use crate::common::clipboard::Clipboard;
 use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::WgpuBackend;
+use crate::host::host_options::HostOptions;
 use crate::host::window_driver::{
     CpuFrame, DriverConfig, FrameSpec, PresentPath, PresentStrategy, WindowDriver,
 };
@@ -21,15 +21,6 @@ use crate::ui::resources::{UiDevice, UiResources};
 use crate::window::window_token::WindowToken;
 use std::num::NonZeroU32;
 use std::rc::Rc;
-
-/// What a host seals at build beside its device; `pixel_snap` is the host's, inherited by every driver.
-#[derive(Debug)]
-pub(super) struct HostCoreConfig {
-    pub(super) shaper: TextShaper,
-    pub(super) clipboard: Clipboard,
-    pub(super) collect_gpu_stats: bool,
-    pub(super) pixel_snap: bool,
-}
 
 #[derive(Debug)]
 pub(super) struct HostCore {
@@ -43,12 +34,13 @@ pub(super) struct HostCore {
 impl HostCore {
     /// The texture cap is read from `gpu` once, so the surface clamp, [`TextureLimit`] and the frontend clamp are one number.
     /// The image store comes first, so the registry every recorder clones holds it from the start.
-    pub(super) fn new(gpu: Gpu, config: HostCoreConfig) -> Self {
+    /// `options.pixel_snap` is the host's, inherited by every driver.
+    pub(super) fn new(gpu: Gpu, options: &HostOptions, shaper: TextShaper) -> Self {
         let max_texture_dim = gpu.max_texture_dim();
         let image_store = Rc::new(WgpuImageStore::new(&gpu));
         let resources = UiResources::new(
-            config.shaper,
-            config.clipboard,
+            shaper,
+            options.clipboard(),
             UiDevice {
                 texture_limit: TextureLimit::from_device(max_texture_dim),
                 images: ImageRegistry::new(Rc::clone(&image_store)),
@@ -64,7 +56,7 @@ impl HostCore {
                 gpu_pass_stats: &resources.diagnostics().gpu_pass_stats,
             },
             BackendConfig {
-                collect_gpu_stats: config.collect_gpu_stats,
+                collect_gpu_stats: options.collect_gpu_stats,
             },
         );
         let frontend = Frontend::new(max_texture_dim, resources.gradient_atlas().clone());
@@ -72,7 +64,7 @@ impl HostCore {
             resources,
             frontend,
             backend,
-            pixel_snap: config.pixel_snap,
+            pixel_snap: options.pixel_snap,
             max_texture_dim,
         }
     }

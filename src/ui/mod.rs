@@ -28,6 +28,7 @@ use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::display::host_display::HostDisplay;
 use crate::display::user_scale::UserScale;
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
@@ -161,6 +162,12 @@ impl Ui {
             gpu_views: &self.gpu_views,
             stamp: FrameStamp::new(self.display, self.frame_runtime.time),
         }
+    }
+
+    /// The stamp of a frame at `time` on `host`. The one place the user scale reaches a frame:
+    /// it is written mid-frame, so a host-cached copy would paint a stale frame after it moves.
+    pub(crate) fn frame_stamp(&self, host: HostDisplay, time: Duration) -> FrameStamp {
+        FrameStamp::new(host.to_display(self.user_scale()), time)
     }
 
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
@@ -1050,7 +1057,15 @@ impl Ui {
     #[track_caller]
     pub const fn request_ime(&mut self, caret: Rect) {
         caret.validate();
-        self.window_requests.levels.ime = Some(caret);
+        self.window_requests.levels.ime_area = Some(caret);
+    }
+
+    /// The IME caret requested so far this record pass, `None` for off. Frame-scoped, like
+    /// [`Self::cursor`]: a host that embeds the UI enables its input method while it is `Some`
+    /// after a frame; the winit host does it itself.
+    #[inline]
+    pub const fn ime_area(&self) -> Option<Rect> {
+        self.window_requests.levels.ime_area
     }
 
     /// The input method's uncommitted text, for the focused widget to draw at its

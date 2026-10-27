@@ -98,8 +98,8 @@ fn a_composition_starting_over_a_selection_deletes_it() {
 fn a_focused_field_asks_for_ime_at_its_caret() {
     let caret_width = TextEditTheme::default().caret_width;
     let (mut h, mut buf) = focused_at("abcd", 0);
-    let report = h.frame(|ui| record(ui, &mut buf));
-    let area = report.ime_area.expect("a focused field asks");
+    h.frame(|ui| record(ui, &mut buf));
+    let area = h.ui.ime_area().expect("a focused field asks");
     let field_rect: Rect = h.ui.response_for(field()).rect.expect("arranged");
     assert!(
         field_rect.contains_rect(area),
@@ -108,6 +108,6 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
     assert_eq!(area.size.w, caret_width);
 
     h.clear_focus();
-    let report = h.frame(|ui| record(ui, &mut buf));
-    assert_eq!(report.ime_area, None, "an unfocused field asks for nothing");
+    h.frame(|ui| record(ui, &mut buf));
+    assert_eq!(h.ui.ime_area(), None, "an unfocused field asks for nothing");
 }

@@ -12,16 +12,6 @@ the measure-cache hit test.
 
 # Part 1: Proposal
 
-## Host and window
-
-- **One host-options vocabulary.** A crate-private `HostOptions` holds the
-  settings that both builders share (fonts, shaper, clipboard, GPU stats,
-  pixel snap) and builds `HostCoreConfig` in one place.
-- **Window levels leave through `Ui`.** Cursor, vsync and IME area are read
-  from `Ui`. `FrameReport` reports only what the frame did and what it owes.
-- **Errors by layer.** A device failure is `WinitHostError::Gpu`, not a
-  window-surface error.
-
 ## Widgets
 
 - **Keyboard interaction is a `widget_core` primitive.** An activation
@@ -159,39 +149,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 5: Host frame step and time
-
-Files: `src/host/{core.rs, clock.rs, window_driver/,
-offscreen.rs, winit/window/, winit/runtime.rs}`, `src/internals/ui_harness/`,
-`src/ui/mod.rs` (one doc).
-
-- [ ] **`UiHarness` repeats the display mint.** `ui_harness/mod.rs:639-651`.
-  Target: one display mint on `FrameSpec` that both call.
-
-## Batch 7: Public host surface
-
-All **[public]**. Files: `src/host/`, `src/window/`,
-`src/ui/frame_report.rs`, `src/display/mod.rs`, `src/gpu/device/gpu.rs`,
-`src/gpu/error.rs`.
-
-- [ ] **Builders spell shared settings differently.** `offscreen.rs:34-117`,
-  `winit/mod.rs:143-193`, `winit/config.rs:407-428`, `runtime.rs:61-69`.
-  Target: `HostOptions`; both builders get `fonts` (`const`), `shaper`,
-  `pixel_snap`, `collect_gpu_stats`, `system_clipboard`.
-- [ ] **Window levels leave through three doors.** `frame_report.rs:43-44`.
-  Target: `Ui::ime_area()` beside `cursor` and `vsync`;
-  `FrameReport::ime_area` goes; `WindowOutput` field renamed `ime_area`.
-- [ ] **A device failure reads as a surface failure.**
-  `winit/error/mod.rs:256-281`, `gpu/error.rs:130-157`. Target:
-  `WinitHostError::Gpu { source }`; `SurfaceError::Device` goes.
-- [ ] **`RequestedGpu::headless` gives a device nobody outside the crate can
-  render with.** `gpu/device/gpu.rs:15-25`. Target: `Gpu::device()` and
-  `Gpu::queue()`, or a target factory on the host.
-- [ ] **`WindowPlacement::pos` is physical.** `window_placement.rs:10-11`,
-  `window_config.rs:53-57`. Target: `physical_pos`, `with_physical_pos`.
-- [ ] **`Display::from_physical` has no public consumer.**
-  `display/mod.rs:101-122`. Target: `pub(crate)`.
 
 ## Batch 8: Theme values and the spinner
 

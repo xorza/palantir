@@ -11,6 +11,7 @@
 //! carries its range in its type.
 
 pub(crate) mod frame_stamp;
+pub(crate) mod host_display;
 pub(crate) mod user_scale;
 
 use crate::display::user_scale::UserScale;
@@ -62,8 +63,8 @@ pub(crate) fn sanitize_system_scale(system_scale: f64) -> f32 {
 /// Display state for the current output, read by the renderer at submit, by
 /// hosts computing the logical surface rect, and by the repaint scheduler.
 ///
-/// The host mints it each frame through `WindowDriver::display` and passes it
-/// to `WindowDriver::cpu_frame`. Changes to rasterized output are detected by
+/// A host mints it each frame through `Ui::frame_stamp`, from its
+/// `HostDisplay` and the `Ui`'s user scale. Changes to rasterized output are detected by
 /// [`Self::raster_eq`]; `refresh_millihertz` is pacing-only and never forces a
 /// repaint.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -109,29 +110,6 @@ impl Display {
             EdgeRounding::WholePixels
         } else {
             EdgeRounding::Exact
-        }
-    }
-
-    /// Build from physical size and system scale, with no user scale,
-    /// snapping on and no refresh rate.
-    ///
-    /// For an embedder assembling a frame itself; Palantir's hosts mint theirs
-    /// through `WindowDriver`, which supplies `pixel_snap` and `user_scale`.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `system_scale` is finite and at least `1e-4`.
-    #[track_caller]
-    pub const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
-        Self {
-            physical,
-            system_scale: {
-                assert!(scale_factor_is_valid(system_scale), "{}", SCALE_RULE);
-                system_scale
-            },
-            user_scale: UserScale::ONE,
-            pixel_snap: true,
-            refresh_millihertz: None,
         }
     }
 
@@ -183,6 +161,35 @@ impl Display {
             && self.system_scale == other.system_scale
             && self.user_scale == other.user_scale
             && self.pixel_snap == other.pixel_snap
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::display::user_scale::UserScale;
+    use crate::display::{Display, SCALE_RULE, scale_factor_is_valid};
+    use glam::UVec2;
+
+    impl Display {
+        /// Build from physical size and system scale, with no user scale,
+        /// snapping on and no refresh rate.
+        ///
+        /// # Panics
+        ///
+        /// Panics unless `system_scale` is finite and at least `1e-4`.
+        #[track_caller]
+        pub(crate) const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
+            Self {
+                physical,
+                system_scale: {
+                    assert!(scale_factor_is_valid(system_scale), "{}", SCALE_RULE);
+                    system_scale
+                },
+                user_scale: UserScale::ONE,
+                pixel_snap: true,
+                refresh_millihertz: None,
+            }
+        }
     }
 }
 

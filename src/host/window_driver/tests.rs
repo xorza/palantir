@@ -254,7 +254,6 @@ mod output_validity_tests {
             repaint_after: None,
             plan,
             processing: FrameProcessing::SingleLayout,
-            ime_area: None,
         }
     }
 
@@ -680,7 +679,7 @@ mod display_tests {
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
-    /// The driver mints its `Display` from what it owns, so a scale the app wrote
+    /// The driver mints its stamp from what it owns, so a scale the app wrote
     /// during a frame is in the very next one. `pixel_snap` rides the same call.
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
@@ -691,14 +690,14 @@ mod display_tests {
             config(PresentStrategy::DirectAdaptive, false),
         );
 
-        let plain = driver.display(&spec(UVec2::new(800, 600), 2.0));
+        let plain = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
         assert_eq!(plain.system_scale, 2.0);
         assert_eq!(plain.user_scale, UserScale::ONE);
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
         driver.ui.set_user_scale(UserScale::new(1.25).unwrap());
-        let zoomed = driver.display(&spec(UVec2::new(800, 600), 2.0));
+        let zoomed = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
         assert_eq!(zoomed.system_scale, 2.0, "the platform's half is untouched");
         assert_eq!(zoomed.user_scale, UserScale::new(1.25).unwrap());
         assert_eq!(zoomed.scale_factor(), 2.5);
@@ -727,7 +726,8 @@ mod display_tests {
         assert_eq!(second.ui.user_scale(), UserScale::new(1.5).unwrap());
         assert_eq!(
             second
-                .display(&spec(UVec2::new(400, 400), 1.0))
+                .stamp(&spec(UVec2::new(400, 400), 1.0))
+                .display
                 .scale_factor(),
             1.5,
         );

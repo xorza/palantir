@@ -133,11 +133,6 @@ pub enum SurfaceError {
         /// What the driver reported.
         source: DriverError,
     },
-    /// Opening the device for this surface failed.
-    Device {
-        /// Which of the four ways the request failed.
-        source: GpuRequestError,
-    },
     /// The selected adapter cannot present to this window's surface.
     Incompatible,
     /// The surface cannot satisfy Palantir's linear-to-sRGB output contract.
@@ -149,10 +144,25 @@ pub enum SurfaceError {
     },
 }
 
+/// What opening a windowed host's device and first surface reports: either half can fail.
 #[cfg(feature = "winit")]
-impl From<GpuRequestError> for SurfaceError {
+#[derive(Debug)]
+pub(crate) enum SurfaceStartError {
+    Gpu { source: GpuRequestError },
+    Surface { source: SurfaceError },
+}
+
+#[cfg(feature = "winit")]
+impl From<GpuRequestError> for SurfaceStartError {
     fn from(source: GpuRequestError) -> Self {
-        Self::Device { source }
+        Self::Gpu { source }
+    }
+}
+
+#[cfg(feature = "winit")]
+impl From<SurfaceError> for SurfaceStartError {
+    fn from(source: SurfaceError) -> Self {
+        Self::Surface { source }
     }
 }
 
@@ -161,7 +171,6 @@ impl Display for SurfaceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Create { source } => write!(f, "failed to create a window surface: {source}"),
-            Self::Device { source } => Display::fmt(source, f),
             Self::Incompatible => {
                 f.write_str("graphics adapter cannot present to the window surface")
             }
@@ -179,8 +188,6 @@ impl Error for SurfaceError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Create { source } => Some(source),
-            // Skips the inner itself; its `Display` forwards.
-            Self::Device { source } => source.source(),
             Self::Incompatible | Self::MissingSrgb | Self::MissingUsages { .. } => None,
         }
     }

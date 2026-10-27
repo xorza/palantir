@@ -9,6 +9,7 @@ use crate::common::tracy;
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::display::host_display::HostDisplay;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
@@ -254,22 +255,15 @@ impl WindowDriver {
         }
     }
 
-    /// This driver's [`Display`] for a frame. The one place `pixel_snap` and the user
-    /// scale reach a frame: the user scale is written mid-frame, so a host-cached copy
-    /// would paint a stale frame after it moves.
-    fn display(&self, spec: &FrameSpec) -> Display {
-        Display {
-            physical: spec.physical,
-            system_scale: spec.system_scale,
-            user_scale: self.ui.user_scale(),
-            pixel_snap: self.pixel_snap,
-            refresh_millihertz: spec.refresh_millihertz,
-        }
-    }
-
     /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
     pub(super) fn stamp(&self, spec: &FrameSpec) -> FrameStamp {
-        FrameStamp::new(self.display(spec), spec.now)
+        let host = HostDisplay {
+            physical: spec.physical,
+            system_scale: spec.system_scale,
+            pixel_snap: self.pixel_snap,
+            refresh_millihertz: spec.refresh_millihertz,
+        };
+        self.ui.frame_stamp(host, spec.now)
     }
 
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
