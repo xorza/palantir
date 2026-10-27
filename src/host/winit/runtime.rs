@@ -17,7 +17,7 @@ use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
-use crate::window::window_commands::WindowCommands;
+use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use std::fmt;
@@ -123,24 +123,25 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
     }
 
-    /// Drain every window's open/close queue and apply it, in `about_to_wait`; requests are collected first so creates don't alias the pending list.
-    pub(super) fn drain_window_requests(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-    ) -> Result<(), WinitHostError> {
-        let mut commands = WindowCommands::default();
-        commands.append(&mut self.pending_commands);
-        // Closes first, so a same-frame close + open of one token recreates the window instead of tripping `spawn_window`'s duplicate-token guard.
-        for token in commands.closes {
-            self.close_window(token);
+    /// Apply every window's queued opens and closes in order, in `about_to_wait`. A window that
+    /// fails to open is logged and left closed: one failed secondary window does not stop the app.
+    pub(super) fn drain_window_requests(&mut self, event_loop: &ActiveEventLoop) {
+        // Taken out so the creates below can borrow `self`; put back to keep the buffer.
+        let mut commands = mem::take(&mut self.pending_commands);
+        for command in commands.drain() {
+            match command {
+                WindowCommand::Close(token) => self.close_window(token),
+                WindowCommand::Open { token, config } => {
+                    if let Err(error) = self.spawn_window(event_loop, token, &config) {
+                        tracing::error!(?token, %error, "open_window failed");
+                    }
+                }
+            }
         }
-        for pending in commands.opens {
-            self.spawn_window(event_loop, pending.token, &pending.config)?;
-        }
+        self.pending_commands = commands;
         if self.windows.is_empty() {
             event_loop.exit();
         }
-        Ok(())
     }
 
     /// Repaint everything when an app-global setting changed (debug overlay flags, user scale).

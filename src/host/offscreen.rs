@@ -34,8 +34,7 @@ pub struct OffscreenHost {
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
     retained_target: bool,
-    /// `None` until overridden; resolved lazily so an override never pays the font load.
-    shaper: Option<TextShaper>,
+    fonts: FontChoice,
     collect_gpu_stats: bool,
     /// `None` leaves the driver's default; held because the driver builder needs a `UiResources` that exists only in [`Self::build`].
     clock: Option<Box<dyn Clock>>,
@@ -44,16 +43,25 @@ pub struct OffscreenHostBuilder {
     system_clipboard: bool,
 }
 
+/// Where the builder's shaper comes from: a scope loads its fonts in
+/// [`OffscreenHostBuilder::build`], so a later override never pays the load.
+#[derive(Debug)]
+enum FontChoice {
+    Scope(FontScope),
+    Shaper(TextShaper),
+}
+
 impl OffscreenHostBuilder {
     /// Which faces this host shapes against. Defaults to [`FontScope::Bundled`], so measurement is machine-independent. Replaces a shaper set by [`Self::shaper`].
     pub fn fonts(mut self, scope: FontScope) -> Self {
-        self.shaper = Some(TextShaper::with_fonts(scope));
+        self.fonts = FontChoice::Scope(scope);
         self
     }
 
     /// Replaces the default [`TextShaper`], to share one shaped-buffer cache or preloaded fonts.
+    /// Replaces a scope set by [`Self::fonts`].
     pub fn shaper(mut self, shaper: TextShaper) -> Self {
-        self.shaper = Some(shaper);
+        self.fonts = FontChoice::Shaper(shaper);
         self
     }
 
@@ -69,11 +77,11 @@ impl OffscreenHostBuilder {
         self
     }
 
-    /// Promises every frame renders into the *same* texture, so the target keeps the last frame's pixels.
+    /// Promises every frame renders into the *same* texture, so the target keeps the last frame's pixels. A texture of another size or format is a new target, which the next frame paints in full.
     ///
     /// Off by default: otherwise a partial repaint would leave the rest undefined, so frames go through a retained backbuffer and are copied out. On, small damage repaints straight into the target.
     ///
-    /// **Only say it if it is true:** with a fresh texture each call, everything outside the damage is whatever it contained.
+    /// **Only say it if it is true:** with a fresh texture of the same size and format each call, everything outside the damage is whatever it contained.
     pub const fn retained_target(mut self, retained: bool) -> Self {
         self.retained_target = retained;
         self
@@ -111,7 +119,10 @@ impl OffscreenHostBuilder {
         }
         let config = HostCoreConfig {
             clipboard: self.clipboard(),
-            shaper: self.shaper.unwrap_or_default(),
+            shaper: match self.fonts {
+                FontChoice::Scope(scope) => TextShaper::with_fonts(scope),
+                FontChoice::Shaper(shaper) => shaper,
+            },
             collect_gpu_stats: self.collect_gpu_stats,
             pixel_snap: self.pixel_snap,
         };
@@ -140,7 +151,7 @@ impl OffscreenHost {
         OffscreenHostBuilder {
             gpu,
             retained_target: false,
-            shaper: None,
+            fonts: FontChoice::Scope(FontScope::Bundled),
             collect_gpu_stats: false,
             clock: None,
             pixel_snap: true,
@@ -160,7 +171,7 @@ impl OffscreenHost {
         self.driver.ui.on_input(event, now)
     }
 
-    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged; the target may change between calls. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].
+    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`]. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].
     ///
     /// `system_scale` stands in for the platform's device pixel ratio; the app's scale multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200% render).
     ///
@@ -173,11 +184,7 @@ impl OffscreenHost {
         system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
-        assert!(
-            display::scale_factor_is_valid(system_scale),
-            "{}, got {system_scale}",
-            display::SCALE_RULE,
-        );
+        let system_scale = display::scale_factor(system_scale);
 
         let key = TargetKey::of(target);
         let driver = &mut self.driver;

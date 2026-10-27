@@ -1,5 +1,6 @@
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
+use crate::window::window_commands::internals::Seen;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
@@ -36,13 +37,14 @@ fn drain_settles_the_close_and_moves_the_commands() {
         assert_eq!(got, levels, "{at}: levels");
         assert_eq!(requests.levels, levels, "{at}: the recorder keeps them");
         assert!(!requests.close_vetoed, "{at}: the veto lasts one drain");
-        assert!(requests.commands.opens.is_empty(), "{at}: commands moved");
-        let opens: Vec<_> = out.opens.iter().map(|w| w.token).collect();
-        assert_eq!(opens, [WindowToken(9)], "{at}: opens");
-        let want: Vec<_> = [WindowToken(1)]
-            .into_iter()
-            .chain(closes.iter().copied())
-            .collect();
-        assert_eq!(out.closes, want, "{at}: closes after what out held");
+        assert!(requests.commands.seen().is_empty(), "{at}: commands moved");
+        let want: Vec<_> = [
+            Seen::Close(WindowToken(1)),
+            Seen::Open(WindowToken(9), "child"),
+        ]
+        .into_iter()
+        .chain(closes.iter().map(|&token| Seen::Close(token)))
+        .collect();
+        assert_eq!(out.seen(), want, "{at}: behind what out held");
     }
 }

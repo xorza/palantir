@@ -244,7 +244,9 @@ where
     ///
     /// # Errors
     ///
-    /// Returns event-loop failures and window, surface, adapter or device failures.
+    /// Returns event-loop failures, and the first window's window, surface, adapter or device
+    /// failures. A window [`Ui::open_window`](crate::Ui::open_window) opens later logs its failure
+    /// and stays closed.
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
@@ -321,10 +323,7 @@ where
             event_loop.set_control_flow(ControlFlow::Wait);
             return;
         };
-        if let Err(error) = runtime.drain_window_requests(event_loop) {
-            self.fail(event_loop, error);
-            return;
-        }
+        runtime.drain_window_requests(event_loop);
         runtime.repaint_on_shared_change();
         runtime.schedule(event_loop, now);
     }

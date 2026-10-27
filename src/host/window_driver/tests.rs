@@ -115,8 +115,13 @@ mod present_mode_tests {
 mod output_validity_tests {
     use glam::UVec2;
 
+    use crate::gpu::surface::capture::Capture;
     use crate::gpu::surface::render_target::TargetFormat;
-    use crate::host::window_driver::{PresentPath, PresentStrategy, TargetKey, WindowDriver};
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::window_driver::{
+        PendingScreenshot, PresentPath, PresentStrategy, TargetKey, WindowDriver,
+    };
+    use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
@@ -129,6 +134,7 @@ mod output_validity_tests {
     use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
     use crate::window::window_commands::WindowCommands;
+    use crate::window::window_commands::internals::Seen;
     use crate::window::window_config::WindowConfig;
     use crate::window::window_token::WindowToken;
 
@@ -207,38 +213,30 @@ mod output_validity_tests {
             Vsync::On,
             "a frame that asked for nothing reports the standing level"
         );
-        assert_eq!(commands.opens.len(), 1);
-        assert_eq!(commands.opens[0].token, opened);
         assert_eq!(
-            commands.closes,
-            [token],
+            commands.seen(),
+            [Seen::Open(opened, "inspector"), Seen::Close(token)],
             "an un-vetoed close becomes this window's own close command"
         );
-        assert!(driver.ui.window_requests().commands.opens.is_empty());
-        assert!(driver.ui.window_requests().commands.closes.is_empty());
-        // Drained by `append`, not `mem::take`, so the recorder keeps its buffers.
-        let open_capacity = driver.ui.window_requests().commands.opens.capacity();
-        let close_capacity = driver.ui.window_requests().commands.closes.capacity();
-        assert!(open_capacity > 0 && close_capacity > 0);
+        assert!(driver.ui.window_requests().commands.seen().is_empty());
+        // Drained by `append`, not `mem::take`, so the recorder keeps its buffer.
+        let capacity = driver.ui.window_requests().commands.capacity();
+        assert!(capacity > 0);
 
         driver.ui.window_frame_mut().close_requested = true;
         driver.ui.keep_open();
         let mut vetoed = WindowCommands::default();
         driver.drain_window_output(&mut vetoed);
-        assert!(vetoed.closes.is_empty());
+        assert!(vetoed.seen().is_empty());
 
         let mut settled = WindowCommands::default();
         driver.drain_window_output(&mut settled);
-        assert!(settled.closes.is_empty());
+        assert!(settled.seen().is_empty());
         assert!(!driver.ui.window_requests().close_vetoed);
         assert_eq!(
-            driver.ui.window_requests().commands.opens.capacity(),
-            open_capacity,
+            driver.ui.window_requests().commands.capacity(),
+            capacity,
             "draining must not hand away the recorder's buffer"
-        );
-        assert_eq!(
-            driver.ui.window_requests().commands.closes.capacity(),
-            close_capacity
         );
     }
 
@@ -411,6 +409,27 @@ mod output_validity_tests {
             driver.output_valid,
             "SkipNoop preserves valid target pixels"
         );
+        assert!(
+            !skip.report.repaint_requested,
+            "a still frame asks for nothing"
+        );
+
+        // A screenshot still on the device keeps the frames coming, as nothing else wakes the
+        // host when it lands; a still frame asks for nothing once it has.
+        driver.captures.push_back(PendingScreenshot {
+            capture: Capture::never_landing(&headless_test_gpu().device),
+            region: Rect::new(0.0, 0.0, 1.0, 1.0),
+            scale: 1.0,
+        });
+        let waiting = driver.finish_cpu_frame(&mut frontend, report(None));
+        assert!(matches!(waiting.mode, PresentPath::SkipNoop));
+        assert!(
+            waiting.report.repaint_requested,
+            "a pending screenshot asks for the next frame"
+        );
+        driver.captures.clear();
+        let landed = driver.finish_cpu_frame(&mut frontend, report(None));
+        assert!(!landed.report.repaint_requested);
 
         driver.strategy = PresentStrategy::BackbufferCopy;
         let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));

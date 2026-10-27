@@ -171,3 +171,31 @@ impl Capture {
         Some(Captured { image: Some(image) })
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::surface::capture::{Capture, MAP_PENDING, Staging};
+    use glam::UVec2;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU8;
+
+    impl Capture {
+        /// A capture whose copy never finishes, as one the device is still running.
+        pub(crate) fn never_landing(device: &wgpu::Device) -> Self {
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("palantir.capture.never_landing"),
+                size: u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            Self {
+                staging: Some(Staging {
+                    buffer,
+                    padded_row: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
+                    state: Arc::new(AtomicU8::new(MAP_PENDING)),
+                }),
+                size: UVec2::ONE,
+            }
+        }
+    }
+}

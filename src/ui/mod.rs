@@ -413,8 +413,12 @@ impl Ui {
     }
 
     /// Open a top-level OS window addressed by `token`, unique among live windows.
-    /// Deferred to the host after this frame; repeat calls in a frame collapse, last
-    /// `config` winning. A live `token` is ignored with a warning.
+    /// Deferred to the host after this frame, which applies every window's opens and
+    /// closes in the order they were called, the last call per token winning: a later
+    /// `config` replaces an earlier one, a later [`Self::close_window`] cancels the open,
+    /// and an open after a close of a live window recreates it. An open of a live
+    /// `token` is ignored with a warning. A window the platform or GPU cannot open is
+    /// logged and stays closed, so [`Self::is_window_open`] answers `false`.
     ///
     /// # Panics
     ///
@@ -423,7 +427,7 @@ impl Ui {
         self.window_requests.commands.open(token, config);
     }
 
-    /// Request that the window addressed by `token` close, deferred like
+    /// Request that the window addressed by `token` close, deferred and ordered like
     /// [`Self::open_window`]. No-op for an unknown `token`.
     ///
     /// # Panics

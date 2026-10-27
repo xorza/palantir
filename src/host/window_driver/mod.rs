@@ -32,7 +32,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
 use crate::ui::screenshot::Screenshot;
 use crate::window::vsync::Vsync;
-use crate::window::window_commands::WindowCommands;
+use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
@@ -449,23 +449,22 @@ impl WindowDriver {
     ///
     /// Panics if this frame recorded any window open or close request.
     pub(super) fn deny_window_commands(&mut self) {
-        // Empty by contract, so the drain's `append`s move nothing and nothing allocates.
+        // Empty by contract, so the drain's `append` moves nothing and nothing allocates.
         let mut denied = WindowCommands::default();
         self.drain_window_output(&mut denied);
-        assert!(
-            denied.opens.is_empty(),
-            "Ui::open_window({:?}) during an offscreen frame: the offscreen \
-             host drives one window and has no window lifecycle — use \
-             WinitHost if the app needs to open windows",
-            denied.opens[0].token
-        );
-        assert!(
-            denied.closes.is_empty(),
-            "Ui::close_window({:?}) during an offscreen frame: the offscreen \
-             host drives one window and has no window lifecycle — drop the \
-             host to release it",
-            denied.closes[0]
-        );
+        match denied.first() {
+            None => {}
+            Some(WindowCommand::Open { token, .. }) => panic!(
+                "Ui::open_window({token:?}) during an offscreen frame: the offscreen \
+                 host drives one window and has no window lifecycle — use \
+                 WinitHost if the app needs to open windows"
+            ),
+            Some(WindowCommand::Close(token)) => panic!(
+                "Ui::close_window({token:?}) during an offscreen frame: the offscreen \
+                 host drives one window and has no window lifecycle — drop the \
+                 host to release it"
+            ),
+        }
     }
 
     /// GPU submit against a caller-supplied texture, dispatching on the sealed
