@@ -50,6 +50,9 @@ impl<'a> RenderTarget<'a> {
 pub struct TargetFormat(wgpu::TextureFormat);
 
 impl TargetFormat {
+    /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
+    pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
+
     /// Name a format directly, under [`RenderTarget::new`]'s rule.
     ///
     /// # Panics
@@ -86,16 +89,6 @@ pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
         width: size.x,
         height: size.y,
         depth_or_array_layers: 1,
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::gpu::surface::render_target::TargetFormat;
-
-    impl TargetFormat {
-        /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
-        pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
     }
 }
 

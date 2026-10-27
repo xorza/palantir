@@ -3,7 +3,14 @@
 
 pub(crate) mod backbuffer;
 pub(crate) mod capture;
-#[cfg(feature = "internals")]
+#[cfg_attr(
+    not(feature = "internals"),
+    expect(
+        unreachable_pub,
+        reason = "`pub` for the `internals` re-export; a build without it reaches the type only \
+                  through `HeadlessWindow`"
+    )
+)]
 pub(crate) mod owned_target;
 pub(crate) mod render_target;
 pub(crate) mod stencil;

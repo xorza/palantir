@@ -28,6 +28,8 @@
 
 pub(crate) mod config;
 pub(crate) mod error;
+mod frame_log;
+pub(crate) mod frame_summary;
 pub(crate) mod handle;
 mod input;
 mod native;
@@ -60,6 +62,7 @@ mod window_set;
 
 use crate::gpu::device::power_preference::PowerPreference;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::time::Instant;
 
 use glam::UVec2;
@@ -73,6 +76,7 @@ use crate::display;
 use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
+use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
@@ -126,6 +130,7 @@ pub struct WinitHost<T: 'static> {
     phase: HostPhase<T>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
     proxy: EventLoopProxy<UserEvent<T>>,
+    frames: Arc<FrameLog>,
 }
 
 impl<T: 'static> fmt::Debug for WinitHost<T> {
@@ -216,6 +221,7 @@ where
             }),
             event_loop: Some(event_loop),
             proxy,
+            frames: Arc::default(),
         })
     }
 }
@@ -237,6 +243,7 @@ where
     pub fn handle(&self) -> HostHandle<T> {
         HostHandle {
             proxy: self.proxy.clone(),
+            frames: Arc::clone(&self.frames),
         }
     }
 
@@ -250,6 +257,7 @@ where
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
+        self.frames.clear();
         let failure = match self.phase {
             HostPhase::Failed(error) => Some(error),
             HostPhase::Bootstrap(_) | HostPhase::Running(_) => None,
@@ -292,6 +300,13 @@ where
                     && let Some(win) = runtime.by_token(token)
                 {
                     win.next = FramePresent::Immediate;
+                }
+            }
+            UserEvent::Input(token, event) => {
+                if let Some(runtime) = self.running()
+                    && let Some(win) = runtime.by_token(token)
+                {
+                    win.on_sent_input(event.as_event());
                 }
             }
             UserEvent::RunOnMain(task) => match &mut self.phase {

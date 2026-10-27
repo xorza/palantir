@@ -1,5 +1,6 @@
 //! [`WinitRuntime`]: the running windowed host.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -12,6 +13,7 @@ use crate::gpu::surface::surface_manager::{SurfaceManager, SurfaceStartup};
 use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
+use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::HostHandle;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
@@ -30,6 +32,8 @@ pub(super) struct WinitRuntime<T> {
     pub(super) core: HostCore,
     windows: WindowSet,
     pending_commands: WindowCommands,
+    /// Each window's last frame, which the [`HostHandle`]s read.
+    frames: Arc<FrameLog>,
 }
 
 impl<T> fmt::Debug for WinitRuntime<T> {
@@ -75,6 +79,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .expect("bootstrap app factory already consumed");
         let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
+        let frames = Arc::clone(&handle.frames);
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
             task(&mut app);
@@ -88,6 +93,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             core,
             windows,
             pending_commands: WindowCommands::default(),
+            frames,
         })
     }
 
@@ -107,9 +113,11 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Paint one window; it drains its commands into the pending queue.
     pub(super) fn draw(&mut self, slot: WindowSlot) {
         let single_window = self.windows.len() == 1;
-        self.windows
-            .at(slot)
-            .frame(&mut self.core, &mut self.app, &mut self.pending_commands);
+        let win = self.windows.at(slot);
+        if let Some(summary) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)
+        {
+            self.frames.record(win.driver.token, summary);
+        }
         if single_window {
             tracy::mark_main_frame();
         }
@@ -195,6 +203,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     fn close_window(&mut self, token: WindowToken) {
         if let Some(win) = self.windows.take(token) {
             self.core.close(win.driver);
+            self.frames.remove(token);
         }
     }
 }

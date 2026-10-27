@@ -9,6 +9,7 @@ pub(crate) mod frame_input;
 pub(crate) mod frame_report;
 pub(crate) mod frame_runtime;
 mod frame_stats_readout;
+pub(crate) mod inspected_widget;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod screenshot;
@@ -45,6 +46,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input_state::InputState;
 use crate::input_state::arranged_frame::ArrangedFrame;
+use crate::input_state::capture;
 use crate::input_state::key_reader::KeyReader;
 use crate::layout::Layout;
 use crate::primitives::geometry::rect::Rect;
@@ -84,6 +86,7 @@ use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_runtime::FrameRuntime;
 use crate::ui::frame_runtime::wake::WakeReasons;
+use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::screenshot::Screenshot;
@@ -984,6 +987,19 @@ impl Ui {
         self.frame_runtime.frame_id
     }
 
+    /// The last frame's interactive widgets, in paint order, into `out`: what a tool that
+    /// drives the `Ui` from outside finds a widget by.
+    pub fn inspect(&self, out: &mut Vec<InspectedWidget>) {
+        InspectedWidget::collect(&self.forest, &self.cascade, out);
+    }
+
+    /// How soon a second press on the same target makes a double click. A driver that sends
+    /// separate clicks spaces them past it.
+    #[inline]
+    pub const fn double_click_window(&self) -> Duration {
+        capture::DOUBLE_CLICK_WINDOW
+    }
+
     /// This frame's monotonic index among frames that reached the screen. Counts
     /// paint-only frames, so use [`Self::frame_id`] to detect a skipped reader.
     #[inline]
@@ -1146,7 +1162,6 @@ pub(crate) mod internals {
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
     use crate::input_state::InputState;
-    use crate::internals::inspected_widget::InspectedWidget;
     use crate::layout::Layout;
     #[cfg(test)]
     use crate::layout::plane_layout::PlaneLayout;
@@ -1194,14 +1209,6 @@ pub(crate) mod internals {
         /// Replace the display the next frame lays out at, as the window driver does.
         pub(crate) const fn set_display(&mut self, display: Display) {
             self.display = display;
-        }
-    }
-
-    /// Read by tools that drive a `Ui` from outside.
-    impl Ui {
-        /// The last frame's interactive widgets, in paint order, into `out`.
-        pub fn inspect(&self, out: &mut Vec<InspectedWidget>) {
-            InspectedWidget::collect(&self.forest, &self.cascade, out);
         }
     }
 

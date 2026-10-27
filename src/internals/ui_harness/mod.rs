@@ -68,7 +68,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::input_state::capture::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD};
+use crate::input_state::capture::DRAG_THRESHOLD;
 use crate::internals::record_app::RecordApp;
 use crate::internals::ui_harness::passes::Passes;
 use crate::primitives::geometry::rect::Rect;
@@ -297,10 +297,11 @@ impl UiHarness {
         );
     }
 
-    /// Move the clock past `DOUBLE_CLICK_WINDOW` so the next click starts a fresh
+    /// Move the clock past [`Ui::double_click_window`] so the next click starts a fresh
     /// press run. Records no frame, which would sweep the state rows under test.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
-        self.advance(DOUBLE_CLICK_WINDOW + Duration::from_millis(1))
+        let window = self.ui.double_click_window();
+        self.advance(window + Duration::from_millis(1))
     }
 
     /// The raw input door, for events with no typed helper; the typed helpers enforce the
