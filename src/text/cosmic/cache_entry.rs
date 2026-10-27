@@ -2,6 +2,7 @@
 
 use crate::common::expiry_wheel::TicketSeq;
 use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
+use crate::text::cosmic::text_cut::TextCut;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
@@ -17,6 +18,9 @@ pub(super) struct CacheEntry {
     /// buffer; measuring from 0 would count that gap in the width and the
     /// encoder would apply the offset twice. Zero for unbounded buffers.
     pub(super) left: f32,
+    /// The source bytes a truncating fit's buffer shows; `None` for a buffer that shows its
+    /// whole source.
+    pub(super) cut: Option<TextCut>,
     /// First frame on which this entry is dead: set one probation window out on
     /// insertion and a protected window out on each lookup, so the deadline is
     /// the tier. Matches [`ExpiryWheel::schedule`](crate::common::expiry_wheel::ExpiryWheel::schedule).
@@ -26,8 +30,8 @@ pub(super) struct CacheEntry {
     /// [`ShapedBufferCache::supersede`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache::supersede)
     /// and dies in the sweep, so demote/promote cycles don't accumulate tickets.
     pub(super) ticket_seq: TicketSeq,
-    /// The source a truncated buffer was cut from, as it holds `prefix + "…"`; empty where the
-    /// buffer holds its whole source, as a run is never empty. Recycled with the buffer.
+    /// The source a truncated buffer was cut from, as it holds only the kept part of it around
+    /// a `…`; empty where `cut` is `None`. Recycled with the buffer.
     pub(super) source: String,
 }
 
@@ -36,7 +40,7 @@ impl CacheEntry {
         ShapedRun {
             buffer: &self.buffer,
             left: self.left,
-            cut: !self.source.is_empty(),
+            cut: self.cut,
         }
     }
 
@@ -44,7 +48,7 @@ impl CacheEntry {
     /// texts can share one; the bytes decide. An untruncated buffer holds its source as its
     /// lines and their endings.
     pub(super) fn holds(&self, text: &str) -> bool {
-        if !self.source.is_empty() {
+        if self.cut.is_some() {
             return self.source == text;
         }
         let mut rest = text.as_bytes();

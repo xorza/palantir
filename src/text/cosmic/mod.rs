@@ -20,6 +20,7 @@ use crate::text::cosmic::glyph_ink::GlyphInk;
 use crate::text::cosmic::shaped_buffer_cache::{
     Recycled, ShapedBuffer, ShapedBufferCache, ShapedRun,
 };
+use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
 use crate::text::family_keys::{FamilyKey, FamilyKeys};
@@ -54,6 +55,7 @@ pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
 pub(super) mod glyph_ink;
 pub(super) mod shaped_buffer_cache;
+pub(crate) mod text_cut;
 
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
 
@@ -407,7 +409,9 @@ impl CosmicMeasure {
             return entry.extent.extent();
         }
         match key.fit() {
-            LineFit::Clip | LineFit::Ellipsis => self.shape_truncated(request),
+            LineFit::Clip | LineFit::Ellipsis | LineFit::EllipsisMiddle => {
+                self.shape_truncated(request)
+            }
             LineFit::Wrap => self.shape_wrapped(request, WrapFloor::Skip).extent(),
         }
     }
@@ -438,6 +442,7 @@ impl CosmicMeasure {
                 buffer,
                 extent,
                 left: geometry.left,
+                cut: None,
                 source,
             },
         );
@@ -592,10 +597,13 @@ impl CosmicMeasure {
     /// fully paid-for cluster, and the prefix is shaped on one natural line with no
     /// per-line align (the encoder positions it, so the extent is the glyph width, not
     /// `w`). `LineFit::Ellipsis` reserves room for a trailing `…`; `LineFit::Clip` cuts
-    /// flush. `intrinsic_min` is 0.
+    /// flush. `LineFit::EllipsisMiddle` gives the prefix half the budget and
+    /// [`cluster_glyph::fitting_suffix`] the rest, then shapes `prefix…suffix`, the
+    /// ellipsis at the center as Pango's `ELLIPSIZE_MIDDLE` places it. `intrinsic_min` is 0.
     ///
-    /// The shaped prefix is verified against `w` and retires a further cluster until it
-    /// fits: reshaping changes the shaping context, so the cut alone cannot guarantee it.
+    /// The shaped cut is verified against `w` and retires a further cluster, from the
+    /// wider end of a middle cut, until it fits: reshaping changes the shaping context, so
+    /// the cut alone cannot guarantee it.
     ///
     /// # Why not `Buffer::set_ellipsize`
     ///
@@ -619,7 +627,7 @@ impl CosmicMeasure {
         // Reserve the ellipsis width only when one will be appended; resolved before borrowing the
         // probe, since shaping "…" needs `&mut self`.
         let mut append_ellipsis = false;
-        let avail = if matches!(fit, LineFit::Ellipsis) {
+        let avail = if matches!(fit, LineFit::Ellipsis | LineFit::EllipsisMiddle) {
             let ellipsis_w = self.ellipsis_advance(key);
             append_ellipsis = ellipsis_w <= width;
             (width - ellipsis_w).max(0.0)
@@ -635,10 +643,11 @@ impl CosmicMeasure {
             mut buffer,
             mut source,
         } = self.acquire(metrics_of(key), None);
-        let geometry = if fits_whole {
+        let (geometry, cut) = if fits_whole {
             buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut self.font_system, false);
-            ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch)
+            let geometry = ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch);
+            (geometry, None)
         } else {
             // The cut spends advances from the whole run's shaping, but the prefix reshapes
             // in its own context (a joining script's last letter takes a wider final form). So
@@ -656,15 +665,42 @@ impl CosmicMeasure {
             }
             // The buffer holds a cut, so the entry keeps what it was cut from.
             source.push_str(request.text);
+            // Without room for the marker a middle cut has nothing to join its ends with, so it
+            // clips flush like the trailing one.
+            let middle = append_ellipsis && matches!(fit, LineFit::EllipsisMiddle);
+            // The probe's first run is the line a truncating fit keeps, so a middle cut's suffix
+            // ends where that line does, not at the end of the text.
+            let line_end = self.cut_glyphs.iter().map(|g| g.end).max().unwrap_or(0);
             let mut max_end = usize::MAX;
+            let mut min_start = 0;
             loop {
-                let cut = cluster_glyph::fitting_prefix(&mut self.cut_glyphs, avail, max_end);
+                let glyphs = &mut self.cut_glyphs;
+                let (cut, tail) = if middle {
+                    let cut = cluster_glyph::fitting_prefix(glyphs, avail * 0.5, max_end);
+                    let head_w = cluster_glyph::span_advance(glyphs, 0..cut);
+                    let tail =
+                        cluster_glyph::fitting_suffix(glyphs, avail - head_w, min_start.max(cut));
+                    (cut, tail)
+                } else {
+                    (cluster_glyph::fitting_prefix(glyphs, avail, max_end), None)
+                };
                 self.truncate_scratch.clear();
-                self.truncate_scratch
-                    .push_str(request.text[..cut].trim_end());
+                let prefix = request.text[..cut].trim_end();
+                self.truncate_scratch.push_str(prefix);
                 if append_ellipsis {
                     self.truncate_scratch.push('…');
                 }
+                let kept = tail.map_or("", |tail| request.text[tail..line_end].trim_start());
+                let suffix = (!kept.is_empty()).then(|| CutSuffix {
+                    buf_start: self.truncate_scratch.len(),
+                    src_start: line_end - kept.len(),
+                    len: kept.len(),
+                });
+                self.truncate_scratch.push_str(kept);
+                let text_cut = TextCut {
+                    prefix_end: prefix.len(),
+                    suffix,
+                };
                 buffer.set_text(
                     self.truncate_scratch.as_str(),
                     &attrs,
@@ -674,10 +710,19 @@ impl CosmicMeasure {
                 buffer.shape_until_scroll(&mut self.font_system, false);
                 let geometry =
                     ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch);
-                if geometry.size.w <= width || cut == 0 {
-                    break geometry;
+                if geometry.size.w <= width || (cut == 0 && tail.is_none()) {
+                    break (geometry, Some(text_cut));
                 }
-                max_end = cut;
+                match tail {
+                    Some(tail)
+                        if cut == 0
+                            || cluster_glyph::span_advance(glyphs, tail..line_end)
+                                >= cluster_glyph::span_advance(glyphs, 0..cut) =>
+                    {
+                        min_start = tail + 1;
+                    }
+                    _ => max_end = cut,
+                }
             }
         };
 
@@ -690,6 +735,7 @@ impl CosmicMeasure {
                 buffer,
                 extent: CachedExtent::Bounded(extent),
                 left: geometry.left,
+                cut,
                 source,
             },
         );
