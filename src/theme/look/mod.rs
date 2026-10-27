@@ -13,10 +13,10 @@
 pub(crate) mod animated_look;
 pub(crate) mod engagement;
 pub(crate) mod look_plan;
+pub(crate) mod slot_defaults;
 pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
 
-use crate::animation::animation_slot::AnimationSlot;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::look::animated_look::AnimatedLook;
@@ -38,9 +38,6 @@ pub struct WidgetLook {
 }
 
 impl WidgetLook {
-    /// Slot the resolved look reserves on the widget's id.
-    pub(crate) const SLOT_LOOK: AnimationSlot = AnimationSlot::new("look");
-
     /// Resolves the look into the target `Ui::animate` interpolates toward,
     /// folding overrides onto `ambient_text` first so a color-only look
     /// cross-fades against the ambient color. Separate from `Ui::animate`

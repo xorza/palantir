@@ -14,6 +14,7 @@ use crate::widgets::spinner::Spinner;
 use crate::widgets::spinner::{ArcGeometry, comet};
 use glam::UVec2;
 use glam::Vec2;
+use std::time::Duration;
 
 /// The trace circle insets by half the stroke width (round caps), and degenerate sizes clamp at zero.
 #[test]
@@ -30,7 +31,7 @@ fn arc_geometry_insets_by_half_width() {
     assert!(SpinnerTheme::default().sweep < TAU);
 }
 
-/// Sweep, spin rate and stroke come from `Theme::spinner`. Stroke is `diameter * thickness_ratio` floored at `min_thickness`.
+/// Sweep, period and stroke come from `Theme::spinner`. Stroke is `diameter * width_ratio` floored at `min_width`.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
     use crate::primitives::geometry::circular_arc::CircularArc;
@@ -41,10 +42,10 @@ fn arc_and_spin_follow_the_spinner_theme() {
     struct Recorded {
         sweep: f32,
         width: f32,
-        speed: f32,
+        period: Duration,
     }
 
-    fn recorded(theme: SpinnerTheme, diameter: f32, thickness: Option<f32>) -> Recorded {
+    fn recorded(theme: SpinnerTheme, diameter: f32, width: Option<f32>) -> Recorded {
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.ui.theme_mut().spinner = theme;
         h.frame(|ui| {
@@ -52,8 +53,8 @@ fn arc_and_spin_follow_the_spinner_theme() {
                 let spinner = Spinner::new()
                     .id(WidgetId::from_hash("spin"))
                     .diameter(diameter);
-                match thickness {
-                    Some(px) => spinner.thickness(px),
+                match width {
+                    Some(px) => spinner.width(px),
                     None => spinner,
                 }
                 .show(ui);
@@ -73,21 +74,16 @@ fn arc_and_spin_follow_the_spinner_theme() {
                 _ => None,
             })
             .expect("spinner records one arc");
-        let speed = tree
+        let period = tree
             .paint_animations
             .entries
             .iter()
-            .find_map(|e| {
-                e.animation
-                    .channel
-                    .turn
-                    .map(|_| TAU / e.animation.timing.period.as_secs_f32())
-            })
+            .find_map(|e| e.animation.channel.turn.map(|_| e.animation.timing.period))
             .expect("spinner registers a turning anim");
         Recorded {
             sweep: arc.0,
             width: arc.1,
-            speed,
+            period,
         }
     }
 
@@ -95,45 +91,45 @@ fn arc_and_spin_follow_the_spinner_theme() {
     let Recorded {
         sweep,
         width,
-        speed,
+        period,
     } = recorded(stock.clone(), 50.0, None);
     assert_eq!(sweep, stock.sweep, "sweep is themed");
-    assert_eq!(speed, stock.speed, "spin rate is themed");
-    let expected = 50.0 * stock.thickness_ratio;
+    assert_eq!(period, stock.period, "the period is themed");
+    let expected = 50.0 * stock.width_ratio;
     assert_eq!(width, expected, "want {expected}, got {width}");
 
     let small = recorded(stock.clone(), 12.5, None).width;
-    let expected_small = 12.5 * stock.thickness_ratio;
+    let expected_small = 12.5 * stock.width_ratio;
     assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
-    let tiny = stock.min_thickness / stock.thickness_ratio * 0.5;
+    let tiny = stock.min_width / stock.width_ratio * 0.5;
     let floored = recorded(stock.clone(), tiny, None).width;
     assert_eq!(
-        floored, stock.min_thickness,
-        "tiny spinner floors at min_thickness, got {floored}"
+        floored, stock.min_width,
+        "tiny spinner floors at min_width, got {floored}"
     );
 
     // An explicit width replaces the derived one, floor included.
-    let explicit = stock.min_thickness * 0.5;
+    let explicit = stock.min_width * 0.5;
     assert_eq!(recorded(stock, 50.0, Some(explicit)).width, explicit);
 
     let loud = SpinnerTheme {
         sweep: 1.0,
-        speed: 9.0,
-        thickness_ratio: 0.5,
+        period: Duration::from_millis(700),
+        width_ratio: 0.5,
         ..SpinnerTheme::default()
     };
     let Recorded {
         sweep: sweep_b,
         width: width_b,
-        speed: speed_b,
+        period: period_b,
     } = recorded(loud, 50.0, None);
     assert_eq!(sweep_b, 1.0);
-    assert_eq!(speed_b, 9.0);
+    assert_eq!(period_b, Duration::from_millis(700));
     assert_eq!(width_b, 25.0);
     assert_ne!(sweep, sweep_b);
-    assert_ne!(speed, speed_b);
+    assert_ne!(period, period_b);
     assert_ne!(width, width_b);
 }
 

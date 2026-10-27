@@ -4,8 +4,8 @@
 /// color.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabStripFocus {
-    /// The view holds focus: [`TabsTheme::accent`](crate::TabsTheme::accent).
+    /// The view holds focus: [`TabsTheme::cap_focused`](crate::TabsTheme::cap_focused).
     Focused,
-    /// Focus is elsewhere: [`TabsTheme::accent_idle`](crate::TabsTheme::accent_idle).
+    /// Focus is elsewhere: [`TabsTheme::cap_unfocused`](crate::TabsTheme::cap_unfocused).
     Unfocused,
 }

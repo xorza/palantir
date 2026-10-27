@@ -8,17 +8,18 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`] (`active` = pressed).
 /// `active` defaults to `hovered`: a click closes the menu.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MenuItemTheme {
-    #[serde(flatten)]
     /// Four-state row look.
+    #[serde(flatten)]
     pub looks: StatefulLook,
     /// Shortcut hint color.
     pub shortcut: RgbaF32,

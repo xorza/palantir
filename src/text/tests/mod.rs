@@ -27,7 +27,7 @@ use crate::text::shaper::TextShaper;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use crate::theme::text_style::LINE_HEIGHT_MULT;
+use crate::theme::text_style::LINE_HEIGHT_FACTOR;
 
 mod fonts;
 mod geometry;
@@ -49,9 +49,9 @@ fn shape(font_size: f32) -> TestShape {
     })
 }
 
-/// [`shape`] at production leading ([`LINE_HEIGHT_MULT`]), what the cosmic geometry cases pin.
+/// [`shape`] at production leading ([`LINE_HEIGHT_FACTOR`]), what the cosmic geometry cases pin.
 fn ui_shape(font_size: f32) -> TestShape {
-    shape(font_size).leading(font_size * LINE_HEIGHT_MULT)
+    shape(font_size).leading(font_size * LINE_HEIGHT_FACTOR)
 }
 
 /// Height of one line at `shape`'s leading (`Size` ceils fractional leading).

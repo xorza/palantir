@@ -13,13 +13,15 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 
 use super::pretty;
 
+/// A loaded theme saves and loads back to the same value. The default itself holds alphas off
+/// the file's 8-bit grid (`0.18`), so the comparison starts from its first load.
 #[test]
 fn default_theme_roundtrips_through_ron() {
-    let theme = Theme::default();
-    let serialized = pretty(&theme);
-    let parsed: Theme = ron::from_str(&serialized).expect("parse");
-    let reserialized = pretty(&parsed);
-    assert_eq!(serialized, reserialized);
+    let serialized = pretty(&Theme::default());
+    let loaded: Theme = ron::from_str(&serialized).expect("parse");
+    let reloaded: Theme = ron::from_str(&pretty(&loaded)).expect("parse");
+    assert_eq!(reloaded, loaded);
+    assert_eq!(pretty(&reloaded), serialized);
 }
 
 #[test]

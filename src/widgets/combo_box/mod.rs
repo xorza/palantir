@@ -175,7 +175,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 Sizing::fixed(geometry.arrow_size.y),
             ));
             arrow.record(ui, None, |ui| {
-                let pts = geometry.chevron_pts();
+                let pts = geometry.chevron_points();
                 ui.add_shape(
                     Shape::polyline(&pts, Stroke::new(arrow_color, geometry.arrow_width))
                         .cap(LineCap::Round)

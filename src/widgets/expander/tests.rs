@@ -11,7 +11,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::theme::expander::ExpanderTheme;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::expander::{Expander, ExpanderState};

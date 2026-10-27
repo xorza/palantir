@@ -19,8 +19,6 @@ use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
-use std::f32::consts::TAU;
-use std::time::Duration;
 
 /// Indeterminate activity spinner: a rounded arc rotating with the frame
 /// clock, its tail fading out. The recorded [`Shape::arc`] is identical every
@@ -32,7 +30,7 @@ pub struct Spinner<'a> {
     widget: Widget,
     diameter: Option<f32>,
     color: Option<RgbaF32>,
-    thickness: Option<f32>,
+    width: Option<f32>,
     style: Option<&'a SpinnerTheme>,
 }
 
@@ -44,13 +42,13 @@ impl<'a> Spinner<'a> {
             widget: Widget::leaf(),
             diameter: None,
             color: None,
-            thickness: None,
+            width: None,
             style: None,
         }
     }
 
     /// Per-instance override of [`crate::Theme`]'s `spinner`; [`Self::color`],
-    /// [`Self::diameter`] and [`Self::thickness`] still win.
+    /// [`Self::diameter`] and [`Self::width`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self {
         self.style = s.into();
         self
@@ -84,8 +82,8 @@ impl<'a> Spinner<'a> {
     ///
     /// Panics unless `px` is a [length](crate::widget::domain::length).
     #[track_caller]
-    pub const fn thickness(mut self, px: f32) -> Self {
-        self.thickness = Some(domain::length(px));
+    pub const fn width(mut self, px: f32) -> Self {
+        self.width = Some(domain::length(px));
         self
     }
 
@@ -94,11 +92,11 @@ impl<'a> Spinner<'a> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
         let diameter = domain::length_at_least(self.diameter.unwrap_or(theme.diameter), 1.0);
         let width = self
-            .thickness
-            .unwrap_or_else(|| (diameter * theme.thickness_ratio).max(theme.min_thickness));
+            .width
+            .unwrap_or_else(|| (diameter * theme.width_ratio).max(theme.min_width));
         let color = self.color.unwrap_or(theme.color);
         let sweep = theme.sweep;
-        let speed = theme.speed;
+        let period = theme.period;
         self.widget
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
@@ -116,7 +114,7 @@ impl<'a> Spinner<'a> {
                     .ramp(comet())
                     .cap(LineCap::Round),
                     PaintAnimation::turn(0.0, 1.0)
-                        .with_period(Duration::from_secs_f32(TAU / speed))
+                        .with_period(period)
                         .with_repeat(PaintRepeat::Forever)
                         .with_curve(curves::linear),
                 );

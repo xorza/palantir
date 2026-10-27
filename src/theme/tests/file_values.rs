@@ -2,22 +2,33 @@
 //!
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
+use crate::input::interaction::response_state::ResponseState;
+use crate::input::shortcut::Shortcut;
 use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::dock_fixture::DockFixture;
 use crate::internals::ui_harness::UiHarness;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
+use crate::scene::layer::Layer;
 use crate::theme::Theme;
 use crate::theme::tests::pretty;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::modal::Modal;
 use crate::widgets::spinner::Spinner;
-use glam::UVec2;
+use crate::widgets::tooltip::Tooltip;
+use glam::{UVec2, Vec2};
 use std::ops::Range;
 use std::panic;
+use std::time::Duration;
 
-const SUSPECTS: [&str; 5] = ["NaN", "inf", "-inf", "-1.0", "0.0"];
+const SUSPECTS: [&str; 6] = ["NaN", "inf", "-inf", "-1.0", "0.0", "1e-30"];
 
 /// Byte ranges of numeric literals in `ron`, outside strings and identifiers.
 fn numbers(ron: &str) -> Vec<Range<usize>> {
@@ -61,17 +72,60 @@ fn numbers(ron: &str) -> Vec<Range<usize>> {
     out
 }
 
-fn probe(ui: &mut Ui, fixture: &mut FrameFixture, color: &mut RgbaF32) {
-    fixture.render(1, ui);
+/// Every themed surface a frame can draw: the fixture's forms and lists, a dock with its tab
+/// strips, an open context menu and a shown tooltip.
+fn probe(ui: &mut Ui, scene: &mut Scene) {
+    scene.fixture.render(1, ui);
+    scene.dock.record(ui);
+    ContextMenu::for_id(menu_id()).show(ui, |ui, popup| {
+        MenuItem::new("Copy")
+            .shortcut(Shortcut::ctrl('C'))
+            .show(ui, popup);
+        MenuSeparator::new().show(ui);
+        MenuItem::new("Paste").show(ui, popup);
+    });
+    let hovered = ResponseSnapshot {
+        id: WidgetId::from_hash("probe-tip-trigger"),
+        state: ResponseState {
+            rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),
+            pointer_over: true,
+            ..ResponseState::default()
+        },
+    };
+    Tooltip::on(&hovered, "tip").delay(Duration::ZERO).show(ui);
     Spinner::new()
         .id(WidgetId::from_hash("probe-spinner"))
         .show(ui);
-    ColorPicker::new(color)
+    ColorPicker::new(&mut scene.color)
         .id(WidgetId::from_hash("probe-picker"))
         .show(ui);
     Modal::new()
         .id(WidgetId::from_hash("probe-modal"))
         .show(ui, |_, _| {});
+}
+
+fn menu_id() -> WidgetId {
+    WidgetId::from_hash("probe-menu")
+}
+
+#[derive(Debug, Default)]
+struct Scene {
+    fixture: FrameFixture,
+    dock: DockFixture,
+    color: RgbaF32,
+}
+
+/// One frame of [`probe`] under `theme`, with the menu opened before it.
+fn render(theme: Theme) -> UiHarness {
+    let mut h = UiHarness::new(UVec2::new(640, 480));
+    h.ui().set_theme(theme);
+    ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
+    let mut scene = Scene {
+        color: RgbaF32::srgb(0.2, 0.4, 0.6),
+        ..Scene::default()
+    };
+    h.frame(|ui| probe(ui, &mut scene));
+    h
 }
 
 fn line_of(ron: &str, at: usize) -> &str {
@@ -90,18 +144,25 @@ fn walk(shard: usize) {
                 continue;
             };
             let field = line_of(&base, span.start);
-            let rendered = panic::catch_unwind(|| {
-                let mut h = UiHarness::new(UVec2::new(640, 480));
-                h.ui().set_theme(theme);
-                let mut fixture = FrameFixture::default();
-                let mut color = RgbaF32::srgb(0.2, 0.4, 0.6);
-                h.frame(|ui| probe(ui, &mut fixture, &mut color));
-            });
+            let rendered = panic::catch_unwind(|| render(theme));
             assert!(
                 rendered.is_ok(),
                 "`{field}` set to {suspect} loads, and rendering it panics",
             );
         }
+    }
+}
+
+/// The default theme's probe frame opens the menu and shows the tooltip, so the walk reaches
+/// their theme values.
+#[test]
+fn the_probe_draws_the_overlays() {
+    let h = render(Theme::default());
+    for layer in [Layer::Popup, Layer::Tooltip] {
+        assert!(
+            !h.ui.tree(layer).shapes.records.is_empty(),
+            "{layer:?} records nothing",
+        );
     }
 }
 

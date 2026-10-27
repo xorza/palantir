@@ -9,8 +9,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::tab_selection::TabSelection;
 use crate::theme::tab_strip_focus::TabStripFocus;
@@ -19,20 +20,20 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// Visuals for [`crate::TabStrip`], [`crate::TabbedView`] and every
 /// [`crate::DockView`] pane. One four-state look pack per selected state,
 /// picked by [`StatefulLook::pick`]. The selected chip wears a top cap:
-/// [`Self::accent`] while the strip holds focus, else [`Self::accent_idle`].
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+/// [`Self::cap_focused`] while the strip holds focus, else [`Self::cap_unfocused`].
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TabsTheme {
     /// Look pack for the selected chip; its fill defaults to the window ground.
-    pub active: StatefulLook,
+    pub selected: StatefulLook,
     /// Look pack for every other chip.
-    pub inactive: StatefulLook,
+    pub unselected: StatefulLook,
     /// Selection cap on the focused strip.
-    pub accent: RgbaF32,
+    pub cap_focused: RgbaF32,
     /// Selection cap on a strip that does not hold focus.
-    pub accent_idle: RgbaF32,
+    pub cap_unfocused: RgbaF32,
     /// Cap breadth in logical px; the selected chip lifts its top inset by the same amount.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub accent_thickness: f32,
+    pub cap_thickness: f32,
     /// The band behind the chips; [`Chrome::NONE`] by default.
     pub strip: Chrome,
     /// Inset between the band's edges and the chips.
@@ -83,12 +84,12 @@ impl TabsTheme {
     /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
-            active,
-            inactive,
+            selected,
+            unselected,
             close,
-            accent: _,
-            accent_idle: _,
-            accent_thickness: _,
+            cap_focused: _,
+            cap_unfocused: _,
+            cap_thickness: _,
             strip: _,
             strip_padding: _,
             gap: _,
@@ -105,16 +106,16 @@ impl TabsTheme {
             label_gap: _,
             defaults: _,
         } = self;
-        active.for_each_text(f);
-        inactive.for_each_text(f);
+        selected.for_each_text(f);
+        unselected.for_each_text(f);
         close.for_each_text(f);
     }
 
     /// The cap color a strip paints under its selected chip.
     pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32 {
         match focus {
-            TabStripFocus::Focused => self.accent,
-            TabStripFocus::Unfocused => self.accent_idle,
+            TabStripFocus::Focused => self.cap_focused,
+            TabStripFocus::Unfocused => self.cap_unfocused,
         }
     }
 
@@ -129,21 +130,21 @@ impl TabsTheme {
             text,
         };
         Self {
-            active: StatefulLook {
+            selected: StatefulLook {
                 normal: chip(p.window_bg, TextStyleOverrides::NONE),
                 hovered: chip(p.window_bg, TextStyleOverrides::NONE),
                 active: chip(p.window_bg, TextStyleOverrides::NONE),
                 disabled: chip(p.window_bg, disabled_text),
             },
-            inactive: StatefulLook {
+            unselected: StatefulLook {
                 normal: chip(p.element_mid, inactive_text),
                 hovered: chip(p.element_strong, inactive_text),
                 active: chip(p.element_strong, TextStyleOverrides::NONE),
                 disabled: chip(p.element, disabled_text),
             },
-            accent: p.accent,
-            accent_idle: p.element_strong,
-            accent_thickness: 2.0,
+            cap_focused: p.accent,
+            cap_unfocused: p.element_strong,
+            cap_thickness: 2.0,
             strip: Chrome::NONE,
             strip_padding: Spacing::new(6.0, 4.0, 6.0, 0.0),
             gap: 3.0,
@@ -198,8 +199,8 @@ impl ThemeSlot for TabsTheme {
     /// The selected or unselected pack, then its state (`active` = pressed).
     fn look(&self, response: &ResponseState, selection: TabSelection) -> &WidgetLook {
         let pack = match selection {
-            TabSelection::Selected => &self.active,
-            TabSelection::Unselected => &self.inactive,
+            TabSelection::Selected => &self.selected,
+            TabSelection::Unselected => &self.unselected,
         };
         pack.pick(response, Engagement::Pressed)
     }

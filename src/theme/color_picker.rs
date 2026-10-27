@@ -18,7 +18,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 ///
 /// The field and bars are sized here, not by layout: they paint a CPU-built
 /// texture whose size must be known at record time.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -145,7 +145,7 @@ impl ColorPickerTheme {
         f(ThemeText::Overrides(label));
     }
 
-    /// Geometry is fixed; only handle and swatch colors come from `p`.
+    /// Geometry and the handle's ink are fixed; the checker, border, popup and text come from `p`.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
             field_width: 208.0,

@@ -3,6 +3,7 @@
 //! on first contact with [`Ui`] and stays put unless an identity setter replaces it.
 
 use crate::animation::animation_request::AnimationRequest;
+use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
@@ -27,10 +28,9 @@ use crate::scene::node::ident::{IdKind, Ident};
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
-use crate::theme::look::WidgetLook;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::look_plan::LookPlan;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -60,6 +60,9 @@ pub struct Widget {
 }
 
 impl Widget {
+    /// The slot [`Self::wear`] animates the look in, on the widget's id.
+    pub(crate) const LOOK_SLOT: AnimationSlot = AnimationSlot::new("look");
+
     /// Paint/layout leaf for custom widget content.
     #[track_caller]
     pub fn leaf() -> Self {
@@ -205,7 +208,7 @@ impl Widget {
             .default_margin(margin);
         let id = self.resolve(ui);
         ui.animate(
-            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            AnimationRequest::new(id, Self::LOOK_SLOT, target),
             animation,
         )
     }

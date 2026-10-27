@@ -4,7 +4,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under [`BarMode::Reserved`](crate::BarMode) the widget takes `thickness` of padding off each panned axis's far edge and paints the bar there. Track and thumb are pill-capped; the thumb fill follows hover and drag state.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness in logical px; pill radius is `thickness / 2`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

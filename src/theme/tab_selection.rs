@@ -1,8 +1,8 @@
 //! Which of a tabs theme's two chip look packs applies.
 
 /// Whether a chip is the strip's selected one, which picks
-/// [`TabsTheme::active`](crate::TabsTheme::active) or
-/// [`TabsTheme::inactive`](crate::TabsTheme::inactive).
+/// [`TabsTheme::selected`](crate::TabsTheme::selected) or
+/// [`TabsTheme::unselected`](crate::TabsTheme::unselected).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabSelection {
     /// Any chip but the selected one.

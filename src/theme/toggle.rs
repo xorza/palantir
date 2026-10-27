@@ -11,14 +11,15 @@ use crate::theme::ThemeText;
 use crate::theme::check_state::CheckState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToggleTheme {
     /// Look when unchecked.
     pub unchecked: StatefulLook,
@@ -26,11 +27,11 @@ pub struct ToggleTheme {
     pub checked: StatefulLook,
     /// Color of the check polyline or radio dot, painted over the `checked` chrome.
     pub indicator: RgbaF32,
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     /// Box side.
-    pub box_size: f32,
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub box_size: f32,
     /// Stroke width of the indicator.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_width: f32,
     /// The check polyline's three points (Checkbox only) as fractions of [`Self::box_size`], so the tick keeps its proportions at any size.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset_points3")]
@@ -38,8 +39,8 @@ pub struct ToggleTheme {
     /// Inset of the filled dot inside the pip (RadioButton); dot side is `box_size - 2 * indicator_inset`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_inset: f32,
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     /// Gap between box and label.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
     /// Track width as a multiple of its height ([`crate::Switch`] only, ~7:4); `1.0` for the square checkbox and radio.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

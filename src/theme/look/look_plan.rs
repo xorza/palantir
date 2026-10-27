@@ -1,7 +1,7 @@
 //! Owned theme values for a themed widget, so the theme borrow ends before its `&mut Ui` body.
 
 use crate::theme::look::animated_look::AnimatedLook;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 
 /// Everything a themed widget takes from its theme slot, owned so the
 /// [`Ui::theme`](crate::Ui::theme) borrow ends before

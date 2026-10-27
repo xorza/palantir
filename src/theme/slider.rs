@@ -4,7 +4,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a two-tone track (`fill` left of the knob, `track` right) with a round `knob`.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SliderTheme {
     /// Unfilled track color (right of the knob).
     pub track: RgbaF32,

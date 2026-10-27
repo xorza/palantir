@@ -9,6 +9,7 @@ pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_value;
+mod duration_codec;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
 pub(crate) mod look;
@@ -17,7 +18,6 @@ pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
 pub(crate) mod separator;
-mod serde;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
@@ -67,7 +67,7 @@ use crate::theme::tooltip::TooltipTheme;
 /// # Disabled state
 ///
 /// The framework does not auto-dim disabled subtrees; widgets read the disabled flag themselves.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct Theme {
     /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
     pub button: ButtonTheme,
@@ -99,7 +99,7 @@ pub struct Theme {
     pub separator: SeparatorTheme,
     /// Track, fill and knob of every [`crate::Slider`].
     pub slider: SliderTheme,
-    /// Arc and speed of every [`crate::Spinner`].
+    /// Arc and period of every [`crate::Spinner`].
     pub spinner: SpinnerTheme,
     /// Grab band and rule of every [`crate::Splitter`].
     pub splitter: SplitterTheme,

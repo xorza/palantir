@@ -123,6 +123,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::theme::look::animated_look::AnimatedLook;
     use crate::theme::text_style::TextStyle;
     use crate::theme::text_style_overrides::TextStyleOverrides;
+    use crate::widget_core::widget::Widget;
     use std::cell::Cell;
 
     let AnimationUi { mut h, id } = support::setup_animation_ui("look-test");
@@ -142,10 +143,9 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
-        captured.set(Some(ui.animate(
-            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
-            None,
-        )));
+        captured.set(Some(
+            ui.animate(AnimationRequest::new(id, Widget::LOOK_SLOT, target), None),
+        ));
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
@@ -174,7 +174,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(32)).frame(|ui| {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(
-            AnimationRequest::new(id, WidgetLook::SLOT_LOOK, target),
+            AnimationRequest::new(id, Widget::LOOK_SLOT, target),
             Some(AnimationSpec::FAST),
         );
         Block::new().id(id).show(ui);
@@ -204,7 +204,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(48)).frame(|ui| {
         let target = look3.to_animated(ambient);
         captured.set(Some(ui.animate(
-            AnimationRequest::new(id.with("own"), WidgetLook::SLOT_LOOK, target),
+            AnimationRequest::new(id.with("own"), Widget::LOOK_SLOT, target),
             None,
         )));
         Block::new().id(id).show(ui);

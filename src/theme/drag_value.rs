@@ -7,7 +7,7 @@ use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 
 /// Theme for [`crate::DragValue`]: scrub `chip` ([`ButtonTheme`]) and inline `editor` ([`TextEditTheme`]) used under [`crate::DragValue::editable`]. Built from one source via [`Self::from_chip`], so both modes share a box size and edit mode doesn't resize or restyle.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DragValueTheme {
     /// Chrome for the scrub chip: the DragValue-specific `ButtonTheme` slot (`Button`/`ComboBox` use `Theme::button`).
     pub chip: ButtonTheme,

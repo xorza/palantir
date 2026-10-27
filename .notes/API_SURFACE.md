@@ -142,7 +142,7 @@ ButtonState
         pub const fn double_clicked(self) -> bool
 
 ButtonTheme
-    struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
+    struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_palette(p: &Palette) -> Self
@@ -249,7 +249,7 @@ ColorPicker
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 ColorPickerTheme
-    struct ColorPickerTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ColorPickerTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub field_width: f32
         pub field_height: f32
         pub bar_thickness: f32
@@ -312,7 +312,7 @@ ComboBox
         impl<'a, S: Debug, L: Debug> Debug for ComboBox<'a, S, L>
 
 ComboBoxTheme
-    struct ComboBoxTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ComboBoxTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub gap: f32
         pub arrow_size: Vec2
         pub arrow_width: f32
@@ -377,7 +377,7 @@ ContextMenu
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ContextMenuTheme
-    struct ContextMenuTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ContextMenuTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub panel: Chrome
         pub padding: Spacing
         pub min_width: f32
@@ -576,7 +576,7 @@ DockTabs
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
 DockTheme
-    struct DockTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct DockTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub preview_fill: RgbaF32
         pub preview_stroke: Stroke
         pub preview_radius: f32
@@ -635,7 +635,7 @@ DragValue
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 DragValueTheme
-    struct DragValueTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct DragValueTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub chip: ButtonTheme
         pub editor: TextEditTheme
         pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self
@@ -681,7 +681,7 @@ ExpanderResponse
         impl<'a, R: Debug> Debug for ExpanderResponse<'a, R>
 
 ExpanderTheme
-    struct ExpanderTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
+    struct ExpanderTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub arrow_size: Vec2
         pub arrow_radius: f32
@@ -699,7 +699,7 @@ FocusPolicy
         ClearOnMiss
 
 FocusRingTheme
-    struct FocusRingTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct FocusRingTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub width: f32
         pub const fn from_palette(p: &Palette) -> Self
@@ -1231,7 +1231,7 @@ MenuItem
         pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
 
 MenuItemTheme
-    struct MenuItemTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
+    struct MenuItemTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub shortcut: RgbaF32
         pub gap: f32
@@ -1254,7 +1254,7 @@ Modal
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ModalTheme
-    struct ModalTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ModalTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub panel: Chrome
         pub backdrop: RgbaF32
         pub padding: Spacing
@@ -1456,7 +1456,7 @@ ProgressBar
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 ProgressBarTheme
-    struct ProgressBarTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ProgressBarTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub thickness: f32
@@ -1598,7 +1598,7 @@ ScrollDelta
         pub fn pan(self, line_height: f32) -> Vec2
 
 ScrollbarTheme
-    struct ScrollbarTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct ScrollbarTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub thickness: f32
         pub gap: f32
         pub min_thumb: f32
@@ -1639,7 +1639,7 @@ Separator
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 SeparatorTheme
-    struct SeparatorTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct SeparatorTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub thickness: f32
         pub margin: Spacing
@@ -1730,7 +1730,7 @@ Slider
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 SliderTheme
-    struct SliderTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct SliderTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub knob: RgbaF32
@@ -1739,7 +1739,7 @@ SliderTheme
         pub const fn from_palette(p: &Palette) -> Self
 
 SlotDefaults
-    struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, Serialize
+    struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub padding: Spacing
         pub margin: Spacing
         pub animation: Option<AnimationSpec>
@@ -1763,17 +1763,17 @@ Spinner
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn diameter(self, px: f32) -> Self
         pub const fn color(self, c: RgbaF32) -> Self
-        pub const fn thickness(self, px: f32) -> Self
+        pub const fn width(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 SpinnerTheme
-    struct SpinnerTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct SpinnerTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub diameter: f32
         pub sweep: f32
-        pub speed: f32
-        pub thickness_ratio: f32
-        pub min_thickness: f32
+        pub period: Duration
+        pub width_ratio: f32
+        pub min_width: f32
         pub const fn from_palette(p: &Palette) -> Self
 
 SplitDirection
@@ -1803,7 +1803,7 @@ Splitter
         pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
 
 SplitterTheme
-    struct SplitterTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct SplitterTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub grab_thickness: f32
         pub rule: RgbaF32
         pub rule_thickness: f32
@@ -1986,12 +1986,12 @@ TabsAction
         Reordered { from: usize, to: usize }
 
 TabsTheme
-    struct TabsTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
-        pub active: StatefulLook
-        pub inactive: StatefulLook
-        pub accent: RgbaF32
-        pub accent_idle: RgbaF32
-        pub accent_thickness: f32
+    struct TabsTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+        pub selected: StatefulLook
+        pub unselected: StatefulLook
+        pub cap_focused: RgbaF32
+        pub cap_unfocused: RgbaF32
+        pub cap_thickness: f32
         pub strip: Chrome
         pub strip_padding: Spacing
         pub gap: f32
@@ -2061,7 +2061,7 @@ TextEditResponse
         pub focus_lost: bool
 
 TextEditTheme
-    struct TextEditTheme: Clone, Debug, Default, Deserialize<'de>, Serialize, ThemeSlot
+    struct TextEditTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub placeholder: RgbaF32
         pub caret: RgbaF32
@@ -2133,7 +2133,7 @@ TextWrap
         WrapWithOverflow
 
 Theme
-    struct Theme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct Theme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub button: ButtonTheme
         pub checkbox: ToggleTheme
         pub radio: ToggleTheme
@@ -2163,7 +2163,7 @@ Theme
         pub fn from_palette(p: &Palette) -> Self
 
 ToggleTheme
-    struct ToggleTheme: Clone, Debug, Deserialize<'de>, Serialize, ThemeSlot
+    struct ToggleTheme: Clone, Debug, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub unchecked: StatefulLook
         pub checked: StatefulLook
         pub indicator: RgbaF32
@@ -2193,7 +2193,7 @@ TooltipResponse
         pub visible: bool
 
 TooltipTheme
-    struct TooltipTheme: Clone, Debug, Default, Deserialize<'de>, Serialize
+    struct TooltipTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub panel: Chrome
         pub text: TextStyleOverrides
         pub padding: Spacing

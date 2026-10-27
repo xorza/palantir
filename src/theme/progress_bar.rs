@@ -4,7 +4,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent `fill` spanning the value; the pill radius is `thickness / 2`.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProgressBarTheme {
     /// Track color behind the fill.
     pub track: RgbaF32,
