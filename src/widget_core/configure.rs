@@ -176,10 +176,8 @@ pub trait Configure: Sized {
     /// Placement inside a `Grid` parent: a bare `(row, col)` or a [`GridCell`]. Default
     /// `(0, 0)`.
     ///
-    /// # Panics
-    ///
-    /// An out-of-range cell or span panics: debug builds check at record time
-    /// (`Tree::check_grid_cell`), release builds in layout.
+    /// A cell past the parent's tracks is coerced at layout, as the track lists change at run
+    /// time: the row and column to the last track, each span to the tracks left.
     #[inline]
     #[must_use]
     #[track_caller]

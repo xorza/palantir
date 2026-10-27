@@ -297,3 +297,107 @@ const KNOWN_SPAN_CASES: [KnownSpanCase; 2] = [
 fn fixed_tracks(case: KnownSpanCase) -> Vec<Track> {
     (0..case.span).map(|_| Track::fixed(case.track)).collect()
 }
+
+/// A spanning cell grows the Hug tracks it crosses by what their span-1 cells leave short,
+/// split evenly (CSS Grid §12.5.1). Columns: 30 and 50 hold `30 + 10 + 50 = 90` of a 200 header,
+/// so each takes `110 / 2 = 55`, to 85 and 105. Rows: 20 and 30 hold 50 of a 100 side, to 45 and
+/// 55. The grid then holds the spanning cell, where it hugged to 90 and 50 before.
+#[test]
+fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
+    let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Grid::new()
+                .id(WidgetId::from_hash("cols"))
+                .size((Sizing::HUG, Sizing::HUG))
+                .cols([Track::HUG, Track::HUG])
+                .rows([Track::HUG, Track::HUG])
+                .gap(10.0)
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("header"))
+                        .grid_cell(GridCell::at(0, 0).with_span(1, 2))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(10.0)))
+                        .show(ui);
+                    for (col, w) in [(0, 30.0), (1, 50.0)] {
+                        Block::new()
+                            .id(WidgetId::from_hash(("cell", col)))
+                            .grid_cell((1, col))
+                            .size((Sizing::fixed(w), Sizing::fixed(10.0)))
+                            .show(ui);
+                    }
+                });
+            Grid::new()
+                .id(WidgetId::from_hash("rows"))
+                .size((Sizing::HUG, Sizing::HUG))
+                .cols([Track::HUG, Track::HUG])
+                .rows([Track::HUG, Track::HUG])
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("side"))
+                        .grid_cell(GridCell::at(0, 0).with_span(2, 1))
+                        .size((Sizing::fixed(10.0), Sizing::fixed(100.0)))
+                        .show(ui);
+                    for (row, ht) in [(0, 20.0), (1, 30.0)] {
+                        Block::new()
+                            .id(WidgetId::from_hash(("row-cell", row)))
+                            .grid_cell((row, 1))
+                            .size((Sizing::fixed(10.0), Sizing::fixed(ht)))
+                            .show(ui);
+                    }
+                });
+        });
+    });
+    let cols = h.arranged(WidgetId::from_hash("cols"));
+    assert_eq!(cols.size.w, 200.0);
+    let second = h.arranged(WidgetId::from_hash(("cell", 1)));
+    assert_eq!(
+        second.min.x - cols.min.x,
+        85.0 + 10.0,
+        "column 0 is 85 wide"
+    );
+    let rows = h.arranged(WidgetId::from_hash("rows"));
+    assert_eq!(rows.size.h, 100.0);
+    let lower = h.arranged(WidgetId::from_hash(("row-cell", 1)));
+    assert_eq!(lower.min.y - rows.min.y, 45.0, "row 0 is 45 high");
+}
+
+/// A spanning cell's share stops at a Hug track's `max`, as the track solve holds it, and the rest
+/// goes to the other tracks: of the `110 / 2 = 55` each, the first column takes 10, to its 40, and
+/// the second the other 100, to 150, so the grid still holds the 200 header.
+#[test]
+fn a_spanning_share_stops_at_the_track_max() {
+    let mut h = UiHarness::new(UVec2::new(400, 200));
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Grid::new()
+                .id(WidgetId::from_hash("grid"))
+                .size((Sizing::HUG, Sizing::HUG))
+                .cols([Track::HUG.with_max(40.0), Track::HUG])
+                .rows([Track::HUG, Track::HUG])
+                .gap(10.0)
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("header"))
+                        .grid_cell(GridCell::at(0, 0).with_span(1, 2))
+                        .size((Sizing::fixed(200.0), Sizing::fixed(10.0)))
+                        .show(ui);
+                    for (col, w) in [(0, 30.0), (1, 50.0)] {
+                        Block::new()
+                            .id(WidgetId::from_hash(("cell", col)))
+                            .grid_cell((1, col))
+                            .size((Sizing::fixed(w), Sizing::fixed(10.0)))
+                            .show(ui);
+                    }
+                });
+        });
+    });
+    let grid = h.arranged(WidgetId::from_hash("grid"));
+    let second = h.arranged(WidgetId::from_hash(("cell", 1)));
+    assert_eq!(
+        second.min.x - grid.min.x,
+        40.0 + 10.0,
+        "column 0 holds at its max"
+    );
+    assert_eq!(grid.size.w, 200.0, "column 1 takes the rest, to 150");
+}

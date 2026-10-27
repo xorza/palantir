@@ -4,7 +4,6 @@
 use crate::common::span::Span;
 use crate::internals::ui_harness::UiHarness;
 use crate::layout::cache::measure_snapshot::ArenaSnapshot;
-use crate::layout::cache::{AvailableKey, MeasureCache};
 use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -40,7 +39,7 @@ fn run_frame_at(h: &mut UiHarness, size: UVec2, mut record: impl FnMut(&mut Ui))
 struct SnapView<'a> {
     snap: ArenaSnapshot,
     desired: &'a [Size],
-    avail: AvailableKey,
+    avail: Size,
 }
 
 fn snap_for(h: &UiHarness, widget_id: WidgetId) -> Option<SnapView<'_>> {
@@ -49,7 +48,7 @@ fn snap_for(h: &UiHarness, widget_id: WidgetId) -> Option<SnapView<'_>> {
     Some(SnapView {
         snap,
         desired: &snapshot.nodes.desired[snap.nodes.range()],
-        avail: snap.available_q,
+        avail: snap.available,
     })
 }
 
@@ -59,7 +58,7 @@ fn assert_snapshot_is_linear(h: &UiHarness) {
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
     assert_eq!(snapshot.nodes.intrinsics.len(), len);
-    assert_eq!(snapshot.nodes.available_q.len(), len);
+    assert_eq!(snapshot.nodes.available.len(), len);
     let recorded = Layer::PAINT_ORDER
         .iter()
         .map(|layer| h.ui.tree(*layer).records.len())
@@ -609,22 +608,19 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     );
 }
 
+/// The offer is matched bit for bit: one ulp apart misses, an infinite offer matches itself, and
+/// the unmeasured sentinel matches only itself, though it is NaN.
 #[test]
-fn available_key_axis_invariants() {
+fn offers_match_bit_for_bit() {
+    use crate::layout::cache::{UNMEASURED, same_offer};
+
     let inf = f32::INFINITY;
-    assert_eq!(
-        MeasureCache::available_key(Size::new(inf, 100.4)),
-        glam::IVec2::new(i32::MAX, 100),
-    );
-    assert_eq!(
-        MeasureCache::available_key(Size::new(50.7, inf)),
-        glam::IVec2::new(51, i32::MAX),
-    );
-    assert_eq!(
-        MeasureCache::available_key(Size::new(inf, inf)),
-        glam::IVec2::splat(i32::MAX),
-    );
-    assert_eq!(MeasureCache::available_key(Size::ZERO), glam::IVec2::ZERO);
+    let offer = Size::new(1000.667, inf);
+    assert!(same_offer(offer, offer));
+    assert!(!same_offer(offer, Size::new(1000.667_f32.next_up(), inf)));
+    assert!(!same_offer(offer, Size::new(1000.667, 1e30)));
+    assert!(same_offer(UNMEASURED, UNMEASURED));
+    assert!(!same_offer(UNMEASURED, Size::ZERO));
 }
 
 /// A frame whose layout inputs all match the last run keeps that run's output whole: a recolor

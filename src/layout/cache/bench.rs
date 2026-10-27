@@ -6,7 +6,7 @@
 //! - `cached`: warm-up primes the cache; each iteration forgets the last run
 //!   first, or the engine would keep its output and restore nothing.
 //! - `forced_miss`: clears the layout cache before each record.
-//! - `resizing`: rotates four viewport widths, so `available_q` misses at the
+//! - `resizing`: rotates four viewport widths, so the offer misses at the
 //!   root while unchanged branches stay reusable.
 //! - `localized`: broad tree only; toggles one leaf's fill weight.
 //! - `localized_height`: broad tree only; toggles one leaf's height on an
@@ -15,8 +15,8 @@
 //! `cached / forced_miss` is what the cache buys on a comparable workload.
 
 use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::internals::ui_harness::UiHarness;
-use crate::layout::cache::internals::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;

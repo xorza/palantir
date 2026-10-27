@@ -1,7 +1,8 @@
 # Palantir
 
 A Rust GUI crate: an **immediate-mode authoring API**, **WPF-contract
-two-pass layout with flex-shrink sizing**, **wgpu rendering**.
+two-pass layout** (Hug items shrink as CSS 2.1 auto table columns do, Fill
+items grow as WPF star tracks do), **wgpu rendering**.
 
 ## Posture
 

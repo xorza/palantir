@@ -1,10 +1,10 @@
 //! What the cache retains for the bench's adversarial trees, and which subtrees a localized change still hits.
 
-use crate::internals::ui_harness::UiHarness;
-use crate::layout::cache::internals::{
+use crate::internals::cache_fixture::{
     BROAD_DEPTH, BROAD_FANOUT, BroadChange, DEEP_DEPTH, build_broad, build_broad_variant,
     build_deep,
 };
+use crate::internals::ui_harness::UiHarness;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 

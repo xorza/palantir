@@ -27,8 +27,10 @@ declaration, good-looking and fast. I made it.
 - **Immediate-mode authoring** — builder-style widgets that read like prose.
   `record` describes the whole UI every frame; there is no retained widget
   tree to keep in sync.
-- **WPF-contract two-pass layout** — measure, then arrange, with flex-shrink
-  sizing and a min-content floor.
+- **WPF-contract two-pass layout** — measure, then arrange: Hug items shrink
+  between their min- and max-content widths as auto table columns do, Fill
+  items share the rest as WPF star tracks do, and nothing shrinks below its
+  min-content floor.
 - **Fast** — a full 2560×1440 app screen costs 66–107 µs of CPU per frame
   when nothing changed and 175–290 µs while the window resizes, and a
   steady-state frame allocates nothing. See [Performance](#performance).

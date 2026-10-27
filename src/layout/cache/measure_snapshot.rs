@@ -3,8 +3,9 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
-use crate::layout::cache::AvailableKey;
+use crate::layout::cache;
 use crate::layout::cache::node_arenas::NodeArenas;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::text::shaped_text::ShapedText;
 
@@ -13,19 +14,28 @@ use crate::text::shaped_text::ShapedText;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ArenaSnapshot {
     pub(super) subtree_hash: ContentHash,
-    pub(super) available_q: AvailableKey,
+    pub(super) available: Size,
     pub(super) nodes: Span,
     pub(super) tracks: Span,
     pub(super) text_shapes: Span,
 }
 
 /// What a subtree is measured as: its root's id, its rolled authoring hash, and
-/// the quantized offer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// the offer.
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct SubtreeKey {
     pub(crate) widget_id: WidgetId,
     pub(crate) subtree_hash: ContentHash,
-    pub(crate) available_q: AvailableKey,
+    pub(crate) available: Size,
+}
+
+impl SubtreeKey {
+    /// The same subtree under the same offer, bit for bit.
+    pub(crate) fn matches(self, other: Self) -> bool {
+        self.widget_id == other.widget_id
+            && self.subtree_hash == other.subtree_hash
+            && cache::same_offer(self.available, other.available)
+    }
 }
 
 #[derive(Debug, Default)]

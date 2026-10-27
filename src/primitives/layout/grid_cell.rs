@@ -71,6 +71,21 @@ impl GridCell {
         self.col_span
     }
 
+    /// This cell held inside `rows` × `cols` tracks, both at least 1: the row and column at most
+    /// the last track, each span at least 1 and at most the tracks left. Coerced, not checked, as
+    /// the track lists change at run time.
+    pub(crate) fn clamped_to(self, rows: u16, cols: u16) -> Self {
+        debug_assert!(rows >= 1 && cols >= 1, "a grid with cells has tracks");
+        let row = self.row.min(rows - 1);
+        let col = self.col.min(cols - 1);
+        Self {
+            row,
+            col,
+            row_span: self.row_span.clamp(1, rows - row),
+            col_span: self.col_span.clamp(1, cols - col),
+        }
+    }
+
     /// Track-index span on `axis`: `(col, col_span)` for X, `(row, row_span)` for Y.
     #[inline]
     pub(crate) fn track_span(self, axis: Axis) -> Span {

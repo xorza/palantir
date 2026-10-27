@@ -1,4 +1,8 @@
 //! One axis shared among siblings: Fill floors are set aside, Hug items share the rest ([`HugItem::share`]), Fill items divide what remains ([`FillItem::distribute`]). CSS Grid's order, so a Hug sibling never squeezes Fill below its floor; grid tracks and stack children both solve here.
+//!
+//! - **Hug shrink is the auto table-column interpolation** (CSS 2.1 §17.5.2.2): short of max-content, each Hug item gets its min-content plus a share of the space past the mins in proportion to its max − min. Refused: CSS Flexbox §9.7's scaled shrink, which weighs by the base size and lets a wide item give up more than its slack.
+//! - **Fill grow is WPF star sizing**: what remains splits by weight, above each Fill floor.
+//! - **Overflow aligns to the leading edge**: content past the slot starts at the start edge, as WPF and CSS block layout place it.
 
 use crate::layout::fill_item::FillItem;
 use crate::layout::hug_item::HugItem;

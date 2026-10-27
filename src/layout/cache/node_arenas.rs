@@ -1,7 +1,6 @@
 //! The per-node columns one measure snapshot holds.
 
 use crate::common::span::Span;
-use crate::layout::cache::AvailableKey;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -23,7 +22,7 @@ pub(super) struct NodeArenas {
     pub(super) scroll_content: Vec<Size>,
     pub(super) text_spans: Vec<Span>,
     pub(super) intrinsics: Vec<[f32; SLOT_COUNT]>,
-    pub(super) available_q: Vec<AvailableKey>,
+    pub(super) available: Vec<Size>,
 }
 
 impl NodeArenas {
@@ -40,7 +39,7 @@ impl NodeArenas {
             scroll_content,
             text_spans,
             intrinsics,
-            available_q,
+            available,
         } = self;
         desired.clear();
         floor.clear();
@@ -50,6 +49,6 @@ impl NodeArenas {
         scroll_content.clear();
         text_spans.clear();
         intrinsics.clear();
-        available_q.clear();
+        available.clear();
     }
 }

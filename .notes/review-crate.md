@@ -42,15 +42,6 @@ the measure-cache hit test.
 
 ## Layout
 
-- **The exact offer is the cache identity.** The snapshot keeps the raw
-  offer. A hit holds on bit-equality, or when the offer is finite and at least
-  `stable_from`. The 1 px grid stays only as a policy of the drivers that make
-  discrete decisions (text wrap, line packing).
-- **Every measured grid cell contributes to its tracks** (CSS Grid §12.5,
-  §12.7.1; WPF `MeasureCellsGroup`). Spanning cells distribute their excess
-  over the content-sized tracks they cross. Fill tracks of an indefinite or
-  hugging grid take their max-content contribution, as Stack's `fill_main`
-  does.
 - **Per-node layout state has one copy per frame.** Forest-wide columns that
   measure and arrange write directly, indexed by a layer base. A hit copies
   prev → cur once, and `end_frame` swaps. (Structural: after the bugs.)
@@ -138,39 +129,6 @@ Files: `src/theme/tests/`.
 - [ ] **The theme-file fuzz leaves out `1e30`.** `theme/tests/file_values.rs:20`.
   Target: `1e30` in `SUSPECTS`, after the `.notes/ISSUES.md` entry on large
   theme lengths is fixed.
-
-## Batch 11: Layout correctness
-
-Files: `src/layout/{cache/, drivers/grid/, axis_slot.rs, engine.rs, pass.rs}`,
-`src/widget_core/configure.rs`, `src/scene/tree/mod.rs`, AGENTS.md.
-
-- [ ] **A cache hit at a same-bucket offer serves another offer.**
-  `cache/mod.rs:160-183`, `engine.rs:94`, `wrapstack/mod.rs:57-68`. At DPR
-  1.5, logical 1000.667 and 1001.333 share key 1001; text keeps a wrap width
-  of 500 where cold uses 501. Target: store the raw offer; hit on
-  bit-equality or `offer.is_finite() && offer >= stable_from`;
-  `matches_forest` and `keeps_last_run` share the test.
-- [ ] **Fill-column cells overflow a hugging grid.**
-  `grid/measure.rs:88-90, 161-166`. Target: the grid size includes each Fill
-  track's measured contribution. Add a Hug-grid Fill-column wrapping-text case
-  to `hug_grid.rs`.
-- [ ] **Spanning cells do not size their tracks.** `grid/measure.rs:52-56,
-  115-131`, `grid/mod.rs:113-117`. Target: distribute the excess over the Hug
-  tracks crossed, in `measure::run` and `Grid::intrinsic`; fix the false
-  comment. Test in `spans.rs`.
-- [ ] **A grid cell past the tracks panics in release.**
-  `configure.rs:176-189`, `scene/tree/mod.rs:503-523`,
-  `grid/measure.rs:121-122`. Target: coerce row, column and span at layout;
-  document it on `grid_cell`.
-- [ ] **One cold-oracle helper.** `cache/tests/frames.rs:583, 811, 907, 980`
-  vs `:27`. Target: a helper over a surface sequence that includes fractional
-  sizes at scale 1.5.
-- [ ] **Cache bench fixtures import `ui` and `widgets`.**
-  `cache/mod.rs:384-497`. Target: move to `src/internals/`.
-- [ ] **The docs name the wrong sizing contract.** AGENTS.md says
-  "flex-shrink sizing". Target: AGENTS.md and the layout design name the
-  table-layout shrink (CSS 2.1 §17.5.2.2), WPF star grow and leading-edge
-  overflow alignment, with sources.
 
 ## Batch 12: Frame plan and `Ui` state
 

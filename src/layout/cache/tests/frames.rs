@@ -1,11 +1,14 @@
 //! Cache × full-frame integration: the warm-cache frame must reproduce the cold layout (and encoded commands).
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::text::extent::TextExtent;
 use crate::text::font_scope::internals::INTER;
+use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -57,6 +60,46 @@ fn assert_warm_rects_match_cold(
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
     assert_eq!(cold, warm, "{msg}");
+}
+
+/// The main layer as a cold layout must reproduce it: every arranged rect, and each shaped run's
+/// extent and buffer, since a stale measure can arrange at the right rect while it paints the
+/// text it was shaped to.
+#[derive(Debug, PartialEq)]
+struct LaidOut {
+    rects: Vec<Rect>,
+    shapes: Vec<(TextExtent, Option<TextShapeKey>)>,
+}
+
+impl LaidOut {
+    fn of(h: &UiHarness) -> Self {
+        Self {
+            rects: (0..h.ui.tree(Layer::Main).records.len() as u32)
+                .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
+                .collect(),
+            shapes: h
+                .ui
+                .layout(Layer::Main)
+                .text_shapes
+                .iter()
+                .map(|shaped| (shaped.extent, shaped.key))
+                .collect(),
+        }
+    }
+}
+
+/// `warm`'s last frame against `record` laid out cold on the same surface: the measure cache and
+/// the last run forgotten first.
+fn assert_matches_cold(warm: &mut UiHarness, msg: &str, record: impl FnMut(&mut Ui)) {
+    let laid_out = LaidOut::of(warm);
+    warm.engines.layout.cache.forget_all();
+    warm.engines.layout.forget_last_run();
+    warm.frame(record);
+    assert_eq!(
+        laid_out,
+        LaidOut::of(warm),
+        "{msg}: the warm layout diverged from a cold one"
+    );
 }
 
 /// Regression: a cache hit at a Grid (or ancestor) must repopulate `GridTrackStore`, or every cell collapses to x=0. Pins single, nested and sibling grids.
@@ -580,20 +623,6 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                     });
             });
     };
-    let rects = |h: &UiHarness| -> Vec<_> {
-        (0..h.ui.tree(Layer::Main).records.len() as u32)
-            .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
-            .collect()
-    };
-    // Rects alone can hide a stale measure: arrange places a stale run at the right rect while it paints the text it was shaped to.
-    let shapes = |h: &UiHarness| -> Vec<_> {
-        h.ui.layout(Layer::Main)
-            .text_shapes
-            .iter()
-            .map(|shaped| (shaped.extent, shaped.key))
-            .collect()
-    };
-
     let sizes = [
         (800, 600),
         (800, 700),
@@ -611,8 +640,6 @@ fn cache_rects_match_cold_oracle_across_resizes() {
     for (i, &(w, ht)) in sizes.iter().enumerate() {
         h.resize(UVec2::new(w, ht));
         h.frame(record);
-        let warm = rects(&h);
-        let warm_shapes = shapes(&h);
         if i > 0 {
             for held in ["blocks", "buttons"] {
                 assert!(
@@ -626,19 +653,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                 );
             }
         }
-
-        h.engines.layout.cache.forget_all();
-        h.frame(record);
-        assert_eq!(
-            warm,
-            rects(&h),
-            "step {i}: warm-cache rects diverged from cold remeasure at {w}x{ht}",
-        );
-        assert_eq!(
-            warm_shapes,
-            shapes(&h),
-            "step {i}: warm-cache text shapes diverged from cold remeasure at {w}x{ht}",
-        );
+        assert_matches_cold(&mut h, &format!("step {i} at {w}x{ht}"), record);
     }
 }
 
@@ -904,11 +919,6 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
                     });
             });
     };
-    let rects = |h: &UiHarness| -> Vec<_> {
-        (0..h.ui.tree(Layer::Main).records.len() as u32)
-            .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
-            .collect()
-    };
     let size = UVec2::new(800, 2000);
     let mut warm = UiHarness::new(size);
     warm.frame(|ui| record(ui, 7.0));
@@ -925,12 +935,12 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
                 > 0,
             "frame {frame}: the subtree did not replay translated",
         );
-        let mut cold = UiHarness::new(size);
-        cold.frame(|ui| record(ui, header_h));
-        assert_eq!(
-            rects(&warm),
-            rects(&cold),
-            "frame {frame}, header {header_h}"
+        assert_matches_cold(
+            &mut warm,
+            &format!("frame {frame}, header {header_h}"),
+            |ui| {
+                record(ui, header_h);
+            },
         );
     }
 }
@@ -977,13 +987,6 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
                     });
             });
     };
-    let rects = |ui: &Ui, nodes: &[NodeId]| -> Vec<_> {
-        nodes
-            .iter()
-            .map(|&n| ui.arranged_rect(Layer::Main, n))
-            .collect()
-    };
-
     let mut h = UiHarness::new(UVec2::new(800, 600));
     let mut nodes = Vec::new();
     h.frame(|ui| record(ui, 100.0, &mut nodes));
@@ -1002,13 +1005,43 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
         ROWS as u32,
         "each row, arranged where it was, replays",
     );
-    let warm = rects(&h.ui, &nodes);
+    assert_matches_cold(&mut h, "the replay", |ui| record(ui, 150.0, &mut nodes));
+}
 
-    h.engines.layout.cache.forget_all();
-    h.frame(|ui| record(ui, 150.0, &mut nodes));
-    assert_eq!(
-        warm,
-        rects(&h.ui, &nodes),
-        "replay diverged from a cold remeasure"
-    );
+/// At scale 1.5 a surface of 1501 and of 1502 physical px is 1000.667 and 1001.333 logical: one
+/// whole pixel on a quantized key, so a hit served each the other's measure. Two Fill columns
+/// then wrap their text at 500 and at 501, and a warm frame must shape each as a cold one does.
+#[test]
+fn fractional_offers_at_scale_one_and_a_half_match_cold() {
+    const LABEL: &str = "The quick brown fox jumps over the lazy dog while the cache keeps its \
+                         measure of the column it was shaped in, and the next frame asks again.";
+    let record = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("columns"))
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                for column in 0..2u32 {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash(("column", column)))
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .show(ui, |ui| {
+                            Text::new(LABEL)
+                                .id(WidgetId::from_hash(("label", column)))
+                                .size((Sizing::FILL, Sizing::HUG))
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .show(ui);
+                        });
+                }
+            });
+    };
+    let mut h = UiHarness::with_text(UVec2::new(1501, 600)).scale(1.5);
+    for (step, width) in [1501, 1502, 1501, 1503, 1502].into_iter().enumerate() {
+        h.resize(UVec2::new(width, 600));
+        h.frame(record);
+        assert_matches_cold(
+            &mut h,
+            &format!("step {step} at {width} physical px"),
+            record,
+        );
+    }
 }
