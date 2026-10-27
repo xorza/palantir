@@ -97,10 +97,15 @@ impl F16x4 {
         !self.any_lane_above(Self::EPS_BITS)
     }
 
-    /// True when `lane` is within [`EPS`] of zero. Compares bit patterns directly, since positive f16 values are monotonic in their bits; NaN lands above the threshold and reads as non-zero.
+    /// True when `lane` is at most [`EPS`], every negative value included, as
+    /// [`domain::is_invisible`](crate::primitives::math::domain::is_invisible) reads an f32.
+    /// Compares bit patterns directly, since positive f16 values are monotonic in their bits; a
+    /// NaN of either sign reads as above it.
     #[inline]
     pub(crate) const fn lane_is_noop(self, lane: usize) -> bool {
-        self.lane_bits(lane) & Self::ABS_MASK <= Self::EPS_BITS
+        let bits = self.lane_bits(lane);
+        let negative = bits & !Self::ABS_MASK != 0 && bits & Self::ABS_MASK <= Self::NAN_EXP;
+        bits <= Self::EPS_BITS || negative
     }
 
     /// True when `lane` is within [`EPS`] of 1.0. The upper bound rejects NaN, and a negative lane's sign bit puts it above `NAN_EXP`, rejecting it too.

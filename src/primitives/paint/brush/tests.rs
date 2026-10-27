@@ -12,7 +12,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use glam::Vec2;
 use ron::ser;
 use std::collections::hash_map::DefaultHasher;
-use std::f32::consts::{FRAC_PI_4, PI};
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 use std::fmt;
 use std::fmt::Write as _;
 use std::hash::{Hash, Hasher};
@@ -413,4 +413,82 @@ fn conic_axis_packs_start_angle() {
         g.axis().lanes(),
         [1638.0 / 4096.0, 1229.0 / 2048.0, 1608.0 / 2048.0, 0.0],
     );
+}
+
+/// The axis spans the unit square at every angle: the corner the direction leaves from maps to
+/// stop 0 and the one it heads for to stop 1. At π the right edge is stop 0, at π/4 the far
+/// corner is stop 1, not 71 % of the way.
+#[test]
+fn linear_axis_spans_the_unit_square_in_every_quadrant() {
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGeometry;
+    use crate::primitives::paint::brush::gradient::sealed::Geometry;
+
+    let corners = [
+        Vec2::new(0.0, 0.0),
+        Vec2::new(1.0, 0.0),
+        Vec2::new(0.0, 1.0),
+        Vec2::new(1.0, 1.0),
+    ];
+    // (angle, the corner at stop 0, the corner at stop 1)
+    let cases: [(f32, &[usize], &[usize]); 8] = [
+        (0.0, &[0, 2], &[1, 3]),
+        (FRAC_PI_4, &[0], &[3]),
+        (FRAC_PI_2, &[0, 1], &[2, 3]),
+        (3.0 * FRAC_PI_4, &[1], &[2]),
+        (PI, &[1, 3], &[0, 2]),
+        (5.0 * FRAC_PI_4, &[3], &[0]),
+        (3.0 * FRAC_PI_2, &[2, 3], &[0, 1]),
+        (-FRAC_PI_4, &[2], &[1]),
+    ];
+    // f32 `sin(π)` is -8.7e-8, not 0; summed onto -1 it moves `t0` by one ulp of 1.0, and the
+    // division rounds once more, so a corner on a stop's line sits up to two ulps off it.
+    let off_axis = 2.0 * f32::EPSILON;
+    for (angle, first, last) in cases {
+        let [x, y, t0, t1] = LinearGeometry { angle }.axis_lanes();
+        let t = |c: Vec2| (c.x * x + c.y * y - t0) / (t1 - t0);
+        for (idx, corner) in corners.into_iter().enumerate() {
+            let at = t(corner);
+            assert!(
+                (0.0..=1.0).contains(&at),
+                "{angle}: corner {corner} at {at}"
+            );
+            if first.contains(&idx) {
+                assert!(
+                    at.abs() < off_axis,
+                    "{angle}: corner {corner} is stop 0, at {at}"
+                );
+            }
+            if last.contains(&idx) {
+                assert!(
+                    (at - 1.0).abs() < off_axis,
+                    "{angle}: corner {corner} is stop 1, at {at}"
+                );
+            }
+        }
+    }
+}
+
+/// A large or negative start angle is wrapped into one turn before the f16 pack.
+#[test]
+fn conic_start_angle_wraps_before_the_pack() {
+    use crate::primitives::packed::fill_axis::FillAxis;
+    use std::f32::consts::TAU;
+
+    for angle in [1000.0, -0.5, TAU + 1.0] {
+        let g = ConicGradient::new(
+            Vec2::splat(0.5),
+            angle,
+            [
+                Stop::new(0.0, RgbaF32::WHITE),
+                Stop::new(1.0, RgbaF32::BLACK),
+            ],
+        );
+        let wrapped = angle.rem_euclid(TAU);
+        assert!((0.0..TAU).contains(&wrapped));
+        assert_eq!(
+            g.axis().lanes(),
+            FillAxis::from_lanes([0.5, 0.5, wrapped, 0.0]).lanes(),
+            "{angle}",
+        );
+    }
 }

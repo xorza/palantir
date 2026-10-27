@@ -10,11 +10,11 @@ use crate::primitives::paint::stroke::Stroke;
 use palantir_anim_derive::Animatable;
 
 /// Paint data shared by container widgets (`Block`, `Panel`, `Grid`) and per-state
-/// widget visuals. [`Self::NONE`] is transparent fill, no border, zero radius:
+/// widget visuals. [`Self::NONE`] is transparent fill, no border, square corners:
 /// nothing emitted. Pure data; paint emission goes through `Tree::chrome_table` and
 /// the encoder.
 ///
-/// `Animatable` is derived: fill and border interpolate componentwise, `radius` is
+/// `Animatable` is derived: fill and border interpolate componentwise, `corners` is
 /// `#[animate(snap)]`. "No border" is `Stroke::NONE`, not an `Option`; paint-time
 /// `is_noop` filtering catches authored and animation-decayed no-ops.
 ///

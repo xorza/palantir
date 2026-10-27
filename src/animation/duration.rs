@@ -9,6 +9,11 @@ pub(super) const MAX_DURATION: Duration = Duration::from_secs(60);
 
 const MAX_DURATION_SECS: f32 = MAX_DURATION.as_secs() as f32;
 
+/// The shortest duration that animates; a shorter one snaps. It ends inside the first frame at any
+/// display rate (a 240 Hz frame is 4.2 ms), so it could show only its end, and a snap does not
+/// divide the elapsed time by a length near zero.
+pub(super) const MIN_DURATION_SECS: f32 = Duration::from_micros(100).as_secs_f32();
+
 pub(super) const DURATION_ERROR: &str =
     "animation duration must be finite and in 0.0..=60.0 seconds";
 

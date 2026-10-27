@@ -36,12 +36,6 @@ the measure-cache hit test.
 
 ## Paint and geometry
 
-- **A geometry emits canonical shader parameters.** Linear `(t0, t1)` is the
-  projection of the unit square on the direction. A conic angle is wrapped to
-  `0..TAU` before the f16 pack.
-- **The color type owns its interpolation.** `RgbaF32`'s `Animatable` works
-  on premultiplied values (CSS Color 4 §12.3, which the brush module already
-  states). Alpha and channels are clamped once, where a color is lowered.
 - **One function per geometric fact, on the primitive it describes.**
   `Corners::inner(size, padding)` fits first, then reduces each corner by the
   larger adjacent inset. One text snap-slack function over the local inked
@@ -149,51 +143,6 @@ Files: `src/theme/tests/`.
 - [ ] **The theme-file fuzz leaves out `1e30`.** `theme/tests/file_values.rs:20`.
   Target: `1e30` in `SUSPECTS`, after the `.notes/ISSUES.md` entry on large
   theme lengths is fixed.
-
-## Batch 9: Paint parameters and color animation
-
-Rendering changes: run the golden suite first, then after. Files:
-`src/primitives/paint/{brush/gradient/, color/}`, `src/primitives/packed/`,
-`src/animation/`.
-
-- [ ] **Linear gradients are wrong outside `[0, π/2]`.**
-  `linear_geometry.rs:28-31`; shader `quad_pipeline/shader.wgsl:516-525`. At
-  angle π the whole box paints stop 0; at π/4 the last stop is at 71 %.
-  Target: `t0 = min(cos,0) + min(sin,0)`, `t1 = max(cos,0) + max(sin,0)`;
-  correct the doc; a table test over the four quadrants.
-- [ ] **Color tweens interpolate straight alpha.** `color/mod.rs:31-62`,
-  `brush/mod.rs:175-183`. A fade to `TRANSPARENT` paints c/4 at the midpoint.
-  Target: premultiplied `Animatable`; change `color/tests.rs:128-146`.
-- [ ] **Overshoot paints alpha above 1.** `easing.rs:45-50`,
-  `spring.rs:91-101`. Target: clamp alpha to `0..=1` and channels to `≥ 0` in
-  `RgbaF16::from`. `RgbaF16::is_noop` rejects negative alpha as
-  `RgbaF32::is_noop` does (`rgba_f16.rs:31-35`, `half_simd/mod.rs:121-123`).
-  Test with `OutBack` and a bouncy spring.
-- [ ] **The conic angle is packed raw into f16.** `conic_geometry.rs:35-38`.
-  Target: `rem_euclid(TAU)`; test a large angle.
-- [ ] **`CircularArc::bbox` overflows on a huge angle.**
-  `circular_arc/mod.rs:70-73`. Target: reduce the start angle mod TAU first.
-- [ ] **`hex(u32)` drops the top byte.** `srgba_u8.rs:36-39`,
-  `color/mod.rs:198-201`. Target: `#[track_caller]` assert `rgb <= 0xFFFFFF`
-  under `# Panics`.
-- [ ] **`Span: From<Range<usize>>` truncates; `From<Range<u32>>` underflows.**
-  `common/span.rs:37-53`. Target: assert the fit and `start <= end`
-  (**[public]** if it becomes `TryFrom`).
-- [ ] **Dead NaN handling in `Mesh`.** `mesh/mod.rs:108-111, 158-167,
-  239-242`.
-- [ ] **A visual tolerance is used as a time floor.**
-  `animation_spec/mod.rs:5, 98-104`. Target: a named `MIN_DURATION` with its
-  reason.
-- [ ] **Clipboard backend is `Box<dyn>` over a closed set.**
-  `common/clipboard/mod.rs:20-23, 90-95`. Target: an enum.
-- [ ] **Docs.** `rect/mod.rs:17-18` (hash is exact), `urect/mod.rs:155-158`
-  (u32 → f32 is not exact above 2^24), `chrome.rs:18` (`corners`, not
-  `radius`), `paint/mod.rs:1-2`.
-- [ ] **Interruption breaks motion.** `animation_row.rs:81-104`,
-  `animation_map_typed.rs:144-176`. Target: a spring retarget keeps its
-  velocity; a duration retarget whose new target is the segment's start
-  value runs from the reversing-adjusted start over the shortened duration
-  (CSS Transitions 2). Tests in `animation/tests/retarget.rs`.
 
 ## Batch 10: Geometric facts computed once
 

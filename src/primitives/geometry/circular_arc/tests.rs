@@ -102,3 +102,19 @@ fn negative_sweep_and_offset_window() {
         assert_close(got, want, 1e-6, past_tau);
     }
 }
+
+/// The quarters count from the start angle reduced into one turn: a full turn from 1000 rad still
+/// reaches every side. Past `i64`'s quarter count (1e19 rad) the raw count overflowed; there an
+/// f32 sum holds no sweep, so the arc is its one end point, as it draws.
+#[test]
+fn a_huge_start_angle_counts_its_quarters_in_one_turn() {
+    for start in [1000.0, -1000.0] {
+        assert_bounds(start, TAU, C - Vec2::splat(R), C + Vec2::splat(R));
+    }
+    for start in [1e30, -1e30] {
+        assert_eq!(start + TAU, start, "premise: the sweep is absorbed");
+        let (sin, cos) = start.sin_cos();
+        let end = C + R * Vec2::new(cos, sin);
+        assert_bounds(start, TAU, end, end);
+    }
+}

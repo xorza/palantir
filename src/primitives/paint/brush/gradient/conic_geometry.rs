@@ -8,6 +8,7 @@ use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
+use std::f32::consts::TAU;
 use std::hash;
 
 /// Geometry of a conic (sweep) gradient: the 0..1 axis sweeps around `center` from `start_angle` radians, clockwise on screen (angles grow from +x toward +y, which points down). `center` is in 0..1 object space. The shader projects each fragment to `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`, applies `Spread`, samples the LUT.
@@ -31,9 +32,16 @@ impl Geometry for ConicGeometry {
     /// Conic gradients are usually color wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Linear;
 
-    /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch.
+    /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch. The angle is
+    /// wrapped into one turn first: f16 steps 0.5 rad apart at 1000, so a raw large angle would turn
+    /// the sweep.
     fn axis_lanes(&self) -> [f32; 4] {
-        [self.center.x, self.center.y, self.start_angle, 0.0]
+        [
+            self.center.x,
+            self.center.y,
+            self.start_angle.rem_euclid(TAU),
+            0.0,
+        ]
     }
 
     fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {

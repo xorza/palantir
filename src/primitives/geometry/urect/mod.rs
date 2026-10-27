@@ -151,8 +151,9 @@ impl URect {
     }
 }
 
-/// Widening is exact, so it is the direction that gets a [`From`]; see
-/// `URect::covering` for the way back.
+/// Widening, so it is the direction that gets a [`From`]; see `URect::covering` for the way
+/// back. Exact up to 2^24 per coordinate, past any texture a device allows; above it an `f32`
+/// rounds to an even neighbor.
 impl From<URect> for Rect {
     #[inline]
     fn from(r: URect) -> Self {

@@ -1,7 +1,7 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::{AnimationRow, MotionRow};
+use crate::animation::animation_row::{self, AnimationRow, MotionRow};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::TypedStore;
@@ -126,7 +126,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
             if let MotionRow::Spring { velocity, .. } = &mut row.motion {
                 cur.normalize_for_spring(&target, velocity);
             }
-            row.motion.retarget(&cur, &target);
+            row.motion.retarget(&cur, &row.target, &target);
         }
 
         if retargeted {
@@ -136,7 +136,10 @@ impl<T: Animatable> AnimationMapTyped<T> {
             // Snap-if-close, on the retarget alone: a change too small to see settles at
             // once. A running motion ends by its own rule; checked mid-curve this floor cut
             // `OutBack` short where it crosses the target toward the overshoot.
-            if row.motion.close_enough(cur.clone().sub(row.target.clone())) {
+            if row
+                .motion
+                .close_enough(animation_row::offset(&cur, &row.target))
+            {
                 row.motion.stop(&row.target);
                 row.settled = true;
                 return TickResult {

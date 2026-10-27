@@ -10,7 +10,6 @@ use glam::Vec2;
 /// `true` would route a NaN into the shortcut.
 #[test]
 fn every_paint_noop_predicate_treats_nan_as_invisible() {
-    use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::brush::Brush;
     use crate::primitives::paint::color::RgbaF32;
@@ -22,11 +21,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
 
     const N: f32 = f32::NAN;
     let nan_color = RgbaF32::srgba(0.0, 0.0, 0.0, N);
-    let mut nan_mesh = Mesh::new();
-    for pos in [Vec2::new(N, 0.0), Vec2::ZERO, Vec2::X] {
-        nan_mesh.vertices.push(MeshVertex::new(pos, RgbaF32::WHITE));
-    }
-    nan_mesh.triangle(0, 1, 2);
 
     let cases: &[(&str, bool)] = &[
         ("is_invisible", is_invisible(N)),
@@ -94,7 +88,6 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
             }
             .is_noop(),
         ),
-        ("Mesh::is_noop", nan_mesh.is_noop()),
         // Chrome skips `Shapes::add`, so these are all that guard a NaN `Chrome`.
         (
             "RgbaF16::is_noop/red",

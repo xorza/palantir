@@ -291,3 +291,16 @@ fn mutations_drop_exactly_the_caches_they_stale() {
         assert_eq!(m.content_hash() == h0, hash_kept, "{label}: hash value");
     }
 }
+
+/// `vertex` refuses a non-finite position, the one door a vertex enters by, so a mesh never holds
+/// one and `is_noop` needs no NaN scan.
+#[test]
+fn vertex_refuses_a_non_finite_position() {
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        for pos in [Vec2::new(bad, 0.0), Vec2::new(0.0, bad)] {
+            panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
+                Mesh::new().vertex(pos, RgbaF32::WHITE)
+            });
+        }
+    }
+}

@@ -1,4 +1,4 @@
-use crate::primitives::math::animatable::Animatable;
+use crate::internals::panic_probe;
 use crate::primitives::paint::color::*;
 use ron::ser;
 
@@ -25,6 +25,11 @@ fn rgb_is_const_constructible() {
     const HEXA: RgbaF32 = RgbaF32::hexa(0x3366CC80);
     assert_eq!(HEXA.to_srgba(), SrgbaU8::new(0x33, 0x66, 0xCC, 0x80));
     assert_eq!(HEX, RgbaF32::hexa(0x3366CCFF));
+    assert_eq!(RgbaF32::hex(0xFF_FFFF), RgbaF32::WHITE, "the largest rgb");
+    // An eight-digit literal in `hex` would lose its top byte and shift the rest.
+    for wide in [0x0100_0000, 0x3366_CC80] {
+        panic_probe::assert_panics_with("hex takes 0xRRGGBB", || RgbaF32::hex(wide));
+    }
 }
 
 #[derive(Debug)]
@@ -124,25 +129,54 @@ fn color_parse_rejects_malformed_input() {
     assert!(parse_hex("#+a+b+c").is_err(), "sign is not a hex digit");
 }
 
+/// Colors blend premultiplied: `a` premultiplies to `(0.5, 0, 0.25 | 0.5)` and the transparent `b`
+/// to zero, so a quarter of the way the blend is `(0.375, 0, 0.1875 | 0.375)`, which is `a`'s hue
+/// at alpha 0.375. A straight blend would have dimmed it to `(0.75, 0.25, 0.5)`. The ends are
+/// exact, and `t` is unclamped.
 #[test]
-fn lerp_spans_both_endpoints_and_overshoots() {
+fn lerp_blends_premultiplied_and_overshoots() {
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
 
     assert_eq!(Animatable::lerp(a, b, 0.0), a);
     assert_eq!(Animatable::lerp(a, b, 1.0), b);
-
-    let quarter = Animatable::lerp(a, b, 0.25);
     assert_eq!(
-        (quarter.r, quarter.g, quarter.b, quarter.a),
-        (0.75, 0.25, 0.5, 0.375)
+        Animatable::lerp(a, b, 0.25),
+        RgbaF32::new(1.0, 0.0, 0.5, 0.375)
     );
+    assert_eq!(
+        Animatable::lerp(a, b, 0.5),
+        RgbaF32::new(1.0, 0.0, 0.5, 0.25)
+    );
+    // Between two opaque colors the blend is the plain one: 0.5 of the way from red to green.
+    let (red, green) = (
+        RgbaF32::new(1.0, 0.0, 0.0, 1.0),
+        RgbaF32::new(0.0, 1.0, 0.0, 1.0),
+    );
+    assert_eq!(
+        Animatable::lerp(red, green, 0.5),
+        RgbaF32::new(0.5, 0.5, 0.0, 1.0)
+    );
+    // `t = 2` overshoots `green` by the same delta: r 1.0 → -1.0.
+    assert_eq!(Animatable::lerp(red, green, 2.0).r, -1.0);
+    // Past transparent the alpha goes negative and no color is left to recover.
+    assert_eq!(
+        Animatable::lerp(a, b, 2.0),
+        RgbaF32::new(0.0, 0.0, 0.0, -0.5)
+    );
+}
 
-    let mid = Animatable::lerp(a, b, 0.5);
-    assert_eq!((mid.r, mid.g, mid.b, mid.a), (0.5, 0.5, 0.5, 0.25));
-
-    // `t` is unclamped: t = 2 overshoots `b` by the same delta (r 1.0 → -1.0).
-    assert_eq!(Animatable::lerp(a, b, 2.0).r, -1.0);
+/// Motion space is premultiplied: `to_motion` premultiplies, `from_motion` inverts it, and with
+/// no alpha no color is left to recover.
+#[test]
+fn motion_space_is_premultiplied() {
+    let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
+    assert_eq!(a.to_motion(), RgbaF32::new(0.5, 0.0, 0.25, 0.5));
+    assert_eq!(RgbaF32::from_motion(a.to_motion()), a);
+    assert_eq!(
+        RgbaF32::from_motion(RgbaF32::new(0.25, 0.5, 0.0, 0.0)),
+        RgbaF32::new(0.0, 0.0, 0.0, 0.0)
+    );
 }
 
 /// `faded` scales alpha only; color lanes stay bit-identical, and `by == 1.0` is the identity.
@@ -156,4 +190,51 @@ fn faded_scales_only_the_alpha_lane() {
     assert_eq!(half.a, 1638.0 / 4096.0, "alpha is half of the packed 0.8");
     assert_eq!(f16.faded(1.0), f16);
     assert!(f16.faded(0.0).is_noop(), "a zero fade is fully transparent");
+}
+
+/// Lowering clamps alpha to `0..=1` and channels to `≥ 0`, and keeps HDR channels and NaN.
+#[test]
+fn lowering_clamps_what_a_tween_overshoots() {
+    use crate::animation::easing::Easing;
+
+    let lowered = |c: RgbaF32| RgbaF32::from(c.to_f16());
+    assert_eq!(
+        lowered(RgbaF32::new(-0.25, 2.0, 0.5, 1.5)),
+        RgbaF32::new(0.0, 2.0, 0.5, 1.0),
+    );
+    assert_eq!(lowered(RgbaF32::new(0.5, 0.5, 0.5, -0.5)).a, 0.0);
+    assert!(
+        RgbaF16::new(f32::NAN, 0.0, 0.0, 1.0).is_noop(),
+        "NaN survives"
+    );
+    assert_eq!(
+        RgbaF16::new(0.25, 0.5, 0.75, 0.8).faded(2.0),
+        RgbaF16::new(0.25, 0.5, 0.75, 1.0),
+        "a fade past 1 clamps"
+    );
+
+    // `OutBack` overshoots its end by about 10 %: a fade in from transparent passes alpha 1.
+    let t = (0..=100)
+        .map(|i| i as f32 / 100.0)
+        .max_by(|a, b| {
+            Easing::OutBack
+                .apply(*a)
+                .total_cmp(&Easing::OutBack.apply(*b))
+        })
+        .unwrap();
+    let peak = Animatable::lerp(
+        RgbaF32::TRANSPARENT,
+        RgbaF32::WHITE,
+        Easing::OutBack.apply(t),
+    );
+    assert!(
+        peak.a > 1.05,
+        "premise: the tween overshoots, got {}",
+        peak.a
+    );
+    assert_eq!(lowered(peak).a, 1.0);
+
+    for a in [-0.5, -1e-3, f32::NEG_INFINITY] {
+        assert!(RgbaF32::new(0.5, 0.5, 0.5, a).is_noop(), "{a}");
+    }
 }

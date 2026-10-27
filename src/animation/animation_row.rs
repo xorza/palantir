@@ -18,8 +18,15 @@ pub(super) enum MotionRow<T: Animatable> {
         elapsed: f32,
         secs: f32,
         ease: Easing,
+        /// CSS Transitions' reversing-adjusted start value: where a segment that turns back
+        /// toward it returns to, so a reversal is recognized after several.
+        reversing_start: T,
+        /// The share of `secs` this segment runs for: 1, or less for a reversal, which covers
+        /// only the way the interrupted segment came.
+        shortening: f32,
     },
     Spring {
+        /// In motion space, as `offset` is.
         velocity: T,
         offset: T,
         spring: Spring,
@@ -35,10 +42,12 @@ impl<T: Animatable> MotionRow<T> {
                 elapsed: 0.0,
                 secs,
                 ease,
+                reversing_start: cur.clone(),
+                shortening: 1.0,
             },
             AnimationMotion::Spring(spring) => Self::Spring {
                 velocity: T::zero(),
-                offset: cur.clone().sub(target.clone()),
+                offset: offset(cur, target),
                 spring,
             },
         }
@@ -47,7 +56,7 @@ impl<T: Animatable> MotionRow<T> {
     pub(super) fn cur(&self, target: &T) -> T {
         match self {
             Self::Duration { cur, .. } => cur.clone(),
-            Self::Spring { offset, .. } => target.clone().add(offset.clone()),
+            Self::Spring { offset, .. } => placed(target, offset),
         }
     }
 
@@ -76,31 +85,39 @@ impl<T: Animatable> MotionRow<T> {
         }
     }
 
-    /// Restarts from `cur` toward `target`. A spring keeps its velocity
-    /// only when it aids motion toward the new target, so a reversal doesn't overshoot.
-    pub(super) fn retarget(&mut self, cur: &T, target: &T) {
+    /// Restarts from `cur` toward `target`, away from `old_target`.
+    ///
+    /// A spring keeps its velocity, so the value moves on without a kink (C¹), as SwiftUI's
+    /// springs do. A duration that turns back to its reversing-adjusted start runs from `cur`
+    /// over the share of its length the interrupted segment covered, by CSS Transitions'
+    /// faster reversing, so a toggle undone mid-way takes as long as it ran, not the whole
+    /// length again.
+    pub(super) fn retarget(&mut self, cur: &T, old_target: &T, target: &T) {
         match self {
             Self::Duration {
                 segment_start,
                 cur: at,
                 elapsed,
-                ..
+                secs,
+                ease,
+                reversing_start,
+                shortening,
             } => {
+                if target == reversing_start {
+                    let output = ease.apply(progress(*elapsed, *secs * *shortening));
+                    *shortening = (output * *shortening + 1.0 - *shortening)
+                        .abs()
+                        .clamp(0.0, 1.0);
+                    *reversing_start = old_target.clone();
+                } else {
+                    *shortening = 1.0;
+                    *reversing_start = cur.clone();
+                }
                 *segment_start = cur.clone();
                 *at = cur.clone();
                 *elapsed = 0.0;
             }
-            Self::Spring {
-                velocity,
-                offset,
-                spring,
-            } => {
-                *offset = cur.clone().sub(target.clone());
-                let reach = spring.velocity_reach(velocity.clone());
-                if dot(reach, offset.clone()) > 0.0 {
-                    *velocity = T::zero();
-                }
-            }
+            Self::Spring { offset: at, .. } => *at = offset(cur, target),
         }
     }
 
@@ -134,9 +151,11 @@ impl<T: Animatable> MotionRow<T> {
                 elapsed,
                 secs,
                 ease,
+                shortening,
+                ..
             } => {
                 *elapsed += dt;
-                let progress = *elapsed / *secs;
+                let progress = progress(*elapsed, *secs * *shortening);
                 let settled = progress >= 1.0;
                 *cur = if settled {
                     target
@@ -160,7 +179,7 @@ impl<T: Animatable> MotionRow<T> {
                     cur: if step.settled {
                         target
                     } else {
-                        target.add(offset.clone())
+                        placed(&target, offset)
                     },
                     settled: step.settled,
                 }
@@ -169,14 +188,25 @@ impl<T: Animatable> MotionRow<T> {
     }
 }
 
-/// Dot product via the polarization identity `2·a·b = |a+b|² − |a|² − |b|²`,
-/// used on spring retarget to tell whether residual velocity aids the new target.
+/// The spring offset from `target` to `cur`, in motion space.
+pub(super) fn offset<T: Animatable>(cur: &T, target: &T) -> T {
+    cur.clone().to_motion().sub(target.clone().to_motion())
+}
+
+/// The value `offset` from `target`. An offset of no length is the target itself, exactly: the
+/// round trip through motion space would change its low bits, and a settled row must rest on its
+/// target. Its length, not `== zero()`: a derived offset keeps its snap fields.
+fn placed<T: Animatable>(target: &T, offset: &T) -> T {
+    if offset.clone().magnitude_squared() == 0.0 {
+        return target.clone();
+    }
+    T::from_motion(target.clone().to_motion().add(offset.clone()))
+}
+
+/// How far through a segment of `length` seconds `elapsed` is; a segment of no length is done.
 #[inline]
-fn dot<T: Animatable>(a: T, b: T) -> f32 {
-    let mag_a = a.clone().settle_distance_squared();
-    let mag_b = b.clone().settle_distance_squared();
-    let sum = a.add(b).settle_distance_squared();
-    0.5 * (sum - mag_a - mag_b)
+fn progress(elapsed: f32, length: f32) -> f32 {
+    if length > 0.0 { elapsed / length } else { 1.0 }
 }
 
 #[derive(Clone, Copy, Debug)]

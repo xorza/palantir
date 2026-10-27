@@ -133,9 +133,7 @@ impl<'a> RampColors<'a> {
         }
         let amount = (t - lower_offset) / denominator;
         match self.interpolation {
-            Interpolation::Linear => {
-                RgbaF32::lerp(self.linear[upper - 1], self.linear[upper], amount)
-            }
+            Interpolation::Linear => self.linear[upper - 1].mix(self.linear[upper], amount),
             Interpolation::Oklab => self.lerp_oklab(upper, amount),
         }
     }

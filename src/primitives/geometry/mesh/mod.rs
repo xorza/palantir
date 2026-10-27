@@ -101,16 +101,13 @@ impl Mesh {
     /// Non-paintable: no vertices, indices not forming whole triangles, or an
     /// index past the last vertex. Mirrors `DrawMeshPayload::is_noop`.
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         self.vertices.is_empty()
             || self.idxs.len() < 3
             || !self.idxs.len().is_multiple_of(3)
             // A release build reaches here with what `triangle`'s debug
             // assert would have caught.
             || self.max_idx as usize >= self.vertices.len()
-            // A NaN vertex reaches the AABB by the fold's NaN contract, so
-            // this memoized read stands in for scanning every position.
-            || self.bbox().has_nan()
     }
 
     /// Stable visual hash of vertices and indices. Memoized until a public
@@ -239,8 +236,6 @@ impl Mesh {
             m.triangle(i0, prev, next);
             prev = next;
         }
-        // Through `Aabb`, not folded into the fan: a bare `min`/`max` fold
-        // drops a NaN operand.
         m.cached_bbox.set(Some(Aabb::of(points)));
         m
     }

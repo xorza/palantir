@@ -325,62 +325,38 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     );
 }
 
-/// A retarget along the motion keeps velocity (fling-through); against it, velocity
-/// is zeroed so the new segment cannot swing far past the target.
+/// A retarget keeps the velocity, along the motion or against it, so the value moves on
+/// without a kink; zeroing an opposing one would stop it dead for a frame.
 #[test]
-fn spring_retarget_zeroes_opposing_velocity_only() {
+fn spring_retarget_keeps_its_velocity() {
     let mut map = AnimationMapTyped::<f32>::default();
-
-    let id_aligned = support::widget_id("aligned");
-    let _ = map.step(
-        AnimationRequest::new(id_aligned, SLOT, 0.0),
-        AnimationSpec::SPRING,
-        0.016,
-    );
-    for _ in 0..3 {
+    for (label, new_target) in [("along", 2.0), ("against", -1.0)] {
+        let id = support::widget_id(label);
         let _ = map.step(
-            AnimationRequest::new(id_aligned, SLOT, 1.0),
+            AnimationRequest::new(id, SLOT, 0.0),
             AnimationSpec::SPRING,
             0.016,
         );
-    }
-    let v_before = *support::spring_velocity(&map.rows[&(id_aligned, SLOT)]);
-    assert!(v_before > 0.0, "precondition: moving toward 1.0");
-    let _ = map.step(
-        AnimationRequest::new(id_aligned, SLOT, 2.0),
-        AnimationSpec::SPRING,
-        0.0,
-    );
-    let v_after = *support::spring_velocity(&map.rows[&(id_aligned, SLOT)]);
-    assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
-
-    let id_opposed = support::widget_id("opposed");
-    let _ = map.step(
-        AnimationRequest::new(id_opposed, SLOT, 0.0),
-        AnimationSpec::SPRING,
-        0.016,
-    );
-    for _ in 0..3 {
+        for _ in 0..3 {
+            let _ = map.step(
+                AnimationRequest::new(id, SLOT, 1.0),
+                AnimationSpec::SPRING,
+                0.016,
+            );
+        }
+        let before = *support::spring_velocity(&map.rows[&(id, SLOT)]);
+        assert!(before > 0.0, "{label}: precondition, moving toward 1.0");
         let _ = map.step(
-            AnimationRequest::new(id_opposed, SLOT, 1.0),
+            AnimationRequest::new(id, SLOT, new_target),
             AnimationSpec::SPRING,
-            0.016,
+            0.0,
+        );
+        assert_eq!(
+            *support::spring_velocity(&map.rows[&(id, SLOT)]),
+            before,
+            "{label}"
         );
     }
-    assert!(
-        *support::spring_velocity(&map.rows[&(id_opposed, SLOT)]) > 0.0,
-        "precondition: moving toward 1.0"
-    );
-    let _ = map.step(
-        AnimationRequest::new(id_opposed, SLOT, -1.0),
-        AnimationSpec::SPRING,
-        0.0,
-    );
-    assert_eq!(
-        *support::spring_velocity(&map.rows[&(id_opposed, SLOT)]),
-        0.0,
-        "opposing retarget must zero velocity to kill reversal overshoot",
-    );
 }
 
 /// The settle bound is the spring's energy `x² + v²/k` in the type's own tolerance:
@@ -479,7 +455,13 @@ fn color_spring_converges_to_target() {
             break;
         }
     }
-    let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
+    let distance = f64::from(
+        target
+            .to_motion()
+            .sub(start.to_motion())
+            .magnitude_squared(),
+    )
+    .sqrt();
     let step = Release {
         spring: Spring::DEFAULT,
         distance,
@@ -531,13 +513,20 @@ fn solid_brush_spring_matches_color_trajectory() {
             break;
         }
     }
-    let distance = f64::from(target.sub(start).magnitude_squared()).sqrt();
+    let distance = f64::from(
+        target
+            .to_motion()
+            .sub(start.to_motion())
+            .magnitude_squared(),
+    )
+    .sqrt();
     let step = Release {
         spring: Spring::DEFAULT,
         distance,
         eps: 1.0 / 4096.0,
     }
     .settle_step(|_| 0.016);
-    assert_eq!(step, 53);
+    // A color springs in motion space, so the distance is between the premultiplied colors.
+    assert_eq!(step, 52);
     assert_eq!(settled_at, Some(step), "both settle on the same frame");
 }
