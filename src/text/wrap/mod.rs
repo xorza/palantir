@@ -45,6 +45,8 @@ pub(crate) enum LineFit {
     Clip = 1,
     /// One line, cut to the target width with a trailing `…`.
     Ellipsis = 2,
+    /// One line, cut to the target width with a `…` in the middle, keeping both ends.
+    EllipsisMiddle = 3,
 }
 
 impl LineFit {
@@ -59,7 +61,7 @@ impl LineFit {
     /// `width_px` must be canonical (quantized once by `commit`); quantizing
     /// again could split the fit test from the key it decides about.
     pub(super) const fn resolves_to_unbounded(self, unbounded: &TextRoot, width_px: f32) -> bool {
-        matches!(self, Self::Clip | Self::Ellipsis)
+        matches!(self, Self::Clip | Self::Ellipsis | Self::EllipsisMiddle)
             && unbounded.single_line
             && unbounded.extent.size.w <= width_px
     }
@@ -80,6 +82,10 @@ pub enum TextWrap {
     Truncate,
     /// Single line truncated to the committed width with a trailing ellipsis.
     Ellipsis,
+    /// Single line truncated to the committed width with an ellipsis in the middle, keeping the
+    /// run's start and end: a file name keeps its extension, as macOS's
+    /// `NSLineBreakByTruncatingMiddle`, Qt's `ElideMiddle` and Pango's `ELLIPSIZE_MIDDLE` cut.
+    EllipsisMiddle,
     /// Wrap at word boundaries, falling back to character boundaries when one
     /// word cannot fit.
     Wrap,
@@ -98,6 +104,7 @@ impl TextWrap {
             Self::SingleLine | Self::Scroll => None,
             Self::Truncate => Some(LineFit::Clip),
             Self::Ellipsis => Some(LineFit::Ellipsis),
+            Self::EllipsisMiddle => Some(LineFit::EllipsisMiddle),
             Self::Wrap | Self::WrapWithOverflow => Some(LineFit::Wrap),
         }
     }
@@ -117,9 +124,12 @@ impl TextWrap {
     pub(super) const fn floor_scan(self) -> WrapFloor {
         match self {
             Self::WrapWithOverflow => WrapFloor::Scan,
-            Self::SingleLine | Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
-                WrapFloor::Skip
-            }
+            Self::SingleLine
+            | Self::Scroll
+            | Self::Truncate
+            | Self::Ellipsis
+            | Self::EllipsisMiddle
+            | Self::Wrap => WrapFloor::Skip,
         }
     }
 
@@ -129,7 +139,7 @@ impl TextWrap {
         match self {
             Self::SingleLine => unbounded.extent.size,
             // Scroll owns clipping; truncating and wrapping runs can shrink to nothing.
-            Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
+            Self::Scroll | Self::Truncate | Self::Ellipsis | Self::EllipsisMiddle | Self::Wrap => {
                 Size::new(0.0, unbounded.extent.size.h)
             }
             Self::WrapWithOverflow => Size::new(unbounded.wrap_floor(), unbounded.extent.size.h),
@@ -143,6 +153,7 @@ impl TextWrap {
             Self::SingleLine
             | Self::Truncate
             | Self::Ellipsis
+            | Self::EllipsisMiddle
             | Self::Wrap
             | Self::WrapWithOverflow => unbounded.extent.size,
         }
@@ -154,9 +165,12 @@ impl TextWrap {
     pub(super) const fn target_width(self, available_width_px: f32, unbounded: &TextRoot) -> f32 {
         match self {
             Self::WrapWithOverflow => available_width_px.max(unbounded.wrap_floor()),
-            Self::SingleLine | Self::Scroll | Self::Truncate | Self::Ellipsis | Self::Wrap => {
-                available_width_px
-            }
+            Self::SingleLine
+            | Self::Scroll
+            | Self::Truncate
+            | Self::Ellipsis
+            | Self::EllipsisMiddle
+            | Self::Wrap => available_width_px,
         }
     }
 
@@ -167,6 +181,7 @@ impl TextWrap {
             Self::SingleLine
             | Self::Truncate
             | Self::Ellipsis
+            | Self::EllipsisMiddle
             | Self::Wrap
             | Self::WrapWithOverflow => resolved,
         }

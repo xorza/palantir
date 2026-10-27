@@ -1,4 +1,6 @@
-//! One shaped glyph as the truncation cut reads it, and the prefix scan that spends a width budget over them. The cut runs against the cached unbounded shape, not a reshape per width; [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated) records why cosmic's `set_ellipsize` was reverted.
+//! One shaped glyph as the truncation cut reads it, and the prefix and suffix scans that spend a width budget over them. The cut runs against the cached unbounded shape, not a reshape per width; [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated) records why cosmic's `set_ellipsize` was reverted.
+
+use std::ops::Range;
 
 /// One shaped glyph reduced to what the truncation cut reads: the source
 /// bytes it covers and the advance it costs.
@@ -38,4 +40,42 @@ pub(crate) fn fitting_prefix(glyphs: &mut [ClusterGlyph], avail: f32, max_end: u
         }
     }
     cut
+}
+
+/// Lowest logical byte start at or above `min_start` whose suffix of `glyphs` sums within `avail`, or `None` when not one cluster fits. `glyphs` are in logical order, as [`fitting_prefix`] leaves them.
+///
+/// Feeding back the previous answer plus one retires a cluster, so the middle cut's back-off in [`CosmicMeasure::shape_truncated`](crate::text::cosmic::CosmicMeasure::shape_truncated) terminates.
+pub(crate) fn fitting_suffix(
+    glyphs: &[ClusterGlyph],
+    avail: f32,
+    min_start: usize,
+) -> Option<usize> {
+    debug_assert!(glyphs.is_sorted_by_key(|g| g.start));
+    let mut tail = None;
+    let mut used = 0.0_f32;
+    for (pos, g) in glyphs.iter().enumerate().rev() {
+        if g.start < min_start {
+            break;
+        }
+        used += g.advance;
+        if used > avail {
+            break;
+        }
+        let cluster_paid = pos
+            .checked_sub(1)
+            .is_none_or(|prev| glyphs[prev].end <= g.start);
+        if cluster_paid {
+            tail = Some(g.start);
+        }
+    }
+    tail
+}
+
+/// Summed advance of the logically sorted `glyphs` that lie wholly inside `bytes`.
+pub(crate) fn span_advance(glyphs: &[ClusterGlyph], bytes: Range<usize>) -> f32 {
+    glyphs
+        .iter()
+        .filter(|g| g.start >= bytes.start && g.end <= bytes.end)
+        .map(|g| g.advance)
+        .sum()
 }

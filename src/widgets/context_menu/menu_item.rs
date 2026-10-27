@@ -110,11 +110,15 @@ impl<'a> MenuItem<'a> {
                 .style(&text_style)
                 .show(ui);
             if let Some(s) = shortcut_label {
-                Text::new(s)
-                    .id(id.with("shortcut"))
-                    .style(&text_style)
-                    .color(shortcut_color)
-                    .show(ui);
+                // A disabled row's hint dims with its label: in the hint's own ink it would be
+                // the brightest text on a row that does nothing.
+                let hint = Text::new(s).id(id.with("shortcut")).style(&text_style);
+                if disabled {
+                    hint
+                } else {
+                    hint.color(shortcut_color)
+                }
+                .show(ui);
             }
         };
         self.widget.record(ui, Some(&look.chrome), body);

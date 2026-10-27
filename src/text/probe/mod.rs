@@ -7,6 +7,7 @@ use crate::common::hash;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
+use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
 use crate::text::key::TextShapeKey;
 use crate::text::run::TextRun;
 use crate::text::shaper::ShaperInner;
@@ -34,9 +35,6 @@ pub struct TextProbe<'a> {
     /// stores `Auto` for every alignment, which would put a right-aligned glyphless
     /// line's caret at the block's left edge.
     halign: HAlign,
-    /// Source bytes the shaped buffer shows from the start, found once per probe; `None` where
-    /// no shaped buffer backs the run.
-    shown: Option<usize>,
     inner: RefMut<'a, ShaperInner>,
 }
 
@@ -51,29 +49,16 @@ impl<'a> TextProbe<'a> {
     /// `shape.key` is where [`TextShaper::layout`](crate::text::shaper::TextShaper::layout)
     /// just shaped or found `run`'s text through a checked lookup, holding `inner` since, so the
     /// buffer under it holds that text.
-    pub(super) fn new(
+    pub(super) const fn new(
         run: &TextRun<'a>,
         shape: ProbedShape,
         inner: RefMut<'a, ShaperInner>,
     ) -> Self {
-        let text = run.text;
-        let shown = shape
-            .key
-            .filter(|_| !text.is_empty() && !inner.is_mono())
-            .and_then(|key| inner.cosmic().resident_run(key))
-            .map(|run| {
-                if run.cut {
-                    LineMap::scan_shown(run.buffer, text)
-                } else {
-                    text.len()
-                }
-            });
         Self {
             size: shape.size,
-            text,
+            text: run.text,
             key: shape.key,
             halign: run.align.halign(),
-            shown,
             inner,
         }
     }
@@ -113,14 +98,13 @@ impl<'a> TextProbe<'a> {
     /// geometry against a mono extent. Every query reports in block-local coordinates,
     /// so each subtracts [`Shaped::left`] from the buffer's x, or adds it back.
     fn shaped(&self) -> Option<Shaped<'_>> {
-        let shown = self.shown?;
+        if self.text.is_empty() || self.inner.is_mono() {
+            return None;
+        }
         let run = self.inner.cosmic().resident_run(self.key?)?;
         Some(Shaped {
             left: run.left,
-            lines: LineMap {
-                buffer: run.buffer,
-                shown,
-            },
+            lines: LineMap::new(run.buffer, self.text, run.cut),
         })
     }
 
@@ -350,43 +334,38 @@ struct Shaped<'a> {
 
 /// Byte offsets into a run's source text and cosmic `Cursor`s into its buffer,
 /// mapped through the buffer's own lines (split at `\n`, `\r`, `\r\n`, `\n\r`).
-/// A truncated run shapes `prefix + "…"`, so the shown text matches the source
-/// only up to [`Self::shown`]; an offset past it maps to its end.
+/// A truncated run shapes `prefix + "…"`, or `prefix + "…" + suffix` for a middle cut, so the
+/// shown text matches the source up to [`Self::shown`] and again along [`Self::suffix`]; an
+/// offset in between maps to the end of the prefix.
 #[derive(Clone, Copy, Debug)]
 struct LineMap<'a> {
     buffer: &'a cosmic_text::Buffer,
     /// Source bytes the buffer shows from the start; always a char boundary.
     shown: usize,
+    /// The source's first line kept after a middle cut's `…`.
+    suffix: Option<CutSuffix>,
 }
 
 impl<'a> LineMap<'a> {
-    /// The source bytes a truncated `buffer` shows of `text` from the start, found by walking
-    /// its lines. An untruncated buffer shows all of `text`.
-    fn scan_shown(buffer: &'a cosmic_text::Buffer, text: &str) -> usize {
-        let source = text.as_bytes();
-        let mut shown = 0;
-        'lines: for line in &buffer.lines {
-            for part in [line.text(), line.ending().as_str()] {
-                let common = part
-                    .bytes()
-                    .zip(&source[shown..])
-                    .take_while(|(a, b)| a == *b)
-                    .count();
-                shown += common;
-                if common < part.len() {
-                    break 'lines;
-                }
-            }
+    /// The map over `buffer`, whose truncating fit kept `cut` of `text`; with no cut the
+    /// buffer was set from `text` whole, its lines and endings the source's bytes in order.
+    fn new(buffer: &'a cosmic_text::Buffer, text: &str, cut: Option<TextCut>) -> Self {
+        let (shown, suffix) = cut.map_or((text.len(), None), |cut| (cut.prefix_end, cut.suffix));
+        Self {
+            buffer,
+            shown,
+            suffix,
         }
-        while !text.is_char_boundary(shown) {
-            shown -= 1;
-        }
-        shown
     }
 
     /// The cursor at `byte_offset`, clamped to what the buffer shows.
     fn cursor(&self, byte_offset: usize) -> cosmic_text::Cursor {
-        let byte_offset = byte_offset.min(self.shown);
+        let byte_offset = match self.suffix {
+            Some(suffix) if byte_offset >= suffix.src_start => {
+                suffix.buf_start + (byte_offset - suffix.src_start).min(suffix.len)
+            }
+            _ => byte_offset.min(self.shown),
+        };
         let last = self.buffer.lines.len().saturating_sub(1);
         let mut start = 0;
         for (idx, line) in self.buffer.lines.iter().enumerate() {
@@ -410,7 +389,13 @@ impl<'a> LineMap<'a> {
             .lines
             .get(cursor.line)
             .map_or(0, |line| line.text().len());
-        (start + cursor.index.min(len)).min(self.shown)
+        let byte_offset = start + cursor.index.min(len);
+        match self.suffix {
+            Some(suffix) if byte_offset >= suffix.buf_start => {
+                suffix.src_start + (byte_offset - suffix.buf_start)
+            }
+            _ => byte_offset.min(self.shown),
+        }
     }
 }
 
@@ -436,11 +421,7 @@ pub(crate) mod internals {
         text: &str,
         byte_offset: usize,
     ) -> cosmic_text::Cursor {
-        LineMap {
-            buffer,
-            shown: LineMap::scan_shown(buffer, text),
-        }
-        .cursor(byte_offset)
+        LineMap::new(buffer, text, None).cursor(byte_offset)
     }
 
     pub(crate) fn cursor_to_byte(
@@ -448,11 +429,7 @@ pub(crate) mod internals {
         text: &str,
         cursor: cosmic_text::Cursor,
     ) -> usize {
-        LineMap {
-            buffer,
-            shown: LineMap::scan_shown(buffer, text),
-        }
-        .byte(cursor)
+        LineMap::new(buffer, text, None).byte(cursor)
     }
 }
 

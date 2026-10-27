@@ -21,7 +21,7 @@ use crate::widget_core::widget::Widget;
 /// single-line label keeps its full natural width** ([`TextWrap::SingleLine`]): its
 /// min-content is the full line, so a Hug parent never shrinks it and a narrower
 /// committed width lets the line run past the slot. [`Self::text_wrap`] opts into
-/// `Truncate`, `Ellipsis`, or wrapping; widgets that should clip (`Button`,
+/// `Truncate`, `Ellipsis`, `EllipsisMiddle`, or wrapping; widgets that should clip (`Button`,
 /// `DragValue`) set `Truncate`.
 ///
 /// # Styling

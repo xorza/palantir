@@ -625,6 +625,7 @@ DragNum
 DragValue
     struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: impl Into<DragNum<'a>>) -> Self
+        pub const fn text_align(self, a: Align) -> Self
         pub const fn speed(self, speed: f64) -> Self
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
         pub const fn decimals(self, n: usize) -> Self
@@ -1581,6 +1582,7 @@ Scroll
         pub fn horizontal() -> Self
         pub fn both() -> Self
         pub fn pan_by(self, delta: Vec2) -> Self
+        pub const fn reveal(self, child: WidgetId) -> Self
         pub fn zoom_by(self, factor: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self
         pub const fn bar_mode(self, mode: BarMode) -> Self
@@ -2141,6 +2143,7 @@ TextWrap
         Scroll
         Truncate
         Ellipsis
+        EllipsisMiddle
         Wrap
         WrapWithOverflow
 

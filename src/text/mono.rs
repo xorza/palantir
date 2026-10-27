@@ -59,19 +59,13 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let line_h = key.line_height();
     let max = key.max_width().expect("a bounded resolve commits a width");
     TextExtent::inked_within(match key.fit() {
-        // A single line that fits stays whole; anything else is cut inside its first line, as
-        // the cosmic cut reads the first layout run.
-        LineFit::Clip | LineFit::Ellipsis => {
-            let whole = Lines::of(text, None);
+        // A run is cut inside its first line, as the cosmic cut reads the first layout run, and
+        // a single line that fits keeps all of it.
+        LineFit::Clip | LineFit::Ellipsis | LineFit::EllipsisMiddle => {
             let first = hard_lines(text)
                 .next()
                 .map_or(0, |line| line.chars().count());
-            let first_w = first as f32 * glyph_w;
-            if whole.count == 1 && first_w <= max {
-                Size::new(first_w, line_h)
-            } else {
-                Size::new(first_w.min(max), line_h)
-            }
+            Size::new((first as f32 * glyph_w).min(max), line_h)
         }
         LineFit::Wrap => {
             #[expect(
