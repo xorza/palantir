@@ -48,9 +48,9 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         h.frame(build);
 
         let state = *h.state::<ScrollState>(id);
-        assert_eq!(state.zoom, 1.5, "zoom at {scale}×, padding {padding}");
+        assert_eq!(state.zoom(), 1.5, "zoom at {scale}×, padding {padding}");
         assert_eq!(
-            state.offset,
+            state.offset(),
             (logical_pointer - padding) * 0.5,
             "pointer pivot at {scale}×, padding {padding}",
         );

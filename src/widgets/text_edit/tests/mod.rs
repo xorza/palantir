@@ -42,7 +42,7 @@ fn apply_key(text: &mut String, state: &mut EditState, kp: KeyPress) -> bool {
 #[derive(Debug)]
 struct FieldKeys {
     clipboard: Clipboard,
-    nav: TextNav,
+    platform: Platform,
 }
 
 impl FieldKeys {
@@ -50,14 +50,14 @@ impl FieldKeys {
     fn new(clipboard: Clipboard) -> Self {
         Self {
             clipboard,
-            nav: TextNav::new(PLATFORM),
+            platform: PLATFORM,
         }
     }
 
     fn on(platform: Platform) -> Self {
         Self {
             clipboard: Clipboard::memory(),
-            nav: TextNav::new(platform),
+            platform,
         }
     }
 
@@ -71,12 +71,12 @@ impl FieldKeys {
                 max_chars: None,
             },
         );
-        let blur = match EditAction::from_keypress(kp) {
+        let blur = match EditAction::from_keypress(kp, self.platform) {
             Some(action) => {
                 action.execute(&mut ed, &self.clipboard);
                 false
             }
-            None => apply_editor_key(&mut ed, kp, self.nav) == KeyOutcome::Blur,
+            None => apply_editor_key(&mut ed, kp, TextNav::new(self.platform)) == KeyOutcome::Blur,
         };
         ed.observe_text();
         blur
@@ -108,17 +108,6 @@ const SMALL: UVec2 = UVec2::new(200, 80);
 const WIDE: UVec2 = UVec2::new(400, 80);
 const NARROW: UVec2 = UVec2::new(300, 80);
 
-fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
-    |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            TextEdit::new(buf)
-                .id(WidgetId::from_hash("editor"))
-                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                .show(ui);
-        });
-    }
-}
-
 fn shift(key: Key) -> KeyPress {
     KeyPress::with(key, Modifiers::SHIFT)
 }
@@ -134,48 +123,75 @@ fn ctrl_shift_press(key: Key) -> KeyPress {
     kp
 }
 
-fn editor_and_button(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
-    use crate::widgets::button::Button;
-    |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            TextEdit::new(buf)
-                .id(WidgetId::from_hash("editor"))
-                .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
-                .show(ui);
-            // Not focusable: these tests press a widget a click doesn't focus, and `Button` is focusable by default.
-            Button::new()
-                .id(WidgetId::from_hash("plain"))
-                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
-                .focusable(false)
-                .show(ui);
-        });
-    }
+/// The field most tests record: one `TextEdit` in a row, with the knobs those tests turn.
+#[derive(Clone, Copy, Debug)]
+struct Field {
+    id: &'static str,
+    size: Vec2,
+    multiline: bool,
+    padding: Option<Spacing>,
+    /// A button beside the field, which a press can land on without taking focus.
+    button: bool,
 }
 
-fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) + '_ {
-    move |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            let mut e = TextEdit::new(buf)
-                .id(WidgetId::from_hash("ed"))
-                .size((Sizing::fixed(280.0), Sizing::fixed(40.0)));
-            if let Some(p) = padding {
-                e = e.padding(p);
-            }
-            e.show(ui);
-        });
-    }
-}
+impl Field {
+    /// A 180 × 40 single-line field.
+    const EDITOR: Self = Self {
+        id: "editor",
+        size: Vec2::new(180.0, 40.0),
+        multiline: false,
+        padding: None,
+        button: false,
+    };
 
-/// Multi-line flag: `Enter` inserts `\n`, paste preserves newlines, cursor navigation is 2D. Driven via `apply_key`; the show()+layout path is covered by `align_per_line::multiline_widget_right_aligns_each_line`.
-fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
-    |ui: &mut Ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            TextEdit::new(buf)
-                .id(WidgetId::from_hash("ml-ed"))
-                .multiline(true)
-                .size((Sizing::fixed(200.0), Sizing::fixed(120.0)))
-                .show(ui);
-        });
+    /// A 280 × 40 single-line field, for tests that turn its padding.
+    const PADDED: Self = Self {
+        id: "ed",
+        size: Vec2::new(280.0, 40.0),
+        ..Self::EDITOR
+    };
+
+    /// A 200 × 120 multi-line field: Enter inserts `\n`, paste keeps newlines, the caret moves in 2D.
+    const MULTILINE: Self = Self {
+        id: "ml-ed",
+        size: Vec2::new(200.0, 120.0),
+        multiline: true,
+        ..Self::EDITOR
+    };
+
+    const fn with_padding(self, padding: Option<Spacing>) -> Self {
+        Self { padding, ..self }
+    }
+
+    const fn with_button(self) -> Self {
+        Self {
+            button: true,
+            ..self
+        }
+    }
+
+    fn scene(self, buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
+        use crate::widgets::button::Button;
+        move |ui: &mut Ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                let mut field = TextEdit::new(buf)
+                    .id(WidgetId::from_hash(self.id))
+                    .multiline(self.multiline)
+                    .size((Sizing::fixed(self.size.x), Sizing::fixed(self.size.y)));
+                if let Some(p) = self.padding {
+                    field = field.padding(p);
+                }
+                field.show(ui);
+                if self.button {
+                    // Not focusable: these tests press a widget a click doesn't focus, and `Button` is focusable by default.
+                    Button::new()
+                        .id(WidgetId::from_hash("plain"))
+                        .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                        .focusable(false)
+                        .show(ui);
+                }
+            });
+        }
     }
 }
 

@@ -16,7 +16,8 @@ impl TextNav {
         Self(platform)
     }
 
-    /// The modifier that turns a horizontal arrow into a word motion.
+    /// The modifier that turns a horizontal arrow into a word motion, and Backspace or
+    /// Delete into a word delete.
     pub(super) const fn word_chord(self) -> Modifiers {
         match self.0 {
             Platform::Mac => Modifiers::ALT,

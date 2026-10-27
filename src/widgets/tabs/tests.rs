@@ -342,7 +342,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
         h.scroll_pixels(Vec2::new(20.0, 0.0));
         h.frame(build);
         assert_eq!(
-            h.state::<ScrollState>(band).offset.x,
+            h.state::<ScrollState>(band).offset().x,
             20.0,
             "{label}: wheel x"
         );
@@ -350,7 +350,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
         h.scroll_pixels(Vec2::new(10.0, 0.0));
         h.frame(build);
         assert_eq!(
-            h.state::<ScrollState>(band).offset.x,
+            h.state::<ScrollState>(band).offset().x,
             30.0,
             "{label}: Shift+wheel"
         );
@@ -358,12 +358,12 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
         h.scroll_pixels(Vec2::new(0.0, 25.0));
         h.frame(build);
         assert_eq!(
-            h.state::<ScrollState>(page).offset.y,
+            h.state::<ScrollState>(page).offset().y,
             page_y,
             "{label}: page"
         );
         assert_eq!(
-            h.state::<ScrollState>(band).offset.x,
+            h.state::<ScrollState>(band).offset().x,
             band_x,
             "{label}: band"
         );

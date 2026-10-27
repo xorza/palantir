@@ -81,14 +81,15 @@ fn zoom_config_rejects_every_invalid_boundary() {
     }
 
     // A reversed range is coerced into order rather than refused.
-    assert_eq!(ZoomConfig::new(2.0..=1.0, 1.03).range, 1.0..=2.0);
+    let reversed = ZoomConfig::new(2.0..=1.0, 1.03);
+    assert_eq!((reversed.min(), reversed.max()), (1.0, 2.0));
 }
 
 #[test]
 fn zoom_config_accepts_equal_finite_bounds_and_preserves_defaults() {
     let config = ZoomConfig::new(2.0..=2.0, 1.0);
-    assert_eq!(config.range, 2.0..=2.0);
-    assert_eq!(config.step, 1.0);
-    assert_eq!(config.modifier, ZoomModifier::Ctrl);
-    assert_eq!(config.pivot, ZoomPivot::Pointer);
+    assert_eq!((config.min(), config.max()), (2.0, 2.0));
+    assert_eq!(config.step(), 1.0);
+    assert_eq!(config.modifier(), ZoomModifier::Ctrl);
+    assert_eq!(config.pivot(), ZoomPivot::Pointer);
 }

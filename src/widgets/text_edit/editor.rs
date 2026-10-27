@@ -1,5 +1,6 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
+use crate::common::platform::PLATFORM;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::ui::Ui;
@@ -9,8 +10,9 @@ use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
-use crate::widgets::text_edit::edit_state::{
-    EditDelta, EditKind, EditParts, EditState, SelectionState,
+use crate::widgets::text_edit::edit_state::EditState;
+use crate::widgets::text_edit::history::{
+    EditDelta, EditKind, EditParts, HistoryStep, SelectionState,
 };
 use crate::widgets::text_edit::unicode::{
     next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary, prev_word_boundary,
@@ -46,12 +48,6 @@ impl From<Modifiers> for CaretMove {
             Self::Collapse
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-enum HistoryStep {
-    Undo,
-    Redo,
 }
 
 #[derive(Debug)]
@@ -99,7 +95,7 @@ impl<'a> Editor<'a> {
                 if !filter.takes_press(keypress) {
                     continue;
                 }
-                if let Some(action) = EditAction::from_keypress(keypress) {
+                if let Some(action) = EditAction::from_keypress(keypress, PLATFORM) {
                     action.execute(self, &clipboard);
                     if EditAction::MENU.iter().any(|item| item.action == action) {
                         popup.close();
@@ -232,7 +228,7 @@ impl<'a> Editor<'a> {
         if &self.text[range.clone()] == replacement {
             self.state.caret = range.start + replacement.len();
             self.state.selection = None;
-            self.state.last_edit_kind = None;
+            self.state.history.break_group();
             return;
         }
         self.ensure_history_matches();
@@ -249,7 +245,7 @@ impl<'a> Editor<'a> {
         let inserted_chars = counts_chars.then(|| replacement.chars().count());
         // Recorded first, while `removed` still borrows the live buffer, so typing
         // appends into the open undo group with no allocation.
-        self.state.record_edit(
+        self.state.history.record(
             EditParts {
                 start: range.start,
                 removed,
@@ -278,13 +274,13 @@ impl<'a> Editor<'a> {
         debug_assert!(end <= self.text.len());
         debug_assert!(self.text.is_char_boundary(delta.start));
         debug_assert!(self.text.is_char_boundary(end));
+        if let Some(count) = &mut self.state.char_count {
+            *count =
+                *count - self.text[delta.start..end].chars().count() + replacement.chars().count();
+        }
         self.text.replace_range(delta.start..end, replacement);
         self.state.caret = selection.caret;
         self.state.selection = selection.selection;
-        if self.state.char_count.is_some() {
-            self.state.char_count = Some(self.text.chars().count());
-        }
-        self.state.last_edit_kind = None;
         self.mark_local_edit();
         self.edited = true;
     }
@@ -369,9 +365,7 @@ impl<'a> Editor<'a> {
             return;
         };
         self.ensure_history_matches();
-        self.state.undo.clear();
-        self.state.redo.clear();
-        self.state.last_edit_kind = None;
+        self.state.history.clear();
         *self.text = cleaned;
         self.state.normalize(self.text);
         if self.state.char_count.is_some() {
@@ -391,7 +385,7 @@ impl<'a> Editor<'a> {
     pub(super) fn select_range(&mut self, start: usize, end: usize) {
         self.state.selection = (start != end).then_some(start);
         self.state.caret = end;
-        self.state.last_edit_kind = None;
+        self.state.history.break_group();
     }
 
     /// Move the caret to `new_caret`, extending the selection (latching the anchor
@@ -407,19 +401,12 @@ impl<'a> Editor<'a> {
         self.select_range(anchor, new_caret);
     }
 
-    pub(super) fn undo(&mut self) {
+    /// Replay the newest edit `step` reaches, if any.
+    pub(super) fn step_history(&mut self, step: HistoryStep) {
         self.ensure_history_matches();
-        if let Some(delta) = self.state.undo.pop_back() {
-            self.apply_history(&delta, HistoryStep::Undo);
-            self.state.redo.push(delta);
-        }
-    }
-
-    pub(super) fn redo(&mut self) {
-        self.ensure_history_matches();
-        if let Some(delta) = self.state.redo.pop() {
-            self.apply_history(&delta, HistoryStep::Redo);
-            self.state.undo.push_back(delta);
+        if let Some(delta) = self.state.history.take(step) {
+            self.apply_history(&delta, step);
+            self.state.history.stepped(step, delta);
         }
     }
 
@@ -430,43 +417,39 @@ impl<'a> Editor<'a> {
         self.replace_selection(text, EditKind::Typing);
     }
 
-    pub(super) fn delete_to_line_start(&mut self) {
-        let range = if let Some(range) = self.state.selection_range() {
-            range
-        } else {
+    /// Delete the live selection, or the span between the caret and `target` when none is.
+    /// The choke point every delete key reaches.
+    fn delete_toward(&mut self, target: usize) {
+        let range = self.state.selection_range().unwrap_or_else(|| {
             let caret = self.state.caret;
-            let start = self.text[..caret].rfind('\n').map_or(0, |i| i + 1);
-            start..caret
-        };
+            caret.min(target)..caret.max(target)
+        });
         if !range.is_empty() {
             self.replace_range(range, "", EditKind::Delete);
         }
     }
 
+    pub(super) fn delete_to_line_start(&mut self) {
+        let caret = self.state.caret;
+        self.delete_toward(self.text[..caret].rfind('\n').map_or(0, |i| i + 1));
+    }
+
     pub(super) fn delete_backward(&mut self) {
-        if self.state.selection.is_none() && self.state.caret == 0 {
-            return;
-        }
-        let range = if let Some(range) = self.state.selection_range() {
-            range
-        } else {
-            let prev = prev_grapheme_boundary(self.text, self.state.caret);
-            prev..self.state.caret
-        };
-        self.replace_range(range, "", EditKind::Delete);
+        self.delete_toward(prev_grapheme_boundary(self.text, self.state.caret));
     }
 
     pub(super) fn delete_forward(&mut self) {
-        if self.state.selection.is_none() && self.state.caret == self.text.len() {
-            return;
-        }
-        let range = if let Some(range) = self.state.selection_range() {
-            range
-        } else {
-            let next = next_grapheme_boundary(self.text, self.state.caret);
-            self.state.caret..next
-        };
-        self.replace_range(range, "", EditKind::Delete);
+        self.delete_toward(next_grapheme_boundary(self.text, self.state.caret));
+    }
+
+    /// Delete back to where a word-left motion lands.
+    pub(super) fn delete_word_backward(&mut self) {
+        self.delete_toward(prev_word_boundary(self.text, self.state.caret));
+    }
+
+    /// Delete forward to where a word-right motion lands.
+    pub(super) fn delete_word_forward(&mut self) {
+        self.delete_toward(next_word_boundary(self.text, self.state.caret));
     }
 
     pub(super) fn move_grapheme_left(&mut self, motion: CaretMove) {
@@ -506,7 +489,7 @@ impl<'a> Editor<'a> {
             return false;
         }
         self.state.selection = None;
-        self.state.last_edit_kind = None;
+        self.state.history.break_group();
         true
     }
 }
@@ -518,7 +501,7 @@ pub(crate) mod internals {
 
     impl Editor<'_> {
         pub(crate) fn redo_len(&self) -> usize {
-            self.state.redo.len()
+            self.state.history.redo_len()
         }
 
         pub(crate) fn observe_text(&mut self) {

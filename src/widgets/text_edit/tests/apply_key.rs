@@ -405,15 +405,35 @@ fn ctrl_home_and_end_reach_the_document_ends() {
     );
 }
 
-/// macOS line chords (Cmd is `Modifiers::ctrl`): Cmd+Right / Left go to line end / start, Cmd+Backspace deletes to line start. Elsewhere Ctrl+Arrow is the word chord and Ctrl+Backspace deletes one grapheme.
+/// The platform's line and word chords. macOS (Cmd is `Modifiers::ctrl`): Cmd+Right / Left go to
+/// line end / start, Cmd+Backspace deletes to line start, and Option+Backspace / Delete delete a
+/// word. Elsewhere Ctrl+Arrow is the word motion and Ctrl+Backspace / Delete delete a word.
 #[test]
-fn line_chords_follow_the_platform() {
-    // Carets after Ctrl+Right from 0 and Ctrl+Left from 5 in "one two", then
-    // the text left by Ctrl+Backspace after `two ` in "one\ntwo three".
+fn line_and_word_chords_follow_the_platform() {
+    let alt_press = |key| KeyPress::with(key, Modifiers::ALT);
+    // Carets after Ctrl+Right from 0 and Ctrl+Left from 5 in "one two". Then, in
+    // "one two three", what Ctrl+Backspace and Alt+Backspace leave with the caret after
+    // `two `, and Ctrl+Delete and Alt+Delete with it before `two`: a chord that is not
+    // the platform's word or line chord deletes one character.
     let cases = [
-        (Platform::Mac, 7, 0, "one\nthree"),
-        (Platform::Windows, 3, 4, "one\ntwothree"),
-        (Platform::Linux, 3, 4, "one\ntwothree"),
+        (
+            Platform::Mac,
+            7,
+            0,
+            ["three", "one three", "one wo three", "one  three"],
+        ),
+        (
+            Platform::Windows,
+            3,
+            4,
+            ["one three", "one twothree", "one  three", "one wo three"],
+        ),
+        (
+            Platform::Linux,
+            3,
+            4,
+            ["one three", "one twothree", "one  three", "one wo three"],
+        ),
     ];
     for (platform, right, left, deleted) in cases {
         let keys = FieldKeys::on(platform);
@@ -431,13 +451,43 @@ fn line_chords_follow_the_platform() {
             "{platform:?}: line start, or the word start"
         );
 
-        let mut s = String::from("one\ntwo three");
+        let chords = [
+            (8, ctrl_press(Key::Backspace)),
+            (8, alt_press(Key::Backspace)),
+            (4, ctrl_press(Key::Delete)),
+            (4, alt_press(Key::Delete)),
+        ];
+        for ((caret, chord), want) in chords.into_iter().zip(deleted) {
+            let mut s = String::from("one two three");
+            let mut state = EditState {
+                caret,
+                ..EditState::default()
+            };
+            keys.apply(&mut s, &mut state, chord);
+            assert_eq!(s, want, "{platform:?}: {chord:?} from {caret}");
+        }
+    }
+}
+
+/// Ctrl+Y redoes on Windows, beside Ctrl+Shift+Z everywhere; elsewhere it is no edit chord.
+#[test]
+fn ctrl_y_redoes_on_windows_only() {
+    for (platform, redone) in [
+        (Platform::Windows, "ab"),
+        (Platform::Mac, "a"),
+        (Platform::Linux, "a"),
+    ] {
+        let keys = FieldKeys::on(platform);
+        let mut s = String::from("a");
         let mut state = EditState {
-            caret: 8,
+            caret: 1,
             ..EditState::default()
         };
-        keys.apply(&mut s, &mut state, ctrl_press(Key::Backspace));
-        assert_eq!(s, deleted, "{platform:?}");
+        keys.apply(&mut s, &mut state, press(Key::Char('b')));
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
+        assert_eq!(s, "a", "{platform:?}: premise, the typing undone");
+        keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
+        assert_eq!(s, redone, "{platform:?}");
     }
 }
 

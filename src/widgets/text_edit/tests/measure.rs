@@ -1,5 +1,5 @@
-//! Measurement stability across focus transitions: a `Hug` editor's width must not snap to zero on focus with
-//! an empty buffer (the placeholder is recorded with a transparent brush so the leaf has content).
+//! What a field measures: an empty `Hug` editor sizes to its placeholder, focused or not, a `Fill`
+//! one shrinks below its text, and every placeholder text form measures alike.
 
 use crate::widgets::text_edit::tests::*;
 

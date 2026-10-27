@@ -8,6 +8,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
@@ -106,6 +107,27 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
         "{area:?} inside {field_rect:?}"
     );
     assert_eq!(area.size.w, caret_width);
+
+    // A narrow field typed past its right edge pans to its caret. A caller that shortens the
+    // buffer then moves the caret with no input, so one record pass both follows it back and asks
+    // for the area: at where the caret paints after the follow, inside the field.
+    let narrow = |ui: &mut Ui, buf: &mut String| {
+        TextEdit::new(buf)
+            .id(field())
+            .size((Sizing::fixed(60.0), Sizing::HUG))
+            .show(ui);
+    };
+    h.frame(|ui| narrow(ui, &mut buf));
+    h.type_text("efghijklmnop");
+    h.frame(|ui| narrow(ui, &mut buf));
+    buf.truncate(2);
+    h.frame(|ui| narrow(ui, &mut buf));
+    let area = h.ui.ime_area().expect("a focused field asks");
+    let field_rect: Rect = h.ui.response_for(field()).rect.expect("arranged");
+    assert!(
+        field_rect.contains_rect(area),
+        "{area:?} inside {field_rect:?}"
+    );
 
     h.clear_focus();
     h.frame(|ui| record(ui, &mut buf));

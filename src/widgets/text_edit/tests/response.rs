@@ -1,7 +1,7 @@
 use crate::input::keyboard::key_text::KeyText;
 use crate::internals::ui_harness::passes::Passes;
+use crate::widgets::text_edit::EditEdges;
 use crate::widgets::text_edit::edit_end::EditEnd;
-use crate::widgets::text_edit::internals::EditEdges;
 use crate::widgets::text_edit::tests::*;
 
 const EDITOR: &str = "response-editor";
@@ -230,6 +230,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
 /// stops taking it and the app steals it mid-edit; pins the hand-kept `key_class::EDIT_CHORDS`.
 #[test]
 fn every_edit_action_chord_is_edit_class() {
+    use crate::common::platform::{PLATFORM, Platform};
     use crate::input::key_class::KeyClass;
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::modifiers::Modifiers;
@@ -245,10 +246,13 @@ fn every_edit_action_chord_is_edit_class() {
         EditAction::Clear,
     ];
     let mut checked = 0;
-    for action in actions {
-        let Some(shortcut) = action.shortcut() else {
-            continue;
-        };
+    let chords = actions.into_iter().flat_map(|action| {
+        [action.shortcut(), action.alternate_shortcut(PLATFORM)]
+            .into_iter()
+            .flatten()
+            .map(move |shortcut| (action, shortcut))
+    });
+    for (action, shortcut) in chords {
         // `Shortcut` matches on the physical key, so classify the press as the router sees it.
         let press = KeyPress {
             key: shortcut.key,
@@ -270,7 +274,12 @@ fn every_edit_action_chord_is_edit_class() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 6, "six of the seven actions carry a chord");
+    let windows_redo = usize::from(PLATFORM == Platform::Windows);
+    assert_eq!(
+        checked,
+        6 + windows_redo,
+        "six of the seven actions carry a chord, and Windows redoes on Ctrl+Y too",
+    );
 }
 
 /// A focused field takes only the keys it acts on: arrows and Home/End move its caret, so an app root misses them;

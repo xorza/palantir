@@ -22,7 +22,6 @@ use crate::text::font_scope::internals::INTER;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use crate::widgets::scroll::scroll_state::ScrollState;
 use glam::UVec2;
 use glam::Vec2;
 
@@ -274,7 +273,11 @@ fn incremental_scroll_matches_full() {
     };
     let mut h = UiHarness::new(UVec2::splat(300));
     h.frame(build);
-    h.ui.with_state::<ScrollState, _>(WidgetId::from_hash("scroll"), |_, s| s.offset.y = 40.0);
+    Scroll::set_offset(
+        &mut h.ui,
+        WidgetId::from_hash("scroll"),
+        Vec2::new(0.0, 40.0),
+    );
     let rebuilds = h.engines.cascade.counters.full_rebuilds();
     h.frame(build);
 

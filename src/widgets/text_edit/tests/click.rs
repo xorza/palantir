@@ -9,13 +9,13 @@ fn typing_inserts_text_when_focused() {
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
 
     h.type_text("hi");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "hi");
 }
 
@@ -26,7 +26,7 @@ fn a_field_types_the_text_a_press_produced() {
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
 
@@ -36,7 +36,7 @@ fn a_field_types_the_text_a_press_produced() {
         physical: Key::Other,
         text: KeyText::new("^e"),
     });
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "^e", "both characters land, from the one press");
 
     h.on_input(InputEvent::KeyDown {
@@ -45,7 +45,7 @@ fn a_field_types_the_text_a_press_produced() {
         physical: Key::Other,
         text: KeyText::from_char('é'),
     });
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "^eé", "an unnamed key still types what it produced");
 }
 
@@ -56,7 +56,7 @@ fn a_command_chord_types_nothing_it_reports() {
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
 
@@ -67,7 +67,7 @@ fn a_command_chord_types_nothing_it_reports() {
         physical: Key::Char('a'),
         text: KeyText::from_char('a'),
     });
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "seed", "the chord selected, and typed nothing");
 }
 
@@ -78,7 +78,7 @@ fn keystrokes_ignored_when_not_focused() {
 
     h.key(Key::Char('x'));
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
     assert!(h.focus().is_none());
 }
@@ -89,14 +89,14 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert!(h.focus().is_none());
     assert!(!h.key(Key::Escape).repaint_requested);
     assert!(!h.key(Key::Char('s')).repaint_requested);
 
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
 
     assert_eq!(buf, "seed", "unfocused text must be discarded on arrival");
     assert_eq!(
@@ -112,12 +112,12 @@ fn escape_blurs_focus() {
     let mut buf = String::from("text");
     let id = WidgetId::from_hash("editor");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(id));
 
     h.key(Key::Escape);
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(h.focus(), None);
 }
 
@@ -127,14 +127,14 @@ fn caret_clamps_after_external_buffer_shrink() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::from("hello");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.key(Key::End);
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
 
     buf = String::from("hi");
     h.key(Key::Char('!'));
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(
         buf, "hi!",
         "clamping must keep insertion at end of shrunken buffer"
@@ -146,11 +146,11 @@ fn typed_text_inserts_at_caret_when_focused() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
 
     h.type_text("héllo");
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "héllo");
 }
 
@@ -159,12 +159,12 @@ fn pointer_state_respects_pointer_left() {
     let mut h = UiHarness::with_text(SMALL);
     let mut buf = String::new();
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.pointer_left();
     h.key(Key::Char('z'));
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "z");
 }
 
@@ -173,11 +173,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     let mut h = UiHarness::with_text(WIDE);
     let mut buf = String::new();
 
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(WidgetId::from_hash("editor")));
 
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
     assert_eq!(
         h.focus(),
@@ -186,7 +186,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     );
 
     h.key(Key::Char('x'));
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     assert_eq!(buf, "");
 }
 
@@ -196,13 +196,13 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
 
     h.key(Key::Char('x'));
-    h.frame(editor_and_button(&mut buf));
+    h.frame(Field::EDITOR.with_button().scene(&mut buf));
     assert_eq!(buf, "x");
 }
 
@@ -212,15 +212,15 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     let mut h = UiHarness::with_text(WIDE);
     let mut buf = String::from("ab");
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
     h.key(Key::End);
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
 
     h.move_to(Vec2::new(10.0, 20.0));
     h.key(Key::Char('!'));
 
-    h.frame(editor_only(&mut buf));
+    h.frame(Field::EDITOR.scene(&mut buf));
     assert_eq!(buf, "ab!");
 }
 
@@ -230,12 +230,12 @@ fn click_lands_caret_at_pressed_position() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
 
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     h.key(Key::Char('X'));
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     h.release();
 
     assert_eq!(buf, "helXlo world");
@@ -247,12 +247,12 @@ fn click_uses_overridden_padding() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello world");
 
-    h.frame(editor_at(&mut buf, pad));
+    h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
     h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
 
-    h.frame(editor_at(&mut buf, pad));
+    h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
     h.key(Key::Char('X'));
-    h.frame(editor_at(&mut buf, pad));
+    h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
     h.release();
 
     assert_eq!(buf, "hXello world");
@@ -540,10 +540,10 @@ fn a_tap_places_the_caret() {
     let mut h = UiHarness::new(NARROW);
     let mut buf = String::from("hello");
     let ed_id = WidgetId::from_hash("ed");
-    h.prime(2, editor_at(&mut buf, None));
+    h.prime(2, Field::PADDED.scene(&mut buf));
     h.set_focus(ed_id);
     h.key(Key::End);
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 5);
 
     // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
@@ -551,13 +551,13 @@ fn a_tap_places_the_caret() {
     let inner_left = h.ui.theme().text_edit.defaults.padding.as_array()[0];
     let mid = rect.size.h * 0.5;
     h.click_in(ed_id, Vec2::new(inner_left + 14.0, mid));
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
 
     // Shift held, a tap at inner.min + 30 extends from 2: selection 2..4.
     h.set_modifiers(Modifiers::SHIFT);
     h.click_in(ed_id, Vec2::new(inner_left + 30.0, mid));
-    h.frame(editor_at(&mut buf, None));
+    h.frame(Field::PADDED.scene(&mut buf));
     let edit = &h.state::<TextEditState>(ed_id).edit;
     assert_eq!(
         (edit.selection, edit.caret),

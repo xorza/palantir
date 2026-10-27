@@ -427,52 +427,6 @@ fn shift_end_paints_selection_highlight() {
 }
 
 #[test]
-fn drag_select_extends_selection() {
-    // Press at offset 1, drag to 4 selects [1..4]. Mono 8 px/char, pad-left 8: offset N is at x = 8 + 8N.
-    let mut h = UiHarness::new(NARROW);
-    let mut buf = String::from("hello");
-
-    h.frame(editor_at(&mut buf, None));
-    h.press_at(Vec2::new(16.0, 20.0));
-    h.frame(editor_at(&mut buf, None));
-    h.drag_to(Vec2::new(40.0, 20.0));
-    h.frame(editor_at(&mut buf, None));
-    h.release();
-
-    h.key(Key::Char('X'));
-    h.frame(editor_at(&mut buf, None));
-    assert_eq!(
-        buf, "hXo",
-        "drag-selected [1..4] then 'X' typed: 'h' + 'X' + 'o'"
-    );
-}
-
-#[test]
-fn click_without_drag_clears_prior_selection() {
-    // Ctrl+A then a press elsewhere collapses the selection. The focusing click is beyond DOUBLE_CLICK_RADIUS of the later press, since every press counts toward a multi-press run.
-    let mut h = UiHarness::new(NARROW);
-    let mut buf = String::from("hello");
-
-    h.frame(editor_at(&mut buf, None));
-    h.click_at(Vec2::new(60.0, 20.0));
-    h.set_modifiers(Modifiers::CTRL);
-    h.key(Key::Char('a'));
-    h.set_modifiers(Modifiers::NONE);
-    h.frame(editor_at(&mut buf, None));
-
-    h.press_at(Vec2::new(24.0, 20.0));
-    h.frame(editor_at(&mut buf, None));
-    h.release();
-
-    h.key(Key::Char('Z'));
-    h.frame(editor_at(&mut buf, None));
-    assert_eq!(
-        buf, "heZllo",
-        "click clears selection; 'Z' inserts at caret 2"
-    );
-}
-
-#[test]
 fn line_height_override_changes_caret_rect_height() {
     // Caret height tracks the theme `text` style's leading.
     use crate::shape::record::ShapeRecord;

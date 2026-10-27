@@ -285,6 +285,7 @@ fn chrome_setters_check_the_chrome() {
 fn widget_setters_check_their_kinds() {
     use crate::internals::panic_probe;
     use crate::primitives::geometry::spacing::Spacing;
+    use crate::primitives::geometry::translate_scale::TranslateScale;
     use crate::primitives::layout::anchor::Anchor;
     use crate::primitives::math::domain;
     use crate::primitives::paint::color::color_coords::ColorCoords;
@@ -302,11 +303,15 @@ fn widget_setters_check_their_kinds() {
     use crate::widgets::text_edit::TextEdit;
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
-    let length_cases: [fn(f32); 4] = [
+    let length_cases: [fn(f32); 5] = [
         |v| drop(Spinner::new().diameter(v)),
         |v| drop(Spinner::new().width(v)),
         |v| drop(Separator::horizontal().thickness(v)),
         |v| drop(Text::new("t").font_size(v)),
+        |v| {
+            let mut buf = String::new();
+            drop(TextEdit::new(&mut buf).font_size(v));
+        },
     ];
     for set in length_cases {
         set(0.0);
@@ -327,11 +332,15 @@ fn widget_setters_check_their_kinds() {
             panic_probe::assert_panics_with(domain::POSITIVE_RULE, || set(bad));
         }
     }
-    let color_cases: [fn(RgbaF32); 4] = [
+    let color_cases: [fn(RgbaF32); 5] = [
         |c| drop(Spinner::new().color(c)),
         |c| drop(Separator::horizontal().color(c)),
         |c| drop(Text::new("t").color(c)),
         |c| drop(Modal::new().backdrop(c)),
+        |c| {
+            let mut buf = String::new();
+            drop(TextEdit::new(&mut buf).color(c));
+        },
     ];
     for set in color_cases {
         set(RgbaF32::new(2.0, 0.0, 0.0, 1.0));
@@ -396,8 +405,16 @@ fn widget_setters_check_their_kinds() {
             drop(DockState::new("kinds.dock", 0_u32).with_edge_fraction(bad));
         });
     }
-    let offset: [fn(); 4] = [
+    let offset: [fn(); 5] = [
         || drop(Scroll::both().pan_by(Vec2::new(f32::NAN, 0.0))),
+        || {
+            let mut h = UiHarness::new(SURFACE);
+            Scroll::set_offset(
+                &mut h.ui,
+                WidgetId::from_hash("s"),
+                Vec2::new(0.0, f32::NAN),
+            );
+        },
         || {
             let _ = Anchor::at_point(Vec2::new(0.0, f32::INFINITY));
         },
@@ -416,6 +433,14 @@ fn widget_setters_check_their_kinds() {
     for set in offset {
         panic_probe::assert_panics_with(domain::OFFSET_RULE, set);
     }
+    panic_probe::assert_panics_with("a `Scroll` owns its descendants' transform", || {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            Scroll::vertical()
+                .transform(TranslateScale::from_scale(2.0))
+                .show(ui, |_| {});
+        });
+    });
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         let mut h = UiHarness::new(SURFACE);
         h.ui.layer(Layer::Popup)

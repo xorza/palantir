@@ -12,12 +12,6 @@ the measure-cache hit test.
 
 # Part 1: Proposal
 
-## Widgets
-
-- **Retained widget state exposes operations, not fields.** `ScrollState`
-  owns every offset and zoom write (`reveal`, `coerce_zoom`). TextEdit gets a
-  `Composition` satellite for IME and a `History` type for undo.
-
 ## Paint and geometry
 
 - **Validation happens at the setter.** Every shape setter checks its input
@@ -95,46 +89,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 15: Scroll and TextEdit
-
-Files: `src/widgets/{scroll, text_edit}/`.
-
-- [ ] **A newly disabled Scroll pans for a frame.** `scroll/mod.rs:451`,
-  `scroll/bars.rs:76-77`. Target: `self.widget.response(ui)`; fold
-  `disabled` into the bar responses. Add a disabled row to a panning test.
-- [ ] **Word delete and Ctrl+Y.** `text_edit/input_pass.rs:191-193`,
-  `action.rs:366`. Target: word delete on the platform chords; Ctrl+Y redo on
-  Windows. Change `tests/apply_key.rs:408-416`.
-- [ ] **The stored zoom outlives its config.** `scroll/mod.rs:395-402`,
-  `scroll_state.rs:196-207`. Target: `ScrollState::coerce_zoom` at the top of
-  `apply_input`; drop the dead branch.
-- [ ] **The IME rect uses the scroll offset before the caret follow.**
-  `text_edit/mod.rs:499-516`. Target: read after `state.view.update`.
-- [ ] **IME composition has no owner.** `text_edit/mod.rs:68-74, 412-514`.
-  Target: a `Composition` satellite; `preedit_cursor` becomes a local.
-- [ ] **The undo history has no type.** `edit_state.rs:18-24, 118-144`,
-  `editor.rs`. Target: `History` in `history.rs`; `char_count` exact by
-  delta.
-- [ ] **`InputPass` borrows the whole state row.** `input_pass.rs:54, 78-89`.
-  Target: `&mut EditState` and `&ViewState`.
-- [ ] **Three copies of the edit edges.** `text_edit/mod.rs:572-645`. Target:
-  `EditEdges` is the production type.
-- [ ] **`TrackPage` only renames fields.** `scroll_state.rs:131-152, 295-312`.
-- [ ] **A Scroll transform is a `debug_assert!`.** `scroll/mod.rs:124-127`.
-  Target: release `assert!` with `# Panics`.
-- [ ] **Docs.** `zoom_config.rs:9`, `scroll/mod.rs:327` (Ctrl is Cmd on
-  macOS), `text_edit/mod.rs:275` and `tests/measure.rs:1-2` (placeholder),
-  `scroll/tests/panning.rs:146`.
-- [ ] **[public] Scroll state from outside.** `Scroll::offset`, `zoom`,
-  `scroll_to`; `ScrollState::reveal` used by the caret follow.
-- [ ] **[public] `ZoomConfig` getters.** Store `min`, `max`; derive `Copy`,
-  `PartialEq`.
-- [ ] **Tests.** Setter sweep rows for `TextEdit::font_size`,
-  `TextEdit::color`, `Scroll::pan_by`, `Scroll::content_margin`. One
-  table test for soft-wrap motions. One `Field` fixture in
-  `text_edit/tests/mod.rs`; move `theme.rs:430, 451`; merge the two axis
-  panning tests.
 
 ## Batch 16: GPU resources
 

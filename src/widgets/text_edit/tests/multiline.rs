@@ -10,16 +10,16 @@ fn multiline_enter_inserts_newline() {
     h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     h.key(Key::Enter);
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     assert_eq!(buf, "abc\n");
     let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
     h.key(Key::Char('d'));
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     assert_eq!(buf, "abc\nd");
 }
 
@@ -58,10 +58,10 @@ fn multiline_paste_keeps_newlines() {
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = h.state::<TextEditState>(ed_id).clone();
     assert_eq!(st.edit.caret, buf.len());
@@ -78,10 +78,10 @@ fn multiline_selection_crosses_newline() {
     h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     h.set_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowDown);
-    h.frame(multiline_editor(&mut buf));
+    h.frame(Field::MULTILINE.scene(&mut buf));
     let st = h.state::<TextEditState>(ed_id).clone();
     assert!(
         st.edit.selection.is_some(),
@@ -93,4 +93,38 @@ fn multiline_selection_crosses_newline() {
         st.edit.caret, 8,
         "the x after `fir` lands after `se` on line 2, past the newline at byte 5",
     );
+}
+
+/// Soft-wrapped motions on three 15-letter words that each take a row of the 200 px field, whatever
+/// the face: one word fits, two do not. Rows start at bytes 0, 16 and 32, a row ends before its
+/// space, and every glyph is an `a`, so a column keeps its x from row to row.
+#[test]
+fn soft_wrapped_motions_move_by_visual_row() {
+    let word = "a".repeat(15);
+    let text = format!("{word} {word} {word}");
+    let ed_id = WidgetId::from_hash("ml-ed");
+    // (key, caret before, caret after)
+    let cases = [
+        (Key::Home, 20, 16),
+        (Key::End, 20, 31),
+        (Key::ArrowUp, 20, 4),
+        (Key::ArrowDown, 20, 36),
+        // Off the first row goes to the start, and off the last to the end.
+        (Key::ArrowUp, 4, 0),
+        (Key::ArrowDown, 36, 47),
+    ];
+    for (key, before, after) in cases {
+        let mut h = UiHarness::with_text(UVec2::new(300, 200));
+        let mut buf = text.clone();
+        h.set_focus(ed_id);
+        h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
+            st.edit.caret = before;
+        });
+        h.frame(Field::MULTILINE.scene(&mut buf));
+        h.frame(Field::MULTILINE.scene(&mut buf));
+        h.key(key);
+        h.frame(Field::MULTILINE.scene(&mut buf));
+        let caret = h.state::<TextEditState>(ed_id).edit.caret;
+        assert_eq!(caret, after, "{key:?} from {before}");
+    }
 }
