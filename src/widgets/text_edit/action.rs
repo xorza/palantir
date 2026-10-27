@@ -1,7 +1,6 @@
 //! Host-backed editing actions shared by keyboard and menu dispatch.
 
 use crate::common::clipboard::Clipboard;
-use crate::common::platform::Platform;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
 use crate::widgets::text_edit::editor::Editor;
@@ -79,15 +78,6 @@ impl EditAction {
         }
     }
 
-    /// The chord a platform binds beside [`Self::shortcut`], which the menu does not show:
-    /// Ctrl+Y redoes on Windows, as its text fields do.
-    pub(super) const fn alternate_shortcut(self, platform: Platform) -> Option<Shortcut> {
-        match (self, platform) {
-            (Self::Redo, Platform::Windows) => Some(Shortcut::ctrl('Y')),
-            _ => None,
-        }
-    }
-
     /// Every variant, so [`Self::from_keypress`] scans one list. Bound chords are [`Self::shortcut`]'s business alone: an unbound action returns `None` and never matches, keeping a second hand-curated subset out.
     const ALL: [Self; 7] = [
         Self::Undo,
@@ -99,13 +89,11 @@ impl EditAction {
         Self::Clear,
     ];
 
-    /// The action `keypress` names on `platform`, through either of its chords.
-    pub(super) fn from_keypress(keypress: KeyPress, platform: Platform) -> Option<Self> {
+    pub(super) fn from_keypress(keypress: KeyPress) -> Option<Self> {
         Self::ALL.into_iter().find(|action| {
-            [action.shortcut(), action.alternate_shortcut(platform)]
-                .into_iter()
-                .flatten()
-                .any(|shortcut| shortcut.matches(keypress))
+            action
+                .shortcut()
+                .is_some_and(|shortcut| shortcut.matches(keypress))
         })
     }
 

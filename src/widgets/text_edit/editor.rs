@@ -1,6 +1,5 @@
 //! One frame's semantic editing session over the host-owned buffer.
 
-use crate::common::platform::PLATFORM;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::ui::Ui;
@@ -95,7 +94,7 @@ impl<'a> Editor<'a> {
                 if !filter.takes_press(keypress) {
                     continue;
                 }
-                if let Some(action) = EditAction::from_keypress(keypress, PLATFORM) {
+                if let Some(action) = EditAction::from_keypress(keypress) {
                     action.execute(self, &clipboard);
                     if EditAction::MENU.iter().any(|item| item.action == action) {
                         popup.close();
