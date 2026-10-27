@@ -9,6 +9,7 @@ use crate::common::tracy;
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::submission::Submission;
 use crate::gpu::frame::submission::SubmissionTargets;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
@@ -35,6 +36,7 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::collections::VecDeque;
+use std::thread;
 use std::time::Duration;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
@@ -304,6 +306,24 @@ impl WindowDriver {
             app,
         );
         self.finish_cpu_frame(frontend, report)
+    }
+
+    /// Block until every screenshot on its way back has mapped, so the next frames land them.
+    ///
+    /// A wait for the device runs the map callbacks of the copies it finished, unless another
+    /// thread's poll of the same device collected them first: wgpu then runs them on that thread,
+    /// after its own wait, and this one returns before they ran. So the wait repeats until no
+    /// copy is pending.
+    pub(super) fn wait_for_captures(&self, gpu: &Gpu) {
+        gpu.wait();
+        while self
+            .captures
+            .iter()
+            .any(|pending| pending.capture.is_pending())
+        {
+            thread::yield_now();
+            gpu.wait();
+        }
     }
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is

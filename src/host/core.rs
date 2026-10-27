@@ -142,10 +142,4 @@ impl HostCore {
         self.backend.retire_render_owner(driver.render_owner);
         drop(driver);
     }
-
-    /// Block until the device has finished every submitted frame, so a screenshot it copies
-    /// lands in the next frame.
-    pub(super) fn wait_for_gpu(&self) {
-        self.gpu().wait();
-    }
 }

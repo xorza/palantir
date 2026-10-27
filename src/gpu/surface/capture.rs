@@ -138,6 +138,13 @@ impl Capture {
         }
     }
 
+    /// Whether the copy's map callback has yet to run. A lost device runs it too, with a failure.
+    pub(crate) fn is_pending(&self) -> bool {
+        self.staging
+            .as_ref()
+            .is_some_and(|staging| staging.state.load(Ordering::Acquire) == MAP_PENDING)
+    }
+
     /// The pixels, once the device has finished the copy and a poll ran its map callback; `None`
     /// before that.
     ///
@@ -174,16 +181,34 @@ impl Capture {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::surface::capture::{Capture, MAP_PENDING, Staging};
+    use crate::gpu::surface::capture::{Capture, MAP_DONE, MAP_PENDING, Staging};
     use glam::UVec2;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicU8;
+    use std::sync::atomic::{AtomicU8, Ordering};
+    use std::thread;
+    use std::time::Duration;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(device: &wgpu::Device) -> Self {
+            Self::with_state(device, Arc::new(AtomicU8::new(MAP_PENDING)))
+        }
+
+        /// A capture whose map callback another thread runs `delay` from now, as one a poll on
+        /// that thread collected.
+        pub(crate) fn mapped_elsewhere_after(device: &wgpu::Device, delay: Duration) -> Self {
+            let state = Arc::new(AtomicU8::new(MAP_PENDING));
+            let mapped = Arc::clone(&state);
+            thread::spawn(move || {
+                thread::sleep(delay);
+                mapped.store(MAP_DONE, Ordering::Release);
+            });
+            Self::with_state(device, state)
+        }
+
+        fn with_state(device: &wgpu::Device, state: Arc<AtomicU8>) -> Self {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.capture.never_landing"),
+                label: Some("palantir.capture.test"),
                 size: u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
@@ -192,7 +217,7 @@ pub(crate) mod internals {
                 staging: Some(Staging {
                     buffer,
                     padded_row: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
-                    state: Arc::new(AtomicU8::new(MAP_PENDING)),
+                    state,
                 }),
                 size: UVec2::ONE,
             }
