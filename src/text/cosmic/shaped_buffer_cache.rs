@@ -12,6 +12,7 @@
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
 use crate::text::cosmic::counters::CacheCounters;
+use crate::text::cosmic::text_cut::TextCut;
 use crate::text::key::TextShapeKey;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use cosmic_text::Buffer;
@@ -55,6 +56,7 @@ pub(super) struct ShapedBuffer {
     pub(super) buffer: Buffer,
     pub(super) extent: CachedExtent,
     pub(super) left: f32,
+    pub(super) cut: Option<TextCut>,
 }
 
 /// A resident shaped buffer with the x its glyph block starts at.
@@ -62,6 +64,8 @@ pub(super) struct ShapedBuffer {
 pub(crate) struct ShapedRun<'a> {
     pub(crate) buffer: &'a Buffer,
     pub(crate) left: f32,
+    /// The source bytes the buffer shows, when a truncating fit cut it.
+    pub(crate) cut: Option<TextCut>,
 }
 
 /// One shaped `Buffer` per [`TextShapeKey`], on a two-tier age window: protected is
@@ -117,6 +121,7 @@ impl ShapedBufferCache {
         self.entries.get(&key).map(|e| ShapedRun {
             buffer: &e.buffer,
             left: e.left,
+            cut: e.cut,
         })
     }
 
@@ -144,6 +149,7 @@ impl ShapedBufferCache {
             buffer,
             extent,
             left,
+            cut,
         } = shaped;
         // Counted here, not per `shape_until_scroll`: one cached run is one tally even if
         // the truncation back-off reshapes several times. The ellipsis probe isn't counted.
@@ -156,6 +162,7 @@ impl ShapedBufferCache {
                 buffer,
                 extent,
                 left,
+                cut,
                 dies_at,
                 ticket_seq,
             },

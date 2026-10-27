@@ -60,7 +60,9 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
     let unbroken_w = chars * glyph_w;
     TextExtent::inked_within(match key.fit() {
         // One line capped at the width, matching the cosmic cut.
-        LineFit::Clip | LineFit::Ellipsis => Size::new(unbroken_w.min(max), line_h),
+        LineFit::Clip | LineFit::Ellipsis | LineFit::EllipsisMiddle => {
+            Size::new(unbroken_w.min(max), line_h)
+        }
         // Wrapping is approximated by character-count division (8 px/char at 16 px).
         LineFit::Wrap => {
             let per_line = (max / glyph_w).floor().max(1.0);

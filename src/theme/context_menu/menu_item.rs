@@ -21,7 +21,7 @@ pub struct MenuItemTheme {
     /// Four-state row look.
     #[serde(flatten)]
     pub looks: StatefulLook,
-    /// Shortcut hint color.
+    /// Shortcut hint color on a live row; a disabled row's hint takes its label's ink.
     pub shortcut: RgbaF32,
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

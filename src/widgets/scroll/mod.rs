@@ -183,6 +183,7 @@ pub struct Scroll<'a> {
     content_margin: Spacing,
     pan_request: Vec2,
     zoom_request: ZoomFactor,
+    reveal: Option<WidgetId>,
 }
 
 impl<'a> Scroll<'a> {
@@ -216,6 +217,7 @@ impl<'a> Scroll<'a> {
             content_margin: Spacing::default(),
             pan_request: Vec2::ZERO,
             zoom_request: ZoomFactor::ONE,
+            reveal: None,
         }
     }
 
@@ -229,6 +231,16 @@ impl<'a> Scroll<'a> {
     #[track_caller]
     pub fn pan_by(mut self, delta: Vec2) -> Self {
         self.pan_request += vec2::offset(delta);
+        self
+    }
+
+    /// Pan, on the frame this is shown, by the least distance that brings `child`'s last-frame
+    /// rect into the viewport on each panned axis, as the web's `scrollIntoView({block:
+    /// "nearest"})` and Qt's `ensureWidgetVisible` do: none while it is in view, and its start
+    /// at the viewport's start when it is larger. Goes through [`Self::pan_by`]'s clamp, and
+    /// does nothing before `child` has a rect.
+    pub const fn reveal(mut self, child: WidgetId) -> Self {
+        self.reveal = Some(child);
         self
     }
 
@@ -459,6 +471,28 @@ impl<'a> Scroll<'a> {
         let scroll_id = Self::viewport_id(id);
 
         let geometry = self.measure(ui, id, &response);
+        if let Some(child) = self.reveal
+            && let (Some(outer), Some(rect)) =
+                (response.layout_rect, ui.response_for(child).layout_rect)
+        {
+            // Both rects are pre-transform, so the child's place in the content is its offset
+            // from the content origin, scaled by the zoom the frame's offset is measured at.
+            let ScrollbarsDef { offset, zoom, .. } = geometry.bars;
+            let content = (rect.min - outer.min - geometry.content_origin()) * zoom;
+            let viewport = geometry.bounds().viewport;
+            let along = |axis: Axis| {
+                if !self.axes.pans(axis) {
+                    return 0.0;
+                }
+                reveal_pan(
+                    axis.main_v(content),
+                    axis.main(rect.size) * zoom,
+                    axis.main_v(offset),
+                    axis.main(viewport),
+                )
+            };
+            self.pan_request += Vec2::new(along(Axis::X), along(Axis::Y));
+        }
         let input = self.read_input(ui, &response);
         let bars = (self.bar_mode != BarMode::Hidden)
             .then(|| Bars::read(ui, &snapshot, self.bars_theme(ui)));
@@ -569,6 +603,20 @@ impl Scroll<'_> {
     /// that does not zoom.
     pub fn zoom(ui: &Ui, id: WidgetId) -> f32 {
         ui.state::<ScrollState>(id).map_or(1.0, ScrollState::zoom)
+    }
+}
+
+/// The pan on one axis that brings a span starting at `start`, `len` long, into a view at
+/// `offset`, `view` long: none while it is in view, and its start at the view's when it is
+/// larger.
+fn reveal_pan(start: f32, len: f32, offset: f32, view: f32) -> f32 {
+    let end = start + len;
+    if start < offset || len > view {
+        start - offset
+    } else if end > offset + view {
+        end - (offset + view)
+    } else {
+        0.0
     }
 }
 

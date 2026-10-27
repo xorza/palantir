@@ -349,6 +349,120 @@ fn a_truncated_run_hits_inside_its_kept_prefix() {
     );
 }
 
+/// A middle cut shapes `prefix…suffix`, and a probe maps both kept ends to their source bytes:
+/// a caret on a suffix byte lands on the shaped suffix and a hit there answers that byte, while
+/// a byte the cut dropped sits at the end of the prefix, as one past a trailing cut does.
+#[test]
+fn a_middle_cut_run_maps_its_kept_suffix_to_the_source() {
+    let m = TextShaper::new();
+    let text = "DeepSNR_weights_v2_final.onnx\nsecond line";
+    let font = ui_shape(16.0).font;
+    let run = TextRun {
+        text,
+        font,
+        wrap: TextWrap::EllipsisMiddle,
+        align: Align::LEFT,
+        max_width: Some(120.0),
+    };
+    // One probe at a time: each holds the shaper's borrow.
+    let shown = m.layout(&run).buffer_for_test().unwrap().lines[0]
+        .text()
+        .to_owned();
+    // The cut shaped on its own: the same glyphs at the same advances.
+    let cut_end = m
+        .layout(&TextRun {
+            text: &shown,
+            font,
+            wrap: TextWrap::SingleLine,
+            align: Align::LEFT,
+            max_width: None,
+        })
+        .caret_at(shown.len())
+        .x;
+    let (prefix, suffix) = shown.split_once('\u{2026}').expect("premise: a middle cut");
+    let line_end = text.find('\n').unwrap();
+    let suffix_start = line_end - suffix.len();
+    assert_eq!(&text[suffix_start..line_end], suffix, "premise: {shown:?}");
+    assert!(
+        prefix.len() < suffix_start,
+        "premise: the cut dropped bytes"
+    );
+
+    let probe = m.layout(&run);
+    assert_eq!(
+        probe.caret_at(line_end).x,
+        cut_end,
+        "the line's end is the cut's end"
+    );
+    assert_eq!(probe.byte_at(probe.size().w + 2.0, 5.0), line_end);
+    for byte in suffix_start..line_end {
+        let caret = probe.caret_at(byte).x;
+        let next = probe.caret_at(byte + 1).x;
+        assert!(caret < next, "byte {byte} advances: {caret} then {next}");
+        assert_eq!(
+            probe.byte_at(f32::midpoint(caret, next) - 0.25, 5.0),
+            byte,
+            "byte {byte}"
+        );
+    }
+    let dropped = usize::midpoint(prefix.len(), suffix_start);
+    assert_eq!(
+        probe.caret_at(dropped).x,
+        probe.caret_at(prefix.len()).x,
+        "a dropped byte sits at the cut"
+    );
+}
+
+/// The probe maps through the cut the shaper recorded, not through a comparison of the two
+/// texts: a source made of `…` matches the marker wherever the cut falls, and its kept
+/// `.onnx` still maps back to the source's last bytes.
+#[test]
+fn a_middle_cut_of_ellipses_maps_by_the_recorded_cut() {
+    let m = TextShaper::new();
+    let text = format!("{}.onnx", "\u{2026}".repeat(30));
+    let font = ui_shape(16.0).font;
+    let run = TextRun {
+        text: &text,
+        font,
+        wrap: TextWrap::EllipsisMiddle,
+        align: Align::LEFT,
+        max_width: Some(120.0),
+    };
+    let shown = m.layout(&run).buffer_for_test().unwrap().lines[0]
+        .text()
+        .to_owned();
+    let kept_end = &text[text.len() - ".onnx".len()..];
+    assert!(
+        shown.len() < text.len() && shown.ends_with(kept_end),
+        "premise: the cut keeps the extension, {shown:?}"
+    );
+    let cut_end = m
+        .layout(&TextRun {
+            text: &shown,
+            font,
+            wrap: TextWrap::SingleLine,
+            align: Align::LEFT,
+            max_width: None,
+        })
+        .caret_at(shown.len())
+        .x;
+    let probe = m.layout(&run);
+    assert_eq!(
+        probe.caret_at(text.len()).x,
+        cut_end,
+        "the source's end is the cut's end"
+    );
+    for byte in text.len() - ".onnx".len()..text.len() {
+        let caret = probe.caret_at(byte).x;
+        let next = probe.caret_at(byte + 1).x;
+        assert_eq!(
+            probe.byte_at(f32::midpoint(caret, next) - 0.25, 5.0),
+            byte,
+            "byte {byte}"
+        );
+    }
+}
+
 /// Two-line buffer: the line-1 caret sits one line (16 × 1.2 = 19.2 px,
 /// snapped to round(19.2 × 64) / 64) below line 0, pinning multi-line routing
 /// through cosmic's layout_runs.
