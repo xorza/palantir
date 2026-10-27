@@ -39,8 +39,8 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.groups.is_empty());
 
     assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 1);
-    assert!(h.engines.damage.prev.is_empty());
-    assert!(h.engines.damage.counters.dirty().is_empty());
+    assert!(h.engines.damage.prev().is_empty());
+    assert!(h.engines.damage.counters().dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -55,7 +55,7 @@ fn empty_then_populated_frame() {
     });
     assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
-    assert_eq!(h.engines.damage.prev.len(), 1);
+    assert_eq!(h.engines.damage.prev().len(), 1);
 }
 
 /// Pin: `Ui::frame` panics if `display.scale_factor()` is below `EPS`.

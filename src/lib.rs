@@ -136,15 +136,12 @@ pub(crate) mod window;
 #[cfg(feature = "golden")]
 pub mod golden;
 
-/// GPU pass-timing and pipeline-statistics handles; clones share the backend's
-/// `GpuPassStats`.
 pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 
-/// The `wgpu` Palantir was built against. Re-exported because the surface is not
-/// wgpu-free: [`GpuPaint`] hands out a `Device` and `CommandEncoder`, [`Gpu`] is
-/// built from and hands out a `Device` and `Queue`, and [`RenderTarget`] borrows a
-/// `Texture`. A consumer's own `wgpu` must match this version exactly or these types go
-/// foreign.
+// Re-exported because the surface is not wgpu-free: `GpuPaint` hands out a `Device` and
+// `CommandEncoder`, `Gpu` is built from and hands out a `Device` and `Queue`, and `RenderTarget`
+// borrows a `Texture`. A consumer's own `wgpu` must match this version exactly or these types go
+// foreign.
 pub use wgpu;
 
 /// Format text straight into the frame's record store with no `String`:
@@ -257,8 +254,6 @@ pub use common::clipboard::{Clipboard, ClipboardUnavailable};
 pub use common::platform::{PLATFORM, Platform};
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
-/// The application's scale factor, multiplied onto the platform's. Written through
-/// [`Ui::set_user_scale`](crate::Ui::set_user_scale).
 pub use display::user_scale::UserScale;
 pub use gpu::device::device_features::DeviceFeatures;
 pub use gpu::device::device_requirements::DeviceRequirements;
@@ -271,11 +266,7 @@ pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;
-/// One window an app runs in with no desktop: an [`OffscreenHost`] and the texture it
-/// renders into, so a driver of the app need not name wgpu.
 pub use host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
-/// The headless render-to-texture host: renders a `Ui` to a caller-supplied
-/// `wgpu::Texture` (screenshots, thumbnails). Also backs the visual harness.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
 pub use host::winit::{
@@ -284,15 +275,11 @@ pub use host::winit::{
     frame_summary::FrameSummary,
     handle::HostHandle,
 };
-/// The event a host feeds a `Ui`; toolkit-independent (see
-/// [`OffscreenHost::on_input`]).
 pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
 pub use input::interaction::button_phase::ButtonPhase;
 pub use input::interaction::button_state::ButtonState;
 pub use input::interaction::drag::Drag;
-/// The verdict [`OffscreenHost::on_input`] reads back: whether an event asks for a
-/// repaint.
 pub use input::interaction::input_delta::InputDelta;
 pub use input::interaction::pointer_action::PointerAction;
 pub use input::interaction::pointer_edge::PointerEdge;
@@ -413,7 +400,6 @@ pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;
-pub use ui::screenshot::{Screenshot, ScreenshotId};
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::OverlayResponse;
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
@@ -473,6 +459,7 @@ pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::tooltip::TooltipResponse;
 pub use window::cursor_icon::CursorIcon;
+pub use window::screenshot::{Screenshot, ScreenshotId};
 pub use window::vsync::Vsync;
 pub use window::window_config::WindowConfig;
 pub use window::window_geometry::WindowGeometry;

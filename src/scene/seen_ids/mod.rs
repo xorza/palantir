@@ -202,9 +202,19 @@ pub(crate) struct SeenIds {
     /// them. Ids `prev` holds stay out (the diff reports them), keeping this empty on
     /// a settling second pass.
     discarded: WidgetIdSet,
+    /// Whether the cascade the frame reads is the one last painted, so an endpoint of
+    /// `prev` names a row of it: set by [`Self::rollover`], cleared by
+    /// [`Self::cascade_ran`] when a record pass runs the cascade over this frame's tree.
+    cascade_paired: bool,
 }
 
 impl SeenIds {
+    /// The cascade ran over this frame's tree, so `prev`'s endpoints no longer name its rows
+    /// until [`Self::rollover`] makes this frame the last painted one.
+    pub(crate) const fn cascade_ran(&mut self) {
+        self.cascade_paired = false;
+    }
+
     /// Reset per-frame state at the top of a record pass. `prev` is untouched, since a
     /// discarded pass never reaches `rollover`. A non-empty `cur` here is a discarded
     /// pass: ids `prev` has never seen move to `discarded`.
@@ -241,12 +251,14 @@ impl SeenIds {
         entry.slot.endpoint()
     }
 
-    /// Where the last painted frame recorded `id`, when known without a probe (the
-    /// newest entry of a pass in step, the usual case). Otherwise [`LastFrame::Unknown`].
+    /// Where the last painted frame recorded `id`, in the cascade that frame painted, when
+    /// known without a probe (the newest entry of a pass in step, the usual case). Otherwise
+    /// [`LastFrame::Unknown`], also while the cascade is this frame's.
     #[inline]
     pub(crate) fn last_frame_endpoint(&self, id: WidgetId) -> LastFrame {
         let newest = self.cur.entries.len().wrapping_sub(1);
-        if self.split.is_some()
+        if !self.cascade_paired
+            || self.split.is_some()
             || self
                 .cur
                 .entries
@@ -498,6 +510,7 @@ impl SeenIds {
     /// Populate `self.removed` with widgets in `prev` but not `cur`, then swap. Returns
     /// a borrow of `self.removed`, which stays populated until the next `rollover`.
     pub(crate) fn rollover(&mut self) -> &WidgetIdSet {
+        self.cascade_paired = true;
         self.removed.clear();
         let matched = self.split.unwrap_or(self.cur.entries.len());
         for (at, last) in self.prev.entries.iter().enumerate() {

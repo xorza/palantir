@@ -32,7 +32,7 @@ pub enum FramePaint {
 /// the next one.
 #[derive(Debug)]
 pub struct FrameReport {
-    /// `true` when an animation tick this frame hasn't settled (set by `Ui::animate`); hosts request a redraw after present.
+    /// Whether another frame is owed after this one: an animation still moving, a widget or the app that asked ([`Ui::request_repaint`](crate::Ui::request_repaint)), a screenshot that landed or input held for the next frame. A host requests a redraw after present.
     pub repaint_requested: bool,
     /// Absolute Ui-time deadline at which the host should wake and run another frame; `None` for no scheduled wake. Set by [`crate::Ui::request_repaint_after`].
     pub repaint_after: Option<Duration>,

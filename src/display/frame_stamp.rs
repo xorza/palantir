@@ -4,7 +4,7 @@ use crate::display::Display;
 use std::time::Duration;
 
 /// Per-frame window-driver inputs: monotonic `time` and the active [`Display`]. One struct so `Ui` retains one `Option<FrameStamp>`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct FrameStamp {
     pub(crate) display: Display,
     pub(crate) time: Duration,

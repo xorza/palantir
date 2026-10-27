@@ -680,7 +680,7 @@ pub(crate) mod internals {
         /// Collapse this frame's raw damage rects as `DamageEngine::finish_region` does.
         pub(crate) fn collapsed_damage(&self) -> CollapsedDamage {
             DamageRegion::collapse_from(
-                &self.engines.damage.raw_rects,
+                self.engines.damage.raw_rects(),
                 DEFAULT_PASS_BUDGET_PX,
                 self.ui.display().logical_rect(),
             )

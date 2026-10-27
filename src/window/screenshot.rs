@@ -9,7 +9,7 @@ use crate::primitives::paint::image::Image;
 /// the frame painted it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Screenshot {
-    image: Option<Image>,
+    image: Image,
     scale: f32,
     region: Rect,
     id: ScreenshotId,
@@ -39,14 +39,8 @@ impl ScreenshotId {
 }
 
 impl Screenshot {
-    /// `image` of the logical `region`, taken at `scale`, answering the ask `id`; `None` for an
-    /// empty region.
-    pub(crate) const fn new(
-        image: Option<Image>,
-        scale: f32,
-        region: Rect,
-        id: ScreenshotId,
-    ) -> Self {
+    /// `image` of the logical `region`, taken at `scale`, answering the ask `id`.
+    pub(crate) const fn new(image: Image, scale: f32, region: Rect, id: ScreenshotId) -> Self {
         Self {
             image,
             scale,
@@ -60,10 +54,9 @@ impl Screenshot {
         self.id
     }
 
-    /// The pixels as the frame painted them, one texel per physical pixel; `None` when the region
-    /// was empty and painted nothing.
-    pub const fn image(&self) -> Option<&Image> {
-        self.image.as_ref()
+    /// The pixels as the frame painted them, one texel per physical pixel.
+    pub const fn image(&self) -> &Image {
+        &self.image
     }
 
     /// Physical pixels per logical pixel when the frame was painted.

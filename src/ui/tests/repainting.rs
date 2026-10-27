@@ -102,7 +102,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         "FrameReport must surface the earliest pending wake",
     );
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes().len(),
         2,
         "both distinct deadlines stay queued"
     );
@@ -113,11 +113,11 @@ fn request_repaint_after_queues_distinct_deadlines() {
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
-    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
+    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 1);
 
     let report = h.at(Duration::from_secs_f32(1.5)).frame(|_| {});
     assert_eq!(report.repaint_after, None);
-    assert!(h.ui.frame_runtime.repaint_wakes.is_empty());
+    assert!(h.ui.frame_runtime.repaint_wakes().is_empty());
 }
 
 /// Re-requesting a queued deadline in one frame is a no-op. Near-duplicates within `DEFAULT_REPAINT_COALESCE_DT` (1/120 s) collapse onto the later wake; those beyond it stay distinct.
@@ -131,7 +131,7 @@ fn request_repaint_after_dedups_within_frame() {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
     });
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes().len(),
         1,
         "exact duplicate deadlines collapse to one entry",
     );
@@ -146,7 +146,7 @@ fn request_repaint_after_dedups_within_frame() {
     });
     let deadlines: Vec<Duration> =
         h.ui.frame_runtime
-            .repaint_wakes
+            .repaint_wakes()
             .iter()
             .map(|w| w.deadline)
             .collect();
@@ -173,7 +173,7 @@ fn coalesce_floor_follows_refresh_rate() {
     let mut h = UiHarness::new(SURFACE);
     schedule_pair(&mut h);
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes().len(),
         2,
         "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
@@ -181,12 +181,12 @@ fn coalesce_floor_follows_refresh_rate() {
     let mut h = UiHarness::new(SURFACE).refresh_millihertz(60_000);
     schedule_pair(&mut h);
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes.len(),
+        h.ui.frame_runtime.repaint_wakes().len(),
         1,
         "60 Hz floor: 12 ms-apart wakes collapse",
     );
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes[0].deadline,
+        h.ui.frame_runtime.repaint_wakes()[0].deadline,
         Duration::from_millis(512),
         "the later deadline survives the collapse",
     );
@@ -201,10 +201,10 @@ fn request_repaint_after_drains_fired_entries() {
         ui.request_repaint_after(Duration::from_secs_f32(1.0));
         ui.request_repaint_after(Duration::from_secs_f32(2.0));
     });
-    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 3);
+    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 3);
 
     let report = h.at(Duration::from_secs_f32(1.0)).frame(|_| {});
-    assert_eq!(h.ui.frame_runtime.repaint_wakes.len(), 1);
+    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 

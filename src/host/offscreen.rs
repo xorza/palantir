@@ -499,9 +499,7 @@ mod tests {
                 .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
                 .show(ui);
             if ask {
-                asked.set(Some(
-                    ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0))),
-                ));
+                asked.set(ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0))));
             }
         };
 
@@ -525,9 +523,37 @@ mod tests {
             .screenshot_taken(asked.get().unwrap())
             .expect("the carried request lands once the device finishes its copy");
         assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
-        let image = shot.image().unwrap();
+        let image = shot.image();
         assert_eq!(image.size(), UVec2::new(12, 14));
         let crop = imageops::crop_imm(&target, 20, 10, 12, 14).to_image();
         assert_eq!(image.pixels, crop.into_raw());
+    }
+
+    /// A carried request whose region the window shrank wholly past has no pixel to copy: the
+    /// frame that resolves it copies nothing, and no image lands. (40, 30) + 10 × 10 is inside
+    /// 64 × 48 and outside 32 × 24.
+    #[test]
+    fn a_carried_request_the_window_shrank_past_lands_nothing() {
+        let gpu = headless_test_gpu();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .shaper(TextShaper::test_mono())
+            .build();
+        let asked = Cell::new(None);
+        let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
+        let spec = host.spec(large.as_target(), 1.0);
+        let mut asking = RecordApp::new(|ui: &mut Ui| {
+            asked.set(ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0))));
+        });
+        let _ = host.core.record(&mut host.driver, spec, &mut asking);
+        let id = asked
+            .get()
+            .expect("the region has pixels in the large window");
+
+        let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
+        let mut still = RecordApp::new(|_: &mut Ui| {});
+        host.frame(small.as_target(), 1.0, &mut still);
+        host.wait_for_gpu();
+        host.frame(small.as_target(), 1.0, &mut still);
+        assert!(host.ui().screenshot_taken(id).is_none());
     }
 }

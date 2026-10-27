@@ -10,6 +10,7 @@ use crate::input::policy::{InputPolicy, InputSignal};
 use crate::ui::frame_runtime::FrameClassifyInput;
 use crate::ui::frame_runtime::FramePlan;
 use crate::ui::frame_runtime::FrameRuntime;
+use crate::ui::frame_runtime::RecordBaseline;
 use crate::ui::frame_runtime::wake::WakeReasons;
 
 #[derive(Clone, Copy, Debug)]
@@ -23,8 +24,16 @@ struct Case {
     input_policy: InputPolicy,
     input_signal: InputSignal,
     close_requested: bool,
+    /// What the retained tree was recorded under, against `BASELINE` this frame.
+    recorded: Option<RecordBaseline>,
     expected: FramePlan,
 }
+
+/// The baseline every case's frame runs under.
+const BASELINE: RecordBaseline = RecordBaseline {
+    theme_epoch: 3,
+    font_epoch: 7,
+};
 
 /// A warm frame with only an animation wake pending paints without recording.
 const QUIET: Case = Case {
@@ -37,6 +46,7 @@ const QUIET: Case = Case {
     input_policy: InputPolicy::OnDelta,
     input_signal: InputSignal::None,
     close_requested: false,
+    recorded: Some(BASELINE),
     expected: FramePlan::PaintOnly,
 };
 
@@ -108,6 +118,28 @@ fn frame_classification_covers_external_entry_facts() {
             ..QUIET
         },
         Case {
+            label: "theme swapped since the record",
+            recorded: Some(RecordBaseline {
+                theme_epoch: 2,
+                ..BASELINE
+            }),
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Prev,
+            },
+            ..QUIET
+        },
+        Case {
+            label: "font loaded since the record",
+            recorded: Some(RecordBaseline {
+                font_epoch: 6,
+                ..BASELINE
+            }),
+            expected: FramePlan::FullRecord {
+                base: DamageBase::Prev,
+            },
+            ..QUIET
+        },
+        Case {
             label: "close request",
             close_requested: true,
             expected: FramePlan::FullRecord {
@@ -125,11 +157,12 @@ fn frame_classification_covers_external_entry_facts() {
             base_display
         };
         let mut runtime = FrameRuntime {
-            time: Duration::from_millis(10),
+            stamp: FrameStamp::new(Display::default(), Duration::from_millis(10)),
             prev_stamp: case
                 .prev
                 .then_some(FrameStamp::new(base_display, Duration::ZERO)),
             repaint_requested: case.repaint_requested,
+            recorded: case.recorded,
             ..FrameRuntime::default()
         };
         if case.wake != WakeReasons::default() {
@@ -138,6 +171,7 @@ fn frame_classification_covers_external_entry_facts() {
 
         let actual = runtime.take_frame_plan(FrameClassifyInput {
             display,
+            record_baseline: BASELINE,
             damage_baseline_valid: case.damage_baseline_valid,
             input_policy: case.input_policy,
             input_signal: case.input_signal,
@@ -145,6 +179,14 @@ fn frame_classification_covers_external_entry_facts() {
         });
 
         assert_eq!(actual, case.expected, "{}", case.label);
+        if actual != FramePlan::PaintOnly {
+            assert_eq!(
+                runtime.recorded,
+                Some(BASELINE),
+                "{}: a record adopts the baseline",
+                case.label
+            );
+        }
     }
 }
 

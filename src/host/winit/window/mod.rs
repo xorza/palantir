@@ -30,7 +30,7 @@ use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
-use crate::window::window_frame_state::WindowFrameState;
+use crate::window::window_frame_state::WindowFacts;
 use crate::window::window_placement::WindowPlacement;
 use std::mem;
 
@@ -269,7 +269,7 @@ impl Window {
         let facts = self.system_facts();
         // Also where the previous frame's veto is asserted spent (`Ui::set_window_facts`).
         // `finish` is outside the occlusion branch, so every frame reaches the drain.
-        self.driver.ui.set_window_facts(WindowFrameState {
+        self.driver.ui.set_window_facts(WindowFacts {
             close_requested: self.close_requested,
             placement: facts.placement,
         });

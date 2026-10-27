@@ -7,7 +7,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
-use crate::ui::frame_runtime::wake::{Wake, WakeReasons};
+use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
@@ -233,7 +233,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         !repaint,
         "no animate-not-settled flag set — must stay false"
     );
-    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(16));
+    assert_eq!(h.ui.frame_runtime.stamp().time, Duration::from_millis(16));
     assert_eq!(
         h.ui.frame_runtime.dt,
         Duration::from_millis(16).as_secs_f32(),
@@ -247,14 +247,14 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
-            ui.frame_runtime.repaint_requested = true;
+            ui.frame_runtime.request_repaint();
         })
         .repaint_requested;
     assert!(
         repaint,
         "repaint_requested set during recording must surface on FrameOutput",
     );
-    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(32));
+    assert_eq!(h.ui.frame_runtime.stamp().time, Duration::from_millis(32));
     assert_eq!(
         h.ui.frame_runtime.dt,
         Duration::from_millis(16).as_secs_f32(),
@@ -267,7 +267,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             .id(WidgetId::from_hash("root"))
             .show(ui, |_| {});
     });
-    assert_eq!(h.ui.frame_runtime.time, Duration::from_millis(5_032));
+    assert_eq!(
+        h.ui.frame_runtime.stamp().time,
+        Duration::from_millis(5_032)
+    );
     assert_eq!(
         h.ui.frame_runtime.dt, MAX_ANIMATION_DT,
         "FrameRuntime::dt should clamp at MAX_ANIMATION_DT",
@@ -375,10 +378,8 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     assert_eq!(app.updates, 2, "relayout frame adds one update");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
-    h.ui.frame_runtime.repaint_wakes.push(Wake {
-        deadline: Duration::from_millis(32),
-        reasons: WakeReasons::ANIMATION,
-    });
+    h.ui.frame_runtime
+        .schedule_wake(Duration::from_millis(32), WakeReasons::ANIMATION, None);
     let processing = h
         .at(Duration::from_millis(32))
         .frame_app(&mut app)
@@ -386,4 +387,60 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     assert_eq!(processing, FrameProcessing::PaintOnly);
     assert_eq!(app.updates, 2, "paint-only frame skips update");
     assert_eq!(app.records, 4, "paint-only frame skips record");
+}
+
+/// A paint-only frame repaints the retained tree, so a move of what that tree was built under
+/// records instead: a theme set between frames (its colors are in the tree), or a font another
+/// window loaded into the shared shaper (its text is). Before, a caret blink repainted the old
+/// colors and text until input arrived.
+#[test]
+fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
+    use crate::text::font_scope::internals::INTER;
+    use crate::theme::Theme;
+    use crate::ui::resources::UiResources;
+
+    let resources = UiResources::isolated_text();
+    let mut h = UiHarness::from_resources(resources.clone(), SURFACE);
+    let mut other = UiHarness::from_resources(resources, SURFACE);
+    let record = |ui: &mut Ui| {
+        Button::new()
+            .id(WidgetId::from_hash("b"))
+            .label("label")
+            .show(ui);
+    };
+    h.prime(2, record);
+    other.prime(2, record);
+    let mut ms = 16;
+    let mut animation_frame = |h: &mut UiHarness| {
+        ms += 16;
+        let at = Duration::from_millis(ms);
+        h.ui.frame_runtime
+            .schedule_wake(at, WakeReasons::ANIMATION, None);
+        h.at(at).frame(record).processing
+    };
+    assert_eq!(
+        animation_frame(&mut h),
+        FrameProcessing::PaintOnly,
+        "premise"
+    );
+
+    h.ui().set_theme(Theme::default());
+    assert_ne!(
+        animation_frame(&mut h),
+        FrameProcessing::PaintOnly,
+        "a set theme"
+    );
+    assert_eq!(
+        animation_frame(&mut h),
+        FrameProcessing::PaintOnly,
+        "recorded once, it paints again"
+    );
+
+    other.ui.load_font(INTER).expect("the bundled Inter loads");
+    assert_ne!(
+        animation_frame(&mut h),
+        FrameProcessing::PaintOnly,
+        "a font another window loaded"
+    );
+    assert_eq!(animation_frame(&mut h), FrameProcessing::PaintOnly);
 }
