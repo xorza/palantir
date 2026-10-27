@@ -1,11 +1,9 @@
 //! The offscreen host every device-needing audit draws through, so all callers share the target's format, usage and clear color.
 
-use std::time::Duration;
-
 use glam::UVec2;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget};
-use palantir::{FixedClock, FrameReport, OffscreenHost, RgbaF32, Ui};
+use palantir::{FrameReport, OffscreenHost, OffscreenTime, RgbaF32, Ui};
 
 /// One offscreen host and the texture it draws into.
 #[derive(Debug)]
@@ -18,7 +16,7 @@ impl OffscreenTarget {
     /// Not a `HeadlessWindow`: the default offscreen path copies its backbuffer onto the target every frame, which keeps a submission in each still frame for the GPU gates to measure. The clock stands still.
     pub(crate) fn new(gpu: &HeadlessTestGpuLease, label: &str, surface: UVec2) -> Self {
         let mut host = OffscreenHost::builder(gpu.handles())
-            .clock(FixedClock::new(Duration::ZERO))
+            .time(OffscreenTime::Manual)
             .build();
         host.ui().theme_mut().window_clear = RgbaF32::TRANSPARENT;
         let target = gpu.target(label, surface);

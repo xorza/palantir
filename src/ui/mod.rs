@@ -225,9 +225,11 @@ impl Ui {
             .map(|stamp| stamp.display.scale_factor())
     }
 
-    /// Feed an event that arrived at `now`, on the host's frame clock (a frame
-    /// clock stands still between frames, which would break double clicks across an
-    /// idle gap). The [`InputDelta`] says whether to redraw.
+    /// Feed an event that arrived at `now`. The winit host stamps it on an input clock
+    /// of its own, which runs on while a hidden window's frame clock skips the span,
+    /// so two presses either side never read as a double click; the offscreen host
+    /// stamps it from the source its frames read. The [`InputDelta`] says whether
+    /// to redraw.
     #[inline]
     pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
         self.input.on_input(event, &self.cascade, now)
@@ -357,8 +359,10 @@ impl Ui {
 
     /// Ask for an image of this frame: the whole window for `None`, else `region` in logical
     /// pixels, clamped to the window. The host copies the frame as it paints it, and the image
-    /// arrives through [`Self::screenshot_taken`] in a later frame. A frame paints in full when it
-    /// asks; a second request in one frame replaces the first.
+    /// arrives through [`Self::screenshot_taken`] in the first frame after the device finishes
+    /// the copy; on an [`OffscreenHost`](crate::OffscreenHost),
+    /// [`wait_for_gpu`](crate::OffscreenHost::wait_for_gpu) and then one frame lands it. A frame
+    /// paints in full when it asks; a second request in one frame replaces the first.
     ///
     /// # Panics
     ///

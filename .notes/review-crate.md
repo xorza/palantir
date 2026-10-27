@@ -14,22 +14,6 @@ the measure-cache hit test.
 
 ## Host and window
 
-- **The host owns time, not the window driver.** `WindowDriver` holds no
-  clock. Each frame gets `now` in a `FrameSpec`
-  `{ physical, format, system_scale, refresh_millihertz, now }`. The winit
-  `Window` owns a concrete `RealtimeClock` with inherent `skip` and
-  `deadline`. `OffscreenHost` owns caller-set time:
-  `OffscreenTime::{Realtime, Manual}` on the builder, plus `advance` and
-  `at`, as `UiHarness` has. The public `Clock` trait, `FixedClock` and
-  `RealtimeClock` go. Refused: a `Clock` trait reduced to `now()`, because an
-  external harness must still write a `Cell` clock to step time.
-- **`HostCore` owns the frame step.** `HostCore::{open, record, submit,
-  close}` replace the five-call sequence that each host, the offscreen tests
-  and `UiHarness` repeat. `record` delivers the screenshot, notes the target
-  and mints the display in the correct order. `close` consumes the driver, so
-  teardown is one step. `Presentation`, `WindowDriverBuilder`,
-  `TargetKey::of` and `TargetKey::describes` go. Refused: a public `Host`
-  trait, because no code is generic over the host.
 - **The swapchain owns its configuration.** `WindowSurface` compares the
   desired and the applied `SurfaceConfiguration` and reconfigures in
   `prepare`. On `Reconfigured`, the winit `Window` invalidates the driver's
@@ -186,37 +170,19 @@ Files: `src/host/{core.rs, clock.rs, window_driver/,
 offscreen.rs, winit/window/, winit/runtime.rs}`, `src/internals/ui_harness/`,
 `src/ui/mod.rs` (one doc).
 
-- [ ] **The frame step has no owner.** `core.rs:90-131`,
-  `offscreen.rs:182-189, 269-286, 316-320`, `winit/window/mod.rs:300-317,
-  342-352`, `runtime.rs:70-73, 184-197`. Target: `HostCore::{open, record,
-  submit, close}` over `FrameSpec`. `Presentation`, `WindowDriverBuilder` and
-  the redundant `.strategy(DirectAdaptive)` go. `deny_window_commands` moves
-  to the offscreen host.
-- [ ] **Time lives on the driver.** `clock.rs:7-21, 64-74`,
-  `window_driver/mod.rs:64-66, 239-243, 285-288`. Target: `now` in
-  `FrameSpec`; winit owns `RealtimeClock`. One doc on `Ui::on_input` says
-  which clock stamps input on each host (the three current docs disagree).
-- [ ] **[public] Offscreen time cannot be stepped.** `FixedClock::advance`
-  has no reachable caller. Target: `OffscreenTime::{Realtime, Manual}`,
-  `OffscreenHost::{advance, at}`; `Clock`, `FixedClock`, `RealtimeClock` and
-  the exported `DOUBLE_CLICK_WINDOW` workaround go.
 - [ ] **`UiHarness` repeats the display mint.** `ui_harness/mod.rs:639-651`.
   Target: one display mint on `FrameSpec` that both call.
-- [ ] **`OffscreenHost` cannot wait for a screenshot.** A caller can only run
-  frames until the image lands. Target: a documented way to wait, for example
-  a blocking `OffscreenHost` call that waits for the device and runs the
-  landing frame. **[public]**
 
 ## Batch 6: Swapchain configuration and the winit window
 
-Needs batch 5. Files: `src/gpu/surface/{window_surface.rs, surface_manager/}`,
+Files: `src/gpu/surface/{window_surface.rs, surface_manager/}`,
 `src/host/window_driver/`, `src/host/winit/window/`.
 
 - [ ] **`TargetKey` mixes target identity and swapchain configuration.**
   `window_driver/mod.rs:111-136, 326-336, 494-504`,
   `winit/window/mod.rs:305-314, 327-332, 435-443`. Target: `WindowSurface`
   owns desired vs applied configuration, `prepare(gpu) -> Reconfigured`;
-  `TargetKey` drops `vsync`; `of`, `describes` and their test go.
+  `TargetKey` and `FrameSpec` drop `vsync`.
 - [ ] **The winit per-window policy is untested.**
   `winit/window/mod.rs:78-116, 240-443`. Target: satellites `Visibility`,
   `AppliedLevels`, `PresentSchedule`; a pure `present_policy` over an
@@ -230,7 +196,7 @@ Needs batch 5. Files: `src/gpu/surface/{window_surface.rs, surface_manager/}`,
 
 ## Batch 7: Public host surface
 
-All **[public]**. Needs batch 5. Files: `src/host/`, `src/window/`,
+All **[public]**. Files: `src/host/`, `src/window/`,
 `src/ui/frame_report.rs`, `src/display/mod.rs`, `src/gpu/device/gpu.rs`,
 `src/gpu/error.rs`.
 

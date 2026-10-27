@@ -160,12 +160,7 @@ impl OwnedTarget {
         slice.map_async(wgpu::MapMode::Read, move |mapped| {
             tx.send(mapped).ok();
         });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("the device finishes the read-back copy");
+        self.gpu.wait();
         rx.recv()
             .expect("the map callback runs once the device finishes")
             .expect("the read-back buffer maps");

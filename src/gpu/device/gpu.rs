@@ -37,4 +37,19 @@ impl Gpu {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
     }
+
+    /// Block until the device has finished every submission, running the map callbacks of their
+    /// copies.
+    ///
+    /// # Panics
+    ///
+    /// When the device is lost.
+    pub(crate) fn wait(&self) {
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .expect("the device finishes its submissions");
+    }
 }

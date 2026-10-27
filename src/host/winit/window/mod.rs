@@ -14,8 +14,9 @@ use crate::common::tracy::{self, FrameSet};
 use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::window_surface::{Acquired, WindowSurface};
-use crate::host::core::HostCore;
-use crate::host::window_driver::{CpuFrame, TargetKey, WindowDriver};
+use crate::host::clock::RealtimeClock;
+use crate::host::core::{HostCore, RecordedFrame};
+use crate::host::window_driver::{CpuFrame, FrameSpec, WindowDriver};
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
 use crate::input::input_event::InputEvent;
@@ -95,8 +96,10 @@ pub(super) struct Window {
     /// Resized to zero: how Windows reports a minimize (no `Occluded`).
     minimized: bool,
     translator: Translator,
-    /// Origin of the input clock. Not the frame clock, which `Clock::skip` rewinds over
-    /// a hidden span: two presses either side would read as a double-click.
+    /// The frame clock, which skips the spans the window is hidden.
+    clock: RealtimeClock,
+    /// Origin of the input clock. Not the frame clock, which skips a hidden span: two presses
+    /// either side would read as a double-click.
     input_epoch: Instant,
     /// A resize can change only whether the window is maximized (moves arrive as
     /// `Moved`), so only that fact is marked stale.
@@ -138,6 +141,7 @@ impl Window {
             occluded: false,
             minimized: false,
             translator: Translator::new(PLATFORM),
+            clock: RealtimeClock::new(),
             input_epoch: Instant::now(),
             maximized_stale: false,
             suboptimal_handled: None,
@@ -257,7 +261,7 @@ impl Window {
             (true, None) => self.occluded_at = Some(Instant::now()),
             (false, Some(at)) => {
                 self.occluded_at = None;
-                self.driver.clock.skip(at.elapsed());
+                self.clock.skip(at.elapsed());
             }
             _ => {}
         }
@@ -289,7 +293,7 @@ impl Window {
         } else {
             // The close-request frame runs while occluded, and `set_occluded(false)` skips the
             // hidden span assuming none did. Restart the span here, or a vetoed close lets the
-            // un-occlude move the origin past this frame's stamp and `Clock::now` goes
+            // un-occlude move the origin past this frame's stamp and the frame clock goes
             // backwards (`advance_clock` still assigns `time`), skewing repaint deadlines and
             // multi-press timing.
             if self.occluded_at.is_some() {
@@ -297,23 +301,21 @@ impl Window {
             }
             // Before the display is minted, so a frame at a new scale hit-tests in the same space.
             self.resync_pointer();
-            let physical = self.surface.size();
-            let display =
-                self.driver
-                    .display(physical, self.system_scale, facts.refresh_millihertz);
-
+            let spec = FrameSpec {
+                physical: self.surface.size(),
+                format: self.surface.format(),
+                vsync: Some(self.surface.vsync()),
+                system_scale: self.system_scale,
+                refresh_millihertz: facts.refresh_millihertz,
+                now: self.clock.now(),
+            };
+            let RecordedFrame { cpu, retargeted } = core.record(&mut self.driver, spec, app);
             // A size, format or present-mode change invalidates retained target state and
             // needs a reconfigure. Identical repeats (Wayland resends configures) must cost
             // nothing: `surface.configure` waits for GPU idle (wgpu #7447: 100ms+ stalls).
-            if self.driver.note_target(TargetKey {
-                physical,
-                format: self.surface.format(),
-                vsync: Some(self.surface.vsync()),
-            }) {
+            if retargeted {
                 self.surface.configure(core.gpu());
             }
-
-            let cpu = core.cpu_frame(&mut self.driver, display, app);
             self.next = self.present(core, cpu);
         }
 
@@ -379,18 +381,13 @@ impl Window {
         };
 
         // Ahead of `repaint`, which every failing acquire asks for: the delay paces it.
-        if let Some(delay) = self.acquire_retry
-            && let Some(at) = self.driver.clock.deadline(self.driver.clock.now() + delay)
-        {
-            return FramePresent::At(at);
+        if let Some(delay) = self.acquire_retry {
+            return FramePresent::At(self.clock.deadline(self.clock.now() + delay));
         }
         if repaint {
             FramePresent::Immediate
-        } else if let Some(at) = report
-            .repaint_after
-            .and_then(|duration| self.driver.clock.deadline(duration))
-        {
-            FramePresent::At(at)
+        } else if let Some(due) = report.repaint_after {
+            FramePresent::At(self.clock.deadline(due))
         } else {
             FramePresent::Idle
         }
@@ -433,9 +430,10 @@ impl Window {
     }
 
     /// Point the swapchain config at `vsync`, if not already paced that way. The
-    /// reconfigure is left to the next frame's [`TargetKey`] check: doing it here would
-    /// leave `target` naming the old configuration so the check would skip it. The
-    /// forced repaint is because an idle window schedules no next frame.
+    /// reconfigure is left to the next frame's target check in [`HostCore::record`]:
+    /// doing it here would leave `target` naming the old configuration so the check
+    /// would skip it. The forced repaint is because an idle window schedules no next
+    /// frame.
     fn set_vsync(&mut self, vsync: Vsync) {
         if self.surface.set_vsync(vsync) {
             self.next = FramePresent::Immediate;
