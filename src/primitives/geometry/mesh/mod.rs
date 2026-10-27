@@ -6,6 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::math::float_hash::FloatHash;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -32,12 +33,12 @@ pub struct MeshVertex {
 }
 
 impl MeshVertex {
-    /// Construct at `pos`; an `RgbaF32` color is encoded exactly here, an
-    /// `SrgbaU8` stored as is.
-    pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self {
+    /// Construct at `pos`, `color` encoded to sRGB bytes, as a gradient stop stores its
+    /// color. An `SrgbaU8` decodes and encodes back to itself exactly.
+    pub fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self {
         Self {
             pos,
-            color: color.into(),
+            color: color.into().to_srgba(),
         }
     }
 }
@@ -137,7 +138,7 @@ impl Mesh {
     /// if the new vertex index cannot be represented by `u32`.
     #[inline]
     #[track_caller]
-    pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32 {
+    pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32 {
         let idx = checked_vertex_idx(self.vertices.len());
         self.vertices
             .push(MeshVertex::new(vec2::offset(pos), color));
@@ -214,7 +215,7 @@ impl Mesh {
     ///
     /// As [`Self::vertex`].
     #[track_caller]
-    pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<SrgbaU8>) -> Self {
+    pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<RgbaF32>) -> Self {
         Self::filled_polygon(&corners, color)
     }
 
@@ -225,7 +226,7 @@ impl Mesh {
     ///
     /// As [`Self::vertex`].
     #[track_caller]
-    pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self {
+    pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self {
         if points.len() < 3 {
             return Self::new();
         }

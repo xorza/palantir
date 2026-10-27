@@ -284,6 +284,7 @@ ColorRamp
         pub interpolation: Interpolation
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
         pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+        pub fn color_at(&self, t: f32) -> RgbaF32
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
 
@@ -1520,9 +1521,9 @@ RgbaF32
         pub const fn with_alpha(self, a: f32) -> Self
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
-        pub fn to_srgba_u8(self) -> SrgbaU8
+        pub const fn hexa(rgba: u32) -> Self
+        pub fn to_srgba(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
-        impl From<RgbaF32> for SrgbaU8
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
@@ -1776,7 +1777,7 @@ Spread
         Reflect = 2
 
 SrgbaU8
-    struct SrgbaU8: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<RgbaF32>, Hash, PartialEq, Pod, Zeroable
+    struct SrgbaU8: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq, Pod, Zeroable
         pub r: u8
         pub g: u8
         pub b: u8
@@ -1798,7 +1799,7 @@ StatefulLook
 
 Stop
     struct Stop: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
-        pub fn new(offset: f32, color: RgbaF32) -> Self
+        pub fn new(offset: f32, color: impl Into<RgbaF32>) -> Self
         pub const fn offset(self) -> f32
         pub const fn color(self) -> RgbaF32
 
@@ -2615,12 +2616,12 @@ widget::Mesh
         pub fn clear(&mut self)
         pub fn is_noop(&self) -> bool
         pub fn content_hash(&self) -> u64
-        pub fn vertex(&mut self, pos: Vec2, color: impl Into<SrgbaU8>) -> u32
+        pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)
         pub fn bbox(&self) -> Rect
-        pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<SrgbaU8>) -> Self
-        pub fn filled_polygon(points: &[Vec2], color: impl Into<SrgbaU8>) -> Self
+        pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<RgbaF32>) -> Self
+        pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
 
 widget::MeshShape
     struct MeshShape<'a>: Clone, Debug, Lower (blanket)
@@ -2631,7 +2632,7 @@ widget::MeshVertex
     struct MeshVertex: Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable
         pub pos: Vec2
         pub color: SrgbaU8
-        pub fn new(pos: Vec2, color: impl Into<SrgbaU8>) -> Self
+        pub fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self
 
 widget::OverlayScope
     struct OverlayScope: Debug

@@ -25,7 +25,7 @@ impl QuadBuilder {
         Self {
             rect,
             corners: Corners::ZERO,
-            fill: BrushSource::Solid(RgbaF32::WHITE.into()),
+            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
             stroke: Stroke::NONE,
         }
     }
@@ -36,7 +36,7 @@ impl QuadBuilder {
     }
 
     pub(super) fn solid(self, color: RgbaF32) -> Self {
-        self.brush(BrushSource::Solid(color.into()))
+        self.brush(BrushSource::Solid(color.to_f16()))
     }
 
     pub(super) fn brush(mut self, fill: BrushSource) -> Self {

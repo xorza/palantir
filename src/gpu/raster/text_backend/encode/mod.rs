@@ -73,7 +73,6 @@ mod tests {
     use crate::gpu::raster::text_backend::encode::EncodedRunKey;
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
     use crate::text::key::TextShapeKey;
     use crate::text::shaped_ref::ShapedTextRef;
@@ -87,7 +86,7 @@ mod tests {
             },
             origin: Vec2::new(x, 3.0),
             bounds: URect::new(0, 0, 100, 100),
-            color: RgbaF16::from(RgbaF32::WHITE),
+            color: RgbaF32::WHITE.to_f16(),
             scale: 1.0,
         };
         EncodedRunKey::for_row(&row, 1.0)

@@ -119,7 +119,7 @@ impl sealed::LowerShape for TextShape {
         ShapeRecord::Text {
             local_origin,
             text: store.record_text(text),
-            color: color.into(),
+            color: color.to_f16(),
             font,
             wrap,
             align,

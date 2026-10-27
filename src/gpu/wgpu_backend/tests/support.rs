@@ -115,7 +115,7 @@ pub(super) fn scissor_count(steps: &[RenderStep]) -> usize {
 fn dummy_quad() -> Quad {
     Quad {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
-        fill: RgbaF32::WHITE.into(),
+        fill: RgbaF32::WHITE.to_f16(),
         corners: Corners::ZERO,
         stroke_color: RgbaF16::TRANSPARENT,
         stroke_width: 0.0,
@@ -131,7 +131,7 @@ fn dummy_text() -> TextDrawRow {
             key: TextShapeKey::fixture(),
             span: Span::default(),
         },
-        color: RgbaF16::from(RgbaF32::WHITE),
+        color: RgbaF32::WHITE.to_f16(),
         scale: 1.0,
     }
 }

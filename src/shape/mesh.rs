@@ -72,7 +72,7 @@ impl sealed::LowerShape for MeshShape<'_> {
         let staged = store.stage_mesh(mesh);
         ShapeRecord::Mesh {
             local_rect,
-            tint: tint.into(),
+            tint: tint.to_f16(),
             vertices: staged.vertices,
             idxs: staged.idxs,
             bbox: mesh.bbox(),

@@ -8,7 +8,6 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
@@ -82,7 +81,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
     let color_a = RgbaF32::new(0.5, 0.25, 0.75, 1.0);
     let color_b = RgbaF32::new(0.5001, 0.2501, 0.7501, 1.0);
     assert_ne!(color_a, color_b);
-    assert_eq!(RgbaF16::from(color_a), RgbaF16::from(color_b));
+    assert_eq!(color_a.to_f16(), color_b.to_f16());
 
     let baseline = support::record(|ui| build(ui, &base_points, color_a)).node;
     assert_eq!(

@@ -34,8 +34,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         );
     }
 
-    let white = RgbaF16::from(RgbaF32::WHITE);
-    let red = RgbaF16::from(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0));
+    let white = RgbaF32::WHITE.to_f16();
+    let red = RgbaF32::srgba(1.0, 0.0, 0.0, 1.0).to_f16();
     let solid = ShapeBrush::Solid(white);
     let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 1.0));
     let stroke2 = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));

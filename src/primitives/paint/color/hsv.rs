@@ -95,11 +95,11 @@ mod tests {
     #[test]
     fn value_is_an_encoded_component() {
         assert_eq!(
-            Hsv::new(0.0, 1.0, 0.5).to_color().to_srgba_u8(),
+            Hsv::new(0.0, 1.0, 0.5).to_color().to_srgba(),
             SrgbaU8::hex(0x800000)
         );
         assert_eq!(
-            Hsv::new(0.0, 0.0, 0.5).to_color().to_srgba_u8(),
+            Hsv::new(0.0, 0.0, 0.5).to_color().to_srgba(),
             SrgbaU8::hex(0x808080)
         );
     }
@@ -117,7 +117,7 @@ mod tests {
         for (step, expected) in want.iter().enumerate() {
             let h = step as f32 / 6.0;
             assert_eq!(
-                Hsv::new(h, 1.0, 1.0).to_color().to_srgba_u8(),
+                Hsv::new(h, 1.0, 1.0).to_color().to_srgba(),
                 *expected,
                 "hue {h}"
             );

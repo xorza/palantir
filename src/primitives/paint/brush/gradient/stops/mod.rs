@@ -33,10 +33,10 @@ impl Stop {
     /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[inline]
     #[track_caller]
-    pub fn new(offset: f32, color: RgbaF32) -> Self {
+    pub fn new(offset: f32, color: impl Into<RgbaF32>) -> Self {
         Self {
             offset_u8: num::unit_to_u8(domain::fraction(offset)),
-            color: domain::color(color).into(),
+            color: domain::color(color.into()).to_srgba(),
         }
     }
 

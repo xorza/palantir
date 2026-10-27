@@ -88,7 +88,7 @@ impl From<Shadow> for LoweredShadow {
     #[inline]
     fn from(shadow: Shadow) -> Self {
         Self {
-            color: shadow.color.into(),
+            color: shadow.color.to_f16(),
             geometry_f16: F16x4::from_lanes([
                 shadow.offset.x,
                 shadow.offset.y,

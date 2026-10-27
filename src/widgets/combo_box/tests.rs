@@ -3,7 +3,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::Theme;
@@ -236,7 +235,7 @@ fn trigger_chrome_follows_button_style() {
                 .chrome(trigger)
                 .expect("the trigger paints chrome")
                 .fill;
-        let want = RgbaF16::from(want);
+        let want = want.to_f16();
         assert!(
             matches!(fill, ShapeBrush::Solid(got) if got == want),
             "styled {}: {fill:?}, want {want:?}",

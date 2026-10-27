@@ -106,7 +106,7 @@ impl sealed::LowerShape for ImageShape {
         } = self;
         ShapeRecord::Image {
             local_rect,
-            tint: tint.into(),
+            tint: tint.to_f16(),
             source: ImageSource::Texture {
                 id: handle.id(),
                 size: handle.size(),

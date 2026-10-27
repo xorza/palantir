@@ -7,7 +7,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
@@ -69,7 +68,7 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
                 .chrome(backdrop.node)
                 .expect("the backdrop paints a scrim")
                 .fill;
-        let want = RgbaF16::from(explicit.unwrap_or(themed));
+        let want = explicit.unwrap_or(themed).to_f16();
         assert!(
             matches!(scrim, ShapeBrush::Solid(fill) if fill == want),
             "explicit {explicit:?}: scrim {scrim:?}, want {want:?}",

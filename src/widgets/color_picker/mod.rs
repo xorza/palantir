@@ -452,7 +452,7 @@ impl Rows<'_> {
         let id = self.id;
         let theme = self.theme;
         let gap = domain::length_at_least(theme.gap, 0.0);
-        let quantized = shown.to_srgba_u8();
+        let quantized = shown.to_srgba();
         let hex_id = id.with("hex");
         if ui.focus() != Some(hex_id) {
             self.state.hex.clear();
@@ -501,7 +501,7 @@ impl Rows<'_> {
                         // A buffer parsing to the color already shown is no edit.
                         if hex.committed
                             && let Ok(parsed) = self.state.hex.trim().parse::<RgbaF32>()
-                            && !same_rgb(parsed.to_srgba_u8(), quantized)
+                            && !same_rgb(parsed.to_srgba(), quantized)
                         {
                             self.writes.exact = Some(parsed.with_alpha(self.writes.alpha));
                             self.writes.committed = true;

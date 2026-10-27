@@ -46,7 +46,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             kind: RectKind::Rounded,
             rect: Rect::new(0.0, 0.0, 10.0, 10.0),
             corners: Corners::ZERO,
-            fill: BrushSource::Solid(fill.into()),
+            fill: BrushSource::Solid(fill.to_f16()),
             stroke,
         });
         assert!(
@@ -62,7 +62,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
                 Vec2::new(5.0, 8.0),
             ],
             radius: 0.0,
-            fill: fill.into(),
+            fill: fill.to_f16(),
             stroke,
         });
         assert!(
@@ -81,7 +81,7 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
             assert_eq!(tp.stroke.color, RgbaF16::TRANSPARENT, "case {label}");
             assert_eq!(tp.stroke.width, 0.0, "case {label}");
         } else {
-            assert_eq!(tp.stroke.color, RgbaF16::from(green), "case {label}");
+            assert_eq!(tp.stroke.color, green.to_f16(), "case {label}");
         }
     }
 }
@@ -111,8 +111,8 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
     assert_eq!(solid.faded(1.0), solid);
     let faded = solid.faded(0.5);
     // 0.8 packs to f16 as 1638 steps of 2^-11, and halving it is exact.
-    assert_eq!(faded.fill.color.unpack().a, 1638.0 / 4096.0);
-    assert_eq!(faded.stroke.color.unpack().a, 0.5);
+    assert_eq!(RgbaF32::from(faded.fill.color).a, 1638.0 / 4096.0);
+    assert_eq!(RgbaF32::from(faded.stroke.color).a, 0.5);
 
     let gradient = quad(BrushSource::Gradient(ResolvedGradient {
         axis: FillAxis::ZERO,
@@ -125,7 +125,7 @@ fn a_fade_reaches_the_solid_alpha_and_the_gradients_multiplier() {
         "an unfaded gradient multiplies its sample by one",
     );
     let faded = gradient.faded(0.5);
-    let multiplier = faded.fill.color.unpack();
+    let multiplier = RgbaF32::from(faded.fill.color);
     assert_eq!((multiplier.r, multiplier.g, multiplier.b), (1.0, 1.0, 1.0));
     assert_eq!(multiplier.a, 0.5);
     assert_eq!(faded.fill.lut_row, gradient.fill.lut_row);

@@ -5,7 +5,6 @@ use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_image_payload::{
     DrawImagePayload, ImageDraw, ViewPaint,
@@ -132,7 +131,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                     rect,
                     uv_min: Vec2::ZERO,
                     uv_size: Vec2::ONE,
-                    tint: RgbaF16::from(RgbaF32::WHITE),
+                    tint: RgbaF32::WHITE.to_f16(),
                     handle,
                     flags: ImageFlags::NONE,
                 },
@@ -167,7 +166,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
         assert_eq!(payload.uv_size, Vec2::ONE, "case {label}");
         assert_eq!(payload.flags, ImageFlags::NONE, "case {label}");
-        assert_eq!(payload.tint, RgbaF16::from(RgbaF32::WHITE), "case {label}");
+        assert_eq!(payload.tint, RgbaF32::WHITE.to_f16(), "case {label}");
     }
 }
 
@@ -179,7 +178,7 @@ fn the_gate_sees_the_faded_payload() {
             rect: Rect::new(0.0, 0.0, 4.0, 4.0),
             uv_min: Vec2::ZERO,
             uv_size: Vec2::ONE,
-            tint: RgbaF16::from(RgbaF32::WHITE),
+            tint: RgbaF32::WHITE.to_f16(),
             handle: TextureId(7),
             flags: ImageFlags::NONE,
         },
@@ -200,7 +199,7 @@ fn the_gate_sees_the_faded_payload() {
         panic!("expected one Image call, got {:?}", half.calls);
     };
     // Half an opaque white tint's alpha, color untouched; exact in f16.
-    let tint = payload.tint.unpack();
+    let tint = RgbaF32::from(payload.tint);
     assert_eq!([tint.r, tint.g, tint.b, tint.a], [1.0, 1.0, 1.0, 0.5]);
 
     // A polyline gates alike: its fade rides the payload's alpha lane, its colors being in the record store.

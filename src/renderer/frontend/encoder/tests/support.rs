@@ -33,7 +33,7 @@ pub(super) fn count_draw_rects(cmds: &PaintCapture) -> usize {
 
 /// The screen rect of the quad found filled with `color`, compared bit for bit.
 pub(super) fn rect_with_fill(drawn: &[(RgbaF16, Rect)], color: RgbaF32) -> Option<Rect> {
-    let color = RgbaF16::from(color);
+    let color = color.to_f16();
     drawn
         .iter()
         .find(|(fill, _)| *fill == color)

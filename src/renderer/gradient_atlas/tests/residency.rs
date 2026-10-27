@@ -96,8 +96,8 @@ fn register_many_distinct_gradients_all_unique_rows() {
 fn register_dedups_across_variants() {
     let mut atlas = CpuGradientAtlas::default();
     let stops = [
-        Stop::new(0.0, SrgbaU8::rgb(255, 64, 0).into()),
-        Stop::new(1.0, SrgbaU8::rgb(0, 128, 255).into()),
+        Stop::new(0.0, SrgbaU8::rgb(255, 64, 0)),
+        Stop::new(1.0, SrgbaU8::rgb(0, 128, 255)),
     ];
     let linear = LinearGradient::new(0.3, stops);
     let radial = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops);

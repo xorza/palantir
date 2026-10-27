@@ -19,7 +19,7 @@
 //!   physically linear blend; dips at the midpoint of saturated complementary pairs.
 //! - [`Interpolation::Oklab`](crate::primitives::paint::brush::gradient::Interpolation::Oklab):
 //!   stops converted to Oklab once; the texel loop lerps and runs only
-//!   `oklab::to_linear`. Perceptually uniform; the CSS Color 4 default.
+//!   `Oklab::to_color`. Perceptually uniform; the CSS Color 4 default.
 
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

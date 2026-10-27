@@ -14,7 +14,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -68,7 +67,7 @@ pub(super) fn survivors(buf: &RenderBuffer) -> Vec<Rect> {
 pub(super) fn survivor_calls(buf: &RenderBuffer) -> Vec<u32> {
     buf.quads
         .iter()
-        .map(|q| (q.fill.unpack().r * 255.0).round() as u32)
+        .map(|q| (RgbaF32::from(q.fill).r * 255.0).round() as u32)
         .collect()
 }
 
@@ -82,7 +81,7 @@ pub(super) fn inked_text(buf: &mut PaintCapture, r: Rect, ink: Spacing) {
         DrawTextPayload {
             rect: r,
             ink,
-            color: RgbaF32::WHITE.into(),
+            color: RgbaF32::WHITE.to_f16(),
             text: ShapedTextRef {
                 key: TextShapeKey::fixture(),
                 span: Span::default(),
@@ -138,7 +137,7 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
         rect,
         uv_min: Vec2::ZERO,
         uv_size: Vec2::ONE,
-        tint: RgbaF32::WHITE.into(),
+        tint: RgbaF32::WHITE.to_f16(),
         handle,
         flags: ImageFlags::NONE,
     }
@@ -164,7 +163,7 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
         DrawIconPayload {
             rect: r,
             icon,
-            tint: RgbaF32::WHITE.into(),
+            tint: RgbaF32::WHITE.to_f16(),
             desaturate: false,
         },
         1.0,
@@ -177,7 +176,7 @@ pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
-            tint: RgbaF32::WHITE.into(),
+            tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
         },
@@ -251,7 +250,7 @@ impl<'a> TestPolyline<'a> {
         let c_start = store.polyline_colors.len() as u32;
         store
             .polyline_colors
-            .extend(colors.iter().map(|&c| RgbaF16::from(c)));
+            .extend(colors.iter().map(|&c| c.to_f16()));
         let mut lo = points[0];
         let mut hi = points[0];
         for &p in points {
@@ -290,7 +289,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
                 p3: bbox.max(),
             }),
             fill: GpuFill {
-                color: RgbaF32::WHITE.into(),
+                color: RgbaF32::WHITE.to_f16(),
                 ..Default::default()
             },
             width: 2.0,
@@ -307,7 +306,7 @@ pub(super) fn image(b: &mut PaintCapture, r: Rect) {
                 rect: r,
                 uv_min: Vec2::ZERO,
                 uv_size: Vec2::ONE,
-                tint: RgbaF32::WHITE.into(),
+                tint: RgbaF32::WHITE.to_f16(),
                 handle: TextureId(1),
                 flags: ImageFlags::NONE,
             },
