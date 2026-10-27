@@ -530,9 +530,11 @@ DockState
             pub fn new(seed: impl Hash, pinned: T) -> Self
             pub fn with_max_depth(self, depth: u32) -> Self
             pub const fn with_allowed_splits(self, allowed: AllowedSplits) -> Self
+            pub const fn with_edge_fraction(self, fraction: f32) -> Self
             pub const fn pinned(&self) -> T
             pub const fn seed(&self) -> u64
             pub const fn allowed_splits(&self) -> AllowedSplits
+            pub const fn edge_fraction(&self) -> f32
             pub const fn focused(&self) -> TabGroupId
             pub fn node(&self, idx: NodeIdx) -> &DockNode<T>
             pub fn groups(&self) -> impl Iterator<Item = &TabGroup<T>>
@@ -542,7 +544,6 @@ DockState
             pub fn find_tab(&self, tab: T) -> Option<TabAddress>
             pub fn group(&self, id: TabGroupId) -> Option<&TabGroup<T>>
             pub fn apply(&mut self, operation: DockOperation<T>)
-            pub fn find_or_insert(&mut self, tab: T, group: TabGroupId)
             pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
             pub fn can_split(&self, group: TabGroupId) -> bool
         impl<'de, T> Deserialize<'de> where T: DockTab + Deserialize<'de>
@@ -580,11 +581,9 @@ DockTheme
         pub preview_fill: RgbaF32
         pub preview_stroke: Stroke
         pub preview_radius: f32
-        pub caret_width: f32
         pub ghost: WidgetLook
         pub ghost_padding: Spacing
         pub ghost_offset: Vec2
-        pub edge_fraction: f32
         pub fn from_palette(p: &Palette) -> Self
 
 DockView
@@ -1906,9 +1905,9 @@ TabBadge
 
 TabGroup
     struct TabGroup<T>
-        pub id: TabGroupId
-        pub tabs: Vec<T>
-        pub active: usize
+        pub const fn id(&self) -> TabGroupId
+        pub fn tabs(&self) -> &[T]
+        pub const fn active(&self) -> usize
         impl<T: Copy> TabGroup<T>
             pub fn active_tab(&self) -> T
         impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
@@ -2016,6 +2015,8 @@ TabsTheme
         pub close_size: f32
         pub badge: RgbaF32
         pub badge_size: f32
+        pub caret: RgbaF32
+        pub caret_width: f32
         pub label_gap: f32
         pub defaults: SlotDefaults
         pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32

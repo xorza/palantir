@@ -20,7 +20,7 @@ use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::dock_view::DockView;
-use crate::widgets::dock::pane_geometry::PaneGeometry;
+use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
 use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::panel::Panel;
@@ -45,8 +45,8 @@ fn viewer(n: u32) -> Tab {
 fn seeded() -> DockState<Tab> {
     let mut d = DockState::new("test.dock", Tab::Main);
     let primary = d.primary().id;
-    d.find_or_insert(Tab::Prefs, primary);
-    d.find_or_insert(viewer(1), primary);
+    d.insert_into(Tab::Prefs, primary);
+    d.insert_into(viewer(1), primary);
     d
 }
 
@@ -304,7 +304,7 @@ fn a_close_and_a_filter_keep_the_pane_on_its_own_tab() {
     let showing_v1 = || {
         let mut d = seeded();
         let primary = d.primary().id;
-        d.find_or_insert(viewer(2), primary);
+        d.insert_into(viewer(2), primary);
         d.apply(DockOperation::ActivateTab { tab: viewer(1) });
         assert_eq!(
             d.primary().tabs,
@@ -384,7 +384,7 @@ fn a_same_group_reorder_uses_pre_move_indices() {
     let reordered = |from: Tab, idx: usize| {
         let mut d = seeded();
         let primary = d.primary().id;
-        d.find_or_insert(viewer(2), primary);
+        d.insert_into(viewer(2), primary);
         d.apply(DockOperation::MoveTab {
             tab: from,
             to: DockDrop::Into {
@@ -502,7 +502,7 @@ fn split_depth_is_capped_without_losing_the_tab() {
     let mut d = seeded();
     let primary = d.primary().id;
     for n in 2..=5 {
-        d.find_or_insert(viewer(n), primary);
+        d.insert_into(viewer(n), primary);
     }
 
     // Each split nests one level deeper, up to the default cap of four.
@@ -531,8 +531,8 @@ fn split_depth_is_capped_without_losing_the_tab() {
 fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
     let mut d = DockState::new("test.dock", Tab::Main).with_max_depth(1);
     let primary = d.primary().id;
-    d.find_or_insert(Tab::Prefs, primary);
-    d.find_or_insert(viewer(1), primary);
+    d.insert_into(Tab::Prefs, primary);
+    d.insert_into(viewer(1), primary);
     split_off(&mut d, Tab::Prefs, primary, SplitSide::Right);
     let target = d.focused();
     let before = d.clone();
@@ -541,7 +541,7 @@ fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
 
     let mut d = DockState::new("test.dock", Tab::Main).with_allowed_splits(AllowedSplits::Row);
     let primary = d.primary().id;
-    d.find_or_insert(Tab::Prefs, primary);
+    d.insert_into(Tab::Prefs, primary);
     let before = d.clone();
     split_off(&mut d, Tab::Prefs, primary, SplitSide::Bottom);
     assert_eq!(d, before, "a column split is refused under Row");
@@ -553,7 +553,7 @@ fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
 fn retain_prunes_across_groups_and_collapses() {
     let mut d = seeded();
     let primary = d.primary().id;
-    d.find_or_insert(viewer(2), primary);
+    d.insert_into(viewer(2), primary);
     split_off(&mut d, viewer(2), primary, SplitSide::Right);
 
     d.retain_tabs(|t| t != viewer(2));
@@ -569,7 +569,7 @@ fn retain_prunes_across_groups_and_collapses() {
 fn nested_splits_stay_canonical() {
     let mut d = seeded();
     let primary = d.primary().id;
-    d.find_or_insert(viewer(2), primary);
+    d.insert_into(viewer(2), primary);
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     let right = d.focused();
     split_off(&mut d, viewer(2), right, SplitSide::Bottom);
@@ -770,64 +770,72 @@ fn loading_rejects_a_tab_that_appears_twice() {
 #[test]
 fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     let group = TabGroupId(7);
-    let pane = Rect::new(0.0, 0.0, 400.0, 300.0);
-    let strip = Rect::new(0.0, 0.0, 400.0, 30.0);
-    let chips = [
-        Rect::new(6.0, 4.0, 60.0, 24.0),
-        Rect::new(69.0, 4.0, 60.0, 24.0),
-    ];
-    let geometry = |can_split, allowed| PaneGeometry {
+    let geometry = |can_split, allowed, edge_fraction| PaneGeometry {
         group,
-        pane,
-        strip,
-        chips: &chips,
+        pane: Rect::new(0.0, 0.0, 400.0, 300.0),
+        strip: Rect::new(0.0, 0.0, 400.0, 30.0),
+        strip_slot: 1,
+        tabs: 2,
         can_split,
         allowed,
-        edge_fraction: 0.25,
-        caret_width: 3.0,
+        edge_fraction,
     };
+    let classify = |p: Vec2| geometry(true, AllowedSplits::All, 0.25).classify(p);
 
-    // Chip centers sit at x = 36 and 99; a pointer at 50 is between them.
-    let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(50.0, 15.0));
-    assert_eq!(hit.drop, DockDrop::Into { group, idx: 1 });
+    // Over the strip, the strip's own slot; it marks the caret, so nothing washes.
+    let hit = classify(Vec2::new(50.0, 15.0));
+    assert_eq!(hit, DropTarget::Slot { group, idx: 1 });
+    assert_eq!(hit.caret_in(group), Some(1));
     assert_eq!(
-        hit.highlight.min.x,
-        69.0 - 1.5 - 1.5,
-        "the caret straddles the second chip's leading edge: {:?}",
-        hit.highlight,
+        hit.caret_in(TabGroupId(8)),
+        None,
+        "another strip shows no caret"
     );
-    assert_eq!(hit.highlight.size.w, 3.0);
 
-    // The inner box appends to the strip and highlights the whole content rect.
-    let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(200.0, 165.0));
-    assert_eq!(hit.drop, DockDrop::Into { group, idx: 2 });
-    assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 400.0, 270.0));
-
-    // Near the left edge, normalized distance picks Left over Top.
-    let hit = geometry(true, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
+    // The inner box appends to the strip and washes the whole content rect.
+    let content = Rect::new(0.0, 30.0, 400.0, 270.0);
+    let hit = classify(Vec2::new(200.0, 165.0));
     assert_eq!(
-        hit.drop,
-        DockDrop::Split {
-            group,
-            side: SplitSide::Left
+        hit,
+        DropTarget::Region {
+            drop: DockDrop::Into { group, idx: 2 },
+            wash: content,
         }
     );
-    assert_eq!(hit.highlight, Rect::new(0.0, 30.0, 200.0, 270.0));
+    assert_eq!(hit.caret_in(group), None);
+
+    // Near the left edge, normalized distance picks Left over Top.
+    let left = DropTarget::Region {
+        drop: DockDrop::Split {
+            group,
+            side: SplitSide::Left,
+        },
+        wash: Rect::new(0.0, 30.0, 200.0, 270.0),
+    };
+    assert_eq!(classify(Vec2::new(20.0, 60.0)), left);
+
+    // The reach is the dock's policy: (90, 165) is 90 / 400 = 0.225 in from the left,
+    // inside a 0.25 wedge and outside a 0.2 one.
+    let p = Vec2::new(90.0, 165.0);
+    assert_eq!(classify(p).drop(), left.drop());
+    let narrow = geometry(true, AllowedSplits::All, 0.2).classify(p);
+    assert_eq!(narrow.drop(), DockDrop::Into { group, idx: 2 });
 
     // At the cap, or where the policy forbids the nearest edge, wedges join.
-    let capped = geometry(false, AllowedSplits::All).classify(Vec2::new(20.0, 60.0));
-    assert_eq!(capped.drop, DockDrop::Into { group, idx: 2 });
-    let col_only = geometry(true, AllowedSplits::Col).classify(Vec2::new(20.0, 60.0));
+    let at = Vec2::new(20.0, 60.0);
+    let capped = geometry(false, AllowedSplits::All, 0.25).classify(at);
+    assert_eq!(capped.drop(), DockDrop::Into { group, idx: 2 });
+    let col_only = geometry(true, AllowedSplits::Col, 0.25).classify(at);
     assert_eq!(
-        col_only.drop,
+        col_only.drop(),
         DockDrop::Split {
             group,
             side: SplitSide::Top
         },
         "the nearest *offered* edge wins when Left is refused"
     );
-    let none = geometry(true, AllowedSplits::None).classify(Vec2::new(20.0, 60.0));
-    assert_eq!(none.drop, DockDrop::Into { group, idx: 2 });
+    let none = geometry(true, AllowedSplits::None, 0.25).classify(at);
+    assert_eq!(none.drop(), DockDrop::Into { group, idx: 2 });
 }
 
 /// The minimal viewer: every tab is a label and an empty body.
@@ -922,6 +930,67 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         .expect("the strip arranged");
     // The Prefs chip sits below the 4 px padding, down to the strip's bottom.
     assert_eq!(chip_rect, Rect::new(86.5, 4.0, 76.0, strip.size.h - 4.0));
+}
+
+/// A divider dragged past the split clamp stops at it, so the release keeps what the drag drew:
+/// the left pane holds `RATIO_MIN` of the 599 px free span on every frame.
+#[test]
+fn an_over_dragged_divider_keeps_its_width_through_the_release() {
+    let mut d = seeded();
+    let primary = d.primary().id;
+    split_off(&mut d, viewer(1), primary, SplitSide::Right);
+    let mut h = UiHarness::new(SURFACE);
+    let mut tabs = Labels;
+    let mut run = |h: &mut UiHarness, d: &mut DockState<Tab>| {
+        h.frame(|ui| DockView::run(ui, d, &mut tabs));
+        h.arranged(DockView::pane_id(d, primary)).size.w
+    };
+    for _ in 0..3 {
+        run(&mut h, &mut d);
+    }
+    h.press_on(DockView::splitter_id(&d, DockPath::ROOT).with("divider"));
+    run(&mut h, &mut d);
+    h.drag_to(Vec2::new(5.0, 200.0));
+    let mut widths = vec![run(&mut h, &mut d), run(&mut h, &mut d)];
+    h.release();
+    widths.extend([run(&mut h, &mut d), run(&mut h, &mut d)]);
+
+    let floor = DockState::<Tab>::RATIO_MIN * 599.0;
+    assert!(
+        (widths[0] - floor).abs() < 1e-3,
+        "the drag stops at the clamp: {widths:?}, within an f32 rounding of the Fill split",
+    );
+    assert!(
+        widths.iter().all(|w| *w == widths[0]),
+        "no frame moves the divider: {widths:?}",
+    );
+    assert_eq!(root_split(&d).split.ratio(), DockState::<Tab>::RATIO_MIN);
+}
+
+/// A tab carried over a strip marks its slot with the strip's caret and washes nothing; over
+/// the content it washes the region and the caret goes.
+#[test]
+fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
+    let mut d = seeded();
+    let mut tabs = Labels;
+    let mut h = UiHarness::new(SURFACE);
+    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
+    let strip = DockView::strip_id(&d, d.primary().id);
+    let caret = strip.with("caret");
+    let wash = DockView::dock_id(&d).with("preview");
+
+    h.press_on(TabStrip::chip_id(strip, DockView::tab_key(Tab::Main)));
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    let last = h.center_of(TabStrip::chip_id(strip, DockView::tab_key(viewer(1))));
+    h.drag_to(last + Vec2::new(4.0, 0.0));
+    h.prime(2, |ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(h.rect(caret).is_some(), "over the strip, its caret");
+    assert!(h.rect(wash).is_none(), "and no wash");
+
+    h.drag_to(Vec2::new(300.0, 200.0));
+    h.prime(2, |ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(h.rect(caret).is_none(), "over the content, no caret");
+    assert!(h.rect(wash).is_some(), "but a wash");
 }
 
 /// A chip click goes through the navigation scan, so the new pane draws on
@@ -1141,7 +1210,7 @@ fn a_layout_deeper_than_the_default_cap_loads() {
     let mut d = DockState::new("deep.dock", Tab::Main).with_max_depth(6);
     let mut group = d.primary().id;
     for n in 1..=5 {
-        d.find_or_insert(viewer(n), group);
+        d.insert_into(viewer(n), group);
         split_off(&mut d, viewer(n), group, SplitSide::Right);
         group = d
             .find_tab(viewer(n))

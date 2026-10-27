@@ -2,7 +2,6 @@
 
 use crate::input::keyboard::key::Key;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -103,7 +102,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `dock`: drag feedback only.
+    /// Per-instance override of [`crate::Theme`]'s `dock`: the drop wash and the carried chip.
     pub fn style(mut self, s: impl Into<Option<&'a DockTheme>>) -> Self {
         self.style = s.into();
         self
@@ -123,6 +122,9 @@ impl<'a, T: DockTab> DockView<'a, T> {
         } = self;
         let response = widget.response(ui);
         let id = response.id;
+        let carried = DockView::drag(state, ui);
+        // Classified before the walk, so the strip it lands in records its caret.
+        let drop = carried.and_then(|_| DockView::drop_target(state, ui));
         let mut cx = DockCtx {
             dock: id,
             state,
@@ -131,11 +133,12 @@ impl<'a, T: DockTab> DockView<'a, T> {
             min_pane,
             overflow,
             theme,
+            drop,
         };
         widget.record(ui, None, |ui| {
             cx.node(ui, DockState::<T>::ROOT, DockPath::ROOT);
             cx.tab_menu(ui);
-            if let Some(tab) = DockView::drag(state, ui) {
+            if let Some(tab) = carried {
                 ui.set_cursor(CursorIcon::Grabbing);
                 cx.drag_feedback(ui, tab);
             }
@@ -206,25 +209,23 @@ impl<T: DockTab> DockView<'_, T> {
         }
         let mut dragged = Self::drag(state, ui);
         for group in state.groups() {
-            let strip = Self::strip_id(state, group.id);
-            for &tab in &group.tabs {
-                let key = Self::tab_key(tab);
-                if ui
-                    .response_for(TabStrip::close_id(strip, key))
-                    .left
-                    .clicked()
-                {
-                    operations.push(DockOperation::CloseTab { tab });
-                    continue;
-                }
-                let chip = ui.response_for(TabStrip::chip_id(strip, key));
-                if chip.clicked() {
-                    operations.push(DockOperation::ActivateTab { tab });
-                }
-                if dragged.is_none() && chip.left.drag.started() {
-                    dragged = Some(tab);
-                    Self::set_drag(state, ui, Some(tab));
-                }
+            let hits = TabStrip::scan(
+                ui,
+                Self::strip_id(state, group.id),
+                group.tabs.iter().map(|&tab| Self::tab_key(tab)),
+            );
+            let tab_at = |slot: Option<usize>| slot.map(|slot| group.tabs[slot]);
+            if let Some(tab) = tab_at(hits.closed) {
+                operations.push(DockOperation::CloseTab { tab });
+            }
+            if let Some(tab) = tab_at(hits.clicked) {
+                operations.push(DockOperation::ActivateTab { tab });
+            }
+            if dragged.is_none()
+                && let Some(tab) = tab_at(hits.drag_started)
+            {
+                dragged = Some(tab);
+                Self::set_drag(state, ui, Some(tab));
             }
         }
         let Some(tab) = dragged else {
@@ -243,7 +244,7 @@ impl<T: DockTab> DockView<'_, T> {
             if let Some(target) = Self::drop_target(state, ui) {
                 operations.push(DockOperation::MoveTab {
                     tab,
-                    to: target.drop,
+                    to: target.drop(),
                 });
             }
             Self::set_drag(state, ui, None);
@@ -262,40 +263,24 @@ impl<T: DockTab> DockView<'_, T> {
     /// The drop the pointer indicates: the pane containing it, classified into a zone. Not a hover test, since an inert pane hovers nothing. `None` off the panes; a release there cancels.
     fn drop_target(state: &DockState<T>, ui: &mut Ui) -> Option<DropTarget> {
         let p = ui.pointer_pos()?;
-        let (edge_fraction, caret_width) = {
-            let dock = &ui.theme().dock;
-            (dock.edge_fraction, dock.caret_width)
-        };
         let (group, pane) = state.groups().find_map(|g| {
             let rect = ui.response_for(Self::pane_id(state, g.id)).rect?;
             rect.contains(p).then_some((g, rect))
         })?;
         let strip_id = Self::strip_id(state, group.id);
         let strip = ui.response_for(strip_id).rect?;
-        let can_split = state.can_split(group.id);
-        let allowed = state.allowed_splits();
-        let dock_id = Self::dock_id(state);
-        ui.with_state::<ChipRects, _>(dock_id, |ui, buf| {
-            buf.rects.clear();
-            buf.rects.reserve(group.tabs.len());
-            buf.rects.extend(group.tabs.iter().filter_map(|&tab| {
-                ui.response_for(TabStrip::chip_id(strip_id, Self::tab_key(tab)))
-                    .rect
-            }));
-            Some(
-                PaneGeometry {
-                    group: group.id,
-                    pane,
-                    strip,
-                    chips: &buf.rects,
-                    can_split,
-                    allowed,
-                    edge_fraction,
-                    caret_width,
-                }
-                .classify(p),
-            )
-        })
+        let keys = group.tabs.iter().map(|&tab| Self::tab_key(tab));
+        let geometry = PaneGeometry {
+            group: group.id,
+            pane,
+            strip,
+            strip_slot: TabStrip::drop_slot(ui, strip_id, keys, p.x),
+            tabs: group.tabs.len(),
+            can_split: state.can_split(group.id),
+            allowed: state.allowed_splits(),
+            edge_fraction: state.edge_fraction(),
+        };
+        Some(geometry.classify(p))
     }
 
     /// The arranged size of a group's content area, `None` before its first layout.
@@ -346,11 +331,6 @@ impl<T: DockTab> TabMenuTarget<T> {
     }
 }
 
-#[derive(Debug, Default)]
-struct ChipRects {
-    rects: Vec<Rect>,
-}
-
 #[derive(Debug)]
 struct DockCtx<'c, T, D> {
     /// The dock's own id, which holds the open tab menu's target.
@@ -362,6 +342,8 @@ struct DockCtx<'c, T, D> {
     overflow: TabOverflow,
     /// Borrowed from the `Rc<Theme>` clone `show` holds, so the theme outlives every `Ui` reborrow.
     theme: &'c DockTheme,
+    /// Where the carried tab would land, from last frame's geometry.
+    drop: Option<DropTarget>,
 }
 
 impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
@@ -376,9 +358,11 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     SplitDirection::Row => Splitter::row(&mut live),
                     SplitDirection::Col => Splitter::col(&mut live),
                 };
+                // The split clamp floors the drag too, so a release keeps what the drag drew.
                 let hit = splitter
                     .id(DockView::splitter_id(state, path))
                     .min_pane(self.min_pane)
+                    .min_ratio(DockState::<T>::RATIO_MIN)
                     .show(ui, |ui, half| {
                         let child_path = match half {
                             SplitHalf::First => path.first(),
@@ -436,6 +420,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 .selected(group.active)
                 .focused(focused)
                 .overflow(self.overflow)
+                .drop_caret(self.drop.and_then(|drop| drop.caret_in(group.id)))
                 .show(ui);
             hit.keyed.or(hit.menu_picked)
         });
@@ -506,12 +491,10 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         }
     }
 
-    /// The drag's tooltip-layer feedback: a wash over the drop region and a ghost chip. Both sense nothing, so hit-testing is unaffected.
+    /// The drag's tooltip-layer feedback: a wash over the drop region and a ghost chip; a strip drop's caret is the strip's own. Both sense nothing, so hit-testing is unaffected.
     fn drag_feedback(&mut self, ui: &mut Ui, tab: T) {
-        let state = self.state;
-        let dock = DockView::dock_id(state);
-        if let Some(target) = DockView::drop_target(state, ui) {
-            let r = target.highlight;
+        let dock = DockView::dock_id(self.state);
+        if let Some(DropTarget::Region { wash: r, .. }) = self.drop {
             let preview = Chrome::rounded(
                 self.theme.preview_fill,
                 Corners::all(self.theme.preview_radius),

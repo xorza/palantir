@@ -9,6 +9,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -16,8 +17,9 @@ use crate::widgets::panel::Panel;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
+use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
-use crate::widgets::tabs::tab_strip;
+use crate::widgets::tabs::tab_strip::internals::insertion_slot;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
 use crate::widgets::text::Text;
@@ -441,16 +443,97 @@ fn the_insertion_slot_counts_the_centers_passed() {
         Rect::new(100.0, 0.0, 40.0, 20.0),
     ];
     // Centers sit at 20, 70 and 120.
-    let slot = |x: f32| tab_strip::insertion_slot(chips.iter().copied(), x);
+    let slot = |x: f32| insertion_slot(chips.iter().copied(), x);
     assert_eq!(slot(-5.0), 0, "before the first chip");
     assert_eq!(slot(19.0), 0, "the leading half of the first chip");
     assert_eq!(slot(21.0), 1, "past the first center");
     assert_eq!(slot(71.0), 2);
     assert_eq!(slot(500.0), 3, "past every center appends");
     assert_eq!(
-        tab_strip::insertion_slot(iter::empty(), 0.0),
+        insertion_slot(iter::empty(), 0.0),
         0,
         "an empty strip has one slot"
+    );
+}
+
+/// A drop reads chips at their uncut extents: with the band panned so `alpha` is cut on the
+/// left, a pointer between its true center and its visible one has passed it. The caret sits in
+/// the gutter before its slot's chip, and inside the band where that gutter is out of sight.
+#[test]
+fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
+    let theme = TabsTheme::default();
+    let (width, half_gap) = (theme.caret_width, theme.gap * 0.5);
+    let caret = strip_id().with("caret");
+    let build = |slot: usize| {
+        move |ui: &mut Ui| {
+            let items = items(ui, TabBadge::None);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(0)
+                .drop_caret(Some(slot))
+                .size((Sizing::fixed(90.0), Sizing::HUG))
+                .show(ui);
+        }
+    };
+    let extent = |h: &UiHarness, key: u64| {
+        let chip = TabStrip::chip_id(strip_id(), key);
+        h.transform(chip).apply_rect(h.arranged(chip))
+    };
+    let clip = |h: &UiHarness| {
+        h.rect(strip_id().with("band"))
+            .expect("the band arranged")
+            .deflated_by(theme.strip_padding)
+    };
+    let mark = |h: &UiHarness, x: f32| {
+        let clip = clip(h);
+        Rect::new(x - width * 0.5, clip.min.y, width, clip.size.h)
+    };
+
+    let mut h = UiHarness::new(SURFACE);
+    h.prime(2, build(1));
+    let gutter = extent(&h, 20).min.x - half_gap;
+    assert!(
+        clip(&h).min.x < gutter && gutter < clip(&h).max().x,
+        "premise: in sight"
+    );
+    assert_eq!(
+        h.rect(caret),
+        Some(mark(&h, gutter)),
+        "the gutter before beta"
+    );
+    h.prime(2, build(3));
+    assert!(
+        extent(&h, 30).max().x > clip(&h).max().x,
+        "premise: gamma is cut"
+    );
+    assert_eq!(
+        h.rect(caret),
+        Some(mark(&h, clip(&h).max().x)),
+        "the append, held at the band's right edge"
+    );
+
+    h.move_to(Vec2::new(40.0, 10.0));
+    h.scroll_pixels(Vec2::new(30.0, 0.0));
+    h.prime(2, build(0));
+    let uncut = extent(&h, 10);
+    let seen = h
+        .rect(TabStrip::chip_id(strip_id(), 10))
+        .expect("alpha shows in part");
+    assert!(
+        uncut.center().x < seen.center().x,
+        "premise: alpha is cut on the left"
+    );
+    let x = f32::midpoint(uncut.center().x, seen.center().x);
+    assert_eq!(
+        insertion_slot([seen], x),
+        0,
+        "the cut rect has not been passed"
+    );
+    assert_eq!(TabStrip::drop_slot(&h.ui, strip_id(), [10, 20, 30], x), 1);
+    assert_eq!(
+        h.rect(caret),
+        Some(mark(&h, clip(&h).min.x)),
+        "the gutter before alpha, held at the band's left edge"
     );
 }
 
@@ -605,6 +688,87 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     }
 }
 
+/// A drag shows the strip's caret at the slot under the pointer, and Escape cancels it: the
+/// caret goes and the release reorders nothing.
+#[test]
+fn an_escape_cancels_a_view_drag_and_its_caret() {
+    let view = WidgetId::from_hash("test.cancel");
+    let strip = view.with("strip");
+    let caret = strip.with("caret");
+    let record = |ui: &mut Ui, page: &mut usize| {
+        TabbedView::new(page, &PAGES)
+            .id(view)
+            .reorderable(true)
+            .show(ui, |_, _| {})
+            .action
+    };
+    let mut h = UiHarness::new(SURFACE);
+    let mut page = 0usize;
+    h.prime(2, |ui| {
+        record(ui, &mut page);
+    });
+    h.press_on(TabStrip::chip_id(strip, 0));
+    let onto = h.center_of(TabStrip::chip_id(strip, 2));
+    h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
+    h.prime(2, |ui| {
+        record(ui, &mut page);
+    });
+    assert!(h.rect(caret).is_some(), "the carried chip marks its slot");
+
+    h.key(Key::Escape);
+    h.frame(|ui| {
+        record(ui, &mut page);
+    });
+    assert!(h.rect(caret).is_none(), "Escape takes the caret away");
+    h.release();
+    assert_eq!(h.frame_value(|ui| record(ui, &mut page)), None);
+    assert_eq!(page, 0, "the cancelled drag moved nothing");
+}
+
+/// A close rewrites the binding for the collection after the removal, so a caller that removes
+/// the page keeps showing the right one: [Color, Geometry, Metadata] showing `page`, closing
+/// `closed`.
+#[test]
+fn a_close_moves_the_binding_with_the_shown_page() {
+    let view = WidgetId::from_hash("test.close");
+    let strip = view.with("strip");
+    let record = |ui: &mut Ui,
+                  bound: &mut usize,
+                  pages: &mut Vec<&'static str>,
+                  drawn: &mut &'static str| {
+        let action = TabbedView::new(bound, pages.as_slice())
+            .id(view)
+            .show(ui, |_, idx| *drawn = pages[idx])
+            .action;
+        if let Some(TabsAction::Closed { idx }) = action {
+            pages.remove(idx);
+        }
+        action
+    };
+    for (page, closed, want, shows) in [
+        (2, 0, 1, "Metadata"),
+        (2, 2, 1, "Geometry"),
+        (0, 0, 0, "Geometry"),
+        (1, 2, 1, "Geometry"),
+    ] {
+        let mut bound = page;
+        let mut pages = PAGES.to_vec();
+        let mut drawn = "";
+        let mut h = UiHarness::new(SURFACE);
+        h.prime(2, |ui| {
+            record(ui, &mut bound, &mut pages, &mut drawn);
+        });
+        h.click_on(TabStrip::close_id(strip, u64::try_from(closed).unwrap()));
+        let action = h.frame_value(|ui| record(ui, &mut bound, &mut pages, &mut drawn));
+        assert_eq!(action, Some(TabsAction::Closed { idx: closed }));
+        assert_eq!(bound, want, "showing {page}, closing {closed}");
+        h.frame(|ui| {
+            record(ui, &mut bound, &mut pages, &mut drawn);
+        });
+        assert_eq!(drawn, shows, "showing {page}, closing {closed}");
+    }
+}
+
 /// A keyed view names chips by page, not slot, for ids and drags.
 #[test]
 fn a_keyed_view_keeps_each_chip_with_its_page() {
@@ -663,19 +827,38 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     assert_eq!(page, 2, "the bound page followed Color to the end");
 }
 
-/// Where an index lands when `from` moves into gap `to`, for pages [A, B, C, D].
+/// Where an index lands when `from` moves into gap `to`, for pages [A, B, C, D]; and where
+/// the visible index goes when one page closes.
 #[test]
-fn a_move_carries_every_index_with_its_page() {
-    use crate::widgets::tabs::tabbed_view::internals::moved_idx;
-    for (from, to, before, after) in [
-        (0, 4, [0, 1, 2, 3], [3, 0, 1, 2]),
-        (3, 0, [0, 1, 2, 3], [1, 2, 3, 0]),
-        (1, 3, [0, 1, 2, 3], [0, 2, 1, 3]),
+fn a_move_and_a_close_carry_every_index_with_its_page() {
+    for (from, to, after) in [
+        (0, 4, [3, 0, 1, 2]),
+        (3, 0, [1, 2, 3, 0]),
+        (1, 3, [0, 2, 1, 3]),
+        (1, 1, [0, 1, 2, 3]),
+        (1, 2, [0, 1, 2, 3]),
     ] {
-        for (idx, want) in before.into_iter().zip(after) {
-            assert_eq!(moved_idx(idx, from, to), want, "{from} into {to}: {idx}");
+        for (idx, want) in after.into_iter().enumerate() {
+            assert_eq!(
+                reindex::after_move(idx, from, to),
+                want,
+                "{from} into {to}: {idx}"
+            );
         }
+        assert_eq!(reindex::landing(from, to), after[from], "{from} into {to}");
     }
+
+    // [A, B, C, D] showing `idx`, closing `removed`: an earlier close slides the
+    // index down, a later one leaves it, closing the shown page shows the one
+    // that took its slot, or the one before where it was last.
+    for (idx, removed, want) in [(2, 0, 1), (2, 3, 2), (2, 2, 2), (3, 3, 2), (0, 0, 0)] {
+        assert_eq!(
+            reindex::after_removal(idx, removed, 4),
+            want,
+            "showing {idx}, closing {removed}"
+        );
+    }
+    assert_eq!(reindex::after_removal(0, 0, 1), 0, "an emptied strip");
 }
 
 /// The chevron appears while a chip is *partly* out of sight. Self-calibrating:

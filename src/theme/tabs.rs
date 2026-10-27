@@ -72,6 +72,11 @@ pub struct TabsTheme {
     /// Status-dot diameter in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub badge_size: f32,
+    /// The insertion mark a chip drag shows at the slot it would drop into.
+    pub caret: RgbaF32,
+    /// Breadth of the insertion mark in logical px.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub caret_width: f32,
     /// Gutter between a chip's icon, label, badge and close button.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub label_gap: f32,
@@ -103,6 +108,8 @@ impl TabsTheme {
             close_size: _,
             badge: _,
             badge_size: _,
+            caret: _,
+            caret_width: _,
             label_gap: _,
             defaults: _,
         } = self;
@@ -177,6 +184,8 @@ impl TabsTheme {
             close_size: 16.0,
             badge: p.accent,
             badge_size: 3.5,
+            caret: p.accent,
+            caret_width: 3.0,
             label_gap: 6.0,
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,

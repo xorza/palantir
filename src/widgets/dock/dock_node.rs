@@ -6,7 +6,7 @@ use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::splitter::split_half::SplitHalf;
 
-/// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes (a stale one no-ops), unlike [`TabGroupId`](crate::TabGroupId).
+/// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes, unlike [`TabGroupId`](crate::TabGroupId). A stale one names another node, or none, where [`DockState::node`](crate::DockState::node) panics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeIdx(pub(super) u32);
 

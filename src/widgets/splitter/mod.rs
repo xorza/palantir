@@ -45,6 +45,7 @@ pub struct Splitter<'a> {
     ratio: &'a mut f32,
     axis: Axis,
     min_pane: f32,
+    min_ratio: f32,
     style: Option<&'a SplitterTheme>,
 }
 
@@ -80,6 +81,7 @@ impl<'a> Splitter<'a> {
             ratio,
             axis,
             min_pane: 0.0,
+            min_ratio: 0.0,
             style: None,
         }
     }
@@ -93,6 +95,15 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     pub const fn min_pane(mut self, px: f32) -> Self {
         self.min_pane = domain::length(px);
+        self
+    }
+
+    /// Floor either pane's share of the free space at `ratio` while dragging, beside
+    /// [`Self::min_pane`]'s length, for an owner that clamps the ratio it stores: a drag
+    /// past that clamp would snap back on release.
+    pub(crate) const fn min_ratio(mut self, ratio: f32) -> Self {
+        debug_assert!(ratio >= 0.0 && ratio <= 0.5, "a ratio floor is in 0..=0.5");
+        self.min_ratio = ratio;
         self
     }
 
@@ -128,7 +139,10 @@ impl<'a> Splitter<'a> {
         let active_color = theme.active;
 
         let divider_id = id.with("divider");
-        let divider = ui.response_for(divider_id);
+        // The splitter's own `disabled` reaches its divider through the cascade only next
+        // frame; folded here, a splitter disabled mid-drag stops painting and steering at once.
+        let mut divider = ui.response_for(divider_id);
+        divider.merge_disabled(response.disabled);
         // A Tab stop taking the `CARET` keys as WAI-ARIA's window splitter does;
         // built here so it reads its keys before the grid records.
         let mut divider_widget = Widget::leaf()
@@ -162,6 +176,7 @@ impl<'a> Splitter<'a> {
                     extent: axis.main(rect.size),
                     reserved: rule_thickness,
                     min_pane: self.min_pane,
+                    min_ratio: self.min_ratio,
                 };
                 layout_ratio = seam.ratio_at(axis.main_v(local));
                 resizing = true;
@@ -194,6 +209,7 @@ impl<'a> Splitter<'a> {
                         extent,
                         reserved: rule_thickness,
                         min_pane: self.min_pane,
+                        min_ratio: self.min_ratio,
                     };
                     layout_ratio = seam.ratio_at(pos);
                     resizing = true;
@@ -219,7 +235,7 @@ impl<'a> Splitter<'a> {
 
         let bar_fill = if divider.left.drag.is_live() {
             Some(active_color)
-        } else if divider.hovered() && !response.disabled {
+        } else if divider.hovered() {
             Some(hovered_color)
         } else {
             None
@@ -347,25 +363,27 @@ const KEY_ENDS: KeyPair = KeyPair {
 };
 
 /// The split axis as the divider maps it: the container's `extent`, the rule's
-/// `reserved` share of it, and the floor both panes keep while dragging.
+/// `reserved` share of it, and the floors both panes keep while dragging, as a length
+/// and as a share.
 #[derive(Clone, Copy, Debug)]
 struct Seam {
     extent: f32,
     reserved: f32,
     min_pane: f32,
+    min_ratio: f32,
 }
 
 impl Seam {
     /// Map a container-local coordinate `pos` to the first pane's share of the free
-    /// space (`extent − reserved`); the seam center follows `pos` and `min_pane`
-    /// floors both panes, collapsing to a centered clamp when two floors do not fit.
-    /// Degenerate extents pin to `0.5`.
+    /// space (`extent − reserved`); the seam center follows `pos` and the larger of
+    /// `min_pane` and `min_ratio` floors both panes, collapsing to a centered clamp when
+    /// two floors do not fit. Degenerate extents pin to `0.5`.
     fn ratio_at(self, pos: f32) -> f32 {
         let span = self.extent - self.reserved;
         if domain::is_invisible(span) {
             return 0.5;
         }
-        let floor = (self.min_pane / span).min(0.5);
+        let floor = (self.min_pane / span).max(self.min_ratio).min(0.5);
         domain::band_fraction(pos, self.extent, self.reserved).clamp(floor, 1.0 - floor)
     }
 }

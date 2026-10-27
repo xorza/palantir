@@ -419,31 +419,84 @@ fn divider_requests_the_resize_cursor() {
     }
 }
 
+/// A splitter disabled mid-drag lets go at once: the divider drops its active fill and the
+/// resize cursor, the pointer stops steering, the panes hold the last arranged 0.75, and the
+/// release commits nothing.
+#[test]
+fn a_splitter_disabled_mid_drag_lets_go() {
+    let frame = |h: &mut UiHarness, ratio: &mut f32, disabled: bool| {
+        h.frame_passes(|ui| {
+            Splitter::row(ratio)
+                .id(split_id())
+                .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
+                .disabled(disabled)
+                .show(ui, |_, _| {})
+                .edges()
+        })
+    };
+    let divider = split_id().with("divider");
+    let fill = |h: &UiHarness| {
+        let node = h.node_of(divider).expect("the divider records").node;
+        h.ui.tree(Layer::Main).chrome(node).is_some()
+    };
+    let mut h = UiHarness::new(SURFACE);
+    let mut ratio = 0.5;
+    frame(&mut h, &mut ratio, false);
+    frame(&mut h, &mut ratio, false);
+    h.press_at(Vec2::new(200.5, 50.0));
+    h.drag_to(Vec2::new(300.5, 50.0));
+    frame(&mut h, &mut ratio, false);
+    assert_eq!(ratio, 0.75);
+    assert!(fill(&h), "premise: the live drag paints the divider");
+
+    h.drag_to(Vec2::new(350.5, 50.0));
+    let disabled = frame(&mut h, &mut ratio, true);
+    assert!(!fill(&h), "a disabled divider paints no drag fill");
+    assert_eq!(h.ui.window_requests().levels.cursor, CursorIcon::Default);
+    assert_eq!(ratio, 0.75, "the pointer no longer steers");
+    assert_eq!(h.arranged(split_id().with("first")).size.w, 300.0);
+    assert_eq!(disabled.count_where(|e| *e != QUIET), 0, "{disabled:?}");
+
+    h.release();
+    let released = frame(&mut h, &mut ratio, true);
+    assert_eq!(
+        released.count_where(|e| *e != QUIET),
+        0,
+        "no commit: {released:?}"
+    );
+    assert_eq!(ratio, 0.75);
+}
+
 #[test]
 fn ratio_at_maps_center_edges_and_floors() {
     // extent 406, reserved 6 → span 400; pointer 203 → first = 200 → ratio 0.5.
     let cases = [
-        (203.0, 406.0, 6.0, 0.0, 0.5),
-        (3.0, 406.0, 6.0, 0.0, 0.0),   // at the left stop
-        (403.0, 406.0, 6.0, 0.0, 1.0), // at the right stop
-        (-50.0, 406.0, 6.0, 0.0, 0.0), // past the ends clamps
-        (999.0, 406.0, 6.0, 0.0, 1.0),
-        (103.0, 406.0, 6.0, 0.0, 0.25),   // quarter point
-        (10.0, 406.0, 6.0, 50.0, 0.125),  // min_pane floors first: 50/400
-        (395.0, 406.0, 6.0, 50.0, 0.875), // …and second: 350/400
-        (7.0, 406.0, 6.0, 300.0, 0.5),    // floors can't both fit → center
-        (10.0, 4.0, 6.0, 0.0, 0.5),       // degenerate extent
+        (203.0, 406.0, 6.0, 0.0, 0.0, 0.5),
+        (3.0, 406.0, 6.0, 0.0, 0.0, 0.0),   // at the left stop
+        (403.0, 406.0, 6.0, 0.0, 0.0, 1.0), // at the right stop
+        (-50.0, 406.0, 6.0, 0.0, 0.0, 0.0), // past the ends clamps
+        (999.0, 406.0, 6.0, 0.0, 0.0, 1.0),
+        (103.0, 406.0, 6.0, 0.0, 0.0, 0.25),   // quarter point
+        (10.0, 406.0, 6.0, 50.0, 0.0, 0.125),  // min_pane floors first: 50/400
+        (395.0, 406.0, 6.0, 50.0, 0.0, 0.875), // …and second: 350/400
+        (10.0, 406.0, 6.0, 0.0, 0.1, 0.1),     // min_ratio floors first
+        (395.0, 406.0, 6.0, 0.0, 0.1, 0.9),    // …and second: 1 − 0.1
+        (10.0, 406.0, 6.0, 50.0, 0.1, 0.125),  // the larger floor wins: 50/400 > 0.1
+        (10.0, 406.0, 6.0, 20.0, 0.1, 0.1),    // …and here 0.1 > 20/400
+        (7.0, 406.0, 6.0, 300.0, 0.0, 0.5),    // floors can't both fit → center
+        (10.0, 4.0, 6.0, 0.0, 0.0, 0.5),       // degenerate extent
     ];
-    for (pos, extent, thickness, min_pane, want) in cases {
+    for (pos, extent, thickness, min_pane, min_ratio, want) in cases {
         let seam = Seam {
             extent,
             reserved: thickness,
             min_pane,
+            min_ratio,
         };
         let got = seam.ratio_at(pos);
         assert_eq!(
             got, want,
-            "p2r({pos},{extent},{thickness},{min_pane})={got} want {want}"
+            "p2r({pos},{extent},{thickness},{min_pane},{min_ratio})={got} want {want}"
         );
     }
 }

@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::widgets::tabs::reindex;
+
 /// A [`TabGroup`]'s identity: the long-lived address of one pane.
 ///
 /// Minted by [`DockState`](crate::DockState) from a counter it keeps, so states built by the same
@@ -10,37 +12,37 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TabGroupId(pub(super) u64);
 
-/// One pane's tab strip: the open tabs plus which one is visible.
+/// One pane's tab strip: the open tabs plus which one is visible. Read-only outside the crate:
+/// [`DockState`](crate::DockState) keeps the strip non-empty and the visible index in range.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabGroup<T> {
-    /// Stable identity; survives the re-pack every structural operation ends with.
-    pub id: TabGroupId,
-    /// Non-empty; a group whose last tab closes collapses out of the tree.
-    pub tabs: Vec<T>,
-    /// Index of the visible tab; always in range.
-    pub active: usize,
-}
-
-impl<T: Copy> TabGroup<T> {
-    /// The visible tab. Always present — a group is never empty.
-    pub fn active_tab(&self) -> T {
-        self.tabs[self.active]
-    }
+    pub(super) id: TabGroupId,
+    pub(super) tabs: Vec<T>,
+    pub(super) active: usize,
 }
 
 impl<T> TabGroup<T> {
-    /// Removes the tab at `idx`, and keeps showing the tab that was showing.
-    ///
-    /// A strip is addressed by index and read by identity: removing a tab ahead of the visible one slides
-    /// it down a slot, so a held index would switch the pane to a document nobody asked for. Removing the
-    /// visible tab is the one case that chooses another: the tab that took the slot, or the one before it
-    /// where the slot was last.
+    /// Stable identity; survives the re-pack every structural operation ends with.
+    pub const fn id(&self) -> TabGroupId {
+        self.id
+    }
+
+    /// The open tabs in strip order; never empty, as a group whose last tab closes collapses
+    /// out of the tree.
+    pub fn tabs(&self) -> &[T] {
+        &self.tabs
+    }
+
+    /// The visible tab's slot in [`Self::tabs`].
+    pub const fn active(&self) -> usize {
+        self.active
+    }
+
+    /// Removes the tab at `idx`, and keeps showing the tab that was showing; see
+    /// [`reindex::after_removal`].
     pub(super) fn remove_tab(&mut self, idx: usize) {
+        self.active = reindex::after_removal(self.active, idx, self.tabs.len());
         self.tabs.remove(idx);
-        if idx < self.active {
-            self.active -= 1;
-        }
-        self.clamp_active();
     }
 
     /// [`Self::remove_tab`]'s rule over a whole filter: drops every tab `keep` rejects, and keeps showing
@@ -59,13 +61,15 @@ impl<T> TabGroup<T> {
             idx += 1;
             kept
         });
-        self.active = active;
-        self.clamp_active();
+        // Where the visible tab and every tab after it were rejected, its slot lies past the end
+        // and the last kept tab shows.
+        self.active = active.min(self.tabs.len().saturating_sub(1));
     }
+}
 
-    /// Pulls the visible index back into range after the strip shrank: the tail case both removers
-    /// land in, which their own arithmetic cannot answer.
-    fn clamp_active(&mut self) {
-        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+impl<T: Copy> TabGroup<T> {
+    /// The visible tab. Always present — a group is never empty.
+    pub fn active_tab(&self) -> T {
+        self.tabs[self.active]
     }
 }

@@ -27,14 +27,19 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::error::DockError;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
+use crate::widgets::tabs::reindex;
 use std::mem;
 
 /// Split-ratio clamp: neither pane drops below a tenth of the split.
 const RATIO_MIN: f32 = 0.1;
-const RATIO_MAX: f32 = 0.9;
+/// Derived, so the clamp stays the symmetric one a divider drag floors at (`Splitter::min_ratio`).
+const RATIO_MAX: f32 = 1.0 - RATIO_MIN;
 
 /// Most nested splits on any root-to-leaf chain (up to 16 panes).
 const DEFAULT_MAX_DEPTH: u32 = 4;
+
+/// The split wedges' reach: the inner half of a pane's content is the join zone.
+const DEFAULT_EDGE_FRACTION: f32 = 0.25;
 
 /// A tab's position: which group holds it, and where in that group's strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,8 +55,9 @@ pub struct TabAddress {
 ///
 /// The application owns one per tab domain and persists it. The widget never
 /// mutates it: [`DockView`](crate::DockView) emits [`DockOperation`]s and
-/// [`Self::apply`] is the one place a mutation happens, so an app can route them
-/// through its own queue and keep them out of undo.
+/// [`Self::apply`] is where they land, so an app can route them through its own
+/// queue and keep them out of undo. The one edit outside it is
+/// [`Self::retain_tabs`], a filter no `Copy` operation can carry.
 ///
 /// ```
 /// # use palantir::{DockOperation, DockState};
@@ -78,6 +84,8 @@ pub struct DockState<T> {
     max_depth: u32,
     #[serde(skip_serializing)]
     allowed_splits: AllowedSplits,
+    #[serde(skip_serializing)]
+    edge_fraction: f32,
 }
 
 /// The document half of a [`DockState`] as a file holds it, before validation.
@@ -110,6 +118,7 @@ impl<T: DockTab> TryFrom<RawDockState<T>> for DockState<T> {
             seed,
             max_depth: DEFAULT_MAX_DEPTH,
             allowed_splits: AllowedSplits::default(),
+            edge_fraction: DEFAULT_EDGE_FRACTION,
         };
         state.validate()?;
         Ok(state)
@@ -142,6 +151,7 @@ impl<T: DockTab> DockState<T> {
             seed: WidgetId::from_hash(seed).0,
             max_depth: DEFAULT_MAX_DEPTH,
             allowed_splits: AllowedSplits::All,
+            edge_fraction: DEFAULT_EDGE_FRACTION,
         }
     }
 
@@ -168,6 +178,23 @@ impl<T: DockTab> DockState<T> {
         self
     }
 
+    /// How far in from each edge of a pane's content a dragged tab splits rather than joins,
+    /// as a fraction of that content's width or height. Default `0.25`, which leaves the
+    /// inner half as the join zone; `0.0` offers no split, and `0.5` no join.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `fraction` is in `0..=0.5`.
+    #[track_caller]
+    pub const fn with_edge_fraction(mut self, fraction: f32) -> Self {
+        assert!(
+            fraction >= 0.0 && fraction <= 0.5,
+            "edge_fraction must be in 0..=0.5",
+        );
+        self.edge_fraction = fraction;
+        self
+    }
+
     /// The tab that refuses to close.
     pub const fn pinned(&self) -> T {
         self.pinned
@@ -183,12 +210,21 @@ impl<T: DockTab> DockState<T> {
         self.allowed_splits
     }
 
+    /// The split wedges' reach; see [`Self::with_edge_fraction`].
+    pub const fn edge_fraction(&self) -> f32 {
+        self.edge_fraction
+    }
+
     /// The group keyboard shortcuts and newly opened tabs go to.
     pub const fn focused(&self) -> TabGroupId {
         self.focused
     }
 
     /// The node at `idx`; the record walk follows [`DockSplit`]'s child indices.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `idx` is past the last node, as one read before a structural operation can be.
     pub fn node(&self, idx: NodeIdx) -> &DockNode<T> {
         &self.nodes[idx.usize()]
     }
@@ -281,7 +317,7 @@ impl<T: DockTab> DockState<T> {
     /// Append `tab` to `group`'s strip unless already open: the tree half of
     /// [`DockOperation::OpenTab`]. Callers hold a live group, so a dead id is a logic
     /// error.
-    pub fn find_or_insert(&mut self, tab: T, group: TabGroupId) {
+    fn find_or_insert(&mut self, tab: T, group: TabGroupId) {
         if self.find_tab(tab).is_none() {
             self.group_mut(group)
                 .expect("insert target group exists")
@@ -336,10 +372,9 @@ impl<T: DockTab> DockState<T> {
 
         match drop {
             DockDrop::Into { group, idx } => {
-                // `idx` addresses the strip as the caller saw it; a rightward move in one group
-                // compensates for its own removal.
-                let idx = if group == source.group && idx > source.idx {
-                    idx - 1
+                // `idx` addresses the strip as the caller saw it, before the tab left it.
+                let idx = if group == source.group {
+                    reindex::landing(source.idx, idx)
                 } else {
                     idx
                 };
@@ -606,6 +641,11 @@ mod internals {
         /// Park the id counter where no operation sequence could.
         pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
             self.next_group = next;
+        }
+
+        /// Append `tab` to a live `group` without activating it or moving focus.
+        pub(crate) fn insert_into(&mut self, tab: T, group: TabGroupId) {
+            self.find_or_insert(tab, group);
         }
     }
 }

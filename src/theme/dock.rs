@@ -1,4 +1,4 @@
-//! What a dock paints that a tab strip does not: the drop preview, insertion caret and pointer-trailing chip.
+//! What a dock paints that a tab strip does not: the drop preview and the pointer-trailing chip.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -21,9 +21,6 @@ pub struct DockTheme {
     /// Corner radius of the preview.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub preview_radius: f32,
-    /// Breadth of the insertion mark drawn between two chips.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub caret_width: f32,
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
@@ -32,9 +29,6 @@ pub struct DockTheme {
     /// Where the ghost chip sits relative to the pointer.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
     pub ghost_offset: Vec2,
-    /// How far in from each edge the split wedges reach, as a fraction of the pane's content rect; `0.25` leaves the inner half as the join zone.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
-    pub edge_fraction: f32,
 }
 
 impl DockTheme {
@@ -45,10 +39,8 @@ impl DockTheme {
             preview_fill: _,
             preview_stroke: _,
             preview_radius: _,
-            caret_width: _,
             ghost_padding: _,
             ghost_offset: _,
-            edge_fraction: _,
         } = self;
         ghost.for_each_text(f);
     }
@@ -59,7 +51,6 @@ impl DockTheme {
             preview_fill: p.accent.with_alpha8(46),
             preview_stroke: Stroke::new(p.accent, 1.5),
             preview_radius: 2.0,
-            caret_width: 3.0,
             ghost: WidgetLook {
                 chrome: Chrome::rounded(p.element, Corners::all(4.0))
                     .with_border(Stroke::new(p.accent, 1.0)),
@@ -67,7 +58,6 @@ impl DockTheme {
             },
             ghost_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
             ghost_offset: Vec2::new(14.0, 18.0),
-            edge_fraction: 0.25,
         }
     }
 }

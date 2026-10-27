@@ -171,7 +171,7 @@ const PINS: &[Pin] = &[
     pin::<Text<'static>>("widgets::Text", 208, 8),
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
-    pin::<Splitter<'static>>("widgets::Splitter", 144, 8),
+    pin::<Splitter<'static>>("widgets::Splitter", 152, 8),
     pin::<Panel>("widgets::Panel", 248, 8),
     pin::<Block>("widgets::Block", 248, 8),
     pin::<Grid>("widgets::Grid", 248, 8),

@@ -1,5 +1,6 @@
 //! The chip row on its own: geometry, selection cap, close button, badge, overflow, keyboard travel, drag sensing.
 
+use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -88,6 +89,7 @@ pub struct TabStrip<'a> {
     selected: Option<usize>,
     focus: TabStripFocus,
     overflow: TabOverflow,
+    drop_caret: Option<usize>,
     style: Option<&'a TabsTheme>,
 }
 
@@ -112,6 +114,7 @@ impl<'a> TabStrip<'a> {
             selected: None,
             focus: TabStripFocus::Focused,
             overflow: TabOverflow::default(),
+            drop_caret: None,
             style: None,
         }
     }
@@ -144,6 +147,13 @@ impl<'a> TabStrip<'a> {
         self
     }
 
+    /// Mark the slot a carried chip would drop into, from [`Self::drop_slot`]; a slot past the
+    /// end marks the append.
+    pub(crate) const fn drop_caret(mut self, slot: Option<usize>) -> Self {
+        self.drop_caret = slot;
+        self
+    }
+
     /// The chip id for `key` under a strip with id `strip`; the one derivation.
     pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId {
         strip.with(("tab", key))
@@ -159,6 +169,43 @@ impl<'a> TabStrip<'a> {
         strip.with("band")
     }
 
+    /// What the chips keyed `keys` under `strip` reported last frame, read before the strip records,
+    /// as a caller that acts a phase early does. The same fold as [`TabStripResponse`]'s.
+    pub(crate) fn scan(ui: &Ui, strip: WidgetId, keys: impl IntoIterator<Item = u64>) -> ChipHits {
+        let mut hits = ChipHits::default();
+        for (slot, key) in keys.into_iter().enumerate() {
+            let close = ui.response_for(Self::close_id(strip, key));
+            hits.add(
+                slot,
+                &ui.response_for(Self::chip_id(strip, key)),
+                Some(&close),
+            );
+        }
+        hits
+    }
+
+    /// Where the chip keyed `key` would be uncut: its arranged rect under its transform, so a chip
+    /// the band pans out of sight keeps its whole extent.
+    fn chip_extent(ui: &Ui, strip: WidgetId, key: u64) -> Option<Rect> {
+        let chip = ui.response_for(Self::chip_id(strip, key));
+        chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
+    }
+
+    /// The slot a drop at `x` addresses among the chips keyed `keys`, from last frame's uncut
+    /// extents: a chip the band clips still counts at its true center.
+    pub(crate) fn drop_slot(
+        ui: &Ui,
+        strip: WidgetId,
+        keys: impl IntoIterator<Item = u64>,
+        x: f32,
+    ) -> usize {
+        insertion_slot(
+            keys.into_iter()
+                .filter_map(|key| Self::chip_extent(ui, strip, key)),
+            x,
+        )
+    }
+
     /// Records the strip, and its overflow menu when open.
     pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
@@ -170,6 +217,7 @@ impl<'a> TabStrip<'a> {
             selected,
             focus,
             overflow,
+            drop_caret,
             style: _,
         } = self;
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
@@ -219,6 +267,9 @@ impl<'a> TabStrip<'a> {
                     .size((Sizing::FILL, Sizing::fixed(rule_thickness)));
                 rule_leaf.record(ui, Some(&rule), |_| {});
             }
+            if let Some(slot) = drop_caret {
+                pass.caret(ui, slot);
+            }
             pass.keyboard_travel(ui);
         });
         let hits = pass.hits;
@@ -227,12 +278,15 @@ impl<'a> TabStrip<'a> {
         }
 
         let StripHits {
-            clicked,
+            chips:
+                ChipHits {
+                    clicked,
+                    closed,
+                    drag_started,
+                    drag_stopped,
+                },
             keyed,
             menu_picked,
-            closed,
-            drag_started,
-            drag_stopped,
         } = hits;
         TabStripResponse {
             response: Response::new(ui, response),
@@ -260,18 +314,46 @@ struct StripState {
 }
 
 /// The slot an insertion at `x` addresses: the count of chips whose center it has passed; `chips.len()` appends.
-pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
+fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
     chips.into_iter().filter(|c| c.center().x < x).count()
+}
+
+/// What a strip's chips reported, by slot. Every field is a one-frame edge, and the first chip to
+/// report an edge keeps it.
+#[derive(Debug, Default)]
+pub(crate) struct ChipHits {
+    /// The chip a click activated.
+    pub(crate) clicked: Option<usize>,
+    /// The chip whose close button was clicked.
+    pub(crate) closed: Option<usize>,
+    /// The chip whose drag latched.
+    pub(crate) drag_started: Option<usize>,
+    /// The chip whose drag released.
+    pub(crate) drag_stopped: Option<usize>,
+}
+
+impl ChipHits {
+    /// Fold in the chip at `slot`. The close button wins over the click the same press reads as.
+    fn add(&mut self, slot: usize, chip: &ResponseState, close: Option<&ResponseState>) {
+        if close.is_some_and(ResponseState::clicked) {
+            self.closed.get_or_insert(slot);
+        } else if chip.clicked() {
+            self.clicked.get_or_insert(slot);
+        }
+        if chip.left.drag.started() {
+            self.drag_started.get_or_insert(slot);
+        }
+        if chip.left.drag.stopped() {
+            self.drag_stopped.get_or_insert(slot);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 struct StripHits {
-    clicked: Option<usize>,
+    chips: ChipHits,
     keyed: Option<usize>,
     menu_picked: Option<usize>,
-    closed: Option<usize>,
-    drag_started: Option<usize>,
-    drag_stopped: Option<usize>,
 }
 
 /// One record of a strip: what every chip reads, and what the chips and keys did.
@@ -293,12 +375,6 @@ impl StripPass<'_> {
         Some(band.deflated_by(self.theme.strip_padding))
     }
 
-    /// Where a chip would be uncut: its arranged rect under its transform.
-    fn chip_extent(&self, ui: &Ui, key: u64) -> Option<Rect> {
-        let chip = ui.response_for(TabStrip::chip_id(self.strip, key));
-        chip.layout_rect.map(|rect| chip.transform.apply_rect(rect))
-    }
-
     /// The pan bringing the selected chip into the band's clip, from last frame's rects; forgets the request.
     fn reveal_delta(&self, ui: &mut Ui) -> Vec2 {
         let strip = self.strip;
@@ -306,7 +382,8 @@ impl StripPass<'_> {
             return Vec2::ZERO;
         };
         ui.with_state::<StripState, _>(strip, |_, s| s.reveal = None);
-        let (Some(clip), Some(chip)) = (self.band_clip(ui), self.chip_extent(ui, key)) else {
+        let (Some(clip), Some(chip)) = (self.band_clip(ui), TabStrip::chip_extent(ui, strip, key))
+        else {
             return Vec2::ZERO;
         };
         if chip.min.x < clip.min.x {
@@ -435,18 +512,44 @@ impl StripPass<'_> {
             });
         });
 
-        let hits = &mut self.hits;
-        if close.is_some_and(|c| c.response.clicked()) {
-            hits.closed.get_or_insert(slot);
-        } else if state.clicked() {
-            hits.clicked.get_or_insert(slot);
-        }
-        if state.left.drag.started() {
-            hits.drag_started.get_or_insert(slot);
-        }
-        if state.left.drag.stopped() {
-            hits.drag_stopped.get_or_insert(slot);
-        }
+        self.hits
+            .chips
+            .add(slot, &state, close.as_ref().map(|c| &c.response.state));
+    }
+
+    /// The insertion mark at the boundary of `slot`: centered in the gutter before its chip, or
+    /// after the last chip for the append, and held inside the band where that boundary is panned
+    /// out of sight. Recorded in the tooltip layer, over whatever the drag crosses.
+    fn caret(&self, ui: &mut Ui, slot: usize) {
+        let t = self.theme;
+        let strip = self.strip;
+        let Some(clip) = self.band_clip(ui) else {
+            return;
+        };
+        let extent = |slot: usize| {
+            let item = self.items.get(slot)?;
+            TabStrip::chip_extent(ui, strip, item.key)
+        };
+        let slot = slot.min(self.items.len());
+        let half_gap = domain::length_at_least(t.gap, 0.0) * 0.5;
+        let x = match (extent(slot), slot.checked_sub(1).and_then(extent)) {
+            (Some(next), _) => next.min.x - half_gap,
+            (None, Some(prev)) => prev.max().x + half_gap,
+            (None, None) => clip.min.x,
+        };
+        let width = domain::length_at_least(t.caret_width, 0.0);
+        let x = x.clamp(clip.min.x, clip.max().x.max(clip.min.x));
+        let mark = Rect::new(x - width * 0.5, clip.min.y, width, clip.size.h.max(0.0));
+        let fill = Chrome::fill(t.caret);
+        ui.layer(Layer::Tooltip)
+            .fixed_at(mark.min)
+            .max_size(mark.size)
+            .show(|ui| {
+                Widget::leaf()
+                    .id(strip.with("caret"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .record(ui, Some(&fill), |_| {});
+            });
     }
 
     /// The trailing chevron and its menu, recorded only while a chip is scrolled out of the band. The menu lists every chip: visibility comes from last frame's rects, so listing only hidden ones would add and drop rows under the open menu.
@@ -458,7 +561,7 @@ impl StripPass<'_> {
             return;
         };
         let hidden = |item: &TabItem| {
-            self.chip_extent(ui, item.key).is_some_and(|full| {
+            TabStrip::chip_extent(ui, strip, item.key).is_some_and(|full| {
                 full.min.x < clip.min.x - EPS || full.max().x > clip.max().x + EPS
             })
         };
@@ -559,5 +662,14 @@ impl GlyphButton {
             .style(&self.text)
             .text_align(Align::CENTER)
             .show(ui);
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::primitives::geometry::rect::Rect;
+
+    pub(crate) fn insertion_slot(chips: impl IntoIterator<Item = Rect>, x: f32) -> usize {
+        super::insertion_slot(chips, x)
     }
 }
