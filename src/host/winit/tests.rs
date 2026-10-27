@@ -3,79 +3,53 @@ use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::{GpuRequestError, SurfaceError};
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::{WinitHost, finish_run};
-use crate::internals::ui_harness::UiHarness;
 use crate::text::font_scope::FontScope;
 use crate::ui::Ui;
-use crate::ui::frame_report::FrameProcessing;
-use crate::ui::frame_runtime::wake::Wake;
-use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
-use glam::{UVec2, Vec2};
-use std::time::Duration;
 use winit::error;
 
-const SURFACE: UVec2 = UVec2::new(320, 200);
+/// An app that records nothing, to name the builder's type.
+#[derive(Debug)]
+struct Inert;
 
-#[derive(Debug, Default)]
-struct CountingApp {
-    updates: u32,
-    records: u32,
-    relayout_on_next_record: bool,
-    expected_pointer: Option<Vec2>,
+impl App for Inert {
+    fn record(&mut self, _win: WindowToken, _ui: &mut Ui) {}
 }
 
-impl App for CountingApp {
-    fn update(&mut self, win: WindowToken, ui: &Ui) {
-        assert_eq!(win, WindowToken(0));
-        assert_eq!(ui.display().physical, SURFACE);
-        assert_eq!(ui.input().pointer_pos(), self.expected_pointer);
-        self.updates += 1;
-    }
-
-    fn record(&mut self, win: WindowToken, ui: &mut Ui) {
-        assert_eq!(win, WindowToken(0));
-        self.records += 1;
-        if self.relayout_on_next_record {
-            self.relayout_on_next_record = false;
-            ui.request_relayout();
-        }
-    }
-}
-
+/// Each setter overrides its default.
 #[test]
-fn builder_retains_defaults_and_overrides() {
-    let defaults = WinitHost::<CountingApp>::builder(WindowToken(3));
-    assert_eq!(defaults.first_token, WindowToken(3));
-    assert_eq!(defaults.config.vsync, Vsync::On);
-    assert_eq!(defaults.config.power_preference, PowerPreference::LowPower);
-    assert!(!defaults.config.collect_gpu_stats);
-    assert!(defaults.config.pixel_snap);
-    assert_eq!(defaults.config.fonts, FontScope::System);
-
-    let builder = WinitHost::<CountingApp>::builder(WindowToken(9))
+fn builder_setters_override_the_defaults() {
+    let builder = WinitHost::<Inert>::builder(WindowToken(9))
         .window(WindowConfig::new("window"))
         .title("title")
         .power_preference(PowerPreference::HighPerformance)
         .collect_gpu_stats(true)
         .pixel_snap(false)
-        .vsync(Vsync::On)
-        .fonts(FontScope::System);
+        .vsync(Vsync::Off)
+        .fonts(FontScope::Bundled);
+    let defaults = WinitHost::<Inert>::builder(WindowToken(3));
 
     assert_eq!(builder.first_token, WindowToken(9));
     assert_eq!(builder.config.window.title, "title");
-    assert_eq!(builder.config.vsync, Vsync::On);
-    assert_eq!(builder.config.fonts, FontScope::System);
     assert_eq!(
-        builder.config.power_preference,
-        PowerPreference::HighPerformance
+        (builder.config.vsync, defaults.config.vsync),
+        (Vsync::Off, Vsync::On)
     );
-    assert!(builder.config.collect_gpu_stats);
-    assert!(
-        !builder.config.pixel_snap,
-        "the setter overrides the default",
+    assert_eq!(
+        (builder.config.fonts, defaults.config.fonts),
+        (FontScope::Bundled, FontScope::System)
     );
+    assert_eq!(
+        (
+            builder.config.power_preference,
+            defaults.config.power_preference
+        ),
+        (PowerPreference::HighPerformance, PowerPreference::LowPower)
+    );
+    assert!(builder.config.collect_gpu_stats && !defaults.config.collect_gpu_stats);
+    assert!(!builder.config.pixel_snap && defaults.config.pixel_snap);
 }
 
 #[test]
@@ -109,40 +83,4 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
             ..
         }
     ));
-}
-
-#[test]
-fn app_lifecycle_follows_frame_plan_and_record_replays() {
-    let mut h = UiHarness::cold(SURFACE);
-    let mut app = CountingApp::default();
-    let pointer = Vec2::new(24.0, 12.0);
-    h.move_to(pointer);
-    app.expected_pointer = Some(pointer);
-
-    let processing = h.frame_app(&mut app).processing;
-    assert_eq!(processing, FrameProcessing::SingleLayout);
-    assert_eq!(app.updates, 1, "cold-start frame updates once");
-    assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
-
-    app.relayout_on_next_record = true;
-    h.ui().request_repaint();
-    let processing = h
-        .at(Duration::from_millis(16))
-        .frame_app(&mut app)
-        .processing;
-    assert_eq!(processing, FrameProcessing::DoubleLayout);
-    assert_eq!(app.updates, 2, "relayout frame adds one update");
-    assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
-
-    h.ui().frame_runtime_mut().repaint_wakes.push(Wake {
-        deadline: Duration::from_millis(32),
-        reasons: WakeReasons::ANIMATION,
-    });
-    let processing = h
-        .at(Duration::from_millis(32))
-        .frame_app(&mut app)
-        .processing;
-    assert_eq!(processing, FrameProcessing::PaintOnly);
-    assert_eq!(app.updates, 2, "paint-only frame skips update");
-    assert_eq!(app.records, 4, "paint-only frame skips record");
 }

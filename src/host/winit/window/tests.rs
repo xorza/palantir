@@ -82,3 +82,229 @@ fn the_ime_caret_scales_to_physical_px() {
         Rect::new(15.0, 30.0, 3.0, 24.0),
     );
 }
+
+/// Hidden by occlusion at 0 s and shown at 3 s, the clock skips 3 s. A minimize during an
+/// occlusion keeps the window hidden past the un-occlude, so the span ends only when both clear
+/// (at 10 s, after 4 s). A frame run while hidden at 12 s restarts the span, so showing at 14 s
+/// skips 2 s, not 4 s; a second occlusion report does not move the start.
+#[test]
+fn a_hidden_span_ends_when_every_reason_clears() {
+    use crate::host::winit::window::visibility::Visibility;
+
+    let t0 = Instant::now();
+    let at = |s: u64| t0 + Duration::from_secs(s);
+    let mut v = Visibility::default();
+    assert!(!v.is_hidden());
+    assert_eq!(v.set_occluded(true, at(0)), None);
+    assert_eq!(
+        v.set_occluded(true, at(1)),
+        None,
+        "a repeat keeps the start"
+    );
+    assert!(v.is_hidden());
+    assert_eq!(v.set_occluded(false, at(3)), Some(Duration::from_secs(3)));
+    assert!(!v.is_hidden());
+
+    assert_eq!(v.set_occluded(true, at(6)), None);
+    assert_eq!(v.set_minimized(true, at(7)), None);
+    assert_eq!(v.set_occluded(false, at(8)), None, "still minimized");
+    assert!(v.is_hidden() && v.is_minimized());
+    assert_eq!(v.set_minimized(false, at(10)), Some(Duration::from_secs(4)));
+
+    assert_eq!(v.set_occluded(true, at(11)), None);
+    v.restart(at(12));
+    assert_eq!(v.set_occluded(false, at(14)), Some(Duration::from_secs(2)));
+    v.restart(at(15));
+    assert!(!v.is_hidden(), "a restart while shown hides nothing");
+}
+
+/// Each level reaches the platform only on a change: the IME turns on with its first area,
+/// moves with a new one, stays for a repeat, and turns off once.
+#[test]
+fn applied_levels_report_only_changes() {
+    use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
+    use crate::primitives::geometry::rect::Rect;
+    use crate::window::cursor_icon::CursorIcon;
+
+    let mut levels = AppliedLevels::default();
+    for (cursor, changed) in [
+        (CursorIcon::default(), false),
+        (CursorIcon::Text, true),
+        (CursorIcon::Text, false),
+        (CursorIcon::Pointer, true),
+    ] {
+        assert_eq!(levels.set_cursor(cursor), changed, "{cursor:?}");
+    }
+
+    let a = Rect::new(10.0, 20.0, 2.0, 16.0);
+    let b = Rect::new(30.0, 20.0, 2.0, 16.0);
+    for (area, change) in [
+        (None, None),
+        (Some(a), Some(ImeChange::Enable(a))),
+        (Some(a), None),
+        (Some(b), Some(ImeChange::Move(b))),
+        (None, Some(ImeChange::Disable)),
+        (None, None),
+        (Some(b), Some(ImeChange::Enable(b))),
+    ] {
+        assert_eq!(levels.set_ime_area(area), change, "{area:?}");
+    }
+}
+
+/// How each acquire outcome schedules the next frame. A validation failure backs off from 16 ms,
+/// doubling to the 500 ms ceiling (16, 32, 64, 128, 256, 500, 500), ahead of any repaint the
+/// frame asked for; any other outcome clears the back-off. A suboptimal swapchain rebuilds once
+/// per size, an outdated one every time.
+#[test]
+fn the_schedule_follows_each_acquire_outcome() {
+    use crate::host::winit::window::present_schedule::{
+        AcquireOutcome as O, PresentDecision, PresentSchedule, Wake,
+    };
+    use crate::ui::frame_report::{FrameProcessing, FrameReport};
+    use glam::UVec2;
+
+    let report = |repaint_requested, repaint_after| FrameReport {
+        repaint_requested,
+        repaint_after,
+        plan: None,
+        processing: FrameProcessing::SingleLayout,
+        ime_area: None,
+    };
+    let due = Duration::from_secs(2);
+    let ms = Duration::from_millis;
+    let mut schedule = PresentSchedule::default();
+    let mut step = |outcome, report: &FrameReport| schedule.after(outcome, report);
+    let wake = |wake| PresentDecision {
+        rebuild: false,
+        wake,
+    };
+    let rebuild = |wake| PresentDecision {
+        rebuild: true,
+        wake,
+    };
+
+    for (label, outcome, report, want) in [
+        (
+            "a still frame",
+            O::Skipped,
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "a still frame that asks",
+            O::Skipped,
+            report(true, None),
+            wake(Wake::Now),
+        ),
+        (
+            "a timed wake",
+            O::Presented,
+            report(false, Some(due)),
+            wake(Wake::At(due)),
+        ),
+        (
+            "a hidden window",
+            O::Occluded,
+            report(true, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "a timeout",
+            O::Timeout,
+            report(false, None),
+            wake(Wake::Now),
+        ),
+        (
+            "an outdated swapchain",
+            O::Outdated,
+            report(false, None),
+            rebuild(Wake::Now),
+        ),
+        (
+            "and again",
+            O::Outdated,
+            report(false, None),
+            rebuild(Wake::Now),
+        ),
+        (
+            "stale at 64 × 48",
+            O::Suboptimal(UVec2::new(64, 48)),
+            report(false, None),
+            rebuild(Wake::Idle),
+        ),
+        (
+            "still stale there",
+            O::Suboptimal(UVec2::new(64, 48)),
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "stale at 80 × 48",
+            O::Suboptimal(UVec2::new(80, 48)),
+            report(false, None),
+            rebuild(Wake::Idle),
+        ),
+        (
+            "rejected",
+            O::Validation,
+            report(true, Some(due)),
+            wake(Wake::After(ms(16))),
+        ),
+        (
+            "rejected twice",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(32))),
+        ),
+        (
+            "three times",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(64))),
+        ),
+        (
+            "four times",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(128))),
+        ),
+        (
+            "five times",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(256))),
+        ),
+        (
+            "six times",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(500))),
+        ),
+        (
+            "at the ceiling",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(500))),
+        ),
+        (
+            "presented again",
+            O::Presented,
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "rejected anew",
+            O::Validation,
+            report(false, None),
+            wake(Wake::After(ms(16))),
+        ),
+        (
+            "a still frame clears it",
+            O::Skipped,
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+    ] {
+        assert_eq!(step(outcome, &report), want, "{label}");
+    }
+}

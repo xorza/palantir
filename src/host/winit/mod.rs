@@ -332,7 +332,7 @@ where
         let Some(runtime) = self.running() else {
             return;
         };
-        let max_texture_dim = runtime.surfaces.max_texture_dim;
+        let max_texture_dim = runtime.core.max_texture_dim();
         let Some(slot) = runtime.slot_of_id(id) else {
             return;
         };

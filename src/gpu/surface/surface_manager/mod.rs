@@ -1,5 +1,5 @@
-//! Device startup and the retained authority that creates, configures and
-//! presents native-window surfaces.
+//! Device startup and the retained authority that creates native-window surfaces and picks
+//! their configuration.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -38,19 +38,16 @@ pub(crate) struct HostGpuConfig {
 pub(crate) struct SurfaceManager {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    /// The host's device and queue; `HostCore` clones them from here.
-    pub(crate) gpu: Gpu,
-    /// `max_texture_dimension_2d` at device creation, cached for the resize clamp.
-    pub(crate) max_texture_dim: NonZeroU32,
     /// App-global pacing; both states map to automatic policies every surface accepts.
     vsync: Vsync,
 }
 
-/// What [`SurfaceManager::start`] returns: the adapter-probe surface is
+/// What [`SurfaceManager::start`] returns: the device it opened, and the adapter-probe surface
 /// reused as the first window's swapchain.
 #[derive(Debug)]
 pub(crate) struct SurfaceStartup {
     pub(crate) surfaces: SurfaceManager,
+    pub(crate) gpu: Gpu,
     pub(crate) first_surface: WindowSurface,
 }
 
@@ -85,17 +82,17 @@ impl SurfaceManager {
         }
         .open(&instance)?;
 
-        let max_texture_dim = gpu.max_texture_dim();
         let surfaces = Self {
             instance,
             adapter,
-            gpu,
-            max_texture_dim,
             vsync: cfg.vsync,
         };
+        // Clamped here, before the host core that keeps the cap exists.
+        let size = Self::clamp_extent(gpu.max_texture_dim(), size);
         let first_surface = surfaces.build_window_surface(surface, size)?;
         Ok(SurfaceStartup {
             surfaces,
+            gpu,
             first_surface,
         })
     }
@@ -126,7 +123,8 @@ impl SurfaceManager {
         UVec2::new(size.x.clamp(1, max), size.y.clamp(1, max))
     }
 
-    /// Create a surface for an additional window.
+    /// Create a surface for an additional window, of a `size` already clamped by
+    /// [`Self::clamp_extent`].
     pub(crate) fn make_surface<W>(
         &self,
         window: &Arc<W>,
@@ -139,19 +137,15 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
-    /// Pick an sRGB format and bundle `surface` with a fresh configuration,
-    /// without calling `surface.configure`; the host applies it on first paint.
+    /// Pick an sRGB format and bundle `surface` with a fresh configuration of `size`, without
+    /// calling `surface.configure`; the first [`WindowSurface::prepare`] applies it.
     fn build_window_surface(
         &self,
         surface: wgpu::Surface<'static>,
         size: UVec2,
     ) -> Result<WindowSurface, SurfaceError> {
         let caps = surface.get_capabilities(&self.adapter);
-        let config = build_surface_config(
-            &caps,
-            Self::clamp_extent(self.max_texture_dim, size),
-            self.vsync,
-        )?;
+        let config = build_surface_config(&caps, size, self.vsync)?;
         Ok(WindowSurface::new(surface, config))
     }
 }
