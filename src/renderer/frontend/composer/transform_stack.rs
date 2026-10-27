@@ -30,7 +30,7 @@ impl TransformStack {
 
     fn set(&mut self, cur: TranslateScale) {
         self.cur = cur;
-        self.physical_scale = cur.scale * self.display_scale;
+        self.physical_scale = cur.scale() * self.display_scale;
     }
 
     /// Physical px per owner-local unit under the live product.
@@ -49,7 +49,7 @@ impl TransformStack {
     }
 
     pub(super) const fn scale(&self) -> f32 {
-        self.cur.scale
+        self.cur.scale()
     }
 
     pub(super) const fn apply_rect(&self, rect: Rect) -> Rect {

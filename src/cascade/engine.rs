@@ -192,11 +192,11 @@ impl CascadeCtx {
         let word = |lo: u32, hi: u32| u64::from(lo) | (u64::from(hi) << 32);
         let mut h = Hasher::new();
         h.write_u64(word(
-            float_hash::canon_bits(self.transform.translation.x),
-            float_hash::canon_bits(self.transform.translation.y),
+            float_hash::canon_bits(self.transform.translation().x),
+            float_hash::canon_bits(self.transform.translation().y),
         ));
         h.write_u64(word(
-            float_hash::canon_bits(self.transform.scale - 1.0),
+            float_hash::canon_bits(self.transform.scale() - 1.0),
             flags,
         ));
         h.write_u64(word(clip[0], clip[1]));

@@ -4,7 +4,7 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
-use crate::primitives::math::num::Num;
+use crate::primitives::math::num::Number;
 use glam::BVec2;
 use std::fmt;
 use std::hash;
@@ -143,10 +143,10 @@ impl FloatHash for Sizing {
     }
 }
 
-impl<T: Num> From<T> for Sizing {
+impl<T: Number> From<T> for Sizing {
     #[track_caller]
     fn from(v: T) -> Self {
-        Self::fixed(v.as_f32())
+        Self::fixed(v.to_f32())
     }
 }
 
@@ -265,7 +265,7 @@ impl hash::Hash for SizeSpec {
     }
 }
 
-impl<T: Num> From<T> for SizeSpec {
+impl<T: Number> From<T> for SizeSpec {
     #[track_caller]
     fn from(v: T) -> Self {
         Sizing::from(v).into()

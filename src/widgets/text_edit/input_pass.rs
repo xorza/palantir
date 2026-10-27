@@ -99,7 +99,7 @@ impl InputPass<'_> {
         {
             // Hit-testing runs against the unscrolled layout, so add back last
             // frame's scroll and block offset: the user clicked on what they saw.
-            let [pad_l, pad_t, _, _] = ctx.padding.as_array();
+            let [pad_l, pad_t, _, _] = ctx.padding.to_array();
             let block = layout.prev_block_offset;
             let local_x = pointer_offset.x - pad_l - block.x + view.scroll.offset().x;
             let local_y = pointer_offset.y - pad_t - block.y + view.scroll.offset().y;

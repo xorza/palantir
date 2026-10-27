@@ -2,8 +2,11 @@ use crate::internals::panic_probe;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
+use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
-use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::linear_geometry::{
+    LinearGradient, LinearGradientBuilder,
+};
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation, Spread};
@@ -170,6 +173,52 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
             assert_eq!(built(count).ramp.stops.len(), count);
             assert_eq!(radial(count).ramp.stops.len(), count);
             assert_eq!(deserialized.unwrap(), count);
+        }
+    }
+}
+
+/// A bad stop count or stop color panics at the caller's line through every public door: the
+/// stop run, the ramp, each kind's `new` and `two_stop`, the builder's ninth `stop`, its `build`,
+/// and its `From`.
+#[test]
+fn a_bad_gradient_panics_at_the_call_site() {
+    const NAN: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
+    const W: RgbaF32 = RgbaF32::WHITE;
+    const C: Vec2 = Vec2::splat(0.5);
+    fn one() -> [Stop; 1] {
+        [Stop::new(0.0, W)]
+    }
+    fn empty() -> LinearGradientBuilder {
+        LinearGradient::builder(0.0)
+    }
+    fn eight() -> LinearGradientBuilder {
+        (0..MAX_STOPS).fold(empty(), |b, _| b.stop(0.0, W))
+    }
+    let few: [(u32, fn()); 7] = [
+        (line!(), || _ = GradientStops::new(one())),
+        (line!(), || _ = ColorRamp::new(one())),
+        (line!(), || _ = LinearGradient::new(0.0, one())),
+        (line!(), || _ = RadialGradient::new(C, C, one())),
+        (line!(), || _ = ConicGradient::new(C, 0.0, one())),
+        (line!(), || _ = empty().build()),
+        (line!(), || _ = LinearGradient::from(empty())),
+    ];
+    let many: [(u32, fn()); 1] = [(line!(), || _ = eight().stop(1.0, W))];
+    let color: [(u32, fn()); 5] = [
+        (line!(), || _ = empty().stop(0.0, NAN)),
+        (line!(), || _ = ColorRamp::two_stop(NAN, W)),
+        (line!(), || _ = LinearGradient::two_stop(0.0, W, NAN)),
+        (line!(), || _ = RadialGradient::two_stop(NAN, W)),
+        (line!(), || _ = ConicGradient::two_stop(W, NAN)),
+    ];
+    for (fragment, cases) in [
+        ("gradient requires at least 2 stops", &few[..]),
+        ("gradient stop count exceeds MAX_STOPS", &many[..]),
+        (domain::COLOR_RULE, &color[..]),
+    ] {
+        for &(line, construct) in cases {
+            let site = panic_probe::panic_site(fragment, construct);
+            assert_eq!(site, format!("{}:{line}", file!()), "{fragment}");
         }
     }
 }

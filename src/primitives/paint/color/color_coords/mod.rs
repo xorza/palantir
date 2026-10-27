@@ -25,7 +25,7 @@ impl Default for ColorCoords {
 
 impl ColorCoords {
     /// Coordinates of `color` in `model`; `fallback_hue` stands in where hue is undefined.
-    pub fn new(model: ColorModel, color: RgbaF32, fallback_hue: f32) -> Self {
+    pub fn from_color(color: RgbaF32, model: ColorModel, fallback_hue: f32) -> Self {
         match model {
             ColorModel::Okhsv => Self::Okhsv(Okhsv::from_color(color, fallback_hue)),
             ColorModel::Hsv => Self::Hsv(Hsv::from_color(color, fallback_hue)),
@@ -53,7 +53,7 @@ impl ColorCoords {
         if model == self.model() {
             return self;
         }
-        Self::new(model, self.to_color(), self.hue())
+        Self::from_color(self.to_color(), model, self.hue())
     }
 
     /// Hue as the turn [`Self::to_color`] paints: wraps outside `0..=1`, non-finite reads `0`.

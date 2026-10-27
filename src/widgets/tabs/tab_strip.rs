@@ -452,7 +452,7 @@ impl StripPass<'_> {
             ..look.chrome
         };
         // The selected chip lifts its inner top inset by the cap, so height is unchanged; a close button trades the right inset for its box (`TabsTheme::trailing_inset`).
-        let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
+        let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.to_array();
         let trailing = if item.closable {
             t.trailing_inset
         } else {
@@ -569,7 +569,7 @@ impl StripPass<'_> {
         }
         let chevron = self.glyph_button(ui, button_id);
         let t = self.theme;
-        let [_, _, band_r, band_b] = t.strip_padding.as_array();
+        let [_, _, band_r, band_b] = t.strip_padding.to_array();
         let button = Widget::zstack()
             .id(button_id)
             .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))

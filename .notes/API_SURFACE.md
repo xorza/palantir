@@ -215,7 +215,7 @@ ColorCoords
     enum ColorCoords: Clone, Copy, Debug, Default, PartialEq
         Okhsv(Okhsv)
         Hsv(Hsv)
-        pub fn new(model: ColorModel, color: RgbaF32, fallback_hue: f32) -> Self
+        pub fn from_color(color: RgbaF32, model: ColorModel, fallback_hue: f32) -> Self
         pub const fn model(self) -> ColorModel
         pub fn to_color(self) -> RgbaF32
         pub fn with_model(self, model: ColorModel) -> Self
@@ -394,7 +394,7 @@ ContextMenuTheme
 Corners
     struct Corners: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
-        pub fn as_array(self) -> [f32; 4]
+        pub fn to_array(self) -> [f32; 4]
         pub fn all(r: f32) -> Self
         pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self
         pub fn top(r: f32) -> Self
@@ -403,9 +403,9 @@ Corners
         pub fn right(r: f32) -> Self
         pub fn scaled_by(self, factor: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
-        impl<T: Num, B: Num> From<(T, B)> for Corners
-        impl<T: Num> From<T> for Corners
-        impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners
+        impl<T: Number, B: Number> From<(T, B)> for Corners
+        impl<T: Number> From<T> for Corners
+        impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners
 
 CursorIcon
     enum CursorIcon: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -877,6 +877,7 @@ GradientGeometry
 GradientStops
     struct GradientStops: Clone, Copy, Debug, Deref, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
         pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self
+        impl<'a> IntoIterator for &'a GradientStops
 
 Grid
     struct Grid<Rows = [Track; 0], Cols = [Track; 0]>: ThemeDefaults (blanket)
@@ -1281,6 +1282,10 @@ Modifiers
 NodeIdx
     struct NodeIdx: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
 
+Number
+    trait Number: Scalar
+        impl<T: Scalar> Number for T
+
 OffscreenHost
     struct OffscreenHost: Debug
         pub const WINDOW: WindowToken
@@ -1367,6 +1372,13 @@ Panel
         pub fn canvas() -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
+
+ParseColorError
+    enum ParseColorError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+        Length
+        Digit
+        LinearForm
+        NonFinite
 
 PipelineStats
     struct PipelineStats: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1708,15 +1720,15 @@ Size
         pub const fn scaled_by(self, factor: f32) -> Self
         impl From<Size> for SizeSpec
         impl From<Size> for Vec2
-        impl<T: Num> From<T> for Size
-        impl<W: Num, H: Num> From<(W, H)> for Size
+        impl<T: Number> From<T> for Size
+        impl<W: Number, H: Number> From<(W, H)> for Size
 
 SizeSpec
     struct SizeSpec: Clone, Copy, Debug, Default, From<Size>, From<Sizing>, Hash, PartialEq
         pub const fn new(w: Sizing, h: Sizing) -> Self
         pub const fn w(self) -> Sizing
         pub const fn h(self) -> Sizing
-        impl<T: Num> From<T> for SizeSpec
+        impl<T: Number> From<T> for SizeSpec
         impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for SizeSpec
 
 Sizing
@@ -1731,7 +1743,7 @@ Sizing
         pub const fn is_hug(self) -> bool
         impl From<Sizing> for SizeSpec
         impl From<Sizing> for Track
-        impl<T: Num> From<T> for Sizing
+        impl<T: Number> From<T> for Sizing
 
 Slider
     struct Slider<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1759,15 +1771,15 @@ SlotDefaults
 Spacing
     struct Spacing: Add, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
-        pub fn as_array(self) -> [f32; 4]
+        pub fn to_array(self) -> [f32; 4]
         pub fn all(v: f32) -> Self
         pub fn xy(x: f32, y: f32) -> Self
         pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self
         pub fn from_array(v: [f32; 4]) -> Self
         pub fn sums(self) -> Size
-        impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing
-        impl<T: Num> From<T> for Spacing
-        impl<X: Num, Y: Num> From<(X, Y)> for Spacing
+        impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing
+        impl<T: Number> From<T> for Spacing
+        impl<X: Number, Y: Number> From<(X, Y)> for Spacing
 
 Spinner
     struct Spinner<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2225,13 +2237,16 @@ TooltipTheme
 
 Track
     struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq
-        pub const fn new(size: Sizing) -> Self
+        pub const fn new(sizing: Sizing) -> Self
         pub const HUG: Self
         pub const FILL: Self
         pub const fn fixed(v: f32) -> Self
         pub const fn fill(weight: f32) -> Self
         pub const fn with_min(self, min: f32) -> Self
         pub const fn with_max(self, max: f32) -> Self
+        pub const fn sizing(self) -> Sizing
+        pub const fn min(self) -> f32
+        pub const fn max(self) -> f32
 
 TranslateScale
     struct TranslateScale: Clone, Copy, Debug, Default, PartialEq
@@ -2240,9 +2255,12 @@ TranslateScale
         pub const fn new(translation: Vec2, scale: f32) -> Self
         pub const fn from_translation(t: Vec2) -> Self
         pub const fn from_scale(s: f32) -> Self
+        pub const fn translation(self) -> Vec2
+        pub const fn scale(self) -> f32
         pub const fn anchored_at(self, origin: Vec2) -> Self
         pub const fn compose(self, other: Self) -> Self
         pub const fn apply_point(self, p: Vec2) -> Vec2
+        pub const fn inverse_point(self, p: Vec2) -> Vec2
         pub const fn inverse_vector(self, v: Vec2) -> Vec2
         pub const fn apply_rect(self, r: Rect) -> Rect
 

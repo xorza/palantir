@@ -233,7 +233,7 @@ impl Rect {
         if corners.is_approx_zero() {
             return self;
         }
-        let [tl, tr, br, bl] = corners.as_array();
+        let [tl, tr, br, bl] = corners.to_array();
         let top = tl.max(tr) * KAPPA;
         let bottom = bl.max(br) * KAPPA;
         let left = tl.max(bl) * KAPPA;
@@ -250,7 +250,7 @@ impl Rect {
     /// Outset by `s` on each side; undoes a non-clamped [`Self::deflated_by`].
     #[inline]
     pub fn inflated_by(self, s: Spacing) -> Self {
-        let [l, t, r, b] = s.as_array();
+        let [l, t, r, b] = s.to_array();
         Self {
             min: Vec2::new(self.min.x - l, self.min.y - t),
             size: Size::new(self.size.w + (l + r), self.size.h + (t + b)),
@@ -260,7 +260,7 @@ impl Rect {
     /// Inset by `s` on each side, clamping the size at zero.
     #[inline]
     pub fn deflated_by(self, s: Spacing) -> Self {
-        let [l, t, r, b] = s.as_array();
+        let [l, t, r, b] = s.to_array();
         Self {
             min: Vec2::new(self.min.x + l, self.min.y + t),
             size: Size::new(

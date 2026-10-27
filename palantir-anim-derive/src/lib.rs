@@ -7,7 +7,7 @@ use quote::quote;
 use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse_macro_input};
 
 /// `#[derive(Animatable)]` on a struct with named fields.
-/// `#[animate(snap)]` (alias `skip`) on a field: `lerp` returns the target's value, spring math
+/// `#[animate(snap)]` on a field: `lerp` returns the target's value, spring math
 /// skips it and `magnitude` excludes it. `to_motion` and `from_motion` forward to each animated
 /// field, so a struct of colors springs premultiplied as its colors do.
 ///
@@ -220,7 +220,7 @@ fn container_settle_eps(input: &DeriveInput) -> syn::Result<Option<Expr>> {
 enum FieldKind {
     /// Forwarded to the field's own `Animatable` impl.
     Animated,
-    /// `#[animate(snap)]` or `skip`: takes the target's value and stays out of the arithmetic.
+    /// `#[animate(snap)]`: takes the target's value and stays out of the arithmetic.
     Snap,
 }
 
@@ -233,11 +233,11 @@ impl FieldKind {
                 continue;
             }
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("snap") || meta.path.is_ident("skip") {
+                if meta.path.is_ident("snap") {
                     kind = Self::Snap;
                     Ok(())
                 } else {
-                    Err(meta.error("unknown #[animate(...)] option; expected `snap` or `skip`"))
+                    Err(meta.error("unknown #[animate(...)] option; expected `snap`"))
                 }
             })?;
         }
@@ -254,15 +254,20 @@ mod tests {
     #[test]
     fn refused_inputs_name_the_reason() {
         let shape = "Animatable can only be derived on structs with named fields";
-        let option = "unknown #[animate(...)] option; expected `snap` or `skip`";
+        let option = "unknown #[animate(...)] option; expected `snap`";
         let container = "unknown #[animate(...)] option on a struct; expected `settle_eps`";
-        let cases: [(&str, DeriveInput, &str); 6] = [
+        let cases: [(&str, DeriveInput, &str); 7] = [
             ("enum", parse_quote! { enum E { A } }, shape),
             ("tuple struct", parse_quote! { struct T(f32); }, shape),
             ("unit struct", parse_quote! { struct U; }, shape),
             (
                 "typo",
                 parse_quote! { struct S { #[animate(snip)] a: f32 } },
+                option,
+            ),
+            (
+                "skip, which is not a spelling of snap",
+                parse_quote! { struct S { #[animate(skip)] a: f32 } },
                 option,
             ),
             (

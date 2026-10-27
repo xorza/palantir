@@ -9,9 +9,9 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Track {
-    pub(crate) size: Sizing,
-    pub(crate) min: f32,
-    pub(crate) max: f32,
+    sizing: Sizing,
+    min: f32,
+    max: f32,
 }
 
 impl Track {
@@ -22,9 +22,9 @@ impl Track {
     }
 
     /// A track with the given sizing.
-    pub const fn new(size: Sizing) -> Self {
+    pub const fn new(sizing: Sizing) -> Self {
         Self {
-            size,
+            sizing,
             min: 0.0,
             max: f32::INFINITY,
         }
@@ -80,10 +80,25 @@ impl Track {
         self
     }
 
+    /// How the track sizes before its clamps.
+    pub const fn sizing(self) -> Sizing {
+        self.sizing
+    }
+
+    /// The lower size clamp, a *length*; `0` unless set.
+    pub const fn min(self) -> f32 {
+        self.min
+    }
+
+    /// The upper size clamp, an *extent* no smaller than [`Self::min`]; `+inf` unless set.
+    pub const fn max(self) -> f32 {
+        self.max
+    }
+
     /// One `u64` for the two clamps, as [`FloatHash`] does for [`glam::Vec2`].
     #[inline]
     fn hash_bits<H: hash::Hasher, F: Fn(f32) -> u32 + Copy>(&self, h: &mut H, bits: F) {
-        self.size.hash_bits(h, bits);
+        self.sizing.hash_bits(h, bits);
         h.write_u64((u64::from(bits(self.min)) << 32) | u64::from(bits(self.max)));
     }
 }

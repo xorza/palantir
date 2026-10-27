@@ -62,7 +62,7 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             let boxed = h.arranged(id.with("box"));
             let text = h.arranged(id.with("label"));
             assert_eq!(text.min.x - boxed.max().x, gap, "{label}: gap");
-            let [_, top, _, bottom] = padding.as_array();
+            let [_, top, _, bottom] = padding.to_array();
             let content_h = 120.0 - top - bottom;
             let below = if center {
                 (content_h - boxed.size.h) / 2.0

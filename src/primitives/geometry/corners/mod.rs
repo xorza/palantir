@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::math::num::Num;
+use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
 
@@ -87,7 +87,7 @@ impl Corners {
     #[inline]
     pub(crate) fn inner(self, size: Size, padding: Spacing) -> Self {
         let [tl, tr, br, bl] = self.fitted_radii(size, 1.0);
-        let [left, top, right, bottom] = padding.as_array();
+        let [left, top, right, bottom] = padding.to_array();
         Self(F16x4::from_lanes([
             (tl - top.max(left)).max(0.0),
             (tr - top.max(right)).max(0.0),
@@ -106,7 +106,7 @@ impl Corners {
 
     /// [`Self::fit_to`] before packing.
     fn fitted_radii(self, size: Size, scale: f32) -> [f32; 4] {
-        fit(self.as_array().map(|r| r * scale), size)
+        fit(self.to_array().map(|r| r * scale), size)
     }
 
     /// True when every corner is within UI epsilon of zero; `&self` for serde's `skip_serializing_if`.
@@ -128,17 +128,17 @@ impl Corners {
 }
 
 /// `(top, bottom)`: both corners on each edge.
-impl<T: Num, B: Num> From<(T, B)> for Corners {
+impl<T: Number, B: Number> From<(T, B)> for Corners {
     fn from((t, b): (T, B)) -> Self {
-        let (t, b) = (t.as_f32(), b.as_f32());
+        let (t, b) = (t.to_f32(), b.to_f32());
         Self::new(t, t, b, b)
     }
 }
 
 /// `(tl, tr, br, bl)`, in lane order.
-impl<TL: Num, TR: Num, BR: Num, BL: Num> From<(TL, TR, BR, BL)> for Corners {
+impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners {
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
-        Self::new(tl.as_f32(), tr.as_f32(), br.as_f32(), bl.as_f32())
+        Self::new(tl.to_f32(), tr.to_f32(), br.to_f32(), bl.to_f32())
     }
 }
 
@@ -151,7 +151,7 @@ impl LaneCodec for Corners {
     }
 
     fn to_lane_array(&self) -> [f32; 4] {
-        self.as_array()
+        self.to_array()
     }
 
     fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {

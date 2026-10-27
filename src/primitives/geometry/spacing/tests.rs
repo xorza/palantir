@@ -34,7 +34,7 @@ fn an_edge_past_f16_is_refused_where_it_is_built() {
         panic_probe::assert_panics_with(Spacing::LANE_RULE, || Spacing::new(1.0, 2.0, 3.0, bad));
     }
     assert_eq!(
-        Spacing::new(65519.0, -65519.0, 0.0, 1.0).as_array(),
+        Spacing::new(65519.0, -65519.0, 0.0, 1.0).to_array(),
         [65504.0, -65504.0, 0.0, 1.0]
     );
 }
@@ -44,7 +44,7 @@ fn an_edge_past_f16_is_refused_where_it_is_built() {
 #[test]
 fn a_derived_spacing_saturates_at_the_f16_range() {
     assert_eq!(
-        Spacing::saturating([70000.0, -70000.0, f32::INFINITY, 1.0]).as_array(),
+        Spacing::saturating([70000.0, -70000.0, f32::INFINITY, 1.0]).to_array(),
         [65504.0, -65504.0, 65504.0, 1.0]
     );
     panic_probe::assert_panics_with(Spacing::LANE_RULE, || {
@@ -55,7 +55,7 @@ fn a_derived_spacing_saturates_at_the_f16_range() {
 #[test]
 fn lanes_round_trip_integer_values_exactly() {
     let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
-    assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(s.to_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(s.sums(), Size::new(4.0, 6.0));
 }
 
@@ -72,14 +72,14 @@ fn f16_precision_contract() {
         (4098.0, 4096.0),
         (4099.0, 4100.0),
     ] {
-        assert_eq!(Spacing::all(value).as_array()[0], stored, "{value}");
+        assert_eq!(Spacing::all(value).to_array()[0], stored, "{value}");
     }
 }
 
 #[test]
-fn as_array_and_from_array_round_trip() {
+fn to_array_and_from_array_round_trip() {
     let original = Spacing::new(1.0, 2.0, 3.0, 4.0);
-    let arr = original.as_array();
+    let arr = original.to_array();
     assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
     let rebuilt = Spacing::from_array(arr);
     assert_eq!(rebuilt, original);
@@ -88,16 +88,16 @@ fn as_array_and_from_array_round_trip() {
 #[test]
 fn xy_ctor_repeats_axes() {
     let s = Spacing::xy(3.0, 7.0);
-    assert_eq!(s.as_array(), [3.0, 7.0, 3.0, 7.0]);
+    assert_eq!(s.to_array(), [3.0, 7.0, 3.0, 7.0]);
     assert_eq!(s.sums(), Size::new(6.0, 14.0));
 }
 
 #[test]
 fn from_tuple_preserves_component_order() {
     let xy: Spacing = (3, 7).into();
-    assert_eq!(xy.as_array(), [3.0, 7.0, 3.0, 7.0]);
+    assert_eq!(xy.to_array(), [3.0, 7.0, 3.0, 7.0]);
     let ltrb: Spacing = (1, 2, 3, 4).into();
-    assert_eq!(ltrb.as_array(), [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(ltrb.to_array(), [1.0, 2.0, 3.0, 4.0]);
 }
 
 #[test]
@@ -189,5 +189,5 @@ fn add_op() {
     let a = Spacing::new(1.0, 2.0, 3.0, 4.0);
     let b = Spacing::new(10.0, 20.0, 30.0, 40.0);
     let c = a + b;
-    assert_eq!(c.as_array(), [11.0, 22.0, 33.0, 44.0]);
+    assert_eq!(c.to_array(), [11.0, 22.0, 33.0, 44.0]);
 }

@@ -134,8 +134,8 @@ impl AxisScratch {
     pub(super) fn resolve_fixed(&mut self, tracks: &[Track]) -> f32 {
         let mut consumed = 0.0;
         for (i, t) in tracks.iter().enumerate() {
-            if let Some(value) = t.size.fixed_value() {
-                self.sizes[i] = value.clamp(t.min, t.max);
+            if let Some(value) = t.sizing().fixed_value() {
+                self.sizes[i] = value.clamp(t.min(), t.max());
                 self.resolved.insert(i);
                 consumed += self.sizes[i];
             }
@@ -177,17 +177,17 @@ impl AxisScratch {
         self.hugs.clear();
         self.flexible.clear();
         for (i, t) in tracks.iter().enumerate() {
-            if t.size.is_hug() {
+            if t.sizing().is_hug() {
                 let lo = t.content_floor(hugs.min[i]);
-                let hi = hugs.max[i].max(lo).min(t.max);
+                let hi = hugs.max[i].max(lo).min(t.max());
                 self.hugs.push(HugItem::new(i, lo, hi));
-            } else if let Some(weight) = t.size.fill_weight() {
+            } else if let Some(weight) = t.sizing().fill_weight() {
                 self.flexible.push(FillItem::new(
                     i,
                     FillDemand {
                         weight,
                         floor: t.content_floor(hugs.min[i]),
-                        cap: t.max,
+                        cap: t.max(),
                     },
                 ));
             }
@@ -217,7 +217,7 @@ impl AxisScratch {
     /// unresolved (their arrange slot is unknown).
     pub(super) fn commit_fill(&mut self, tracks: &[Track]) {
         for (i, t) in tracks.iter().enumerate() {
-            if t.size.fill_weight().is_some() {
+            if t.sizing().fill_weight().is_some() {
                 self.resolved.insert(i);
             }
         }

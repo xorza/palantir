@@ -208,7 +208,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
     );
     let q = &buf.quads[0];
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
-    assert_eq!(q.corners.as_array()[0], 16.0);
+    assert_eq!(q.corners.to_array()[0], 16.0);
     assert_eq!(q.stroke_width, 3.0);
 }
 

@@ -5,14 +5,14 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
-/// Two animated fields and one each of the two snap spellings.
+/// Two animated fields and two snap fields.
 #[derive(Clone, Copy, Debug, PartialEq, Animatable)]
 struct Probe {
     x: f32,
     v: Vec2,
     #[animate(snap)]
     label: u8,
-    #[animate(skip)]
+    #[animate(snap)]
     mode: u8,
 }
 
@@ -21,7 +21,7 @@ struct Probe {
 struct AllSnap {
     #[animate(snap)]
     a: u8,
-    #[animate(skip)]
+    #[animate(snap)]
     b: u16,
 }
 
@@ -49,7 +49,7 @@ struct Pair<T: Animatable + Copy> {
     second: T,
 }
 
-/// Each generated method against its hand-computed result. Animated fields use their own `Animatable`; a snap field (either spelling) takes the target in `lerp`, keeps `self` in `sub`, `add` and `scale`, adds nothing to magnitude, and is `Default` in `zero`.
+/// Each generated method against its hand-computed result. Animated fields use their own `Animatable`; a snap field takes the target in `lerp`, keeps `self` in `sub`, `add` and `scale`, adds nothing to magnitude, and is `Default` in `zero`.
 #[test]
 fn derived_methods_split_animated_from_snapped_fields() {
     let a = Probe {

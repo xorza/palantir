@@ -36,8 +36,8 @@ impl PanelExtras {
     /// Feed the transform under visual canonicalization. Callers feed nothing for an identity transform, which is what a node without a panel row carries.
     #[inline]
     pub(crate) fn hash_transform<H: hash::Hasher>(&self, h: &mut H) {
-        self.transform.translation.hash_visual(h);
-        (self.transform.scale - 1.0).hash_visual(h);
+        self.transform.translation().hash_visual(h);
+        (self.transform.scale() - 1.0).hash_visual(h);
     }
 
     #[inline]

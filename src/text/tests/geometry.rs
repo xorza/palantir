@@ -692,7 +692,7 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
             past(hi.x - root.extent.size.w as i32),
             past(hi.y - root.extent.size.h as i32),
         ];
-        let ink = root.extent.ink.as_array();
+        let ink = root.extent.ink.to_array();
         for side in 0..4 {
             assert!(
                 drawn[side] <= ink[side] && ink[side] <= drawn[side] + 1.0,
@@ -719,7 +719,7 @@ fn ink_past_an_f16_lane_saturates() {
         .unbounded_request("f");
     let root = m.root(request, WrapFloor::Skip);
     assert_eq!(
-        root.extent.ink.as_array(),
+        root.extent.ink.to_array(),
         [domain::MAX_GAP, 0.0, domain::MAX_GAP, domain::MAX_GAP]
     );
 }

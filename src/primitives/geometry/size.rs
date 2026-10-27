@@ -3,7 +3,7 @@
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::math::num::Num;
+use crate::primitives::math::num::Number;
 use glam::{BVec2, Vec2};
 use serde::de;
 use std::hash;
@@ -118,18 +118,18 @@ impl Size {
     }
 }
 
-impl<T: Num> From<T> for Size {
+impl<T: Number> From<T> for Size {
     fn from(v: T) -> Self {
-        let v = v.as_f32();
+        let v = v.to_f32();
         Self { w: v, h: v }
     }
 }
 
-impl<W: Num, H: Num> From<(W, H)> for Size {
+impl<W: Number, H: Number> From<(W, H)> for Size {
     fn from((w, h): (W, H)) -> Self {
         Self {
-            w: w.as_f32(),
-            h: h.as_f32(),
+            w: w.to_f32(),
+            h: h.to_f32(),
         }
     }
 }

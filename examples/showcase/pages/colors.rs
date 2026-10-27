@@ -24,7 +24,7 @@ impl Default for State {
             picked: RgbaF32::hex(0x4cd3ff),
             port: RgbaF32::hex(0xffa63d),
             accent: RgbaF32::hex(0xd897ff),
-            parts: ColorCoords::new(ColorModel::Okhsv, RgbaF32::hex(0xd9ff57), 0.0),
+            parts: ColorCoords::from_color(RgbaF32::hex(0xd9ff57), ColorModel::Okhsv, 0.0),
             recent: vec![
                 RgbaF32::hex(0x4cd3ff),
                 RgbaF32::hex(0xffa63d),

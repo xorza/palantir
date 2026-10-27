@@ -9,6 +9,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::hash;
 use std::ops;
+use std::slice;
 use tinyvec::ArrayVec;
 
 /// Hard cap on stops in a single gradient.
@@ -102,8 +103,13 @@ pub struct GradientStops {
 }
 
 impl GradientStops {
-    /// Collect stops into inline storage; panics on an invalid count. Sorted on the
-    /// way in, equal offsets keeping written order.
+    /// Collect stops into inline storage, sorted on the way in, equal offsets
+    /// keeping written order.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless there are two through eight stops.
+    #[track_caller]
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
         let mut builder = GradientStopsBuilder::default();
         for stop in stops {
@@ -147,6 +153,7 @@ impl GradientStops {
 pub(crate) struct GradientStopsBuilder(ArrayVec<[Stop; MAX_STOPS]>);
 
 impl GradientStopsBuilder {
+    #[track_caller]
     pub(crate) fn push(&mut self, stop: Stop) {
         assert!(
             self.0.len() < MAX_STOPS,
@@ -155,6 +162,7 @@ impl GradientStopsBuilder {
         self.0.push(stop);
     }
 
+    #[track_caller]
     pub(crate) fn build(self) -> GradientStops {
         assert!(
             self.0.len() >= 2,
@@ -173,6 +181,15 @@ impl ops::Deref for GradientStops {
     }
 }
 
+impl<'a> IntoIterator for &'a GradientStops {
+    type Item = &'a Stop;
+    type IntoIter = slice::Iter<'a, Stop>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl hash::Hash for GradientStops {
     /// **Color goes in the low half.** `SrgbaU8::to_u32` puts red on top and
     /// `FxHasher` spreads entropy upward only, so red in the high half never
@@ -182,7 +199,7 @@ impl hash::Hash for GradientStops {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u8(self.len);
-        for stop in self.iter() {
+        for stop in self {
             state.write_u64((u64::from(stop.offset_u8) << 32) | u64::from(stop.color.to_u32()));
         }
     }

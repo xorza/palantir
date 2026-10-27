@@ -51,12 +51,22 @@ impl LinearGradient {
         GradientBuilder::new(LinearGeometry { angle })
     }
 
-    /// General constructor. Asserts two through eight stops.
+    /// General constructor.
+    ///
+    /// # Panics
+    ///
+    /// As [`GradientStops::new`](crate::GradientStops::new).
+    #[track_caller]
     pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self::from_stops(LinearGeometry { angle }, stops)
     }
 
     /// 2-stop shorthand: `c0` at offset 0, `c1` at 1; the common UI-gradient case.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    #[track_caller]
     pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(angle, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }

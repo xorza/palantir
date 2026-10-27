@@ -743,7 +743,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
     });
 
     let shaped = h.ui.layout(Layer::Main).text_shapes[0];
-    let [left, top, right, bottom] = shaped.extent.ink.as_array();
+    let [left, top, right, bottom] = shaped.extent.ink.to_array();
     assert!(
         left > 0.0 && right > 0.0,
         "the italic f reaches past both sides: {shaped:?}"

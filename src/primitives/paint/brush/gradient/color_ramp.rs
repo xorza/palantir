@@ -22,7 +22,12 @@ pub struct ColorRamp {
 }
 
 impl ColorRamp {
-    /// A ramp through `stops` in [`Interpolation::Oklab`]; asserts two through eight stops.
+    /// A ramp through `stops` in [`Interpolation::Oklab`].
+    ///
+    /// # Panics
+    ///
+    /// As [`GradientStops::new`].
+    #[track_caller]
     pub fn new(stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             stops: GradientStops::new(stops),
@@ -31,6 +36,11 @@ impl ColorRamp {
     }
 
     /// `c0` at 0 and `c1` at 1.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
+    #[track_caller]
     pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new([Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }

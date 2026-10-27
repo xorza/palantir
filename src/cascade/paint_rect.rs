@@ -241,7 +241,7 @@ impl PaintRectCtx<'_> {
                         // The AA fringe is physical: inflate only after the centerline and stroke width reach screen space.
                         let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
                         let screen = StrokeReach {
-                            width: *width * shape_transform.scale,
+                            width: *width * shape_transform.scale(),
                             fringe: AA_HALF_WIDTH / display_scale,
                             cap: *cap,
                             joints: StrokeJoints::polyline(points.len, *join),
@@ -254,7 +254,7 @@ impl PaintRectCtx<'_> {
                     } => {
                         let centerline = shape.to_screen(spun_if_animated(*bbox, idx), None);
                         let screen = StrokeReach {
-                            width: stroke.width * shape_transform.scale,
+                            width: stroke.width * shape_transform.scale(),
                             fringe: AA_HALF_WIDTH / display_scale,
                             cap: *cap,
                             joints: StrokeJoints::Unjoined,
