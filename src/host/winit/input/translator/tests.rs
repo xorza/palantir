@@ -3,11 +3,12 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{
     DeviceId, ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent,
 };
-use winit::keyboard::ModifiersState;
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::input::input_event::InputEvent;
+use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 
 fn wheel(delta: MouseScrollDelta) -> WindowEvent {
@@ -391,4 +392,48 @@ fn a_lost_touch_end_does_not_hold_the_pointer() {
         PointerTrace::At(Vec2::new(50.0, 50.0)),
         "another finger takes the pointer",
     );
+}
+
+/// A release names the logical key its press reported, by the physical key both came from:
+/// `a` pressed, Shift in between, and its release is still `a`. A key this surface never saw go
+/// down releases nothing; a second press of a held key ends the first with its lost release; and
+/// focus loss forgets every held key, so a release after it says nothing.
+#[test]
+fn a_release_names_its_press_by_the_physical_key() {
+    let a = PhysicalKey::Code(KeyCode::KeyA);
+    let b = PhysicalKey::Code(KeyCode::KeyB);
+    let mut translator = Translator::new(PLATFORM);
+    let mut emitted = Vec::new();
+
+    assert!(translator.hold(a, Key::Char('a')).is_none());
+    assert!(matches!(
+        translator.release(a),
+        Some(InputEvent::KeyUp {
+            key: Key::Char('a')
+        })
+    ));
+    assert!(translator.release(a).is_none(), "released once");
+    assert!(translator.release(b).is_none(), "never pressed here");
+
+    assert!(translator.hold(a, Key::Char('a')).is_none());
+    let lost = translator.hold(a, Key::Char('A'));
+    assert!(
+        matches!(
+            lost,
+            Some(InputEvent::KeyUp {
+                key: Key::Char('a')
+            })
+        ),
+        "{lost:?}"
+    );
+    assert!(matches!(
+        translator.release(a),
+        Some(InputEvent::KeyUp {
+            key: Key::Char('A')
+        })
+    ));
+
+    assert!(translator.hold(b, Key::Char('b')).is_none());
+    feed(&mut translator, &WindowEvent::Focused(false), &mut emitted);
+    assert!(translator.release(b).is_none(), "focus loss released it");
 }

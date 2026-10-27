@@ -31,12 +31,12 @@ const COARSE: f32 = 10.0;
 const PAGE: f32 = 0.1;
 
 impl AxisKeys {
-    /// Where this frame's presses send an axis now at `at`. Every chord is sampled so `key_pressed` subscribes each for the wake gate.
+    /// Where this frame's presses send an axis now at `at`. Every chord is sampled so `shortcut_pressed` subscribes each for the wake gate.
     pub(crate) fn travel(self, ui: &mut Ui, at: f32) -> AxisTravel {
         let mut to = at;
         for (key, sign) in self.step.signed() {
-            let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
-            let plain = ui.key_pressed(Shortcut::key(key));
+            let coarse = ui.shortcut_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
+            let plain = ui.shortcut_pressed(key);
             if coarse {
                 to += sign * STEP * COARSE;
             } else if plain {
@@ -45,15 +45,15 @@ impl AxisKeys {
         }
         if let Some(page) = self.page {
             for (key, sign) in page.signed() {
-                if ui.key_pressed(Shortcut::key(key)) {
+                if ui.shortcut_pressed(key) {
                     to += sign * PAGE;
                 }
             }
         }
         let mut jumped = false;
         if let Some(ends) = self.ends {
-            let start = ui.key_pressed(Shortcut::key(ends.back));
-            let end = ui.key_pressed(Shortcut::key(ends.forward));
+            let start = ui.shortcut_pressed(ends.back);
+            let end = ui.shortcut_pressed(ends.forward);
             if start || end {
                 to = if start { 0.0 } else { 1.0 };
                 jumped = true;

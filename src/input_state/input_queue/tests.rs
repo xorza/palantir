@@ -48,6 +48,7 @@ fn admit(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
         InputEvent::ImeCommit(_) => queue.note_text(),
         InputEvent::PointerMoved(_)
         | InputEvent::PointerLeft
+        | InputEvent::KeyUp { .. }
         | InputEvent::ModifiersChanged(_)
         | InputEvent::SurfaceFocusLost
         | InputEvent::ImePreedit(_) => {}
@@ -70,6 +71,17 @@ fn a_frame_admits_only_events_that_keep_its_levels() {
                 InputEvent::PointerReleased(left),
             ],
             &[true, false],
+        ),
+        (
+            "a key's press, release and press again share a frame: a tap costs no frame",
+            &[
+                typed('a'),
+                InputEvent::KeyUp {
+                    key: Key::Char('a'),
+                },
+                typed('a'),
+            ],
+            &[true, true, true],
         ),
         (
             "two buttons change in one frame",

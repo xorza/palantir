@@ -77,6 +77,13 @@ pub(crate) struct InputState {
     frame_quiescent: bool,
     /// This frame's presses, in arrival order.
     frame_keyboard_events: Vec<KeyPress>,
+    /// The keys down now, as the logical and physical keys of each press: two physical keys can
+    /// share one logical key, as both Enter keys do, so each holds its own entry. A second press
+    /// of one pair is a lost release and holds nothing more, so a host that drops releases
+    /// cannot grow the list past its keyboard. Persists across frames.
+    held_keys: Vec<HeldKey>,
+    /// This frame's releases, a focus loss's included.
+    frame_released_keys: Vec<Key>,
     /// Persists across `end_frame`; updated only on `ModifiersChanged`.
     modifiers: Modifiers,
     focus: Focus,
@@ -101,6 +108,13 @@ pub(crate) struct InputState {
     /// [`Self::pointer_events`].
     frame_pointer_events: Vec<PointerEvent>,
     queue: InputQueue,
+}
+
+/// One press held down: the logical key it reported and the physical key it came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HeldKey {
+    key: Key,
+    physical: Key,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -269,8 +283,8 @@ impl InputState {
         self.subs.keyboard_mask.insert(flags);
     }
 
-    pub(crate) fn watch_key(&mut self, shortcut: Shortcut) {
-        self.subs.watch_key(shortcut);
+    pub(crate) fn watch_shortcut(&mut self, shortcut: Shortcut) {
+        self.subs.watch_shortcut(shortcut);
     }
 
     /// The raw keyboard stream as seen from `reader`'s plane; plane-gated only, to keep arrival
@@ -299,20 +313,52 @@ impl InputState {
     }
 
     /// Whether `shortcut` was pressed and granted to the scope `reader`'s parent sits in.
-    pub(crate) fn key_pressed(
+    pub(crate) fn shortcut_pressed(
         &mut self,
         reader: KeyReader,
         cascade: &Cascade,
         shortcut: Shortcut,
     ) -> bool {
-        self.subs.watch_key(shortcut);
+        self.subs.watch_shortcut(shortcut);
+        self.granted_press(reader, cascade, |press| shortcut.matches(press))
+    }
+
+    /// Whether `key` was pressed, whatever the modifiers, and granted to the scope `reader`'s
+    /// parent sits in.
+    pub(crate) fn key_pressed(&mut self, reader: KeyReader, cascade: &Cascade, key: Key) -> bool {
+        self.subs.watch_key(key);
+        self.granted_press(reader, cascade, |press| press.key.same_key(key))
+    }
+
+    /// Whether a press this frame passes `matches` and is granted to `reader`'s scope.
+    fn granted_press(
+        &mut self,
+        reader: KeyReader,
+        cascade: &Cascade,
+        matches: impl Fn(KeyPress) -> bool,
+    ) -> bool {
         if self.frame_keyboard_events.is_empty() || self.silenced(reader.plane) {
             return false;
         }
         let scope = self.scopes.reader(reader.parent, cascade);
-        self.frame_keyboard_events.iter().any(|press| {
-            shortcut.matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope
-        })
+        self.frame_keyboard_events
+            .iter()
+            .any(|press| matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
+    }
+
+    /// Whether `key` is down now, whatever the modifiers. A fact of the keyboard, as the
+    /// modifiers are, so not routed.
+    pub(crate) fn key_held(&mut self, key: Key) -> bool {
+        self.subs.watch_key(key);
+        self.held_keys.iter().any(|held| held.key.same_key(key))
+    }
+
+    /// Whether `key` came up this frame, or was held when the surface lost the keyboard.
+    pub(crate) fn key_released(&mut self, key: Key) -> bool {
+        self.subs.watch_key(key);
+        self.frame_released_keys
+            .iter()
+            .any(|released| released.same_key(key))
     }
 
     fn target_scroll_delta(&self, target: WidgetId) -> Option<&ScrollDelta> {
@@ -666,6 +712,11 @@ impl InputState {
                     physical,
                     text,
                 };
+                // Held whether or not anyone reads the press: a later frame may ask.
+                let held = HeldKey { key, physical };
+                if !repeat && !self.held_keys.contains(&held) {
+                    self.held_keys.push(held);
+                }
                 // Wake when a focused widget would consume the key, a chord watcher asked for
                 // it, or a `KeyboardWake::KEY` watcher records raw keys. A bare modifier wakes only
                 // a watcher that asked, since widgets get modifier state via `ModifiersChanged`.
@@ -711,13 +762,28 @@ impl InputState {
                 self.ime_owner = self.focus.focused();
                 EventOutcome::repaint(self.ime_owner.is_some())
             }
+            InputEvent::KeyUp { key } => {
+                let Some(idx) = self.held_keys.iter().position(|held| held.key == key) else {
+                    return InputDelta::default();
+                };
+                self.held_keys.swap_remove(idx);
+                self.frame_released_keys.push(key);
+                EventOutcome::repaint(self.subs.watches_key(key))
+            }
             InputEvent::SurfaceFocusLost => {
                 // The platform stops reporting modifiers while another surface is focused, so a
                 // stale value is not observable.
                 let observable = self.modifiers != Modifiers::NONE
                     || self.captures.iter().any(|c| c.press.is_some())
-                    || !self.ime_preedit.is_empty();
+                    || !self.ime_preedit.is_empty()
+                    || self
+                        .held_keys
+                        .iter()
+                        .any(|held| self.subs.watches_key(held.key));
                 self.modifiers = Modifiers::NONE;
+                // Every held key ends, with its release edge, as Bevy's `ButtonInput` reports it.
+                self.frame_released_keys
+                    .extend(self.held_keys.drain(..).map(|held| held.key));
                 for button in PointerButton::ALL {
                     if self.capture(button).press.is_some() {
                         self.capture_mut(button).abandon_press();
@@ -765,6 +831,7 @@ impl InputState {
         self.frame_pointer_events.clear();
         self.frame_target_deltas.clear();
         self.frame_keyboard_events.clear();
+        self.frame_released_keys.clear();
     }
 
     /// Re-resolve `hovered` / `scroll_targets` / `pinch_target` from `pointer_pos`;

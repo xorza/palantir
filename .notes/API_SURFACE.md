@@ -1060,6 +1060,7 @@ InputEvent
         ScrollLines(Vec2)
         Zoom(f32)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
+        KeyUp { key: Key }
         ModifiersChanged(Modifiers)
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
@@ -1128,6 +1129,7 @@ Key
         F12
         Char(char)
         Other
+        impl From<Key> for Shortcut
 
 KeyClass
     enum KeyClass: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -1664,7 +1666,7 @@ Shadow
         pub const fn is_noop(&self) -> bool
 
 Shortcut
-    struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, Hash, PartialEq
+    struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, Hash, PartialEq
         pub mods: ShortcutMods
         pub key: Key
         pub const fn new(mods: ShortcutMods, key: Key) -> Self
@@ -2240,10 +2242,12 @@ Ui
         pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
-        pub fn watch_key(&mut self, shortcut: Shortcut)
         pub fn pointer_events(&self) -> &[PointerEvent]
         pub fn keyboard_events(&self) -> &[KeyPress]
-        pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool
+        pub fn key_pressed(&mut self, key: Key) -> bool
+        pub fn key_held(&mut self, key: Key) -> bool
+        pub fn key_released(&mut self, key: Key) -> bool
+        pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
         pub fn request_relayout(&mut self)
         pub const fn now(&self) -> Duration
         pub const fn set_cursor(&mut self, cursor: CursorIcon)
@@ -2892,7 +2896,8 @@ widget::Widget
         pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId
         pub fn response(&mut self, ui: &mut Ui) -> ResponseState
         pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook
-        pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool
+        pub fn shortcut_pressed(&mut self, ui: &mut Ui, shortcut: impl Into<Shortcut>) -> bool
+        pub fn key_pressed(&mut self, ui: &mut Ui, key: Key) -> bool
         pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> R
         pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>
         pub const fn authored_size(&self) -> Option<SizeSpec>

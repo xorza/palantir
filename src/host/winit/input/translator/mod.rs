@@ -1,8 +1,10 @@
 //! The state that turns a stream of winit events into Palantir's input.
 
+use std::mem;
+
 use glam::Vec2;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent};
-use winit::keyboard::ModifiersState;
+use winit::keyboard::{ModifiersState, PhysicalKey};
 
 use crate::common::platform::Platform;
 use crate::display;
@@ -10,6 +12,7 @@ use crate::host::winit::input::{
     KeyDownFacts, ime_event, key_down, normalize_modifiers, shift_wheel,
 };
 use crate::input::input_event::InputEvent;
+use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 
 /// The pointer's **physical** position, retained across events because a
@@ -51,6 +54,10 @@ pub(crate) struct Translator {
     modifiers: ModifiersState,
     /// The finger standing in for the pointer, while one is down.
     finger: Option<u64>,
+    /// The keys down, by the physical key each press came from, with the logical key it
+    /// reported: a release's own logical key can differ, as Shift pressed in between turns `a`
+    /// into `A`, and `KeyUp` names its press's. A few at a time, so a scan.
+    held: Vec<(PhysicalKey, Key)>,
 }
 
 impl Translator {
@@ -59,7 +66,28 @@ impl Translator {
             platform,
             modifiers: ModifiersState::empty(),
             finger: None,
+            held: Vec::new(),
         }
+    }
+
+    /// Note that `physical` went down as `key`. A key already down lost its release, which ends
+    /// here as the `KeyUp` returned, so no press is held twice.
+    fn hold(&mut self, physical: PhysicalKey, key: Key) -> Option<InputEvent<'static>> {
+        if let Some(entry) = self.held.iter_mut().find(|(held, _)| *held == physical) {
+            return Some(InputEvent::KeyUp {
+                key: mem::replace(&mut entry.1, key),
+            });
+        }
+        self.held.push((physical, key));
+        None
+    }
+
+    /// The `KeyUp` of `physical`'s press, or `None` for a key this surface never saw go down.
+    fn release(&mut self, physical: PhysicalKey) -> Option<InputEvent<'static>> {
+        let idx = self.held.iter().position(|(held, _)| *held == physical)?;
+        Some(InputEvent::KeyUp {
+            key: self.held.swap_remove(idx).1,
+        })
     }
 
     /// `scale_factor` is physical pixels per logical pixel in the current frame's
@@ -145,7 +173,19 @@ impl Translator {
                     },
                     self.modifiers,
                 ) {
+                    if let InputEvent::KeyDown {
+                        key, repeat: false, ..
+                    } = press
+                        && let Some(lost) = self.hold(event.physical_key, key)
+                    {
+                        emit(lost);
+                    }
                     emit(press);
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let Some(release) = self.release(event.physical_key) {
+                    emit(release);
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => {
@@ -158,6 +198,8 @@ impl Translator {
             // Only the loss is forwarded; regaining focus is learned from the next event.
             WindowEvent::Focused(false) => {
                 emit(InputEvent::SurfaceFocusLost);
+                // The recorder releases every held key with the focus.
+                self.held.clear();
                 // The recorder drops the press with the focus, and an unfocused
                 // surface may never see this finger lift: forget it, so the next
                 // touch is not ignored.

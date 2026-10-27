@@ -6,6 +6,7 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
+use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
@@ -214,13 +215,20 @@ impl Widget {
     }
 
     /// Whether `shortcut` was pressed and granted to this widget, for a widget that
-    /// reads keys before opening its node. Unlike [`Ui::key_pressed`], which reads as
+    /// reads keys before opening its node. Unlike [`Ui::shortcut_pressed`], which reads as
     /// the enclosing node, it sees keys granted by the widget's own
     /// [`input_scope`](Configure::input_scope) even when another scope (a popup)
     /// encloses it. Keeps the chord subscribed for the wake gate.
-    pub fn key_pressed(&mut self, ui: &mut Ui, shortcut: Shortcut) -> bool {
+    pub fn shortcut_pressed(&mut self, ui: &mut Ui, shortcut: impl Into<Shortcut>) -> bool {
         let id = self.resolve(ui);
-        ui.key_pressed_as(id, shortcut)
+        ui.shortcut_pressed_as(id, shortcut.into())
+    }
+
+    /// [`Self::shortcut_pressed`] for `key` whatever the modifiers, as [`Ui::key_pressed`]
+    /// reads it.
+    pub fn key_pressed(&mut self, ui: &mut Ui, key: Key) -> bool {
+        let id = self.resolve(ui);
+        ui.key_pressed_as(id, key)
     }
 
     /// Open this widget's node, run its body, and close it; the crate's one opener.

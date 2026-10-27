@@ -500,9 +500,14 @@ impl UiHarness {
     }
 
     /// A non-repeat press whose `physical` is [`Key::Other`]; use [`Self::on_input`] for a real
-    /// physical key.
+    /// physical key. The key stays held until [`Self::key_up`].
     pub fn key(&mut self, key: Key) -> InputDelta {
         self.on_input(InputEvent::key_down(key))
+    }
+
+    /// The release of `key`'s press.
+    pub fn key_up(&mut self, key: Key) -> InputDelta {
+        self.on_input(InputEvent::KeyUp { key })
     }
 
     /// Emits `ModifiersChanged` only on an actual change (read from `InputState` after

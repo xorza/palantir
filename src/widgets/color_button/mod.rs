@@ -4,7 +4,6 @@ use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -74,8 +73,8 @@ impl<'a> ColorButton<'a> {
         let mut response = widget.response(ui);
         let id = widget.resolve(ui);
         if !response.disabled && ui.is_focus_within(id) {
-            let space = widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
-            let enter = widget.key_pressed(ui, Shortcut::key(Key::Enter));
+            let space = widget.shortcut_pressed(ui, Key::Char(' '));
+            let enter = widget.shortcut_pressed(ui, Key::Enter);
             if space || enter {
                 response.left.phase = ButtonPhase::Up { click: Some(1) };
             }

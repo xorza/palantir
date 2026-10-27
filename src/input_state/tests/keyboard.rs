@@ -6,7 +6,6 @@ use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::policy::FocusPolicy;
 use crate::input::scroll_targets::ScrollTargets;
-use crate::input::shortcut::Shortcut;
 use crate::input_state::InputState;
 use crate::input_state::tests::{
     BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, sample_layers,
@@ -58,7 +57,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 }
 
 /// An app that declares **no scope at all** reads every chord: routing a chord to
-/// "the scope the reader speaks for" would silence `key_pressed` for every consumer
+/// "the scope the reader speaks for" would silence `shortcut_pressed` for every consumer
 /// that never calls `input_scope`. Both sides of the grant answer `None`, and `None
 /// == None` keeps it working.
 #[test]
@@ -74,7 +73,7 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
     press_escape(&mut h);
     let pressed = h.frame_value(|ui| {
         bare(ui);
-        ui.key_pressed(Shortcut::key(Key::Escape))
+        ui.shortcut_pressed(Key::Escape)
     });
     assert!(pressed, "no scopes declared must not gate the chord out");
 }
@@ -149,12 +148,20 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                let at_root = ui.key_pressed(Shortcut::key(Key::Escape));
+                let at_root = [
+                    ui.shortcut_pressed(Key::Escape),
+                    ui.key_pressed(Key::Escape),
+                ];
                 let at_inner = Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                    .show(ui, |ui| ui.key_pressed(Shortcut::key(Key::Escape)))
+                    .show(ui, |ui| {
+                        [
+                            ui.shortcut_pressed(Key::Escape),
+                            ui.key_pressed(Key::Escape),
+                        ]
+                    })
                     .inner;
                 [at_root, at_inner]
             })
@@ -166,11 +173,15 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
     press_escape(&mut h);
     let [at_root, at_inner] = h.frame_value(nested);
 
-    assert!(
-        at_root,
+    // A key and its chord route alike.
+    assert_eq!(
+        at_root, [true; 2],
         "the outermost scope owns the layer's fallback grant"
     );
-    assert!(!at_inner, "the nested scope must not shadow its container");
+    assert_eq!(
+        at_inner, [false; 2],
+        "the nested scope must not shadow its container"
+    );
 }
 
 /// One overlay closing must not unblock a layer another still holds, and the
@@ -188,7 +199,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
             for id in ["first", "second"] {
                 popup_scope(ui, id, |ui| {
                     if id == survivor {
-                        read_by_survivor = ui.key_pressed(Shortcut::key(Key::Escape));
+                        read_by_survivor = ui.shortcut_pressed(Key::Escape);
                     }
                 });
             }
@@ -241,7 +252,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
             .input_scope(KeyFilter::ALL)
             .size((Sizing::fixed(60.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
-                reads.at_root = ui.key_pressed(Shortcut::key(Key::Escape));
+                reads.at_root = ui.shortcut_pressed(Key::Escape);
                 Panel::vstack()
                     .id(WidgetId::from_hash("inner"))
                     .input_scope(KeyFilter::ALL)
@@ -253,11 +264,11 @@ fn a_close_takes_effect_at_the_next_resolution() {
                                 .size(10.0)
                                 .show(ui);
                         }
-                        reads.inner_before = ui.key_pressed(Shortcut::key(Key::Escape));
+                        reads.inner_before = ui.shortcut_pressed(Key::Escape);
                         if closes {
                             ui.release_input_scope(WidgetId::from_hash("inner"));
                         }
-                        reads.inner_after = ui.key_pressed(Shortcut::key(Key::Escape));
+                        reads.inner_after = ui.shortcut_pressed(Key::Escape);
                     });
             });
         reads

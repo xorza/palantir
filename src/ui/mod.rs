@@ -37,6 +37,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerEvent;
@@ -247,17 +248,18 @@ impl Ui {
         self.input.watch_pointer(flags);
     }
 
-    /// Declare interest in off-focus keyboard categories; specific chords use
-    /// [`Self::watch_key`].
+    /// Declare interest in off-focus keyboard categories. One key or chord needs no watch: its
+    /// query keeps it watched.
     #[inline]
     pub const fn watch_keyboard(&mut self, flags: KeyboardWake) {
         self.input.watch_keyboard(flags);
     }
 
-    /// Declare interest in one shortcut. Duplicate watchers collapse.
+    /// Keep `shortcut` watched without reading it, for a menu item that shows a chord its parent
+    /// reads outside the record. Duplicate watchers collapse.
     #[inline]
-    pub fn watch_key(&mut self, shortcut: Shortcut) {
-        self.input.watch_key(shortcut);
+    pub(crate) fn watch_shortcut(&mut self, shortcut: impl Into<Shortcut>) {
+        self.input.watch_shortcut(shortcut.into());
     }
 
     /// Pointer events captured this frame; empty without a [`PointerWake`] watcher.
@@ -274,25 +276,74 @@ impl Ui {
         self.input.keyboard_events(self.forest.cur_plane())
     }
 
-    /// `true` if any press this frame matches `shortcut`. Auto-watches the chord,
-    /// else the keyboard wake-gate parks off-focus presses until the next frame.
+    /// `true` if `key` went down this frame, OS repeats included, whatever the modifiers,
+    /// and the press was granted to this record position's scope.
+    ///
+    /// A key reads in the pointer's words, pressed, [held](Self::key_held) and
+    /// [released](Self::key_released), each whatever the modifiers, as Dear ImGui's
+    /// `IsKeyPressed`, `IsKeyDown` and `IsKeyReleased` and egui's `key_pressed`, `key_down` and
+    /// `key_released` read; a chord, whose modifiers match exactly, is a
+    /// [shortcut](Self::shortcut_pressed). A press is routed; held and released are facts of
+    /// the keyboard, as [`Self::modifiers`] is. Each watches its key, so an off-focus press or
+    /// release wakes a frame.
     #[inline]
-    pub fn key_pressed(&mut self, shortcut: Shortcut) -> bool {
-        let reader = KeyReader {
-            plane: self.forest.cur_plane(),
-            parent: self.forest.cur_parent_id(),
-        };
-        self.input.key_pressed(reader, &self.cascade, shortcut)
+    pub fn key_pressed(&mut self, key: Key) -> bool {
+        let reader = self.key_reader();
+        self.input.key_pressed(reader, &self.cascade, key)
+    }
+
+    /// `true` if `key` is down now, whatever the modifiers: from its press to its release, or
+    /// to the surface losing the keyboard. Not routed.
+    #[inline]
+    pub fn key_held(&mut self, key: Key) -> bool {
+        self.input.key_held(key)
+    }
+
+    /// `true` if `key` came up this frame, or was held when the surface lost the keyboard. A
+    /// tap whose press and release share a frame reads pressed and released, not held. Not
+    /// routed.
+    #[inline]
+    pub fn key_released(&mut self, key: Key) -> bool {
+        self.input.key_released(key)
+    }
+
+    /// `true` if a press this frame matches `shortcut`, its modifiers exactly, and was granted
+    /// to this record position's scope.
+    #[inline]
+    pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool {
+        let reader = self.key_reader();
+        self.input
+            .shortcut_pressed(reader, &self.cascade, shortcut.into())
     }
 
     /// [`Self::key_pressed`] read as `reader` rather than the record position.
     #[inline]
-    pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
-        let reader = KeyReader {
+    pub(crate) fn key_pressed_as(&mut self, reader: WidgetId, key: Key) -> bool {
+        let reader = self.key_reader_as(reader);
+        self.input.key_pressed(reader, &self.cascade, key)
+    }
+
+    /// [`Self::shortcut_pressed`] read as `reader` rather than the record position.
+    #[inline]
+    pub(crate) fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
+        let reader = self.key_reader_as(reader);
+        self.input.shortcut_pressed(reader, &self.cascade, shortcut)
+    }
+
+    /// The key reader at this record position.
+    fn key_reader(&self) -> KeyReader {
+        KeyReader {
+            plane: self.forest.cur_plane(),
+            parent: self.forest.cur_parent_id(),
+        }
+    }
+
+    /// The key reader `reader` is, on this record position's plane.
+    fn key_reader_as(&self, reader: WidgetId) -> KeyReader {
+        KeyReader {
             plane: self.forest.cur_plane(),
             parent: Some(reader),
-        };
-        self.input.key_pressed(reader, &self.cascade, shortcut)
+        }
     }
 
     /// Re-record this frame after measure, once at most (roughly a 2x frame); prefer

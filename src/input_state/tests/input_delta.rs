@@ -152,7 +152,7 @@ fn modifiers_wake_only_for_a_watcher() {
 #[test]
 fn keydown_wakes_only_when_focus_or_watch_exists() {
     use crate::input::keyboard::key::Key;
-    use crate::input::shortcut::Shortcut;
+
     use crate::input::watch::PointerWake;
     let mut h = UiHarness::new(UVec2::new(400, 400));
     h.frame(build_hover_target);
@@ -172,7 +172,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     h.clear_focus();
     h.frame(|ui| {
         build_hover_target(ui);
-        ui.watch_key(Shortcut::key(Key::Escape));
+        ui.watch_shortcut(Key::Escape);
         // Keeps the `PointerWake` import used.
         let _ = PointerWake::BUTTONS;
     });

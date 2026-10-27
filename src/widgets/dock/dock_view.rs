@@ -1,7 +1,6 @@
 //! The dock widget: the split walk, one strip-over-content pane per group, and the drag-docking gesture.
 
 use crate::input::keyboard::key::Key;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -235,7 +234,7 @@ impl<T: DockTab> DockView<'_, T> {
             Self::set_drag(state, ui, None);
             return;
         };
-        if ui.key_pressed(Shortcut::key(Key::Escape)) {
+        if ui.shortcut_pressed(Key::Escape) {
             Self::set_drag(state, ui, None);
             return;
         }

@@ -99,19 +99,19 @@ impl<'a> MenuItem<'a> {
         let shortcut = match self.shortcut {
             MenuShortcut::None => None,
             MenuShortcut::Hint(shortcut) => {
-                ui.watch_key(shortcut);
+                ui.watch_shortcut(shortcut);
                 Some(shortcut)
             }
             MenuShortcut::Activate(shortcut) => {
-                shortcut_fired = !disabled && ui.key_pressed(shortcut);
+                shortcut_fired = !disabled && ui.shortcut_pressed(shortcut);
                 Some(shortcut)
             }
         };
         if !disabled && ui.is_focus_within(id) {
-            // Both sampled: `key_pressed` also keeps each chord subscribed
+            // Both sampled: `shortcut_pressed` also keeps each chord subscribed
             // for the wake gate.
-            let enter = self.widget.key_pressed(ui, Shortcut::key(Key::Enter));
-            let space = self.widget.key_pressed(ui, Shortcut::key(Key::Char(' ')));
+            let enter = self.widget.shortcut_pressed(ui, Key::Enter);
+            let space = self.widget.shortcut_pressed(ui, Key::Char(' '));
             shortcut_fired |= enter || space;
         }
         let shortcut_label = shortcut.map(|s| ui.fmt(format_args!("{s}")));

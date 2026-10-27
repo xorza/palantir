@@ -64,3 +64,14 @@ pub enum Key {
     /// Any key not covered above, carried so dispatch can ignore it cleanly.
     Other,
 }
+
+impl Key {
+    /// Whether `self` and `other` name one key whatever Shift does to a letter: a `Char` compares
+    /// ignoring ASCII case, since it arrives post-shift (`Shift+a` is `Char('A')`).
+    pub(crate) fn same_key(self, other: Self) -> bool {
+        match (self, other) {
+            (Self::Char(a), Self::Char(b)) => a.eq_ignore_ascii_case(&b),
+            (a, b) => a == b,
+        }
+    }
+}

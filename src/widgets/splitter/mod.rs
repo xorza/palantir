@@ -6,7 +6,6 @@ pub(crate) mod split_half;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -190,10 +189,10 @@ impl<'a> Splitter<'a> {
                     (Key::End, extent),
                 ]
                 .into_iter()
-                // Every chord is sampled: `key_pressed` keeps it subscribed for the
+                // Every chord is sampled: `shortcut_pressed` keeps it subscribed for the
                 // wake gate.
                 .fold(None, |target, (key, pos)| {
-                    let pressed = divider_widget.key_pressed(ui, Shortcut::key(key));
+                    let pressed = divider_widget.shortcut_pressed(ui, key);
                     if pressed { Some(pos) } else { target }
                 });
                 if let Some(pos) = target {

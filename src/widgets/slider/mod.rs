@@ -202,7 +202,7 @@ impl SliderRange {
     /// hundredth of the range; Shift makes it ten steps; Page Up/Down move a tenth;
     /// Home/End jump to the ends. Direction comes from `max - min`, so a reversed range
     /// steps the same way along the track. Every chord is sampled, not short-circuited,
-    /// as `key_pressed` also keeps it subscribed for the wake gate.
+    /// as `shortcut_pressed` also keeps it subscribed for the wake gate.
     fn key_target(self, ui: &mut Ui, at: f64) -> Option<f64> {
         let span = self.max - self.min;
         let unit = self.step.map_or(span / 100.0, |s| s.copysign(span));
@@ -214,8 +214,8 @@ impl SliderRange {
             (Key::ArrowRight, 1.0),
             (Key::ArrowUp, 1.0),
         ] {
-            let coarse = ui.key_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
-            let plain = ui.key_pressed(Shortcut::key(key));
+            let coarse = ui.shortcut_pressed(Shortcut::new(ShortcutMods::SHIFT, key));
+            let plain = ui.shortcut_pressed(key);
             if coarse {
                 to += sign * unit * 10.0;
                 moved = true;
@@ -225,13 +225,13 @@ impl SliderRange {
             }
         }
         for (key, sign) in [(Key::PageDown, -1.0), (Key::PageUp, 1.0)] {
-            if ui.key_pressed(Shortcut::key(key)) {
+            if ui.shortcut_pressed(key) {
                 to += sign * span / 10.0;
                 moved = true;
             }
         }
-        let home = ui.key_pressed(Shortcut::key(Key::Home));
-        let end = ui.key_pressed(Shortcut::key(Key::End));
+        let home = ui.shortcut_pressed(Key::Home);
+        let end = ui.shortcut_pressed(Key::End);
         if home || end {
             to = if end { self.max } else { self.min };
             moved = true;

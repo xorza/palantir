@@ -32,8 +32,8 @@ pub enum InputEvent<'a> {
     /// Multiplicative zoom factor from a pinch gesture: `1.0` is identity, `1.05`
     /// zooms in 5%. Wheel zoom is not translated into `Zoom`.
     Zoom(f32),
-    /// Logical key pressed; `repeat` reflects OS key repeat. Modifiers (read
-    /// [`Modifiers`] from `InputState`) and releases are not carried.
+    /// Logical key pressed; `repeat` reflects OS key repeat. Modifiers are not carried: read
+    /// [`Modifiers`] from `InputState`.
     KeyDown {
         /// The logical key, after the keyboard layout is applied.
         key: Key,
@@ -45,6 +45,14 @@ pub enum InputEvent<'a> {
         /// The text this press produced (see [`KeyText`]); empty means nothing can
         /// be typed.
         text: KeyText,
+    },
+    /// A key came back up. `key` is the logical key it went down as, which the host keeps
+    /// per physical key: a release's own logical key can differ from its press's, as Shift
+    /// pressed in between turns `a` into `A`. A host sends one for each press it reported, and
+    /// none for a press it did not.
+    KeyUp {
+        /// The logical key of the press this release ends.
+        key: Key,
     },
     /// Modifier set changed; the snapshot is the new state, not a delta.
     ModifiersChanged(Modifiers),
@@ -92,6 +100,7 @@ impl<'a> InputEvent<'a> {
                 physical,
                 text: key_text,
             },
+            Self::KeyUp { key } => InputEvent::KeyUp { key },
             Self::ModifiersChanged(mods) => InputEvent::ModifiersChanged(mods),
             Self::SurfaceFocusLost => InputEvent::SurfaceFocusLost,
         }
@@ -112,6 +121,7 @@ impl<'a> InputEvent<'a> {
             | Self::PointerPressed(_)
             | Self::PointerReleased(_)
             | Self::KeyDown { .. }
+            | Self::KeyUp { .. }
             | Self::ModifiersChanged(_)
             | Self::SurfaceFocusLost
             | Self::ImeCommit(_) => true,
@@ -190,6 +200,9 @@ mod tests {
                 physical: Key::Char('a'),
                 text: KeyText::from_char('a'),
             },
+            InputEvent::KeyUp {
+                key: Key::Char('a'),
+            },
             InputEvent::ModifiersChanged(Modifiers::default()),
             InputEvent::SurfaceFocusLost,
             InputEvent::ImePreedit(ImePreedit {
@@ -207,7 +220,7 @@ mod tests {
         }
         // No `_` arm: a new variant fails to compile until indexed, and the count
         // fails until it has a case.
-        let mut covered = [false; 12];
+        let mut covered = [false; 13];
         for event in ok {
             assert!(event.is_valid(), "{event:?}");
             let idx = match event {
@@ -223,6 +236,7 @@ mod tests {
                 InputEvent::SurfaceFocusLost => 9,
                 InputEvent::ImePreedit(_) => 10,
                 InputEvent::ImeCommit(_) => 11,
+                InputEvent::KeyUp { .. } => 12,
             };
             covered[idx] = true;
         }

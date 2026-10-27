@@ -4,7 +4,6 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::paint::chrome::Chrome;
@@ -53,7 +52,7 @@ pub(crate) fn activated(ui: &mut Ui, widget: &mut Widget, response: &ResponseSta
     response.clicked()
         || (!response.disabled
             && ui.is_focus_within(id)
-            && widget.key_pressed(ui, Shortcut::key(Key::Char(' '))))
+            && widget.shortcut_pressed(ui, Key::Char(' ')))
 }
 
 /// Flips `value` when `activated` and returns it, for [`Checkbox`](crate::Checkbox) and
