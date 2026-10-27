@@ -2502,6 +2502,8 @@ widget::Animatable
         fn magnitude_squared(self) -> f32
         fn settle_distance_squared(self) -> f32 { .. }
         fn zero() -> Self
+        fn to_motion(self) -> Self { .. }
+        fn from_motion(motion: Self) -> Self { .. }
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
 widget::AnimationRequest
@@ -2660,7 +2662,7 @@ widget::Mesh
         pub const fn new() -> Self
         pub fn with_capacity(vertices: usize, idxs: usize) -> Self
         pub fn clear(&mut self)
-        pub fn is_noop(&self) -> bool
+        pub const fn is_noop(&self) -> bool
         pub fn content_hash(&self) -> u64
         pub fn vertex(&mut self, pos: Vec2, color: impl Into<RgbaF32>) -> u32
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)

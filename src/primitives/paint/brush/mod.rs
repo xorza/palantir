@@ -209,6 +209,22 @@ impl Animatable for Brush {
     }
 
     #[inline]
+    fn to_motion(self) -> Self {
+        match self {
+            Self::Solid(c) => Self::Solid(c.to_motion()),
+            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient,
+        }
+    }
+
+    #[inline]
+    fn from_motion(motion: Self) -> Self {
+        match motion {
+            Self::Solid(c) => Self::Solid(RgbaF32::from_motion(c)),
+            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient,
+        }
+    }
+
+    #[inline]
     fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
         if !matches!((&*self, target), (Self::Solid(_), Self::Solid(_))) {
             if self != target {

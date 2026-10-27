@@ -18,7 +18,7 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 /// An axis-aligned rectangle in logical pixels, stored as origin + extent.
 ///
-/// Half-open on both axes: [`Self::contains`] accepts the min edge and rejects the max, so adjacent rects tile without double-hitting. Hashing is approximate (`1e-4` tolerance).
+/// Half-open on both axes: [`Self::contains`] accepts the min edge and rejects the max, so adjacent rects tile without double-hitting. `Hash` agrees with `==`, signed zeros aside.
 #[must_use]
 pub struct Rect {
     /// Top-left corner.

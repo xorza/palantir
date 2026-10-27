@@ -187,7 +187,7 @@ const PINS: &[Pin] = &[
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 496, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 656, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

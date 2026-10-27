@@ -9,6 +9,11 @@ use glam::Vec2;
 
 /// Math-only trait; storage is the type-erased `AnimationMap` keyed on `TypeId`.
 ///
+/// The arithmetic is linear, and a spring runs it on values in motion space
+/// ([`Self::to_motion`]): its offset from the target and its velocity live there, and the
+/// painted value is `from_motion(target.to_motion().add(offset))`. Motion space is the value
+/// itself unless a type blends in another one, as `RgbaF32` does premultiplied.
+///
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
 /// unchanged.
 ///
@@ -51,13 +56,29 @@ pub trait Animatable: Clone + PartialEq + 'static {
     /// The additive identity: zero displacement and a fresh spring's velocity.
     fn zero() -> Self;
 
+    /// `self` in the space motion runs in, where [`Self::sub`], [`Self::add`] and
+    /// [`Self::scale`] blend as the type means to. The identity unless overridden.
+    #[inline]
+    #[must_use]
+    fn to_motion(self) -> Self {
+        self
+    }
+
+    /// The value at `motion`, back from motion space: the inverse of [`Self::to_motion`].
+    #[inline]
+    #[must_use]
+    fn from_motion(motion: Self) -> Self {
+        motion
+    }
+
     /// Normalize fields that cannot participate in spring arithmetic.
     ///
     /// Runs when a spring takes a new target or a row becomes a spring. Between
-    /// those the value is `target.add(offset)`, so an [`Self::add`] that keeps
-    /// `self` for such a field keeps it compatible. Compound derives forward this
-    /// fieldwise; implementations may install the target and clear only their
-    /// matching velocity.
+    /// those the value is `from_motion(target.to_motion().add(offset))`, so an
+    /// [`Self::add`] that keeps `self` for such a field keeps it compatible.
+    /// Compound derives forward this fieldwise; implementations may install the
+    /// target and clear only their matching velocity. `self` is a value and
+    /// `velocity` is in motion space.
     #[inline]
     fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) {}
 }
@@ -118,7 +139,7 @@ impl Animatable for Vec2 {
     }
 }
 
-// `RgbaF32` derives `Animatable` (see `primitives/paint/color/mod.rs`).
+// `RgbaF32` blends premultiplied (see `primitives/paint/color/mod.rs`).
 //
 // No `Option<T>` blanket: for "absent or value" fields use a sentinel
 // (`Stroke::NONE`) and let the paint-time `is_noop` filter handle absence. A

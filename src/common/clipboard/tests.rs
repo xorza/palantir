@@ -1,57 +1,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
+use crate::common::clipboard::internals::{Scripted, ScriptedState};
+use crate::common::clipboard::{Clipboard, ClipboardUnavailable};
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::error;
-
-#[derive(Debug)]
-struct PrimaryState {
-    text: String,
-    reject_writes: bool,
-    reject_reads: bool,
-    reads: usize,
-    image: Option<UVec2>,
-}
-
-#[derive(Clone, Debug)]
-struct StaleBackend {
-    state: Rc<RefCell<PrimaryState>>,
-}
-
-impl Backend for StaleBackend {
-    fn get_text(&mut self) -> Result<String, ClipboardUnavailable> {
-        let mut state = self.state.borrow_mut();
-        state.reads += 1;
-        if state.reject_reads {
-            return Err(ClipboardUnavailable);
-        }
-        Ok(state.text.clone())
-    }
-
-    fn set_text(&mut self, text: &str) -> Result<(), ClipboardUnavailable> {
-        let mut state = self.state.borrow_mut();
-        if state.reject_writes {
-            return Err(ClipboardUnavailable);
-        }
-        state.text.clear();
-        state.text.push_str(text);
-        state.image = None;
-        Ok(())
-    }
-
-    /// As a system clipboard holding an image: no text to read.
-    fn set_image(&mut self, image: &Image) -> Result<(), ClipboardUnavailable> {
-        let mut state = self.state.borrow_mut();
-        if state.reject_writes {
-            return Err(ClipboardUnavailable);
-        }
-        state.text.clear();
-        state.image = Some(image.size());
-        Ok(())
-    }
-}
 
 #[test]
 fn memory_clipboards_roundtrip_and_are_isolated() {
@@ -81,23 +35,15 @@ fn unavailable_reports_itself_as_an_error() {
     assert_eq!(boxed.to_string(), "no clipboard backend could answer");
 }
 
-fn primary(text: &str) -> Rc<RefCell<PrimaryState>> {
-    Rc::new(RefCell::new(PrimaryState {
+fn primary(text: &str) -> Rc<RefCell<ScriptedState>> {
+    Rc::new(RefCell::new(ScriptedState {
         text: String::from(text),
-        reject_writes: false,
-        reject_reads: false,
-        reads: 0,
-        image: None,
+        ..ScriptedState::default()
     }))
 }
 
-fn over(primary: &Rc<RefCell<PrimaryState>>) -> Clipboard {
-    Clipboard::new(
-        Some(Box::new(StaleBackend {
-            state: Rc::clone(primary),
-        })),
-        Box::<MemoryBackend>::default(),
-    )
+fn over(primary: &Rc<RefCell<ScriptedState>>) -> Clipboard {
+    Clipboard::over_scripted(Scripted(Rc::clone(primary)))
 }
 
 #[cfg(feature = "system-clipboard")]

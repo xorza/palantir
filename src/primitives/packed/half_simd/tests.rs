@@ -128,3 +128,21 @@ fn from_f32_matches_scalar_reference_on_sweep() {
     assert_eq!(inf[2], f16::INFINITY.to_bits());
     assert_eq!(inf[3], 0);
 }
+
+/// Over every f16 pattern, a lane is a no-op exactly when it is a number at most `EPS` (as f16
+/// rounds it), every negative included, as `domain::is_invisible` reads an f32; NaN never is.
+#[test]
+fn lane_is_noop_matches_at_most_eps_exhaustively() {
+    use crate::primitives::math::domain::EPS;
+
+    let eps = f16::from_f32(EPS).to_f32();
+    for b in 0..=u16::MAX {
+        let v = f16::from_bits(b).to_f32();
+        let want = !v.is_nan() && v <= eps;
+        assert_eq!(
+            F16x4::from_bits([0, 0, 0, b]).lane_is_noop(3),
+            want,
+            "bits = {b:#06x}, {v}"
+        );
+    }
+}

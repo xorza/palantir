@@ -16,6 +16,7 @@ pub(crate) mod rgba_f16;
 mod srgb_transfer;
 pub(crate) mod srgba_u8;
 
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
@@ -29,19 +30,7 @@ use std::hash;
 use std::str;
 
 #[repr(C)]
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Default,
-    bytemuck::Pod,
-    bytemuck::Zeroable,
-    palantir_anim_derive::Animatable,
-)]
-// One 8-bit sRGB step is narrowest near black at `1 / 255 / 12.92 ≈ 3.0e-4`
-// linear; `1/4096 ≈ 2.4e-4` stays under it on every channel.
-#[animate(settle_eps = 1.0 / 4096.0)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 /// An RGBA color in straight-alpha linear RGB, the space every blend,
 /// anti-aliasing step and tween operates in. The sRGB encode happens on the
 /// GPU at swapchain write.
@@ -55,9 +44,10 @@ use std::str;
 /// Components may exceed `1.0` for HDR-shaped tween outputs. `Hash` is exact
 /// but for signed zeros; `FloatHash::hash_visual` is the tolerant one.
 ///
-/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends per channel,
-/// unclamped, which is correct for linear straight-alpha storage; alpha
-/// travels with the color, so keep your own opacity with [`Self::with_alpha`].
+/// [`Animatable::lerp`] and springs blend premultiplied
+/// (CSS Color 4 §12.3), unclamped: a fade to [`Self::TRANSPARENT`] keeps its hue instead of
+/// passing through a darker one. Alpha travels with the color, so keep your own opacity with
+/// [`Self::with_alpha`].
 /// [`Interpolation::Oklab`](crate::Interpolation) blends perceptually, for
 /// gradients.
 #[must_use]
@@ -70,6 +60,78 @@ pub struct RgbaF32 {
     pub b: f32,
     /// Alpha, 0..1, straight; the shader premultiplies.
     pub a: f32,
+}
+
+/// One 8-bit sRGB step is narrowest near black at `1 / 255 / 12.92 ≈ 3.0e-4` linear; `1/4096 ≈
+/// 2.4e-4` stays under it on every channel.
+const SETTLE_EPS: f32 = 1.0 / 4096.0;
+
+/// Motion space is premultiplied, so a spring blends as a tween does; the arithmetic is per
+/// channel there, alpha one more channel.
+impl Animatable for RgbaF32 {
+    /// The ends are exact: `t` of 0 or 1 returns `a` or `b` with no premultiply round trip.
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        if t == 0.0 {
+            return a;
+        }
+        if t == 1.0 {
+            return b;
+        }
+        a.premultiplied()
+            .mix(b.premultiplied(), t)
+            .unpremultiplied()
+    }
+
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        Self::new(
+            self.r - other.r,
+            self.g - other.g,
+            self.b - other.b,
+            self.a - other.a,
+        )
+    }
+
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Self::new(
+            self.r + other.r,
+            self.g + other.g,
+            self.b + other.b,
+            self.a + other.a,
+        )
+    }
+
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        Self::new(self.r * k, self.g * k, self.b * k, self.a * k)
+    }
+
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.r * self.r + self.g * self.g + self.b * self.b + self.a * self.a
+    }
+
+    #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        self.magnitude_squared() / (SETTLE_EPS * SETTLE_EPS)
+    }
+
+    #[inline]
+    fn zero() -> Self {
+        Self::TRANSPARENT
+    }
+
+    #[inline]
+    fn to_motion(self) -> Self {
+        self.premultiplied()
+    }
+
+    #[inline]
+    fn from_motion(motion: Self) -> Self {
+        motion.unpremultiplied()
+    }
 }
 
 impl hash::Hash for RgbaF32 {
@@ -175,6 +237,29 @@ impl RgbaF32 {
         }
     }
 
+    /// Straight alpha from premultiplied: the inverse of [`Self::premultiplied`]. With no alpha
+    /// there is no color to recover, so the channels are zero.
+    #[inline]
+    pub(crate) fn unpremultiplied(self) -> Self {
+        if self.a > 0.0 {
+            Self::new(self.r / self.a, self.g / self.a, self.b / self.a, self.a)
+        } else {
+            Self::new(0.0, 0.0, 0.0, self.a)
+        }
+    }
+
+    /// Per channel from `self` toward `other` at `t`, alpha as one more channel: the blend of two
+    /// premultiplied colors.
+    #[inline]
+    pub(crate) const fn mix(self, other: Self, t: f32) -> Self {
+        Self::new(
+            self.r + (other.r - self.r) * t,
+            self.g + (other.g - self.g) * t,
+            self.b + (other.b - self.b) * t,
+            self.a + (other.a - self.a) * t,
+        )
+    }
+
     /// Replace the alpha channel, preserving RGB (storage is straight alpha).
     pub const fn with_alpha(self, a: f32) -> Self {
         Self {
@@ -210,6 +295,11 @@ impl RgbaF32 {
     }
 
     /// Packed `0xRRGGBB` sRGB literal, opaque: `#3366CC` is `hex(0x3366CC)`.
+    ///
+    /// # Panics
+    ///
+    /// As [`SrgbaU8::hex`].
+    #[track_caller]
     pub const fn hex(rgb: u32) -> Self {
         Self::from_srgba(SrgbaU8::hex(rgb))
     }

@@ -25,10 +25,15 @@ pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 impl Geometry for LinearGeometry {
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
 
-    /// `dir = (cos(angle), sin(angle))`; the shader projects each 0..1 object-local position onto `dir` and maps the dot through `(t0, t1)` to the LUT row. `(t0, t1)` is always `(0, 1)` over the raw axis, so a diagonal spans a sub-1.0 range and relies on `Spread::Pad`, unlike CSS corner-to-corner scaling.
+    /// `dir = (cos(angle), sin(angle))`; the shader projects each 0..1 object-local position onto `dir` and maps the dot through `(t0, t1)` to the LUT row. `(t0, t1)` is the projection of the unit square onto `dir`, so at every angle stop 0 lands on the trailing corner and stop 1 on the leading one. The angle is in the box's 0..1 space, not in pixels as CSS measures it, so on a box that is not square a diagonal runs corner to corner.
     fn axis_lanes(&self) -> [f32; 4] {
         let (sin, cos) = self.angle.sin_cos();
-        [cos, sin, 0.0, 1.0]
+        [
+            cos,
+            sin,
+            cos.min(0.0) + sin.min(0.0),
+            cos.max(0.0) + sin.max(0.0),
+        ]
     }
 
     fn hash_geometry<H: hash::Hasher>(&self, state: &mut H) {

@@ -1,5 +1,4 @@
-//! What a shape is painted with: color, brushes, strokes, shadows, chrome
-//! chrome, and images.
+//! What a shape is painted with: color, brushes, strokes, shadows, chrome and images.
 
 pub(crate) mod antialias;
 pub(crate) mod brush;

@@ -68,8 +68,12 @@ impl CircularArc {
         let mut lo = e0.min(e1);
         let mut hi = e0.max(e1);
         let (a_min, a_max) = if a0 <= a1 { (a0, a1) } else { (a1, a0) };
-        let k0 = (a_min / FRAC_PI_2).ceil() as i64;
-        let k1 = (a_max / FRAC_PI_2).floor() as i64;
+        // Reduced into one turn first: at a huge angle the quarter count saturates `i64`, and
+        // `k0 + 3` overflows.
+        let from = a_min.rem_euclid(TAU);
+        let to = from + (a_max - a_min);
+        let k0 = (from / FRAC_PI_2).ceil() as i64;
+        let k1 = (to / FRAC_PI_2).floor() as i64;
         for k in k0..=k1.min(k0 + 3) {
             match k.rem_euclid(4) {
                 0 => hi.x = center.x + radius,

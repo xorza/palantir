@@ -8,7 +8,8 @@ use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse
 
 /// `#[derive(Animatable)]` on a struct with named fields.
 /// `#[animate(snap)]` (alias `skip`) on a field: `lerp` returns the target's value, spring math
-/// skips it and `magnitude` excludes it.
+/// skips it and `magnitude` excludes it. `to_motion` and `from_motion` forward to each animated
+/// field, so a struct of colors springs premultiplied as its colors do.
 ///
 /// Struct attribute `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
 /// unit (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated
@@ -87,6 +88,14 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }))
     };
 
+    let to_motion_animation = animation.iter().map(|(f, _)| {
+        quote! { #f: ::palantir::widget::Animatable::to_motion(self.#f), }
+    });
+    let from_motion_animation = animation.iter().map(|(f, _)| {
+        quote! { #f: ::palantir::widget::Animatable::from_motion(motion.#f), }
+    });
+    let motion_snap = snap.iter().map(|(f, _)| quote! { #f: motion.#f, });
+
     let zero_animation = animation.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::palantir::widget::Animatable>::zero(), }
     });
@@ -147,6 +156,20 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 Self {
                     #(#zero_animation)*
                     #(#zero_snap)*
+                }
+            }
+            #[inline]
+            fn to_motion(self) -> Self {
+                Self {
+                    #(#to_motion_animation)*
+                    #(#keep_snap)*
+                }
+            }
+            #[inline]
+            fn from_motion(motion: Self) -> Self {
+                Self {
+                    #(#from_motion_animation)*
+                    #(#motion_snap)*
                 }
             }
             #[inline]

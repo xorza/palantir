@@ -126,3 +126,31 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     assert_eq!(motion.elapsed, dt);
     assert_eq!(duration_result.cur, expected);
 }
+
+/// CSS Transitions' faster reversing: a segment turned back to where it came from runs over the
+/// share it covered. Linear 1 s from 0 to 1, reversed at 0.5 s: back to 0 in 0.5 s. Reversed again
+/// 0.25 s in (at 0.25, half way back): the shortening is `0.5 · 0.5 + 1 − 0.5 = 0.75`, so on to 1
+/// in 0.75 s. Times are binary fractions, so every value is exact.
+#[test]
+fn a_reversal_runs_over_the_share_it_covered() {
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("reverse");
+    let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
+    let mut step = |target: f32, dt: f32| {
+        map.step(AnimationRequest::new(id, SLOT, target), spec, dt)
+            .cur
+    };
+    let _ = step(0.0, 0.0);
+    assert_eq!(step(1.0, 0.0), 0.0, "the first change starts from rest");
+    assert_eq!(step(1.0, 0.5), 0.5);
+
+    assert_eq!(step(0.0, 0.25), 0.25, "lerp(0.5, 0, 0.25 / 0.5)");
+    assert_eq!(step(1.0, 0.375), 0.625, "lerp(0.25, 1, 0.375 / 0.75)");
+    assert_eq!(step(1.0, 0.375), 1.0, "0.75 s in, at the end");
+
+    // A reversal after a segment that ran to its end shortens nothing: the whole second.
+    assert_eq!(step(0.0, 0.0), 1.0, "from rest");
+    assert_eq!(step(0.0, 0.5), 0.5);
+    // A target that is not where the segment came from runs the whole length too.
+    assert_eq!(step(2.0, 0.5), 0.5 + (2.0 - 0.5) * 0.5);
+}

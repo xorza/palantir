@@ -1,10 +1,9 @@
 //! The authored animation spec: which motion model a value travels under, and
 //! its parameters.
 
-use crate::animation::duration::{self, DURATION_ERROR, MAX_DURATION};
+use crate::animation::duration::{self, DURATION_ERROR, MAX_DURATION, MIN_DURATION_SECS};
 use crate::animation::easing::Easing;
 use crate::animation::spring::{SPRING_ERROR, Spring};
-use crate::primitives::math::domain::EPS;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
@@ -65,8 +64,8 @@ impl AnimationSpec {
         motion: AnimationMotion::Spring(Spring::DEFAULT),
     };
 
-    /// Construct a duration animation of `length`; under `1e-4` seconds it
-    /// canonicalizes to an instant snap.
+    /// Construct a duration animation of `length`; under 0.1 ms it canonicalizes to an
+    /// instant snap, as no frame could show its motion.
     ///
     /// # Panics
     ///
@@ -82,7 +81,7 @@ impl AnimationSpec {
     }
 
     const fn duration_from_validated(secs: f32, ease: Easing) -> Self {
-        let secs = if secs < EPS { 0.0 } else { secs };
+        let secs = if secs < MIN_DURATION_SECS { 0.0 } else { secs };
         Self {
             motion: AnimationMotion::Duration { secs, ease },
         }

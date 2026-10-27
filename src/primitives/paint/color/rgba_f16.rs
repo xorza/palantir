@@ -16,19 +16,29 @@ impl RgbaF16 {
     pub(crate) const WHITE: Self = Self(F16x4::ONE);
 
     /// Linear channels and a straight alpha packed to f16 lanes; the peer of [`RgbaF32::new`].
+    ///
+    /// The one place a color is lowered, so the one clamp: a tween that overshoots (`OutBack`, a
+    /// bouncy spring) may carry alpha past `0..=1` or a channel below zero, which the blend would
+    /// paint as light added or taken away. Channels above 1 stay, as HDR. A NaN passes through,
+    /// for [`Self::is_noop`] to drop.
     #[inline]
     pub(crate) fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self(F16x4::from_lanes([r, g, b, a]))
+        Self(F16x4::from_lanes([
+            at_least_zero(r),
+            at_least_zero(g),
+            at_least_zero(b),
+            if a > 1.0 { 1.0 } else { at_least_zero(a) },
+        ]))
     }
 
     /// Scale the alpha lane by `by`, leaving the color lanes alone (storage is straight-alpha, so no premultiply). `by == 1.0` is the common case, so callers skip this.
     #[inline]
     pub(crate) fn faded(self, by: f32) -> Self {
         let [r, g, b, a] = self.0.lanes();
-        Self(F16x4::from_lanes([r, g, b, a * by]))
+        Self::new(r, g, b, a * by)
     }
 
-    /// True when alpha is below `EPS`, via [`F16x4::lane_is_noop`]'s bit-trick (no f16→f32 conversion).
+    /// True when alpha is at most `EPS`, via [`F16x4::lane_is_noop`]'s bit-trick (no f16→f32 conversion).
     #[inline]
     pub(crate) const fn is_noop(self) -> bool {
         // A NaN in any lane, not just alpha, reaches the shader as garbage; covering all four costs one masked add.
@@ -46,6 +56,12 @@ impl RgbaF16 {
     pub(crate) const fn as_u64(self) -> u64 {
         self.0.as_u64()
     }
+}
+
+/// `v`, or zero when it is negative; a NaN is kept, where `f32::max` would drop it.
+#[inline]
+fn at_least_zero(v: f32) -> f32 {
+    if v < 0.0 { 0.0 } else { v }
 }
 
 impl From<RgbaF16> for RgbaF32 {

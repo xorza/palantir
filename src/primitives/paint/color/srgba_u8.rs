@@ -32,7 +32,16 @@ impl SrgbaU8 {
     }
 
     /// Packed `0xRRGGBB` literal, opaque (CSS hex): `#3366CC` is `hex(0x3366CC)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `rgb` is above `0xFFFFFF`: an alpha byte belongs in [`Self::hexa`].
+    #[track_caller]
     pub const fn hex(rgb: u32) -> Self {
+        assert!(
+            rgb <= 0xFF_FFFF,
+            "hex takes 0xRRGGBB; an alpha byte goes through hexa"
+        );
         Self::hexa((rgb << 8) | 0xff)
     }
 
