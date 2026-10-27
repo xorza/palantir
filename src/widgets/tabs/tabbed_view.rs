@@ -182,8 +182,8 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             style: _,
         } = self;
         let mut shown = domain::idx(*selected, options.len());
-        let id = widget.resolve(ui);
         let response = widget.response(ui);
+        let id = response.id;
         let strip_id = id.with("strip");
         let mut action = None;
         widget.record(ui, None, |ui| {
@@ -250,7 +250,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 });
         });
         TabbedViewResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             action,
         }
     }

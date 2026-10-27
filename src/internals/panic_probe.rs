@@ -6,13 +6,15 @@
 )]
 
 use std::any::Any;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Once;
 
 thread_local! {
     /// Whether the panic hook is quiet on this thread; per thread as libtest runs tests in parallel.
     static QUIET: Cell<bool> = const { Cell::new(false) };
+    /// Where the last quiet panic on this thread was raised, as `file:line`.
+    static SITE: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 static INSTALL: Once = Once::new();
@@ -27,7 +29,12 @@ pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
     INSTALL.call_once(|| {
         let prev = panic::take_hook();
         panic::set_hook(Box::new(move |info| {
-            if !QUIET.with(Cell::get) {
+            if QUIET.with(Cell::get) {
+                let site = info
+                    .location()
+                    .map(|at| format!("{}:{}", at.file(), at.line()));
+                SITE.with(|last| *last.borrow_mut() = site);
+            } else {
                 prev(info);
             }
         }));
@@ -44,6 +51,15 @@ pub(crate) fn assert_panics_with<R>(fragment: &str, f: impl FnOnce() -> R) {
         message.contains(fragment),
         "expected a panic containing {fragment:?}, got {message:?}",
     );
+}
+
+/// [`assert_panics_with`], returning where the panic was raised as `file:line`, so a test can
+/// check that `#[track_caller]` reaches the call site.
+#[track_caller]
+pub(crate) fn panic_site<R>(fragment: &str, f: impl FnOnce() -> R) -> String {
+    assert_panics_with(fragment, f);
+    SITE.with(|last| last.borrow_mut().take())
+        .expect("the panic hook records every quiet panic")
 }
 
 fn message_of(payload: &(dyn Any + Send)) -> &str {

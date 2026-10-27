@@ -27,7 +27,7 @@ use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response};
+use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::bars::{BarMode, Bars};
 use crate::widgets::scroll::scroll_state::{PanBand, ScrollBounds, ScrollState, WheelPan};
@@ -491,11 +491,13 @@ impl<'a> Scroll<'a> {
         InnerResponse {
             // Eager: the caller usually reads a field, and only `focused` can change in the body.
             response: Response::new(
-                id,
                 ui,
-                ResponseState {
-                    focused: ui.focus() == Some(id),
-                    ..response
+                ResponseSnapshot {
+                    id,
+                    state: ResponseState {
+                        focused: ui.focus() == Some(id),
+                        ..response
+                    },
                 },
             ),
             inner: inner_value,

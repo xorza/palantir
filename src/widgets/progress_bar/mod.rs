@@ -16,7 +16,7 @@ use crate::widget_core::widget::Widget;
 ///
 /// A fraction naming no share (`0 / 0`) reads as empty; `Sizing::split` owns that, so app code may divide unguarded.
 ///
-/// Fill and remainder are two weighted leaves, so the fill tracks the resolved track width. Visuals come from [`crate::ProgressBarTheme`] (slot `progress_bar`).
+/// Fill and remainder are two weighted leaves, `id.with("fill")` and `id.with("rest")`, so the fill tracks the resolved track width. Visuals come from [`crate::ProgressBarTheme`] (slot `progress_bar`).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ProgressBar<'a> {

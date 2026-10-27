@@ -68,7 +68,7 @@ impl GpuView {
     pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self {
         let paint: Rc<RefCell<T>> = Rc::clone(paint);
         Self {
-            widget: Widget::leaf().size((Sizing::fill(1.0), Sizing::fill(1.0))),
+            widget: Widget::leaf(),
             paint: GpuPaintRef(paint),
             content: ViewContent::Changed,
         }
@@ -100,6 +100,7 @@ impl GpuView {
             paint,
             content,
         } = self;
+        widget.configure().default_size(Sizing::FILL);
         let id = widget.resolve(ui);
         widget
             .show(ui, None, |ui| {

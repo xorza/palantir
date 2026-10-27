@@ -1,6 +1,5 @@
 //! The chip row on its own: geometry, selection cap, close button, badge, overflow, keyboard travel, drag sensing.
 
-use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -174,8 +173,8 @@ impl<'a> TabStrip<'a> {
             style: _,
         } = self;
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
-        let id = widget.resolve(ui);
         let response = widget.response(ui);
+        let id = response.id;
         let strip_chrome = t.strip.clone();
         let rule = Chrome::fill(t.rule);
         let rule_thickness = t.rule_thickness;
@@ -236,7 +235,7 @@ impl<'a> TabStrip<'a> {
             drag_stopped,
         } = hits;
         TabStripResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             clicked,
             keyed,
             menu_picked,
@@ -321,15 +320,18 @@ impl StripPass<'_> {
 
     /// A small glyph button wearing [`TabsTheme::close`], from its last frame's state.
     fn glyph_button(&self, ui: &Ui, id: WidgetId) -> GlyphButton {
-        let state = ui.response_for(id);
-        let look = self.theme.close.pick(&state, Engagement::Pressed);
+        let response = ResponseSnapshot {
+            id,
+            state: ui.response_for(id),
+        };
+        let look = self.theme.close.pick(&response, Engagement::Pressed);
         GlyphButton {
             chrome: look.chrome.clone(),
             text: TextStyle {
                 line_height_factor: 1.0,
                 ..look.text.apply(&self.ambient)
             },
-            state,
+            response,
         }
     }
 
@@ -427,14 +429,14 @@ impl StripPass<'_> {
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
                     button.record(ui, Some(&close.chrome), |ui| {
-                        close.glyph(ui, close_id, "\u{00d7}");
+                        close.glyph(ui, "\u{00d7}");
                     });
                 }
             });
         });
 
         let hits = &mut self.hits;
-        if close.is_some_and(|c| c.state.clicked()) {
+        if close.is_some_and(|c| c.response.clicked()) {
             hits.closed.get_or_insert(slot);
         } else if state.clicked() {
             hits.clicked.get_or_insert(slot);
@@ -475,15 +477,11 @@ impl StripPass<'_> {
             .align(Align::v(VAlign::Bottom))
             .child_align(Align::CENTER);
         button.record(ui, Some(&chevron.chrome), |ui| {
-            chevron.glyph(ui, button_id, "\u{22ef}");
+            chevron.glyph(ui, "\u{22ef}");
         });
         let ui_theme = Rc::clone(ui.theme());
-        let trigger = ResponseSnapshot {
-            id: button_id,
-            state: chevron.state,
-        };
         // A menu button: the chevron's click toggles a menu below it.
-        let picked = PopupTrigger::on(&trigger)
+        let picked = PopupTrigger::on(&chevron.response)
             .size((Sizing::HUG, Sizing::HUG))
             .layer(Layer::Menu)
             .menu_look(&ui_theme.context_menu)
@@ -548,16 +546,16 @@ impl StripPass<'_> {
 /// A small glyph button: a chip's close cross and the overflow chevron, both wearing [`TabsTheme::close`].
 #[derive(Debug)]
 struct GlyphButton {
-    state: ResponseState,
+    response: ResponseSnapshot,
     chrome: Chrome,
     /// The look's text with the leading removed, else the glyph rides high.
     text: TextStyle,
 }
 
 impl GlyphButton {
-    fn glyph(&self, ui: &mut Ui, id: WidgetId, glyph: &'static str) {
+    fn glyph(&self, ui: &mut Ui, glyph: &'static str) {
         Text::new(glyph)
-            .id(id.with("glyph"))
+            .id(self.response.id.with("glyph"))
             .style(&self.text)
             .text_align(Align::CENTER)
             .show(ui);

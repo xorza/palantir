@@ -1,6 +1,5 @@
 //! Rounding, clamping, and the string round-trip both numeric variants take.
 
-use crate::widgets::drag_num::limits::Limits;
 use crate::widgets::drag_num::{DragNum, Num, StoreRule, round_to_decimals};
 
 const INF: f64 = f64::INFINITY;
@@ -118,8 +117,51 @@ fn an_integer_scrub_moves_the_exact_anchor() {
     assert_eq!(edge, i64::MIN);
 }
 
+/// A reversed pair is the same range; a degenerate pair collapses to its point; an infinite one
+/// passes every finite value; a NaN bound reports the other end, so the clamp pins to a number.
 #[test]
-fn drag_num_read_keeps_each_targets_precision() {
+fn a_store_rule_orders_its_bounds_and_stays_usable() {
+    for (min, max) in [(0.0, 10.0), (10.0, 0.0)] {
+        for (value, want) in [
+            (5.0, 5.0),
+            (-1.0, 0.0),
+            (11.0, 10.0),
+            (0.0, 0.0),
+            (10.0, 10.0),
+        ] {
+            assert_eq!(
+                StoreRule::new(min, max, 2).clamp(value),
+                want,
+                "{min}..={max} at {value}"
+            );
+        }
+    }
+    assert_eq!(StoreRule::new(3.0, 3.0, 2).clamp(9.0), 3.0);
+    let unbounded = StoreRule::new(-INF, INF, 2);
+    assert_eq!(unbounded.clamp(-1.0e300), -1.0e300);
+    assert_eq!(unbounded.clamp(1.0e300), 1.0e300);
+    let nan_bound = StoreRule::new(f64::NAN, 4.0, 2);
+    assert_eq!((nan_bound.lo, nan_bound.hi), (4.0, 4.0));
+    assert_eq!(nan_bound.clamp(100.0), 4.0);
+}
+
+/// A non-finite float binding anchors a gesture at the neutral `0.0`, so a scrub of `+1.5` from
+/// NaN stores `1.5` where it stored `-inf`, and from `+inf` stores `1.5` where it stuck at `+inf`;
+/// [`DragNum::stored`] still reads the bits a canceled edit writes back.
+#[test]
+fn drag_num_read_keeps_precision_and_anchors_a_non_finite_float_at_zero() {
+    for bound in [f64::NAN, INF, -INF] {
+        let mut f = bound;
+        assert_eq!(DragNum::from(&mut f).read(), Num::F64(0.0), "{bound}");
+        let Num::F64(stored) = DragNum::from(&mut f).stored() else {
+            unreachable!("a float binding reads a float")
+        };
+        assert_eq!(stored.to_bits(), bound.to_bits(), "{bound}");
+        let anchor = DragNum::from(&mut f).read();
+        assert!(DragNum::from(&mut f).commit_drag(anchor, 1.5, StoreRule::new(-INF, INF, 2)));
+        assert_eq!(f, 1.5, "{bound}");
+    }
+
     let mut f = 2.5_f64;
     assert_eq!(DragNum::from(&mut f).read(), Num::F64(2.5));
     let mut i = 5_i64;
@@ -143,7 +185,7 @@ fn drag_num_edit_string_and_parse_round_trip() {
     assert_eq!(DragNum::from(&mut f).edit_string(), "3.0");
     let mut f = 2.5_f64;
     let s = DragNum::from(&mut f).edit_string();
-    assert!(!DragNum::from(&mut f).parse_from(&s, Limits::of(-INF, INF)));
+    assert!(!DragNum::from(&mut f).parse_from(&s, StoreRule::new(-INF, INF, 2)));
     assert_eq!(f, 2.5);
 
     let mut i = -42_i64;
@@ -151,29 +193,29 @@ fn drag_num_edit_string_and_parse_round_trip() {
 
     // Unparseable text leaves the value untouched.
     let mut i = 9_i64;
-    assert!(!DragNum::from(&mut i).parse_from("12x", Limits::of(-INF, INF)));
+    assert!(!DragNum::from(&mut i).parse_from("12x", StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, 9);
-    assert!(DragNum::from(&mut i).parse_from("15", Limits::of(-INF, INF)));
+    assert!(DragNum::from(&mut i).parse_from("15", StoreRule::new(-INF, INF, 2)));
     assert_eq!(i, 15);
 
     // Non-finite parses are rejected even unbounded: a committed NaN would poison every scrub.
     let mut f = 7.5_f64;
     for bad in ["nan", "NaN", "inf", "-inf", "infinity"] {
         assert!(
-            !DragNum::from(&mut f).parse_from(bad, Limits::of(-INF, INF)),
+            !DragNum::from(&mut f).parse_from(bad, StoreRule::new(-INF, INF, 2)),
             "{bad}"
         );
         assert_eq!(f, 7.5, "{bad} must not land");
     }
 
     let mut i = 0_i64;
-    assert!(DragNum::from(&mut i).parse_from("500", Limits::of(0.0, 100.0)));
+    assert!(DragNum::from(&mut i).parse_from("500", StoreRule::new(0.0, 100.0, 2)));
     assert_eq!(i, 100);
     let mut f = 0.0_f64;
-    assert!(!DragNum::from(&mut f).parse_from("-3.5", Limits::of(0.0, 1.0)));
+    assert!(!DragNum::from(&mut f).parse_from("-3.5", StoreRule::new(0.0, 1.0, 2)));
     assert_eq!(f, 0.0);
     // A typed "-0.0" stores as +0.0.
     let mut f = 1.0_f64;
-    assert!(DragNum::from(&mut f).parse_from("-0.0", Limits::of(-INF, INF)));
+    assert!(DragNum::from(&mut f).parse_from("-0.0", StoreRule::new(-INF, INF, 2)));
     assert_eq!(f.to_bits(), 0.0_f64.to_bits());
 }

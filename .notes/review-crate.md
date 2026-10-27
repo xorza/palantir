@@ -14,16 +14,6 @@ the measure-cache hit test.
 
 ## Widgets
 
-- **Keyboard interaction is a `widget_core` primitive.** An activation
-  helper on `Widget` declares the scope, reads the chords through
-  `Widget::key_pressed` and folds a keyboard activation into
-  `ResponseState`, so `clicked()` means the same on every widget. One travel
-  type takes a unit and the grain of the bound number type. Slider,
-  ColorField, ColorStrip, DragValue and Splitter use it.
-- **`Widget::response` returns `ResponseSnapshot`.** The id and the state
-  travel together into `Response::new`.
-- **A widget-supplied node value goes through `default_*`.** A caller's
-  setter always wins over the theme.
 - **The tab strip owns its geometry.** A crate-private strip scan (chip hits
   plus a drop slot from unclipped extents) and one index module
   (`moved_idx`, `removed_active`) serve `TabStrip`, `TabbedView`, `DockView`
@@ -111,71 +101,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 13: Widget keyboard and response primitives
-
-Files: `src/widget_core/{widget/, response.rs, configure.rs, configurator.rs}`,
-`src/widgets/{slider, color_field, color_strip, axis_keys.rs, toggle_row,
-checkbox, radio, switch, button, color_button, color_swatch, expander,
-gpu_view, drag_value, drag_num, splitter}/`,
-`src/primitives/math/domain/f64.rs`, `src/primitives/layout/sizing.rs`.
-
-- [ ] **Slider, ColorField and ColorStrip have no input scope.**
-  `slider/mod.rs:48-50, 206-240`, `color_field/mod.rs:67-69, 127`,
-  `color_strip/mod.rs:80-82, 131`, `axis_keys.rs:35-63`. Arrow groups take
-  their arrows, and a nested scope drops them. Target: declare
-  `CARET | PAGE`, read through `Widget::key_pressed`. Extend
-  `widgets/tests.rs:521-606` with the three and an `arrow_focus` parent.
-- [ ] **One travel type.** `slider/mod.rs:206-240`, `axis_keys.rs:35-63`,
-  `drag_value/mod.rs:220-240`, `splitter/mod.rs:174-196`. Four copies with
-  different steps and Home/End precedence. Target: one type with step pairs,
-  a unit and the number grain.
-- [ ] **Integer Slider arrows do nothing when the span is under 50.**
-  `slider/mod.rs:208`. Target: step `max(span/100, value.unit(decimals))`.
-  Add i64 and `decimals(0)` rows to `slider/tests.rs:315-380`.
-- [ ] **Large `i64` steps lose precision.** `drag_value/mod.rs:244-247`,
-  `slider/mod.rs:112-113`. Above 2^53, Up can store a lower value. Target:
-  step through `commit_drag`, which adds whole steps with `saturating_add`.
-- [ ] **Activation written four times.** `button/mod.rs:83-92`,
-  `color_button/mod.rs:74-82`, `toggle_row/mod.rs:51-57`,
-  `expander/mod.rs:151, 276-284`. Space on a Button is a click; on a Checkbox
-  it is not. Target: one activation helper on `Widget`. ColorSwatch becomes
-  focusable when it senses a click.
-- [ ] **Toggles override the caller's `gap` and `child_align`.**
-  `toggle_row/mod.rs:92-95`, `slider/mod.rs:125-128`. Target: `default_gap`
-  and a new `ThemeDefaults::default_child_align` **[public]**. Make
-  `toggle_row/tests.rs:17-98` table-driven with `gap`.
-- [ ] **Expander and GpuView set size in the constructor.**
-  `expander/mod.rs:65`, `gpu_view/mod.rs:71`. Target: `default_size` in
-  `show`.
-- [ ] **The toggle family repeats its `show`.** `checkbox/mod.rs:57-97`,
-  `radio/mod.rs:59-109`, `switch/mod.rs:56-108`. Target: `ToggleRow` owns
-  `widget`, `label`, `style` and one `show`; the local is `row`, not `chrome`.
-- [ ] **ColorField and ColorStrip repeat one pipeline.**
-  `color_field/mod.rs:92-162`, `color_strip/mod.rs:96-167`. Target: a
-  crate-private `ValueArea` with `committed` computed once.
-- [ ] **`Configure::size` panics without `# Panics`.** `configure.rs:82-90`,
-  `configurator.rs:58-69`, `sizing.rs:146-150, 266-284`. Target:
-  `#[track_caller]` on the `From` impls; convert before `get_or_insert`.
-- [ ] **NaN binding in an unbounded DragValue becomes −∞.**
-  `drag_num/mod.rs:78-81, 168-173`, `limits/mod.rs:237-239`. Target: a
-  non-finite anchor takes the neutral, once in `DragNum::read`; document it.
-- [ ] **`decimals` above 15 prints float noise.** `drag_value/mod.rs:123-127`.
-  Target: coerce to `MAX_DECIMALS` in the setter; document the kind.
-- [ ] **`Limits<T>` and `domain::f64::range`.** `limits/mod.rs:7-56`,
-  `domain/f64.rs:36-43`, `slider/mod.rs:46`. The generic has one production
-  type; the published range kind reorders, which Slider cannot use. Target: a
-  plain `f64` pair folded into `drag_num`; `domain::f64::range` validates and
-  keeps the order; Slider and `DragValue::range` call it.
-- [ ] **[public] `Widget::response` returns `ResponseSnapshot`.**
-  `widget/mod.rs:188-193`, `response.rs:51`; seven callers re-resolve the id.
-- [ ] **[public] Part ids.** `Expander::header_id`; document the part ids of
-  toggles, Slider, ProgressBar and ColorButton on their owners.
-- [ ] **[public] Small gaps.** `Widget::wrap_stack`, `Panel::wrap_stack`;
-  `const` `authored_gap`/`authored_line_gap`; the `RadioButton`
-  `T: PartialEq` bound moves to the impls.
-- [ ] **Tests.** Add `ColorStrip::texel_size` to the setter sweep
-  (`widgets/tests.rs:338-345`).
 
 ## Batch 14: Dock, tabs and splitter
 

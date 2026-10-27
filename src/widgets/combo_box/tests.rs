@@ -144,7 +144,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     );
 }
 
-/// The trigger's shape comes from `Theme::combo_box`: the chevron from `arrow_size`, the gutter from `gap`. Hug-sized so `Justify::SpaceBetween` leaves no slack hiding `gap`.
+/// The trigger's shape comes from `Theme::combo_box`: the chevron from `arrow_size`, the gutter from `gap`, which a caller's `gap` replaces. Hug-sized so `Justify::SpaceBetween` leaves no slack hiding `gap`.
 #[test]
 fn trigger_geometry_follows_the_combo_box_theme() {
     #[derive(Debug, PartialEq)]
@@ -156,7 +156,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let options = ["One"];
     let id = WidgetId::from_hash("geom-combo");
 
-    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>| -> Trigger {
+    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>, caller: Option<f32>| {
         let mut h = UiHarness::new(SURFACE);
         h.ui.theme_mut().combo_box.arrow_size = arrow;
         h.ui.theme_mut().combo_box.gap = gap;
@@ -165,11 +165,14 @@ fn trigger_geometry_follows_the_combo_box_theme() {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
-                    ComboBox::new(&mut selected, &options)
+                    let mut combo = ComboBox::new(&mut selected, &options)
                         .id(id)
                         .style(instance)
-                        .size((Sizing::HUG, Sizing::HUG))
-                        .show(ui);
+                        .size((Sizing::HUG, Sizing::HUG));
+                    if let Some(gap) = caller {
+                        combo = combo.gap(gap);
+                    }
+                    combo.show(ui);
                 });
         });
         let label = h.rect(id.with("label")).expect("label arranged");
@@ -180,11 +183,11 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         }
     };
 
-    let a = measure(Vec2::new(10.0, 6.0), 12.0, None);
+    let a = measure(Vec2::new(10.0, 6.0), 12.0, None, None);
     assert_eq!(a.arrow, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
     assert_eq!(a.gap, 12.0, "gutter is gap");
 
-    let b = measure(Vec2::new(20.0, 14.0), 30.0, None);
+    let b = measure(Vec2::new(20.0, 14.0), 30.0, None, None);
     assert_eq!(b.arrow, Vec2::new(20.0, 14.0));
     assert_eq!(b.gap, 30.0, "gutter is gap");
     assert_ne!(a.arrow, b.arrow);
@@ -196,8 +199,10 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         gap: 30.0,
         ..ComboBoxTheme::default()
     };
-    let c = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance));
+    let c = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance), None);
     assert_eq!(c, b, "`style` overrides the slot's arrow_size and gap");
+    let d = measure(Vec2::new(10.0, 6.0), 12.0, None, Some(3.0));
+    assert_eq!(d.gap, 3.0, "a caller's gap wins over the theme's");
 }
 
 /// The trigger paints in `button_style`'s button theme, else `Theme::button`, read off its chrome on the first-record frame (rest state).

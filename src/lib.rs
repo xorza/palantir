@@ -240,6 +240,7 @@ pub mod widget {
     pub use crate::text::run::TextRun;
     pub use crate::theme::look::look_plan::LookPlan;
     pub use crate::theme::look::theme_slot::ThemeSlot;
+    pub use crate::widget_core::activation::Activation;
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec, OverlayTurn};

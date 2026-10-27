@@ -20,6 +20,7 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
+use crate::widgets::axis_keys::{AxisEnd, AxisKeys, KeyPair};
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::window::cursor_icon::CursorIcon;
 
@@ -116,7 +117,7 @@ impl<'a> Splitter<'a> {
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> ValueResponse<'_> {
         let response = self.widget.response(ui);
-        let id = self.widget.resolve(ui);
+        let id = response.id;
         let input = *self.ratio;
 
         let theme = self.style.unwrap_or(&ui.theme().splitter);
@@ -170,7 +171,7 @@ impl<'a> Splitter<'a> {
                 resizing = true;
                 reset = true;
             }
-            // WAI-ARIA window splitter keys: arrows move the seam a step, Home/End
+            // WAI-ARIA window splitter keys: arrows move the seam a step (ten with Shift), Home/End
             // go to either end, through the drag's mapping (same floors), committed
             // on the next sync like a reset.
             if ui.is_focus_within(divider_id)
@@ -178,23 +179,16 @@ impl<'a> Splitter<'a> {
             {
                 let extent = axis.main(rect.size);
                 let at = ratio * (extent - rule_thickness) + rule_thickness * 0.5;
-                let (less, more) = match axis {
-                    Axis::X => (Key::ArrowLeft, Key::ArrowRight),
-                    Axis::Y => (Key::ArrowUp, Key::ArrowDown),
+                let keys = match axis {
+                    Axis::X => KEYS_X,
+                    Axis::Y => KEYS_Y,
                 };
-                let target = [
-                    (less, at - KEY_STEP),
-                    (more, at + KEY_STEP),
-                    (Key::Home, 0.0),
-                    (Key::End, extent),
-                ]
-                .into_iter()
-                // Every chord is sampled: `shortcut_pressed` keeps it subscribed for the
-                // wake gate.
-                .fold(None, |target, (key, pos)| {
-                    let pressed = divider_widget.shortcut_pressed(ui, key);
-                    if pressed { Some(pos) } else { target }
-                });
+                let travel = keys.read(&mut divider_widget, ui);
+                let target = match travel.end {
+                    Some(AxisEnd::Start) => Some(0.0),
+                    Some(AxisEnd::End) => Some(extent),
+                    None => (travel.steps != 0).then_some(at + travel.steps as f32 * KEY_STEP),
+                };
                 if let Some(pos) = target {
                     let seam = Seam {
                         extent,
@@ -269,7 +263,7 @@ impl<'a> Splitter<'a> {
         });
 
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed,
             committed,
         }
@@ -325,6 +319,32 @@ const fn sanitize_ratio(r: f32) -> f32 {
 }
 
 const KEY_STEP: f32 = 10.0;
+
+/// WAI-ARIA window splitter keys on a row: Left and Right move the seam, Home and End go to
+/// either end.
+const KEYS_X: AxisKeys = AxisKeys {
+    steps: &[KeyPair {
+        back: Key::ArrowLeft,
+        forward: Key::ArrowRight,
+    }],
+    page: None,
+    ends: Some(KEY_ENDS),
+};
+
+/// [`KEYS_X`] on a column, with Up and Down.
+const KEYS_Y: AxisKeys = AxisKeys {
+    steps: &[KeyPair {
+        back: Key::ArrowUp,
+        forward: Key::ArrowDown,
+    }],
+    page: None,
+    ends: Some(KEY_ENDS),
+};
+
+const KEY_ENDS: KeyPair = KeyPair {
+    back: Key::Home,
+    forward: Key::End,
+};
 
 /// The split axis as the divider maps it: the container's `extent`, the rule's
 /// `reserved` share of it, and the floor both panes keep while dragging.

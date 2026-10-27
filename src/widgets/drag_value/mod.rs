@@ -3,7 +3,6 @@
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -21,8 +20,8 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::drag_num::limits::Limits;
-use crate::widgets::drag_num::{DragNum, Num, StoreRule};
+use crate::widgets::axis_keys::{AxisKeys, KeyPair};
+use crate::widgets::drag_num::{DragNum, MAX_DECIMALS, Num, StoreRule};
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use std::mem;
@@ -120,9 +119,9 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Digits after the decimal point, for display and the precision a float drag snaps to; keyboard entry stays exact. Ignored by the integer target. Default `2`.
+    /// Digits after the decimal point, for display and the precision a float drag snaps to; keyboard entry stays exact. Ignored by the integer target. Default `2`. `n` is coerced to at most 15, the digits an `f64` holds.
     pub const fn decimals(mut self, n: usize) -> Self {
-        self.decimals = n;
+        self.decimals = if n < MAX_DECIMALS { n } else { MAX_DECIMALS };
         self
     }
 
@@ -160,7 +159,7 @@ impl<'a> DragValue<'a> {
         let required = self.required_sense();
         self.configure().add_sense(required);
         let mut response = self.widget.response(ui);
-        let id = self.widget.resolve(ui);
+        let id = response.id;
 
         // Focused + editable + enabled: the editor owns the frame, given the chip's last pre-transform rect (`rect` is post-zoom) to hold its width. Disabled mid-edit falls to the chip path, which discards the draft.
         let focused = ui.focus() == Some(id);
@@ -190,7 +189,7 @@ impl<'a> DragValue<'a> {
             ui.with_state::<DragValueState, _>(id, |_, state| {
                 if let DragValueState::Editing { buffer, .. } = state {
                     if self.editable && !response.disabled {
-                        changed = self.value.parse_from(buffer, rule.limits);
+                        changed = self.value.parse_from(buffer, rule);
                         committed = true;
                     }
                     *state = DragValueState::Idle;
@@ -228,22 +227,11 @@ impl<'a> DragValue<'a> {
         }
 
         if focused && !response.disabled {
-            let step = self.value.unit(self.decimals);
-            let mut moved = 0.0;
-            for (key, sign) in [(Key::ArrowUp, 1.0), (Key::ArrowDown, -1.0)] {
-                let coarse = self
-                    .widget
-                    .shortcut_pressed(ui, Shortcut::new(ShortcutMods::SHIFT, key));
-                let plain = self.widget.shortcut_pressed(ui, key);
-                if coarse {
-                    moved += sign * step * 10.0;
-                } else if plain {
-                    moved += sign * step;
-                }
-            }
-            if moved != 0.0 {
-                let to = self.value.read().widen() + moved;
-                changed |= self.value.commit_value(to, rule);
+            let travel = KEYS.read(&mut self.widget, ui);
+            if travel.steps != 0 {
+                // Through the drag's commit, so an integer adds whole steps to its exact value.
+                let by = f64::from(travel.steps) * self.value.unit(self.decimals);
+                changed |= self.value.commit_drag(self.value.read(), by, rule);
                 committed = true;
             }
         }
@@ -251,11 +239,11 @@ impl<'a> DragValue<'a> {
         let enter = focused && self.widget.shortcut_pressed(ui, Key::Enter);
         if self.editable && !response.disabled && (response.clicked() || enter) {
             ui.set_focus(id);
-            response.focused = true;
+            response.state.focused = true;
             ui.with_state::<DragValueState, _>(id, |_, s| {
                 *s = DragValueState::Editing {
                     buffer: self.value.edit_string(),
-                    original: self.value.read(),
+                    original: self.value.stored(),
                 }
             });
         }
@@ -287,7 +275,7 @@ impl<'a> DragValue<'a> {
             );
         });
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed,
             committed,
         }
@@ -315,7 +303,7 @@ impl<'a> DragValue<'a> {
             match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
                 DragValueState::Editing { buffer, original } => (buffer, original),
                 DragValueState::Idle | DragValueState::Scrubbing(_) => {
-                    (self.value.edit_string(), self.value.read())
+                    (self.value.edit_string(), self.value.stored())
                 }
             };
         let ended = {
@@ -333,7 +321,7 @@ impl<'a> DragValue<'a> {
             self.value.restore(original)
         } else {
             self.value
-                .parse_from(&buffer, Limits::of(self.min, self.max))
+                .parse_from(&buffer, StoreRule::new(self.min, self.max, self.decimals))
         };
         ui.with_state::<DragValueState, _>(id, |_, s| {
             *s = if ended.is_some() {
@@ -352,6 +340,16 @@ impl<'a> DragValue<'a> {
         }
     }
 }
+
+/// Up and Down step the value by one unit of its last shown digit; Shift steps ten.
+const KEYS: AxisKeys = AxisKeys {
+    steps: &[KeyPair {
+        back: Key::ArrowDown,
+        forward: Key::ArrowUp,
+    }],
+    page: None,
+    ends: None,
+};
 
 impl Configure for DragValue<'_> {
     #[inline]

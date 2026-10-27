@@ -121,8 +121,8 @@ impl<'a, T: DockTab> DockView<'a, T> {
             overflow,
             style: _,
         } = self;
-        let id = widget.resolve(ui);
         let response = widget.response(ui);
+        let id = response.id;
         let mut cx = DockCtx {
             dock: id,
             state,
@@ -140,7 +140,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
                 cx.drag_feedback(ui, tab);
             }
         });
-        Response::new(id, ui, response)
+        Response::new(ui, response)
     }
 }
 

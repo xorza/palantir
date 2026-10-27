@@ -178,18 +178,16 @@ impl Node {
         }
     }
 
-    /// Fills each axis the caller left `Auto`, leaving the other alone.
+    /// Fills each axis of `align` the caller left `Auto`, leaving the other alone.
     #[inline]
     pub(crate) const fn fill_align(&mut self, value: Align) {
-        let h = match self.align.halign() {
-            HAlign::Auto => value.halign(),
-            set => set,
-        };
-        let v = match self.align.valign() {
-            VAlign::Auto => value.valign(),
-            set => set,
-        };
-        self.align = Align::new(h, v);
+        self.align = filled(self.align, value);
+    }
+
+    /// Fills each axis of `child_align` the caller left `Auto`, leaving the other alone.
+    #[inline]
+    pub(crate) const fn fill_child_align(&mut self, value: Align) {
+        self.child_align = filled(self.child_align, value);
     }
 
     /// Takes over `from`'s placement (position in the parent and Tab order), nothing about contents or behavior; for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
@@ -301,6 +299,19 @@ impl Node {
 /// `value` capped at `cap`, keeping a NaN `value` for the bound check that follows (`f32::min` would drop it).
 const fn at_most(value: f32, cap: f32) -> f32 {
     if value > cap { cap } else { value }
+}
+
+/// `set` with each `Auto` axis taken from `fallback`.
+const fn filled(set: Align, fallback: Align) -> Align {
+    let h = match set.halign() {
+        HAlign::Auto => fallback.halign(),
+        set => set,
+    };
+    let v = match set.valign() {
+        VAlign::Auto => fallback.valign(),
+        set => set,
+    };
+    Align::new(h, v)
 }
 
 #[cfg(test)]

@@ -27,8 +27,8 @@ pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
     r.start().is_finite() && r.end().is_finite()
 }
 
-/// `r` in ascending order, whose ends must be finite.
-/// The ends are validated and the order coerced: a reversed range is ordinary data (e.g. from a file) meaning the same span.
+/// `r`, whose ends must be finite. The order is kept, as the direction is the meaning: a
+/// [`Slider`](crate::Slider) over `10.0..=0.0` runs from right to left.
 ///
 /// # Panics
 ///
@@ -37,6 +37,5 @@ pub const fn is_range(r: &RangeInclusive<f64>) -> bool {
 #[track_caller]
 pub const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
     assert!(is_range(&r), "{}", domain::RANGE_RULE);
-    let (a, b) = (*r.start(), *r.end());
-    RangeInclusive::new(a.min(b), a.max(b))
+    r
 }

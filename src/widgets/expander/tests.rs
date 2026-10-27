@@ -13,7 +13,7 @@ use crate::primitives::math::domain::internals::assert_close;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::ui::Ui;
-use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widgets::expander::{Expander, ExpanderState};
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
@@ -27,7 +27,7 @@ fn root() -> WidgetId {
 }
 
 fn header() -> WidgetId {
-    root().with("header")
+    Expander::header_id(root())
 }
 
 fn body() -> WidgetId {
@@ -38,16 +38,18 @@ fn label() -> WidgetId {
     root().with("body").with("inner")
 }
 
-/// One frame of a plain expander over a single label.
-fn frame(h: &mut UiHarness, start_open: bool) {
-    h.frame(|ui| {
+/// One frame of a plain expander over a single label; whether its header reports a click.
+fn frame(h: &mut UiHarness, start_open: bool) -> bool {
+    h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
             .start_open(start_open)
             .show(ui, |ui| {
                 Text::new("body").id(label()).show(ui);
-            });
-    });
+            })
+            .response
+            .clicked()
+    })
 }
 
 /// A closed section records nothing below its header.
@@ -85,6 +87,20 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
         ),
     );
     assert!(h.rect(label()).is_some(), "the body's own content records");
+
+    // The section fills the width by default, and a wrapper's `default_size` replaces that.
+    assert_eq!(h.arranged(root()).size.w, 320.0, "FILL across the surface");
+    h.prime(2, |ui| {
+        Expander::new("section")
+            .id(root())
+            .default_size((Sizing::fixed(100.0), Sizing::HUG))
+            .show(ui, |_| {});
+    });
+    assert_eq!(
+        h.arranged(root()).size.w,
+        100.0,
+        "a default size wins over FILL"
+    );
 }
 
 /// A section nobody has touched keeps no cross-frame row.
@@ -271,7 +287,8 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
-/// Space and Enter toggle a focused header, nothing else.
+/// Space and Enter toggle a focused header, nothing else, and its response reads them as the
+/// click a pointer would make.
 #[test]
 fn space_and_enter_toggle_a_focused_header() {
     for key in [Key::Char(' '), Key::Enter] {
@@ -281,7 +298,7 @@ fn space_and_enter_toggle_a_focused_header() {
 
         h.clear_focus();
         h.key(key);
-        frame(&mut h, false);
+        assert!(!frame(&mut h, false), "{key:?} clicked an unfocused header");
         assert!(
             h.rect(body()).is_none(),
             "{key:?} moved an unfocused header",
@@ -290,7 +307,7 @@ fn space_and_enter_toggle_a_focused_header() {
         h.set_focus(header());
         frame(&mut h, false);
         h.key(key);
-        frame(&mut h, false);
+        assert!(frame(&mut h, false), "{key:?} clicks a focused header");
         assert!(h.rect(body()).is_some(), "{key:?} opened a focused header");
     }
 }

@@ -1,6 +1,7 @@
 //! The assembled color picker: the panel, its retained state, and the rule
 //! deciding which control's write reaches the bound color.
 
+use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
@@ -170,7 +171,7 @@ impl<'a> ColorPicker<'a> {
             Sizing::HUG,
         ));
         let response = widget.response(ui);
-        let id = widget.resolve(ui);
+        let id = response.id;
 
         let color = self.color;
         let alpha_on = self.alpha;
@@ -194,7 +195,7 @@ impl<'a> ColorPicker<'a> {
             });
         });
         ValueResponse {
-            response: Response::new(id, ui, response),
+            response: Response::new(ui, response),
             changed: edit.changed,
             committed: edit.committed,
         }
@@ -379,6 +380,7 @@ impl Inputs<'_> {
                 ColorSwatch::new(preview)
                     .style(theme)
                     .id(id.with("preview"))
+                    .sense(Sense::NONE)
                     .size((Sizing::fixed(chip), Sizing::fixed(chip)))
                     .show(ui);
                 Panel::vstack()

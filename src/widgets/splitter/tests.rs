@@ -479,10 +479,11 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
     }
 }
 
-/// A focused divider takes the window splitter's keys through the drag's mapping, held by `min_pane`. Seam at `400 r + 0.5`: an arrow moves `r` by 10 / 400 = 0.025; End holds at 1 − 50 / 400 = 0.875; Home at 0.125. Each key commits once.
+/// A focused divider takes the window splitter's keys through the drag's mapping, held by `min_pane`. Seam at `400 r + 0.5`: an arrow moves `r` by 10 / 400 = 0.025, and with Shift ten of those, 0.25; End holds at 1 − 50 / 400 = 0.875; Home at 0.125. Each key commits once.
 #[test]
 fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     use crate::input::keyboard::key::Key;
+    use crate::input::keyboard::modifiers::Modifiers;
     use crate::primitives::math::domain;
 
     let mut h = UiHarness::new(SURFACE);
@@ -491,13 +492,15 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     frame_with(&mut h, &mut ratio);
     h.set_focus(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
-    for (key, want) in [
-        (Key::ArrowRight, 0.525),
-        (Key::ArrowLeft, 0.5),
-        (Key::ArrowDown, 0.5),
-        (Key::End, 0.875),
-        (Key::Home, 0.125),
+    for (mods, key, want) in [
+        (Modifiers::NONE, Key::ArrowRight, 0.525),
+        (Modifiers::NONE, Key::ArrowLeft, 0.5),
+        (Modifiers::NONE, Key::ArrowDown, 0.5),
+        (Modifiers::NONE, Key::End, 0.875),
+        (Modifiers::NONE, Key::Home, 0.125),
+        (Modifiers::SHIFT, Key::ArrowRight, 0.375),
     ] {
+        h.set_modifiers(mods);
         h.key(key);
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);

@@ -1,10 +1,7 @@
 //! The numeric target a value widget writes through.
 
-pub(crate) mod limits;
-
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
-use crate::widgets::drag_num::limits::Limits;
 
 /// The numeric target a value widget writes through: an `i64` or `f64`, borrowed
 /// mutably. Built through `From`, e.g. `DragValue::new(&mut my_i64)`.
@@ -12,7 +9,8 @@ use crate::widgets::drag_num::limits::Limits;
 pub enum DragNum<'a> {
     /// An integer target.
     I64(&'a mut i64),
-    /// A float target.
+    /// A float target. A NaN or infinite value shows as it is, and a scrub or a key moves it
+    /// from `0.0`, so the first write lands on a number inside the bounds.
     F64(&'a mut f64),
 }
 
@@ -36,29 +34,56 @@ impl Num {
     }
 }
 
-/// How a value widget stores a number: clamped into `limits`, a float target snapped
+/// How a value widget stores a number: clamped into `lo..=hi`, a float target snapped
 /// to `decimals` fractional digits.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StoreRule {
-    pub(crate) limits: Limits<f64>,
-    pub(crate) decimals: usize,
+    lo: f64,
+    hi: f64,
+    decimals: usize,
 }
 
 impl StoreRule {
-    /// The rule for a widget bounded by `min` and `max` in either order.
-    pub(crate) fn new(min: f64, max: f64, decimals: usize) -> Self {
+    /// The rule for a widget bounded by `min` and `max` in either order. Ordered with float
+    /// `min`/`max`, which return the other operand for a NaN bound, so a degenerate pair still
+    /// clamps to a number.
+    pub(crate) const fn new(min: f64, max: f64, decimals: usize) -> Self {
+        debug_assert!(
+            decimals <= MAX_DECIMALS,
+            "decimals is coerced at the setter"
+        );
         Self {
-            limits: Limits::of(min, max),
+            lo: min.min(max),
+            hi: min.max(max),
             decimals,
         }
     }
+
+    /// `value` pulled into the bounds, through `max`/`min` rather than `clamp`, which asserts
+    /// ordered bounds and trips on NaN.
+    const fn clamp(self, value: f64) -> f64 {
+        value.max(self.lo).min(self.hi)
+    }
 }
 
-/// The most fractional digits an `f64` holds; more would also overflow `10^decimals`.
-const MAX_DECIMALS: usize = 15;
+/// The most fractional digits an `f64` holds; more would print float noise and overflow
+/// `10^decimals`. A widget's `decimals` setter coerces to it.
+pub(crate) const MAX_DECIMALS: usize = 15;
 
 impl DragNum<'_> {
+    /// The value a gesture moves from. A non-finite float reads as `0.0`, the neutral, so a
+    /// scrub or a step from a NaN or infinite binding lands on a number inside the bounds; a NaN
+    /// anchor in an unbounded range would clamp to `-inf`.
     pub(crate) const fn read(&self) -> Num {
+        match self {
+            DragNum::I64(v) => Num::I64(**v),
+            DragNum::F64(v) if v.is_finite() => Num::F64(**v),
+            DragNum::F64(_) => Num::F64(0.0),
+        }
+    }
+
+    /// The stored value bit for bit, which [`Self::restore`] writes back.
+    pub(crate) const fn stored(&self) -> Num {
         match self {
             DragNum::I64(v) => Num::I64(**v),
             DragNum::F64(v) => Num::F64(**v),
@@ -72,13 +97,13 @@ impl DragNum<'_> {
     pub(crate) fn commit_drag(&mut self, anchor: Num, offset: f64, rule: StoreRule) -> bool {
         match (self, anchor) {
             (DragNum::I64(v), Num::I64(a)) => {
-                store_i64(v, a.saturating_add(whole_step(offset)), rule.limits)
+                store_i64(v, a.saturating_add(whole_step(offset)), rule)
             }
-            (DragNum::I64(v), Num::F64(a)) => store_i64(v, whole_step(a + offset), rule.limits),
+            (DragNum::I64(v), Num::F64(a)) => store_i64(v, whole_step(a + offset), rule),
             (DragNum::F64(v), a) => store_f64(
                 v,
                 round_to_decimals(a.widen() + offset, rule.decimals),
-                rule.limits,
+                rule,
             ),
         }
     }
@@ -131,42 +156,41 @@ impl DragNum<'_> {
         }
     }
 
-    /// Parse `text` and write it clamped into `limits`. Unparseable or non-finite
-    /// text leaves the value alone, since a committed NaN would poison every later
-    /// scrub.
-    pub(crate) fn parse_from(&mut self, text: &str, limits: Limits<f64>) -> bool {
+    /// Parse `text` and write it clamped into `rule`'s bounds, keeping the typed digits past
+    /// `rule`'s decimals. Unparseable or non-finite text leaves the value alone, since a
+    /// committed NaN would poison every later scrub.
+    pub(crate) fn parse_from(&mut self, text: &str, rule: StoreRule) -> bool {
         match self {
             DragNum::I64(v) => match text.parse::<i64>() {
                 // Parsed as `i64`: widening through `f64` would lose low bits past
                 // 2^53.
-                Ok(n) => store_i64(v, n, limits),
+                Ok(n) => store_i64(v, n, rule),
                 Err(_) => false,
             },
             DragNum::F64(v) => match text.parse::<f64>() {
-                Ok(n) if n.is_finite() => store_f64(v, n, limits),
+                Ok(n) if n.is_finite() => store_f64(v, n, rule),
                 _ => false,
             },
         }
     }
 }
 
-/// Store `next` clamped into `limits`, answering whether the value moved. The
+/// Store `next` clamped into `rule`'s bounds, answering whether the value moved. The
 /// bounds close in to the integers inside them (`0.5..=10.0` stores no 0, where a
 /// truncating cast let it through); a range holding no integer clamps to the two
 /// either side.
-fn store_i64(slot: &mut i64, next: i64, limits: Limits<f64>) -> bool {
-    let (lo, hi) = (limits.lo.ceil() as i64, limits.hi.floor() as i64);
+fn store_i64(slot: &mut i64, next: i64, rule: StoreRule) -> bool {
+    let (lo, hi) = (rule.lo.ceil() as i64, rule.hi.floor() as i64);
     let next = next.clamp(lo.min(hi), hi.max(lo));
     let changed = *slot != next;
     *slot = next;
     changed
 }
 
-/// The float half of that write. Uses [`Limits::clamp`], which tolerates the
-/// all-NaN pair the inherent clamp asserts on. `+ 0.0` turns `-0.0` into `+0.0`,
-/// which the clamp's `<` would leak as "-0.00"; the comparison is bit-exact.
-fn store_f64(slot: &mut f64, next: f64, limits: Limits<f64>) -> bool {
-    let next = limits.clamp(next) + 0.0;
+/// The float half of that write. `+ 0.0` turns `-0.0` into `+0.0`, which the clamp's `<`
+/// would leak as "-0.00"; the comparison is bit-exact.
+fn store_f64(slot: &mut f64, next: f64, rule: StoreRule) -> bool {
+    let next = rule.clamp(next) + 0.0;
     let changed = slot.to_bits() != next.to_bits();
     *slot = next;
     changed
@@ -205,9 +229,13 @@ fn round_to_decimals(v: f64, decimals: usize) -> f64 {
     }
 }
 
-/// `10^decimals`, the digits capped at [`MAX_DECIMALS`].
+/// `10^decimals`; `decimals` is at most [`MAX_DECIMALS`].
 fn decimal_shift(decimals: usize) -> f64 {
-    10f64.powi(decimals.min(MAX_DECIMALS) as i32)
+    debug_assert!(
+        decimals <= MAX_DECIMALS,
+        "decimals is coerced at the setter"
+    );
+    10f64.powi(decimals as i32)
 }
 
 #[cfg(test)]

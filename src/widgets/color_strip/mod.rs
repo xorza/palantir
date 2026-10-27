@@ -1,30 +1,24 @@
 //! The one-axis bars of a color picker: hue, and alpha over its checker.
 
 use crate::input::keyboard::key::Key;
-use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::image::Image;
-use crate::primitives::paint::image::ImageFit;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::axis_keys::AxisKeys;
-use crate::widgets::axis_keys::KeyPair;
+use crate::widgets::axis_keys::{AxisKeys, KeyPair, UNIT_PAGE, UNIT_STEP};
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_surface;
-use crate::widgets::color_surface::ColorSurface;
+use crate::widgets::value_area::{AreaValue, ValueArea};
 use glam::Vec2;
 
 /// A one-axis bar of a color picker: the hue ramp, or one color's alpha ramp over its checker.
@@ -34,10 +28,8 @@ use glam::Vec2;
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorStrip<'a> {
-    widget: Widget,
+    area: ValueArea<'a>,
     kind: StripKind<'a>,
-    texel_size: u32,
-    style: Option<&'a ColorPickerTheme>,
 }
 
 #[derive(Debug)]
@@ -47,10 +39,10 @@ enum StripKind<'a> {
 }
 
 const ALONG: AxisKeys = AxisKeys {
-    step: KeyPair {
+    steps: &[KeyPair {
         back: Key::ArrowLeft,
         forward: Key::ArrowRight,
-    },
+    }],
     page: Some(KeyPair {
         back: Key::PageDown,
         forward: Key::PageUp,
@@ -77,12 +69,8 @@ impl<'a> ColorStrip<'a> {
     #[track_caller]
     fn new(kind: StripKind<'a>) -> Self {
         Self {
-            widget: Widget::leaf()
-                .sense(Sense::CLICK | Sense::DRAG)
-                .focusable(true),
+            area: ValueArea::new(),
             kind,
-            texel_size: color_surface::TEXEL_SIZE,
-            style: None,
         }
     }
 
@@ -94,83 +82,26 @@ impl<'a> ColorStrip<'a> {
     /// Panics unless `n` is a power of two from 1 to 16.
     #[track_caller]
     pub const fn texel_size(mut self, n: u32) -> Self {
-        self.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
+        self.area.texel_size = domain::power_of_two_in(n, color_surface::MAX_TEXEL_SIZE);
         self
     }
 
     /// Theme slot.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
-        self.style = s.into();
+        self.area.style = s.into();
         self
     }
 
     /// Records the strip.
     pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
-        let theme = self.style.unwrap_or(&ui.theme().color_picker);
-        let themed = Size::new(
-            domain::length_at_least(theme.field_width, 1.0),
-            domain::length_at_least(theme.bar_thickness, 1.0),
-        );
-        let handle_width = domain::length_at_least(theme.handle_width, 0.0);
-        let handle_outer = theme.handle_outer;
-        let handle_inner = theme.handle_inner;
-        let checker = Checkerboard::new(theme);
-
-        let mut widget = self
-            .widget
-            .default_size((Sizing::fixed(themed.w), Sizing::fixed(themed.h)));
-        let response = widget.response(ui);
-        let id = widget.resolve(ui);
-        let size = response.layout_rect.map_or(themed, |r| r.size);
-
-        let mut kind = self.kind;
-        let mut changed = false;
-        if let Some(at) = response.press_fraction(0.0) {
-            changed |= kind.write(at.x);
-        }
-        let keyed = !response.disabled && ui.is_focus_within(id) && keyboard_travel(ui, &mut kind);
-        changed |= keyed;
-        let committed = !response.disabled && (response.left.released() || keyed);
-
-        let texels = color_surface::texture_size(size, self.texel_size, ui);
-        let paint = kind.paint();
-        let marker = kind.read() * size.w;
-
-        widget.record(ui, None, |ui| {
-            if paint.wants_checker() {
-                checker.paint(ui, size);
-            }
-            let image = ui.with_state::<ColorSurface<StripPaint>, _>(id, |ui, surface| {
-                surface
-                    .ensure(ui, texels, paint, |image| paint.fill(image))
-                    .clone()
-            });
-            ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
-            let top = Vec2::new(marker, 0.0);
-            let bottom = Vec2::new(marker, size.h);
-            ui.add_shape(Shape::line(
-                top,
-                bottom,
-                Stroke::new(handle_outer, handle_width * 2.5),
-            ));
-            ui.add_shape(Shape::line(
-                top,
-                bottom,
-                Stroke::new(handle_inner, handle_width),
-            ));
-        });
-        ValueResponse {
-            response: Response::new(id, ui, response),
-            changed,
-            committed,
-        }
+        self.area.show(ui, self.kind)
     }
 }
 
 impl Configure for ColorStrip<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
-        self.widget.configure()
+        self.area.widget.configure()
     }
 }
 
@@ -223,15 +154,60 @@ impl StripPaint {
     }
 }
 
-fn keyboard_travel(ui: &mut Ui, kind: &mut StripKind<'_>) -> bool {
-    let travel = ALONG.travel(ui, kind.read());
-    let mut at = travel.to;
-    if !travel.jumped && matches!(kind, StripKind::Hue(_)) && !(0.0..=1.0).contains(&at) {
-        // Steps wrap round the hue circle; positions do not (drag, Home, End clamp in
-        // `ColorCoords::set_hue`).
-        at = at.rem_euclid(1.0);
+impl AreaValue for StripKind<'_> {
+    type Surface = StripPaint;
+
+    fn themed(theme: &ColorPickerTheme) -> Size {
+        Size::new(
+            domain::length_at_least(theme.field_width, 1.0),
+            domain::length_at_least(theme.bar_thickness, 1.0),
+        )
     }
-    kind.write(at)
+
+    fn press(&mut self, at: Vec2) -> bool {
+        self.write(at.x)
+    }
+
+    fn travel(&mut self, widget: &mut Widget, ui: &mut Ui) -> bool {
+        let travel = ALONG.read(widget, ui);
+        let mut at = travel.on_unit_axis(self.read(), UNIT_STEP, UNIT_PAGE);
+        if travel.end.is_none() && matches!(self, Self::Hue(_)) && !(0.0..=1.0).contains(&at) {
+            // Steps wrap round the hue circle; positions do not (drag, Home, End clamp in
+            // `ColorCoords::set_hue`).
+            at = at.rem_euclid(1.0);
+        }
+        self.write(at)
+    }
+
+    fn surface(&self) -> StripPaint {
+        self.paint()
+    }
+
+    fn fill(surface: StripPaint, image: &mut Image) {
+        surface.fill(image);
+    }
+
+    fn underlay(&self, ui: &mut Ui, theme: &ColorPickerTheme, size: Size) {
+        if self.paint().wants_checker() {
+            Checkerboard::new(theme).paint(ui, size);
+        }
+    }
+
+    fn marker(&self, ui: &mut Ui, theme: &ColorPickerTheme, size: Size) {
+        let width = domain::length_at_least(theme.handle_width, 0.0);
+        let x = self.read() * size.w;
+        let (top, bottom) = (Vec2::new(x, 0.0), Vec2::new(x, size.h));
+        ui.add_shape(Shape::line(
+            top,
+            bottom,
+            Stroke::new(theme.handle_outer, width * 2.5),
+        ));
+        ui.add_shape(Shape::line(
+            top,
+            bottom,
+            Stroke::new(theme.handle_inner, width),
+        ));
+    }
 }
 
 #[cfg(test)]

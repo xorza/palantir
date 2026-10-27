@@ -5,6 +5,7 @@ use crate::internals::ui_harness::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -134,6 +135,22 @@ fn explicit_size_overrides_fill_default() {
             default: Size::new(400.0, 18.0),
         }
     );
+
+    // The knob centers on the cross axis by default, and a caller's `child_align` wins:
+    // a 40-tall slider centers the 18 px knob at `(40 - 18) / 2 = 11`.
+    let id = WidgetId::from_hash("slider-align");
+    let mut h = UiHarness::new(UVec2::new(200, 100));
+    for (align, y) in [(None, 11.0), (Some(Align::v(VAlign::Top)), 0.0)] {
+        h.frame(|ui| {
+            let mut slider = Slider::new(&mut v, 0.0..=1.0).id(id).size((200.0, 40.0));
+            if let Some(align) = align {
+                slider = slider.child_align(align);
+            }
+            slider.show(ui);
+        });
+        let knob = h.arranged(id.with("knob"));
+        assert_eq!(knob.min.y - h.arranged(id).min.y, y, "{align:?}");
+    }
 }
 
 /// An endpoint collapses one track segment to zero extent, and a NaN value lays out as the low end.
@@ -257,6 +274,23 @@ fn snapped_rounds_to_the_step_grid_from_min() {
     assert_eq!(stepped(0.0, Some(5.0)).snapped(13.0), 15.0);
     assert_eq!(stepped(1.0, Some(0.5)).snapped(2.2), 2.0);
     assert_eq!(stepped(0.0, None).snapped(53.0), 53.0);
+
+    // The grid stays inside the range: `0..=10` by 4 holds 0, 4 and 8, so 10 and 11 land on 8
+    // (rounding alone gives 12) and -3 on 0; reversed, `10..=0` by 4 holds 10, 6 and 2.
+    let grid = |min: f64, max: f64, step: f64| SliderRange {
+        step: Some(step),
+        ..range(min, max)
+    };
+    assert_eq!(grid(0.0, 10.0, 4.0).snapped(10.0), 8.0);
+    assert_eq!(grid(0.0, 10.0, 4.0).snapped(11.0), 8.0);
+    assert_eq!(grid(0.0, 10.0, 4.0).snapped(-3.0), 0.0);
+    assert_eq!(grid(10.0, 0.0, 4.0).snapped(-1.0), 2.0);
+    assert_eq!(grid(10.0, 0.0, 4.0).snapped(11.0), 10.0);
+    // `0.3 / 0.1` divides to just under 3, and 0.3 is still the third step, not the second.
+    assert_eq!(grid(0.0, 0.3, 0.1).snapped(0.3), 3.0 * 0.1);
+    // That allowance is an ulp of the span, not of the count: half a step past `1e12` whole
+    // steps is no whole count, so the last grid value is `1e12`, not `1e12 + 1` past the end.
+    assert_eq!(grid(0.0, 1e12 + 0.5, 1.0).snapped(2e12), 1e12);
 }
 
 /// `None` is the only "off"; a step that cannot snap is refused.
@@ -311,7 +345,8 @@ fn an_integer_target_lands_on_whole_values() {
 }
 
 /// A focused slider walks by key: arrows a hundredth of the range, Shift ten
-/// of those, page keys a tenth, Home/End to the ends. A step snaps; every key
+/// of those, page keys a tenth, Home/End to the ends. A step snaps, End to the last grid
+/// value inside the range; every key
 /// is a whole edit; unfocused or disabled, keys move nothing.
 #[test]
 fn a_focused_slider_walks_by_key() {
@@ -321,7 +356,8 @@ fn a_focused_slider_walks_by_key() {
     /// Modifiers, key, range, step, and where 5.0 lands.
     type Case = (Modifiers, Key, (f64, f64), Option<f64>, f64);
     let id = WidgetId::from_hash("slider-keys");
-    let cases: [Case; 11] = [
+    let cases: [Case; 12] = [
+        (Modifiers::NONE, Key::End, (0.0, 10.0), Some(4.0), 8.0),
         (Modifiers::NONE, Key::ArrowRight, (0.0, 10.0), None, 5.1),
         (Modifiers::NONE, Key::ArrowUp, (0.0, 10.0), None, 5.1),
         (Modifiers::NONE, Key::ArrowLeft, (0.0, 10.0), None, 4.9),
@@ -377,5 +413,74 @@ fn a_focused_slider_walks_by_key() {
                 .show(ui);
         });
         assert_eq!(value, 5.0, "focused {focused}, disabled {disabled}");
+    }
+}
+
+/// An arrow steps at least one unit of the bound number's last digit: an integer over 0..=10
+/// moves 5 → 6, where a hundredth of the range (0.1) rounded back to 5 and the key did nothing;
+/// a float at `decimals(0)` does the same. Without a snap step the step adds to the stored
+/// integer exactly: past 2^53, `2^53 + 1` and a step of `1e18 / 100 = 1e16` land on
+/// `2^53 + 1 + 1e16`, where a round trip through `f64` dropped the 1.
+#[test]
+fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
+    use crate::input::keyboard::key::Key;
+
+    let id = WidgetId::from_hash("slider-unit");
+    let press = |record: &mut dyn FnMut(&mut Ui)| {
+        let mut h = UiHarness::new(UVec2::new(200, 40));
+        h.frame(&mut *record);
+        h.set_focus(id);
+        h.key(Key::ArrowRight);
+        h.frame(&mut *record);
+    };
+
+    let mut whole = 5_i64;
+    press(&mut |ui| {
+        Slider::new(&mut whole, 0.0..=10.0).id(id).show(ui);
+    });
+    assert_eq!(whole, 6);
+
+    let mut float = 5.0_f64;
+    press(&mut |ui| {
+        Slider::new(&mut float, 0.0..=10.0)
+            .id(id)
+            .decimals(0)
+            .show(ui);
+    });
+    assert_eq!(float, 6.0);
+
+    let mut large = (1_i64 << 53) + 1;
+    press(&mut |ui| {
+        Slider::new(&mut large, 0.0..=1e18).id(id).show(ui);
+    });
+    assert_eq!(large, (1_i64 << 53) + 1 + 10_000_000_000_000_000);
+
+    // Decimals past what an `f64` holds are coerced to 15, so the unit over a span of `1e-14`
+    // is `1e-15`, not the hundredth `1e-16`.
+    let mut fine = 0.0_f64;
+    press(&mut |ui| {
+        Slider::new(&mut fine, 0.0..=1e-14)
+            .id(id)
+            .decimals(usize::MAX)
+            .show(ui);
+    });
+    assert_eq!(fine, 1e-15);
+
+    // A half step on an integer steps a whole one each way: 5 + 0.5 rounds to 6, but 6 - 0.5
+    // rounds back to 6, so the unit is at least 1.
+    let mut halves = 5_i64;
+    for (key, want) in [(Key::ArrowRight, 6), (Key::ArrowLeft, 5)] {
+        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut record = |ui: &mut Ui| {
+            Slider::new(&mut halves, 0.0..=10.0)
+                .id(id)
+                .step(0.5)
+                .show(ui);
+        };
+        h.frame(&mut record);
+        h.set_focus(id);
+        h.key(key);
+        h.frame(&mut record);
+        assert_eq!(halves, want, "{key:?} on a half step");
     }
 }

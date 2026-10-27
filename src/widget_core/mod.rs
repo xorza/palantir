@@ -1,5 +1,6 @@
 //! The framework every widget in [`crate::widgets`] is built on: the [`Widget`](widget::Widget) node, [`Configure`](configure::Configure) setters, responses, and the overlay scope.
 
+pub(crate) mod activation;
 pub(crate) mod configurator;
 pub(crate) mod configure;
 pub(crate) mod overlay_response;

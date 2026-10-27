@@ -290,6 +290,7 @@ fn widget_setters_check_their_kinds() {
     use crate::primitives::paint::color::color_coords::ColorCoords;
     use crate::scene::layer::Layer;
     use crate::widgets::color_field::ColorField;
+    use crate::widgets::color_strip::ColorStrip;
     use crate::widgets::dock::dock_state::DockState;
     use crate::widgets::dock::dock_view::DockView;
     use crate::widgets::drag_value::DragValue;
@@ -337,13 +338,21 @@ fn widget_setters_check_their_kinds() {
         panic_probe::assert_panics_with("a color must have finite channels", || set(NAN_RED));
     }
 
-    let mut coords = ColorCoords::default();
-    let _ = ColorField::new(&mut coords).texel_size(16);
-    for bad in [0, 3, 32] {
-        panic_probe::assert_panics_with(domain::POWER_OF_TWO_RULE, || {
+    let texel_cases: [fn(u32); 2] = [
+        |n| {
             let mut coords = ColorCoords::default();
-            drop(ColorField::new(&mut coords).texel_size(bad));
-        });
+            drop(ColorField::new(&mut coords).texel_size(n));
+        },
+        |n| {
+            let mut coords = ColorCoords::default();
+            drop(ColorStrip::for_hue(&mut coords).texel_size(n));
+        },
+    ];
+    for set in texel_cases {
+        set(16);
+        for bad in [0, 3, 32] {
+            panic_probe::assert_panics_with(domain::POWER_OF_TWO_RULE, || set(bad));
+        }
     }
 
     let mut value = 0.0_f64;
@@ -523,12 +532,20 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
 fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     use crate::input::key_class::KeyFilter;
     use crate::input::keyboard::key::Key;
+    use crate::primitives::layout::axis::Axis;
+    use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::primitives::paint::color::color_model::ColorModel;
+    use crate::widgets::axis_keys::UNIT_STEP;
     use crate::widgets::button::Button;
     use crate::widgets::checkbox::Checkbox;
     use crate::widgets::color_button::ColorButton;
+    use crate::widgets::color_field::ColorField;
     use crate::widgets::color_picker::ColorPicker;
+    use crate::widgets::color_strip::ColorStrip;
+    use crate::widgets::color_swatch::ColorSwatch;
     use crate::widgets::combo_box::ComboBox;
     use crate::widgets::expander::Expander;
+    use crate::widgets::slider::Slider;
     use crate::widgets::splitter::Splitter;
 
     fn under_root<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
@@ -537,6 +554,17 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
             .input_scope(KeyFilter::ACCEL)
             .show(ui, body)
             .inner
+    }
+    /// The axis widgets take their arrows from a parent that walks focus with them, as from the
+    /// root's scope: each moves where the parent would have moved focus.
+    fn under_arrows<R>(ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> R {
+        under_root(ui, |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("arrow-row"))
+                .arrow_focus(Axis::X)
+                .show(ui, body)
+                .inner
+        })
     }
     /// Settle, focus `focus`, settle, press `key`, record two frames (a splitter's ratio lands a frame later).
     fn press(focus: WidgetId, key: Key, mut record: impl FnMut(&mut Ui)) {
@@ -557,6 +585,15 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     });
     assert_eq!(clicks, 1, "Button");
 
+    let mut clicks = 0;
+    press(id, Key::Enter, |ui| {
+        let clicked = under_root(ui, |ui| {
+            ColorSwatch::new(RgbaF32::WHITE).id(id).show(ui).clicked()
+        });
+        clicks += usize::from(clicked);
+    });
+    assert_eq!(clicks, 1, "ColorSwatch");
+
     let mut on = false;
     press(id, Key::Char(' '), |ui| {
         under_root(ui, |ui| {
@@ -566,7 +603,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(on, "Checkbox");
 
     let mut open = false;
-    press(id.with("header"), Key::Enter, |ui| {
+    press(Expander::header_id(id), Key::Enter, |ui| {
         under_root(ui, |ui| {
             Expander::new("x").id(id).open(&mut open).show(ui, |_| {});
         });
@@ -605,4 +642,29 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     // End sends the seam past the last free pixel, which clamps to the whole span; the arranged
     // ratio read back next frame is `first / (first + 0)`.
     assert_eq!(ratio, 1.0, "Splitter");
+
+    let mut value = 50.0;
+    press(id, Key::ArrowRight, |ui| {
+        under_arrows(ui, |ui| {
+            Slider::new(&mut value, 0.0..=100.0).id(id).show(ui);
+        });
+    });
+    assert_eq!(value, 51.0, "Slider: a hundredth of the range");
+
+    let mut coords = ColorCoords::new(ColorModel::Hsv, RgbaF32::srgb(0.5, 0.25, 0.25), 0.0);
+    let before = coords.saturation();
+    press(id, Key::ArrowRight, |ui| {
+        under_arrows(ui, |ui| {
+            ColorField::new(&mut coords).id(id).show(ui);
+        });
+    });
+    assert_eq!(coords.saturation(), before + UNIT_STEP, "ColorField");
+
+    let mut color = RgbaF32::WHITE;
+    press(id, Key::ArrowLeft, |ui| {
+        under_arrows(ui, |ui| {
+            ColorStrip::for_alpha(&mut color).id(id).show(ui);
+        });
+    });
+    assert_eq!(color.a, 1.0 - UNIT_STEP, "ColorStrip");
 }

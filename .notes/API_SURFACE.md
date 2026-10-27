@@ -670,6 +670,7 @@ Expander
         pub const fn open(self, open: &'a mut bool) -> Self
         pub const fn keep_body(self, keep: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
+        pub fn header_id(expander: WidgetId) -> WidgetId
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
 
 ExpanderResponse
@@ -1362,6 +1363,7 @@ Panel
         pub fn stack(axis: Axis) -> Self
         pub fn wrap_hstack() -> Self
         pub fn wrap_vstack() -> Self
+        pub fn wrap_stack(axis: Axis) -> Self
         pub fn zstack() -> Self
         pub fn canvas() -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -1477,12 +1479,13 @@ RadialGradientBuilder
     type RadialGradientBuilder = GradientBuilder<RadialGeometry>
 
 RadioButton
-    struct RadioButton<'a, T: PartialEq>: Configure, ThemeDefaults (blanket)
+    struct RadioButton<'a, T>: Configure, ThemeDefaults (blanket)
         pub fn new(cur: &'a mut T, value: T) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl<'a, T: Debug + PartialEq> Debug for RadioButton<'a, T>
+        impl<T: PartialEq> RadioButton<'_, T>
+            pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        impl<'a, T: Debug> Debug for RadioButton<'a, T>
 
 Rect
     struct Rect: Clone, Copy, Debug, Default, Hash, PartialEq, Pod, Zeroable
@@ -1520,7 +1523,7 @@ RequestedGpu
 Response
     struct Response<'a>: Debug, Deref
         pub id: WidgetId
-        pub fn new(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self
+        pub fn new(ui: &'a Ui, snapshot: ResponseSnapshot) -> Self
         pub fn snapshot(&self) -> ResponseSnapshot
 
 ResponseSnapshot
@@ -2502,6 +2505,11 @@ wgpu
 widget
     mod
 
+widget::Activation
+    enum Activation: Clone, Copy, Debug, Eq, PartialEq
+        Button
+        Toggle
+
 widget::Animatable
     trait Animatable: Clone + PartialEq + 'static
         fn lerp(a: Self, b: Self, t: f32) -> Self
@@ -2585,6 +2593,7 @@ widget::Configurator
         pub fn default_padding(&mut self, p: impl Into<Spacing>) -> &mut Self
         pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self
         pub const fn default_align(&mut self, a: Align) -> &mut Self
+        pub const fn default_child_align(&mut self, a: Align) -> &mut Self
         pub fn default_gap(&mut self, g: f32) -> &mut Self
         pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
@@ -2863,6 +2872,7 @@ widget::ThemeDefaults
         fn default_padding(self, p: impl Into<Spacing>) -> Self { .. }
         fn default_margin(self, m: impl Into<Spacing>) -> Self { .. }
         fn default_align(self, a: Align) -> Self { .. }
+        fn default_child_align(self, a: Align) -> Self { .. }
         fn default_gap(self, g: f32) -> Self { .. }
         fn default_min_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_max_size(self, s: impl Into<Size>) -> Self { .. }
@@ -2890,11 +2900,13 @@ widget::Widget
         pub fn stack(axis: Axis) -> Self
         pub fn wrap_hstack() -> Self
         pub fn wrap_vstack() -> Self
+        pub fn wrap_stack(axis: Axis) -> Self
         pub fn zstack() -> Self
         pub fn canvas() -> Self
         pub fn grid() -> Self
         pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId
-        pub fn response(&mut self, ui: &mut Ui) -> ResponseState
+        pub fn response(&mut self, ui: &mut Ui) -> ResponseSnapshot
+        pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> ResponseSnapshot
         pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook
         pub fn shortcut_pressed(&mut self, ui: &mut Ui, shortcut: impl Into<Shortcut>) -> bool
         pub fn key_pressed(&mut self, ui: &mut Ui, key: Key) -> bool
@@ -2908,8 +2920,8 @@ widget::Widget
         pub const fn authored_transform(&self) -> TranslateScale
         pub const fn authored_pos(&self) -> Vec2
         pub const fn authored_grid_cell(&self) -> GridCell
-        pub fn authored_gap(&self) -> Option<f32>
-        pub fn authored_line_gap(&self) -> Option<f32>
+        pub const fn authored_gap(&self) -> Option<f32>
+        pub const fn authored_line_gap(&self) -> Option<f32>
         pub const fn authored_justify(&self) -> Justify
         pub const fn authored_align(&self) -> Align
         pub const fn authored_child_align(&self) -> Align
