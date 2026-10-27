@@ -71,7 +71,7 @@ impl FieldKeys {
                 max_chars: None,
             },
         );
-        let blur = match EditAction::from_keypress(kp, self.platform) {
+        let blur = match EditAction::from_keypress(kp) {
             Some(action) => {
                 action.execute(&mut ed, &self.clipboard);
                 false

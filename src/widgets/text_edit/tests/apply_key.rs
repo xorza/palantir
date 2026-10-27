@@ -469,14 +469,10 @@ fn line_and_word_chords_follow_the_platform() {
     }
 }
 
-/// Ctrl+Y redoes on Windows, beside Ctrl+Shift+Z everywhere; elsewhere it is no edit chord.
+/// Redo is Ctrl+Shift+Z on every platform, Windows included; Ctrl+Y redoes nothing.
 #[test]
-fn ctrl_y_redoes_on_windows_only() {
-    for (platform, redone) in [
-        (Platform::Windows, "ab"),
-        (Platform::Mac, "a"),
-        (Platform::Linux, "a"),
-    ] {
+fn redo_is_ctrl_shift_z_on_every_platform() {
+    for platform in [Platform::Windows, Platform::Mac, Platform::Linux] {
         let keys = FieldKeys::on(platform);
         let mut s = String::from("a");
         let mut state = EditState {
@@ -487,7 +483,9 @@ fn ctrl_y_redoes_on_windows_only() {
         keys.apply(&mut s, &mut state, ctrl_press(Key::Char('z')));
         assert_eq!(s, "a", "{platform:?}: premise, the typing undone");
         keys.apply(&mut s, &mut state, ctrl_press(Key::Char('y')));
-        assert_eq!(s, redone, "{platform:?}");
+        assert_eq!(s, "a", "{platform:?}: Ctrl+Y");
+        keys.apply(&mut s, &mut state, ctrl_shift_press(Key::Char('z')));
+        assert_eq!(s, "ab", "{platform:?}: Ctrl+Shift+Z");
     }
 }
 

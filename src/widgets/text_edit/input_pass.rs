@@ -137,7 +137,7 @@ impl InputPass<'_> {
                 assert_only_repeats_after(ui.keyboard_events(), i);
                 break;
             }
-            if let Some(action) = EditAction::from_keypress(kp, PLATFORM) {
+            if let Some(action) = EditAction::from_keypress(kp) {
                 action.execute(&mut ed, &clipboard);
                 continue;
             }
