@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::error::GpuRequestError;
-use crate::gpu::surface::render_target;
-use crate::gpu::surface::render_target::internals::TargetSpec;
+use crate::gpu::surface::owned_target::OwnedTarget;
+use crate::gpu::surface::render_target::TargetFormat;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);
@@ -50,29 +50,15 @@ pub struct HeadlessTestGpuLease {
 }
 
 impl HeadlessTestGpuLease {
-    /// Usages every test target allows: draw into it, copy either way.
-    pub const TARGET_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
-        .union(wgpu::TextureUsages::COPY_DST)
-        .union(wgpu::TextureUsages::COPY_SRC);
-
     /// Borrowed handles to the device and queue.
     pub fn handles(&self) -> Gpu {
         Gpu::new(self.device.clone(), self.queue.clone())
     }
 
-    /// A 2D `Rgba8UnormSrgb` render target of `size` with [`Self::TARGET_USAGES`]; `label` names the test in RenderDoc and validation errors.
-    pub fn target(&self, label: &str, size: UVec2) -> wgpu::Texture {
-        self.target_with(TargetSpec {
-            label,
-            size,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: Self::TARGET_USAGES,
-        })
-    }
-
-    /// [`Self::target`] in a chosen format and usages.
-    pub fn target_with(&self, spec: TargetSpec<'_>) -> wgpu::Texture {
-        render_target::internals::texture(&self.device, spec)
+    /// A 2D `Rgba8UnormSrgb` window target of `size`; `label` names the test in RenderDoc and
+    /// validation errors.
+    pub fn target(&self, label: &str, size: UVec2) -> OwnedTarget {
+        OwnedTarget::window(&self.handles(), label, size, TargetFormat::RGBA8_SRGB)
     }
 
     /// Block until every submission on the device has finished.

@@ -274,7 +274,7 @@ mod tests {
         });
 
         for (frame, paints) in [(0, true), (1, false)] {
-            let target = RenderTarget::new(&texture);
+            let target = texture.as_target();
             let key = TargetKey::of(target);
             host.driver.note_target(key);
             let display = host.driver.display(key.physical, 1.0, None);
@@ -321,7 +321,7 @@ mod tests {
         };
 
         let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
-        let key = TargetKey::of(RenderTarget::new(&large));
+        let key = TargetKey::of(large.as_target());
         host.driver.note_target(key);
         let display = host.driver.display(key.physical, 1.0, None);
         let mut asking = RecordApp::new(|ui: &mut Ui| scene(ui, true));
@@ -333,10 +333,10 @@ mod tests {
 
         let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
         let mut still = RecordApp::new(|ui: &mut Ui| scene(ui, false));
-        host.frame(RenderTarget::new(&small), 1.0, &mut still);
-        let target = gpu.handles().read_back(&small);
+        host.frame(small.as_target(), 1.0, &mut still);
+        let target = small.read_back();
         gpu.wait();
-        host.frame(RenderTarget::new(&small), 1.0, &mut still);
+        host.frame(small.as_target(), 1.0, &mut still);
         let shot = host
             .ui()
             .screenshot_taken()

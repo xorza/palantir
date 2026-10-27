@@ -10,10 +10,10 @@ use std::time::Duration;
 use glam::UVec2;
 use palantir::golden::image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
-use palantir::internals::{HeadlessTestGpuLease, TargetSpec, headless_test_gpu};
+use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RenderTarget, RgbaF32,
-    TextShaper, Theme, Ui,
+    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RgbaF32, TextShaper, Theme,
+    Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -76,7 +76,7 @@ impl Harness {
         Self {
             host,
             gpu,
-            target_usages: HeadlessTestGpuLease::TARGET_USAGES,
+            target_usages: OwnedTarget::USAGES,
             physical: None,
             scale: 1.0,
             clear: DARK_BG,
@@ -122,21 +122,22 @@ impl Harness {
         let physical = self
             .physical
             .expect("set the surface with Harness::size before a frame");
-        let target = self.gpu.target_with(TargetSpec {
-            label: "palantir.visual_test.target",
-            size: physical,
-            format: self.format,
-            usage: self.target_usages,
-        });
-
-        self.host.ui().theme_mut().window_clear = self.clear;
-        let report = self.host.frame(
-            RenderTarget::new(&target),
-            self.scale,
-            &mut RecordApp::new(scene),
+        let target = OwnedTarget::new(
+            &self.gpu.handles(),
+            TargetSpec {
+                label: "palantir.visual_test.target",
+                size: physical,
+                format: self.format,
+                usage: self.target_usages,
+            },
         );
 
-        let image = self.gpu.handles().read_back(&target);
+        self.host.ui().theme_mut().window_clear = self.clear;
+        let report = self
+            .host
+            .frame(target.as_target(), self.scale, &mut RecordApp::new(scene));
+
+        let image = target.read_back();
         Capture {
             image,
             paint: report.paint(),
@@ -159,4 +160,4 @@ impl Harness {
 
 /// A GLES swapchain image: the default framebuffer, so nothing can be copied onto it; `COPY_SRC` is the harness's, for readback.
 const NO_COPY_DST_USAGES: wgpu::TextureUsages =
-    HeadlessTestGpuLease::TARGET_USAGES.difference(wgpu::TextureUsages::COPY_DST);
+    OwnedTarget::USAGES.difference(wgpu::TextureUsages::COPY_DST);
