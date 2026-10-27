@@ -10,11 +10,20 @@ use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use glam::UVec2;
-use pollster::FutureExt;
 use std::sync::OnceLock;
 
 /// The render target format every bench uses, sRGB like the swapchain.
 pub(crate) const TARGET_FORMAT: TargetFormat = TargetFormat::RGBA8_SRGB;
+
+/// The adapter policy every bench device opens with, and [`BenchGpu::probe`] picks by.
+const BENCH_POWER: PowerPreference = PowerPreference::HighPerformance;
+
+/// What the adapter the bench devices open on offers, read without opening a device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BenchAdapter {
+    /// Whether it writes timestamps inside a render pass, which a batch's own GPU time needs.
+    pub(crate) pass_timestamps: bool,
+}
 
 /// Whether the device has the timestamp and pipeline-statistics features `GpuTimings` reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,8 +58,8 @@ fn build(timing: Timing) -> BenchGpu {
             .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
         Timing::Bare => wgpu::Features::empty(),
     };
-    let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, timing_features)
-        .expect("lease headless bench gpu");
+    let gpu =
+        RequestedGpu::headless(BENCH_POWER, timing_features).expect("lease headless bench gpu");
     let timing_features = gpu.gpu.device.features() & timing_features;
     let info = gpu.adapter.get_info();
     let gpu = BenchGpu {
@@ -63,13 +72,21 @@ fn build(timing: Timing) -> BenchGpu {
 }
 
 impl BenchGpu {
-    /// Whether the host has a GPU adapter, found by listing them without opening a device.
-    pub fn adapter_exists() -> bool {
-        GpuRequest::instance().is_ok_and(|instance| {
-            !instance
-                .enumerate_adapters(wgpu::Backends::all())
-                .block_on()
-                .is_empty()
+    /// The adapter the bench devices open on, picked as [`Self::shared`] picks it but with no
+    /// device opened; `None` when the host has none.
+    pub(crate) fn probe() -> Option<BenchAdapter> {
+        let instance = GpuRequest::instance().ok()?;
+        let request = GpuRequest {
+            label: "palantir.bench.probe",
+            power_preference: BENCH_POWER,
+            optional: wgpu::Features::empty(),
+            compatible_surface: None,
+        };
+        let features = request.adapter(&instance).ok()?.features();
+        Some(BenchAdapter {
+            pass_timestamps: features.contains(
+                wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
+            ),
         })
     }
 

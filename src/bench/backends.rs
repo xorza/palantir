@@ -1,11 +1,12 @@
 //! The backends a case runs on: the CPU always, the GPU when the host has an adapter.
 
-use crate::gpu::bench_gpu::BenchGpu;
+use crate::gpu::bench_gpu::{BenchAdapter, BenchGpu};
 
 /// The backends a case may run on: the CPU always, the GPU when the host has an adapter.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Backends {
-    has_adapter: bool,
+    /// The adapter the GPU cases open their device on; `None` on a host with none.
+    adapter: Option<BenchAdapter>,
 }
 
 /// One backend a case runs on, the first part of its case.
@@ -18,24 +19,31 @@ pub(crate) enum Backend {
 }
 
 impl Backends {
-    /// The backends of this host, by listing its adapters: no device is opened, so a run that
-    /// filters to CPU cases opens none. A host with no adapter says so once on stderr, as its
-    /// GPU cases are then missing from the run.
+    /// The backends of this host, from the adapter the GPU cases would open: no device is opened,
+    /// so a run that filters to CPU cases opens none. Each kind of GPU case the host cannot run is
+    /// said once on stderr, as those cases are then missing from the run.
     #[expect(
         clippy::print_stderr,
         reason = "the notice is what keeps missing GPU cases from reading as a full run"
     )]
     pub(crate) fn probe() -> Self {
-        let has_adapter = BenchGpu::adapter_exists();
-        if !has_adapter {
-            eprintln!("palantir benches: no GPU adapter, so no GPU cases");
+        let adapter = BenchGpu::probe();
+        match adapter {
+            None => eprintln!("palantir benches: no GPU adapter, so no GPU cases"),
+            Some(BenchAdapter {
+                pass_timestamps: false,
+            }) => eprintln!(
+                "palantir benches: the adapter writes no in-pass timestamps, so no batch-timed \
+                 GPU cases"
+            ),
+            Some(_) => {}
         }
-        Self { has_adapter }
+        Self { adapter }
     }
 
     /// The backends a case with both runs on, the CPU first.
     pub(crate) fn all(self) -> Vec<Backend> {
-        if self.has_adapter {
+        if self.adapter.is_some() {
             vec![Backend::Cpu, Backend::Gpu]
         } else {
             vec![Backend::Cpu]
@@ -44,7 +52,15 @@ impl Backends {
 
     /// The backends a GPU-only case runs on: the GPU, when there is one.
     pub(crate) fn gpu(self) -> Option<Backend> {
-        self.has_adapter.then_some(Backend::Gpu)
+        self.adapter.map(|_| Backend::Gpu)
+    }
+
+    /// The backend a case timing one batch inside the pass runs on: the GPU, when its adapter
+    /// writes in-pass timestamps.
+    pub(crate) fn batch_timed_gpu(self) -> Option<Backend> {
+        self.adapter
+            .filter(|adapter| adapter.pass_timestamps)
+            .map(|_| Backend::Gpu)
     }
 }
 
