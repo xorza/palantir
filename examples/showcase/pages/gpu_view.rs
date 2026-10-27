@@ -213,14 +213,25 @@ impl GpuPaint for Cube {
         // Slow auto-rotation (~34°/s), framerate-independent via real `dt` (ZERO on the first paint).
         self.spin += 0.6 * ctx.dt.as_secs_f32();
         let mvp = {
-            let size = ctx.physical_size.max(UVec2::ONE);
-            let aspect = size.x as f32 / size.y as f32;
+            // The projection frames the whole view, so the cube holds its shape and size while a
+            // scroll slides part of it out; `crop` then zooms clip space onto the shown part.
+            let full = ctx.physical_full_size.max(UVec2::ONE).as_vec2();
+            let shown = ctx.physical_size.max(UVec2::ONE).as_vec2();
+            let center = ctx.physical_offset.as_vec2() + shown * 0.5;
+            // The shown part's center in the whole view's NDC, whose y points up.
+            let center_ndc = Vec3::new(
+                center.x / full.x * 2.0 - 1.0,
+                1.0 - center.y / full.y * 2.0,
+                0.0,
+            );
+            let crop =
+                Mat4::from_scale((full / shown).extend(1.0)) * Mat4::from_translation(-center_ndc);
             // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the `directx` RH perspective.
-            let proj = directx::perspective(45f32.to_radians(), aspect, 0.1, 100.0);
+            let proj = directx::perspective(45f32.to_radians(), full.x / full.y, 0.1, 100.0);
             let view = view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
             let model =
                 Mat4::from_rotation_y(self.spin + self.yaw) * Mat4::from_rotation_x(self.pitch);
-            proj * view * model
+            crop * proj * view * model
         };
 
         let gpu = self.gpu.as_mut().expect("init ran before paint");
